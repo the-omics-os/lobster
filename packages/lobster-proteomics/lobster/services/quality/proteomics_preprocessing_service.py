@@ -1,20 +1,23 @@
 """
-Proteomics preprocessing service for missing value imputation, normalization, and batch correction.
+Proteomics preprocessing service for missing value imputation, normalization, batch correction,
+PTM site import, peptide-to-protein summarization, and PTM-to-protein normalization.
 
 This service implements professional-grade preprocessing methods specifically designed for
 proteomics data including MNAR imputation, proteomics-specific normalization methods,
-and batch correction techniques suitable for mass spectrometry data.
+batch correction techniques suitable for mass spectrometry data, and PTM analysis workflows.
 
 All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance tracking and
 reproducible notebook export via /pipeline export.
 """
 
-from typing import Any, Dict, Optional, Tuple
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
 import numpy as np
 import pandas as pd
-from scipy.stats import rankdata
+from scipy.stats import linregress, rankdata
 from sklearn.decomposition import PCA
 from sklearn.impute import KNNImputer, SimpleImputer
 
@@ -271,6 +274,381 @@ print(f"Batch correction applied: {method}, batches: {stats['n_batches']}")""",
             input_entities=["adata"],
             output_entities=["adata_corrected"],
         )
+
+    def _create_ir_import_ptm_site_data(
+        self,
+        file_path: str,
+        ptm_type: str,
+        localization_threshold: float,
+        filter_contaminants: bool,
+        filter_reverse: bool,
+        intensity_type: str,
+    ) -> AnalysisStep:
+        """Create IR for PTM site data import."""
+        return AnalysisStep(
+            operation="proteomics.preprocessing.import_ptm_site_data",
+            tool_name="import_ptm_site_data",
+            description="Import PTM site-level quantification from MaxQuant-style output files, filter by localization probability, and construct site-level AnnData",
+            library="lobster.services.quality.proteomics_preprocessing_service",
+            code_template="""# Import PTM site-level data
+from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService
+
+service = ProteomicsPreprocessingService()
+adata_ptm, stats, _ = service.import_ptm_site_data(
+    file_path={{ file_path | tojson }},
+    ptm_type={{ ptm_type | tojson }},
+    localization_threshold={{ localization_threshold }},
+    filter_contaminants={{ filter_contaminants | tojson }},
+    filter_reverse={{ filter_reverse | tojson }},
+    intensity_type={{ intensity_type | tojson }}
+)
+print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n_samples']} samples")""",
+            imports=[
+                "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
+            ],
+            parameters={
+                "file_path": file_path,
+                "ptm_type": ptm_type,
+                "localization_threshold": localization_threshold,
+                "filter_contaminants": filter_contaminants,
+                "filter_reverse": filter_reverse,
+                "intensity_type": intensity_type,
+            },
+            parameter_schema={
+                "file_path": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=True,
+                    description="Path to PTM site file (tab-delimited MaxQuant output)",
+                ),
+                "ptm_type": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="phospho",
+                    required=False,
+                    validation_rule="ptm_type in ['phospho', 'acetyl', 'ubiquitin']",
+                    description="Type of PTM: phospho, acetyl, or ubiquitin",
+                ),
+                "localization_threshold": ParameterSpec(
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.75,
+                    required=False,
+                    validation_rule="0 <= localization_threshold <= 1",
+                    description="Minimum localization probability for class I sites",
+                ),
+                "filter_contaminants": ParameterSpec(
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
+                    required=False,
+                    description="Remove contaminant proteins",
+                ),
+                "filter_reverse": ParameterSpec(
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
+                    required=False,
+                    description="Remove reverse database hits",
+                ),
+                "intensity_type": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="auto",
+                    required=False,
+                    validation_rule="intensity_type in ['auto', 'lfq', 'intensity']",
+                    description="Intensity column type: auto, lfq, or intensity",
+                ),
+            },
+            input_entities=["file_path"],
+            output_entities=["adata_ptm"],
+        )
+
+    def import_ptm_site_data(
+        self,
+        file_path: str,
+        ptm_type: str = "phospho",
+        localization_threshold: float = 0.75,
+        filter_contaminants: bool = True,
+        filter_reverse: bool = True,
+        intensity_type: str = "auto",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Parse PTM site-level quantification data into AnnData.
+
+        Reads tab-delimited MaxQuant site-level output files and constructs
+        site-level AnnData where var_names are site IDs (gene_residuePosition format).
+
+        Args:
+            file_path: Path to PTM site file (tab-delimited)
+            ptm_type: Type of PTM ("phospho", "acetyl", "ubiquitin")
+            localization_threshold: Minimum localization probability for class I sites (default 0.75)
+            filter_contaminants: Remove contaminant proteins
+            filter_reverse: Remove reverse database hits
+            intensity_type: "auto" detects LFQ/Intensity columns, or specify "lfq", "intensity"
+
+        Returns:
+            Tuple of (AnnData, stats_dict, AnalysisStep)
+
+        Raises:
+            ProteomicsPreprocessingError: If PTM site import fails
+        """
+        try:
+            logger.info(f"Starting PTM site data import from {file_path} (type: {ptm_type})")
+
+            # 1. Read the file
+            df = pd.read_csv(file_path, sep="\t", low_memory=False)
+            n_sites_total = len(df)
+            logger.info(f"Read {n_sites_total} rows from {Path(file_path).name}")
+
+            # 2. Identify key columns (case-insensitive matching)
+            col_map = self._identify_ptm_columns(df)
+
+            # 3. Filter by localization probability
+            n_before_loc = len(df)
+            if col_map["localization_prob"] is not None:
+                df = df[df[col_map["localization_prob"]] >= localization_threshold].copy()
+                logger.info(
+                    f"Localization filter ({localization_threshold}): "
+                    f"{n_before_loc} -> {len(df)} sites"
+                )
+            else:
+                logger.warning(
+                    "No localization probability column found, skipping filter"
+                )
+
+            # 4. Filter contaminants
+            n_contaminants_removed = 0
+            if filter_contaminants and col_map["contaminant"] is not None:
+                contaminant_mask = df[col_map["contaminant"]].fillna("").astype(str).str.strip() == "+"
+                n_contaminants_removed = contaminant_mask.sum()
+                df = df[~contaminant_mask].copy()
+                logger.info(f"Removed {n_contaminants_removed} contaminant sites")
+
+            # 5. Filter reverse hits
+            n_reverse_removed = 0
+            if filter_reverse and col_map["reverse"] is not None:
+                reverse_mask = df[col_map["reverse"]].fillna("").astype(str).str.strip() == "+"
+                n_reverse_removed = reverse_mask.sum()
+                df = df[~reverse_mask].copy()
+                logger.info(f"Removed {n_reverse_removed} reverse hits")
+
+            # 6. Auto-detect intensity columns
+            intensity_cols, sample_names = self._detect_intensity_columns(
+                df, intensity_type
+            )
+            if not intensity_cols:
+                raise ProteomicsPreprocessingError(
+                    "No intensity columns found. Expected columns matching "
+                    "'Intensity <sample>' or 'LFQ intensity <sample>'"
+                )
+            logger.info(
+                f"Found {len(intensity_cols)} intensity columns "
+                f"(type: {'LFQ' if 'LFQ' in intensity_cols[0] else 'raw'})"
+            )
+
+            # 7. Construct site IDs
+            site_ids = self._construct_site_ids(df, col_map)
+
+            # Handle duplicate site IDs by appending a suffix
+            seen = {}
+            unique_site_ids: List[str] = []
+            for sid in site_ids:
+                if sid in seen:
+                    seen[sid] += 1
+                    unique_site_ids.append(f"{sid}_dup{seen[sid]}")
+                else:
+                    seen[sid] = 0
+                    unique_site_ids.append(sid)
+            site_ids = unique_site_ids
+
+            # 8. Build intensity matrix (sites as rows in MaxQuant -> transpose to samples x sites)
+            intensity_matrix = df[intensity_cols].values.astype(np.float64)
+            # Transpose: MaxQuant has sites as rows, we want samples (columns) as obs
+            X = intensity_matrix.T  # shape: (n_samples, n_sites)
+
+            # 9. Replace 0 values with NaN (MaxQuant convention: 0 = undetected)
+            X[X == 0] = np.nan
+
+            # 10. Build var metadata
+            var_data = {"site_id": site_ids, "ptm_type": ptm_type}
+            if col_map["gene_names"] is not None:
+                var_data["gene"] = df[col_map["gene_names"]].fillna("unknown").values
+            if col_map["position"] is not None:
+                var_data["position"] = df[col_map["position"]].values
+            if col_map["amino_acid"] is not None:
+                var_data["amino_acid"] = df[col_map["amino_acid"]].values
+            if col_map["localization_prob"] is not None:
+                var_data["localization_prob"] = df[col_map["localization_prob"]].values
+            if col_map["multiplicity"] is not None:
+                var_data["multiplicity"] = df[col_map["multiplicity"]].values
+
+            var_df = pd.DataFrame(var_data, index=site_ids)
+
+            # 11. Build obs metadata
+            obs_df = pd.DataFrame(index=sample_names)
+            obs_df.index.name = "sample"
+
+            # 12. Build AnnData
+            adata = anndata.AnnData(
+                X=X,
+                obs=obs_df,
+                var=var_df,
+            )
+            adata.uns["ptm_type"] = ptm_type
+            adata.uns["localization_threshold"] = localization_threshold
+            adata.uns["source_file"] = Path(file_path).name
+
+            # 13. Calculate stats
+            total_values = X.size
+            missing_count = np.isnan(X).sum()
+            missing_percentage = (
+                (missing_count / total_values) * 100 if total_values > 0 else 0
+            )
+
+            stats = {
+                "n_sites_total": n_sites_total,
+                "n_sites_after_filter": adata.n_vars,
+                "n_samples": adata.n_obs,
+                "n_contaminants_removed": n_contaminants_removed,
+                "n_reverse_removed": n_reverse_removed,
+                "missing_percentage": float(missing_percentage),
+                "ptm_type": ptm_type,
+                "intensity_type": "lfq" if "LFQ" in intensity_cols[0] else "intensity",
+                "analysis_type": "ptm_site_import",
+            }
+
+            logger.info(
+                f"PTM site import complete: {adata.n_obs} samples x {adata.n_vars} sites "
+                f"({missing_percentage:.1f}% missing)"
+            )
+
+            # 14. Create IR
+            ir = self._create_ir_import_ptm_site_data(
+                file_path,
+                ptm_type,
+                localization_threshold,
+                filter_contaminants,
+                filter_reverse,
+                intensity_type,
+            )
+            return adata, stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error in PTM site data import: {e}")
+            raise ProteomicsPreprocessingError(
+                f"PTM site data import failed: {str(e)}"
+            )
+
+    def _identify_ptm_columns(self, df: pd.DataFrame) -> Dict[str, Optional[str]]:
+        """Identify key PTM columns in a MaxQuant-style site file."""
+        columns = df.columns.tolist()
+        col_lower = {c.lower(): c for c in columns}
+
+        def find_col(*candidates: str) -> Optional[str]:
+            for candidate in candidates:
+                candidate_lower = candidate.lower()
+                if candidate_lower in col_lower:
+                    return col_lower[candidate_lower]
+                # Partial match
+                for cl, orig in col_lower.items():
+                    if candidate_lower in cl:
+                        return orig
+            return None
+
+        return {
+            "localization_prob": find_col(
+                "Localization prob", "localization_probability", "Localization probability"
+            ),
+            "gene_names": find_col("Gene names", "Gene.names", "Proteins", "Leading proteins"),
+            "position": find_col("Position", "Positions within proteins"),
+            "amino_acid": find_col("Amino acid", "Amino.acid"),
+            "contaminant": find_col("Potential contaminant", "Contaminant"),
+            "reverse": find_col("Reverse"),
+            "multiplicity": find_col("Multiplicity"),
+        }
+
+    def _detect_intensity_columns(
+        self, df: pd.DataFrame, intensity_type: str
+    ) -> Tuple[List[str], List[str]]:
+        """Detect intensity columns and extract sample names."""
+        columns = df.columns.tolist()
+
+        # Find LFQ intensity columns
+        lfq_pattern = re.compile(r"^LFQ [Ii]ntensity\s+(.+)$")
+        lfq_cols = []
+        lfq_samples = []
+        for col in columns:
+            m = lfq_pattern.match(col)
+            if m:
+                lfq_cols.append(col)
+                lfq_samples.append(m.group(1).strip())
+
+        # Find raw intensity columns (exclude "Intensity" alone and columns with
+        # internal qualifiers like "Intensity __", and exclude LFQ intensity columns)
+        raw_pattern = re.compile(r"^Intensity\s+(.+)$")
+        raw_cols = []
+        raw_samples = []
+        for col in columns:
+            if col.lower().startswith("lfq"):
+                continue
+            m = raw_pattern.match(col)
+            if m:
+                sample = m.group(1).strip()
+                # Skip internal MaxQuant columns like "Intensity L", "Intensity H" in SILAC
+                # unless they look like actual sample names (more than 1 character)
+                raw_cols.append(col)
+                raw_samples.append(sample)
+
+        if intensity_type == "lfq":
+            return lfq_cols, lfq_samples
+        elif intensity_type == "intensity":
+            return raw_cols, raw_samples
+        else:  # auto: prefer LFQ if available
+            if lfq_cols:
+                return lfq_cols, lfq_samples
+            return raw_cols, raw_samples
+
+    def _construct_site_ids(
+        self, df: pd.DataFrame, col_map: Dict[str, Optional[str]]
+    ) -> List[str]:
+        """Construct unique site identifiers in gene_residuePosition format."""
+        site_ids = []
+        for _, row in df.iterrows():
+            # Get gene name
+            gene = "unknown"
+            if col_map["gene_names"] is not None:
+                gene_val = row[col_map["gene_names"]]
+                if pd.notna(gene_val) and str(gene_val).strip():
+                    # Take first gene if multiple separated by ;
+                    gene = str(gene_val).split(";")[0].strip()
+
+            # Get amino acid and position
+            aa = ""
+            if col_map["amino_acid"] is not None:
+                aa_val = row[col_map["amino_acid"]]
+                if pd.notna(aa_val):
+                    aa = str(aa_val).strip()
+
+            pos = ""
+            if col_map["position"] is not None:
+                pos_val = row[col_map["position"]]
+                if pd.notna(pos_val):
+                    # Take first position if multiple separated by ;
+                    pos = str(int(float(str(pos_val).split(";")[0].strip())))
+
+            # Construct site ID
+            site_id = f"{gene}_{aa}{pos}"
+
+            # Handle multiplicity for multiply modified sites
+            if col_map["multiplicity"] is not None:
+                mult_val = row[col_map["multiplicity"]]
+                if pd.notna(mult_val) and int(float(mult_val)) > 1:
+                    site_id = f"{site_id}_m{int(float(mult_val))}"
+
+            site_ids.append(site_id)
+        return site_ids
 
     def impute_missing_values(
         self,
