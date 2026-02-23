@@ -85,11 +85,11 @@
 
 ### Proteomics DE Child (proteomics_de_analysis_expert)
 
-- [ ] **PDE-01**: Add `run_pathway_enrichment` tool — GO/Reactome/KEGG on DE results
-- [ ] **PDE-02**: Add `run_differential_ptm_analysis` tool — site-level DE with protein adjustment
-- [ ] **PDE-03**: Add `run_kinase_enrichment` tool — KSEA for phosphoproteomics
-- [ ] **PDE-04**: Add `run_string_network_analysis` tool — STRING PPI network queries
-- [ ] **PDE-05**: Fix BUG-02: UnboundLocalError on min_group in DE
+- [x] **PDE-01**: Add `run_pathway_enrichment` tool — GO/Reactome/KEGG on DE results
+- [x] **PDE-02**: Add `run_differential_ptm_analysis` tool — site-level DE with protein adjustment
+- [x] **PDE-03**: Add `run_kinase_enrichment` tool — KSEA for phosphoproteomics
+- [x] **PDE-04**: Add `run_string_network_analysis` tool — STRING PPI network queries
+- [x] **PDE-05**: Fix BUG-02: UnboundLocalError on min_group in DE
 
 ### Biomarker Discovery Child (biomarker_discovery_expert)
 
@@ -242,11 +242,11 @@
 | MSP-08 | Phase 4 | Complete |
 | MSP-09 | Phase 4 | Complete |
 | MSP-10 | Phase 4 | Complete |
-| PDE-01 | Phase 5 | Pending |
-| PDE-02 | Phase 5 | Pending |
-| PDE-03 | Phase 5 | Pending |
-| PDE-04 | Phase 5 | Pending |
-| PDE-05 | Phase 5 | Pending |
+| PDE-01 | Phase 5 | Complete |
+| PDE-02 | Phase 5 | Complete |
+| PDE-03 | Phase 5 | Complete |
+| PDE-04 | Phase 5 | Complete |
+| PDE-05 | Phase 5 | Complete |
 | BIO-01 | Phase 5 | Complete |
 | BIO-02 | Phase 5 | Complete |
 | BIO-03 | Phase 5 | Complete |

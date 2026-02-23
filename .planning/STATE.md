@@ -88,8 +88,9 @@ Recent decisions affecting current work:
 - D31: PTM site IDs use gene_residuePosition_m{multiplicity} format with deduplication suffix for collisions
 - D32: Unmatched PTM sites kept with raw values (not dropped) during PTM-to-protein normalization
 
-- D33: Corrected plan's adata.var['wgcna_module'] to adata.var['module'] matching actual WGCNALiteService implementation
-- D34: Corrected plan's adata.uns['module_trait_correlations'] to adata.uns['module_trait_correlation'] matching actual service key
+- D33: Pathway service wraps core PathwayEnrichmentService rather than reimplementing Enrichr calls
+- D34: Built-in SIGNOR-style kinase-substrate mapping with ~20 well-known kinases as KSEA default
+- D35: STRING service gracefully degrades to basic edge counts when networkx unavailable
 
 ### Pending Todos
 
@@ -102,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 05-02-PLAN.md (biomarker panel tools)
+Stopped at: Completed 05-01-PLAN.md (DE child agent downstream tools)
 Resume file: None
