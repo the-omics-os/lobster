@@ -66,9 +66,9 @@
 - [x] **DEA-06**: Add `export_de_results` tool — publication-ready CSV/Excel export
 - [x] **DEA-07**: Rename `prepare_differential_expression_design` → `prepare_de_design`
 - [x] **DEA-08**: Rename `run_pathway_enrichment_analysis` → `run_pathway_enrichment`
-- [ ] **DEA-09**: Add `run_bulk_de_direct` tool — one-shot DE for simple bulk comparisons
-- [ ] **DEA-10**: Add `run_gsea_analysis` tool — ranked gene set enrichment
-- [ ] **DEA-11**: Add `extract_and_export_de_results` tool — publication-ready tables with LFC shrinkage
+- [x] **DEA-09**: Add `run_bulk_de_direct` tool — one-shot DE for simple bulk comparisons
+- [x] **DEA-10**: Add `run_gsea_analysis` tool — ranked gene set enrichment
+- [x] **DEA-11**: Add `extract_and_export_de_results` tool — publication-ready tables with LFC shrinkage
 
 ### MS Proteomics Parent (proteomics_expert)
 
@@ -138,7 +138,7 @@
 - [x] **DOC-01**: Update genomics_expert prompt for new tool inventory + variant_analysis handoff
 - [x] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
 - [ ] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
-- [ ] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
+- [x] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
 - [ ] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
 - [ ] **DOC-06**: Create metabolomics_expert prompt
 - [ ] **DOC-07**: Update skills/lobster-dev references for new architecture
@@ -229,9 +229,9 @@
 | DEA-06 | Phase 3 | Complete |
 | DEA-07 | Phase 3 | Complete |
 | DEA-08 | Phase 3 | Complete |
-| DEA-09 | Phase 3 | Pending |
-| DEA-10 | Phase 3 | Pending |
-| DEA-11 | Phase 3 | Pending |
+| DEA-09 | Phase 3 | Complete |
+| DEA-10 | Phase 3 | Complete |
+| DEA-11 | Phase 3 | Complete |
 | MSP-01 | Phase 4 | Pending |
 | MSP-02 | Phase 4 | Pending |
 | MSP-03 | Phase 4 | Pending |
@@ -276,7 +276,7 @@
 | DOC-01 | Phase 1 | Complete |
 | DOC-02 | Phase 2 | Complete |
 | DOC-03 | Phase 4 | Pending |
-| DOC-04 | Phase 3 | Pending |
+| DOC-04 | Phase 3 | Complete |
 | DOC-05 | Phase 5 | Pending |
 | DOC-06 | Phase 6 | Pending |
 | DOC-07 | Phase 7 | Pending |
