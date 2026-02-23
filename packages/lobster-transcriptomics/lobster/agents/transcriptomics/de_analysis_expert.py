@@ -1906,6 +1906,368 @@ def de_analysis_expert(
             return f"Unexpected error: {str(e)}"
 
     # -------------------------
+    # RESULT TOOLS
+    # -------------------------
+    @tool
+    def filter_de_results(
+        modality_name: str,
+        de_results_key: str = None,
+        padj_threshold: float = 0.05,
+        lfc_threshold: float = 1.0,
+        min_base_mean: float = 10.0,
+        save_result: bool = True,
+    ) -> str:
+        """Filter differential expression results by significance and effect size thresholds.
+
+        Filters DE results stored in adata.uns by adjusted p-value, log fold change,
+        and base mean expression. Handles column name variations across DE methods
+        (pyDESeq2, simple DE, etc.).
+
+        Args:
+            modality_name: Name of modality containing DE results
+            de_results_key: Specific DE results key in adata.uns (auto-detected if None)
+            padj_threshold: Maximum adjusted p-value (default: 0.05)
+            lfc_threshold: Minimum absolute log2 fold change (default: 1.0)
+            min_base_mean: Minimum base mean expression (default: 10.0)
+            save_result: Whether to store filtered results back in adata.uns
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Find DE results key
+            if de_results_key is None:
+                de_keys = [
+                    key for key in adata.uns.keys()
+                    if key.startswith("de_results")
+                ]
+                if not de_keys:
+                    return "No DE results found in adata.uns. Run differential expression analysis first."
+                de_results_key = de_keys[-1]  # Use most recent
+
+            if de_results_key not in adata.uns:
+                return f"DE results key '{de_results_key}' not found. Available: {[k for k in adata.uns.keys() if k.startswith('de_results')]}"
+
+            de_data = adata.uns[de_results_key]
+            if not isinstance(de_data, dict) or "results_df" not in de_data:
+                return f"Invalid DE results format at '{de_results_key}'. Expected dict with 'results_df'."
+
+            results_df = de_data["results_df"]
+
+            # Handle column name variations
+            # Adjusted p-value columns
+            padj_col = None
+            for col_name in ["padj", "pvalue_adj", "FDR", "p_adj", "adjusted_pvalue"]:
+                if col_name in results_df.columns:
+                    padj_col = col_name
+                    break
+
+            # Log fold change columns
+            lfc_col = None
+            for col_name in ["log2FoldChange", "logFC", "mean_log2FC", "log2FC", "lfc"]:
+                if col_name in results_df.columns:
+                    lfc_col = col_name
+                    break
+
+            # Base mean columns
+            basemean_col = None
+            for col_name in ["baseMean", "base_mean", "AveExpr", "mean_expression"]:
+                if col_name in results_df.columns:
+                    basemean_col = col_name
+                    break
+
+            if padj_col is None:
+                return f"No adjusted p-value column found. Available columns: {list(results_df.columns)}"
+            if lfc_col is None:
+                return f"No log fold change column found. Available columns: {list(results_df.columns)}"
+
+            # Apply filters
+            mask = results_df[padj_col] < padj_threshold
+            mask = mask & (abs(results_df[lfc_col]) > lfc_threshold)
+            if basemean_col is not None:
+                mask = mask & (results_df[basemean_col] > min_base_mean)
+
+            filtered_df = results_df[mask].copy()
+
+            # Calculate up/down split
+            n_up = (filtered_df[lfc_col] > 0).sum()
+            n_down = (filtered_df[lfc_col] < 0).sum()
+
+            # Store filtered results
+            filtered_key = f"filtered_{de_results_key}"
+            if save_result:
+                adata.uns[filtered_key] = {
+                    "results_df": filtered_df,
+                    "filter_stats": {
+                        "padj_threshold": padj_threshold,
+                        "lfc_threshold": lfc_threshold,
+                        "min_base_mean": min_base_mean,
+                        "n_input": len(results_df),
+                        "n_filtered": len(filtered_df),
+                        "n_upregulated": int(n_up),
+                        "n_downregulated": int(n_down),
+                    },
+                }
+
+                data_manager.store_modality(
+                    name=modality_name,
+                    adata=adata,
+                    step_summary=f"Filtered DE results: {len(filtered_df)} significant genes",
+                )
+
+            # Create IR
+            from lobster.core.provenance import AnalysisStep
+
+            ir = AnalysisStep(
+                operation="de_results.filter",
+                tool_name="filter_de_results",
+                description=f"Filtered DE results: {len(filtered_df)}/{len(results_df)} genes pass thresholds",
+                library="pandas",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": de_results_key,
+                    "padj_threshold": padj_threshold,
+                    "lfc_threshold": lfc_threshold,
+                    "min_base_mean": min_base_mean,
+                },
+                code_template=(
+                    "# Filter DE results\n"
+                    "results_df = adata.uns['{{ de_results_key }}']['results_df']\n"
+                    "mask = (results_df['{{ padj_col }}'] < {{ padj_threshold }}) & "
+                    "(abs(results_df['{{ lfc_col }}']) > {{ lfc_threshold }})"
+                    "{% if basemean_col %} & (results_df['{{ basemean_col }}'] > {{ min_base_mean }}){% endif %}\n"
+                    "filtered_df = results_df[mask]"
+                ),
+                imports=["pandas"],
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="filter_de_results",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": de_results_key,
+                    "padj_threshold": padj_threshold,
+                    "lfc_threshold": lfc_threshold,
+                    "min_base_mean": min_base_mean,
+                },
+                description=f"Filtered DE results: {len(filtered_df)} significant genes",
+                ir=ir,
+            )
+
+            # Get top genes for response
+            sorted_df = filtered_df.sort_values(padj_col)
+            top_genes = []
+            for gene in sorted_df.index[:10]:
+                gene_lfc = sorted_df.loc[gene, lfc_col]
+                gene_padj = sorted_df.loc[gene, padj_col]
+                direction = "UP" if gene_lfc > 0 else "DOWN"
+                top_genes.append(f"- {gene}: LFC={gene_lfc:.2f}, padj={gene_padj:.2e} ({direction})")
+
+            response = f"""## DE Results Filtered for '{modality_name}'
+
+**Filter Thresholds:**
+- Adjusted p-value < {padj_threshold}
+- |log2FoldChange| > {lfc_threshold}
+- Base mean > {min_base_mean}
+
+**Results:**
+- Input genes: {len(results_df):,}
+- Passing filters: {len(filtered_df):,} ({len(filtered_df) / len(results_df) * 100:.1f}%)
+- Upregulated: {n_up:,}
+- Downregulated: {n_down:,}
+
+**Top Significant Genes:**
+{chr(10).join(top_genes)}
+
+**Filtered results stored in**: adata.uns['{filtered_key}']"""
+
+            response += "\n\nNext steps: Use export_de_results to save as CSV/Excel, or run_pathway_enrichment for pathway analysis."
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error filtering DE results: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error filtering DE results: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    @tool
+    def export_de_results(
+        modality_name: str,
+        de_results_key: str = None,
+        output_format: str = "csv",
+        output_path: str = None,
+        filtered_only: bool = False,
+        sort_by: str = "padj",
+    ) -> str:
+        """Export DE results as publication-ready CSV or Excel file.
+
+        Exports differential expression results with standardized column names
+        suitable for publication supplementary tables.
+
+        Args:
+            modality_name: Name of modality containing DE results
+            de_results_key: Specific DE results key in adata.uns (auto-detected if None)
+            output_format: Export format ('csv' or 'xlsx')
+            output_path: Custom output path (auto-generated if None)
+            filtered_only: Whether to export only filtered results
+            sort_by: Column to sort by (default: 'padj')
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Find DE results key
+            if de_results_key is None:
+                de_keys = [
+                    key for key in adata.uns.keys()
+                    if key.startswith("de_results")
+                ]
+                if not de_keys:
+                    return "No DE results found in adata.uns. Run differential expression analysis first."
+                de_results_key = de_keys[-1]
+
+            # If filtered_only, look for filtered version first
+            actual_key = de_results_key
+            if filtered_only:
+                filtered_key = f"filtered_{de_results_key}"
+                if filtered_key in adata.uns:
+                    actual_key = filtered_key
+                else:
+                    return f"No filtered results found at '{filtered_key}'. Run filter_de_results first."
+
+            if actual_key not in adata.uns:
+                return f"DE results key '{actual_key}' not found."
+
+            de_data = adata.uns[actual_key]
+            if not isinstance(de_data, dict) or "results_df" not in de_data:
+                return f"Invalid DE results format at '{actual_key}'."
+
+            results_df = de_data["results_df"].copy()
+
+            # Standardize column names for publication
+            column_renames = {
+                "log2FoldChange": "log2FoldChange",
+                "logFC": "log2FoldChange",
+                "mean_log2FC": "log2FoldChange",
+                "padj": "padj",
+                "pvalue_adj": "padj",
+                "FDR": "padj",
+                "p_adj": "padj",
+                "pvalue": "pvalue",
+                "baseMean": "baseMean",
+                "base_mean": "baseMean",
+                "AveExpr": "baseMean",
+                "lfcSE": "lfcSE",
+                "stat": "stat",
+            }
+
+            for old_name, new_name in column_renames.items():
+                if old_name in results_df.columns and old_name != new_name:
+                    results_df = results_df.rename(columns={old_name: new_name})
+
+            # Sort results
+            if sort_by in results_df.columns:
+                results_df = results_df.sort_values(sort_by)
+
+            # Ensure gene names are the index (named 'gene')
+            if results_df.index.name is None:
+                results_df.index.name = "gene"
+
+            # Determine output path
+            if output_path is None:
+                export_dir = Path(data_manager.workspace) / "exports" if hasattr(data_manager, "workspace") else Path("exports")
+                export_dir.mkdir(parents=True, exist_ok=True)
+
+                suffix = "_filtered" if filtered_only else ""
+                clean_key = de_results_key.replace("de_results_", "")
+                output_path = str(export_dir / f"de_results_{clean_key}{suffix}.{output_format}")
+
+            # Export
+            output_path_obj = Path(output_path)
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+            if output_format == "xlsx":
+                try:
+                    results_df.to_excel(output_path, index=True)
+                except ImportError:
+                    return "Excel export requires openpyxl. Falling back to CSV."
+            else:
+                results_df.to_csv(output_path, index=True)
+
+            # Create IR
+            from lobster.core.provenance import AnalysisStep
+
+            ir = AnalysisStep(
+                operation="de_results.export",
+                tool_name="export_de_results",
+                description=f"Exported {len(results_df)} DE results to {output_format}",
+                library="pandas",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": de_results_key,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                    "filtered_only": filtered_only,
+                    "sort_by": sort_by,
+                },
+                code_template=(
+                    "results_df = adata.uns['{{ de_results_key }}']['results_df']\n"
+                    "results_df = results_df.sort_values('{{ sort_by }}')\n"
+                    "results_df.to_{{ output_format }}('{{ output_path }}', index=True)"
+                ),
+                imports=["pandas"],
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="export_de_results",
+                parameters={
+                    "modality_name": modality_name,
+                    "de_results_key": actual_key,
+                    "output_format": output_format,
+                    "output_path": output_path,
+                    "filtered_only": filtered_only,
+                },
+                description=f"Exported {len(results_df)} DE results to {output_format}",
+                ir=ir,
+            )
+
+            response = f"""## DE Results Exported
+
+**Export Details:**
+- Modality: {modality_name}
+- Source: {actual_key}
+- Genes exported: {len(results_df):,}
+- Format: {output_format.upper()}
+- Sorted by: {sort_by}
+- Output: {output_path}
+
+**Columns:** {', '.join(results_df.columns.tolist()[:8])}{'...' if len(results_df.columns) > 8 else ''}
+**Filtered only:** {'Yes' if filtered_only else 'No'}"""
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error exporting DE results: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error exporting DE results: {e}")
+            return f"Unexpected error: {str(e)}"
+
+    # -------------------------
     # TOOL REGISTRY
     # -------------------------
     base_tools = [
