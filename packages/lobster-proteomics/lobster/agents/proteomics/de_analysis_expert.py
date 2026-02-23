@@ -105,8 +105,23 @@ def de_analysis_expert(
         )
         llm = llm.with_config(callbacks=callbacks)
 
-    # Initialize stateless service
+    # Initialize stateless services
     differential_service = ProteomicsDifferentialService()
+
+    # Lazy imports for downstream analysis services (inside factory, not module level)
+    from lobster.services.analysis.proteomics_pathway_service import (
+        ProteomicsPathwayService,
+    )
+    from lobster.services.analysis.proteomics_kinase_service import (
+        ProteomicsKinaseService,
+    )
+    from lobster.services.analysis.proteomics_string_service import (
+        ProteomicsStringService,
+    )
+
+    pathway_service = ProteomicsPathwayService()
+    kinase_service = ProteomicsKinaseService()
+    string_service = ProteomicsStringService()
 
     # =========================================================================
     # HELPER FUNCTIONS
@@ -169,6 +184,9 @@ def de_analysis_expert(
 
             adata = data_manager.get_modality(modality_name)
             adata_copy = adata.copy()
+
+            # BUG-02 FIX: Initialize min_group before conditional block
+            min_group = None
 
             # M5 FIX: Sample size warning
             if group_column in adata_copy.obs.columns:
@@ -291,7 +309,7 @@ def de_analysis_expert(
             response += "\n**Volcano plot data**: adata.uns['volcano_plot_data']"
 
             # Sample size warning
-            if min_group < 6:
+            if min_group is not None and min_group < 6:
                 response += (
                     f"\n\n**Statistical power warning:** Smallest group has {min_group} samples. "
                     f"With < 6 samples per group, statistical power is very limited "
@@ -607,6 +625,553 @@ def de_analysis_expert(
             return f"Error in correlation analysis: {str(e)}"
 
     # =========================================================================
+    # TOOL 4: run_pathway_enrichment
+    # =========================================================================
+
+    @tool
+    def run_pathway_enrichment(
+        modality_name: str,
+        databases: str = "go_reactome",
+        fdr_threshold: float = 0.05,
+        max_genes: int = 500,
+    ) -> str:
+        """
+        Run pathway enrichment on proteomics differential expression results.
+
+        Extracts significant protein gene symbols from DE results and performs
+        Over-Representation Analysis (ORA) via Enrichr API. Supports GO, KEGG,
+        and Reactome databases.
+
+        Args:
+            modality_name: Name of the proteomics modality with DE results
+            databases: Database shorthand: "go", "reactome", "kegg", "go_reactome", or "go_reactome_kegg"
+            fdr_threshold: FDR threshold for enrichment significance (default: 0.05)
+            max_genes: Maximum number of genes to include in enrichment (default: 500)
+
+        Returns:
+            str: Formatted results with enriched pathways, term counts, databases queried
+        """
+        try:
+            # Validate modality existence
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Validate DE results exist
+            if "differential_expression" not in adata.uns:
+                return (
+                    f"No differential expression results found in '{modality_name}'. "
+                    f"Run find_differential_proteins first."
+                )
+
+            logger.info(
+                f"Running pathway enrichment on '{modality_name}' "
+                f"(databases: {databases}, FDR: {fdr_threshold})"
+            )
+
+            # Call the pathway service
+            adata_enriched, enrich_stats, enrich_ir = pathway_service.run_enrichment(
+                adata,
+                databases=databases,
+                fdr_threshold=fdr_threshold,
+                max_genes=max_genes,
+            )
+
+            # Store result as new modality
+            enriched_name = f"{modality_name}_enriched"
+            data_manager.store_modality(
+                name=enriched_name,
+                adata=adata_enriched,
+                parent_name=modality_name,
+                step_summary=(
+                    f"Pathway enrichment: "
+                    f"{enrich_stats.get('n_significant_terms', 0)} significant terms"
+                ),
+            )
+
+            # Log tool usage with IR
+            data_manager.log_tool_usage(
+                tool_name="run_pathway_enrichment",
+                parameters={
+                    "modality_name": modality_name,
+                    "databases": databases,
+                    "fdr_threshold": fdr_threshold,
+                    "max_genes": max_genes,
+                },
+                description=(
+                    f"Pathway enrichment: {enrich_stats.get('n_significant_terms', 0)} "
+                    f"significant terms from {enrich_stats.get('n_genes_input', 0)} proteins"
+                ),
+                ir=enrich_ir,
+            )
+
+            # Format response
+            response = "## Pathway Enrichment Analysis Complete\n\n"
+            response += f"**Modality**: '{modality_name}'\n"
+            response += f"**Databases**: {', '.join(enrich_stats.get('databases_queried', []))}\n\n"
+
+            response += "**Summary:**\n"
+            response += f"- Proteins analyzed: {enrich_stats.get('n_genes_input', 0)}\n"
+            response += f"- Total terms found: {enrich_stats.get('n_total_terms', 0)}\n"
+            response += f"- Significant terms (FDR < {fdr_threshold}): {enrich_stats.get('n_significant_terms', 0)}\n\n"
+
+            # Top enriched terms
+            top_terms = enrich_stats.get("top_terms", [])
+            if top_terms:
+                response += "**Top Enriched Terms:**\n"
+                for term in top_terms:
+                    response += (
+                        f"- {term['term']}: "
+                        f"FDR={term['p_value']:.2e}, "
+                        f"overlap={term['overlap']} "
+                        f"[{term['database']}]\n"
+                    )
+
+            response += f"\n**New modality created**: '{enriched_name}'"
+            response += "\n**Detailed results stored in**: adata.uns['pathway_enrichment']"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in pathway enrichment: {e}")
+            return f"Error in pathway enrichment: {str(e)}"
+
+    # =========================================================================
+    # TOOL 5: run_differential_ptm_analysis
+    # =========================================================================
+
+    @tool
+    def run_differential_ptm_analysis(
+        modality_name: str,
+        protein_modality_name: str,
+        group_column: str,
+        fdr_threshold: float = 0.05,
+    ) -> str:
+        """
+        Run differential PTM analysis comparing site-level vs protein-level changes.
+
+        Performs DE on both PTM site modality and protein modality, then adjusts
+        site-level fold changes by subtracting the corresponding protein-level
+        fold change. Identifies PTM sites with changes beyond what protein abundance
+        explains.
+
+        Args:
+            modality_name: Name of the PTM site-level modality (e.g., phosphoproteomics)
+            protein_modality_name: Name of the protein-level modality for normalization
+            group_column: Column in obs containing group labels for comparison
+            fdr_threshold: FDR threshold for significance (default: 0.05)
+
+        Returns:
+            str: Formatted results with raw vs adjusted fold changes, discordant sites
+        """
+        try:
+            # Validate both modalities exist
+            available = data_manager.list_modalities()
+            if modality_name not in available:
+                return (
+                    f"PTM modality '{modality_name}' not found. "
+                    f"Available: {available}"
+                )
+            if protein_modality_name not in available:
+                return (
+                    f"Protein modality '{protein_modality_name}' not found. "
+                    f"Available: {available}"
+                )
+
+            ptm_adata = data_manager.get_modality(modality_name)
+            protein_adata = data_manager.get_modality(protein_modality_name)
+
+            logger.info(
+                f"Running differential PTM analysis: PTM='{modality_name}', "
+                f"Protein='{protein_modality_name}', group='{group_column}'"
+            )
+
+            # Run DE on PTM site modality
+            ptm_de, ptm_stats, ptm_ir = differential_service.perform_differential_expression(
+                ptm_adata.copy(),
+                group_column=group_column,
+                comparison_pairs=None,
+                test_method="limma_like",
+                fdr_method="benjamini_hochberg",
+                fdr_threshold=fdr_threshold,
+            )
+
+            # Run DE on protein modality
+            prot_de, prot_stats, prot_ir = differential_service.perform_differential_expression(
+                protein_adata.copy(),
+                group_column=group_column,
+                comparison_pairs=None,
+                test_method="limma_like",
+                fdr_method="benjamini_hochberg",
+                fdr_threshold=fdr_threshold,
+            )
+
+            # Build protein-level FC lookup
+            prot_fc_lookup = {}
+            prot_de_data = prot_de.uns.get("differential_expression", {})
+            for result in prot_de_data.get("all_results", []):
+                protein = result.get("protein", "")
+                log2fc = result.get("log2_fold_change", 0.0)
+                comparison = result.get("comparison", "")
+                key = f"{protein}_{comparison}"
+                prot_fc_lookup[key] = log2fc
+
+            # Compute adjusted site fold changes
+            ptm_de_data = ptm_de.uns.get("differential_expression", {})
+            significant_sites = []
+            all_adjusted = []
+
+            for result in ptm_de_data.get("significant_results", []):
+                site_id = result.get("protein", "")
+                site_log2fc = result.get("log2_fold_change", 0.0)
+                comparison = result.get("comparison", "")
+
+                # Extract gene name prefix from site ID (e.g., EGFR_Y1068 -> EGFR)
+                gene_name = site_id.split("_")[0] if "_" in site_id else site_id
+
+                # Look up protein-level FC
+                prot_key = f"{gene_name}_{comparison}"
+                prot_log2fc = prot_fc_lookup.get(prot_key, 0.0)
+
+                # Adjusted FC = site FC - protein FC
+                adjusted_log2fc = site_log2fc - prot_log2fc
+
+                site_entry = {
+                    "site": site_id,
+                    "gene": gene_name,
+                    "comparison": comparison,
+                    "log2_fold_change": site_log2fc,
+                    "protein_log2fc": prot_log2fc,
+                    "adjusted_log2fc": adjusted_log2fc,
+                    "p_adjusted": result.get("p_adjusted", 1.0),
+                    "discordant": (site_log2fc > 0) != (prot_log2fc > 0),
+                }
+                significant_sites.append(site_entry)
+                all_adjusted.append(adjusted_log2fc)
+
+            # Store results in AnnData
+            ptm_de.uns["differential_ptm"] = {
+                "significant_sites": significant_sites,
+                "n_sites_analyzed": len(ptm_de_data.get("all_results", [])),
+                "n_significant_sites": len(significant_sites),
+                "parameters": {
+                    "ptm_modality": modality_name,
+                    "protein_modality": protein_modality_name,
+                    "group_column": group_column,
+                    "fdr_threshold": fdr_threshold,
+                },
+            }
+
+            # Store as new modality
+            ptm_de_name = f"{modality_name}_differential_ptm"
+            data_manager.store_modality(
+                name=ptm_de_name,
+                adata=ptm_de,
+                parent_name=modality_name,
+                step_summary=(
+                    f"Differential PTM: {len(significant_sites)} significant sites"
+                ),
+            )
+
+            # Log tool usage
+            data_manager.log_tool_usage(
+                tool_name="run_differential_ptm_analysis",
+                parameters={
+                    "modality_name": modality_name,
+                    "protein_modality_name": protein_modality_name,
+                    "group_column": group_column,
+                    "fdr_threshold": fdr_threshold,
+                },
+                description=(
+                    f"Differential PTM analysis: {len(significant_sites)} significant sites"
+                ),
+                ir=ptm_ir,
+            )
+
+            # Format response
+            import numpy as _np
+
+            response = "## Differential PTM Analysis Complete\n\n"
+            response += f"**PTM Modality**: '{modality_name}'\n"
+            response += f"**Protein Modality**: '{protein_modality_name}'\n\n"
+
+            response += "**Summary:**\n"
+            response += f"- PTM sites tested: {ptm_stats.get('proteins_processed', 0)}\n"
+            response += f"- Significant PTM sites: {len(significant_sites)}\n"
+            response += f"- Proteins tested: {prot_stats.get('proteins_processed', 0)}\n"
+            n_discordant = sum(1 for s in significant_sites if s["discordant"])
+            response += f"- Discordant sites (PTM vs protein direction): {n_discordant}\n\n"
+
+            # Top sites by adjusted FC
+            if significant_sites:
+                sorted_sites = sorted(
+                    significant_sites,
+                    key=lambda x: abs(x["adjusted_log2fc"]),
+                    reverse=True,
+                )
+                response += "**Top Sites by Adjusted Fold Change:**\n"
+                for site in sorted_sites[:10]:
+                    direction = "UP" if site["adjusted_log2fc"] > 0 else "DOWN"
+                    disc_flag = " [DISCORDANT]" if site["discordant"] else ""
+                    response += (
+                        f"- {site['site']}: "
+                        f"raw={site['log2_fold_change']:.2f}, "
+                        f"protein={site['protein_log2fc']:.2f}, "
+                        f"adjusted={site['adjusted_log2fc']:.2f} ({direction})"
+                        f"{disc_flag}\n"
+                    )
+
+            response += f"\n**New modality created**: '{ptm_de_name}'"
+            response += "\n**Detailed results stored in**: adata.uns['differential_ptm']"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in differential PTM analysis: {e}")
+            return f"Error in differential PTM analysis: {str(e)}"
+
+    # =========================================================================
+    # TOOL 6: run_kinase_enrichment
+    # =========================================================================
+
+    @tool
+    def run_kinase_enrichment(
+        modality_name: str,
+        custom_mapping_path: str = None,
+        min_substrates: int = 3,
+        fdr_threshold: float = 0.05,
+    ) -> str:
+        """
+        Run Kinase-Substrate Enrichment Analysis (KSEA) to infer kinase activity.
+
+        Computes KSEA z-scores from phosphosite fold changes using a built-in
+        kinase-substrate mapping (~20 kinases) or a custom CSV mapping file.
+        Identifies activated and inhibited kinases from phosphoproteomics data.
+
+        Args:
+            modality_name: Name of the modality with DE or PTM DE results
+            custom_mapping_path: Optional path to custom CSV with columns: kinase, substrate_site
+            min_substrates: Minimum matched substrates required per kinase (default: 3)
+            fdr_threshold: FDR threshold for kinase significance (default: 0.05)
+
+        Returns:
+            str: Formatted results with significant kinases, z-scores, activity direction
+        """
+        try:
+            # Validate modality existence
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Validate DE or PTM DE results exist
+            has_de = "differential_expression" in adata.uns
+            has_ptm = "differential_ptm" in adata.uns
+            has_var_fc = "log2_fold_change" in adata.var.columns if hasattr(adata.var, "columns") else False
+
+            if not (has_de or has_ptm or has_var_fc):
+                return (
+                    f"No fold change data found in '{modality_name}'. "
+                    f"Run find_differential_proteins or run_differential_ptm_analysis first."
+                )
+
+            logger.info(
+                f"Running KSEA on '{modality_name}' "
+                f"(min_substrates: {min_substrates}, FDR: {fdr_threshold})"
+            )
+
+            # Call the kinase service
+            adata_ksea, ksea_stats, ksea_ir = kinase_service.compute_ksea(
+                adata,
+                custom_mapping_path=custom_mapping_path,
+                min_substrates=min_substrates,
+                fdr_threshold=fdr_threshold,
+            )
+
+            # Store result as new modality
+            ksea_name = f"{modality_name}_ksea"
+            data_manager.store_modality(
+                name=ksea_name,
+                adata=adata_ksea,
+                parent_name=modality_name,
+                step_summary=(
+                    f"KSEA: {ksea_stats.get('n_significant', 0)} significant kinases"
+                ),
+            )
+
+            # Log tool usage
+            data_manager.log_tool_usage(
+                tool_name="run_kinase_enrichment",
+                parameters={
+                    "modality_name": modality_name,
+                    "custom_mapping_path": custom_mapping_path,
+                    "min_substrates": min_substrates,
+                    "fdr_threshold": fdr_threshold,
+                },
+                description=(
+                    f"KSEA: {ksea_stats.get('n_significant', 0)} significant kinases "
+                    f"from {ksea_stats.get('n_kinases_tested', 0)} tested"
+                ),
+                ir=ksea_ir,
+            )
+
+            # Format response
+            response = "## Kinase-Substrate Enrichment Analysis (KSEA) Complete\n\n"
+            response += f"**Modality**: '{modality_name}'\n\n"
+
+            response += "**Summary:**\n"
+            response += f"- Sites with fold changes: {ksea_stats.get('n_sites_available', 0)}\n"
+            response += f"- Kinases in mapping: {ksea_stats.get('n_kinases_in_map', 0)}\n"
+            response += f"- Kinases tested (>= {min_substrates} substrates): {ksea_stats.get('n_kinases_tested', 0)}\n"
+            response += f"- Significant kinases (FDR < {fdr_threshold}): {ksea_stats.get('n_significant', 0)}\n\n"
+
+            # Top kinases
+            top_kinases = ksea_stats.get("top_kinases", [])
+            if top_kinases:
+                response += "**Top Kinases by Activity (|z-score|):**\n"
+                for k in top_kinases:
+                    direction = "ACTIVATED" if k["z_score"] > 0 else "INHIBITED"
+                    sig_marker = " *" if k.get("fdr", 1.0) < fdr_threshold else ""
+                    response += (
+                        f"- {k['kinase']}: z={k['z_score']:.2f}, "
+                        f"substrates={k['n_substrates']}, "
+                        f"FDR={k.get('fdr', 1.0):.2e} ({direction}){sig_marker}\n"
+                    )
+                response += "\n*= significant at FDR threshold\n"
+
+            response += f"\n**New modality created**: '{ksea_name}'"
+            response += "\n**Detailed results stored in**: adata.uns['ksea_results']"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in kinase enrichment: {e}")
+            return f"Error in kinase enrichment: {str(e)}"
+
+    # =========================================================================
+    # TOOL 7: run_string_network_analysis
+    # =========================================================================
+
+    @tool
+    def run_string_network_analysis(
+        modality_name: str,
+        species: int = 9606,
+        score_threshold: int = 400,
+        network_type: str = "functional",
+    ) -> str:
+        """
+        Query STRING database for protein-protein interaction network from DE results.
+
+        Extracts significant proteins from DE results and queries the STRING
+        REST API for known and predicted protein interactions. Computes
+        network topology metrics (density, hub proteins) when networkx is available.
+
+        Args:
+            modality_name: Name of the modality with DE results
+            species: NCBI taxonomy ID (default: 9606 for human, 10090 for mouse)
+            score_threshold: Minimum combined score 0-1000 (400=medium, 700=high, 900=highest)
+            network_type: Evidence type: "functional" (all evidence) or "physical" (binding only)
+
+        Returns:
+            str: Formatted results with network statistics, hub proteins, interaction count
+        """
+        try:
+            # Validate modality existence
+            if modality_name not in data_manager.list_modalities():
+                return (
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Validate DE results exist
+            if "differential_expression" not in adata.uns:
+                return (
+                    f"No differential expression results found in '{modality_name}'. "
+                    f"Run find_differential_proteins first."
+                )
+
+            logger.info(
+                f"Running STRING network analysis on '{modality_name}' "
+                f"(species: {species}, score >= {score_threshold})"
+            )
+
+            # Call the STRING service
+            adata_net, net_stats, net_ir = string_service.query_network(
+                adata,
+                species=species,
+                score_threshold=score_threshold,
+                network_type=network_type,
+            )
+
+            # Store result as new modality
+            network_name = f"{modality_name}_network"
+            data_manager.store_modality(
+                name=network_name,
+                adata=adata_net,
+                parent_name=modality_name,
+                step_summary=(
+                    f"STRING network: {net_stats.get('n_interactions_found', 0)} interactions"
+                ),
+            )
+
+            # Log tool usage
+            data_manager.log_tool_usage(
+                tool_name="run_string_network_analysis",
+                parameters={
+                    "modality_name": modality_name,
+                    "species": species,
+                    "score_threshold": score_threshold,
+                    "network_type": network_type,
+                },
+                description=(
+                    f"STRING PPI network: {net_stats.get('n_interactions_found', 0)} "
+                    f"interactions, {net_stats.get('n_hub_proteins', 0)} hub proteins"
+                ),
+                ir=net_ir,
+            )
+
+            # Format response
+            response = "## STRING PPI Network Analysis Complete\n\n"
+            response += f"**Modality**: '{modality_name}'\n\n"
+
+            response += "**Query Parameters:**\n"
+            response += f"- Species: {species} ({'human' if species == 9606 else 'other'})\n"
+            response += f"- Score threshold: {score_threshold}\n"
+            response += f"- Network type: {network_type}\n\n"
+
+            response += "**Network Statistics:**\n"
+            response += f"- Proteins queried: {net_stats.get('n_proteins_queried', 0)}\n"
+            response += f"- Nodes in network: {net_stats.get('n_nodes_in_network', 0)}\n"
+            response += f"- Interactions found: {net_stats.get('n_interactions_found', 0)}\n"
+            response += f"- Network density: {net_stats.get('network_density', 0):.4f}\n\n"
+
+            # Hub proteins
+            network_data = adata_net.uns.get("string_network", {})
+            hub_proteins = network_data.get("hub_proteins", [])
+            if hub_proteins:
+                response += "**Hub Proteins (top by degree):**\n"
+                for hub in hub_proteins[:10]:
+                    response += f"- {hub['protein']}: degree={hub['degree']}\n"
+
+            response += f"\n**New modality created**: '{network_name}'"
+            response += "\n**Detailed results stored in**: adata.uns['string_network']"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in STRING network analysis: {e}")
+            return f"Error in STRING network analysis: {str(e)}"
+
+    # =========================================================================
     # COLLECT ALL TOOLS
     # =========================================================================
 
@@ -614,6 +1179,10 @@ def de_analysis_expert(
         find_differential_proteins,
         run_time_course_analysis,
         run_correlation_analysis,
+        run_pathway_enrichment,
+        run_differential_ptm_analysis,
+        run_kinase_enrichment,
+        run_string_network_analysis,
     ]
 
     if delegation_tools:
