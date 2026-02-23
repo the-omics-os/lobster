@@ -318,7 +318,7 @@ Proceed with filtering and normalization for downstream analysis."""
     # FILTER AND NORMALIZE TOOL
     # -------------------------
     @tool
-    def filter_and_normalize_modality(
+    def filter_and_normalize(
         modality_name: str,
         min_genes_per_cell: Optional[int] = None,
         max_genes_per_cell: Optional[int] = None,
@@ -441,7 +441,7 @@ Proceed with filtering and normalization for downstream analysis."""
 
             # Log the operation
             data_manager.log_tool_usage(
-                tool_name="filter_and_normalize_modality",
+                tool_name="filter_and_normalize",
                 parameters={
                     "modality_name": modality_name,
                     "data_type": data_type,
@@ -654,7 +654,7 @@ Proceed with filtering and normalization for downstream analysis."""
     # FEATURE SELECTION TOOL
     # -------------------------
     @tool
-    def select_highly_variable_genes(
+    def select_variable_features(
         modality_name: str,
         method: str = "deviance",
         n_top_genes: int = 2000,
@@ -665,13 +665,13 @@ Proceed with filtering and normalization for downstream analysis."""
 
         This is a STANDALONE feature selection tool. Use it when the user asks
         specifically for HVG/feature selection WITHOUT full clustering.
-        For full clustering pipelines, use cluster_modality() instead.
+        For full clustering pipelines, use cluster_cells() instead.
 
         Supports two methods:
         - "deviance" (default, recommended): Binomial deviance from multinomial null.
           Works on RAW COUNTS. Run BEFORE normalization.
         - "hvg": Traditional highly variable genes (scanpy).
-          Works on NORMALIZED data. Run AFTER filter_and_normalize_modality().
+          Works on NORMALIZED data. Run AFTER filter_and_normalize().
 
         Args:
             modality_name: Name of the modality to process
@@ -719,7 +719,7 @@ Proceed with filtering and normalization for downstream analysis."""
             )
 
             data_manager.log_tool_usage(
-                tool_name="select_highly_variable_genes",
+                tool_name="select_variable_features",
                 parameters={
                     "modality_name": modality_name,
                     "method": method,
@@ -745,7 +745,7 @@ Proceed with filtering and normalization for downstream analysis."""
             # Next-step guidance based on method
             if method == "deviance":
                 response += (
-                    "\n\n**Next steps**: filter_and_normalize_modality() → run_pca()"
+                    "\n\n**Next steps**: filter_and_normalize() → run_pca()"
                 )
             else:
                 response += "\n\n**Next steps**: run_pca() for dimensionality reduction"
@@ -774,7 +774,7 @@ Proceed with filtering and normalization for downstream analysis."""
         so downstream marker gene analysis can access unscaled expression values.
 
         Prerequisites: Feature selection should be applied first
-        (select_highly_variable_genes or filter_and_normalize_modality).
+        (select_variable_features or filter_and_normalize).
 
         Args:
             modality_name: Name of the modality to process
@@ -859,7 +859,7 @@ Proceed with filtering and normalization for downstream analysis."""
         """
         Compute neighborhood graph and embedding (UMAP or tSNE) as a standalone step.
 
-        Prerequisites: PCA must be computed first (run_pca or cluster_modality).
+        Prerequisites: PCA must be computed first (run_pca or cluster_cells).
 
         Args:
             modality_name: Name of the modality to process
@@ -923,7 +923,7 @@ Proceed with filtering and normalization for downstream analysis."""
 
 **New modality created**: '{result_name}'
 
-**Next steps**: Use cluster_modality() for Leiden clustering, or visualize directly"""
+**Next steps**: Use cluster_cells() for Leiden clustering, or visualize directly"""
 
             analysis_results["details"]["embedding"] = response
             return response
@@ -936,8 +936,8 @@ Proceed with filtering and normalization for downstream analysis."""
     tools = [
         check_data_status,
         assess_data_quality,
-        filter_and_normalize_modality,
-        select_highly_variable_genes,
+        filter_and_normalize,
+        select_variable_features,
         create_analysis_summary,
     ]
     if clustering_service is not None:

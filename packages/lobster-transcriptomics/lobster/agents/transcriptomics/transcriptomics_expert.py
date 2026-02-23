@@ -129,7 +129,7 @@ def transcriptomics_expert(
     # =========================================================================
 
     @tool
-    def cluster_modality(
+    def cluster_cells(
         modality_name: str,
         resolution: float = None,
         resolutions: Optional[List[float]] = None,
@@ -167,13 +167,13 @@ def transcriptomics_expert(
 
         Examples:
             # Single resolution clustering (traditional)
-            cluster_modality("geo_gse12345_filtered", resolution=0.5)
+            cluster_cells("geo_gse12345_filtered", resolution=0.5)
 
             # Multi-resolution testing (recommended for exploration)
-            cluster_modality("geo_gse12345_filtered", resolutions=[0.25, 0.5, 1.0])
+            cluster_cells("geo_gse12345_filtered", resolutions=[0.25, 0.5, 1.0])
 
             # Using scVI embeddings
-            cluster_modality("geo_gse12345_filtered", resolutions=[0.5, 1.0], use_rep="X_scvi")
+            cluster_cells("geo_gse12345_filtered", resolutions=[0.5, 1.0], use_rep="X_scvi")
         """
         try:
             # Validate modality exists
@@ -219,7 +219,7 @@ def transcriptomics_expert(
 
             # Log the operation
             data_manager.log_tool_usage(
-                tool_name="cluster_modality",
+                tool_name="cluster_cells",
                 parameters={
                     "modality_name": modality_name,
                     "resolution": resolution,
@@ -299,7 +299,7 @@ def transcriptomics_expert(
                 response += "\n- Higher resolutions (1.0-2.0) reveal finer cell states"
                 response += "\n- Choose resolution based on biological expectations and marker gene validation"
 
-            response += "\n\n**Next steps**: find_marker_genes_for_clusters(), then INVOKE handoff_to_annotation_expert if annotation requested."
+            response += "\n\n**Next steps**: find_marker_genes(), then INVOKE handoff_to_annotation_expert if annotation requested."
 
             analysis_results["details"]["clustering"] = response
             return response
@@ -394,13 +394,16 @@ def transcriptomics_expert(
                 demo_mode=demo_mode,
             )
 
+            # Compute cluster count safely (BUG-01 fix: clusters_to_refine may be None)
+            n_refined = len(clusters_to_refine) if clusters_to_refine else "all"
+
             # Store result with descriptive suffix
             new_name = f"{modality_name}_subclustered"
             data_manager.store_modality(
                 name=new_name,
                 adata=result,
                 parent_name=modality_name,
-                step_summary=f"Subclustered {len(clusters_to_refine)} clusters from {cluster_key}",
+                step_summary=f"Subclustered {n_refined} clusters from {cluster_key}",
             )
 
             # Log with IR (mandatory for reproducibility)
@@ -415,7 +418,7 @@ def transcriptomics_expert(
                     "n_neighbors": n_neighbors,
                     "demo_mode": demo_mode,
                 },
-                description=f"Subclustered {len(clusters_to_refine)} clusters from {cluster_key}",
+                description=f"Subclustered {n_refined} clusters from {cluster_key}",
                 ir=ir,
             )
 
@@ -484,7 +487,7 @@ def transcriptomics_expert(
 
 **Next steps:**
 - Use visualization to display sub-clusters on UMAP
-- Use find_marker_genes_for_clusters() to characterize each sub-cluster
+- Use find_marker_genes() to characterize each sub-cluster
 - INVOKE handoff_to_annotation_expert immediately if annotation requested (do NOT just suggest it)"""
 
             analysis_results["details"]["sub_clustering"] = response
@@ -729,7 +732,7 @@ Please check:
                 "* If silhouette < 0.25: Try lower resolution or different preprocessing"
             )
             response_lines.append(
-                "* If clusters look good: Proceed with find_marker_genes_for_clusters()"
+                "* If clusters look good: Proceed with find_marker_genes()"
             )
             response_lines.append(
                 "* To visualize: Request visualization through supervisor"
@@ -753,7 +756,7 @@ Please check:
             return f"Unexpected error: {str(e)}"
 
     @tool
-    def find_marker_genes_for_clusters(
+    def find_marker_genes(
         modality_name: str,
         groupby: str,
         groups: List[str] = None,
@@ -836,7 +839,7 @@ Please check:
 
             # Log the operation
             data_manager.log_tool_usage(
-                tool_name="find_marker_genes_for_clusters",
+                tool_name="find_marker_genes",
                 parameters={
                     "modality_name": modality_name,
                     "groupby": groupby,
@@ -932,10 +935,10 @@ Please check:
 
     # Clustering tools (single-cell specific)
     clustering_tools = [
-        cluster_modality,
+        cluster_cells,
         subcluster_cells,
         evaluate_clustering_quality,
-        find_marker_genes_for_clusters,
+        find_marker_genes,
     ]
 
     # Combine all direct tools
