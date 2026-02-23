@@ -137,7 +137,7 @@
 
 - [x] **DOC-01**: Update genomics_expert prompt for new tool inventory + variant_analysis handoff
 - [x] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
-- [ ] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
+- [x] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
 - [x] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
 - [ ] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
 - [ ] **DOC-06**: Create metabolomics_expert prompt
@@ -275,7 +275,7 @@
 | MET-17 | Phase 6 | Pending |
 | DOC-01 | Phase 1 | Complete |
 | DOC-02 | Phase 2 | Complete |
-| DOC-03 | Phase 4 | Pending |
+| DOC-03 | Phase 4 | Complete |
 | DOC-04 | Phase 3 | Complete |
 | DOC-05 | Phase 5 | Pending |
 | DOC-06 | Phase 6 | Pending |
