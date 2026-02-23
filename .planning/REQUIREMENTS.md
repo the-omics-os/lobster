@@ -29,14 +29,14 @@
 
 ### SC Transcriptomics Parent (transcriptomics_expert)
 
-- [ ] **SCT-01**: Add `detect_doublets` tool — Scrublet doublet detection on raw counts
+- [x] **SCT-01**: Add `detect_doublets` tool — Scrublet doublet detection on raw counts
 - [x] **SCT-02**: Add `integrate_batches` tool — Harmony/scVI batch integration for multi-sample. Must return integration quality metrics (LISI, silhouette) so LLM can re-invoke with different parameters for iterative refinement.
 - [x] **SCT-03**: Add `compute_trajectory` tool — DPT/PAGA pseudotime trajectory inference
-- [ ] **SCT-04**: Rename `filter_and_normalize_modality` → `filter_and_normalize`
-- [ ] **SCT-05**: Rename `select_highly_variable_genes` → `select_variable_features`
-- [ ] **SCT-06**: Rename `cluster_modality` → `cluster_cells`
-- [ ] **SCT-07**: Rename `find_marker_genes_for_clusters` → `find_marker_genes`
-- [ ] **SCT-08**: Fix BUG-01: `subcluster_cells` TypeError on `len(None)`
+- [x] **SCT-04**: Rename `filter_and_normalize_modality` → `filter_and_normalize`
+- [x] **SCT-05**: Rename `select_highly_variable_genes` → `select_variable_features`
+- [x] **SCT-06**: Rename `cluster_modality` → `cluster_cells`
+- [x] **SCT-07**: Rename `find_marker_genes_for_clusters` → `find_marker_genes`
+- [x] **SCT-08**: Fix BUG-01: `subcluster_cells` TypeError on `len(None)`
 
 ### Bulk Transcriptomics (on transcriptomics_expert parent)
 
@@ -201,14 +201,14 @@
 | GEN-14 | Phase 1 | Complete |
 | GEN-15 | Phase 1 | Complete |
 | GEN-16 | Phase 1 | Complete |
-| SCT-01 | Phase 2 | Pending |
+| SCT-01 | Phase 2 | Complete |
 | SCT-02 | Phase 2 | Complete |
 | SCT-03 | Phase 2 | Complete |
-| SCT-04 | Phase 2 | Pending |
-| SCT-05 | Phase 2 | Pending |
-| SCT-06 | Phase 2 | Pending |
-| SCT-07 | Phase 2 | Pending |
-| SCT-08 | Phase 2 | Pending |
+| SCT-04 | Phase 2 | Complete |
+| SCT-05 | Phase 2 | Complete |
+| SCT-06 | Phase 2 | Complete |
+| SCT-07 | Phase 2 | Complete |
+| SCT-08 | Phase 2 | Complete |
 | BLK-01 | Phase 2 | Pending |
 | BLK-02 | Phase 2 | Pending |
 | BLK-03 | Phase 2 | Complete |
