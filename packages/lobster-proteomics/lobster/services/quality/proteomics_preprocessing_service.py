@@ -997,6 +997,380 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
             logger.exception(f"Error in batch correction: {e}")
             raise ProteomicsPreprocessingError(f"Batch correction failed: {str(e)}")
 
+    def _create_ir_summarize_peptide_to_protein(
+        self,
+        method: str,
+        protein_column: str,
+    ) -> AnalysisStep:
+        """Create IR for peptide-to-protein summarization."""
+        return AnalysisStep(
+            operation="proteomics.preprocessing.summarize_peptide_to_protein",
+            tool_name="summarize_peptide_to_protein",
+            description="Roll up peptide/PSM-level quantification to protein-level using median or sum aggregation",
+            library="lobster.services.quality.proteomics_preprocessing_service",
+            code_template="""# Peptide-to-protein summarization
+from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService
+
+service = ProteomicsPreprocessingService()
+adata_protein, stats, _ = service.summarize_peptide_to_protein(
+    adata_peptide,
+    method={{ method | tojson }},
+    protein_column={{ protein_column | tojson }}
+)
+print(f"Summarized {stats['n_peptides_input']} peptides to {stats['n_proteins_output']} proteins using {method}")""",
+            imports=[
+                "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
+            ],
+            parameters={
+                "method": method,
+                "protein_column": protein_column,
+            },
+            parameter_schema={
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="median",
+                    required=False,
+                    validation_rule="method in ['median', 'sum']",
+                    description="Aggregation method: median or sum",
+                ),
+                "protein_column": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="protein_id",
+                    required=False,
+                    description="Column in var containing protein identifiers",
+                ),
+            },
+            input_entities=["adata_peptide"],
+            output_entities=["adata_protein"],
+        )
+
+    def _create_ir_normalize_ptm_to_protein(
+        self,
+        method: str,
+    ) -> AnalysisStep:
+        """Create IR for PTM-to-protein normalization."""
+        return AnalysisStep(
+            operation="proteomics.preprocessing.normalize_ptm_to_protein",
+            tool_name="normalize_ptm_to_protein",
+            description="Normalize PTM site abundances against total protein levels to separate PTM regulation from protein abundance changes",
+            library="lobster.services.quality.proteomics_preprocessing_service",
+            code_template="""# PTM-to-protein normalization
+from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService
+
+service = ProteomicsPreprocessingService()
+adata_norm, stats, _ = service.normalize_ptm_to_protein(
+    ptm_adata,
+    protein_adata,
+    method={{ method | tojson }}
+)
+print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matching_rate']:.1%})")""",
+            imports=[
+                "from lobster.services.quality.proteomics_preprocessing_service import ProteomicsPreprocessingService"
+            ],
+            parameters={
+                "method": method,
+            },
+            parameter_schema={
+                "method": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="ratio",
+                    required=False,
+                    validation_rule="method in ['ratio', 'regression']",
+                    description="Normalization method: ratio (log subtraction) or regression (residuals)",
+                ),
+            },
+            input_entities=["ptm_adata", "protein_adata"],
+            output_entities=["adata_norm"],
+        )
+
+    def summarize_peptide_to_protein(
+        self,
+        adata: anndata.AnnData,
+        method: str = "median",
+        protein_column: str = "protein_id",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Roll up peptide/PSM-level quantification to protein-level.
+
+        Required for TMT workflows where reporter ion intensities are at PSM level.
+        Groups peptides by protein and aggregates using specified method.
+
+        Args:
+            adata: Peptide-level AnnData (obs=samples, var=peptides)
+            method: Aggregation method ("median", "sum")
+            protein_column: Column in var containing protein identifiers
+
+        Returns:
+            Tuple of (protein-level AnnData, stats_dict, AnalysisStep)
+
+        Raises:
+            ProteomicsPreprocessingError: If summarization fails
+        """
+        try:
+            logger.info(
+                f"Starting peptide-to-protein summarization with method: {method}"
+            )
+
+            # 1. Validate protein_column exists
+            if protein_column not in adata.var.columns:
+                raise ProteomicsPreprocessingError(
+                    f"Protein column '{protein_column}' not found in var. "
+                    f"Available columns: {list(adata.var.columns)}"
+                )
+
+            # 2. Get intensity matrix (handle sparse -> dense)
+            X = adata.X
+            if hasattr(X, "toarray"):
+                X = X.toarray()
+            X = np.array(X, dtype=np.float64)
+
+            n_peptides = X.shape[1]
+            protein_ids = adata.var[protein_column].values
+
+            # 3. Group peptides by protein
+            unique_proteins = []
+            protein_indices: Dict[str, List[int]] = {}
+            for idx, pid in enumerate(protein_ids):
+                pid_str = str(pid).strip()
+                # Handle multi-protein groups: take first
+                if ";" in pid_str:
+                    pid_str = pid_str.split(";")[0].strip()
+                if pid_str not in protein_indices:
+                    protein_indices[pid_str] = []
+                    unique_proteins.append(pid_str)
+                protein_indices[pid_str].append(idx)
+
+            # 4. Aggregate by protein
+            n_proteins = len(unique_proteins)
+            X_protein = np.full((adata.n_obs, n_proteins), np.nan, dtype=np.float64)
+
+            peptides_per_protein = []
+            for j, protein in enumerate(unique_proteins):
+                indices = protein_indices[protein]
+                peptide_data = X[:, indices]  # shape: (n_samples, n_peptides_for_protein)
+                peptides_per_protein.append(len(indices))
+
+                if method == "median":
+                    X_protein[:, j] = np.nanmedian(peptide_data, axis=1)
+                elif method == "sum":
+                    X_protein[:, j] = np.nansum(peptide_data, axis=1)
+                    # If all values were NaN for a sample, nansum returns 0; set back to NaN
+                    all_nan_mask = np.all(np.isnan(peptide_data), axis=1)
+                    X_protein[all_nan_mask, j] = np.nan
+                else:
+                    raise ProteomicsPreprocessingError(
+                        f"Unknown summarization method: {method}. Use 'median' or 'sum'."
+                    )
+
+            # 5. Build new AnnData: obs stays identical, var is protein-level
+            var_df = pd.DataFrame(
+                {
+                    "protein_id": unique_proteins,
+                    "n_peptides": peptides_per_protein,
+                },
+                index=unique_proteins,
+            )
+
+            adata_protein = anndata.AnnData(
+                X=X_protein,
+                obs=adata.obs.copy(),  # Preserve obs metadata exactly
+                var=var_df,
+            )
+
+            # 6. Compute stats
+            stats = {
+                "n_peptides_input": n_peptides,
+                "n_proteins_output": n_proteins,
+                "median_peptides_per_protein": float(np.median(peptides_per_protein)),
+                "method_used": method,
+                "samples_processed": adata.n_obs,
+                "analysis_type": "peptide_to_protein_summarization",
+            }
+
+            logger.info(
+                f"Summarization complete: {n_peptides} peptides -> {n_proteins} proteins "
+                f"(median {stats['median_peptides_per_protein']:.0f} peptides/protein)"
+            )
+
+            # 7. Create IR
+            ir = self._create_ir_summarize_peptide_to_protein(method, protein_column)
+            return adata_protein, stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error in peptide-to-protein summarization: {e}")
+            raise ProteomicsPreprocessingError(
+                f"Peptide-to-protein summarization failed: {str(e)}"
+            )
+
+    def normalize_ptm_to_protein(
+        self,
+        ptm_adata: anndata.AnnData,
+        protein_adata: anndata.AnnData,
+        method: str = "ratio",
+    ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
+        """
+        Normalize PTM site abundances against total protein levels.
+
+        Separates true PTM regulation from protein abundance changes.
+        Sites without a matching protein are kept with NaN normalization.
+
+        Args:
+            ptm_adata: PTM site-level AnnData (var_names are site IDs like EGFR_Y1068)
+            protein_adata: Protein-level AnnData (var_names are protein/gene IDs)
+            method: "ratio" (log subtraction) or "regression" (residuals)
+
+        Returns:
+            Tuple of (normalized PTM AnnData, stats_dict, AnalysisStep)
+
+        Raises:
+            ProteomicsPreprocessingError: If normalization fails
+        """
+        try:
+            logger.info(f"Starting PTM-to-protein normalization with method: {method}")
+
+            # Get matrices
+            ptm_X = ptm_adata.X
+            if hasattr(ptm_X, "toarray"):
+                ptm_X = ptm_X.toarray()
+            ptm_X = np.array(ptm_X, dtype=np.float64)
+
+            prot_X = protein_adata.X
+            if hasattr(prot_X, "toarray"):
+                prot_X = prot_X.toarray()
+            prot_X = np.array(prot_X, dtype=np.float64)
+
+            # Build protein lookup: var_name -> column index in protein_adata
+            protein_names = protein_adata.var_names.tolist()
+            protein_lookup: Dict[str, int] = {
+                name: idx for idx, name in enumerate(protein_names)
+            }
+            # Also index by lowercase for case-insensitive matching
+            protein_lookup_lower: Dict[str, int] = {
+                name.lower(): idx for idx, name in enumerate(protein_names)
+            }
+
+            # 1. Extract gene symbols from PTM site IDs and find matching proteins
+            n_sites = ptm_adata.n_vars
+            matched_protein_names: List[Optional[str]] = []
+            matched_protein_indices: List[Optional[int]] = []
+
+            for site_id in ptm_adata.var_names:
+                # Extract gene symbol: split on "_", take first part
+                gene = str(site_id).split("_")[0]
+
+                # Try exact match first, then case-insensitive
+                if gene in protein_lookup:
+                    matched_protein_names.append(gene)
+                    matched_protein_indices.append(protein_lookup[gene])
+                elif gene.lower() in protein_lookup_lower:
+                    idx = protein_lookup_lower[gene.lower()]
+                    matched_protein_names.append(protein_names[idx])
+                    matched_protein_indices.append(idx)
+                else:
+                    matched_protein_names.append(None)
+                    matched_protein_indices.append(None)
+
+            n_matched = sum(1 for m in matched_protein_indices if m is not None)
+            n_unmatched = n_sites - n_matched
+            matching_rate = n_matched / n_sites if n_sites > 0 else 0
+
+            logger.info(
+                f"Matched {n_matched}/{n_sites} PTM sites to proteins "
+                f"({matching_rate:.1%})"
+            )
+
+            # 2. Normalize
+            X_normalized = np.full_like(ptm_X, np.nan)
+
+            if method == "ratio":
+                # Log subtraction: normalized = ptm_intensity - protein_intensity
+                for j in range(n_sites):
+                    prot_idx = matched_protein_indices[j]
+                    if prot_idx is not None:
+                        X_normalized[:, j] = ptm_X[:, j] - prot_X[:, prot_idx]
+                    else:
+                        # Unmatched sites: keep PTM values as-is (no normalization)
+                        X_normalized[:, j] = ptm_X[:, j]
+
+            elif method == "regression":
+                # Regression residuals: for each site, fit ptm ~ protein
+                for j in range(n_sites):
+                    prot_idx = matched_protein_indices[j]
+                    if prot_idx is not None:
+                        ptm_vals = ptm_X[:, j]
+                        prot_vals = prot_X[:, prot_idx]
+
+                        # Only use samples where both PTM and protein are observed
+                        valid_mask = ~(np.isnan(ptm_vals) | np.isnan(prot_vals))
+                        if valid_mask.sum() >= 3:  # Need at least 3 points for regression
+                            result = linregress(
+                                prot_vals[valid_mask], ptm_vals[valid_mask]
+                            )
+                            # Residuals for all samples
+                            predicted = result.slope * prot_vals + result.intercept
+                            X_normalized[:, j] = ptm_vals - predicted
+                        else:
+                            # Too few points for regression, keep raw
+                            X_normalized[:, j] = ptm_vals
+                    else:
+                        X_normalized[:, j] = ptm_X[:, j]
+            else:
+                raise ProteomicsPreprocessingError(
+                    f"Unknown normalization method: {method}. Use 'ratio' or 'regression'."
+                )
+
+            # 3. Build output AnnData
+            adata_norm = anndata.AnnData(
+                X=X_normalized,
+                obs=ptm_adata.obs.copy(),
+                var=ptm_adata.var.copy(),
+            )
+
+            # 4. Add normalization metadata to var
+            adata_norm.var["matched_protein"] = [
+                m if m is not None else "" for m in matched_protein_names
+            ]
+            adata_norm.var["normalization_applied"] = [
+                m is not None for m in matched_protein_indices
+            ]
+
+            # 5. Store method in uns
+            adata_norm.uns["ptm_normalization_method"] = method
+
+            # Copy over PTM-specific uns from input
+            for key in ["ptm_type", "localization_threshold", "source_file"]:
+                if key in ptm_adata.uns:
+                    adata_norm.uns[key] = ptm_adata.uns[key]
+
+            # 6. Compute stats
+            stats = {
+                "n_sites_matched": n_matched,
+                "n_sites_unmatched": n_unmatched,
+                "matching_rate": float(matching_rate),
+                "method": method,
+                "n_sites_total": n_sites,
+                "n_proteins_available": protein_adata.n_vars,
+                "analysis_type": "ptm_to_protein_normalization",
+            }
+
+            logger.info(
+                f"PTM-to-protein normalization complete: {n_matched} matched, "
+                f"{n_unmatched} unmatched ({method} method)"
+            )
+
+            # 7. Create IR
+            ir = self._create_ir_normalize_ptm_to_protein(method)
+            return adata_norm, stats, ir
+
+        except Exception as e:
+            logger.exception(f"Error in PTM-to-protein normalization: {e}")
+            raise ProteomicsPreprocessingError(
+                f"PTM-to-protein normalization failed: {str(e)}"
+            )
+
     # Helper methods for missing value imputation
     def _knn_imputation(self, X: np.ndarray, n_neighbors: int) -> np.ndarray:
         """Apply KNN imputation."""
