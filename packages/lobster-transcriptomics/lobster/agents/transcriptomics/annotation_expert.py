@@ -57,17 +57,10 @@ from lobster.services.templates.annotation_templates import (
     AnnotationTemplateService,
     TissueType,
 )
+from lobster.core.component_registry import component_registry
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-# Optional vector search for semantic annotation
-try:
-    from lobster.services.vector.service import VectorSearchService  # noqa: F401
-
-    HAS_VECTOR_SEARCH = True
-except ImportError:
-    HAS_VECTOR_SEARCH = False
 
 
 # Type alias for AnnotationExpertState - uses SingleCellExpertState for now
@@ -135,6 +128,18 @@ def annotation_expert(
     manual_annotation_service = ManualAnnotationService()
     template_service = AnnotationTemplateService()
     singlecell_service = EnhancedSingleCellService()
+
+    # Check vector search availability (inside factory, NOT module level per Hard Rule #10)
+    vector_search_cls = component_registry.get_service("vector_search")
+    if vector_search_cls is None:
+        # Fallback: try direct import as lazy check (NOT at module level)
+        try:
+            from lobster.services.vector.service import VectorSearchService
+
+            vector_search_cls = VectorSearchService
+        except ImportError:
+            vector_search_cls = None
+    has_vector_search = vector_search_cls is not None
 
     # Track analysis results
     analysis_results = {"summary": "", "details": {}}
@@ -1373,9 +1378,18 @@ Use this mapping to apply consistent annotations to similar datasets."""
     def _get_vector_service():
         nonlocal _vector_service
         if _vector_service is None:
-            from lobster.services.vector.service import VectorSearchService
+            svc_cls = component_registry.get_service("vector_search")
+            if svc_cls is None:
+                # Fallback: try direct import
+                try:
+                    from lobster.services.vector.service import VectorSearchService
 
-            _vector_service = VectorSearchService()
+                    svc_cls = VectorSearchService
+                except ImportError:
+                    raise ImportError(
+                        "VectorSearchService not available. Install vector search dependencies."
+                    )
+            _vector_service = svc_cls()
         return _vector_service
 
     @tool
@@ -1537,7 +1551,12 @@ Use this mapping to apply consistent annotations to similar datasets."""
             # Store annotated modality
             if save_result:
                 annotated_modality_name = f"{modality_name}_semantic_annotated"
-                data_manager.modalities[annotated_modality_name] = adata_annotated
+                data_manager.store_modality(
+                    name=annotated_modality_name,
+                    adata=adata_annotated,
+                    parent_name=modality_name,
+                    step_summary=f"Semantic annotation: {n_annotated} clusters annotated",
+                )
 
             # Build stats dict
             stats = {
@@ -1685,7 +1704,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
     ]
 
     # Conditionally add semantic annotation tool when vector-search deps available
-    if HAS_VECTOR_SEARCH:
+    if has_vector_search:
         base_tools.append(annotate_cell_types_semantic)
 
     tools = base_tools + (delegation_tools or [])
