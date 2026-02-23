@@ -72,16 +72,16 @@
 
 ### MS Proteomics Parent (proteomics_expert)
 
-- [ ] **MSP-01**: Add `import_proteomics_data` tool — wrap MaxQuantParser/DIANNParser/SpectronautParser (BUG-07 fix)
+- [x] **MSP-01**: Add `import_proteomics_data` tool — wrap MaxQuantParser/DIANNParser/SpectronautParser (BUG-07 fix)
 - [x] **MSP-02**: Add `import_ptm_sites` tool — phospho/acetyl/ubiquitin site-level import
-- [ ] **MSP-03**: Add `correct_batch_effects` tool — ComBat/median centering for MS batch correction
+- [x] **MSP-03**: Add `correct_batch_effects` tool — ComBat/median centering for MS batch correction
 - [x] **MSP-04**: Add `summarize_peptide_to_protein` tool — peptide/PSM to protein rollup for TMT
 - [x] **MSP-05**: Add `normalize_ptm_to_protein` tool — separate PTM regulation from protein abundance
-- [ ] **MSP-06**: Merge `add_peptide_mapping` into `import_proteomics_data`
-- [ ] **MSP-07**: Fix BUG-03: validate_antibody_specificity inflated correlations (use pairwise-complete)
-- [ ] **MSP-08**: Fix BUG-10: detect_platform_type silent default to mass_spec (return "unknown")
-- [ ] **MSP-09**: Fix BUG-08: filter_proteomics_data dead affinity branch
-- [ ] **MSP-10**: Fix BUG-09: remove unused cross_reactivity_threshold config
+- [x] **MSP-06**: Merge `add_peptide_mapping` into `import_proteomics_data`
+- [x] **MSP-07**: Fix BUG-03: validate_antibody_specificity inflated correlations (use pairwise-complete)
+- [x] **MSP-08**: Fix BUG-10: detect_platform_type silent default to mass_spec (return "unknown")
+- [x] **MSP-09**: Fix BUG-08: filter_proteomics_data dead affinity branch
+- [x] **MSP-10**: Fix BUG-09: remove unused cross_reactivity_threshold config
 
 ### Proteomics DE Child (proteomics_de_analysis_expert)
 
@@ -232,16 +232,16 @@
 | DEA-09 | Phase 3 | Complete |
 | DEA-10 | Phase 3 | Complete |
 | DEA-11 | Phase 3 | Complete |
-| MSP-01 | Phase 4 | Pending |
+| MSP-01 | Phase 4 | Complete |
 | MSP-02 | Phase 4 | Complete |
-| MSP-03 | Phase 4 | Pending |
+| MSP-03 | Phase 4 | Complete |
 | MSP-04 | Phase 4 | Complete |
 | MSP-05 | Phase 4 | Complete |
-| MSP-06 | Phase 4 | Pending |
-| MSP-07 | Phase 4 | Pending |
-| MSP-08 | Phase 4 | Pending |
-| MSP-09 | Phase 4 | Pending |
-| MSP-10 | Phase 4 | Pending |
+| MSP-06 | Phase 4 | Complete |
+| MSP-07 | Phase 4 | Complete |
+| MSP-08 | Phase 4 | Complete |
+| MSP-09 | Phase 4 | Complete |
+| MSP-10 | Phase 4 | Complete |
 | PDE-01 | Phase 5 | Pending |
 | PDE-02 | Phase 5 | Pending |
 | PDE-03 | Phase 5 | Pending |
