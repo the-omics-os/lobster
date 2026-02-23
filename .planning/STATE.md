@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every agent has exactly the right tools — no overlap, no gaps, no wrong abstraction level — so the LLM picks the correct tool every time and produces reliable, reproducible science.
-**Current focus:** Phase 3 - Transcriptomics Children
+**Current focus:** Phase 4 - MS Proteomics Core
 
 ## Current Position
 
-Phase: 3 of 7 (Transcriptomics Children)
-Plan: 3 of 3 completed
-Status: Phase Complete
-Last activity: 2026-02-23 — Completed 03-03-PLAN.md (bulk DE pipeline tools + prompt rewrite)
+Phase: 4 of 7 (MS Proteomics Core)
+Plan: 1 of 3 completed
+Status: In Progress
+Last activity: 2026-02-23 — Completed 04-01-PLAN.md (PTM import, peptide-to-protein, PTM normalization services)
 
-Progress: [█████░░░░░] 43%
+Progress: [██████░░░░] 48%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 5.7 min
-- Total execution time: 0.85 hours
+- Total plans completed: 10
+- Average duration: 5.5 min
+- Total execution time: 0.92 hours
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [█████░░░░░] 43%
 | 01-genomics-domain | 3 | 18 min | 6 min |
 | 02-transcriptomics-parent | 3 | 17 min | 5.7 min |
 | 03-transcriptomics-children | 3 | 16 min | 5.3 min |
+| 04-ms-proteomics-core | 1 | 4 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (6 min), 03-01 (4 min), 03-02 (8 min), 03-03 (4 min)
-- Trend: Stable (~5-6 min/plan)
+- Last 5 plans: 03-01 (4 min), 03-02 (8 min), 03-03 (4 min), 04-01 (4 min)
+- Trend: Stable (~4-5 min/plan)
 
 *Updated after each plan completion*
 
@@ -81,6 +82,10 @@ Recent decisions affecting current work:
 - D28: Graceful LFC shrinkage in extract_and_export_de_results (checks if applied, warns if unavailable)
 - D29: DE prompt organizes 15 tools by workflow stage with explicit tool selection guide
 
+- D30: Start with median and sum for peptide-to-protein rollup (median polish deferred as future enhancement)
+- D31: PTM site IDs use gene_residuePosition_m{multiplicity} format with deduplication suffix for collisions
+- D32: Unmatched PTM sites kept with raw values (not dropped) during PTM-to-protein normalization
+
 ### Pending Todos
 
 None yet.
@@ -92,5 +97,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 03-03-PLAN.md (Phase 03 complete)
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None

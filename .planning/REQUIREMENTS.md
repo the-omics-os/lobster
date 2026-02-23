@@ -73,10 +73,10 @@
 ### MS Proteomics Parent (proteomics_expert)
 
 - [ ] **MSP-01**: Add `import_proteomics_data` tool — wrap MaxQuantParser/DIANNParser/SpectronautParser (BUG-07 fix)
-- [ ] **MSP-02**: Add `import_ptm_sites` tool — phospho/acetyl/ubiquitin site-level import
+- [x] **MSP-02**: Add `import_ptm_sites` tool — phospho/acetyl/ubiquitin site-level import
 - [ ] **MSP-03**: Add `correct_batch_effects` tool — ComBat/median centering for MS batch correction
-- [ ] **MSP-04**: Add `summarize_peptide_to_protein` tool — peptide/PSM to protein rollup for TMT
-- [ ] **MSP-05**: Add `normalize_ptm_to_protein` tool — separate PTM regulation from protein abundance
+- [x] **MSP-04**: Add `summarize_peptide_to_protein` tool — peptide/PSM to protein rollup for TMT
+- [x] **MSP-05**: Add `normalize_ptm_to_protein` tool — separate PTM regulation from protein abundance
 - [ ] **MSP-06**: Merge `add_peptide_mapping` into `import_proteomics_data`
 - [ ] **MSP-07**: Fix BUG-03: validate_antibody_specificity inflated correlations (use pairwise-complete)
 - [ ] **MSP-08**: Fix BUG-10: detect_platform_type silent default to mass_spec (return "unknown")
@@ -233,10 +233,10 @@
 | DEA-10 | Phase 3 | Complete |
 | DEA-11 | Phase 3 | Complete |
 | MSP-01 | Phase 4 | Pending |
-| MSP-02 | Phase 4 | Pending |
+| MSP-02 | Phase 4 | Complete |
 | MSP-03 | Phase 4 | Pending |
-| MSP-04 | Phase 4 | Pending |
-| MSP-05 | Phase 4 | Pending |
+| MSP-04 | Phase 4 | Complete |
+| MSP-05 | Phase 4 | Complete |
 | MSP-06 | Phase 4 | Pending |
 | MSP-07 | Phase 4 | Pending |
 | MSP-08 | Phase 4 | Pending |
