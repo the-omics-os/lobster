@@ -58,14 +58,14 @@
 
 ### DE Analysis Expert Child (transcriptomics)
 
-- [ ] **DEA-01**: Merge 3 DE tools into 2: `run_differential_expression` (simple) + `run_de_with_formula` (advanced)
-- [ ] **DEA-02**: Merge `construct_de_formula_interactive` + `suggest_formula_for_design` → `suggest_de_formula`
+- [x] **DEA-01**: Merge 3 DE tools into 2: `run_differential_expression` (simple) + `run_de_with_formula` (advanced)
+- [x] **DEA-02**: Merge `construct_de_formula_interactive` + `suggest_formula_for_design` → `suggest_de_formula`
 - [x] **DEA-03**: Deprecate `manually_annotate_clusters_interactive` (BUG-11)
-- [ ] **DEA-04**: Deprecate `construct_de_formula_interactive` (BUG-12)
-- [ ] **DEA-05**: Add `filter_de_results` tool — standalone result filtering
-- [ ] **DEA-06**: Add `export_de_results` tool — publication-ready CSV/Excel export
-- [ ] **DEA-07**: Rename `prepare_differential_expression_design` → `prepare_de_design`
-- [ ] **DEA-08**: Rename `run_pathway_enrichment_analysis` → `run_pathway_enrichment`
+- [x] **DEA-04**: Deprecate `construct_de_formula_interactive` (BUG-12)
+- [x] **DEA-05**: Add `filter_de_results` tool — standalone result filtering
+- [x] **DEA-06**: Add `export_de_results` tool — publication-ready CSV/Excel export
+- [x] **DEA-07**: Rename `prepare_differential_expression_design` → `prepare_de_design`
+- [x] **DEA-08**: Rename `run_pathway_enrichment_analysis` → `run_pathway_enrichment`
 - [ ] **DEA-09**: Add `run_bulk_de_direct` tool — one-shot DE for simple bulk comparisons
 - [ ] **DEA-10**: Add `run_gsea_analysis` tool — ranked gene set enrichment
 - [ ] **DEA-11**: Add `extract_and_export_de_results` tool — publication-ready tables with LFC shrinkage
@@ -221,14 +221,14 @@
 | ANN-02 | Phase 3 | Complete |
 | ANN-03 | Phase 3 | Complete |
 | ANN-04 | Phase 3 | Complete |
-| DEA-01 | Phase 3 | Pending |
-| DEA-02 | Phase 3 | Pending |
+| DEA-01 | Phase 3 | Complete |
+| DEA-02 | Phase 3 | Complete |
 | DEA-03 | Phase 3 | Complete |
-| DEA-04 | Phase 3 | Pending |
-| DEA-05 | Phase 3 | Pending |
-| DEA-06 | Phase 3 | Pending |
-| DEA-07 | Phase 3 | Pending |
-| DEA-08 | Phase 3 | Pending |
+| DEA-04 | Phase 3 | Complete |
+| DEA-05 | Phase 3 | Complete |
+| DEA-06 | Phase 3 | Complete |
+| DEA-07 | Phase 3 | Complete |
+| DEA-08 | Phase 3 | Complete |
 | DEA-09 | Phase 3 | Pending |
 | DEA-10 | Phase 3 | Pending |
 | DEA-11 | Phase 3 | Pending |

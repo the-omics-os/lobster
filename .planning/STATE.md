@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-22)
 ## Current Position
 
 Phase: 3 of 7 (Transcriptomics Children)
-Plan: 1 of 3 completed
+Plan: 2 of 3 completed
 Status: In Progress
-Last activity: 2026-02-23 — Completed 03-01-PLAN.md (annotation expert: score_gene_set, rename, bug fixes)
+Last activity: 2026-02-23 — Completed 03-02-PLAN.md (DE expert: merge 3->2 tools, add filter/export)
 
-Progress: [████░░░░░░] 33%
+Progress: [████░░░░░░] 38%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 5.6 min
-- Total execution time: 0.65 hours
+- Total plans completed: 8
+- Average duration: 5.9 min
+- Total execution time: 0.78 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [████░░░░░░] 33%
 |-------|-------|-------|----------|
 | 01-genomics-domain | 3 | 18 min | 6 min |
 | 02-transcriptomics-parent | 3 | 17 min | 5.7 min |
-| 03-transcriptomics-children | 1 | 4 min | 4 min |
+| 03-transcriptomics-children | 2 | 12 min | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (7 min), 02-02 (4 min), 02-03 (6 min), 03-01 (4 min)
-- Trend: Stable (~5 min/plan)
+- Last 5 plans: 02-02 (4 min), 02-03 (6 min), 03-01 (4 min), 03-02 (8 min)
+- Trend: Stable (~5-6 min/plan)
 
 *Updated after each plan completion*
 
@@ -74,6 +74,9 @@ Recent decisions affecting current work:
 - D23: score_gene_set stores scored modality via store_modality (not direct dict assignment)
 - D24: component_registry with fallback direct import for vector_search (not registered as entry point)
 
+- D25: Unified run_differential_expression auto-detects pseudobulk via adata.uns flags
+- D26: Column name normalization in filter_de_results handles pyDESeq2 and generic DE output variations
+
 ### Pending Todos
 
 None yet.
@@ -85,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 03-01-PLAN.md
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
