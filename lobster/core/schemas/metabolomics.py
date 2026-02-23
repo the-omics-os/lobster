@@ -463,8 +463,16 @@ def _validate_intensity_data(adata) -> "ValidationResult":
             )
 
     # Check for zeros (common in metabolomics due to missing values)
-    if hasattr(adata.X, "data"):  # Sparse matrix
-        zero_pct = (adata.X.data == 0).sum() / adata.X.data.size * 100
+    if hasattr(adata.X, "toarray"):  # Sparse matrix
+        total = adata.X.shape[0] * adata.X.shape[1]
+        # nnz counts explicitly stored values; zeros are implicit in sparse format
+        stored_zeros = (
+            (adata.X.data == 0).sum()
+            if hasattr(adata.X, "data") and adata.X.data.size > 0
+            else 0
+        )
+        actual_nonzero = adata.X.nnz - stored_zeros
+        zero_pct = (total - actual_nonzero) / total * 100 if total > 0 else 0
     else:  # Dense matrix
         zero_pct = (adata.X == 0).sum() / adata.X.size * 100
 
@@ -490,8 +498,12 @@ def _validate_missing_values(adata) -> "ValidationResult":
     result = ValidationResult()
 
     # Calculate missing value percentage
-    if hasattr(adata.X, "data"):  # Sparse matrix
-        missing_pct = (adata.X.data == 0).sum() / adata.X.data.size * 100
+    # NOTE: For metabolomics, missing values are NaN (not zero). In sparse format,
+    # NaN is converted to 0, losing the distinction. Use dense conversion for
+    # accurate missing value detection.
+    if hasattr(adata.X, "toarray"):  # Sparse matrix
+        X_dense = adata.X.toarray()
+        missing_pct = np.isnan(X_dense).sum() / X_dense.size * 100 if X_dense.size > 0 else 0
     else:  # Dense matrix
         missing_pct = np.isnan(adata.X).sum() / adata.X.size * 100
 
