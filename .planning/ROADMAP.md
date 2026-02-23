@@ -108,11 +108,12 @@ Plans:
   3. User can batch-correct MS data (ComBat/median centering) and summarize peptides to proteins for TMT
   4. BUG-03, BUG-08, BUG-09, BUG-10 fixed
   5. Proteomics_expert prompt updated for import tools + PTM workflow + affinity tool additions
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md — Service layer: PTM site import, peptide-to-protein summarization, PTM-to-protein normalization methods
+- [ ] 04-02-PLAN.md — Parent agent tools + bug fixes: 5 new tools (import, PTM, batch, rollup, normalize) + 4 bug fixes + deprecate add_peptide_mapping
+- [ ] 04-03-PLAN.md — Prompt rewrite: updated tool inventory, MS import workflow, PTM workflow, TMT workflow, tool selection guide
 
 ### Phase 5: Proteomics Children & Affinity
 **Goal**: Proteomics DE and biomarker children enhanced; affinity proteomics fully supported
@@ -171,7 +172,7 @@ Parallel: (1 ‖ 2 ‖ 4 ‖ 6) → (3 ‖ 5) → 7
 | 1. Genomics Domain | 0/TBD | Not started | - |
 | 2. Transcriptomics Parent | 0/TBD | Not started | - |
 | 3. Transcriptomics Children | 0/TBD | Complete    | 2026-02-23 |
-| 4. MS Proteomics Core | 0/TBD | Not started | - |
+| 4. MS Proteomics Core | 0/3 | Planned | - |
 | 5. Proteomics Children & Affinity | 0/TBD | Not started | - |
 | 6. Metabolomics Package | 0/TBD | Not started | - |
 | 7. Cross-Cutting Infrastructure | 0/TBD | Not started | - |
