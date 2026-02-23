@@ -27,6 +27,8 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import List, Optional
 
+import numpy as np
+import pandas as pd
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
@@ -35,7 +37,12 @@ from lobster.agents.transcriptomics.shared_tools import create_shared_tools
 from lobster.agents.transcriptomics.state import TranscriptomicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.services.analysis.bulk_preprocessing_service import (
+    BulkPreprocessingService,
+)
+from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 from lobster.services.analysis.clustering_service import (
     ClusteringError,
     ClusteringService,
@@ -114,6 +121,8 @@ def transcriptomics_expert(
     preprocessing_service = PreprocessingService()
     clustering_service = ClusteringService()
     enhanced_service = EnhancedSingleCellService()
+    bulk_service = BulkRNASeqService(data_manager=data_manager)
+    bulk_preprocessing_service = BulkPreprocessingService()
 
     # Get shared tools (QC, preprocessing, feature selection, PCA, embedding, analysis summary)
     shared_tools = create_shared_tools(
@@ -1251,6 +1260,1017 @@ Please check:
             return f"Unexpected error: {str(e)}"
 
     # =========================================================================
+    # BULK RNA-SEQ TOOLS
+    # =========================================================================
+
+    @tool
+    def import_bulk_counts(
+        modality_name: str,
+        file_path: str,
+        source: str = "auto",
+        gene_id_column: str = "auto",
+    ) -> str:
+        """
+        Import bulk RNA-seq count data from Salmon, kallisto, featureCounts, or CSV/TSV files.
+
+        Supports multiple input formats:
+        - Salmon/kallisto: Directory of per-sample quantification files
+        - featureCounts: Tab-delimited output (auto-detects # comment header)
+        - CSV/TSV: Generic count matrix (auto-transposes if genes > samples)
+
+        Args:
+            modality_name: Name for the imported modality
+            file_path: Path to file or directory containing count data
+            source: Data source format ('salmon', 'kallisto', 'featurecounts', 'csv', 'auto')
+            gene_id_column: Column containing gene IDs ('auto' for auto-detection)
+
+        Returns:
+            Summary of imported data (samples, genes, source detected)
+        """
+        try:
+            import anndata
+
+            path = Path(file_path)
+            if not path.exists():
+                return f"Error: Path '{file_path}' does not exist."
+
+            adata = None
+            detected_source = source
+
+            # Salmon/kallisto: directory-based import
+            if path.is_dir() and source in ("salmon", "kallisto", "auto"):
+                try:
+                    df, metadata = bulk_service.load_from_quantification_files(
+                        path, tool=source
+                    )
+                    detected_source = metadata.get("tool", source)
+                    # df has genes as rows, samples as columns -> transpose for AnnData
+                    adata = anndata.AnnData(
+                        X=df.T.values.astype(np.float32),
+                        obs=pd.DataFrame(index=df.columns),
+                        var=pd.DataFrame(index=df.index),
+                    )
+                    # Store raw counts in layer
+                    adata.layers["counts"] = adata.X.copy()
+                except Exception as e:
+                    if source != "auto":
+                        return f"Error loading {source} data: {str(e)}"
+                    # Fall through to CSV/TSV handling for auto
+
+            # featureCounts format
+            if adata is None and (
+                source == "featurecounts"
+                or (
+                    source == "auto"
+                    and path.is_file()
+                    and path.suffix in (".txt", ".tsv")
+                )
+            ):
+                try:
+                    # Read and check for featureCounts header
+                    with open(path) as f:
+                        first_lines = [f.readline() for _ in range(3)]
+
+                    is_fc = any(
+                        line.startswith("#") or "Geneid" in line for line in first_lines
+                    )
+
+                    if is_fc or source == "featurecounts":
+                        df = pd.read_csv(path, sep="\t", comment="#")
+                        if "Geneid" in df.columns:
+                            df = df.set_index("Geneid")
+                        # Drop featureCounts annotation columns
+                        fc_cols = {"Chr", "Start", "End", "Strand", "Length"}
+                        df = df.drop(
+                            columns=[c for c in fc_cols if c in df.columns]
+                        )
+                        # Genes as rows, samples as columns -> transpose
+                        adata = anndata.AnnData(
+                            X=df.T.values.astype(np.float32),
+                            obs=pd.DataFrame(index=df.columns),
+                            var=pd.DataFrame(index=df.index),
+                        )
+                        adata.layers["counts"] = adata.X.copy()
+                        detected_source = "featurecounts"
+                except Exception:
+                    pass  # Fall through to CSV/TSV
+
+            # Generic CSV/TSV
+            if adata is None and path.is_file():
+                sep = "\t" if path.suffix in (".tsv", ".txt") else ","
+                df = pd.read_csv(path, sep=sep, index_col=0)
+
+                # Auto-detect gene ID column if needed
+                if gene_id_column != "auto" and gene_id_column in df.columns:
+                    df = df.set_index(gene_id_column)
+
+                # Auto-transpose: if columns > rows, genes are likely rows
+                if df.shape[1] > df.shape[0]:
+                    df = df.T
+
+                adata = anndata.AnnData(
+                    X=df.values.astype(np.float32),
+                    obs=pd.DataFrame(index=df.index),
+                    var=pd.DataFrame(index=df.columns),
+                )
+                adata.layers["counts"] = adata.X.copy()
+                detected_source = "csv" if sep == "," else "tsv"
+
+            if adata is None:
+                return (
+                    f"Error: Could not import data from '{file_path}'. "
+                    "Check the file format and try specifying the 'source' parameter."
+                )
+
+            # Store modality
+            data_manager.store_modality(
+                name=modality_name,
+                adata=adata,
+                parent_name=None,
+                step_summary=f"Imported bulk counts from {detected_source}: {adata.shape[0]} samples x {adata.shape[1]} genes",
+            )
+
+            # Build IR
+            ir = AnalysisStep(
+                operation="import_bulk_counts",
+                tool_name="import_bulk_counts",
+                description=f"Imported bulk RNA-seq counts from {detected_source}",
+                library="pandas",
+                code_template=f'adata = sc.read_csv("{file_path}")  # source={detected_source}',
+                imports=["import scanpy as sc"],
+                parameters={
+                    "file_path": file_path,
+                    "source": detected_source,
+                    "gene_id_column": gene_id_column,
+                },
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="import_bulk_counts",
+                parameters={
+                    "modality_name": modality_name,
+                    "file_path": file_path,
+                    "source": source,
+                    "detected_source": detected_source,
+                },
+                description=f"Imported bulk counts ({detected_source}): {adata.shape[0]} samples x {adata.shape[1]} genes",
+                ir=ir,
+            )
+
+            return (
+                f"Successfully imported bulk RNA-seq counts as '{modality_name}'!\n\n"
+                f"**Import Details:**\n"
+                f"- Source format: {detected_source}\n"
+                f"- Samples (obs): {adata.shape[0]}\n"
+                f"- Genes (var): {adata.shape[1]}\n"
+                f"- Raw counts stored in: adata.layers['counts']\n\n"
+                f"**Next steps**: merge_sample_metadata() if metadata available, "
+                f"then assess_bulk_sample_quality()."
+            )
+
+        except Exception as e:
+            logger.error(f"Error importing bulk counts: {e}")
+            return f"Error importing bulk counts: {str(e)}"
+
+    @tool
+    def merge_sample_metadata(
+        modality_name: str,
+        metadata_file: str,
+        sample_id_column: str = "auto",
+    ) -> str:
+        """
+        Join external sample metadata (CSV/TSV/Excel) with count matrix obs.
+
+        Auto-detects the sample ID column by finding overlap between metadata
+        column values and adata.obs_names.
+
+        Args:
+            modality_name: Name of the bulk modality to update
+            metadata_file: Path to metadata file (CSV, TSV, or Excel)
+            sample_id_column: Column containing sample IDs ('auto' for auto-detection)
+
+        Returns:
+            Summary of merged metadata (columns added, samples matched/unmatched)
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            meta_path = Path(metadata_file)
+
+            if not meta_path.exists():
+                return f"Error: Metadata file '{metadata_file}' does not exist."
+
+            # Read metadata (detect format from extension)
+            if meta_path.suffix in (".xlsx", ".xls"):
+                meta_df = pd.read_excel(meta_path)
+            elif meta_path.suffix == ".tsv":
+                meta_df = pd.read_csv(meta_path, sep="\t")
+            else:
+                meta_df = pd.read_csv(meta_path)
+
+            # Auto-detect sample ID column
+            if sample_id_column == "auto":
+                obs_names = set(adata.obs_names)
+                best_col = None
+                best_overlap = 0
+                for col in meta_df.columns:
+                    col_values = set(meta_df[col].astype(str))
+                    overlap = len(obs_names & col_values)
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_col = col
+                if best_col is None or best_overlap == 0:
+                    return (
+                        "Error: Could not auto-detect sample ID column. "
+                        "None of the metadata columns match adata.obs_names. "
+                        "Please specify sample_id_column explicitly."
+                    )
+                sample_id_column = best_col
+                logger.info(
+                    f"Auto-detected sample ID column: '{sample_id_column}' "
+                    f"({best_overlap} matches)"
+                )
+
+            # Set index for merge
+            meta_df = meta_df.set_index(sample_id_column)
+
+            # Track columns before merge
+            cols_before = set(adata.obs.columns)
+
+            # Left-join on sample IDs
+            matched = set(adata.obs_names) & set(meta_df.index)
+            unmatched = set(adata.obs_names) - set(meta_df.index)
+
+            # Merge metadata into obs
+            for col in meta_df.columns:
+                if col not in adata.obs.columns:
+                    adata.obs[col] = meta_df[col].reindex(adata.obs_names)
+
+            cols_added = set(adata.obs.columns) - cols_before
+
+            # Store updated modality
+            data_manager.store_modality(
+                name=modality_name,
+                adata=adata,
+                parent_name=None,
+                step_summary=f"Merged {len(cols_added)} metadata columns, {len(matched)}/{len(matched)+len(unmatched)} samples matched",
+            )
+
+            # Build IR
+            ir = AnalysisStep(
+                operation="merge_sample_metadata",
+                tool_name="merge_sample_metadata",
+                description=f"Merged external metadata from {metadata_file}",
+                library="pandas",
+                code_template=(
+                    f'meta = pd.read_csv("{metadata_file}")\n'
+                    f'meta = meta.set_index("{sample_id_column}")\n'
+                    "adata.obs = adata.obs.join(meta)"
+                ),
+                imports=["import pandas as pd"],
+                parameters={
+                    "metadata_file": metadata_file,
+                    "sample_id_column": sample_id_column,
+                },
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="merge_sample_metadata",
+                parameters={
+                    "modality_name": modality_name,
+                    "metadata_file": metadata_file,
+                    "sample_id_column": sample_id_column,
+                },
+                description=f"Merged {len(cols_added)} metadata columns into {modality_name}",
+                ir=ir,
+            )
+
+            response = (
+                f"Successfully merged sample metadata into '{modality_name}'!\n\n"
+                f"**Merge Details:**\n"
+                f"- Sample ID column: {sample_id_column}\n"
+                f"- Metadata columns added: {len(cols_added)}\n"
+                f"- Samples matched: {len(matched)}\n"
+                f"- Samples unmatched: {len(unmatched)}\n"
+            )
+
+            if cols_added:
+                response += f"- New columns: {', '.join(sorted(cols_added))}\n"
+
+            if unmatched:
+                unmatched_list = sorted(unmatched)[:5]
+                response += (
+                    f"\n**Unmatched samples** (first 5): {', '.join(unmatched_list)}\n"
+                )
+
+            response += (
+                "\n**Next steps**: assess_bulk_sample_quality() to check for outliers."
+            )
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error merging metadata: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error merging sample metadata: {e}")
+            return f"Error merging sample metadata: {str(e)}"
+
+    @tool
+    def assess_bulk_sample_quality(
+        modality_name: str,
+        batch_key: Optional[str] = None,
+    ) -> str:
+        """
+        Assess bulk sample quality via PCA outlier detection, sample correlation,
+        and optional batch effect estimation.
+
+        Args:
+            modality_name: Name of the bulk modality to assess
+            batch_key: Optional column in adata.obs for batch grouping (e.g., 'batch', 'plate')
+
+        Returns:
+            Quality report with outliers, correlation, batch R-squared, and recommendations
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Call service
+            result, stats, ir = bulk_preprocessing_service.assess_sample_quality(
+                adata, batch_key=batch_key
+            )
+
+            # Store as quality-assessed modality
+            new_name = f"{modality_name}_quality_assessed"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Quality assessed: {stats.get('n_outliers', 0)} outliers found",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="assess_bulk_sample_quality",
+                parameters={
+                    "modality_name": modality_name,
+                    "batch_key": batch_key,
+                },
+                description=f"Assessed bulk sample quality for {modality_name}",
+                ir=ir,
+            )
+
+            # Format response
+            n_outliers = stats.get("n_outliers", 0)
+            outlier_names = stats.get("outlier_samples", [])
+            median_corr = stats.get("median_correlation", 0)
+
+            response = (
+                f"Bulk sample quality assessment complete for '{modality_name}'!\n\n"
+                f"**Quality Metrics:**\n"
+                f"- Samples assessed: {stats.get('n_samples', adata.shape[0])}\n"
+                f"- Outlier samples: {n_outliers}\n"
+                f"- Median pairwise correlation: {median_corr:.3f}\n"
+            )
+
+            if outlier_names:
+                response += (
+                    f"- Outlier names: {', '.join(str(o) for o in outlier_names)}\n"
+                )
+
+            if batch_key and "batch_r_squared" in stats:
+                response += (
+                    f"- Batch R-squared (PC1-3): {stats['batch_r_squared']:.3f}\n"
+                )
+
+            response += f"\n**New modality created**: '{new_name}'\n"
+
+            # Recommendations
+            if n_outliers > 0:
+                response += (
+                    f"\n**Recommendation**: Consider removing {n_outliers} outlier sample(s) "
+                    "before downstream analysis."
+                )
+            if median_corr < 0.8:
+                response += (
+                    "\n**Warning**: Low median correlation (<0.8) may indicate "
+                    "sample quality issues or strong biological variation."
+                )
+
+            response += "\n\n**Next steps**: filter_bulk_genes() to remove lowly-expressed genes."
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error assessing bulk quality: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error assessing bulk sample quality: {e}")
+            return f"Error assessing bulk sample quality: {str(e)}"
+
+    @tool
+    def filter_bulk_genes(
+        modality_name: str,
+        min_counts: int = 10,
+        min_samples: int = 3,
+    ) -> str:
+        """
+        Filter lowly-expressed genes from bulk RNA-seq data.
+
+        Removes genes that do not meet minimum expression thresholds across samples.
+        Standard practice before normalization and differential expression.
+
+        Args:
+            modality_name: Name of the bulk modality to filter
+            min_counts: Minimum total counts across all samples (default: 10)
+            min_samples: Minimum number of samples with non-zero expression (default: 3)
+
+        Returns:
+            Summary of genes before/after filtering
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Call service
+            result, stats, ir = bulk_preprocessing_service.filter_genes(
+                adata, min_counts=min_counts, min_samples=min_samples
+            )
+
+            # Store as filtered modality
+            new_name = f"{modality_name}_filtered"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Filtered genes: {stats.get('n_genes_before', 0)} -> {stats.get('n_genes_after', 0)}",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="filter_bulk_genes",
+                parameters={
+                    "modality_name": modality_name,
+                    "min_counts": min_counts,
+                    "min_samples": min_samples,
+                },
+                description=f"Filtered bulk genes: {stats.get('n_genes_removed', 0)} removed",
+                ir=ir,
+            )
+
+            genes_before = stats.get("n_genes_before", 0)
+            genes_after = stats.get("n_genes_after", 0)
+            genes_removed = stats.get("n_genes_removed", 0)
+
+            return (
+                f"Gene filtering complete for '{modality_name}'!\n\n"
+                f"**Filtering Results:**\n"
+                f"- Genes before: {genes_before:,}\n"
+                f"- Genes after: {genes_after:,}\n"
+                f"- Genes removed: {genes_removed:,} ({genes_removed/max(genes_before,1)*100:.1f}%)\n"
+                f"- Filter criteria: min_counts={min_counts}, min_samples={min_samples}\n\n"
+                f"**New modality created**: '{new_name}'\n\n"
+                f"**Next steps**: normalize_bulk_counts() to normalize the filtered data."
+            )
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error filtering bulk genes: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error filtering bulk genes: {e}")
+            return f"Error filtering bulk genes: {str(e)}"
+
+    @tool
+    def normalize_bulk_counts(
+        modality_name: str,
+        method: str = "deseq2",
+    ) -> str:
+        """
+        Normalize bulk RNA-seq counts using DESeq2 size factors, VST, or CPM.
+
+        Args:
+            modality_name: Name of the bulk modality to normalize
+            method: Normalization method ('deseq2', 'vst', or 'cpm').
+                   - 'deseq2' (default): DESeq2 median-of-ratios size factors. Best for DE analysis.
+                   - 'vst': Variance-stabilizing transformation. Best for visualization/clustering.
+                   - 'cpm': Counts per million. Simple, good for comparisons.
+
+        Returns:
+            Summary of normalization (method used, key statistics)
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Call service
+            result, stats, ir = bulk_preprocessing_service.normalize_counts(
+                adata, method=method
+            )
+
+            # Store as normalized modality
+            new_name = f"{modality_name}_normalized"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Normalized with {method}",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="normalize_bulk_counts",
+                parameters={
+                    "modality_name": modality_name,
+                    "method": method,
+                },
+                description=f"Normalized {modality_name} using {method}",
+                ir=ir,
+            )
+
+            response = (
+                f"Normalization complete for '{modality_name}'!\n\n"
+                f"**Normalization Details:**\n"
+                f"- Method: {method}\n"
+            )
+
+            if method == "deseq2" and "mean_size_factor" in stats:
+                response += f"- Mean size factor: {stats['mean_size_factor']:.3f}\n"
+                response += f"- Size factor range: [{stats.get('min_size_factor', 0):.3f}, {stats.get('max_size_factor', 0):.3f}]\n"
+            elif method == "vst":
+                response += "- Variance-stabilized values stored in adata.X\n"
+            elif method == "cpm":
+                response += "- CPM values stored in adata.X\n"
+
+            response += (
+                f"\n**New modality created**: '{new_name}'\n\n"
+                f"**Next steps**: detect_batch_effects() if multiple batches, "
+                f"or prepare_bulk_for_de() to validate DE readiness."
+            )
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error normalizing bulk counts: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error normalizing bulk counts: {e}")
+            return f"Error normalizing bulk counts: {str(e)}"
+
+    @tool
+    def detect_batch_effects(
+        modality_name: str,
+        batch_key: str,
+        condition_key: Optional[str] = None,
+    ) -> str:
+        """
+        Detect batch effects by decomposing variance between batch and condition.
+
+        Uses PCA + R-squared to quantify how much variance is explained by batch
+        vs biological condition. Helps decide whether batch correction is needed.
+
+        Args:
+            modality_name: Name of the bulk modality to assess
+            batch_key: Column in adata.obs containing batch labels (e.g., 'batch', 'plate')
+            condition_key: Optional column for biological condition (e.g., 'treatment', 'group')
+
+        Returns:
+            Variance decomposition report and batch correction recommendation
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Call service
+            result, stats, ir = bulk_preprocessing_service.detect_batch_effects(
+                adata, batch_key=batch_key, condition_key=condition_key
+            )
+
+            # Store as batch-assessed modality
+            new_name = f"{modality_name}_batch_assessed"
+            data_manager.store_modality(
+                name=new_name,
+                adata=result,
+                parent_name=modality_name,
+                step_summary=f"Batch effects assessed: R2_batch={stats.get('batch_r_squared', 0):.3f}",
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage(
+                tool_name="detect_batch_effects",
+                parameters={
+                    "modality_name": modality_name,
+                    "batch_key": batch_key,
+                    "condition_key": condition_key,
+                },
+                description=f"Detected batch effects in {modality_name}",
+                ir=ir,
+            )
+
+            batch_r2 = stats.get("batch_r_squared", 0)
+            response = (
+                f"Batch effect assessment complete for '{modality_name}'!\n\n"
+                f"**Variance Decomposition:**\n"
+                f"- Batch variable: {batch_key}\n"
+                f"- Batch R-squared (PC1-3): {batch_r2:.3f}\n"
+            )
+
+            if condition_key and "condition_r_squared" in stats:
+                cond_r2 = stats["condition_r_squared"]
+                response += f"- Condition variable: {condition_key}\n"
+                response += f"- Condition R-squared (PC1-3): {cond_r2:.3f}\n"
+                response += f"- Batch/Condition ratio: {batch_r2/max(cond_r2, 0.001):.2f}\n"
+
+            response += f"\n**New modality created**: '{new_name}'\n"
+
+            # Recommendation
+            if batch_r2 > 0.3:
+                response += (
+                    "\n**Recommendation**: Strong batch effects detected (R2 > 0.3). "
+                    "Include batch as covariate in DE model or apply batch correction."
+                )
+            elif batch_r2 > 0.1:
+                response += (
+                    "\n**Recommendation**: Moderate batch effects (0.1 < R2 < 0.3). "
+                    "Consider including batch as covariate in DE model."
+                )
+            else:
+                response += (
+                    "\n**Recommendation**: Minimal batch effects (R2 < 0.1). "
+                    "Batch correction likely not needed."
+                )
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error detecting batch effects: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error detecting batch effects: {e}")
+            return f"Error detecting batch effects: {str(e)}"
+
+    @tool
+    def convert_gene_identifiers(
+        modality_name: str,
+        source_type: str = "auto",
+        target_type: str = "symbol",
+    ) -> str:
+        """
+        Convert gene identifiers between Ensembl, Symbol, and Entrez formats using mygene.
+
+        Auto-detects the source ID type from patterns:
+        - ENSG*: Ensembl gene IDs
+        - Numeric: Entrez gene IDs
+        - Other: Gene symbols
+
+        Args:
+            modality_name: Name of the modality to convert
+            source_type: Source ID type ('ensembl', 'entrez', 'symbol', 'auto')
+            target_type: Target ID type ('symbol', 'ensembl', 'entrez')
+
+        Returns:
+            Conversion summary (converted count, unmapped genes)
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            gene_ids = adata.var_names.tolist()
+
+            # Auto-detect source type
+            if source_type == "auto":
+                sample = gene_ids[:20]
+                ensembl_count = sum(1 for g in sample if str(g).startswith("ENSG"))
+                numeric_count = sum(1 for g in sample if str(g).isdigit())
+                if ensembl_count > len(sample) * 0.5:
+                    source_type = "ensembl"
+                elif numeric_count > len(sample) * 0.5:
+                    source_type = "entrez"
+                else:
+                    source_type = "symbol"
+                logger.info(f"Auto-detected gene ID type: {source_type}")
+
+            # Map types to mygene fields
+            type_to_scope = {
+                "ensembl": "ensembl.gene",
+                "symbol": "symbol",
+                "entrez": "entrezgene",
+            }
+            type_to_field = {
+                "ensembl": "ensembl.gene",
+                "symbol": "symbol",
+                "entrez": "entrezgene",
+            }
+
+            scope = type_to_scope.get(source_type, source_type)
+            field = type_to_field.get(target_type, target_type)
+
+            # Lazy import mygene
+            try:
+                import mygene
+            except ImportError:
+                return (
+                    "Error: mygene package not installed. "
+                    "Install with: pip install mygene\n\n"
+                    "mygene is required for gene ID conversion between "
+                    "Ensembl, Symbol, and Entrez formats."
+                )
+
+            # Strip Ensembl version suffixes
+            query_ids = gene_ids
+            if source_type == "ensembl":
+                query_ids = [g.split(".")[0] for g in gene_ids]
+
+            # Query mygene
+            mg = mygene.MyGeneInfo()
+            results = mg.querymany(
+                query_ids,
+                scopes=scope,
+                fields=field,
+                species="human",
+                returnall=True,
+            )
+
+            # Build mapping
+            mapping = {}
+            for hit in results.get("out", []):
+                query = hit.get("query", "")
+                if "notfound" in hit and hit["notfound"]:
+                    continue
+                # Extract target field (handle nested fields like ensembl.gene)
+                value = hit
+                for part in field.split("."):
+                    if isinstance(value, dict):
+                        value = value.get(part, None)
+                    elif isinstance(value, list) and value:
+                        value = value[0]
+                        if isinstance(value, dict):
+                            value = value.get(part, None)
+                    else:
+                        value = None
+                        break
+                if value:
+                    mapping[query] = str(value)
+
+            # Store original IDs and apply new ones
+            adata.var["original_id"] = gene_ids
+            new_names = []
+            for i, gene in enumerate(gene_ids):
+                query = query_ids[i] if source_type == "ensembl" else gene
+                new_names.append(mapping.get(query, gene))
+
+            adata.var_names = pd.Index(new_names)
+            adata.var_names_make_unique()
+
+            n_converted = sum(1 for q, g in zip(query_ids, gene_ids) if mapping.get(q if source_type == "ensembl" else g))
+            n_unmapped = len(gene_ids) - n_converted
+            unmapped_genes = [g for i, g in enumerate(gene_ids) if (query_ids[i] if source_type == "ensembl" else g) not in mapping][:10]
+
+            # Store updated modality
+            data_manager.store_modality(
+                name=modality_name,
+                adata=adata,
+                parent_name=None,
+                step_summary=f"Converted gene IDs: {source_type} -> {target_type}, {n_converted}/{len(gene_ids)} mapped",
+            )
+
+            # Build IR
+            ir = AnalysisStep(
+                operation="convert_gene_identifiers",
+                tool_name="convert_gene_identifiers",
+                description=f"Converted gene IDs from {source_type} to {target_type}",
+                library="mygene",
+                code_template=(
+                    "import mygene\n"
+                    "mg = mygene.MyGeneInfo()\n"
+                    f'results = mg.querymany(adata.var_names, scopes="{scope}", '
+                    f'fields="{field}", species="human")'
+                ),
+                imports=["import mygene"],
+                parameters={
+                    "source_type": source_type,
+                    "target_type": target_type,
+                },
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="convert_gene_identifiers",
+                parameters={
+                    "modality_name": modality_name,
+                    "source_type": source_type,
+                    "target_type": target_type,
+                },
+                description=f"Converted gene IDs: {source_type} -> {target_type}",
+                ir=ir,
+            )
+
+            response = (
+                f"Gene ID conversion complete for '{modality_name}'!\n\n"
+                f"**Conversion Details:**\n"
+                f"- Source type: {source_type}\n"
+                f"- Target type: {target_type}\n"
+                f"- Genes converted: {n_converted:,}\n"
+                f"- Genes unmapped: {n_unmapped:,}\n"
+                f"- Original IDs saved in: adata.var['original_id']\n"
+            )
+
+            if unmapped_genes:
+                response += f"\n**Unmapped genes** (first 10): {', '.join(unmapped_genes)}\n"
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error converting gene IDs: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error converting gene identifiers: {e}")
+            return f"Error converting gene identifiers: {str(e)}"
+
+    @tool
+    def prepare_bulk_for_de(
+        modality_name: str,
+        group_key: str,
+        design_factors: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Validate that bulk data is ready for differential expression analysis before handoff.
+
+        Performs readiness checks without modifying data:
+        1. Raw counts exist (adata.layers['counts'] or integer-like X)
+        2. Group key exists with at least 2 groups
+        3. Minimum 2 samples per group (warns if <3)
+        4. Design factors exist in obs (if specified)
+
+        Args:
+            modality_name: Name of the bulk modality to validate
+            group_key: Column in adata.obs for group comparison (e.g., 'condition', 'treatment')
+            design_factors: Optional list of additional design factor columns (e.g., ['batch', 'sex'])
+
+        Returns:
+            Validation report with pass/fail for each check and overall readiness
+        """
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. "
+                    f"Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+            checks = []
+            all_pass = True
+            warnings = []
+
+            # Check 1: Raw counts exist
+            has_counts_layer = "counts" in adata.layers
+            if has_counts_layer:
+                checks.append(("Raw counts (layers['counts'])", "PASS"))
+            else:
+                # Check if X has integer-like values
+                X = adata.X
+                if hasattr(X, "toarray"):
+                    X = X.toarray()
+                sample = X.flatten()[:1000]
+                is_integer_like = np.allclose(sample, np.round(sample), atol=0.01)
+                if is_integer_like:
+                    checks.append(("Raw counts (integer-like X)", "PASS"))
+                else:
+                    checks.append(("Raw counts", "FAIL - no raw counts found"))
+                    all_pass = False
+
+            # Check 2: Group key exists with >= 2 groups
+            if group_key in adata.obs.columns:
+                groups = adata.obs[group_key].dropna().unique()
+                n_groups = len(groups)
+                if n_groups >= 2:
+                    checks.append((f"Group key '{group_key}' ({n_groups} groups)", "PASS"))
+                else:
+                    checks.append((f"Group key '{group_key}'", f"FAIL - only {n_groups} group(s)"))
+                    all_pass = False
+            else:
+                checks.append((f"Group key '{group_key}'", "FAIL - column not found in obs"))
+                all_pass = False
+                groups = []
+
+            # Check 3: Minimum samples per group
+            if group_key in adata.obs.columns and len(groups) >= 2:
+                group_sizes = adata.obs[group_key].value_counts()
+                min_size = group_sizes.min()
+                if min_size >= 3:
+                    checks.append((f"Sample count per group (min={min_size})", "PASS"))
+                elif min_size >= 2:
+                    checks.append((f"Sample count per group (min={min_size})", "WARN"))
+                    warnings.append(
+                        f"Group '{group_sizes.idxmin()}' has only {min_size} samples. "
+                        "DESeq2 recommends >= 3 for stable variance estimation."
+                    )
+                else:
+                    checks.append((f"Sample count per group (min={min_size})", "FAIL - need >= 2"))
+                    all_pass = False
+
+            # Check 4: Design factors exist
+            if design_factors:
+                missing_factors = [f for f in design_factors if f not in adata.obs.columns]
+                if not missing_factors:
+                    checks.append((f"Design factors ({', '.join(design_factors)})", "PASS"))
+                else:
+                    checks.append((f"Design factors", f"FAIL - missing: {', '.join(missing_factors)}"))
+                    all_pass = False
+
+            # Build IR (validation only, no data modification)
+            ir = AnalysisStep(
+                operation="prepare_bulk_for_de",
+                tool_name="prepare_bulk_for_de",
+                description=f"Validated DE readiness: {'READY' if all_pass else 'NOT READY'}",
+                library="lobster",
+                code_template="# Validation step - no code generated",
+                imports=[],
+                parameters={
+                    "group_key": group_key,
+                    "design_factors": design_factors,
+                },
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="prepare_bulk_for_de",
+                parameters={
+                    "modality_name": modality_name,
+                    "group_key": group_key,
+                    "design_factors": design_factors,
+                },
+                description=f"DE readiness validation: {'READY' if all_pass else 'NOT READY'}",
+                ir=ir,
+            )
+
+            # Format response
+            status = "READY" if all_pass else "NOT READY"
+            response = (
+                f"DE Readiness Validation for '{modality_name}': **{status}**\n\n"
+                f"**Validation Checks:**\n"
+            )
+            for check_name, result in checks:
+                marker = "[PASS]" if result == "PASS" else "[WARN]" if result == "WARN" else "[FAIL]"
+                response += f"  {marker} {check_name}: {result}\n"
+
+            if warnings:
+                response += "\n**Warnings:**\n"
+                for w in warnings:
+                    response += f"  - {w}\n"
+
+            if all_pass:
+                response += (
+                    "\n**Data is ready for DE analysis.** "
+                    "INVOKE handoff_to_de_analysis_expert to proceed."
+                )
+            else:
+                response += (
+                    "\n**Data is NOT ready for DE analysis.** "
+                    "Please fix the failing checks above before proceeding."
+                )
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error validating DE readiness: {e}")
+            return f"Error: {str(e)}"
+        except Exception as e:
+            logger.error(f"Error preparing bulk for DE: {e}")
+            return f"Error preparing bulk for DE: {str(e)}"
+
+    # =========================================================================
     # COLLECT ALL TOOLS
     # =========================================================================
 
@@ -1269,8 +2289,20 @@ Please check:
         find_marker_genes,
     ]
 
+    # Bulk RNA-seq tools
+    bulk_tools = [
+        import_bulk_counts,
+        merge_sample_metadata,
+        assess_bulk_sample_quality,
+        filter_bulk_genes,
+        normalize_bulk_counts,
+        detect_batch_effects,
+        convert_gene_identifiers,
+        prepare_bulk_for_de,
+    ]
+
     # Combine all direct tools
-    direct_tools = shared_tools + clustering_tools + sc_analysis_tools
+    direct_tools = shared_tools + clustering_tools + sc_analysis_tools + bulk_tools
 
     # Add delegation tools if provided (annotation_expert, de_analysis_expert)
     tools = direct_tools
