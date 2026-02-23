@@ -177,5 +177,5 @@ Parallel: (1 ‖ 2 ‖ 4 ‖ 6) → (3 ‖ 5) → 7
 | 3. Transcriptomics Children | 0/TBD | Complete    | 2026-02-23 |
 | 4. MS Proteomics Core | 0/3 | Planned | - |
 | 5. Proteomics Children & Affinity | 0/TBD | Complete    | 2026-02-23 |
-| 6. Metabolomics Package | 0/3 | Planned | - |
+| 6. Metabolomics Package | 0/3 | Complete    | 2026-02-23 |
 | 7. Cross-Cutting Infrastructure | 0/TBD | Not started | - |
