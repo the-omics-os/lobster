@@ -5,8 +5,8 @@ This sub-agent handles all cell type annotation tools for single-cell data.
 It is called by the parent transcriptomics_expert via delegation tools.
 
 Tools included:
-1. annotate_cell_types - Automated cell type annotation using marker databases
-2. manually_annotate_clusters_interactive - Rich terminal interface for manual annotation
+1. annotate_cell_types_auto - Automated cell type annotation using marker databases
+2. score_gene_set - Score cells for a user-provided gene list
 3. manually_annotate_clusters - Direct cluster-to-celltype assignment
 4. collapse_clusters_to_celltype - Merge multiple clusters into a single cell type
 5. mark_clusters_as_debris - Flag clusters as debris for QC
@@ -15,6 +15,10 @@ Tools included:
 8. apply_annotation_template - Apply tissue-specific annotation templates
 9. export_annotation_mapping - Export annotations for reuse
 10. import_annotation_mapping - Import and apply saved annotations
+11. annotate_cell_types_semantic - Semantic annotation via Cell Ontology (optional)
+
+Deprecated:
+- manually_annotate_clusters_interactive - DEPRECATED (cloud-incompatible)
 """
 
 # Agent configuration for entry point discovery (must be at top, before heavy imports)
@@ -140,7 +144,7 @@ def annotation_expert(
     # -------------------------
 
     @tool
-    def annotate_cell_types(
+    def annotate_cell_types_auto(
         modality_name: str,
         cluster_key: str,
         reference_markers: dict = None,
@@ -197,7 +201,7 @@ def annotation_expert(
 
             # Log the operation
             data_manager.log_tool_usage(
-                tool_name="annotate_cell_types",
+                tool_name="annotate_cell_types_auto",
                 parameters={
                     "modality_name": modality_name,
                     "cluster_key": cluster_key,
@@ -274,116 +278,24 @@ def annotation_expert(
         modality_name: str, cluster_key: str, save_result: bool = True
     ) -> str:
         """
-        Launch Rich terminal interface for manual cluster annotation with color synchronization.
+        DEPRECATED: Launch Rich terminal interface for manual cluster annotation.
 
-        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
+        This tool requires terminal access and is incompatible with cloud deployment.
+        Use manually_annotate_clusters for direct cluster annotation instead.
 
         Args:
             modality_name: Name of clustered single-cell modality
             cluster_key: Column containing cluster assignments (REQUIRED).
-                        Common values: 'leiden', 'louvain', 'seurat_clusters'.
             save_result: Whether to save annotated modality
         """
-        try:
-            # Validate modality exists
-            if modality_name not in data_manager.list_modalities():
-                raise ModalityNotFoundError(
-                    f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
-                )
-
-            # Get the modality
-            adata = data_manager.get_modality(modality_name)
-            logger.info(
-                f"Launching interactive annotation for '{modality_name}': {adata.shape[0]} cells x {adata.shape[1]} genes"
-            )
-
-            # Validate cluster column exists
-            if cluster_key not in adata.obs.columns:
-                available_cols = list(adata.obs.columns)
-                return (
-                    f"Cluster column '{cluster_key}' not found.\n\n"
-                    f"Available columns: {available_cols}\n\n"
-                    f"Use check_data_status() to identify the correct cluster column."
-                )
-
-            # Initialize annotation session
-            annotation_state = manual_annotation_service.initialize_annotation_session(
-                adata=adata, cluster_key=cluster_key
-            )
-
-            # Launch Rich terminal interface
-            cell_type_mapping = manual_annotation_service.rich_annotation_interface()
-
-            # Apply annotations to data
-            adata_annotated = manual_annotation_service.apply_annotations_to_adata(
-                adata=adata,
-                cluster_key=cluster_key,
-                cell_type_column="cell_type_manual",
-            )
-
-            # Save as new modality
-            annotated_modality_name = f"{modality_name}_manually_annotated"
-            data_manager.store_modality(
-                name=annotated_modality_name,
-                adata=adata_annotated,
-                parent_name=modality_name,
-                step_summary="Manually annotated cell types",
-            )
-
-            # Save to file if requested
-            if save_result:
-                save_path = f"{modality_name}_manually_annotated.h5ad"
-                data_manager.save_modality(annotated_modality_name, save_path)
-
-            # Log the operation
-            data_manager.log_tool_usage(
-                tool_name="manually_annotate_clusters_interactive",
-                parameters={
-                    "modality_name": modality_name,
-                    "cluster_key": cluster_key,
-                    "n_annotations": len(cell_type_mapping),
-                },
-                description=f"Manual annotation completed for {len(cell_type_mapping)} clusters",
-            )
-
-            # Validate results
-            validation = manual_annotation_service.validate_annotation_coverage(
-                adata_annotated, "cell_type_manual"
-            )
-
-            # Format response
-            response = f"""Manual cluster annotation completed for '{modality_name}'!
-
-**Interactive Annotation Results:**
-- Total clusters: {len(annotation_state.clusters)}
-- Manually annotated: {len(cell_type_mapping)}
-- Marked as debris: {len(annotation_state.debris_clusters)}
-- Coverage: {validation["coverage_percentage"]:.1f}%
-
-**Color-Synchronized Interface:**
-- Rich terminal colors matched UMAP plot colors
-- Visual cluster identification completed
-- Expert-guided annotation workflow
-
-**Cell Type Distribution:**"""
-
-            for cell_type, count in list(validation["cell_type_counts"].items())[:8]:
-                response += f"\n- {cell_type}: {count} cells"
-
-            response += f"\n\n**New modality created**: '{annotated_modality_name}'"
-            response += "\n**Manual annotations in**: adata.obs['cell_type_manual']"
-
-            if save_result:
-                response += f"\n**Saved to**: {save_path}"
-
-            response += "\n\nManual annotation complete! Use for downstream analysis or pseudobulk aggregation."
-
-            analysis_results["details"]["manual_annotation"] = response
-            return response
-
-        except Exception as e:
-            logger.error(f"Error in interactive manual annotation: {e}")
-            return f"Error in manual cluster annotation: {str(e)}"
+        logger.warning(
+            "manually_annotate_clusters_interactive is deprecated (cloud-incompatible). "
+            "Use manually_annotate_clusters instead."
+        )
+        return (
+            "DEPRECATED: This tool requires terminal access and is incompatible with "
+            "cloud deployment. Use manually_annotate_clusters for direct cluster annotation."
+        )
 
     @tool
     def manually_annotate_clusters(
@@ -1267,6 +1179,192 @@ Use this mapping to apply consistent annotations to similar datasets."""
             return f"Error importing annotation mapping: {str(e)}"
 
     # -------------------------
+    # GENE SET SCORING
+    # -------------------------
+
+    @tool
+    def score_gene_set(
+        modality_name: str,
+        gene_list: list,
+        score_name: str = "gene_set_score",
+        ctrl_size: int = 50,
+        use_raw: bool = False,
+    ) -> str:
+        """
+        Score cells for expression of a user-provided gene set.
+
+        Uses scanpy's score_genes to compute per-cell gene set activity scores,
+        stored in adata.obs[score_name]. Useful for validating cell type annotations,
+        identifying pathway activity, or scoring custom gene signatures.
+
+        Args:
+            modality_name: Name of the single-cell modality
+            gene_list: List of gene names to score (e.g., ["CD3D", "CD3E", "CD4"])
+            score_name: Name for the score column in adata.obs (default: "gene_set_score")
+            ctrl_size: Number of reference genes for background (default: 50)
+            use_raw: Whether to use raw counts for scoring (default: False)
+        """
+        import scanpy as sc
+
+        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+
+        try:
+            # Validate modality exists
+            if modality_name not in data_manager.list_modalities():
+                raise ModalityNotFoundError(
+                    f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
+                )
+
+            adata = data_manager.get_modality(modality_name)
+
+            # Filter gene_list to genes present in the data
+            all_genes = set(adata.var_names)
+            valid_genes = [g for g in gene_list if g in all_genes]
+            missing_genes = [g for g in gene_list if g not in all_genes]
+
+            if not valid_genes:
+                return (
+                    f"Error: None of the provided genes were found in the data.\n"
+                    f"Missing genes: {missing_genes[:20]}\n"
+                    f"Check gene naming convention (e.g., symbols vs Ensembl IDs)."
+                )
+
+            # Score the gene set
+            sc.tl.score_genes(
+                adata,
+                gene_list=valid_genes,
+                score_name=score_name,
+                ctrl_size=ctrl_size,
+                use_raw=use_raw,
+            )
+
+            # Compute score statistics
+            scores = adata.obs[score_name]
+            stats = {
+                "n_genes_scored": len(valid_genes),
+                "n_genes_missing": len(missing_genes),
+                "score_mean": float(scores.mean()),
+                "score_min": float(scores.min()),
+                "score_max": float(scores.max()),
+                "score_std": float(scores.std()),
+            }
+
+            # Store result via store_modality
+            scored_modality_name = f"{modality_name}_scored"
+            data_manager.store_modality(
+                name=scored_modality_name,
+                adata=adata,
+                parent_name=modality_name,
+                step_summary=f"Scored {len(valid_genes)} genes as '{score_name}'",
+            )
+
+            # Build parameters dict
+            params = {
+                "modality_name": modality_name,
+                "gene_list": valid_genes,
+                "score_name": score_name,
+                "ctrl_size": ctrl_size,
+                "use_raw": use_raw,
+            }
+
+            # Create AnalysisStep IR
+            ir = AnalysisStep(
+                operation="scanpy.tl.score_genes",
+                tool_name="score_gene_set",
+                description=(
+                    f"Scored {len(valid_genes)} genes as '{score_name}' "
+                    f"(mean={stats['score_mean']:.4f})"
+                ),
+                library="scanpy",
+                code_template=(
+                    "import scanpy as sc\n"
+                    "sc.tl.score_genes(\n"
+                    "    adata,\n"
+                    '    gene_list={{ gene_list }},\n'
+                    '    score_name="{{ score_name }}",\n'
+                    "    ctrl_size={{ ctrl_size }},\n"
+                    "    use_raw={{ use_raw }},\n"
+                    ")"
+                ),
+                imports=["import scanpy as sc"],
+                parameters=params,
+                parameter_schema={
+                    "modality_name": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value="",
+                        required=True,
+                        description="Name of single-cell modality",
+                    ),
+                    "gene_list": ParameterSpec(
+                        param_type="list",
+                        papermill_injectable=True,
+                        default_value=[],
+                        required=True,
+                        description="List of gene names to score",
+                    ),
+                    "score_name": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value="gene_set_score",
+                        required=False,
+                        description="Name for score column in adata.obs",
+                    ),
+                    "ctrl_size": ParameterSpec(
+                        param_type="int",
+                        papermill_injectable=True,
+                        default_value=50,
+                        required=False,
+                        description="Number of reference genes for background",
+                    ),
+                    "use_raw": ParameterSpec(
+                        param_type="bool",
+                        papermill_injectable=True,
+                        default_value=False,
+                        required=False,
+                        description="Whether to use raw counts",
+                    ),
+                },
+                input_entities=["adata"],
+                output_entities=["adata_scored"],
+            )
+
+            # Log with IR
+            data_manager.log_tool_usage("score_gene_set", params, stats, ir=ir)
+
+            # Format response
+            response = (
+                f"Successfully scored gene set in '{modality_name}'!\n\n"
+                f"**Gene Set Scoring Results:**\n"
+                f"- Genes scored: {len(valid_genes)} / {len(gene_list)}\n"
+                f"- Score column: adata.obs['{score_name}']\n\n"
+                f"**Score Statistics:**\n"
+                f"- Mean: {stats['score_mean']:.4f}\n"
+                f"- Min: {stats['score_min']:.4f}\n"
+                f"- Max: {stats['score_max']:.4f}\n"
+                f"- Std: {stats['score_std']:.4f}\n"
+            )
+
+            if missing_genes:
+                response += (
+                    f"\n**Missing genes** ({len(missing_genes)}): "
+                    f"{', '.join(missing_genes[:10])}"
+                )
+                if len(missing_genes) > 10:
+                    response += f" ... and {len(missing_genes) - 10} more"
+
+            response += f"\n\n**New modality created**: '{scored_modality_name}'"
+
+            return response
+
+        except ModalityNotFoundError as e:
+            logger.error(f"Error in gene set scoring: {e}")
+            return f"Error scoring gene set: {str(e)}"
+        except Exception as e:
+            logger.error(f"Unexpected error in gene set scoring: {e}")
+            return f"Unexpected error in gene set scoring: {str(e)}"
+
+    # -------------------------
     # SEMANTIC ANNOTATION (optional - requires vector-search deps)
     # -------------------------
 
@@ -1571,9 +1669,10 @@ Use this mapping to apply consistent annotations to similar datasets."""
     # -------------------------
     base_tools = [
         # Automated annotation
-        annotate_cell_types,
+        annotate_cell_types_auto,
+        # Gene set scoring
+        score_gene_set,
         # Manual annotation
-        manually_annotate_clusters_interactive,
         manually_annotate_clusters,
         collapse_clusters_to_celltype,
         mark_clusters_as_debris,
