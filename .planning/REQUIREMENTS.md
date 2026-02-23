@@ -93,9 +93,9 @@
 
 ### Biomarker Discovery Child (biomarker_discovery_expert)
 
-- [ ] **BIO-01**: Add `select_biomarker_panel` tool — multi-method feature selection (LASSO, stability, Boruta)
-- [ ] **BIO-02**: Add `evaluate_biomarker_panel` tool — nested CV model evaluation with AUC
-- [ ] **BIO-03**: Add `extract_hub_proteins` tool — post-WGCNA hub protein extraction
+- [x] **BIO-01**: Add `select_biomarker_panel` tool — multi-method feature selection (LASSO, stability, Boruta)
+- [x] **BIO-02**: Add `evaluate_biomarker_panel` tool — nested CV model evaluation with AUC
+- [x] **BIO-03**: Add `extract_hub_proteins` tool — post-WGCNA hub protein extraction
 
 ### Affinity Proteomics (on proteomics_expert parent)
 
@@ -139,7 +139,7 @@
 - [x] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
 - [x] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
 - [x] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
-- [ ] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
+- [x] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
 - [ ] **DOC-06**: Create metabolomics_expert prompt
 - [ ] **DOC-07**: Update skills/lobster-dev references for new architecture
 
@@ -247,9 +247,9 @@
 | PDE-03 | Phase 5 | Pending |
 | PDE-04 | Phase 5 | Pending |
 | PDE-05 | Phase 5 | Pending |
-| BIO-01 | Phase 5 | Pending |
-| BIO-02 | Phase 5 | Pending |
-| BIO-03 | Phase 5 | Pending |
+| BIO-01 | Phase 5 | Complete |
+| BIO-02 | Phase 5 | Complete |
+| BIO-03 | Phase 5 | Complete |
 | AFP-01 | Phase 5 | Pending |
 | AFP-02 | Phase 5 | Pending |
 | AFP-03 | Phase 5 | Pending |
@@ -277,7 +277,7 @@
 | DOC-02 | Phase 2 | Complete |
 | DOC-03 | Phase 4 | Complete |
 | DOC-04 | Phase 3 | Complete |
-| DOC-05 | Phase 5 | Pending |
+| DOC-05 | Phase 5 | Complete |
 | DOC-06 | Phase 6 | Pending |
 | DOC-07 | Phase 7 | Pending |
 | INF-01 | Phase 7 | Pending |
