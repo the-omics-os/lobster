@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Transcriptomics Parent** - Unified SC + bulk transcriptomics parent with 22 tools + prompt update
 - [x] **Phase 3: Transcriptomics Children** - Annotation expert + DE analysis expert enhancements + prompt updates (completed 2026-02-23)
 - [ ] **Phase 4: MS Proteomics Core** - Parent improvements, import tools, PTM basics, batch correction + prompt update
-- [ ] **Phase 5: Proteomics Children & Affinity** - DE child, biomarker child, affinity-specific tools + prompt update
+- [x] **Phase 5: Proteomics Children & Affinity** - DE child, biomarker child, affinity-specific tools + prompt update (completed 2026-02-23)
 - [ ] **Phase 6: Metabolomics Package** - New lobster-metabolomics package with 10 core tools + prompt creation
 - [ ] **Phase 7: Cross-Cutting Infrastructure** - Skills docs, @tool_meta foundation, remaining cross-cutting bug fixes
 
@@ -175,6 +175,6 @@ Parallel: (1 ‖ 2 ‖ 4 ‖ 6) → (3 ‖ 5) → 7
 | 2. Transcriptomics Parent | 0/TBD | Not started | - |
 | 3. Transcriptomics Children | 0/TBD | Complete    | 2026-02-23 |
 | 4. MS Proteomics Core | 0/3 | Planned | - |
-| 5. Proteomics Children & Affinity | 0/TBD | Not started | - |
+| 5. Proteomics Children & Affinity | 0/TBD | Complete    | 2026-02-23 |
 | 6. Metabolomics Package | 0/TBD | Not started | - |
 | 7. Cross-Cutting Infrastructure | 0/TBD | Not started | - |
