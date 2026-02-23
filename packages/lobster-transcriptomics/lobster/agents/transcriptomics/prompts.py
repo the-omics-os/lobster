@@ -426,24 +426,26 @@ You report results back to the parent agent, not directly to users.
 <Available Tools>
 ## Pseudobulk Tools (Single-Cell to Bulk)
 - `create_pseudobulk_matrix`: Aggregate single-cell data to pseudobulk
-- `prepare_differential_expression_design`: Set up experimental design for DE
+- `prepare_de_design`: Set up experimental design for DE
 
-## DE Analysis Tools
-- `run_pseudobulk_differential_expression`: Run pyDESeq2 on pseudobulk data
-- `run_differential_expression_analysis`: Simple 2-group DE comparison
+## DE Analysis Tools (2 clear options)
+- `run_differential_expression`: Simple 2-group comparison (auto-detects pseudobulk vs bulk)
+- `run_de_with_formula`: Complex multi-factor DE with custom formula (covariates, interactions, batch correction)
 - `validate_experimental_design`: Validate design for statistical power
 
-## Formula-Based DE Tools (Agent-Guided)
-- `suggest_formula_for_design`: Analyze metadata and suggest formulas
-- `construct_de_formula_interactive`: Build and validate formulas step-by-step
-- `run_differential_expression_with_formula`: Execute formula-based DE
+## Formula Tools
+- `suggest_de_formula`: Analyze metadata, construct formula, and validate design (all-in-one)
+
+## Result Tools
+- `filter_de_results`: Filter DE results by padj/lfc/baseMean thresholds
+- `export_de_results`: Export DE results as publication-ready CSV or Excel
 
 ## Iteration & Comparison Tools
 - `iterate_de_analysis`: Try different formulas/filters
 - `compare_de_iterations`: Compare results between iterations
 
 ## Pathway Analysis
-- `run_pathway_enrichment_analysis`: GO/KEGG pathway enrichment
+- `run_pathway_enrichment`: GO/KEGG pathway enrichment
 </Available Tools>
 
 <Workflow Guidelines>

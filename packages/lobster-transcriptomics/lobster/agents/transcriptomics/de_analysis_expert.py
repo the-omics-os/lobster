@@ -333,7 +333,7 @@ def de_analysis_expert(
             if save_result:
                 response += f"\n**Saved to**: {save_path}"
 
-            response += "\n\nNext step: Use 'prepare_differential_expression_design' to set up statistical design for DE analysis."
+            response += "\n\nNext step: Use 'prepare_de_design' to set up statistical design for DE analysis."
 
             analysis_results["details"]["pseudobulk_aggregation"] = response
             return response
@@ -351,7 +351,7 @@ def de_analysis_expert(
             return f"Unexpected error: {str(e)}"
 
     @tool
-    def prepare_differential_expression_design(
+    def prepare_de_design(
         modality_name: str,
         formula: str,
         contrast: List[str],
@@ -426,7 +426,7 @@ def de_analysis_expert(
 
             # Log the operation
             data_manager.log_tool_usage(
-                tool_name="prepare_differential_expression_design",
+                tool_name="prepare_de_design",
                 parameters={
                     "modality_name": modality_name,
                     "formula": formula,
@@ -468,7 +468,7 @@ def de_analysis_expert(
             response += (
                 "\n\n**Design information stored in**: adata.uns['formula_design']"
             )
-            response += "\n\nNext step: Run 'run_pseudobulk_differential_expression' to perform pyDESeq2 analysis."
+            response += "\n\nNext step: Run 'run_differential_expression' to perform pyDESeq2 analysis."
 
             analysis_results["details"]["de_design"] = response
             return response
@@ -486,26 +486,43 @@ def de_analysis_expert(
             return f"Unexpected error: {str(e)}"
 
     @tool
-    def run_pseudobulk_differential_expression(
+    def run_differential_expression(
         modality_name: str,
+        groupby: str,
+        group1: str,
+        group2: str,
+        method: str = "deseq2",
         alpha: float = 0.05,
         shrink_lfc: bool = True,
-        n_cpus: int = 1,
         save_result: bool = True,
     ) -> str:
         """
-        Run pyDESeq2 differential expression analysis on pseudobulk data.
+        Run differential expression analysis (simple 2-group comparison).
 
-        CRITICAL: Uses raw counts from adata.raw.X for accurate DESeq2 results.
+        Works for both pseudobulk (from single-cell) and direct bulk RNA-seq data.
+        Auto-detects whether the data is pseudobulk (via adata.uns['pseudobulk_design']
+        or adata.uns['formula_design']) and routes to the appropriate analysis method.
+
+        CRITICAL: Uses raw counts from adata.raw.X for DESeq2 accuracy.
+        Validates minimum replicate requirements (3+ per group).
+
+        For complex multi-factor designs with covariates, use run_de_with_formula instead.
 
         Args:
-            modality_name: Name of pseudobulk modality with design prepared
-            alpha: Significance threshold for multiple testing
-            shrink_lfc: Whether to apply log fold change shrinkage
-            n_cpus: Number of CPUs for parallel processing
-            save_result: Whether to save results
+            modality_name: Name of the bulk RNA-seq or pseudobulk modality
+            groupby: Column name for grouping (e.g., 'condition', 'treatment')
+            group1: First group for comparison (e.g., 'control')
+            group2: Second group for comparison (e.g., 'treatment')
+            method: Analysis method ('deseq2', 'wilcoxon', 't_test')
+            alpha: Significance threshold for adjusted p-values
+            shrink_lfc: Whether to apply log fold change shrinkage (DESeq2 only)
+            save_result: Whether to save the results
         """
         try:
+            # Ensure group IDs are strings (cluster IDs from Leiden are often integers)
+            group1 = str(group1)
+            group2 = str(group2)
+
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
                 raise ModalityNotFoundError(
@@ -513,127 +530,261 @@ def de_analysis_expert(
                     f"Available: {data_manager.list_modalities()}"
                 )
 
-            # Get the pseudobulk modality
+            # Get the modality
             adata = data_manager.get_modality(modality_name)
             logger.info(
-                f"Running pyDESeq2 DE analysis on '{modality_name}': "
+                f"Running DE analysis on '{modality_name}': "
                 f"{adata.n_obs} samples x {adata.n_vars} genes"
             )
 
-            # Validate design exists
-            if "formula_design" not in adata.uns:
-                raise PseudobulkError(
-                    "No design matrix prepared. Run 'prepare_differential_expression_design' first."
-                )
+            # Validate groupby column exists
+            if groupby not in adata.obs.columns:
+                available_columns = [
+                    col
+                    for col in adata.obs.columns
+                    if col.lower() in ["condition", "treatment", "group", "batch"]
+                ]
+                return f"Grouping column '{groupby}' not found. Available experimental design columns: {available_columns}"
 
-            design_info = adata.uns["formula_design"]
-            formula = design_info["formula"]
-            contrast = design_info["contrast"]
+            # Check if groups exist - match type of column values
+            available_groups = list(adata.obs[groupby].unique())
+            available_groups_str = [str(g) for g in available_groups]
 
-            # CRITICAL: Extract raw counts for DESeq2
-            count_matrix, used_raw = _extract_raw_counts(adata)
+            if group1 not in available_groups and group1 in available_groups_str:
+                adata.obs[groupby] = adata.obs[groupby].astype(str)
+                available_groups = list(adata.obs[groupby].unique())
+            elif group1 not in available_groups:
+                return f"Group '{group1}' not found in column '{groupby}'. Available groups: {available_groups}"
+            if group2 not in available_groups:
+                return f"Group '{group2}' not found in column '{groupby}'. Available groups: {available_groups}"
 
-            raw_warning = ""
-            if not used_raw:
-                raw_warning = (
-                    "\n\n**WARNING**: Using adata.X instead of adata.raw.X. "
-                    "DESeq2 requires raw counts for accurate results. "
-                    "If your data is normalized, results may be inaccurate."
-                )
-
-            # Run pyDESeq2 analysis using bulk RNA-seq service
-            results_df, analysis_stats = (
-                bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
-                    pseudobulk_adata=adata,
-                    formula=formula,
-                    contrast=contrast,
-                    alpha=alpha,
-                    shrink_lfc=shrink_lfc,
-                    n_cpus=n_cpus,
-                )
+            # Validate replicate counts
+            replicate_validation = _validate_replicate_counts(
+                adata.obs, groupby, min_replicates=3
             )
 
-            # Store results in modality
-            contrast_name = f"{contrast[0]}_{contrast[1]}_vs_{contrast[2]}"
-            adata.uns[f"de_results_{contrast_name}"] = {
-                "results_df": results_df,
-                "analysis_stats": analysis_stats,
-                "parameters": {
-                    "alpha": alpha,
-                    "shrink_lfc": shrink_lfc,
-                    "formula": formula,
-                    "contrast": contrast,
-                    "used_raw_counts": used_raw,
-                },
-            }
+            if not replicate_validation["valid"]:
+                error_msg = "; ".join(replicate_validation["errors"])
+                return f"**Insufficient replicates**: {error_msg}\n\nMinimum 3 replicates per group required for stable variance estimation."
 
-            # Update modality with results
-            data_manager.store_modality(
-                name=modality_name,
-                adata=adata,
-                step_summary=f"DE analysis complete: {contrast_name}",
+            # Get group counts for response
+            group1_count = (adata.obs[groupby] == group1).sum()
+            group2_count = (adata.obs[groupby] == group2).sum()
+
+            # Auto-detect pseudobulk vs direct bulk
+            is_pseudobulk = (
+                "pseudobulk_design" in adata.uns
+                or "is_pseudobulk" in adata.uns
+                or "formula_design" in adata.uns
             )
 
-            # Save results if requested
-            if save_result:
-                results_path = f"{modality_name}_de_results.csv"
-                results_df.to_csv(results_path)
+            if is_pseudobulk and method == "deseq2":
+                # Pseudobulk path: use pyDESeq2 via formula design
+                formula = f"~{groupby}"
+                contrast = [groupby, group2, group1]
 
-                save_path = f"{modality_name}_with_de_results.h5ad"
-                data_manager.save_modality(modality_name, save_path)
+                # CRITICAL: Extract raw counts for DESeq2
+                count_matrix, used_raw = _extract_raw_counts(adata)
 
-            # Log the operation
-            data_manager.log_tool_usage(
-                tool_name="run_pseudobulk_differential_expression",
-                parameters={
-                    "modality_name": modality_name,
-                    "formula": formula,
-                    "contrast": contrast,
-                    "alpha": alpha,
-                    "shrink_lfc": shrink_lfc,
-                },
-                description=f"pyDESeq2 analysis: {analysis_stats['n_significant_genes']} significant genes found",
-            )
+                raw_warning = ""
+                if not used_raw:
+                    raw_warning = (
+                        "\n\n**WARNING**: Using adata.X instead of adata.raw.X. "
+                        "DESeq2 requires raw counts for accurate results."
+                    )
 
-            # Format response
-            response = f"""pyDESeq2 Differential Expression Analysis Complete for '{modality_name}'!
+                results_df, analysis_stats = (
+                    bulk_rnaseq_service.run_pydeseq2_from_pseudobulk(
+                        pseudobulk_adata=adata,
+                        formula=formula,
+                        contrast=contrast,
+                        alpha=alpha,
+                        shrink_lfc=shrink_lfc,
+                        n_cpus=1,
+                    )
+                )
 
-**pyDESeq2 Analysis Results:**
-- Contrast: {contrast[1]} vs {contrast[2]} in {contrast[0]}
+                # Store results
+                contrast_name = f"{groupby}_{group2}_vs_{group1}"
+                adata.uns[f"de_results_{contrast_name}"] = {
+                    "results_df": results_df,
+                    "analysis_stats": analysis_stats,
+                    "parameters": {
+                        "alpha": alpha,
+                        "shrink_lfc": shrink_lfc,
+                        "formula": formula,
+                        "contrast": contrast,
+                        "used_raw_counts": used_raw,
+                        "method": "pydeseq2",
+                    },
+                }
+
+                data_manager.store_modality(
+                    name=modality_name,
+                    adata=adata,
+                    step_summary=f"DE analysis complete: {contrast_name}",
+                )
+
+                if save_result:
+                    results_path = f"{modality_name}_de_results.csv"
+                    results_df.to_csv(results_path)
+                    save_path = f"{modality_name}_with_de_results.h5ad"
+                    data_manager.save_modality(modality_name, save_path)
+
+                # Create IR for provenance
+                from lobster.core.provenance import AnalysisStep
+
+                ir = AnalysisStep(
+                    operation="pydeseq2.differential_expression",
+                    tool_name="run_differential_expression",
+                    description=f"pyDESeq2 DE: {group2} vs {group1} in {groupby}",
+                    library="pydeseq2",
+                    parameters={
+                        "modality_name": modality_name,
+                        "groupby": groupby,
+                        "group1": group1,
+                        "group2": group2,
+                        "alpha": alpha,
+                        "shrink_lfc": shrink_lfc,
+                    },
+                    code_template=(
+                        "from pydeseq2.dds import DeseqDataSet\n"
+                        "from pydeseq2.ds import DeseqStats\n"
+                        "dds = DeseqDataSet(adata=adata, design_factors='{{ groupby }}')\n"
+                        "dds.deseq2()\n"
+                        "stat_res = DeseqStats(dds, contrast=['{{ groupby }}', '{{ group2 }}', '{{ group1 }}'])\n"
+                        "stat_res.summary()\n"
+                        "results_df = stat_res.results_df"
+                    ),
+                    imports=["pydeseq2"],
+                )
+
+                data_manager.log_tool_usage(
+                    tool_name="run_differential_expression",
+                    parameters={
+                        "modality_name": modality_name,
+                        "groupby": groupby,
+                        "group1": group1,
+                        "group2": group2,
+                        "method": "pydeseq2",
+                        "alpha": alpha,
+                        "shrink_lfc": shrink_lfc,
+                    },
+                    description=f"pyDESeq2 analysis: {analysis_stats['n_significant_genes']} significant genes found",
+                    ir=ir,
+                )
+
+                response = f"""## Differential Expression Analysis Complete for '{modality_name}'
+
+**pyDESeq2 Analysis Results (pseudobulk detected):**
+- Contrast: {group2} vs {group1} in {groupby}
 - Genes tested: {analysis_stats["n_genes_tested"]:,}
 - Significant genes: {analysis_stats["n_significant_genes"]:,} (alpha={alpha})
 - Upregulated: {analysis_stats["n_upregulated"]:,}
 - Downregulated: {analysis_stats["n_downregulated"]:,}
 
 **Top Differentially Expressed Genes:**
-**Upregulated ({contrast[1]} > {contrast[2]}):**
+**Upregulated ({group2} > {group1}):**
 {chr(10).join([f"- {gene}" for gene in analysis_stats["top_upregulated"][:5]])}
 
-**Downregulated ({contrast[1]} < {contrast[2]}):**
+**Downregulated ({group2} < {group1}):**
 {chr(10).join([f"- {gene}" for gene in analysis_stats["top_downregulated"][:5]])}
 
 **Analysis Parameters:**
-- Formula: {formula}
+- Method: pyDESeq2 (pseudobulk)
 - LFC shrinkage: {"Yes" if shrink_lfc else "No"}
-- Parallel CPUs: {n_cpus}
 - Significance threshold: {alpha}
-- Used raw counts: {"Yes" if used_raw else "No (WARNING)"}
+- Used raw counts: {"Yes" if used_raw else "No (WARNING)"}{raw_warning}
 
-**Results stored in**: adata.uns['de_results_{contrast_name}']{raw_warning}"""
+**Results stored in**: adata.uns['de_results_{contrast_name}']"""
 
-            if save_result:
-                response += f"\n**Saved to**: {results_path} & {save_path}"
+                if save_result:
+                    response += f"\n**Saved to**: {results_path} & {save_path}"
 
-            response += "\n\nNext steps: Visualize results with volcano plots or run pathway enrichment analysis."
+            else:
+                # Direct bulk / simple 2-group DE path
+                method_map = {"deseq2": "deseq2_like", "wilcoxon": "wilcoxon", "t_test": "t_test"}
+                internal_method = method_map.get(method, method)
+
+                adata_de, de_stats, ir = (
+                    bulk_rnaseq_service.run_differential_expression_analysis(
+                        adata=adata,
+                        groupby=groupby,
+                        group1=group1,
+                        group2=group2,
+                        method=internal_method,
+                    )
+                )
+
+                # Save as new modality
+                de_modality_name = f"{modality_name}_de_{group1}_vs_{group2}"
+                data_manager.store_modality(
+                    name=de_modality_name,
+                    adata=adata_de,
+                    parent_name=modality_name,
+                    step_summary=f"DE analysis: {group1} vs {group2}",
+                )
+
+                if save_result:
+                    save_path = f"{modality_name}_de_{group1}_vs_{group2}.h5ad"
+                    data_manager.save_modality(de_modality_name, save_path)
+
+                data_manager.log_tool_usage(
+                    tool_name="run_differential_expression",
+                    parameters={
+                        "modality_name": modality_name,
+                        "groupby": groupby,
+                        "group1": group1,
+                        "group2": group2,
+                        "method": internal_method,
+                    },
+                    description=f"DE analysis: {de_stats['n_significant_genes']} significant genes found",
+                    ir=ir,
+                )
+
+                analysis_stats = de_stats
+
+                response = f"""## Differential Expression Analysis Complete for '{modality_name}'
+
+**Analysis Results:**
+- Comparison: {group1} ({group1_count} samples) vs {group2} ({group2_count} samples)
+- Method: {de_stats['method']}
+- Genes tested: {de_stats['n_genes_tested']:,}
+- Significant genes (padj < {alpha}): {de_stats['n_significant_genes']:,}
+
+**Differential Expression Summary:**
+- Upregulated in {group2}: {de_stats['n_upregulated']} genes
+- Downregulated in {group2}: {de_stats['n_downregulated']} genes
+
+**Top Upregulated Genes:**
+{chr(10).join([f"- {gene}" for gene in de_stats["top_upregulated"][:5]])}
+
+**Top Downregulated Genes:**
+{chr(10).join([f"- {gene}" for gene in de_stats["top_downregulated"][:5]])}
+
+**New modality created**: '{de_modality_name}'"""
+
+                if save_result:
+                    response += f"\n**Saved to**: {save_path}"
+
+                response += f"\n**Access detailed results**: adata.uns['{de_stats['de_results_key']}']\n"
+
+            # Add replicate warnings if any
+            if replicate_validation["warnings"]:
+                response += "\n\n**Statistical Power Warnings:**\n"
+                for warning in replicate_validation["warnings"]:
+                    response += f"- {warning}\n"
+
+            response += "\n\nNext steps: Visualize with volcano plots, use filter_de_results to filter, or run_pathway_enrichment for pathway analysis."
 
             analysis_results["details"]["differential_expression"] = response
             return response
 
-        except (PseudobulkError, ModalityNotFoundError) as e:
-            logger.error(f"Error in pseudobulk DE analysis: {e}")
-            return f"Error in pseudobulk differential expression analysis: {str(e)}"
+        except (BulkRNASeqError, PseudobulkError, ModalityNotFoundError) as e:
+            logger.error(f"Error in differential expression analysis: {e}")
+            return f"Error in differential expression analysis: {str(e)}"
         except Exception as e:
-            logger.error(f"Unexpected error in pseudobulk DE analysis: {e}")
+            logger.error(f"Unexpected error in differential expression: {e}")
             return f"Unexpected error: {str(e)}"
 
     @tool
@@ -734,33 +885,36 @@ def de_analysis_expert(
             return f"Error: {str(e)}"
 
     @tool
-    def suggest_formula_for_design(
-        pseudobulk_modality: str,
-        analysis_goal: Optional[str] = None,
-        show_metadata_summary: bool = True,
+    def suggest_de_formula(
+        modality_name: str,
+        groupby: str = None,
+        covariates: Optional[List[str]] = None,
+        include_interaction: bool = False,
     ) -> str:
         """
-        Analyze metadata and suggest appropriate formulas for differential expression analysis.
+        Analyze metadata, suggest DE formula, construct it, and validate the design.
 
-        The agent examines the pseudobulk metadata structure and suggests 2-3 formula options
-        based on available variables, explaining each in plain language with pros/cons.
+        Combines metadata analysis, formula construction, and validation in one tool.
+        Examines the data to suggest appropriate formulas, then builds and validates
+        the chosen formula. Returns ready-to-use formula for run_de_with_formula.
 
         Args:
-            pseudobulk_modality: Name of pseudobulk modality to analyze
-            analysis_goal: Optional description of analysis goals
-            show_metadata_summary: Whether to show detailed metadata summary
+            modality_name: Name of pseudobulk or bulk RNA-seq modality
+            groupby: Main variable of interest (auto-detected if None)
+            covariates: Optional list of covariate variables to include
+            include_interaction: Whether to include interaction terms
         """
         try:
             # Validate modality exists
-            if pseudobulk_modality not in data_manager.list_modalities():
-                return f"Modality '{pseudobulk_modality}' not found. Available: {data_manager.list_modalities()}"
+            if modality_name not in data_manager.list_modalities():
+                return f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
 
-            # Get the pseudobulk data
-            adata = data_manager.get_modality(pseudobulk_modality)
+            # Get the data
+            adata = data_manager.get_modality(modality_name)
             metadata = adata.obs
             n_samples = len(metadata)
 
-            # Identify variable types and characteristics
+            # Step 1: Analyze metadata columns
             variable_analysis = {}
             for col in metadata.columns:
                 if col.startswith("_") or col in ["n_cells", "total_counts"]:
@@ -769,12 +923,11 @@ def de_analysis_expert(
                 series = metadata[col]
                 if pd.api.types.is_numeric_dtype(series):
                     var_type = "continuous"
-                    unique_vals = len(series.unique())
-                    missing = series.isna().sum()
                 else:
                     var_type = "categorical"
-                    unique_vals = len(series.unique())
-                    missing = series.isna().sum()
+
+                unique_vals = len(series.unique())
+                missing = series.isna().sum()
 
                 variable_analysis[col] = {
                     "type": var_type,
@@ -783,8 +936,6 @@ def de_analysis_expert(
                     "sample_values": list(series.unique())[:5],
                 }
 
-            # Generate formula suggestions
-            suggestions = []
             categorical_vars = [
                 col
                 for col, info in variable_analysis.items()
@@ -799,151 +950,230 @@ def de_analysis_expert(
                 and info["missing_count"] < n_samples / 2
             ]
 
-            # Identify potential main condition and batch variables
-            main_condition = None
-            batch_vars = []
+            # Auto-detect groupby if not provided
+            if groupby is None:
+                for col in categorical_vars:
+                    if variable_analysis[col]["unique_values"] == 2:
+                        groupby = col
+                        break
+                if groupby is None and categorical_vars:
+                    groupby = categorical_vars[0]
 
-            for col in categorical_vars:
-                unique_count = variable_analysis[col]["unique_values"]
-                if unique_count == 2 and not main_condition:
-                    main_condition = col
-                elif col.lower() in ["batch", "sample", "donor", "patient", "subject"]:
-                    batch_vars.append(col)
-                elif unique_count > 2 and unique_count <= 6:
-                    batch_vars.append(col)
-
-            if main_condition:
-                # Simple comparison
-                suggestions.append(
-                    {
-                        "formula": f"~{main_condition}",
-                        "complexity": "Simple",
-                        "description": f"Compare {main_condition} groups directly",
-                        "pros": [
-                            "Maximum statistical power",
-                            "Straightforward interpretation",
-                            "Robust with small sample sizes",
-                        ],
-                        "cons": [
-                            "Ignores potential confounders",
-                            "May miss batch effects",
-                        ],
-                        "recommended_for": "Initial exploratory analysis or when confounders are minimal",
-                        # SCIENTIFIC FIX: Changed from 6 to reflect min 3 per group
-                        "min_samples": 6,  # 3 per group minimum
-                    }
+            if groupby is None:
+                return (
+                    "**No suitable grouping variable found.**\n"
+                    "Please ensure your data has at least one categorical variable with 2+ levels.\n"
+                    f"Available variables: {list(variable_analysis.keys())}"
                 )
 
-                # Batch-corrected if batch variables available
-                if batch_vars:
-                    primary_batch = batch_vars[0]
-                    suggestions.append(
-                        {
-                            "formula": f"~{main_condition} + {primary_batch}",
-                            "complexity": "Batch-corrected",
-                            "description": f"Compare {main_condition} while accounting for {primary_batch} effects",
-                            "pros": [
-                                "Controls for technical/batch variation",
-                                "More reliable effect estimates",
-                            ],
-                            "cons": [
-                                "Reduces degrees of freedom",
-                                "Requires balanced design",
-                            ],
-                            "recommended_for": "Multi-batch experiments or when batch effects are suspected",
-                            "min_samples": 8,
-                        }
-                    )
+            # Validate groupby exists
+            if groupby not in metadata.columns:
+                available_vars = [col for col in metadata.columns if not col.startswith("_")]
+                return f"Variable '{groupby}' not found. Available: {available_vars}"
 
-                # Full model with multiple covariates
-                if len(batch_vars) > 1 or continuous_vars:
-                    covariates = batch_vars[:2] + continuous_vars[:1]
-                    formula_terms = [main_condition] + covariates
-                    suggestions.append(
-                        {
-                            "formula": f"~{' + '.join(formula_terms)}",
-                            "complexity": "Multi-factor",
-                            "description": f"Comprehensive model accounting for {main_condition} and {len(covariates)} covariates",
-                            "pros": [
-                                "Controls for multiple confounders",
-                                "Publication-ready analysis",
-                                "Robust effect estimates",
-                            ],
-                            "cons": [
-                                "Requires larger sample size",
-                                "More complex interpretation",
-                                "Risk of overfitting",
-                            ],
-                            "recommended_for": "Final analysis with adequate sample size and multiple known confounders",
-                            "min_samples": max(
-                                12, len(formula_terms) * 4
-                            ),  # SCIENTIFIC FIX: Require more samples
-                        }
+            # Validate covariates if provided
+            if covariates:
+                missing_covariates = [c for c in covariates if c not in metadata.columns]
+                if missing_covariates:
+                    return f"Covariates not found: {missing_covariates}"
+
+            # Step 2: Construct formula
+            formula_terms = [groupby]
+            if covariates:
+                formula_terms.extend(covariates)
+
+            if include_interaction and covariates:
+                interaction_term = f"{groupby}*{covariates[0]}"
+                formula = f"~{interaction_term}"
+                if len(covariates) > 1:
+                    formula += f" + {' + '.join(covariates[1:])}"
+            else:
+                formula = f"~{' + '.join(formula_terms)}"
+
+            # Step 3: Validate formula
+            validation_warnings = []
+            validation_errors = []
+
+            # Check all terms exist
+            for term in formula_terms:
+                if term not in metadata.columns:
+                    validation_errors.append(f"Variable '{term}' not found in metadata")
+
+            # Check for confounding (single-level factors)
+            for term in formula_terms:
+                if term in variable_analysis and variable_analysis[term]["unique_values"] < 2:
+                    validation_errors.append(f"Variable '{term}' has only 1 level - cannot be used in formula")
+
+            # Check replicate counts
+            replicate_validation = _validate_replicate_counts(
+                metadata, groupby, min_replicates=3
+            )
+            if not replicate_validation["valid"]:
+                for err in replicate_validation["errors"]:
+                    validation_errors.append(err)
+            if replicate_validation["warnings"]:
+                for warn in replicate_validation["warnings"]:
+                    validation_warnings.append(warn)
+
+            # Validate with formula service if no errors
+            formula_valid = len(validation_errors) == 0
+            design_result = None
+            if formula_valid:
+                try:
+                    formula_components = formula_service.parse_formula(formula, metadata)
+                    design_result = formula_service.construct_design_matrix(
+                        formula_components, metadata
                     )
+                    svc_validation = formula_service.validate_experimental_design(
+                        metadata, formula, min_replicates=3
+                    )
+                    if not svc_validation["valid"]:
+                        for err in svc_validation.get("errors", []):
+                            validation_errors.append(err)
+                        formula_valid = False
+                    for warn in svc_validation.get("warnings", []):
+                        if warn not in validation_warnings:
+                            validation_warnings.append(warn)
+                except (FormulaError, DesignMatrixError) as e:
+                    validation_errors.append(f"Formula validation error: {str(e)}")
+                    formula_valid = False
+
+            # Generate alternative suggestions
+            suggestions = []
+            batch_vars = [
+                col for col in categorical_vars
+                if col.lower() in ["batch", "sample", "donor", "patient", "subject"]
+                or (variable_analysis[col]["unique_values"] > 2 and variable_analysis[col]["unique_values"] <= 6)
+            ]
+
+            if batch_vars and not covariates:
+                primary_batch = batch_vars[0]
+                suggestions.append({
+                    "formula": f"~{groupby} + {primary_batch}",
+                    "description": f"Add batch correction for {primary_batch}",
+                    "min_samples": 8,
+                })
+
+            if len(batch_vars) > 1 or continuous_vars:
+                extra_covs = batch_vars[:2] + continuous_vars[:1]
+                all_terms = [groupby] + extra_covs
+                suggestions.append({
+                    "formula": f"~{' + '.join(all_terms)}",
+                    "description": f"Multi-factor model with {len(extra_covs)} covariates",
+                    "min_samples": max(12, len(all_terms) * 4),
+                })
+
+            # Store formula in modality
+            adata.uns["constructed_formula"] = {
+                "formula": formula,
+                "main_variable": groupby,
+                "covariates": covariates,
+                "include_interactions": include_interaction,
+                "validated": formula_valid,
+            }
+            data_manager.store_modality(
+                name=modality_name,
+                adata=adata,
+                step_summary=f"Formula suggested and validated: {formula}",
+            )
+
+            # Create IR
+            from lobster.core.provenance import AnalysisStep
+
+            ir = AnalysisStep(
+                operation="de_formula.suggest_and_validate",
+                tool_name="suggest_de_formula",
+                description=f"Analyzed metadata and constructed formula: {formula}",
+                library="lobster",
+                parameters={
+                    "modality_name": modality_name,
+                    "groupby": groupby,
+                    "covariates": covariates,
+                    "include_interaction": include_interaction,
+                    "formula": formula,
+                },
+                code_template=(
+                    "# Formula: {{ formula }}\n"
+                    "# Main variable: {{ groupby }}\n"
+                    "# Covariates: {{ covariates }}"
+                ),
+                imports=[],
+            )
+
+            data_manager.log_tool_usage(
+                tool_name="suggest_de_formula",
+                parameters={
+                    "modality_name": modality_name,
+                    "groupby": groupby,
+                    "covariates": covariates,
+                    "formula": formula,
+                },
+                description=f"Suggested and validated formula: {formula}",
+                ir=ir,
+            )
 
             # Build response
-            response = f"## Formula Design Analysis for '{pseudobulk_modality}'\n\n"
+            response = f"## DE Formula Analysis for '{modality_name}'\n\n"
 
-            if show_metadata_summary:
-                response += "**Metadata Summary:**\n"
-                response += f"- Samples: {n_samples}\n"
-                response += f"- Variables analyzed: {len(variable_analysis)}\n"
-                response += f"- Categorical variables: {len(categorical_vars)}\n"
-                response += f"- Continuous variables: {len(continuous_vars)}\n\n"
+            response += "**Metadata Summary:**\n"
+            response += f"- Samples: {n_samples}\n"
+            response += f"- Categorical variables: {len(categorical_vars)}\n"
+            response += f"- Continuous variables: {len(continuous_vars)}\n\n"
 
-                response += "**Key Variables:**\n"
-                for col, info in list(variable_analysis.items())[:6]:
-                    if col in categorical_vars + continuous_vars:
-                        response += f"- **{col}**: {info['type']}, {info['unique_values']} levels"
-                        if info["type"] == "categorical":
-                            response += (
-                                f" ({', '.join(map(str, info['sample_values']))})"
-                            )
-                        response += "\n"
-                response += "\n"
+            response += "**Key Variables:**\n"
+            for col, info in list(variable_analysis.items())[:6]:
+                if col in categorical_vars + continuous_vars:
+                    response += f"- **{col}**: {info['type']}, {info['unique_values']} levels"
+                    if info["type"] == "categorical":
+                        response += f" ({', '.join(map(str, info['sample_values']))})"
+                    response += "\n"
+            response += "\n"
 
-            if analysis_goal:
-                response += f"**Analysis Goal**: {analysis_goal}\n\n"
+            response += f"**Constructed Formula**: `{formula}`\n"
+            response += f"- Main variable: {groupby}\n"
+            if covariates:
+                response += f"- Covariates: {', '.join(covariates)}\n"
+            if include_interaction:
+                response += f"- Interaction: {groupby} x {covariates[0] if covariates else 'N/A'}\n"
+            response += "\n"
+
+            if design_result:
+                response += "**Design Matrix:**\n"
+                response += f"- Dimensions: {design_result['design_matrix'].shape[0]} samples x {design_result['design_matrix'].shape[1]} coefficients\n"
+                response += f"- Matrix rank: {design_result['rank']} (full rank: {'Yes' if design_result['rank'] == design_result['n_coefficients'] else 'WARNING'})\n\n"
+
+            response += "**Validation:**\n"
+            if formula_valid:
+                response += "- Status: PASSED\n"
+            else:
+                response += "- Status: FAILED\n"
+
+            if validation_errors:
+                for err in validation_errors:
+                    response += f"- ERROR: {err}\n"
+            if validation_warnings:
+                for warn in validation_warnings:
+                    response += f"- WARNING: {warn}\n"
+
+            response += "\n**Replicate Counts:**\n"
+            for group, count in replicate_validation["group_counts"].items():
+                status = "OK" if count >= 4 else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                response += f"- {group}: {count} replicates ({status})\n"
 
             if suggestions:
-                response += "## Recommended Formula Options:\n\n"
-                for i, suggestion in enumerate(suggestions, 1):
-                    response += f"**{i}. {suggestion['complexity']} Model** *(recommended for {suggestion['recommended_for']})*\n"
-                    response += f"   Formula: `{suggestion['formula']}`\n"
-                    response += f"   Description: {suggestion['description']}\n"
-                    response += f"   Pros: {', '.join(suggestion['pros'][:2])}\n"
-                    response += f"   Cons: {', '.join(suggestion['cons'][:2])}\n"
-                    response += (
-                        f"   Min samples needed: {suggestion['min_samples']}\n\n"
-                    )
+                response += "\n**Alternative Formulas:**\n"
+                for i, s in enumerate(suggestions, 1):
+                    response += f"  {i}. `{s['formula']}` - {s['description']} (min {s['min_samples']} samples)\n"
 
-                response += "**Recommendation**: Start with the simple model for exploration, then use the batch-corrected model if you see batch effects.\n\n"
-                response += "**Next step**: Use `construct_de_formula_interactive` to build and validate your chosen formula."
+            if formula_valid:
+                response += f"\n**Next step**: Use `run_de_with_formula` with formula='{formula}' to execute the analysis."
             else:
-                response += (
-                    "**No suitable variables found for standard DE analysis.**\n"
-                )
-                response += "Please ensure your pseudobulk data has:\n"
-                response += "- At least one categorical variable with 2+ levels (main condition)\n"
-                response += "- Sufficient samples per group (minimum 3-4 replicates)\n"
-                response += "- Proper metadata annotation\n\n"
-                response += f"Available variables: {list(variable_analysis.keys())}"
-
-            # Log the operation
-            data_manager.log_tool_usage(
-                tool_name="suggest_formula_for_design",
-                parameters={
-                    "pseudobulk_modality": pseudobulk_modality,
-                    "analysis_goal": analysis_goal,
-                    "n_suggestions": len(suggestions),
-                },
-                description=f"Generated {len(suggestions)} formula suggestions for {pseudobulk_modality}",
-            )
+                response += "\n**Action needed**: Address validation errors before running DE analysis."
 
             return response
 
         except Exception as e:
-            logger.error(f"Error suggesting formulas: {e}")
+            logger.error(f"Error in suggest_de_formula: {e}")
             return f"Error analyzing design for formula suggestions: {str(e)}"
 
     @tool
@@ -955,174 +1185,22 @@ def de_analysis_expert(
         validate_design: bool = True,
     ) -> str:
         """
-        Build DE formula step-by-step with validation and preview.
+        DEPRECATED: Use suggest_de_formula instead.
 
-        Constructs R-style formula, validates against metadata, shows design matrix preview,
-        and provides warnings about potential statistical issues.
+        This tool is deprecated and will be removed in a future version.
 
         Args:
             pseudobulk_modality: Name of pseudobulk modality
-            main_variable: Primary variable of interest (main comparison)
-            covariates: List of covariate variables to include
+            main_variable: Primary variable of interest
+            covariates: List of covariate variables
             include_interactions: Whether to include interaction terms
-            validate_design: Whether to validate the experimental design
+            validate_design: Whether to validate the design
         """
-        try:
-            # Validate modality exists
-            if pseudobulk_modality not in data_manager.list_modalities():
-                return f"Modality '{pseudobulk_modality}' not found. Available: {data_manager.list_modalities()}"
-
-            # Get the pseudobulk data
-            adata = data_manager.get_modality(pseudobulk_modality)
-            metadata = adata.obs
-
-            # Validate main variable
-            if main_variable not in metadata.columns:
-                available_vars = [
-                    col for col in metadata.columns if not col.startswith("_")
-                ]
-                return f"Main variable '{main_variable}' not found. Available: {available_vars}"
-
-            # Build formula
-            formula_terms = [main_variable]
-            if covariates:
-                missing_covariates = [
-                    c for c in covariates if c not in metadata.columns
-                ]
-                if missing_covariates:
-                    return f"Covariates not found: {missing_covariates}"
-                formula_terms.extend(covariates)
-
-            # Construct basic formula
-            if include_interactions and covariates:
-                interaction_term = f"{main_variable}*{covariates[0]}"
-                formula = f"~{interaction_term}"
-                if len(covariates) > 1:
-                    formula += f" + {' + '.join(covariates[1:])}"
-            else:
-                formula = f"~{' + '.join(formula_terms)}"
-
-            # Parse and validate formula
-            try:
-                formula_components = formula_service.parse_formula(formula, metadata)
-                design_result = formula_service.construct_design_matrix(
-                    formula_components, metadata
-                )
-
-                # Format response
-                response = (
-                    f"## Formula Construction Complete for '{pseudobulk_modality}'\n\n"
-                )
-                response += f"**Constructed Formula**: `{formula}`\n\n"
-
-                response += "**Formula Components:**\n"
-                response += f"- Main variable: {main_variable} ({formula_components['variable_info'][main_variable]['type']})\n"
-                if covariates:
-                    response += f"- Covariates: {', '.join(covariates)}\n"
-                if include_interactions:
-                    response += f"- Interactions: Yes (between {main_variable} and {covariates[0] if covariates else 'none'})\n"
-                response += (
-                    f"- Total terms: {len(formula_components['predictor_terms'])}\n\n"
-                )
-
-                # Design matrix preview
-                response += "**Design Matrix Preview**:\n"
-                response += f"- Dimensions: {design_result['design_matrix'].shape[0]} samples x {design_result['design_matrix'].shape[1]} coefficients\n"
-                response += f"- Matrix rank: {design_result['rank']} (full rank: {'Yes' if design_result['rank'] == design_result['n_coefficients'] else 'WARNING'})\n"
-                response += f"- Coefficient names: {', '.join(design_result['coefficient_names'][:5])}{'...' if len(design_result['coefficient_names']) > 5 else ''}\n\n"
-
-                # Variable information
-                response += "**Variable Details:**\n"
-                for var, info in formula_components["variable_info"].items():
-                    if info["type"] == "categorical":
-                        response += f"- **{var}**: {info['n_levels']} levels, reference = '{info['reference_level']}'\n"
-                    else:
-                        response += f"- **{var}**: continuous variable\n"
-                response += "\n"
-
-                if validate_design:
-                    # SCIENTIFIC FIX: Validate with min_replicates=3
-                    validation = formula_service.validate_experimental_design(
-                        metadata, formula, min_replicates=3
-                    )
-
-                    response += "**Design Validation**:\n"
-                    response += (
-                        f"- Valid design: {'Yes' if validation['valid'] else 'No'}\n"
-                    )
-
-                    if validation["warnings"]:
-                        response += f"- Warnings ({len(validation['warnings'])}):\n"
-                        for warning in validation["warnings"][:3]:
-                            response += f"  - {warning}\n"
-
-                    if validation["errors"]:
-                        response += f"- Errors ({len(validation['errors'])}):\n"
-                        for error in validation["errors"]:
-                            response += f"  - {error}\n"
-
-                    response += "\n**Sample Distribution:**\n"
-                    for var, counts in validation.get("design_summary", {}).items():
-                        response += f"- **{var}**: {dict(list(counts.items())[:4])}\n"
-
-                response += "\n**Recommendations**:\n"
-                if design_result["rank"] < design_result["n_coefficients"]:
-                    response += "- WARNING: Design matrix is rank deficient - consider removing correlated variables\n"
-                if validation.get("warnings"):
-                    response += "- Review warnings above before proceeding\n"
-                else:
-                    response += "- Design looks good! Ready for differential expression analysis\n"
-
-                response += "\n**Next step**: Use `run_differential_expression_with_formula` to execute the analysis."
-
-                # Store formula in modality for later use
-                adata.uns["constructed_formula"] = {
-                    "formula": formula,
-                    "main_variable": main_variable,
-                    "covariates": covariates,
-                    "include_interactions": include_interactions,
-                    "formula_components": formula_components,
-                    "design_result": design_result,
-                    "validation": validation if validate_design else None,
-                }
-                data_manager.store_modality(
-                    name=pseudobulk_modality,
-                    adata=adata,
-                    step_summary=f"Constructed formula: {formula}",
-                )
-
-            except (FormulaError, DesignMatrixError) as e:
-                response = "## Formula Construction Failed\n\n"
-                response += f"**Formula**: `{formula}`\n"
-                response += f"**Error**: {str(e)}\n\n"
-                response += "**Suggestions**:\n"
-                response += "- Check variable names are spelled correctly\n"
-                response += "- Ensure variables have multiple levels (for categorical) or variation (for continuous)\n"
-                response += "- Reduce model complexity if you have limited samples\n"
-                response += f"- Available variables: {list(metadata.columns)[:10]}"
-                return response
-
-            # Log the operation
-            data_manager.log_tool_usage(
-                tool_name="construct_de_formula_interactive",
-                parameters={
-                    "pseudobulk_modality": pseudobulk_modality,
-                    "formula": formula,
-                    "main_variable": main_variable,
-                    "covariates": covariates,
-                    "include_interactions": include_interactions,
-                },
-                description=f"Constructed and validated formula: {formula}",
-            )
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error constructing formula: {e}")
-            return f"Error in formula construction: {str(e)}"
+        logger.warning("construct_de_formula_interactive is deprecated. Use suggest_de_formula instead.")
+        return "DEPRECATED: Use suggest_de_formula for formula construction and validation."
 
     @tool
-    def run_differential_expression_with_formula(
+    def run_de_with_formula(
         pseudobulk_modality: str,
         formula: Optional[str] = None,
         contrast: Optional[List[str]] = None,
@@ -1132,9 +1210,10 @@ def de_analysis_expert(
         save_results: bool = True,
     ) -> str:
         """
-        Execute differential expression analysis with agent-guided formula.
+        Run DE with a custom formula for complex multi-factor designs (covariates, interactions, batch correction).
 
         Uses pyDESeq2 for analysis with RAW COUNTS from adata.raw.X.
+        For simple 2-group comparisons, use run_differential_expression instead.
 
         Args:
             pseudobulk_modality: Name of pseudobulk modality
@@ -1162,7 +1241,7 @@ def de_analysis_expert(
                         "Using stored formula from interactive construction:\n"
                     )
                 else:
-                    return "No formula provided and no stored formula found. Use `construct_de_formula_interactive` first or provide a formula."
+                    return "No formula provided and no stored formula found. Use `suggest_de_formula` first or provide a formula."
             else:
                 response_prefix = "Using provided formula:\n"
                 stored_info = None
@@ -1192,7 +1271,7 @@ def de_analysis_expert(
 
             if not design_validation["valid"]:
                 error_msgs = "; ".join(design_validation["errors"])
-                return f"**Invalid experimental design**: {error_msgs}\n\nUse `construct_de_formula_interactive` to debug the design."
+                return f"**Invalid experimental design**: {error_msgs}\n\nUse `suggest_de_formula` to debug the design."
 
             # Create design matrix
             condition_col = contrast[0]
@@ -1306,7 +1385,7 @@ def de_analysis_expert(
 
             # Log the operation
             data_manager.log_tool_usage(
-                tool_name="run_differential_expression_with_formula",
+                tool_name="run_de_with_formula",
                 parameters={
                     "pseudobulk_modality": pseudobulk_modality,
                     "formula": formula,
@@ -1323,188 +1402,8 @@ def de_analysis_expert(
             logger.error(f"Error in formula-based DE analysis: {e}")
             return f"Error running differential expression with formula: {str(e)}"
 
-    @tool
-    def run_differential_expression_analysis(
-        modality_name: str,
-        groupby: str,
-        group1: str,
-        group2: str,
-        method: str = "deseq2_like",
-        min_expression_threshold: float = 1.0,
-        min_fold_change: float = 1.5,
-        min_pct_expressed: float = 0.1,
-        max_out_pct_expressed: float = 0.5,
-        save_result: bool = True,
-    ) -> str:
-        """
-        Run differential expression analysis between two groups.
-
-        CRITICAL: Uses raw counts from adata.raw.X for DESeq2 accuracy.
-        Validates minimum replicate requirements (3+ per group).
-
-        Args:
-            modality_name: Name of the bulk RNA-seq or pseudobulk modality
-            groupby: Column name for grouping (e.g., 'condition', 'treatment')
-            group1: First group for comparison (e.g., 'control')
-            group2: Second group for comparison (e.g., 'treatment')
-            method: Analysis method ('deseq2_like', 'wilcoxon', 't_test')
-            min_expression_threshold: Minimum expression threshold for gene filtering
-            min_fold_change: Minimum fold-change threshold for biological significance (default: 1.5)
-            min_pct_expressed: Minimum fraction expressing in group1 (default: 0.1)
-            max_out_pct_expressed: Maximum fraction expressing in group2 (default: 0.5)
-            save_result: Whether to save the results
-        """
-        try:
-            # Ensure group IDs are strings (cluster IDs from Leiden are often integers)
-            group1 = str(group1)
-            group2 = str(group2)
-
-            # Validate modality exists
-            if modality_name not in data_manager.list_modalities():
-                raise ModalityNotFoundError(
-                    f"Modality '{modality_name}' not found. "
-                    f"Available: {data_manager.list_modalities()}"
-                )
-
-            # Get the modality
-            adata = data_manager.get_modality(modality_name)
-            logger.info(
-                f"Running DE analysis on '{modality_name}': "
-                f"{adata.n_obs} samples x {adata.n_vars} genes"
-            )
-
-            # Validate experimental design
-            if groupby not in adata.obs.columns:
-                available_columns = [
-                    col
-                    for col in adata.obs.columns
-                    if col.lower() in ["condition", "treatment", "group", "batch"]
-                ]
-                return f"Grouping column '{groupby}' not found. Available experimental design columns: {available_columns}"
-
-            # Check if groups exist — match type of column values
-            # Cluster IDs from Leiden are often integers in the column but
-            # passed as strings by the LLM, or vice versa
-            available_groups = list(adata.obs[groupby].unique())
-            available_groups_str = [str(g) for g in available_groups]
-
-            # Try exact match first, then string match
-            if group1 not in available_groups and group1 in available_groups_str:
-                # Convert column values to strings for consistent comparison
-                adata.obs[groupby] = adata.obs[groupby].astype(str)
-                available_groups = list(adata.obs[groupby].unique())
-            elif group1 not in available_groups:
-                return f"Group '{group1}' not found in column '{groupby}'. Available groups: {available_groups}"
-            if group2 not in available_groups:
-                return f"Group '{group2}' not found in column '{groupby}'. Available groups: {available_groups}"
-
-            # SCIENTIFIC FIX: Validate replicate counts with min_replicates=3
-            replicate_validation = _validate_replicate_counts(
-                adata.obs, groupby, min_replicates=3
-            )
-
-            if not replicate_validation["valid"]:
-                error_msg = "; ".join(replicate_validation["errors"])
-                return f"**Insufficient replicates**: {error_msg}\n\nMinimum 3 replicates per group required for stable variance estimation."
-
-            # Get group counts for response
-            group1_count = (adata.obs[groupby] == group1).sum()
-            group2_count = (adata.obs[groupby] == group2).sum()
-
-            # Use bulk service for differential expression
-            adata_de, de_stats, ir = (
-                bulk_rnaseq_service.run_differential_expression_analysis(
-                    adata=adata,
-                    groupby=groupby,
-                    group1=group1,
-                    group2=group2,
-                    method=method,
-                    min_expression_threshold=min_expression_threshold,
-                    min_fold_change=min_fold_change,
-                    min_pct_expressed=min_pct_expressed,
-                    max_out_pct_expressed=max_out_pct_expressed,
-                )
-            )
-
-            # Save as new modality
-            de_modality_name = f"{modality_name}_de_{group1}_vs_{group2}"
-            data_manager.store_modality(
-                name=de_modality_name,
-                adata=adata_de,
-                parent_name=modality_name,
-                step_summary=f"DE analysis: {group1} vs {group2}",
-            )
-
-            # Save to file if requested
-            if save_result:
-                save_path = f"{modality_name}_de_{group1}_vs_{group2}.h5ad"
-                data_manager.save_modality(de_modality_name, save_path)
-
-            # Log the operation with IR for provenance tracking
-            data_manager.log_tool_usage(
-                tool_name="run_differential_expression_analysis",
-                parameters={
-                    "modality_name": modality_name,
-                    "groupby": groupby,
-                    "group1": group1,
-                    "group2": group2,
-                    "method": method,
-                    "min_expression_threshold": min_expression_threshold,
-                    "min_fold_change": min_fold_change,
-                    "min_pct_expressed": min_pct_expressed,
-                    "max_out_pct_expressed": max_out_pct_expressed,
-                },
-                description=f"DE analysis: {de_stats['n_significant_genes']} significant genes found",
-                ir=ir,
-            )
-
-            # Format response
-            response = f"## Differential Expression Analysis Complete for '{modality_name}'\n\n"
-            response += "**Analysis Results:**\n"
-            response += f"- Comparison: {group1} ({group1_count} samples) vs {group2} ({group2_count} samples)\n"
-            response += f"- Method: {de_stats['method']}\n"
-            response += f"- Genes tested: {de_stats['n_genes_tested']:,}\n"
-            response += f"- Significant genes (padj < 0.05): {de_stats['n_significant_genes']:,}\n\n"
-
-            response += "**Differential Expression Summary:**\n"
-            response += (
-                f"- Upregulated in {group2}: {de_stats['n_upregulated']} genes\n"
-            )
-            response += (
-                f"- Downregulated in {group2}: {de_stats['n_downregulated']} genes\n\n"
-            )
-
-            response += "**Top Upregulated Genes:**\n"
-            for gene in de_stats["top_upregulated"][:5]:
-                response += f"- {gene}\n"
-
-            response += "\n**Top Downregulated Genes:**\n"
-            for gene in de_stats["top_downregulated"][:5]:
-                response += f"- {gene}\n"
-
-            # Add replicate warnings if any
-            if replicate_validation["warnings"]:
-                response += "\n**Statistical Power Warnings:**\n"
-                for warning in replicate_validation["warnings"]:
-                    response += f"- {warning}\n"
-
-            response += f"\n**New modality created**: '{de_modality_name}'"
-
-            if save_result:
-                response += f"\n**Saved to**: {save_path}"
-
-            response += f"\n**Access detailed results**: adata.uns['{de_stats['de_results_key']}']\n"
-            response += "\nUse the significant genes for pathway enrichment analysis or gene set analysis."
-
-            analysis_results["details"]["differential_expression"] = response
-            return response
-
-        except (BulkRNASeqError, ModalityNotFoundError) as e:
-            logger.error(f"Error in differential expression analysis: {e}")
-            return f"Error running differential expression analysis: {str(e)}"
-        except Exception as e:
-            logger.error(f"Unexpected error in differential expression: {e}")
-            return f"Unexpected error: {str(e)}"
+    # NOTE: run_differential_expression_analysis has been merged into run_differential_expression above.
+    # The merged tool auto-detects pseudobulk vs direct bulk data.
 
     @tool
     def iterate_de_analysis(
@@ -1572,7 +1471,7 @@ def de_analysis_expert(
             )
 
             # Run the analysis with new parameters
-            run_result = run_differential_expression_with_formula(
+            run_result = run_de_with_formula(
                 pseudobulk_modality=pseudobulk_modality,
                 formula=new_formula,
                 contrast=new_contrast,
@@ -1916,7 +1815,7 @@ def de_analysis_expert(
             return f"Error comparing DE iterations: {str(e)}"
 
     @tool
-    def run_pathway_enrichment_analysis(
+    def run_pathway_enrichment(
         gene_list: List[str],
         analysis_type: str = "GO",
         modality_name: str = None,
@@ -1968,7 +1867,7 @@ def de_analysis_expert(
 
             # Log the operation with IR for provenance tracking
             data_manager.log_tool_usage(
-                tool_name="run_pathway_enrichment_analysis",
+                tool_name="run_pathway_enrichment",
                 parameters={
                     "gene_list_size": len(gene_list),
                     "analysis_type": analysis_type,
@@ -2010,23 +1909,24 @@ def de_analysis_expert(
     # TOOL REGISTRY
     # -------------------------
     base_tools = [
-        # Pseudobulk tools
+        # Pseudobulk preparation
         create_pseudobulk_matrix,
-        prepare_differential_expression_design,
-        run_pseudobulk_differential_expression,
+        prepare_de_design,
         # Design validation
         validate_experimental_design,
-        # Formula-based DE tools
-        suggest_formula_for_design,
-        construct_de_formula_interactive,
-        run_differential_expression_with_formula,
-        # Simple 2-group DE
-        run_differential_expression_analysis,
+        # Formula tools
+        suggest_de_formula,
+        # DE analysis (2 clear tools)
+        run_differential_expression,
+        run_de_with_formula,
+        # Result tools
+        filter_de_results,
+        export_de_results,
         # Iteration tools
         iterate_de_analysis,
         compare_de_iterations,
         # Pathway analysis
-        run_pathway_enrichment_analysis,
+        run_pathway_enrichment,
     ]
 
     tools = base_tools + (delegation_tools or [])
