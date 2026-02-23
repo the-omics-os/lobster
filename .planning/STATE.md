@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every agent has exactly the right tools — no overlap, no gaps, no wrong abstraction level — so the LLM picks the correct tool every time and produces reliable, reproducible science.
-**Current focus:** Phase 5 complete (Proteomics Children + Affinity) — ready for Phase 6
+**Current focus:** Phase 6 in progress (Metabolomics Package)
 
 ## Current Position
 
-Phase: 5 of 7 (Proteomics Children + Affinity)
-Plan: 4 of 4 completed
-Status: Phase Complete
-Last activity: 2026-02-23 — Completed 05-04-PLAN.md (all 3 proteomics prompts rewritten for Phase 5 tool inventories)
+Phase: 6 of 7 (Metabolomics Package)
+Plan: 1 of 3 completed
+Status: In Progress
+Last activity: 2026-02-23 — Completed 06-01-PLAN.md (package scaffold + 4 services + BUG-14 fix)
 
-Progress: [██████████] 88%
+Progress: [████████████] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: 5.1 min
-- Total execution time: 1.29 hours
+- Total plans completed: 16
+- Average duration: 5.5 min
+- Total execution time: 1.47 hours
 
 **By Phase:**
 
@@ -34,11 +34,11 @@ Progress: [██████████] 88%
 | 05-proteomics-children-affinity | 4/4 | 21 min | 5.3 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-03 (2 min), 05-01 (4 min), 05-02 (4 min), 05-03 (8 min), 05-04 (5 min)
-- Trend: Stable (~4-5 min/plan)
+- Last 5 plans: 05-01 (4 min), 05-02 (4 min), 05-03 (8 min), 05-04 (5 min), 06-01 (11 min)
+- Trend: Slightly longer for new package creation
 
 *Updated after each plan completion*
-| Phase 05 P04 | 5min | 2 tasks | 1 files |
+| Phase 06 P01 | 11min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -92,6 +92,9 @@ Recent decisions affecting current work:
 - D34: Built-in SIGNOR-style kinase-substrate mapping with ~20 well-known kinases as KSEA default
 - D35: STRING service gracefully degrades to basic edge counts when networkx unavailable
 
+- D36: Bundled ~80 common metabolites in reference DB for v1 m/z annotation (amino acids, organic acids, sugars, nucleotides, fatty acids, lipids)
+- D37: Custom OPLS-DA via NIPALS (~100 lines numpy) instead of pyopls dependency (unmaintained since 2020)
+
 ### Pending Todos
 
 None yet.
@@ -103,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-23
-Stopped at: Completed 05-04-PLAN.md (all 3 proteomics prompts rewritten — Phase 5 complete)
+Stopped at: Completed 06-01-PLAN.md (metabolomics package scaffold + 4 services + BUG-14 fix)
 Resume file: None

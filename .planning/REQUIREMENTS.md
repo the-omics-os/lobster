@@ -108,11 +108,11 @@
 
 ### Metabolomics (NEW lobster-metabolomics package)
 
-- [ ] **MET-01**: Create `packages/lobster-metabolomics/` package structure (structured for future child agents)
-- [ ] **MET-02**: Create `MetabolomicsQualityService` — RSD, TIC, QC sample evaluation
-- [ ] **MET-03**: Create `MetabolomicsPreprocessingService` — filter, impute, normalize (PQN/TIC/IS), batch correct
-- [ ] **MET-04**: Create `MetabolomicsAnalysisService` — univariate stats, PLS-DA, fold change, pathway enrichment
-- [ ] **MET-05**: Create `MetabolomicsAnnotationService` — m/z matching to HMDB/KEGG, MSI levels
+- [x] **MET-01**: Create `packages/lobster-metabolomics/` package structure (structured for future child agents)
+- [x] **MET-02**: Create `MetabolomicsQualityService` — RSD, TIC, QC sample evaluation
+- [x] **MET-03**: Create `MetabolomicsPreprocessingService` — filter, impute, normalize (PQN/TIC/IS), batch correct
+- [x] **MET-04**: Create `MetabolomicsAnalysisService` — univariate stats, PLS-DA, fold change, pathway enrichment
+- [x] **MET-05**: Create `MetabolomicsAnnotationService` — m/z matching to HMDB/KEGG, MSI levels
 - [ ] **MET-06**: Implement `assess_metabolomics_quality` tool
 - [ ] **MET-07**: Implement `filter_metabolomics_features` tool
 - [ ] **MET-08**: Implement `handle_missing_values` tool
@@ -124,7 +124,7 @@
 - [ ] **MET-14**: Implement `analyze_lipid_classes` tool
 - [ ] **MET-15**: Implement `run_pathway_enrichment` tool
 - [ ] **MET-16**: Register metabolomics_expert via entry points in pyproject.toml
-- [ ] **MET-17**: Fix BUG-14: metabolomics schema sparse matrix zero-checking
+- [x] **MET-17**: Fix BUG-14: metabolomics schema sparse matrix zero-checking
 
 ### Bug Fixes (Cross-Cutting)
 
@@ -256,11 +256,11 @@
 | AFP-04 | Phase 5 | Complete |
 | AFP-05 | Phase 5 | Complete |
 | AFP-06 | Phase 5 | Complete |
-| MET-01 | Phase 6 | Pending |
-| MET-02 | Phase 6 | Pending |
-| MET-03 | Phase 6 | Pending |
-| MET-04 | Phase 6 | Pending |
-| MET-05 | Phase 6 | Pending |
+| MET-01 | Phase 6 | Complete |
+| MET-02 | Phase 6 | Complete |
+| MET-03 | Phase 6 | Complete |
+| MET-04 | Phase 6 | Complete |
+| MET-05 | Phase 6 | Complete |
 | MET-06 | Phase 6 | Pending |
 | MET-07 | Phase 6 | Pending |
 | MET-08 | Phase 6 | Pending |
@@ -272,7 +272,7 @@
 | MET-14 | Phase 6 | Pending |
 | MET-15 | Phase 6 | Pending |
 | MET-16 | Phase 6 | Pending |
-| MET-17 | Phase 6 | Pending |
+| MET-17 | Phase 6 | Complete |
 | DOC-01 | Phase 1 | Complete |
 | DOC-02 | Phase 2 | Complete |
 | DOC-03 | Phase 4 | Complete |
