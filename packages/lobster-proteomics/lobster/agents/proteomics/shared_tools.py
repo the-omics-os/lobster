@@ -7,6 +7,7 @@ Tools auto-detect platform type and use appropriate defaults.
 Following the same factory pattern as transcriptomics shared_tools.py.
 """
 
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
@@ -1000,6 +1001,515 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             return f"Error in variable protein selection: {str(e)}"
 
     # -------------------------
+    # IMPORT PROTEOMICS DATA TOOL
+    # -------------------------
+    @tool
+    def import_proteomics_data(
+        file_path: str,
+        software: str = "auto",
+        intensity_type: str = "auto",
+        filter_contaminants: bool = True,
+        filter_reverse: bool = True,
+        modality_name: str = "",
+        save_result: bool = True,
+    ) -> str:
+        """Import MS proteomics data from search engine output files (MaxQuant, DIA-NN, Spectronaut).
+
+        Auto-detects the file format and uses the appropriate parser. Peptide mapping
+        (counts, unique peptides, sequence coverage) is extracted automatically during import.
+
+        Args:
+            file_path: Path to the proteomics output file (e.g., proteinGroups.txt, report.tsv)
+            software: Parser to use ("auto", "maxquant", "diann", "spectronaut")
+            intensity_type: Intensity column type ("auto", "lfq", "intensity", "maxlfq")
+            filter_contaminants: Remove known contaminant proteins (default True)
+            filter_reverse: Remove reverse database hits (default True)
+            modality_name: Name for the imported modality (auto-generated if empty)
+            save_result: Whether to save the modality to disk
+
+        Returns:
+            str: Import summary with sample count, protein count, and data characteristics
+        """
+        try:
+            from lobster.services.data_access.proteomics_parsers import (
+                get_parser_for_file,
+                MaxQuantParser,
+                DIANNParser,
+                SpectronautParser,
+            )
+
+            parser = None
+            if software == "auto":
+                parser = get_parser_for_file(file_path)
+                if parser is None:
+                    return (
+                        f"No parser found for '{Path(file_path).name}'. "
+                        "Supported formats: MaxQuant proteinGroups.txt, DIA-NN report.tsv, "
+                        "Spectronaut report. Specify software='maxquant'/'diann'/'spectronaut' to force."
+                    )
+            else:
+                parser_map = {
+                    "maxquant": MaxQuantParser,
+                    "diann": DIANNParser,
+                    "spectronaut": SpectronautParser,
+                }
+                parser_cls = parser_map.get(software)
+                if parser_cls is None:
+                    return (
+                        f"Parser for '{software}' not available. "
+                        f"Supported: {list(parser_map.keys())}. "
+                        "Ensure lobster-proteomics is installed."
+                    )
+                parser = parser_cls()
+
+            # Build parse kwargs based on what the parser accepts
+            parse_kwargs = {}
+            if intensity_type != "auto":
+                parse_kwargs["intensity_type"] = intensity_type
+            if hasattr(parser, "parse"):
+                # Try passing filter flags
+                parse_kwargs["filter_contaminants"] = filter_contaminants
+                parse_kwargs["filter_reverse"] = filter_reverse
+
+            try:
+                result = parser.parse(file_path, **parse_kwargs)
+            except TypeError:
+                # Parser may not accept all kwargs; fall back to minimal call
+                result = parser.parse(file_path)
+
+            # Handle both 2-tuple and 3-tuple returns
+            if isinstance(result, tuple) and len(result) == 3:
+                adata, stats, ir = result
+            elif isinstance(result, tuple) and len(result) == 2:
+                adata, stats = result
+                ir = AnalysisStep(
+                    operation="proteomics.import.parse_file",
+                    tool_name="import_proteomics_data",
+                    description=f"Imported proteomics data using {parser.__class__.__name__}",
+                    library="lobster.services.data_access.proteomics_parsers",
+                    code_template="""# Import proteomics data
+from lobster.services.data_access.proteomics_parsers import get_parser_for_file
+parser = get_parser_for_file({{ file_path | tojson }})
+adata, stats = parser.parse({{ file_path | tojson }})""",
+                    imports=["from lobster.services.data_access.proteomics_parsers import get_parser_for_file"],
+                    parameters={"file_path": file_path, "software": software},
+                )
+            else:
+                # Single AnnData return
+                adata = result
+                stats = {}
+                ir = AnalysisStep(
+                    operation="proteomics.import.parse_file",
+                    tool_name="import_proteomics_data",
+                    description=f"Imported proteomics data using {parser.__class__.__name__}",
+                    library="lobster.services.data_access.proteomics_parsers",
+                    code_template="""# Import proteomics data
+from lobster.services.data_access.proteomics_parsers import get_parser_for_file
+parser = get_parser_for_file({{ file_path | tojson }})
+adata = parser.parse({{ file_path | tojson }})""",
+                    imports=["from lobster.services.data_access.proteomics_parsers import get_parser_for_file"],
+                    parameters={"file_path": file_path, "software": software},
+                )
+
+            # Generate modality name if not provided
+            parser_name = parser.__class__.__name__.replace("Parser", "").lower()
+            name = modality_name or f"ms_{parser_name}_{Path(file_path).stem}"
+
+            data_manager.store_modality(
+                name=name,
+                adata=adata,
+                step_summary=f"Imported {parser.__class__.__name__} data: {adata.n_obs} samples x {adata.n_vars} proteins",
+            )
+
+            if save_result:
+                save_path = f"{name}.h5ad"
+                data_manager.save_modality(name, save_path)
+
+            data_manager.log_tool_usage(
+                tool_name="import_proteomics_data",
+                parameters={
+                    "file_path": file_path,
+                    "software": software,
+                    "intensity_type": intensity_type,
+                    "filter_contaminants": filter_contaminants,
+                    "filter_reverse": filter_reverse,
+                },
+                description=f"Imported proteomics data from {Path(file_path).name}",
+                ir=ir,
+            )
+
+            # Build response
+            X = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
+            missing_pct = np.isnan(X).sum() / X.size * 100 if X.size > 0 else 0
+
+            response = f"Successfully imported proteomics data from '{Path(file_path).name}'!\n\n"
+            response += f"**Parser:** {parser.__class__.__name__}\n"
+            response += f"**Samples:** {adata.n_obs}\n"
+            response += f"**Proteins:** {adata.n_vars}\n"
+            response += f"**Missing values:** {missing_pct:.1f}%\n"
+
+            # Peptide mapping info
+            peptide_cols = ["n_peptides", "unique_peptides", "sequence_coverage"]
+            present_peptide_cols = [c for c in peptide_cols if c in adata.var.columns]
+            if present_peptide_cols:
+                response += f"\n**Peptide mapping columns:** {present_peptide_cols}\n"
+                if "n_peptides" in adata.var.columns:
+                    response += f"- Median peptides/protein: {adata.var['n_peptides'].median():.0f}\n"
+
+            response += f"\n**Modality created:** '{name}'"
+            if save_result:
+                response += f"\n**Saved to:** {name}.h5ad"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error importing proteomics data: {e}")
+            return f"Error importing proteomics data: {str(e)}"
+
+    # -------------------------
+    # IMPORT PTM SITES TOOL
+    # -------------------------
+    @tool
+    def import_ptm_sites(
+        file_path: str,
+        ptm_type: str = "phospho",
+        localization_threshold: float = 0.75,
+        filter_contaminants: bool = True,
+        modality_name: str = "",
+        save_result: bool = True,
+    ) -> str:
+        """Import PTM site-level quantification data (phospho/acetyl/ubiquitin).
+
+        Reads MaxQuant-style site-level output and creates a site-level AnnData.
+        Sites are identified as gene_residuePosition (e.g., EGFR_Y1068).
+        Only class I sites (localization probability >= threshold) are kept.
+
+        Args:
+            file_path: Path to PTM site file (e.g., Phospho(STY)Sites.txt)
+            ptm_type: Type of PTM ("phospho", "acetyl", "ubiquitin")
+            localization_threshold: Minimum localization probability (default 0.75)
+            filter_contaminants: Remove contaminant proteins
+            modality_name: Name for modality (auto-generated if empty)
+            save_result: Whether to save to disk
+
+        Returns:
+            str: Import summary with site count, sample count, PTM type details
+        """
+        try:
+            adata, stats, ir = preprocessing_service.import_ptm_site_data(
+                file_path=file_path,
+                ptm_type=ptm_type,
+                localization_threshold=localization_threshold,
+                filter_contaminants=filter_contaminants,
+            )
+
+            name = modality_name or f"ptm_{ptm_type}_{Path(file_path).stem}"
+
+            data_manager.store_modality(
+                name=name,
+                adata=adata,
+                step_summary=f"Imported {ptm_type} PTM sites: {adata.n_obs} samples x {adata.n_vars} sites",
+            )
+
+            if save_result:
+                save_path = f"{name}.h5ad"
+                data_manager.save_modality(name, save_path)
+
+            data_manager.log_tool_usage(
+                tool_name="import_ptm_sites",
+                parameters={
+                    "file_path": file_path,
+                    "ptm_type": ptm_type,
+                    "localization_threshold": localization_threshold,
+                    "filter_contaminants": filter_contaminants,
+                },
+                description=f"Imported {ptm_type} PTM site data",
+                ir=ir,
+            )
+
+            response = f"Successfully imported {ptm_type} PTM sites from '{Path(file_path).name}'!\n\n"
+            response += f"**PTM type:** {ptm_type}\n"
+            response += f"**Samples:** {adata.n_obs}\n"
+            response += f"**Sites:** {adata.n_vars}\n"
+            response += f"**Localization threshold:** {localization_threshold}\n"
+
+            if "n_class_i_sites" in stats:
+                response += f"**Class I sites (prob >= {localization_threshold}):** {stats['n_class_i_sites']}\n"
+            if "n_total_sites" in stats:
+                response += f"**Total sites before filtering:** {stats['n_total_sites']}\n"
+
+            response += f"\n**Modality created:** '{name}'"
+            if save_result:
+                response += f"\n**Saved to:** {name}.h5ad"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error importing PTM site data: {e}")
+            return f"Error importing PTM sites: {str(e)}"
+
+    # -------------------------
+    # CORRECT BATCH EFFECTS TOOL
+    # -------------------------
+    @tool
+    def correct_batch_effects(
+        modality_name: str,
+        batch_column: str = "batch",
+        method: str = "combat",
+        reference_batch: str = "",
+        save_result: bool = True,
+    ) -> str:
+        """Correct batch effects in MS proteomics data using ComBat or median centering.
+
+        For multi-batch MS experiments (different runs, instruments, or processing dates).
+        This is distinct from correct_plate_effects which is specific to affinity platforms.
+
+        Args:
+            modality_name: Name of the proteomics modality
+            batch_column: Column in obs containing batch identifiers
+            method: Correction method ("combat", "median_centering", "reference_based")
+            reference_batch: Reference batch for reference_based method (empty for auto)
+            save_result: Whether to save corrected modality
+
+        Returns:
+            str: Batch correction report with before/after metrics
+        """
+        try:
+            adata = data_manager.get_modality(modality_name)
+        except ValueError:
+            return f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
+
+        try:
+            if batch_column not in adata.obs.columns:
+                return (
+                    f"Batch column '{batch_column}' not found in obs. "
+                    f"Available columns: {list(adata.obs.columns)}"
+                )
+
+            corrected_adata, batch_stats, batch_ir = (
+                preprocessing_service.correct_batch_effects(
+                    adata,
+                    batch_key=batch_column,
+                    method=method,
+                    reference_batch=reference_batch or None,
+                )
+            )
+
+            corrected_name = f"{modality_name}_batch_corrected"
+            data_manager.store_modality(
+                name=corrected_name,
+                adata=corrected_adata,
+                parent_name=modality_name,
+                step_summary=f"Batch corrected using {method}",
+            )
+
+            if save_result:
+                save_path = f"{modality_name}_batch_corrected.h5ad"
+                data_manager.save_modality(corrected_name, save_path)
+
+            data_manager.log_tool_usage(
+                tool_name="correct_batch_effects",
+                parameters={
+                    "modality_name": modality_name,
+                    "batch_column": batch_column,
+                    "method": method,
+                    "reference_batch": reference_batch,
+                },
+                description=f"Corrected batch effects using {method}",
+                ir=batch_ir,
+            )
+
+            response = f"Successfully corrected batch effects in '{modality_name}'!\n\n"
+            response += f"**Method:** {method}\n"
+            response += f"**Batch column:** {batch_column}\n"
+
+            if "n_batches_corrected" in batch_stats:
+                response += f"**Batches corrected:** {batch_stats['n_batches_corrected']}\n"
+            if "n_samples" in batch_stats:
+                response += f"**Samples:** {batch_stats['n_samples']}\n"
+
+            response += f"\n**New modality created:** '{corrected_name}'"
+            if save_result:
+                response += f"\n**Saved to:** {modality_name}_batch_corrected.h5ad"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error correcting batch effects: {e}")
+            return f"Error in batch correction: {str(e)}"
+
+    # -------------------------
+    # SUMMARIZE PEPTIDE TO PROTEIN TOOL
+    # -------------------------
+    @tool
+    def summarize_peptide_to_protein(
+        modality_name: str,
+        method: str = "median",
+        protein_column: str = "protein_id",
+        save_result: bool = True,
+    ) -> str:
+        """Roll up peptide/PSM-level quantification to protein-level.
+
+        Required for TMT workflows where reporter ion intensities are at peptide/PSM level.
+        Aggregates peptides to proteins using median (robust) or sum methods.
+
+        Args:
+            modality_name: Name of the peptide-level modality
+            method: Aggregation method ("median", "sum")
+            protein_column: Column in var mapping peptides to proteins
+            save_result: Whether to save protein-level modality
+
+        Returns:
+            str: Summarization report with peptide-to-protein statistics
+        """
+        try:
+            adata = data_manager.get_modality(modality_name)
+        except ValueError:
+            return f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
+
+        try:
+            protein_adata, rollup_stats, rollup_ir = (
+                preprocessing_service.summarize_peptide_to_protein(
+                    adata,
+                    method=method,
+                    protein_column=protein_column,
+                )
+            )
+
+            rollup_name = f"{modality_name}_protein_rollup"
+            data_manager.store_modality(
+                name=rollup_name,
+                adata=protein_adata,
+                parent_name=modality_name,
+                step_summary=f"Peptide-to-protein rollup ({method}): {protein_adata.n_vars} proteins",
+            )
+
+            if save_result:
+                save_path = f"{modality_name}_protein_rollup.h5ad"
+                data_manager.save_modality(rollup_name, save_path)
+
+            data_manager.log_tool_usage(
+                tool_name="summarize_peptide_to_protein",
+                parameters={
+                    "modality_name": modality_name,
+                    "method": method,
+                    "protein_column": protein_column,
+                },
+                description=f"Rolled up peptides to proteins using {method}",
+                ir=rollup_ir,
+            )
+
+            response = f"Successfully rolled up peptide data to protein level for '{modality_name}'!\n\n"
+            response += f"**Aggregation method:** {method}\n"
+            response += f"**Protein column:** {protein_column}\n"
+
+            if "n_peptides" in rollup_stats:
+                response += f"**Input peptides:** {rollup_stats['n_peptides']}\n"
+            if "n_proteins" in rollup_stats:
+                response += f"**Output proteins:** {rollup_stats['n_proteins']}\n"
+            if "median_peptides_per_protein" in rollup_stats:
+                response += f"**Median peptides/protein:** {rollup_stats['median_peptides_per_protein']:.1f}\n"
+
+            response += f"\n**New modality created:** '{rollup_name}'"
+            if save_result:
+                response += f"\n**Saved to:** {modality_name}_protein_rollup.h5ad"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in peptide-to-protein summarization: {e}")
+            return f"Error in peptide-to-protein rollup: {str(e)}"
+
+    # -------------------------
+    # NORMALIZE PTM TO PROTEIN TOOL
+    # -------------------------
+    @tool
+    def normalize_ptm_to_protein(
+        ptm_modality_name: str,
+        protein_modality_name: str,
+        method: str = "ratio",
+        save_result: bool = True,
+    ) -> str:
+        """Normalize PTM site abundances against total protein levels.
+
+        Separates true PTM regulation from protein abundance changes.
+        Essential for phosphoproteomics where increased phosphorylation
+        may just reflect increased total protein.
+
+        Args:
+            ptm_modality_name: Name of the PTM site-level modality
+            protein_modality_name: Name of the protein-level modality
+            method: "ratio" (log subtraction) or "regression" (residuals)
+            save_result: Whether to save normalized modality
+
+        Returns:
+            str: Normalization report with matching statistics
+        """
+        try:
+            ptm_adata = data_manager.get_modality(ptm_modality_name)
+        except ValueError:
+            return f"PTM modality '{ptm_modality_name}' not found. Available: {data_manager.list_modalities()}"
+
+        try:
+            protein_adata = data_manager.get_modality(protein_modality_name)
+        except ValueError:
+            return f"Protein modality '{protein_modality_name}' not found. Available: {data_manager.list_modalities()}"
+
+        try:
+            normalized_adata, norm_stats, norm_ir = (
+                preprocessing_service.normalize_ptm_to_protein(
+                    ptm_adata=ptm_adata,
+                    protein_adata=protein_adata,
+                    method=method,
+                )
+            )
+
+            normalized_name = f"{ptm_modality_name}_ptm_normalized"
+            data_manager.store_modality(
+                name=normalized_name,
+                adata=normalized_adata,
+                parent_name=ptm_modality_name,
+                step_summary=f"PTM normalized against {protein_modality_name} ({method})",
+            )
+
+            if save_result:
+                save_path = f"{ptm_modality_name}_ptm_normalized.h5ad"
+                data_manager.save_modality(normalized_name, save_path)
+
+            data_manager.log_tool_usage(
+                tool_name="normalize_ptm_to_protein",
+                parameters={
+                    "ptm_modality_name": ptm_modality_name,
+                    "protein_modality_name": protein_modality_name,
+                    "method": method,
+                },
+                description=f"Normalized PTM sites against protein levels ({method})",
+                ir=norm_ir,
+            )
+
+            response = f"Successfully normalized PTM sites against protein levels!\n\n"
+            response += f"**PTM modality:** {ptm_modality_name}\n"
+            response += f"**Protein modality:** {protein_modality_name}\n"
+            response += f"**Method:** {method}\n"
+
+            if "n_matched_sites" in norm_stats:
+                response += f"**Matched sites:** {norm_stats['n_matched_sites']}\n"
+            if "n_unmatched_sites" in norm_stats:
+                response += f"**Unmatched sites (kept with raw values):** {norm_stats['n_unmatched_sites']}\n"
+            if "n_total_sites" in norm_stats:
+                response += f"**Total sites:** {norm_stats['n_total_sites']}\n"
+
+            response += f"\n**New modality created:** '{normalized_name}'"
+            if save_result:
+                response += f"\n**Saved to:** {ptm_modality_name}_ptm_normalized.h5ad"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error normalizing PTM to protein: {e}")
+            return f"Error in PTM-to-protein normalization: {str(e)}"
+
+    # -------------------------
     # SUMMARY TOOL
     # -------------------------
     @tool
@@ -1033,12 +1543,23 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
 
     # Return all shared tools
     return [
+        # Status & QC
         check_proteomics_status,
         assess_proteomics_quality,
+        # Import
+        import_proteomics_data,
+        import_ptm_sites,
+        # Filtering & preprocessing
         filter_proteomics_data,
         normalize_proteomics_data,
+        correct_batch_effects,
+        # Rollup & PTM normalization
+        summarize_peptide_to_protein,
+        normalize_ptm_to_protein,
+        # Analysis
         analyze_proteomics_patterns,
         impute_missing_values,
         select_variable_proteins,
+        # Summary
         create_proteomics_summary,
     ]
