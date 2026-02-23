@@ -358,6 +358,54 @@ for i, j, _ in cross_reactive_pairs:
                 )
             )
 
+            # BUG-13 fix: Post-correction validation -- compare inter-plate correlation before vs after
+            import pandas as pd
+
+            validation_msg = ""
+            try:
+                plates = adata.obs[plate_column].unique()
+                if len(plates) >= 2:
+                    # Compute before-correction inter-plate correlation
+                    X_before = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
+                    before_plate_medians = {}
+                    for plate in plates:
+                        plate_mask = (adata.obs[plate_column] == plate).values
+                        if plate_mask.sum() > 0:
+                            before_plate_medians[str(plate)] = np.nanmedian(X_before[plate_mask, :], axis=0)
+
+                    if len(before_plate_medians) >= 2:
+                        before_df = pd.DataFrame(before_plate_medians)
+                        before_corr_matrix = before_df.corr(method="pearson", min_periods=3)
+                        # Extract upper triangle (excluding diagonal)
+                        mask = np.triu(np.ones_like(before_corr_matrix, dtype=bool), k=1)
+                        before_median_corr = float(before_corr_matrix.values[mask].mean()) if mask.sum() > 0 else np.nan
+
+                        # Compute after-correction inter-plate correlation
+                        X_after = corrected_adata.X.toarray() if hasattr(corrected_adata.X, "toarray") else corrected_adata.X
+                        after_plate_medians = {}
+                        for plate in plates:
+                            plate_mask = (corrected_adata.obs[plate_column] == plate).values
+                            if plate_mask.sum() > 0:
+                                after_plate_medians[str(plate)] = np.nanmedian(X_after[plate_mask, :], axis=0)
+
+                        after_df = pd.DataFrame(after_plate_medians)
+                        after_corr_matrix = after_df.corr(method="pearson", min_periods=3)
+                        after_median_corr = float(after_corr_matrix.values[mask].mean()) if mask.sum() > 0 else np.nan
+
+                        delta = after_median_corr - before_median_corr
+
+                        validation_msg = "\n**Post-Correction Validation:**\n"
+                        validation_msg += f"- Inter-plate correlation before: {before_median_corr:.3f}\n"
+                        validation_msg += f"- Inter-plate correlation after: {after_median_corr:.3f}\n"
+                        validation_msg += f"- Improvement: {delta:+.3f}\n"
+
+                        if delta < 0:
+                            validation_msg += "- **WARNING:** Correlation decreased after correction. "
+                            validation_msg += "This may indicate overcorrection. Consider using a different method.\n"
+            except Exception as val_err:
+                logger.warning(f"Post-correction validation failed: {val_err}")
+                validation_msg = "\n**Post-Correction Validation:** Could not compute (insufficient data)\n"
+
             corrected_name = f"{modality_name}_plate_corrected"
             data_manager.store_modality(
                 name=corrected_name,
@@ -388,6 +436,8 @@ for i, j, _ in cross_reactive_pairs:
 
             if "n_batches_corrected" in batch_stats:
                 response += f"- Plates corrected: {batch_stats['n_batches_corrected']}\n"
+
+            response += validation_msg
 
             response += f"\n**New modality created**: '{corrected_name}'"
             if save_result:
