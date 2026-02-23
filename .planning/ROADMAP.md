@@ -143,11 +143,12 @@ Plans:
   3. User can annotate metabolites via m/z matching (HMDB/KEGG) with MSI confidence levels
   4. User can analyze lipid classes and run pathway enrichment
   5. BUG-14 fixed; metabolomics_expert prompt created; package structured for future child agents
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md — Package scaffold + 4 services (quality, preprocessing, analysis, annotation) + PlatformConfig + BUG-14 fix
+- [ ] 06-02-PLAN.md — 10 tools in shared_tools.py + metabolomics_expert agent factory + state + entry point registration
+- [ ] 06-03-PLAN.md — Metabolomics expert prompt with tool inventory, platform workflows, tool selection guide
 
 ### Phase 7: Cross-Cutting Infrastructure
 **Goal**: Skills docs updated, @tool_meta foundation in place, remaining cross-cutting bugs fixed
@@ -176,5 +177,5 @@ Parallel: (1 ‖ 2 ‖ 4 ‖ 6) → (3 ‖ 5) → 7
 | 3. Transcriptomics Children | 0/TBD | Complete    | 2026-02-23 |
 | 4. MS Proteomics Core | 0/3 | Planned | - |
 | 5. Proteomics Children & Affinity | 0/TBD | Complete    | 2026-02-23 |
-| 6. Metabolomics Package | 0/TBD | Not started | - |
+| 6. Metabolomics Package | 0/3 | Planned | - |
 | 7. Cross-Cutting Infrastructure | 0/TBD | Not started | - |
