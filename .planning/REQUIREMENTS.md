@@ -30,8 +30,8 @@
 ### SC Transcriptomics Parent (transcriptomics_expert)
 
 - [ ] **SCT-01**: Add `detect_doublets` tool — Scrublet doublet detection on raw counts
-- [ ] **SCT-02**: Add `integrate_batches` tool — Harmony/scVI batch integration for multi-sample. Must return integration quality metrics (LISI, silhouette) so LLM can re-invoke with different parameters for iterative refinement.
-- [ ] **SCT-03**: Add `compute_trajectory` tool — DPT/PAGA pseudotime trajectory inference
+- [x] **SCT-02**: Add `integrate_batches` tool — Harmony/scVI batch integration for multi-sample. Must return integration quality metrics (LISI, silhouette) so LLM can re-invoke with different parameters for iterative refinement.
+- [x] **SCT-03**: Add `compute_trajectory` tool — DPT/PAGA pseudotime trajectory inference
 - [ ] **SCT-04**: Rename `filter_and_normalize_modality` → `filter_and_normalize`
 - [ ] **SCT-05**: Rename `select_highly_variable_genes` → `select_variable_features`
 - [ ] **SCT-06**: Rename `cluster_modality` → `cluster_cells`
@@ -42,10 +42,10 @@
 
 - [ ] **BLK-01**: Add `import_bulk_counts` tool — Salmon/kallisto/featureCounts import
 - [ ] **BLK-02**: Add `merge_sample_metadata` tool — join external metadata with count matrix
-- [ ] **BLK-03**: Add `assess_bulk_sample_quality` tool — PCA outlier detection, sample correlation, batch quantification
-- [ ] **BLK-04**: Add `filter_bulk_genes` tool — bulk-appropriate gene filtering (min counts in min samples)
-- [ ] **BLK-05**: Add `normalize_bulk_counts` tool — DESeq2 size factors, VST, CPM
-- [ ] **BLK-06**: Add `detect_batch_effects` tool — variance decomposition, correction recommendation
+- [x] **BLK-03**: Add `assess_bulk_sample_quality` tool — PCA outlier detection, sample correlation, batch quantification
+- [x] **BLK-04**: Add `filter_bulk_genes` tool — bulk-appropriate gene filtering (min counts in min samples)
+- [x] **BLK-05**: Add `normalize_bulk_counts` tool — DESeq2 size factors, VST, CPM
+- [x] **BLK-06**: Add `detect_batch_effects` tool — variance decomposition, correction recommendation
 - [ ] **BLK-07**: Add `convert_gene_identifiers` tool — Ensembl/Symbol/Entrez mapping
 - [ ] **BLK-08**: Add `prepare_bulk_for_de` tool — validation checkpoint before DE handoff
 
@@ -202,8 +202,8 @@
 | GEN-15 | Phase 1 | Complete |
 | GEN-16 | Phase 1 | Complete |
 | SCT-01 | Phase 2 | Pending |
-| SCT-02 | Phase 2 | Pending |
-| SCT-03 | Phase 2 | Pending |
+| SCT-02 | Phase 2 | Complete |
+| SCT-03 | Phase 2 | Complete |
 | SCT-04 | Phase 2 | Pending |
 | SCT-05 | Phase 2 | Pending |
 | SCT-06 | Phase 2 | Pending |
@@ -211,10 +211,10 @@
 | SCT-08 | Phase 2 | Pending |
 | BLK-01 | Phase 2 | Pending |
 | BLK-02 | Phase 2 | Pending |
-| BLK-03 | Phase 2 | Pending |
-| BLK-04 | Phase 2 | Pending |
-| BLK-05 | Phase 2 | Pending |
-| BLK-06 | Phase 2 | Pending |
+| BLK-03 | Phase 2 | Complete |
+| BLK-04 | Phase 2 | Complete |
+| BLK-05 | Phase 2 | Complete |
+| BLK-06 | Phase 2 | Complete |
 | BLK-07 | Phase 2 | Pending |
 | BLK-08 | Phase 2 | Pending |
 | ANN-01 | Phase 3 | Pending |

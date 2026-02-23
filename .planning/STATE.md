@@ -5,32 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-02-22)
 
 **Core value:** Every agent has exactly the right tools — no overlap, no gaps, no wrong abstraction level — so the LLM picks the correct tool every time and produces reliable, reproducible science.
-**Current focus:** Phase 1 - Genomics Domain
+**Current focus:** Phase 2 - Transcriptomics Parent
 
 ## Current Position
 
-Phase: 1 of 7 (Genomics Domain)
-Plan: 3 of 3 completed
-Status: Phase Complete
-Last activity: 2026-02-22 — Completed 01-03-PLAN.md (variant_analysis_expert child agent)
+Phase: 2 of 7 (Transcriptomics Parent)
+Plan: 1 of 3 completed
+Status: In Progress
+Last activity: 2026-02-22 — Completed 02-01-PLAN.md (services for SC integration, trajectory, bulk preprocessing)
 
-Progress: [██░░░░░░░░] 14%
+Progress: [███░░░░░░░] 19%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 6 min
-- Total execution time: 0.30 hours
+- Total execution time: 0.42 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-genomics-domain | 3 | 18 min | 6 min |
+| 02-transcriptomics-parent | 1 | 7 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (8 min), 01-02 (4 min), 01-03 (6 min)
+- Last 5 plans: 01-01 (8 min), 01-02 (4 min), 01-03 (6 min), 02-01 (7 min)
 - Trend: Stable (~6 min/plan)
 
 *Updated after each plan completion*
@@ -64,6 +65,11 @@ Recent decisions affecting current work:
 - D17: Lazy prompt import inside factory function for child agents (allows AGENT_CONFIG entry point discovery before prompt exists)
 - D18: lookup_variant uses EnsemblService directly with colocated_variants parsing for comprehensive single-variant reports
 
+- D19: Manual LISI instead of scib dependency (simpler, lighter, ~20 lines with sklearn KNN)
+- D20: pyDESeq2 size factors from dds.obs not dds.obsm (matches current pyDESeq2 API)
+- D21: BulkPreprocessingService in transcriptomics package (not core) to keep self-contained
+- D22: Auto root cell selection for DPT uses DC1 minimum (standard scanpy convention)
+
 ### Pending Todos
 
 None yet.
@@ -75,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-22
-Stopped at: Completed 01-03-PLAN.md (Phase 01 complete)
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None
