@@ -74,11 +74,12 @@ Plans:
   3. `integrate_batches` returns integration quality metrics (LISI, silhouette) so LLM can re-invoke with different params
   4. User can assess bulk sample quality (PCA outliers, batch quantification) before DE handoff
   5. BUG-01 fixed; transcriptomics_expert prompt updated for bulk routing + new SC tools
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Service layer: EnhancedSingleCellService (integrate_batches, compute_trajectory) + BulkPreprocessingService (assess, filter, normalize, detect batch)
+- [ ] 02-02-PLAN.md — SC agent updates: 3 new SC tools (detect_doublets, integrate_batches, compute_trajectory) + 4 tool renames + BUG-01 fix
+- [ ] 02-03-PLAN.md — Bulk tools + prompt: 8 bulk RNA-seq tools + prompt update with SC/bulk routing decision tree
 
 ### Phase 3: Transcriptomics Children
 **Goal**: Annotation expert and DE analysis expert enhanced for production workflows
