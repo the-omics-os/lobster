@@ -125,11 +125,13 @@ Plans:
   3. User can select biomarker panels (LASSO/stability/Boruta), evaluate with nested CV, and extract hub proteins
   4. User can import affinity data (Olink/SomaScan/Luminex), assess LOD quality, and normalize with bridge samples
   5. BUG-02, BUG-13 fixed; biomarker_discovery_expert prompt updated for panel selection tools
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — DE child services + tools: 3 new services (pathway, kinase, STRING) + 4 new tools + BUG-02 fix
+- [ ] 05-02-PLAN.md — Biomarker child tools: 3 new tools (panel selection, nested CV evaluation, hub extraction)
+- [ ] 05-03-PLAN.md — Affinity parsers + parent tools: SomaScan/Luminex parsers + 4 new tools + 2 enhancements + BUG-13 fix
+- [ ] 05-04-PLAN.md — Prompt updates: all 3 agent prompts rewritten for expanded tool inventories
 
 ### Phase 6: Metabolomics Package
 **Goal**: Complete lobster-metabolomics package ships with 10 core tools
