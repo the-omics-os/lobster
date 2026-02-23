@@ -40,14 +40,14 @@
 
 ### Bulk Transcriptomics (on transcriptomics_expert parent)
 
-- [ ] **BLK-01**: Add `import_bulk_counts` tool — Salmon/kallisto/featureCounts import
-- [ ] **BLK-02**: Add `merge_sample_metadata` tool — join external metadata with count matrix
+- [x] **BLK-01**: Add `import_bulk_counts` tool — Salmon/kallisto/featureCounts import
+- [x] **BLK-02**: Add `merge_sample_metadata` tool — join external metadata with count matrix
 - [x] **BLK-03**: Add `assess_bulk_sample_quality` tool — PCA outlier detection, sample correlation, batch quantification
 - [x] **BLK-04**: Add `filter_bulk_genes` tool — bulk-appropriate gene filtering (min counts in min samples)
 - [x] **BLK-05**: Add `normalize_bulk_counts` tool — DESeq2 size factors, VST, CPM
 - [x] **BLK-06**: Add `detect_batch_effects` tool — variance decomposition, correction recommendation
-- [ ] **BLK-07**: Add `convert_gene_identifiers` tool — Ensembl/Symbol/Entrez mapping
-- [ ] **BLK-08**: Add `prepare_bulk_for_de` tool — validation checkpoint before DE handoff
+- [x] **BLK-07**: Add `convert_gene_identifiers` tool — Ensembl/Symbol/Entrez mapping
+- [x] **BLK-08**: Add `prepare_bulk_for_de` tool — validation checkpoint before DE handoff
 
 ### Annotation Expert Child (transcriptomics)
 
@@ -136,7 +136,7 @@
 ### Prompts & Documentation
 
 - [x] **DOC-01**: Update genomics_expert prompt for new tool inventory + variant_analysis handoff
-- [ ] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
+- [x] **DOC-02**: Update transcriptomics_expert prompt for bulk-specific tool routing
 - [ ] **DOC-03**: Update proteomics_expert prompt for import tools + PTM + affinity tools
 - [ ] **DOC-04**: Update de_analysis_expert prompt for merged DE tools + bulk additions
 - [ ] **DOC-05**: Update biomarker_discovery_expert prompt for panel selection tools
@@ -209,14 +209,14 @@
 | SCT-06 | Phase 2 | Complete |
 | SCT-07 | Phase 2 | Complete |
 | SCT-08 | Phase 2 | Complete |
-| BLK-01 | Phase 2 | Pending |
-| BLK-02 | Phase 2 | Pending |
+| BLK-01 | Phase 2 | Complete |
+| BLK-02 | Phase 2 | Complete |
 | BLK-03 | Phase 2 | Complete |
 | BLK-04 | Phase 2 | Complete |
 | BLK-05 | Phase 2 | Complete |
 | BLK-06 | Phase 2 | Complete |
-| BLK-07 | Phase 2 | Pending |
-| BLK-08 | Phase 2 | Pending |
+| BLK-07 | Phase 2 | Complete |
+| BLK-08 | Phase 2 | Complete |
 | ANN-01 | Phase 3 | Pending |
 | ANN-02 | Phase 3 | Pending |
 | ANN-03 | Phase 3 | Pending |
@@ -274,7 +274,7 @@
 | MET-16 | Phase 6 | Pending |
 | MET-17 | Phase 6 | Pending |
 | DOC-01 | Phase 1 | Complete |
-| DOC-02 | Phase 2 | Pending |
+| DOC-02 | Phase 2 | Complete |
 | DOC-03 | Phase 4 | Pending |
 | DOC-04 | Phase 3 | Pending |
 | DOC-05 | Phase 5 | Pending |
