@@ -370,7 +370,9 @@ class CustomCodeExecutionService:
         new_modality_name = None
         write_back_error = None
         if modality_name and exec_error is None:
-            modified_path = Path(self.data_manager.workspace_path) / ".modified_adata.h5ad"
+            modified_path = (
+                Path(self.data_manager.workspace_path) / ".modified_adata.h5ad"
+            )
             if modified_path.exists():
                 try:
                     import anndata

@@ -268,11 +268,13 @@ class VariantAnnotationService:
                         row_data[ref_col] = trimmed_ref
                         row_data[alt_col] = trimmed_alt
                         row_data[pos_col] = trimmed_pos
-                        rows_to_add.append({
-                            "data": row_data,
-                            "original_idx": var_idx,
-                            "is_split": True,
-                        })
+                        rows_to_add.append(
+                            {
+                                "data": row_data,
+                                "original_idx": var_idx,
+                                "is_split": True,
+                            }
+                        )
                 else:
                     # Single allele: just trim
                     trimmed_ref, trimmed_alt, trimmed_pos = self._trim_alleles(
@@ -280,9 +282,15 @@ class VariantAnnotationService:
                     )
                     if trimmed_ref != ref or trimmed_alt != alt:
                         n_trimmed += 1
-                        adata_norm.var.iloc[var_idx, adata_norm.var.columns.get_loc(ref_col)] = trimmed_ref
-                        adata_norm.var.iloc[var_idx, adata_norm.var.columns.get_loc(alt_col)] = trimmed_alt
-                        adata_norm.var.iloc[var_idx, adata_norm.var.columns.get_loc(pos_col)] = trimmed_pos
+                        adata_norm.var.iloc[
+                            var_idx, adata_norm.var.columns.get_loc(ref_col)
+                        ] = trimmed_ref
+                        adata_norm.var.iloc[
+                            var_idx, adata_norm.var.columns.get_loc(alt_col)
+                        ] = trimmed_alt
+                        adata_norm.var.iloc[
+                            var_idx, adata_norm.var.columns.get_loc(pos_col)
+                        ] = trimmed_pos
 
             # Add normalized columns for tracking
             adata_norm.var["REF_normalized"] = adata_norm.var[ref_col].astype(str)
@@ -315,10 +323,10 @@ class VariantAnnotationService:
                     new_var_rows.append(var_data)
 
                     orig_idx = row_info["original_idx"]
-                    new_X_rows.append(adata_norm.X[:, orig_idx:orig_idx+1])
+                    new_X_rows.append(adata_norm.X[:, orig_idx : orig_idx + 1])
                     for layer_name in adata_norm.layers.keys():
                         new_layer_rows[layer_name].append(
-                            adata_norm.layers[layer_name][:, orig_idx:orig_idx+1]
+                            adata_norm.layers[layer_name][:, orig_idx : orig_idx + 1]
                         )
 
                 if new_var_rows:
@@ -330,7 +338,11 @@ class VariantAnnotationService:
                         for i in range(len(new_var_df))
                     ]
 
-                    new_X = np.hstack(new_X_rows) if new_X_rows else np.empty((adata_norm.n_obs, 0))
+                    new_X = (
+                        np.hstack(new_X_rows)
+                        if new_X_rows
+                        else np.empty((adata_norm.n_obs, 0))
+                    )
                     new_layers = {}
                     for layer_name, layer_parts in new_layer_rows.items():
                         if layer_parts:
@@ -374,9 +386,7 @@ class VariantAnnotationService:
             logger.exception(f"Error in variant normalization: {e}")
             raise VariantAnnotationError(f"Variant normalization failed: {str(e)}")
 
-    def _trim_alleles(
-        self, ref: str, alt: str, pos: int
-    ) -> Tuple[str, str, int]:
+    def _trim_alleles(self, ref: str, alt: str, pos: int) -> Tuple[str, str, int]:
         """
         Left-trim common prefix and right-trim common suffix between REF and ALT.
 
@@ -397,7 +407,11 @@ class VariantAnnotationService:
 
         # Left-trim common prefix (keep at least 1 base)
         trim_left = 0
-        while len(ref) - trim_left > 1 and len(alt) - trim_left > 1 and ref[trim_left] == alt[trim_left]:
+        while (
+            len(ref) - trim_left > 1
+            and len(alt) - trim_left > 1
+            and ref[trim_left] == alt[trim_left]
+        ):
             trim_left += 1
 
         if trim_left > 0:
@@ -436,7 +450,9 @@ class VariantAnnotationService:
 
             # Check if gnomad_af already exists
             if "gnomad_af" not in adata_freq.var.columns:
-                logger.info("gnomad_af not found, running annotation to retrieve frequencies")
+                logger.info(
+                    "gnomad_af not found, running annotation to retrieve frequencies"
+                )
                 # Try genebe first, fall back to ensembl_vep
                 try:
                     adata_freq, _, _ = self.annotate_variants(
@@ -448,7 +464,9 @@ class VariantAnnotationService:
                     )
 
             # Compile frequency statistics
-            af_values = pd.to_numeric(adata_freq.var.get("gnomad_af", pd.Series(dtype=float)), errors="coerce")
+            af_values = pd.to_numeric(
+                adata_freq.var.get("gnomad_af", pd.Series(dtype=float)), errors="coerce"
+            )
             n_with_freq = int(af_values.notna().sum())
             valid_af = af_values.dropna()
 
@@ -518,7 +536,9 @@ class VariantAnnotationService:
                     )
 
             # Compile clinical statistics
-            clinvar_col = adata_clin.var.get("clinvar_significance", pd.Series(dtype=str))
+            clinvar_col = adata_clin.var.get(
+                "clinvar_significance", pd.Series(dtype=str)
+            )
             n_with_clinvar = int(clinvar_col.notna().sum())
 
             # Count significance categories
@@ -666,7 +686,10 @@ class VariantAnnotationService:
                         cv_lower = str(cv).lower()
                         if "pathogenic" in cv_lower and "likely" not in cv_lower:
                             pathogenicity_scores[i] += 0.3
-                        elif "likely_pathogenic" in cv_lower or "likely pathogenic" in cv_lower:
+                        elif (
+                            "likely_pathogenic" in cv_lower
+                            or "likely pathogenic" in cv_lower
+                        ):
                             pathogenicity_scores[i] += 0.25
                         elif "uncertain" in cv_lower:
                             pathogenicity_scores[i] += 0.1
@@ -680,30 +703,39 @@ class VariantAnnotationService:
                     except (ValueError, TypeError):
                         cadd = None
                     if cadd is not None and cadd > 20:
-                        pathogenicity_scores[i] = min(pathogenicity_scores[i] + 0.1, 0.3)
+                        pathogenicity_scores[i] = min(
+                            pathogenicity_scores[i] + 0.1, 0.3
+                        )
 
             # SIFT component (adds up to 0.05)
             if sift_col in adata_pri.var.columns:
                 for i in range(n_variants):
                     sift_val = adata_pri.var[sift_col].iloc[i]
                     if pd.notna(sift_val) and "deleterious" in str(sift_val).lower():
-                        pathogenicity_scores[i] = min(pathogenicity_scores[i] + 0.05, 0.3)
+                        pathogenicity_scores[i] = min(
+                            pathogenicity_scores[i] + 0.05, 0.3
+                        )
 
             # PolyPhen component (adds up to 0.05)
             if polyphen_col in adata_pri.var.columns:
                 for i in range(n_variants):
                     pp_val = adata_pri.var[polyphen_col].iloc[i]
                     if pd.notna(pp_val) and "probably_damaging" in str(pp_val).lower():
-                        pathogenicity_scores[i] = min(pathogenicity_scores[i] + 0.05, 0.3)
+                        pathogenicity_scores[i] = min(
+                            pathogenicity_scores[i] + 0.05, 0.3
+                        )
 
             # Composite score
             priority_scores = consequence_scores + rarity_scores + pathogenicity_scores
 
             # Store results
             adata_pri.var["priority_score"] = priority_scores
-            adata_pri.var["priority_rank"] = pd.Series(priority_scores).rank(
-                ascending=False, method="min"
-            ).astype(int).values
+            adata_pri.var["priority_rank"] = (
+                pd.Series(priority_scores)
+                .rank(ascending=False, method="min")
+                .astype(int)
+                .values
+            )
 
             # Build stats
             n_high = int((priority_scores > 0.6).sum())

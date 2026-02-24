@@ -15,7 +15,7 @@ AGENT_CONFIG = AgentRegistryConfig(
     description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, computational method analysis, and parameter extraction from publications and queuing datasets for download.",
     factory_function="lobster.agents.research.research_agent.research_agent",
     handoff_tool_name="handoff_to_research_agent",
-    handoff_tool_description="Assign literature search, dataset discovery, method analysis, parameter extraction, and download queue creation to the research agent",
+    handoff_tool_description="Assign literature search, dataset discovery, method analysis, parameter extraction, download queue creation, and knowledgebase identifier lookups (UniProt protein accessions like P04637, Ensembl gene IDs like ENSG00000141510, gene symbols) to the research agent",
     child_agents=["metadata_assistant"],
 )
 
@@ -35,6 +35,9 @@ from lobster.agents.research.prompts import create_research_agent_prompt
 from lobster.agents.research.state import ResearchAgentState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+
+# Premium feature - graceful fallback if unavailable
+from lobster.core.component_registry import component_registry
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_queue import (
     DownloadStatus,
@@ -48,9 +51,6 @@ from lobster.core.schemas.download_queue import (
 from lobster.services.metadata.metadata_validation_service import (
     ValidationSeverity,
 )
-
-# Premium feature - graceful fallback if unavailable
-from lobster.core.component_registry import component_registry
 
 PublicationProcessingService = component_registry.get_service("publication_processing")
 HAS_PUBLICATION_PROCESSING = PublicationProcessingService is not None
@@ -621,7 +621,9 @@ def research_agent(
                     formatted = f"## UniProt Protein Metadata for {identifier}\n\n"
                     formatted += "**Database**: UniProt\n"
                     formatted += f"**Accession**: {protein.get('primaryAccession', identifier)}\n"
-                    formatted += f"**Entry Name**: {protein.get('uniProtkbId', 'N/A')}\n"
+                    formatted += (
+                        f"**Entry Name**: {protein.get('uniProtkbId', 'N/A')}\n"
+                    )
 
                     # Protein name
                     prot_desc = protein.get("proteinDescription", {})
@@ -637,8 +639,7 @@ def research_agent(
                         if gene_name:
                             formatted += f"**Gene**: {gene_name}\n"
                         synonyms = [
-                            s.get("value", "")
-                            for s in genes[0].get("synonyms", [])
+                            s.get("value", "") for s in genes[0].get("synonyms", [])
                         ]
                         if synonyms:
                             formatted += f"**Gene Synonyms**: {', '.join(synonyms)}\n"
@@ -660,7 +661,11 @@ def research_agent(
                             if texts:
                                 func_text = texts[0].get("value", "")
                                 if func_text:
-                                    preview = func_text[:500] if level == "standard" else func_text
+                                    preview = (
+                                        func_text[:500]
+                                        if level == "standard"
+                                        else func_text
+                                    )
                                     formatted += f"\n**Function**:\n{preview}{'...' if len(func_text) > 500 and level == 'standard' else ''}\n"
                             break
 
@@ -690,7 +695,9 @@ def research_agent(
                         kw_names = [kw.get("name", "") for kw in keywords[:10]]
                         formatted += f"**Keywords**: {', '.join(kw_names)}\n"
 
-                    logger.info(f"UniProt metadata extraction completed for: {identifier}")
+                    logger.info(
+                        f"UniProt metadata extraction completed for: {identifier}"
+                    )
                     data_manager.log_tool_usage(
                         tool_name="get_dataset_metadata",
                         parameters={"identifier": identifier, "database": "uniprot"},
@@ -712,7 +719,9 @@ def research_agent(
                     formatted = f"## Ensembl Metadata for {identifier}\n\n"
                     formatted += "**Database**: Ensembl\n"
                     formatted += f"**ID**: {gene.get('id', identifier)}\n"
-                    formatted += f"**Display Name**: {gene.get('display_name', 'N/A')}\n"
+                    formatted += (
+                        f"**Display Name**: {gene.get('display_name', 'N/A')}\n"
+                    )
 
                     description = gene.get("description", "")
                     if description:
@@ -728,8 +737,12 @@ def research_agent(
                     end = gene.get("end", "")
                     strand = gene.get("strand", "")
                     if seq_region and start and end:
-                        strand_str = "+" if strand == 1 else "-" if strand == -1 else str(strand)
-                        formatted += f"**Location**: {seq_region}:{start}-{end} ({strand_str})\n"
+                        strand_str = (
+                            "+" if strand == 1 else "-" if strand == -1 else str(strand)
+                        )
+                        formatted += (
+                            f"**Location**: {seq_region}:{start}-{end} ({strand_str})\n"
+                        )
 
                     # Object type
                     obj_type = gene.get("object_type", "")
@@ -749,7 +762,9 @@ def research_agent(
                         if len(transcripts) > 5:
                             formatted += f"  ... and {len(transcripts) - 5} more\n"
 
-                    logger.info(f"Ensembl metadata extraction completed for: {identifier}")
+                    logger.info(
+                        f"Ensembl metadata extraction completed for: {identifier}"
+                    )
                     data_manager.log_tool_usage(
                         tool_name="get_dataset_metadata",
                         parameters={"identifier": identifier, "database": "ensembl"},
@@ -966,7 +981,10 @@ def research_agent(
                         )
                         data_manager.log_tool_usage(
                             tool_name="get_dataset_metadata",
-                            parameters={"identifier": identifier, "database": "massive"},
+                            parameters={
+                                "identifier": identifier,
+                                "database": "massive",
+                            },
                             description=f"MassIVE metadata: {identifier}",
                         )
                         return formatted
@@ -1229,7 +1247,9 @@ def research_agent(
                                 queue_entry = result.queue_entry
 
                                 # Enrich with validation data from this flow
-                                queue_entry.validation_result = validation_result.__dict__
+                                queue_entry.validation_result = (
+                                    validation_result.__dict__
+                                )
                                 queue_entry.validation_status = validation_status
 
                                 data_manager.download_queue.add_entry(queue_entry)
@@ -1278,7 +1298,10 @@ def research_agent(
 
                         data_manager.log_tool_usage(
                             tool_name="validate_dataset_metadata",
-                            parameters={"identifier": identifier, "add_to_queue": add_to_queue},
+                            parameters={
+                                "identifier": identifier,
+                                "add_to_queue": add_to_queue,
+                            },
                             description=f"Metadata validation: {identifier}",
                         )
                         return report
@@ -1377,24 +1400,26 @@ def research_agent(
             ]
 
             if strategy:
-                report_parts.extend([
-                    f"**Strategy**: {strategy.strategy_name} "
-                    f"(confidence: {strategy.confidence:.2f})",
-                    f"**Rationale**: {strategy.rationale}",
-                ])
-
-            if result.url_data:
-                report_parts.append(
-                    f"**Files found**: {result.url_data.file_count}"
+                report_parts.extend(
+                    [
+                        f"**Strategy**: {strategy.strategy_name} "
+                        f"(confidence: {strategy.confidence:.2f})",
+                        f"**Rationale**: {strategy.rationale}",
+                    ]
                 )
 
-            report_parts.extend([
-                "",
-                "**Next steps**:",
-                "1. Supervisor can query queue: "
-                "`get_content_from_workspace(workspace='download_queue')`",
-                f"2. Hand off to data_expert with entry_id: `{entry.entry_id}`",
-            ])
+            if result.url_data:
+                report_parts.append(f"**Files found**: {result.url_data.file_count}")
+
+            report_parts.extend(
+                [
+                    "",
+                    "**Next steps**:",
+                    "1. Supervisor can query queue: "
+                    "`get_content_from_workspace(workspace='download_queue')`",
+                    f"2. Hand off to data_expert with entry_id: `{entry.entry_id}`",
+                ]
+            )
 
             logger.info(
                 f"Prepared {accession} for download: {entry.entry_id} "
@@ -1546,7 +1571,11 @@ def research_agent(
                 )
                 data_manager.log_tool_usage(
                     tool_name="extract_methods",
-                    parameters={"identifiers": ",".join(identifiers), "focus": focus, "batch_size": len(identifiers)},
+                    parameters={
+                        "identifiers": ",".join(identifiers),
+                        "focus": focus,
+                        "batch_size": len(identifiers),
+                    },
                     description=f"Batch method extraction: {len(batch_results)} papers",
                 )
                 return response
@@ -1810,7 +1839,10 @@ Could not retrieve abstract for: {identifier}
                     )
                     data_manager.log_tool_usage(
                         tool_name="read_full_publication",
-                        parameters={"identifier": identifier, "prefer_webpage": prefer_webpage},
+                        parameters={
+                            "identifier": identifier,
+                            "prefer_webpage": prefer_webpage,
+                        },
                         description=f"Publication read: {identifier} via webpage",
                     )
                     return response
@@ -1975,6 +2007,7 @@ Could not extract content for: {identifier}
 
             # Create PublicationQueueEntry
             from datetime import datetime
+
             from lobster.core.schemas.publication_queue import (
                 PublicationQueueEntry,
                 PublicationStatus,
@@ -2126,9 +2159,9 @@ Could not extract content for: {identifier}
                         if isinstance(entry.status, str)
                         else entry.status.__class__(status_override.lower())
                     ),
-                    error=error_message
-                    if status_override.lower() == "failed"
-                    else None,
+                    error=(
+                        error_message if status_override.lower() == "failed" else None
+                    ),
                     processed_by="research_agent",
                 )
 
@@ -2179,7 +2212,10 @@ Could not extract content for: {identifier}
         )
         data_manager.log_tool_usage(
             tool_name="process_publication_entry",
-            parameters={"entry_id": resolved_entry_id, "extraction_tasks": extraction_tasks},
+            parameters={
+                "entry_id": resolved_entry_id,
+                "extraction_tasks": extraction_tasks,
+            },
             description=f"Publication processed: {resolved_entry_id}",
         )
         return outcome.response_markdown

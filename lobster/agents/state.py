@@ -171,38 +171,6 @@ class OverallState(AgentState):
     todos: Annotated[List[TodoItem], _todo_reducer] = []
 
 
-# class SupervisorState(AgentState):
-#     """
-#     State for the supervisor agent.
-#     """
-#     next: str  # The next node to route to (agent name or END)
-#     last_active_agent: str
-
-#     # Bioinformatics-specific context the supervisor might maintain
-#     analysis_results: Dict[str, Any]     # Combined results from multiple experts
-#     methodology_parameters: Dict[str, Any]
-#     data_context: str                    # High-level description of the data in use
-
-#     # Control information
-#     delegation_history: List[str]        # Track which agents have been called
-#     pending_tasks: List[str]
-
-
-# class TranscriptomicsExpertState(AgentState):
-#     """
-#     State for the transcriptomics expert agent.
-#     """
-#     next: str
-
-#     # Transcriptomics-specific context
-#     analysis_results: Dict[str, Any]     # Gene expression, DEG lists, etc.
-#     file_paths: List[str]            # Paths to input/output files
-#     methodology_parameters: Dict[str, Any]
-#     data_context: str                    # Type/source of transcriptomics data (RNA-seq, microarray)
-#     quality_control_metrics: Dict[str, Any]
-#     intermediate_outputs: Dict[str, Any] # For partial computations before returning to supervisor
-
-
 class SingleCellExpertState(AgentState):
     """
     State for the single-cell RNA-seq expert agent.

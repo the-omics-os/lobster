@@ -503,7 +503,9 @@ def _validate_missing_values(adata) -> "ValidationResult":
     # accurate missing value detection.
     if hasattr(adata.X, "toarray"):  # Sparse matrix
         X_dense = adata.X.toarray()
-        missing_pct = np.isnan(X_dense).sum() / X_dense.size * 100 if X_dense.size > 0 else 0
+        missing_pct = (
+            np.isnan(X_dense).sum() / X_dense.size * 100 if X_dense.size > 0 else 0
+        )
     else:  # Dense matrix
         missing_pct = np.isnan(adata.X).sum() / adata.X.size * 100
 

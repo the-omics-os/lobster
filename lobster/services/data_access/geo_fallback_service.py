@@ -423,7 +423,7 @@ class GEOFallbackService:
                 return f"""Successfully downloaded bulk dataset {clean_geo_id}!
 
 📊 Modality: '{modality_name}' ({adata.n_obs} samples × {adata.n_vars} genes)
-🔬 Adapter: transcriptomics_bulk  
+🔬 Adapter: transcriptomics_bulk
 💾 Saved to: {save_path}
 📈 Ready for bulk RNA-seq analysis!"""
             else:

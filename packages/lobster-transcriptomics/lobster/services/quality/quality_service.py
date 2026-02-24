@@ -127,9 +127,9 @@ class QualityService:
                 "cells_before_qc": cells_before,
                 "cells_after_qc": cells_after,
                 "cells_removed": cells_before - cells_after,
-                "cells_retained_pct": (cells_after / cells_before) * 100,
+                "cells_retained_pct": (cells_after / cells_before) * 100 if cells_before > 0 else 0.0,
                 "quality_status": (
-                    "Pass" if cells_after / cells_before > 0.7 else "Warning"
+                    "Pass" if cells_before > 0 and cells_after / cells_before > 0.7 else "Warning"
                 ),
                 "mean_total_counts": float(qc_metrics["total_counts"].mean()),
                 "mean_genes_per_cell": float(qc_metrics["n_genes"].mean()),

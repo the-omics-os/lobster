@@ -306,20 +306,16 @@ def create_variant_consequence_tool(data_manager: DataManagerV2):
                 # Colocated variants (known variants at this position)
                 colocated = entry.get("colocated_variants", [])
                 if colocated:
-                    known_ids = [
-                        v.get("id", "?")
-                        for v in colocated
-                        if v.get("id")
-                    ]
+                    known_ids = [v.get("id", "?") for v in colocated if v.get("id")]
                     if known_ids:
-                        lines.append(
-                            f"**Known variants**: {', '.join(known_ids[:5])}"
-                        )
+                        lines.append(f"**Known variants**: {', '.join(known_ids[:5])}")
 
                 # Transcript consequences
                 transcript_cons = entry.get("transcript_consequences", [])
                 if transcript_cons:
-                    lines.append(f"\n**Transcript consequences** ({len(transcript_cons)}):\n")
+                    lines.append(
+                        f"\n**Transcript consequences** ({len(transcript_cons)}):\n"
+                    )
                     for tc in transcript_cons[:10]:  # Cap output
                         gene = tc.get("gene_symbol", tc.get("gene_id", "?"))
                         tx_id = tc.get("transcript_id", "?")
@@ -512,7 +508,9 @@ def create_summarize_modality_tool(data_manager: DataManagerV2):
                 # List all modalities
                 all_modalities = data_manager.list_modalities()
                 if not all_modalities:
-                    return "No modalities loaded yet. Use data loading tools to load data."
+                    return (
+                        "No modalities loaded yet. Use data loading tools to load data."
+                    )
 
                 lines = [f"**Loaded Modalities** ({len(all_modalities)} total):\n"]
                 for mod_name in all_modalities:
@@ -550,7 +548,9 @@ def create_summarize_modality_tool(data_manager: DataManagerV2):
                 modality_type = adata.uns.get("modality", "unknown")
                 source_file = adata.uns.get("source_file", "N/A")
 
-                has_qc = "call_rate" in adata.obs.columns or "qc_pass" in adata.var.columns
+                has_qc = (
+                    "call_rate" in adata.obs.columns or "qc_pass" in adata.var.columns
+                )
 
                 lines = [
                     f"**Modality: '{modality_name}'**\n",

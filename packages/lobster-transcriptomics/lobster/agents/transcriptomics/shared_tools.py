@@ -554,9 +554,15 @@ Proceed with filtering and normalization for downstream analysis."""
                     summary += f"- **Var columns**: {list(adata.var.columns)}\n"
 
                     # Check for analysis indicators
-                    _known_cluster_names = {"leiden", "louvain", "seurat_clusters", "cluster"}
+                    _known_cluster_names = {
+                        "leiden",
+                        "louvain",
+                        "seurat_clusters",
+                        "cluster",
+                    }
                     cluster_cols = [
-                        c for c in adata.obs.columns
+                        c
+                        for c in adata.obs.columns
                         if c in _known_cluster_names
                         or c.startswith(("leiden_", "louvain_", "RNA_snn_res"))
                     ]
@@ -596,14 +602,21 @@ Proceed with filtering and normalization for downstream analysis."""
 
                             # Add key single-cell columns if present
                             _sc_key_names = {
-                                "leiden", "louvain", "seurat_clusters", "cluster",
-                                "cell_type", "doublet_score", "qc_pass",
+                                "leiden",
+                                "louvain",
+                                "seurat_clusters",
+                                "cluster",
+                                "cell_type",
+                                "doublet_score",
+                                "qc_pass",
                             }
                             key_cols = [
                                 col
                                 for col in adata.obs.columns
                                 if col in _sc_key_names
-                                or col.startswith(("leiden_", "louvain_", "RNA_snn_res"))
+                                or col.startswith(
+                                    ("leiden_", "louvain_", "RNA_snn_res")
+                                )
                             ]
                             if key_cols:
                                 summary += f"  - Annotations: {', '.join(key_cols)}\n"
@@ -696,8 +709,10 @@ Proceed with filtering and normalization for downstream analysis."""
             )
 
             if method == "deviance":
-                adata_result, stats, ir = preprocessing_service.select_features_deviance(
-                    adata, n_top_genes=n_top_genes
+                adata_result, stats, ir = (
+                    preprocessing_service.select_features_deviance(
+                        adata, n_top_genes=n_top_genes
+                    )
                 )
             elif method == "hvg":
                 adata_result, stats, ir = preprocessing_service.select_features_hvg(
@@ -744,9 +759,7 @@ Proceed with filtering and normalization for downstream analysis."""
 
             # Next-step guidance based on method
             if method == "deviance":
-                response += (
-                    "\n\n**Next steps**: filter_and_normalize() → run_pca()"
-                )
+                response += "\n\n**Next steps**: filter_and_normalize() → run_pca()"
             else:
                 response += "\n\n**Next steps**: run_pca() for dimensionality reduction"
 

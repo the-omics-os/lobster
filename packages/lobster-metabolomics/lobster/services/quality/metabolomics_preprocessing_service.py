@@ -11,7 +11,6 @@ All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance trackin
 reproducible notebook export via /pipeline export.
 """
 
-import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
@@ -48,8 +47,11 @@ class MetabolomicsPreprocessingService:
     # =========================================================================
 
     def _create_ir_filter_features(
-        self, min_prevalence: float, max_rsd: Optional[float],
-        blank_ratio_threshold: Optional[float], blank_label: str,
+        self,
+        min_prevalence: float,
+        max_rsd: Optional[float],
+        blank_ratio_threshold: Optional[float],
+        blank_label: str,
     ) -> AnalysisStep:
         """Create IR for feature filtering."""
         return AnalysisStep(
@@ -80,23 +82,32 @@ print(f"Filtered: {stats['n_before']} -> {stats['n_after']} features")""",
             },
             parameter_schema={
                 "min_prevalence": ParameterSpec(
-                    param_type="float", papermill_injectable=True, default_value=0.5,
-                    required=False, validation_rule="0 <= min_prevalence <= 1",
+                    param_type="float",
+                    papermill_injectable=True,
+                    default_value=0.5,
+                    required=False,
+                    validation_rule="0 <= min_prevalence <= 1",
                     description="Minimum fraction of samples with non-NaN values",
                 ),
                 "max_rsd": ParameterSpec(
-                    param_type="Optional[float]", papermill_injectable=True,
-                    default_value=None, required=False,
+                    param_type="Optional[float]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
                     description="Maximum RSD threshold (requires var['rsd'])",
                 ),
                 "blank_ratio_threshold": ParameterSpec(
-                    param_type="Optional[float]", papermill_injectable=True,
-                    default_value=None, required=False,
+                    param_type="Optional[float]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
                     description="Max blank/sample ratio for feature retention",
                 ),
                 "blank_label": ParameterSpec(
-                    param_type="str", papermill_injectable=True,
-                    default_value="blank", required=False,
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="blank",
+                    required=False,
                     description="Label for blank samples in sample_type column",
                 ),
             },
@@ -105,7 +116,9 @@ print(f"Filtered: {stats['n_before']} -> {stats['n_after']} features")""",
         )
 
     def _create_ir_impute_missing_values(
-        self, method: str, knn_neighbors: int,
+        self,
+        method: str,
+        knn_neighbors: int,
     ) -> AnalysisStep:
         """Create IR for missing value imputation."""
         return AnalysisStep(
@@ -129,14 +142,19 @@ print(f"Imputed {stats['n_values_imputed']} values ({stats['pct_imputed']:.1f}%)
             parameters={"method": method, "knn_neighbors": knn_neighbors},
             parameter_schema={
                 "method": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="knn",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="knn",
                     required=False,
                     validation_rule="method in ['knn', 'min', 'lod_half', 'median', 'mice']",
                     description="Imputation method",
                 ),
                 "knn_neighbors": ParameterSpec(
-                    param_type="int", papermill_injectable=True, default_value=5,
-                    required=False, validation_rule="knn_neighbors > 0",
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=5,
+                    required=False,
+                    validation_rule="knn_neighbors > 0",
                     description="Number of neighbors for KNN imputation",
                 ),
             },
@@ -145,7 +163,10 @@ print(f"Imputed {stats['n_values_imputed']} values ({stats['pct_imputed']:.1f}%)
         )
 
     def _create_ir_normalize(
-        self, method: str, log_transform: bool, reference_sample: Optional[str],
+        self,
+        method: str,
+        log_transform: bool,
+        reference_sample: Optional[str],
     ) -> AnalysisStep:
         """Create IR for normalization."""
         return AnalysisStep(
@@ -174,18 +195,25 @@ print(f"Normalized using {method}, log_transform={log_transform}")""",
             },
             parameter_schema={
                 "method": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="pqn",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="pqn",
                     required=False,
                     validation_rule="method in ['pqn', 'tic', 'is', 'median', 'quantile']",
                     description="Normalization method",
                 ),
                 "log_transform": ParameterSpec(
-                    param_type="bool", papermill_injectable=True, default_value=True,
-                    required=False, description="Apply log2 transformation after normalization",
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
+                    required=False,
+                    description="Apply log2 transformation after normalization",
                 ),
                 "reference_sample": ParameterSpec(
-                    param_type="Optional[str]", papermill_injectable=True,
-                    default_value=None, required=False,
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
                     description="Reference sample for IS normalization (feature names or indices)",
                 ),
             },
@@ -194,7 +222,10 @@ print(f"Normalized using {method}, log_transform={log_transform}")""",
         )
 
     def _create_ir_correct_batch_effects(
-        self, batch_key: str, method: str, qc_label: str,
+        self,
+        batch_key: str,
+        method: str,
+        qc_label: str,
     ) -> AnalysisStep:
         """Create IR for batch effect correction."""
         return AnalysisStep(
@@ -223,17 +254,24 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
             },
             parameter_schema={
                 "batch_key": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="batch",
-                    required=True, description="Column in obs containing batch labels",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="batch",
+                    required=True,
+                    description="Column in obs containing batch labels",
                 ),
                 "method": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="combat",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="combat",
                     required=False,
                     validation_rule="method in ['combat', 'median_centering', 'qc_rlsc']",
                     description="Batch correction method",
                 ),
                 "qc_label": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="QC",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="QC",
                     required=False,
                     description="Label for QC samples (required for qc_rlsc)",
                 ),
@@ -302,8 +340,14 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
 
             # --- Blank ratio filter ---
             n_removed_blank = 0
-            if blank_ratio_threshold is not None and "sample_type" in adata_filtered.obs.columns:
-                blank_mask_obs = adata_filtered.obs["sample_type"].astype(str).str.strip() == blank_label
+            if (
+                blank_ratio_threshold is not None
+                and "sample_type" in adata_filtered.obs.columns
+            ):
+                blank_mask_obs = (
+                    adata_filtered.obs["sample_type"].astype(str).str.strip()
+                    == blank_label
+                )
                 sample_mask_obs = ~blank_mask_obs
                 if blank_mask_obs.any() and sample_mask_obs.any():
                     blank_means = np.nanmean(X[blank_mask_obs.values], axis=0)
@@ -316,7 +360,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
                     n_removed_blank = int((~blank_feature_mask & keep_mask).sum())
                     keep_mask &= blank_feature_mask
                 else:
-                    logger.warning("No blank or sample entries found; skipping blank filter.")
+                    logger.warning(
+                        "No blank or sample entries found; skipping blank filter."
+                    )
 
             # Apply filter
             adata_filtered = adata_filtered[:, keep_mask].copy()
@@ -379,18 +425,23 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
             if n_missing_before == 0:
                 logger.info("No missing values detected, skipping imputation")
                 ir = self._create_ir_impute_missing_values(method, knn_neighbors)
-                return adata_imputed, {
-                    "method_used": method,
-                    "n_values_imputed": 0,
-                    "pct_imputed": 0.0,
-                    "analysis_type": "metabolomics_imputation",
-                }, ir
+                return (
+                    adata_imputed,
+                    {
+                        "method_used": method,
+                        "n_values_imputed": 0,
+                        "pct_imputed": 0.0,
+                        "analysis_type": "metabolomics_imputation",
+                    },
+                    ir,
+                )
 
             # Store raw before imputation
             adata_imputed.layers["pre_imputation"] = X.copy()
 
             if method == "knn":
                 from sklearn.impute import KNNImputer
+
                 imputer = KNNImputer(n_neighbors=min(knn_neighbors, X.shape[0] - 1))
                 X_imputed = imputer.fit_transform(X)
 
@@ -439,6 +490,7 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
             elif method == "mice":
                 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
                 from sklearn.impute import IterativeImputer
+
                 imputer = IterativeImputer(max_iter=10, random_state=42)
                 X_imputed = imputer.fit_transform(X)
 
@@ -461,7 +513,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
                 "analysis_type": "metabolomics_imputation",
             }
 
-            logger.info(f"Imputation complete: {n_imputed} values imputed using {method}")
+            logger.info(
+                f"Imputation complete: {n_imputed} values imputed using {method}"
+            )
 
             ir = self._create_ir_impute_missing_values(method, knn_neighbors)
             return adata_imputed, stats, ir
@@ -512,7 +566,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
             elif method == "tic":
                 X_norm, norm_factors = self._tic_normalize(X)
             elif method == "is":
-                X_norm, norm_factors = self._is_normalize(X, adata_norm, reference_sample)
+                X_norm, norm_factors = self._is_normalize(
+                    X, adata_norm, reference_sample
+                )
             elif method == "median":
                 X_norm, norm_factors = self._median_normalize(X)
             elif method == "quantile":
@@ -526,7 +582,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
             # Apply log2 transformation if requested
             if log_transform:
                 # Handle zeros: add small offset (half of minimum positive value)
-                min_positive = np.nanmin(X_norm[X_norm > 0]) if np.any(X_norm > 0) else 1.0
+                min_positive = (
+                    np.nanmin(X_norm[X_norm > 0]) if np.any(X_norm > 0) else 1.0
+                )
                 offset = min_positive / 2
                 X_norm = np.log2(X_norm + offset)
 
@@ -592,12 +650,16 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
             if n_batches < 2:
                 logger.warning("Less than 2 batches found, skipping batch correction")
                 ir = self._create_ir_correct_batch_effects(batch_key, method, qc_label)
-                return adata_corrected, {
-                    "method": method,
-                    "n_batches": n_batches,
-                    "correction_performed": False,
-                    "analysis_type": "metabolomics_batch_correction",
-                }, ir
+                return (
+                    adata_corrected,
+                    {
+                        "method": method,
+                        "n_batches": n_batches,
+                        "correction_performed": False,
+                        "analysis_type": "metabolomics_batch_correction",
+                    },
+                    ir,
+                )
 
             if hasattr(adata_corrected.X, "toarray"):
                 X = adata_corrected.X.toarray().astype(np.float64)
@@ -682,7 +744,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
         return X_norm, norm_factors
 
     def _is_normalize(
-        self, X: np.ndarray, adata: anndata.AnnData,
+        self,
+        X: np.ndarray,
+        adata: anndata.AnnData,
         reference_sample: Optional[str],
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Internal Standard normalization."""
@@ -772,11 +836,15 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
     # =========================================================================
 
     def _combat_correction(
-        self, X: np.ndarray, batch_labels: pd.Series, adata: anndata.AnnData,
+        self,
+        X: np.ndarray,
+        batch_labels: pd.Series,
+        adata: anndata.AnnData,
     ) -> np.ndarray:
         """ComBat batch correction using scanpy if available, else manual."""
         try:
             import scanpy as sc
+
             # Use scanpy's ComBat implementation
             adata_temp = anndata.AnnData(
                 X=X.copy(), obs=adata.obs.copy(), var=adata.var.copy()
@@ -809,7 +877,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
         return X_corrected
 
     def _median_centering_correction(
-        self, X: np.ndarray, batch_labels: pd.Series,
+        self,
+        X: np.ndarray,
+        batch_labels: pd.Series,
     ) -> np.ndarray:
         """Per-batch median centering."""
         X_corrected = X.copy()
@@ -825,8 +895,11 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
         return X_corrected
 
     def _qc_rlsc_correction(
-        self, X: np.ndarray, batch_labels: pd.Series,
-        obs: pd.DataFrame, qc_label: str,
+        self,
+        X: np.ndarray,
+        batch_labels: pd.Series,
+        obs: pd.DataFrame,
+        qc_label: str,
     ) -> np.ndarray:
         """QC-based signal correction using smoothing spline."""
         X_corrected = X.copy()
@@ -879,9 +952,12 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
 
                 try:
                     from statsmodels.nonparametric.smoothers_lowess import lowess
+
                     smoothed = lowess(
-                        qc_vals[valid], qc_order[valid],
-                        frac=0.5, return_sorted=True,
+                        qc_vals[valid],
+                        qc_order[valid],
+                        frac=0.5,
+                        return_sorted=True,
                     )
                     # Interpolate correction for all samples in this batch
                     correction_at_qc = np.interp(
@@ -893,7 +969,9 @@ print(f"Batch correction: {method}, {stats['n_batches']} batches")""",
                         correction_factor = np.where(
                             correction_factor == 0, 1.0, correction_factor
                         )
-                        X_corrected[batch_mask, j] = X[batch_mask, j] / correction_factor
+                        X_corrected[batch_mask, j] = (
+                            X[batch_mask, j] / correction_factor
+                        )
                 except Exception as e:
                     logger.warning(f"LOWESS failed for feature {j}: {e}")
                     continue

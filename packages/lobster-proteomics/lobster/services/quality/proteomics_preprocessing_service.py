@@ -395,7 +395,9 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
             ProteomicsPreprocessingError: If PTM site import fails
         """
         try:
-            logger.info(f"Starting PTM site data import from {file_path} (type: {ptm_type})")
+            logger.info(
+                f"Starting PTM site data import from {file_path} (type: {ptm_type})"
+            )
 
             # 1. Read the file
             df = pd.read_csv(file_path, sep="\t", low_memory=False)
@@ -408,7 +410,9 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
             # 3. Filter by localization probability
             n_before_loc = len(df)
             if col_map["localization_prob"] is not None:
-                df = df[df[col_map["localization_prob"]] >= localization_threshold].copy()
+                df = df[
+                    df[col_map["localization_prob"]] >= localization_threshold
+                ].copy()
                 logger.info(
                     f"Localization filter ({localization_threshold}): "
                     f"{n_before_loc} -> {len(df)} sites"
@@ -421,7 +425,9 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
             # 4. Filter contaminants
             n_contaminants_removed = 0
             if filter_contaminants and col_map["contaminant"] is not None:
-                contaminant_mask = df[col_map["contaminant"]].fillna("").astype(str).str.strip() == "+"
+                contaminant_mask = (
+                    df[col_map["contaminant"]].fillna("").astype(str).str.strip() == "+"
+                )
                 n_contaminants_removed = contaminant_mask.sum()
                 df = df[~contaminant_mask].copy()
                 logger.info(f"Removed {n_contaminants_removed} contaminant sites")
@@ -429,7 +435,9 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
             # 5. Filter reverse hits
             n_reverse_removed = 0
             if filter_reverse and col_map["reverse"] is not None:
-                reverse_mask = df[col_map["reverse"]].fillna("").astype(str).str.strip() == "+"
+                reverse_mask = (
+                    df[col_map["reverse"]].fillna("").astype(str).str.strip() == "+"
+                )
                 n_reverse_removed = reverse_mask.sum()
                 df = df[~reverse_mask].copy()
                 logger.info(f"Removed {n_reverse_removed} reverse hits")
@@ -537,9 +545,7 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
 
         except Exception as e:
             logger.exception(f"Error in PTM site data import: {e}")
-            raise ProteomicsPreprocessingError(
-                f"PTM site data import failed: {str(e)}"
-            )
+            raise ProteomicsPreprocessingError(f"PTM site data import failed: {str(e)}")
 
     def _identify_ptm_columns(self, df: pd.DataFrame) -> Dict[str, Optional[str]]:
         """Identify key PTM columns in a MaxQuant-style site file."""
@@ -559,9 +565,13 @@ print(f"Imported {stats['n_sites_after_filter']} {ptm_type} sites from {stats['n
 
         return {
             "localization_prob": find_col(
-                "Localization prob", "localization_probability", "Localization probability"
+                "Localization prob",
+                "localization_probability",
+                "Localization probability",
             ),
-            "gene_names": find_col("Gene names", "Gene.names", "Proteins", "Leading proteins"),
+            "gene_names": find_col(
+                "Gene names", "Gene.names", "Proteins", "Leading proteins"
+            ),
             "position": find_col("Position", "Positions within proteins"),
             "amino_acid": find_col("Amino acid", "Amino.acid"),
             "contaminant": find_col("Potential contaminant", "Contaminant"),
@@ -1150,7 +1160,9 @@ print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matc
             peptides_per_protein = []
             for j, protein in enumerate(unique_proteins):
                 indices = protein_indices[protein]
-                peptide_data = X[:, indices]  # shape: (n_samples, n_peptides_for_protein)
+                peptide_data = X[
+                    :, indices
+                ]  # shape: (n_samples, n_peptides_for_protein)
                 peptides_per_protein.append(len(indices))
 
                 if method == "median":
@@ -1305,7 +1317,9 @@ print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matc
 
                         # Only use samples where both PTM and protein are observed
                         valid_mask = ~(np.isnan(ptm_vals) | np.isnan(prot_vals))
-                        if valid_mask.sum() >= 3:  # Need at least 3 points for regression
+                        if (
+                            valid_mask.sum() >= 3
+                        ):  # Need at least 3 points for regression
                             result = linregress(
                                 prot_vals[valid_mask], ptm_vals[valid_mask]
                             )

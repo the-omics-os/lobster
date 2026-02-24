@@ -398,8 +398,8 @@ adata_modules, _, _ = service.identify_modules(
             )
         """
         try:
-            from sklearn.linear_model import LinearRegression
             from sklearn.impute import SimpleImputer
+            from sklearn.linear_model import LinearRegression
 
             logger.info("Starting soft power threshold selection")
 
@@ -697,7 +697,9 @@ adata_modules, _, _ = service.identify_modules(
                 logger.info(f"Applied soft power: {soft_power}")
             else:
                 # Auto-select soft power using pick_soft_threshold
-                threshold_results = self.pick_soft_threshold(adata_modules)
+                threshold_results, _threshold_stats, _threshold_ir = (
+                    self.pick_soft_threshold(adata_modules)
+                )
                 auto_power = threshold_results.get("selected_power", DEFAULT_SOFT_POWER)
                 adjacency = np.power(0.5 + 0.5 * corr_matrix, auto_power)
                 logger.info(

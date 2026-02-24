@@ -64,6 +64,9 @@ class AccessionResolver:
                 search_pattern = search_pattern[1:]
             if search_pattern.endswith("$"):
                 search_pattern = search_pattern[:-1]
+            # Add word boundaries to prevent matching substrings of other accessions
+            # (e.g., UniProt "P12345" matching inside SRA "SRP123456")
+            search_pattern = r"\b" + search_pattern + r"\b"
             self._search_patterns[field_name] = re.compile(
                 search_pattern, re.IGNORECASE
             )

@@ -54,8 +54,15 @@ class LuminexParser(ProteomicsParser):
 
     # Indicators for Luminex format detection
     LUMINEX_INDICATORS = [
-        "Median", "MFI", "Bio-Plex", "Luminex", "MAGPIX",
-        "Net MFI", "Mean", "xMAP", "FLEXMAP",
+        "Median",
+        "MFI",
+        "Bio-Plex",
+        "Luminex",
+        "MAGPIX",
+        "Net MFI",
+        "Mean",
+        "xMAP",
+        "FLEXMAP",
     ]
 
     def __init__(self):
@@ -102,7 +109,9 @@ class LuminexParser(ProteomicsParser):
             text_content = df_header.to_string()
             for indicator in self.LUMINEX_INDICATORS:
                 if indicator.lower() in text_content.lower():
-                    logger.debug(f"Valid Luminex file detected: {path.name} (found '{indicator}')")
+                    logger.debug(
+                        f"Valid Luminex file detected: {path.name} (found '{indicator}')"
+                    )
                     return True
 
             logger.debug(f"File does not appear to be Luminex format: {path.name}")
@@ -154,7 +163,9 @@ class LuminexParser(ProteomicsParser):
             logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
 
             # Detect format: long vs wide
-            is_long = self._detect_long_format(df, analyte_column, value_column, sample_column)
+            is_long = self._detect_long_format(
+                df, analyte_column, value_column, sample_column
+            )
 
             if is_long:
                 adata, stats = self._parse_long_format(
@@ -188,9 +199,7 @@ class LuminexParser(ProteomicsParser):
     # FILE READING
     # =========================================================================
 
-    def _read_luminex_file(
-        self, path: Path, skip_metadata_rows: bool
-    ) -> pd.DataFrame:
+    def _read_luminex_file(self, path: Path, skip_metadata_rows: bool) -> pd.DataFrame:
         """
         Read Luminex file, handling metadata header rows.
 
@@ -215,7 +224,7 @@ class LuminexParser(ProteomicsParser):
         if header_row_idx is not None:
             # Set that row as header
             df.columns = df.iloc[header_row_idx].astype(str)
-            df = df.iloc[header_row_idx + 1:].reset_index(drop=True)
+            df = df.iloc[header_row_idx + 1 :].reset_index(drop=True)
         else:
             # Fall back to first row
             df.columns = df.iloc[0].astype(str)
@@ -239,8 +248,14 @@ class LuminexParser(ProteomicsParser):
 
             # Check if this row looks like a header
             header_indicators = [
-                "sample", "analyte", "median", "mean", "mfi",
-                "concentration", "standard", "net mfi",
+                "sample",
+                "analyte",
+                "median",
+                "mean",
+                "mfi",
+                "concentration",
+                "standard",
+                "net mfi",
             ]
             matches = sum(1 for ind in header_indicators if ind in row_str.lower())
             if matches >= 2:
@@ -371,9 +386,9 @@ class LuminexParser(ProteomicsParser):
 
         # Add additional sample-level columns if available
         sample_meta_cols = [
-            c for c in df.columns
-            if c not in [actual_analyte, actual_value]
-            and c != actual_sample
+            c
+            for c in df.columns
+            if c not in [actual_analyte, actual_value] and c != actual_sample
         ]
         if sample_meta_cols:
             sample_meta = df.groupby(actual_sample).first().reindex(samples)

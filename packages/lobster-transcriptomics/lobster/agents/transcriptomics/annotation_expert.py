@@ -48,6 +48,7 @@ from lobster.agents.state import SingleCellExpertState
 from lobster.agents.transcriptomics.prompts import create_annotation_expert_prompt
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core.component_registry import component_registry
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.analysis.enhanced_singlecell_service import (
     EnhancedSingleCellService,
@@ -57,7 +58,6 @@ from lobster.services.templates.annotation_templates import (
     AnnotationTemplateService,
     TissueType,
 )
-from lobster.core.component_registry import component_registry
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -969,10 +969,15 @@ def annotation_expert(
 
             # Create cluster-to-celltype mapping if cluster info available
             _known_cluster_names = {
-                "leiden", "louvain", "seurat_clusters", "cluster", "clusters",
+                "leiden",
+                "louvain",
+                "seurat_clusters",
+                "cluster",
+                "clusters",
             }
             cluster_cols = [
-                col for col in adata.obs.columns
+                col
+                for col in adata.obs.columns
                 if col in _known_cluster_names
                 or col.startswith(("leiden_", "louvain_", "RNA_snn_res"))
             ]
@@ -1285,7 +1290,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     "import scanpy as sc\n"
                     "sc.tl.score_genes(\n"
                     "    adata,\n"
-                    '    gene_list={{ gene_list }},\n'
+                    "    gene_list={{ gene_list }},\n"
                     '    score_name="{{ score_name }}",\n'
                     "    ctrl_size={{ ctrl_size }},\n"
                     "    use_raw={{ use_raw }},\n"
@@ -1457,7 +1462,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
             for cluster_id in unique_clusters:
                 # Get top 3 cell types by score for this cluster
                 scores = marker_scores.get(cluster_id, {})
-                sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
+                sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)[
+                    :3
+                ]
 
                 # Collect top marker genes from those cell types (max 5 total)
                 query_genes = []
@@ -1670,9 +1677,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                 )
 
             response += "\n**Cell type annotations in**: adata.obs['cell_type']"
-            response += (
-                "\n**Confidence scores in**: adata.obs['cell_type_confidence']"
-            )
+            response += "\n**Confidence scores in**: adata.obs['cell_type_confidence']"
 
             return response
 

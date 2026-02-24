@@ -451,6 +451,7 @@ class BaseAdapter(IModalityAdapter):
         """
         try:
             from lobster.core.omics_registry import DataTypeDetector
+
             results = DataTypeDetector().detect_from_data(adata)
             if results and results[0][1] > 0.01:
                 return f"likely_{results[0][0]}"

@@ -26,9 +26,9 @@ class VisualizationExpertState(AgentState):
     task_description: str = ""  # Description of the current task
     current_request: Dict[str, Any] = {}  # Current visualization request details
     last_plot_id: str = ""  # Last created plot ID for tracking
-    visualization_history: List[
-        Dict[str, Any]
-    ] = []  # History of created visualizations
+    visualization_history: List[Dict[str, Any]] = (
+        []
+    )  # History of created visualizations
     plot_metadata: Dict[str, Any] = {}  # Metadata for current plot session
     active_modalities: List[str] = []  # Modalities currently being visualized
     visualization_parameters: Dict[str, Any] = {}  # Current visualization parameters

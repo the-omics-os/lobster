@@ -149,7 +149,10 @@ class SomaScanParser(ProteomicsParser):
 
             # Check if this is a structured ADAT with block markers
             first_line = lines[0].strip() if lines else ""
-            if first_line.startswith(self.BLOCK_HEADER) or "!Header_Version" in first_line:
+            if (
+                first_line.startswith(self.BLOCK_HEADER)
+                or "!Header_Version" in first_line
+            ):
                 adata, stats = self._parse_structured_adat(
                     lines, path, replace_zero_with_nan, use_target_names
                 )
@@ -218,8 +221,12 @@ class SomaScanParser(ProteomicsParser):
         n_meta_cols = len(col_data_fields) if col_data_fields else 0
 
         # If we have row_data, analyte columns start after metadata columns
-        analyte_headers = col_headers[n_meta_cols:] if n_meta_cols > 0 else col_headers[1:]
-        meta_headers = col_headers[:n_meta_cols] if n_meta_cols > 0 else [col_headers[0]]
+        analyte_headers = (
+            col_headers[n_meta_cols:] if n_meta_cols > 0 else col_headers[1:]
+        )
+        meta_headers = (
+            col_headers[:n_meta_cols] if n_meta_cols > 0 else [col_headers[0]]
+        )
 
         # Parse data rows
         sample_data = []
@@ -265,7 +272,7 @@ class SomaScanParser(ProteomicsParser):
             zero_count = 0
 
         # 4. Build obs (sample metadata)
-        obs_df = pd.DataFrame(sample_meta, columns=meta_headers[:len(sample_meta[0])])
+        obs_df = pd.DataFrame(sample_meta, columns=meta_headers[: len(sample_meta[0])])
         # Use first column as sample ID index
         sample_id_col = meta_headers[0] if meta_headers else "sample_id"
         obs_df.index = obs_df.iloc[:, 0].astype(str)
@@ -299,7 +306,9 @@ class SomaScanParser(ProteomicsParser):
             for key, value in header_data.items():
                 adata.uns[key.lower().replace("!", "")] = value
 
-        assay_version = header_data.get("!AssayVersion", header_data.get("!StudyMatrix", "unknown"))
+        assay_version = header_data.get(
+            "!AssayVersion", header_data.get("!StudyMatrix", "unknown")
+        )
         adata.uns["assay_version"] = assay_version
 
         # 7. Calculate statistics
@@ -372,7 +381,9 @@ class SomaScanParser(ProteomicsParser):
             elif current_block == "COL_DATA":
                 if line and not line.startswith("!"):
                     # COL_DATA lists sample metadata column names
-                    col_data_fields.append(line.split("\t")[0] if "\t" in line else line)
+                    col_data_fields.append(
+                        line.split("\t")[0] if "\t" in line else line
+                    )
                 elif line.startswith("!"):
                     parts = line.split("\t", 1)
                     col_data_fields.append(parts[0].lstrip("!"))

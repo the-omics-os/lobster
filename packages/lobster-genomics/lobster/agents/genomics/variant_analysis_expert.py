@@ -33,7 +33,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
@@ -146,7 +145,9 @@ def variant_analysis_expert(
                 )
 
             adata = data_manager.get_modality(modality_name)
-            logger.info(f"Normalizing variants in '{modality_name}': {adata.n_vars} variants")
+            logger.info(
+                f"Normalizing variants in '{modality_name}': {adata.n_vars} variants"
+            )
 
             # Run normalization
             adata_norm, stats, ir = annotation_service.normalize_variants(
@@ -284,7 +285,7 @@ def variant_analysis_expert(
                     response += f"\n- {cons}: {count}"
 
             response += f"\n\n**New modality created**: '{cons_modality_name}'"
-            response += f"\n**Next steps**: Run query_population_frequencies(\"{cons_modality_name}\") or prioritize_variants(\"{cons_modality_name}\")"
+            response += f'\n**Next steps**: Run query_population_frequencies("{cons_modality_name}") or prioritize_variants("{cons_modality_name}")'
 
             return response
 
@@ -372,7 +373,7 @@ def variant_analysis_expert(
                 response += f"\n\n**Note:** {stats['population_note']}"
 
             response += f"\n\n**New modality created**: '{freq_modality_name}'"
-            response += f"\n**Next steps**: Run query_clinical_databases(\"{freq_modality_name}\") or prioritize_variants(\"{freq_modality_name}\")"
+            response += f'\n**Next steps**: Run query_clinical_databases("{freq_modality_name}") or prioritize_variants("{freq_modality_name}")'
 
             return response
 
@@ -450,7 +451,7 @@ def variant_analysis_expert(
                     response += f"\n- {sig}: {count}"
 
             response += f"\n\n**New modality created**: '{clin_modality_name}'"
-            response += f"\n**Next steps**: Run prioritize_variants(\"{clin_modality_name}\") to rank by composite score"
+            response += f'\n**Next steps**: Run prioritize_variants("{clin_modality_name}") to rank by composite score'
 
             return response
 
@@ -493,7 +494,9 @@ def variant_analysis_expert(
                 )
 
             adata = data_manager.get_modality(modality_name)
-            logger.info(f"Prioritizing variants in '{modality_name}': {adata.n_vars} variants")
+            logger.info(
+                f"Prioritizing variants in '{modality_name}': {adata.n_vars} variants"
+            )
 
             # Run prioritization
             adata_pri, stats, ir = annotation_service.prioritize_variants(
@@ -614,7 +617,9 @@ def variant_analysis_expert(
             # Consequences
             transcript_cons = entry.get("transcript_consequences", [])
             if transcript_cons:
-                lines.append(f"\n### Transcript Consequences ({len(transcript_cons)} transcripts)")
+                lines.append(
+                    f"\n### Transcript Consequences ({len(transcript_cons)} transcripts)"
+                )
                 for tc in transcript_cons[:10]:
                     gene = tc.get("gene_symbol", tc.get("gene_id", "?"))
                     tx_id = tc.get("transcript_id", "?")
@@ -647,7 +652,9 @@ def variant_analysis_expert(
                     lines.append(line)
 
                 if len(transcript_cons) > 10:
-                    lines.append(f"\n... and {len(transcript_cons) - 10} more transcripts")
+                    lines.append(
+                        f"\n... and {len(transcript_cons) - 10} more transcripts"
+                    )
 
             # Population Frequencies (from colocated_variants)
             colocated = entry.get("colocated_variants", [])

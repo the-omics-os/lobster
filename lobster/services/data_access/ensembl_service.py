@@ -364,7 +364,5 @@ class EnsemblService:
                 detail = response.json().get("error", response.text)
             except Exception:
                 detail = response.text
-            raise EnsemblServiceError(
-                f"Bad request ({response.status_code}): {detail}"
-            )
+            raise EnsemblServiceError(f"Bad request ({response.status_code}): {detail}")
         response.raise_for_status()

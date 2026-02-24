@@ -530,7 +530,9 @@ def create_shared_tools(
 
             response += f"\n**Fold Change Summary ({fc_stats['comparison']} vs {fc_stats['reference']}):**\n"
             response += f"- Upregulated (log2FC > 1): {fc_stats['n_upregulated']}\n"
-            response += f"- Downregulated (log2FC < -1): {fc_stats['n_downregulated']}\n"
+            response += (
+                f"- Downregulated (log2FC < -1): {fc_stats['n_downregulated']}\n"
+            )
 
             response += f"\n**New modality created**: '{result_name}'"
             return response
@@ -639,10 +641,14 @@ def create_shared_tools(
                 response += f"- Q2: {stats['q2']:.3f}\n"
                 response += f"- VIP > 1 features: {stats['vip_gt_1_count']}\n"
                 if stats.get("permutation_p_value") is not None:
-                    response += f"- Permutation p-value: {stats['permutation_p_value']:.4f}\n"
+                    response += (
+                        f"- Permutation p-value: {stats['permutation_p_value']:.4f}\n"
+                    )
                 # Overfitting warning
                 if stats["r2"] - stats["q2"] > 0.3:
-                    response += "\n**WARNING**: R2-Q2 gap > 0.3, potential overfitting.\n"
+                    response += (
+                        "\n**WARNING**: R2-Q2 gap > 0.3, potential overfitting.\n"
+                    )
 
             elif method == "oplsda":
                 response += "**OPLS-DA Results:**\n"
@@ -651,9 +657,13 @@ def create_shared_tools(
                 response += f"- Orthogonal components: {stats['n_orthogonal']}\n"
                 response += f"- Predictive components: {stats['n_predictive']}\n"
                 if stats.get("permutation_p_value") is not None:
-                    response += f"- Permutation p-value: {stats['permutation_p_value']:.4f}\n"
+                    response += (
+                        f"- Permutation p-value: {stats['permutation_p_value']:.4f}\n"
+                    )
                 if stats["r2"] - stats["q2"] > 0.3:
-                    response += "\n**WARNING**: R2-Q2 gap > 0.3, potential overfitting.\n"
+                    response += (
+                        "\n**WARNING**: R2-Q2 gap > 0.3, potential overfitting.\n"
+                    )
 
             response += f"\n**New modality created**: '{result_name}'"
             return response
@@ -732,7 +742,9 @@ def create_shared_tools(
             response += f"- Annotated: {stats['n_annotated']}\n"
             response += f"- Unannotated: {stats['n_unannotated']}\n"
             response += f"- Annotation rate: {stats['annotation_rate_pct']:.1f}%\n"
-            response += f"- Reference DB size: {stats['reference_db_size']} metabolites\n"
+            response += (
+                f"- Reference DB size: {stats['reference_db_size']} metabolites\n"
+            )
             response += f"\n**MSI Level Distribution:**\n"
             for level, count in sorted(stats.get("msi_level_distribution", {}).items()):
                 response += f"- {level}: {count}\n"
@@ -838,6 +850,7 @@ def create_shared_tools(
             pathway_service = None
             try:
                 from lobster.core.component_registry import component_registry
+
                 pathway_service = component_registry.get_service("pathway_enrichment")
             except Exception:
                 pass
@@ -847,6 +860,7 @@ def create_shared_tools(
                     from lobster.services.analysis.pathway_enrichment_service import (
                         PathwayEnrichmentBridgeService,
                     )
+
                     pathway_service = PathwayEnrichmentBridgeService()
                 except ImportError:
                     return (
@@ -863,7 +877,9 @@ def create_shared_tools(
                 sig_mask = adata.var["fdr"] < significance_threshold
                 ann_mask = adata.var["annotation_name"].astype(str).str.strip().ne("")
                 combined_mask = sig_mask & ann_mask
-                metabolite_names = adata.var.loc[combined_mask, "annotation_name"].tolist()
+                metabolite_names = adata.var.loc[
+                    combined_mask, "annotation_name"
+                ].tolist()
                 logger.info(
                     f"Using {len(metabolite_names)} FDR-significant annotated metabolites"
                 )
@@ -898,7 +914,9 @@ def create_shared_tools(
             adata_enriched.uns["pathway_enrichment"] = {
                 "database": database,
                 "n_metabolites_input": len(metabolite_names),
-                "results": enrichment_results if isinstance(enrichment_results, dict) else {},
+                "results": (
+                    enrichment_results if isinstance(enrichment_results, dict) else {}
+                ),
             }
 
             result_name = f"{modality_name}_pathway_enriched"
@@ -973,7 +991,9 @@ results = service.overrepresentation_analysis(
                 sig_pathways = []
                 for pathway_name, pathway_data in enrichment_results.items():
                     if isinstance(pathway_data, dict):
-                        p_val = pathway_data.get("p_value", pathway_data.get("pval", 1.0))
+                        p_val = pathway_data.get(
+                            "p_value", pathway_data.get("pval", 1.0)
+                        )
                         if p_val < 0.05:
                             sig_pathways.append((pathway_name, p_val))
 

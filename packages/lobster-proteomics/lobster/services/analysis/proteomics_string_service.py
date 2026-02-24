@@ -124,9 +124,7 @@ class ProteomicsStringService:
                 f"Querying STRING API: {len(proteins)} proteins, "
                 f"species={species}, score>={score_threshold}"
             )
-            response = requests.post(
-                STRING_API_URL, data=params, timeout=30
-            )
+            response = requests.post(STRING_API_URL, data=params, timeout=30)
 
             if response.status_code == 429:
                 raise ProteomicsStringError(
@@ -161,9 +159,7 @@ class ProteomicsStringService:
         except Exception as e:
             raise ProteomicsStringError(f"STRING API query failed: {str(e)}")
 
-    def _analyze_network(
-        self, edges: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def _analyze_network(self, edges: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Analyze network topology using networkx if available.
 
@@ -233,9 +229,7 @@ class ProteomicsStringService:
 
         except ImportError:
             # Fallback: basic counts without networkx
-            logger.info(
-                "networkx not available, returning basic edge counts"
-            )
+            logger.info("networkx not available, returning basic edge counts")
             nodes = set()
             for e in parsed_edges:
                 nodes.add(e["protein1"])
@@ -244,11 +238,7 @@ class ProteomicsStringService:
             n_nodes = len(nodes)
             n_edges = len(parsed_edges)
             # Approximate density for undirected graph
-            density = (
-                (2 * n_edges) / (n_nodes * (n_nodes - 1))
-                if n_nodes > 1
-                else 0.0
-            )
+            density = (2 * n_edges) / (n_nodes * (n_nodes - 1)) if n_nodes > 1 else 0.0
 
             return {
                 "n_nodes": n_nodes,

@@ -821,9 +821,11 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
                     "n_at_risk": kmf.event_table["at_risk"].tolist(),
                     "n_events": int(event_valid[group_mask].sum()),
                     "n_samples": int(group_mask.sum()),
-                    "median_survival": float(kmf.median_survival_time_)
-                    if not np.isinf(kmf.median_survival_time_)
-                    else None,
+                    "median_survival": (
+                        float(kmf.median_survival_time_)
+                        if not np.isinf(kmf.median_survival_time_)
+                        else None
+                    ),
                 }
 
             # Perform log-rank test
@@ -881,9 +883,11 @@ print(f"Median survival by group: {stats['median_survival_by_group']}")""",
                 "n_groups": len(survival_curves),
                 "log_rank_statistic": log_rank_statistic,
                 "log_rank_p_value": log_rank_p_value,
-                "significant": log_rank_p_value < DEFAULT_FDR_THRESHOLD
-                if not np.isnan(log_rank_p_value)
-                else False,
+                "significant": (
+                    log_rank_p_value < DEFAULT_FDR_THRESHOLD
+                    if not np.isnan(log_rank_p_value)
+                    else False
+                ),
                 "median_survival_by_group": median_survival_by_group,
                 "n_samples_per_group": {
                     label: data["n_samples"] for label, data in survival_curves.items()

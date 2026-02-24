@@ -168,11 +168,13 @@ class ProteomicsPathwayService:
             )
 
             core_service = PathwayEnrichmentService()
-            adata_enriched, ora_stats, ora_ir = core_service.over_representation_analysis(
-                adata,
-                gene_list=gene_list,
-                databases=enrichr_dbs,
-                p_value_threshold=fdr_threshold,
+            adata_enriched, ora_stats, ora_ir = (
+                core_service.over_representation_analysis(
+                    adata,
+                    gene_list=gene_list,
+                    databases=enrichr_dbs,
+                    p_value_threshold=fdr_threshold,
+                )
             )
 
             # Build proteomics-specific stats
@@ -181,9 +183,7 @@ class ProteomicsPathwayService:
 
             # Extract top terms
             significant_terms = [
-                r
-                for r in results
-                if r.get("Adjusted P-value", 1.0) < fdr_threshold
+                r for r in results if r.get("Adjusted P-value", 1.0) < fdr_threshold
             ]
             top_terms = []
             for term in sorted(

@@ -156,7 +156,11 @@ def detect_platform_type(
 
     detection_scores: Dict[str, int] = {"lc_ms": 0, "gc_ms": 0, "nmr": 0}
 
-    var_cols = set(c.lower() for c in adata.var.columns) if len(adata.var.columns) > 0 else set()
+    var_cols = (
+        set(c.lower() for c in adata.var.columns)
+        if len(adata.var.columns) > 0
+        else set()
+    )
 
     # 1. Check for LC-MS-specific columns
     lc_ms_hints = ["retention_time", "mz", "adduct", "rt", "precursor_mz"]

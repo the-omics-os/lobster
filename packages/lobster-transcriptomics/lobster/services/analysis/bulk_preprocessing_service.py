@@ -106,7 +106,9 @@ class BulkPreprocessingService:
             # Pairwise Pearson correlation between samples
             corr_matrix = np.corrcoef(log_cpm)
             adata.uns["sample_correlation_matrix"] = corr_matrix
-            median_corr = float(np.median(corr_matrix[np.triu_indices_from(corr_matrix, k=1)]))
+            median_corr = float(
+                np.median(corr_matrix[np.triu_indices_from(corr_matrix, k=1)])
+            )
 
             # Store PCA coordinates in obsm
             adata.obsm["X_pca_samples"] = pca_coords
@@ -144,9 +146,7 @@ class BulkPreprocessingService:
 
         except Exception as e:
             logger.exception(f"Error in sample quality assessment: {e}")
-            raise BulkPreprocessingError(
-                f"Sample quality assessment failed: {str(e)}"
-            )
+            raise BulkPreprocessingError(f"Sample quality assessment failed: {str(e)}")
 
     def _compute_batch_r_squared(
         self,
@@ -485,7 +485,10 @@ print(f"Filtered to {adata.n_vars} genes (removed {int(np.sum(~keep))})")
 
         stats = {
             "mean_size_factor": float(np.mean(size_factors)),
-            "size_factor_range": [float(np.min(size_factors)), float(np.max(size_factors))],
+            "size_factor_range": [
+                float(np.min(size_factors)),
+                float(np.max(size_factors)),
+            ],
         }
 
         return adata, stats
@@ -780,9 +783,7 @@ adata.X = adata.layers['counts'] / library_sizes * {{ target_sum or 1e6 }}
             raise
         except Exception as e:
             logger.exception(f"Error in batch effect detection: {e}")
-            raise BulkPreprocessingError(
-                f"Batch effect detection failed: {str(e)}"
-            )
+            raise BulkPreprocessingError(f"Batch effect detection failed: {str(e)}")
 
     def _compute_variance_by_factor(
         self,

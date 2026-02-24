@@ -13,10 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Optional, TypedDict
-
-if TYPE_CHECKING:
-    pass
+from typing import Optional, TypedDict
 
 logger = logging.getLogger(__name__)
 

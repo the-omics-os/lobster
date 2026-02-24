@@ -1579,6 +1579,77 @@ class DataManagerV2:
         )
         return workspace_dir
 
+    def load_workspace(self, workspace_name: str) -> Dict[str, Any]:
+        """
+        Load all modalities from a previously saved workspace directory.
+
+        This is the symmetric counterpart to save_workspace(). It reads
+        all .h5ad files from the named workspace directory and loads them
+        as modalities.
+
+        Args:
+            workspace_name: Name of the workspace to load (must have been
+                previously saved via save_workspace)
+
+        Returns:
+            Dict[str, Any]: Summary of loaded workspace including list of
+                restored modalities and any errors
+
+        Raises:
+            FileNotFoundError: If the workspace directory does not exist
+
+        Example:
+            >>> dm.save_workspace("my_analysis")
+            >>> dm.clear()
+            >>> dm.load_workspace("my_analysis")
+            {'workspace_name': 'my_analysis', 'loaded': [...], 'errors': []}
+        """
+        workspace_dir = self.workspace_path / workspace_name
+        if not workspace_dir.exists():
+            raise FileNotFoundError(
+                f"Workspace '{workspace_name}' not found at {workspace_dir}"
+            )
+
+        anndata_mod = _ensure_anndata()
+        loaded = []
+        errors = []
+
+        # Load session metadata if available
+        metadata_path = workspace_dir / ".session.json"
+        if metadata_path.exists():
+            with open(metadata_path, "r") as f:
+                session_metadata = json.load(f)
+        else:
+            session_metadata = {}
+
+        # Load all h5ad files from the workspace directory
+        h5ad_files = sorted(workspace_dir.glob("*.h5ad"))
+        for h5ad_file in h5ad_files:
+            modality_name = h5ad_file.stem
+            try:
+                adata = anndata_mod.read_h5ad(h5ad_file)
+                self.modalities[modality_name] = adata
+                loaded.append(modality_name)
+                logger.debug(
+                    f"Loaded modality '{modality_name}' from {h5ad_file}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to load modality '{modality_name}': {e}"
+                )
+                errors.append({"modality": modality_name, "error": str(e)})
+
+        logger.info(
+            f"Loaded workspace '{workspace_name}' with {len(loaded)} modalities"
+        )
+
+        return {
+            "workspace_name": workspace_name,
+            "loaded": loaded,
+            "errors": errors,
+            "session_metadata": session_metadata,
+        }
+
     def clear_workspace(self, confirm: bool = False) -> None:
         """
         Clear all modalities and optionally workspace files.
@@ -3296,13 +3367,20 @@ https://github.com/OmicsOS/lobster
                 return False
 
     def restore_session(
-        self, pattern: str = "recent", max_size_mb: float = 1000
+        self,
+        pattern: str = "recent",
+        max_size_mb: float = 1000,
+        workspace_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Restore datasets based on pattern with memory limits.
 
         Args:
             pattern: Restoration pattern ('recent', 'all', or glob pattern)
             max_size_mb: Maximum total size of datasets to load
+            workspace_name: Optional name of a saved workspace to restore from.
+                When provided, loads modalities from the named workspace
+                directory first, then applies the pattern filter to select
+                which modalities to keep.
 
         Returns:
             Dict[str, Any]: Restoration results
@@ -3310,6 +3388,38 @@ https://github.com/OmicsOS/lobster
         restored = []
         skipped = []
         total_size = 0
+
+        # If workspace_name is provided, load from that workspace first
+        if workspace_name is not None:
+            import fnmatch
+
+            load_result = self.load_workspace(workspace_name=workspace_name)
+            loaded_names = load_result.get("loaded", [])
+
+            if pattern and pattern not in ("recent", "all"):
+                # Apply glob pattern filter to loaded modalities
+                matching = [
+                    name
+                    for name in loaded_names
+                    if fnmatch.fnmatch(name, pattern)
+                ]
+                # Remove non-matching modalities
+                for name in loaded_names:
+                    if name not in matching:
+                        if name in self.modalities:
+                            del self.modalities[name]
+                            skipped.append((name, "pattern_mismatch"))
+                restored = matching
+            else:
+                restored = loaded_names
+
+            return {
+                "restored": restored,
+                "skipped": skipped,
+                "total_size_mb": total_size,
+                "pattern": pattern,
+                "workspace_name": workspace_name,
+            }
 
         if pattern == "recent":
             # Load datasets from last session

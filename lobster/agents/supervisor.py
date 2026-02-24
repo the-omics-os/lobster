@@ -1,9 +1,9 @@
-# """
-# Bioinformatics Supervisor Agent.
+"""
+Bioinformatics Supervisor Agent.
 
-# This module provides a factory function to create a supervisor agent using the
-# langgraph_supervisor package for hierarchical multi-agent coordination.
-# """
+This module provides a factory function to create a supervisor agent
+for hierarchical multi-agent coordination.
+"""
 
 import platform
 from datetime import date
@@ -110,9 +110,7 @@ calling the next tool. Parallel tool calls cause race conditions. This is non-ne
 </Cognitive Protocol>"""
 
 
-def _build_agent_directory(
-    active_agents: List[str], config: SupervisorConfig
-) -> str:
+def _build_agent_directory(active_agents: List[str], config: SupervisorConfig) -> str:
     """Build compressed agent listing from registry.
 
     Per agent: display name, name, description, child agents (if any).
@@ -130,12 +128,8 @@ def _build_agent_directory(
             lines.append(entry)
 
     # Download queue coordination: the one cross-agent pattern the supervisor must know
-    has_research = any(
-        a in active_agents for a in ("research_agent",)
-    )
-    has_data_expert = any(
-        a in active_agents for a in ("data_expert_agent",)
-    )
+    has_research = any(a in active_agents for a in ("research_agent",))
+    has_data_expert = any(a in active_agents for a in ("data_expert_agent",))
     if has_research and has_data_expert:
         lines.append(
             "\n**Download Queue Protocol** (research_agent -> data_expert_agent):\n"
@@ -199,14 +193,10 @@ def _build_response_behavior(config: SupervisorConfig) -> str:
             "- Summarize expert output with key findings, metrics, and file names (2-4 sentences)."
         )
     else:
-        rules.append(
-            "- Present expert results to the user with optional context."
-        )
+        rules.append("- Present expert results to the user with optional context.")
 
     if config.auto_suggest_next_steps:
-        rules.append(
-            "- Suggest logical next steps after each operation."
-        )
+        rules.append("- Suggest logical next steps after each operation.")
 
     if config.verbose_delegation:
         rules.append(
@@ -218,9 +208,7 @@ def _build_response_behavior(config: SupervisorConfig) -> str:
     return "\n".join(rules)
 
 
-def _build_live_context(
-    data_manager: DataManagerV2, config: SupervisorConfig
-) -> str:
+def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -> str:
     """Build live context: loaded modalities and optional system info.
 
     This is a snapshot at graph creation time. For real-time awareness,

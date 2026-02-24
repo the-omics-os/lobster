@@ -15,7 +15,7 @@ Usage:
     presets = list_presets()
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 # =============================================================================
 # AGENT PRESETS DICTIONARY
@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 # Each preset defines a list of agent names for common workflow configurations.
 # Agent names must match those registered in the agent registry.
 
-AGENT_PRESETS: Dict[str, Dict[str, any]] = {
+AGENT_PRESETS: Dict[str, Dict[str, Any]] = {
     "scrna-basic": {
         "agents": [
             "research_agent",
@@ -145,7 +145,7 @@ def is_valid_preset(preset_name: str) -> bool:
     return preset_name in AGENT_PRESETS
 
 
-def get_all_preset_info() -> Dict[str, Dict[str, any]]:
+def get_all_preset_info() -> Dict[str, Dict[str, Any]]:
     """Get full information about all presets.
 
     Returns:

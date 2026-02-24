@@ -27,7 +27,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import Optional
 
-from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
 from lobster.agents.metabolomics.shared_tools import create_shared_tools
@@ -118,7 +117,9 @@ def metabolomics_expert(
 
     # Validate data manager type
     if not isinstance(data_manager, DataManagerV2):
-        raise ValueError("MetabolomicsExpert requires DataManagerV2 for modular analysis")
+        raise ValueError(
+            "MetabolomicsExpert requires DataManagerV2 for modular analysis"
+        )
 
     # Initialize stateless services
     quality_service = MetabolomicsQualityService()

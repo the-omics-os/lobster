@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.services.vector.backends.chromadb_backend instead."""
+
 import warnings as _w
 
 _w.warn(

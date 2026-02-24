@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.services.vector.service instead."""
+
 import warnings as _w
 
 _w.warn(

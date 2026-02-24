@@ -5,7 +5,6 @@ This service extends the basic clustering functionality with doublet detection,
 cell type annotation, and advanced visualization capabilities.
 """
 
-import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
@@ -26,8 +25,10 @@ PathwayEnrichmentError = None
 
 try:
     from lobster.services.analysis.pathway_enrichment_service import (
-        PathwayEnrichmentService as _PathwayEnrichmentService,
         PathwayEnrichmentError as _PathwayEnrichmentError,
+    )
+    from lobster.services.analysis.pathway_enrichment_service import (
+        PathwayEnrichmentService as _PathwayEnrichmentService,
     )
 
     PathwayEnrichmentService = _PathwayEnrichmentService
@@ -815,7 +816,7 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
     def annotate_cell_types(
         self,
         adata: anndata.AnnData,
-        cluster_key: str,
+        cluster_key: str = "leiden",
         reference_markers: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
@@ -841,8 +842,10 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
             if cluster_key not in adata.obs.columns:
                 available_cols = list(adata.obs.columns)
                 raise SingleCellError(
+                    f"No clustering results found. "
                     f"Cluster column '{cluster_key}' not found in adata.obs. "
-                    f"Available columns: {available_cols}"
+                    f"Available columns: {available_cols}. "
+                    f"Run clustering (e.g., leiden) before annotation."
                 )
 
             # Create working copy
@@ -889,9 +892,7 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
                     (
                         "high"
                         if (c > 0.5 and e < 0.8)
-                        else "medium"
-                        if (c > 0.3 and e < 1.0)
-                        else "low"
+                        else "medium" if (c > 0.3 and e < 1.0) else "low"
                     )
                     for c, e in zip(confidence, entropy)
                 ]

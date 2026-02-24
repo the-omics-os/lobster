@@ -9,9 +9,10 @@ supervisor prompt generation without manual updates.
 import ast
 import importlib
 import inspect
+import types
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Callable, Dict, List, Optional, types
+from typing import Any, Callable, Dict, List, Optional
 
 # Import registry functions at module level for easier mocking in tests
 from lobster.config.agent_registry import get_agent_registry_config, get_all_agent_names

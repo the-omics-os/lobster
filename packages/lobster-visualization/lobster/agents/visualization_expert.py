@@ -36,6 +36,9 @@ from lobster.services.visualization.visualization_service import (
 )
 from lobster.utils.logger import get_logger
 
+# Re-export state class so it can be imported from this module
+from lobster.agents.visualization_state import VisualizationExpertState  # noqa: F401
+
 logger = get_logger(__name__)
 
 

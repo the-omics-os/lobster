@@ -8,14 +8,7 @@ to Lobster's data.
 """
 
 import asyncio
-import sys
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
-
-# Add Claude SDK to path if not installed
-sdk_path = Path("/Users/tyo/GITHUB/omics-os/tmp_folder/claude-agent-sdk-python/src")
-if sdk_path.exists() and str(sdk_path) not in sys.path:
-    sys.path.insert(0, str(sdk_path))
 
 try:
     from claude_agent_sdk import (

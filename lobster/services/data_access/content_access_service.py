@@ -184,9 +184,7 @@ class ContentAccessService:
                 try:
                     provider = provider_cls(data_manager=self.data_manager)
                     self.registry.register_provider(provider)
-                    logger.debug(
-                        f"Registered provider '{name}' from entry point"
-                    )
+                    logger.debug(f"Registered provider '{name}' from entry point")
                 except Exception as e:
                     logger.warning(
                         f"Failed to load provider '{name}' from entry point: {e}"

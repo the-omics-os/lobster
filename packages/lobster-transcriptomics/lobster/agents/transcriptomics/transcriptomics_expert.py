@@ -126,7 +126,9 @@ def transcriptomics_expert(
 
     # Get shared tools (QC, preprocessing, feature selection, PCA, embedding, analysis summary)
     shared_tools = create_shared_tools(
-        data_manager, quality_service, preprocessing_service,
+        data_manager,
+        quality_service,
+        preprocessing_service,
         clustering_service=clustering_service,
     )
 
@@ -1341,9 +1343,7 @@ Please check:
                             df = df.set_index("Geneid")
                         # Drop featureCounts annotation columns
                         fc_cols = {"Chr", "Start", "End", "Strand", "Length"}
-                        df = df.drop(
-                            columns=[c for c in fc_cols if c in df.columns]
-                        )
+                        df = df.drop(columns=[c for c in fc_cols if c in df.columns])
                         # Genes as rows, samples as columns -> transpose
                         adata = anndata.AnnData(
                             X=df.T.values.astype(np.float32),
@@ -1906,7 +1906,9 @@ Please check:
                 cond_r2 = stats["condition_r_squared"]
                 response += f"- Condition variable: {condition_key}\n"
                 response += f"- Condition R-squared (PC1-3): {cond_r2:.3f}\n"
-                response += f"- Batch/Condition ratio: {batch_r2/max(cond_r2, 0.001):.2f}\n"
+                response += (
+                    f"- Batch/Condition ratio: {batch_r2/max(cond_r2, 0.001):.2f}\n"
+                )
 
             response += f"\n**New modality created**: '{new_name}'\n"
 
@@ -2054,9 +2056,17 @@ Please check:
             adata.var_names = pd.Index(new_names)
             adata.var_names_make_unique()
 
-            n_converted = sum(1 for q, g in zip(query_ids, gene_ids) if mapping.get(q if source_type == "ensembl" else g))
+            n_converted = sum(
+                1
+                for q, g in zip(query_ids, gene_ids)
+                if mapping.get(q if source_type == "ensembl" else g)
+            )
             n_unmapped = len(gene_ids) - n_converted
-            unmapped_genes = [g for i, g in enumerate(gene_ids) if (query_ids[i] if source_type == "ensembl" else g) not in mapping][:10]
+            unmapped_genes = [
+                g
+                for i, g in enumerate(gene_ids)
+                if (query_ids[i] if source_type == "ensembl" else g) not in mapping
+            ][:10]
 
             # Store updated modality
             data_manager.store_modality(
@@ -2107,7 +2117,9 @@ Please check:
             )
 
             if unmapped_genes:
-                response += f"\n**Unmapped genes** (first 10): {', '.join(unmapped_genes)}\n"
+                response += (
+                    f"\n**Unmapped genes** (first 10): {', '.join(unmapped_genes)}\n"
+                )
 
             return response
 
@@ -2176,12 +2188,18 @@ Please check:
                 groups = adata.obs[group_key].dropna().unique()
                 n_groups = len(groups)
                 if n_groups >= 2:
-                    checks.append((f"Group key '{group_key}' ({n_groups} groups)", "PASS"))
+                    checks.append(
+                        (f"Group key '{group_key}' ({n_groups} groups)", "PASS")
+                    )
                 else:
-                    checks.append((f"Group key '{group_key}'", f"FAIL - only {n_groups} group(s)"))
+                    checks.append(
+                        (f"Group key '{group_key}'", f"FAIL - only {n_groups} group(s)")
+                    )
                     all_pass = False
             else:
-                checks.append((f"Group key '{group_key}'", "FAIL - column not found in obs"))
+                checks.append(
+                    (f"Group key '{group_key}'", "FAIL - column not found in obs")
+                )
                 all_pass = False
                 groups = []
 
@@ -2198,16 +2216,27 @@ Please check:
                         "DESeq2 recommends >= 3 for stable variance estimation."
                     )
                 else:
-                    checks.append((f"Sample count per group (min={min_size})", "FAIL - need >= 2"))
+                    checks.append(
+                        (f"Sample count per group (min={min_size})", "FAIL - need >= 2")
+                    )
                     all_pass = False
 
             # Check 4: Design factors exist
             if design_factors:
-                missing_factors = [f for f in design_factors if f not in adata.obs.columns]
+                missing_factors = [
+                    f for f in design_factors if f not in adata.obs.columns
+                ]
                 if not missing_factors:
-                    checks.append((f"Design factors ({', '.join(design_factors)})", "PASS"))
+                    checks.append(
+                        (f"Design factors ({', '.join(design_factors)})", "PASS")
+                    )
                 else:
-                    checks.append((f"Design factors", f"FAIL - missing: {', '.join(missing_factors)}"))
+                    checks.append(
+                        (
+                            f"Design factors",
+                            f"FAIL - missing: {', '.join(missing_factors)}",
+                        )
+                    )
                     all_pass = False
 
             # Build IR (validation only, no data modification)
@@ -2242,7 +2271,11 @@ Please check:
                 f"**Validation Checks:**\n"
             )
             for check_name, result in checks:
-                marker = "[PASS]" if result == "PASS" else "[WARN]" if result == "WARN" else "[FAIL]"
+                marker = (
+                    "[PASS]"
+                    if result == "PASS"
+                    else "[WARN]" if result == "WARN" else "[FAIL]"
+                )
                 response += f"  {marker} {check_name}: {result}\n"
 
             if warnings:

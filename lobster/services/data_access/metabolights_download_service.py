@@ -267,17 +267,13 @@ class MetaboLightsDownloadService(IDownloadService):
             local_files = []
             total_size = 0
             for file_info in selected_files:
-                local_path = self._download_file(
-                    dataset_id, file_info, download_dir
-                )
+                local_path = self._download_file(dataset_id, file_info, download_dir)
                 if local_path:
                     local_files.append(local_path)
                     total_size += local_path.stat().st_size
 
             if not local_files:
-                raise RuntimeError(
-                    f"All file downloads failed for study {dataset_id}"
-                )
+                raise RuntimeError(f"All file downloads failed for study {dataset_id}")
 
             # Step 5: Parse into AnnData
             if strategy_name == "MAF_FIRST":
@@ -317,9 +313,7 @@ class MetaboLightsDownloadService(IDownloadService):
             }
 
             # Step 9: Create IR
-            ir = self._create_download_ir(
-                dataset_id, strategy_name, strategy_params
-            )
+            ir = self._create_download_ir(dataset_id, strategy_name, strategy_params)
 
             logger.info(
                 f"Successfully downloaded MetaboLights study {dataset_id}: "
@@ -328,9 +322,7 @@ class MetaboLightsDownloadService(IDownloadService):
             return adata, stats, ir
 
         except Exception as e:
-            logger.error(
-                f"Error downloading MetaboLights study {dataset_id}: {e}"
-            )
+            logger.error(f"Error downloading MetaboLights study {dataset_id}: {e}")
             raise RuntimeError(f"MetaboLights download failed: {str(e)}")
 
     # =========================================================================
@@ -387,9 +379,7 @@ class MetaboLightsDownloadService(IDownloadService):
                             "filename": f.get("file", f.get("filename", "")),
                             "type": f.get("type", f.get("fileType", "unknown")),
                             "status": f.get("status", "active"),
-                            "directory": f.get(
-                                "directory", f.get("relativePath", "")
-                            ),
+                            "directory": f.get("directory", f.get("relativePath", "")),
                         }
                     )
                 elif isinstance(f, str):
@@ -406,12 +396,8 @@ class MetaboLightsDownloadService(IDownloadService):
 
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                raise RuntimeError(
-                    f"MetaboLights study {dataset_id} not found (404)"
-                )
-            raise RuntimeError(
-                f"MetaboLights API error for {dataset_id}: {e}"
-            )
+                raise RuntimeError(f"MetaboLights study {dataset_id} not found (404)")
+            raise RuntimeError(f"MetaboLights API error for {dataset_id}: {e}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(
                 f"Network error fetching MetaboLights study {dataset_id}: {e}"
@@ -433,9 +419,7 @@ class MetaboLightsDownloadService(IDownloadService):
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            logger.warning(
-                f"Could not fetch metadata for {dataset_id}: {e}"
-            )
+            logger.warning(f"Could not fetch metadata for {dataset_id}: {e}")
             return {}
 
     # =========================================================================
@@ -600,14 +584,12 @@ class MetaboLightsDownloadService(IDownloadService):
             )
         else:
             download_url = (
-                f"https://www.ebi.ac.uk/metabolights/{dataset_id}/files/"
-                f"{filename}"
+                f"https://www.ebi.ac.uk/metabolights/{dataset_id}/files/" f"{filename}"
             )
 
         # Fallback URL via the study download API
         fallback_url = (
-            f"{METABOLIGHTS_API_BASE}/{dataset_id}/download?"
-            f"file={filename}"
+            f"{METABOLIGHTS_API_BASE}/{dataset_id}/download?" f"file={filename}"
         )
 
         for attempt in range(max_retries):
@@ -626,9 +608,7 @@ class MetaboLightsDownloadService(IDownloadService):
                             f.write(chunk)
 
                 file_size = output_path.stat().st_size
-                logger.info(
-                    f"Downloaded: {filename} ({file_size / 1024:.1f} KB)"
-                )
+                logger.info(f"Downloaded: {filename} ({file_size / 1024:.1f} KB)")
                 return output_path
 
             except requests.exceptions.HTTPError as e:
@@ -657,9 +637,7 @@ class MetaboLightsDownloadService(IDownloadService):
                 logger.info(f"Retrying in {wait_time}s...")
                 time.sleep(wait_time)
 
-        logger.error(
-            f"Failed to download {filename} after {max_retries} attempts"
-        )
+        logger.error(f"Failed to download {filename} after {max_retries} attempts")
         return None
 
     # =========================================================================
@@ -689,13 +667,9 @@ class MetaboLightsDownloadService(IDownloadService):
         Raises:
             RuntimeError: If MAF parsing fails
         """
-        maf_files = [
-            f for f in local_files if self._classify_file(f.name) == "maf"
-        ]
+        maf_files = [f for f in local_files if self._classify_file(f.name) == "maf"]
         sample_meta_files = [
-            f
-            for f in local_files
-            if self._classify_file(f.name) == "sample_metadata"
+            f for f in local_files if self._classify_file(f.name) == "sample_metadata"
         ]
 
         if not maf_files:
@@ -710,14 +684,10 @@ class MetaboLightsDownloadService(IDownloadService):
         try:
             maf_df = pd.read_csv(primary_maf, sep="\t", low_memory=False)
         except Exception as e:
-            raise RuntimeError(
-                f"Failed to parse MAF file {primary_maf.name}: {e}"
-            )
+            raise RuntimeError(f"Failed to parse MAF file {primary_maf.name}: {e}")
 
         if maf_df.empty:
-            raise RuntimeError(
-                f"MAF file {primary_maf.name} is empty"
-            )
+            raise RuntimeError(f"MAF file {primary_maf.name} is empty")
 
         # Identify annotation columns vs intensity columns
         # Standard MAF annotation columns (non-numeric, metabolite metadata)
@@ -756,9 +726,9 @@ class MetaboLightsDownloadService(IDownloadService):
                 annotation_cols.append(col)
             else:
                 # Check if column contains mostly numeric data (intensity)
-                numeric_ratio = pd.to_numeric(
-                    maf_df[col], errors="coerce"
-                ).notna().mean()
+                numeric_ratio = (
+                    pd.to_numeric(maf_df[col], errors="coerce").notna().mean()
+                )
                 if numeric_ratio > 0.5:
                     intensity_cols.append(col)
                 else:
@@ -788,9 +758,7 @@ class MetaboLightsDownloadService(IDownloadService):
 
         # Build intensity matrix (samples x metabolites)
         # MAF is metabolites x samples, so we need to transpose
-        intensity_df = maf_df[intensity_cols].apply(
-            pd.to_numeric, errors="coerce"
-        )
+        intensity_df = maf_df[intensity_cols].apply(pd.to_numeric, errors="coerce")
         X = intensity_df.values.T  # Transpose: samples x metabolites
 
         # Replace NaN with 0 for the intensity matrix (common in metabolomics)
@@ -811,16 +779,12 @@ class MetaboLightsDownloadService(IDownloadService):
                 [f"metabolite_{i}" for i in range(len(maf_df))]
             )
         else:
-            var_names = pd.Series(
-                [f"metabolite_{i}" for i in range(len(maf_df))]
-            )
+            var_names = pd.Series([f"metabolite_{i}" for i in range(len(maf_df))])
 
         # Ensure unique var names
         var_names = var_names.astype(str)
         if var_names.duplicated().any():
-            var_names = pd.Series(
-                _make_unique(var_names.tolist())
-            )
+            var_names = pd.Series(_make_unique(var_names.tolist()))
         var_df.index = var_names.values
 
         # Build obs (sample annotations)
@@ -839,17 +803,13 @@ class MetaboLightsDownloadService(IDownloadService):
                     # Merge with obs, keeping only matching samples
                     common_samples = obs_df.index.intersection(sample_df.index)
                     if len(common_samples) > 0:
-                        obs_df = obs_df.join(
-                            sample_df.loc[common_samples], how="left"
-                        )
+                        obs_df = obs_df.join(sample_df.loc[common_samples], how="left")
                         logger.info(
                             f"Merged sample metadata for "
                             f"{len(common_samples)} samples"
                         )
             except Exception as e:
-                logger.warning(
-                    f"Could not parse sample metadata file: {e}"
-                )
+                logger.warning(f"Could not parse sample metadata file: {e}")
 
         # Create AnnData
         adata = ad.AnnData(
@@ -988,9 +948,7 @@ maf_data = pd.read_csv(maf_url, sep="\\t")
                 ),
             },
             input_entities=[dataset_id],
-            output_entities=[
-                f"metabolights_{dataset_id.lower()}_metabolomics"
-            ],
+            output_entities=[f"metabolights_{dataset_id.lower()}_metabolomics"],
         )
 
 

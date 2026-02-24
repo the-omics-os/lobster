@@ -10,7 +10,6 @@ All methods return 3-tuples (AnnData, Dict, AnalysisStep) for provenance trackin
 reproducible notebook export via /pipeline export.
 """
 
-import warnings
 from typing import Any, Dict, Optional, Tuple
 
 import anndata
@@ -50,7 +49,10 @@ class MetabolomicsAnalysisService:
     # =========================================================================
 
     def _create_ir_univariate(
-        self, group_column: str, method: str, fdr_method: str,
+        self,
+        group_column: str,
+        method: str,
+        fdr_method: str,
     ) -> AnalysisStep:
         """Create IR for univariate statistics."""
         return AnalysisStep(
@@ -79,19 +81,26 @@ print(f"Tested {stats['n_tested']} features: {stats['n_significant_fdr']} signif
             },
             parameter_schema={
                 "group_column": ParameterSpec(
-                    param_type="str", papermill_injectable=True,
-                    default_value="condition", required=True,
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="condition",
+                    required=True,
                     description="Column in obs containing group labels",
                 ),
                 "method": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="auto",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="auto",
                     required=False,
                     validation_rule="method in ['auto', 'ttest', 'wilcoxon', 'anova', 'kruskal']",
                     description="Statistical test method",
                 ),
                 "fdr_method": ParameterSpec(
-                    param_type="str", papermill_injectable=True, default_value="fdr_bh",
-                    required=False, description="FDR correction method",
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="fdr_bh",
+                    required=False,
+                    description="FDR correction method",
                 ),
             },
             input_entities=["adata"],
@@ -117,8 +126,11 @@ print(f"PCA: {stats['total_variance_explained']:.1f}% variance explained by {sta
             parameters={"n_components": n_components},
             parameter_schema={
                 "n_components": ParameterSpec(
-                    param_type="int", papermill_injectable=True, default_value=10,
-                    required=False, validation_rule="n_components > 0",
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=10,
+                    required=False,
+                    validation_rule="n_components > 0",
                     description="Number of PCA components",
                 ),
             },
@@ -127,8 +139,11 @@ print(f"PCA: {stats['total_variance_explained']:.1f}% variance explained by {sta
         )
 
     def _create_ir_pls_da(
-        self, group_column: str, n_components: int,
-        permutation_test: bool, n_permutations: int,
+        self,
+        group_column: str,
+        n_components: int,
+        permutation_test: bool,
+        n_permutations: int,
     ) -> AnalysisStep:
         """Create IR for PLS-DA."""
         return AnalysisStep(
@@ -159,21 +174,32 @@ print(f"PLS-DA: R2={stats['r2']:.3f}, Q2={stats['q2']:.3f}, VIP>1: {stats['vip_g
             },
             parameter_schema={
                 "group_column": ParameterSpec(
-                    param_type="str", papermill_injectable=True,
-                    default_value="condition", required=True,
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="condition",
+                    required=True,
                     description="Column in obs containing group labels",
                 ),
                 "n_components": ParameterSpec(
-                    param_type="int", papermill_injectable=True, default_value=2,
-                    required=False, description="Number of PLS components",
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=2,
+                    required=False,
+                    description="Number of PLS components",
                 ),
                 "permutation_test": ParameterSpec(
-                    param_type="bool", papermill_injectable=True, default_value=True,
-                    required=False, description="Run permutation test for model validation",
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
+                    required=False,
+                    description="Run permutation test for model validation",
                 ),
                 "n_permutations": ParameterSpec(
-                    param_type="int", papermill_injectable=True, default_value=100,
-                    required=False, description="Number of permutations",
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=100,
+                    required=False,
+                    description="Number of permutations",
                 ),
             },
             input_entities=["adata"],
@@ -181,8 +207,12 @@ print(f"PLS-DA: R2={stats['r2']:.3f}, Q2={stats['q2']:.3f}, VIP>1: {stats['vip_g
         )
 
     def _create_ir_opls_da(
-        self, group_column: str, n_orthogonal: int, n_predictive: int,
-        permutation_test: bool, n_permutations: int,
+        self,
+        group_column: str,
+        n_orthogonal: int,
+        n_predictive: int,
+        permutation_test: bool,
+        n_permutations: int,
     ) -> AnalysisStep:
         """Create IR for OPLS-DA."""
         return AnalysisStep(
@@ -215,17 +245,25 @@ print(f"OPLS-DA: R2={stats['r2']:.3f}, Q2={stats['q2']:.3f}")""",
             },
             parameter_schema={
                 "group_column": ParameterSpec(
-                    param_type="str", papermill_injectable=True,
-                    default_value="condition", required=True,
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="condition",
+                    required=True,
                     description="Column in obs containing group labels",
                 ),
                 "n_orthogonal": ParameterSpec(
-                    param_type="int", papermill_injectable=True, default_value=1,
-                    required=False, description="Number of orthogonal components",
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=1,
+                    required=False,
+                    description="Number of orthogonal components",
                 ),
                 "n_predictive": ParameterSpec(
-                    param_type="int", papermill_injectable=True, default_value=1,
-                    required=False, description="Number of predictive components",
+                    param_type="int",
+                    papermill_injectable=True,
+                    default_value=1,
+                    required=False,
+                    description="Number of predictive components",
                 ),
             },
             input_entities=["adata"],
@@ -233,7 +271,10 @@ print(f"OPLS-DA: R2={stats['r2']:.3f}, Q2={stats['q2']:.3f}")""",
         )
 
     def _create_ir_fold_changes(
-        self, group_column: str, reference_group: Optional[str], log_space: bool,
+        self,
+        group_column: str,
+        reference_group: Optional[str],
+        log_space: bool,
     ) -> AnalysisStep:
         """Create IR for fold change calculation."""
         return AnalysisStep(
@@ -262,17 +303,23 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
             },
             parameter_schema={
                 "group_column": ParameterSpec(
-                    param_type="str", papermill_injectable=True,
-                    default_value="condition", required=True,
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value="condition",
+                    required=True,
                     description="Column in obs with group labels",
                 ),
                 "reference_group": ParameterSpec(
-                    param_type="Optional[str]", papermill_injectable=True,
-                    default_value=None, required=False,
+                    param_type="Optional[str]",
+                    papermill_injectable=True,
+                    default_value=None,
+                    required=False,
                     description="Reference group (default: first alphabetically)",
                 ),
                 "log_space": ParameterSpec(
-                    param_type="bool", papermill_injectable=True, default_value=True,
+                    param_type="bool",
+                    papermill_injectable=True,
+                    default_value=True,
                     required=False,
                     description="Whether data is already log-transformed",
                 ),
@@ -407,7 +454,9 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
             n_tested = int(valid_mask.sum())
             n_sig_raw = int((p_values[valid_mask] < 0.05).sum()) if n_tested > 0 else 0
-            n_sig_fdr = int((fdr_values[valid_mask] < 0.05).sum()) if n_tested > 0 else 0
+            n_sig_fdr = (
+                int((fdr_values[valid_mask] < 0.05).sum()) if n_tested > 0 else 0
+            )
 
             stats = {
                 "n_tested": n_tested,
@@ -458,6 +507,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
             # Impute NaN for PCA (mean imputation as fallback)
             from sklearn.impute import SimpleImputer
+
             if np.isnan(X).any():
                 imputer = SimpleImputer(strategy="mean")
                 X = imputer.fit_transform(X)
@@ -488,7 +538,9 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                 "analysis_type": "metabolomics_pca",
             }
 
-            logger.info(f"PCA complete: {total_var:.1f}% variance explained by {n_comp} components")
+            logger.info(
+                f"PCA complete: {total_var:.1f}% variance explained by {n_comp} components"
+            )
 
             ir = self._create_ir_pca(n_components)
             return adata_pca, stats, ir
@@ -535,6 +587,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
             # Impute NaN for PLS-DA
             from sklearn.impute import SimpleImputer
+
             if np.isnan(X).any():
                 imputer = SimpleImputer(strategy="mean")
                 X = imputer.fit_transform(X)
@@ -568,6 +621,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
             # R2 and Q2 via cross-validation
             from sklearn.model_selection import cross_val_predict
+
             Y_pred_cv = cross_val_predict(
                 PLSRegression(n_components=n_comp, scale=True), X, Y, cv=7
             )
@@ -616,9 +670,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
                 "analysis_type": "metabolomics_pls_da",
             }
 
-            logger.info(
-                f"PLS-DA complete: R2={r2:.3f}, Q2={q2:.3f}, VIP>1: {vip_gt_1}"
-            )
+            logger.info(f"PLS-DA complete: R2={r2:.3f}, Q2={q2:.3f}, VIP>1: {vip_gt_1}")
 
             ir = self._create_ir_pls_da(
                 group_column, n_components, permutation_test, n_permutations
@@ -674,6 +726,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
             # Impute NaN
             from sklearn.impute import SimpleImputer
+
             if np.isnan(X_raw).any():
                 imputer = SimpleImputer(strategy="mean")
                 X_raw = imputer.fit_transform(X_raw)
@@ -681,9 +734,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
             y_labels = adata_opls.obs[group_column].values
 
             # Run OPLS-DA
-            result = self._opls_da_nipals(
-                X_raw, y_labels, n_orthogonal, n_predictive
-            )
+            result = self._opls_da_nipals(X_raw, y_labels, n_orthogonal, n_predictive)
 
             # Store results
             adata_opls.obsm["X_oplsda_pred"] = result["predictive_scores"]
@@ -736,8 +787,11 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
             logger.info(f"OPLS-DA complete: R2={r2:.3f}, Q2={q2:.3f}")
 
             ir = self._create_ir_opls_da(
-                group_column, n_orthogonal, n_predictive,
-                permutation_test, n_permutations,
+                group_column,
+                n_orthogonal,
+                n_predictive,
+                permutation_test,
+                n_permutations,
             )
             return adata_opls, stats, ir
 
@@ -783,7 +837,9 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
             unique_groups = sorted(set(groups))
 
             if len(unique_groups) < 2:
-                raise MetabolomicsAnalysisError("Need at least 2 groups for fold change")
+                raise MetabolomicsAnalysisError(
+                    "Need at least 2 groups for fold change"
+                )
 
             # Select reference group
             if reference_group is None:
@@ -926,9 +982,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
         predictive_scores = pls.x_scores_
         orthogonal_scores = (
-            np.column_stack(orthogonal_scores_list)
-            if orthogonal_scores_list
-            else None
+            np.column_stack(orthogonal_scores_list) if orthogonal_scores_list else None
         )
 
         # R2
@@ -939,6 +993,7 @@ print(f"FC: {stats['n_upregulated']} up, {stats['n_downregulated']} down (vs {st
 
         # Q2 via 7-fold CV
         from sklearn.model_selection import KFold
+
         kf = KFold(n_splits=min(7, X_raw.shape[0]), shuffle=True, random_state=42)
         press = 0.0
         for train_idx, test_idx in kf.split(X_raw):

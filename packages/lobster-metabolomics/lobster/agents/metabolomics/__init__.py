@@ -17,10 +17,10 @@ try:
         detect_platform_type,
         get_platform_config,
     )
+    from lobster.agents.metabolomics.metabolomics_expert import metabolomics_expert
     from lobster.agents.metabolomics.prompts import (
         create_metabolomics_expert_prompt,
     )
-    from lobster.agents.metabolomics.metabolomics_expert import metabolomics_expert
 
     METABOLOMICS_EXPERT_AVAILABLE = True
 except ImportError:

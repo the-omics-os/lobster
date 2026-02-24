@@ -81,18 +81,14 @@ class SearchResult(BaseModel):
     the collection size and requested top-k.
     """
 
-    query: str = Field(
-        description="The original search query text"
-    )
+    query: str = Field(description="The original search query text")
     collection: str = Field(
         description="Name of the vector collection searched (e.g., 'mondo_diseases')"
     )
     matches: list[OntologyMatch] = Field(
         description="Ranked list of matching ontology terms"
     )
-    top_k: int = Field(
-        description="Number of results requested"
-    )
+    top_k: int = Field(description="Number of results requested")
     total_in_collection: int | None = Field(
         default=None,
         description="Total number of documents in the collection (for diagnostics)",
@@ -108,9 +104,7 @@ class LiteratureMatch(BaseModel):
     literature search phase.
     """
 
-    title: str = Field(
-        description="Publication title"
-    )
+    title: str = Field(description="Publication title")
     pmid: str | None = Field(
         default=None,
         description="PubMed identifier (if available)",

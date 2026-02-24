@@ -7,7 +7,7 @@ Used by scVI integration to determine hardware capabilities.
 
 import re
 import subprocess
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from lobster.utils import IS_MACOS
 
@@ -124,7 +124,7 @@ class GPUDetector:
             }
 
     @staticmethod
-    def check_scvi_availability() -> Dict[str, any]:
+    def check_scvi_availability() -> Dict[str, Any]:
         """
         Check if scVI and PyTorch are available without importing them.
 
@@ -174,7 +174,7 @@ def get_scvi_device_recommendation() -> str:
     return recommendation["device"]
 
 
-def format_installation_message(availability_info: Dict[str, any]) -> str:
+def format_installation_message(availability_info: Dict[str, Any]) -> str:
     """
     Format a user-friendly message about scVI installation status.
 

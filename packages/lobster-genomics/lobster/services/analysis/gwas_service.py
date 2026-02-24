@@ -426,9 +426,7 @@ class GWASService:
                 chroms = adata.var["CHROM"].astype(str).values
                 unique_chroms = np.unique(chroms)
                 chrom_to_idx = {c: i for i, c in enumerate(unique_chroms)}
-                variant_contig = np.array(
-                    [chrom_to_idx[c] for c in chroms], dtype=int
-                )
+                variant_contig = np.array([chrom_to_idx[c] for c in chroms], dtype=int)
             else:
                 # Single contig fallback
                 variant_contig = np.zeros(ds.sizes["variants"], dtype=int)
@@ -543,11 +541,13 @@ class GWASService:
             for i in range(n_samples):
                 for j in range(i + 1, n_samples):
                     if grm[i, j] > kinship_threshold:
-                        related_pairs.append({
-                            "sample_i": str(adata_kinship.obs.index[i]),
-                            "sample_j": str(adata_kinship.obs.index[j]),
-                            "kinship_coeff": float(grm[i, j]),
-                        })
+                        related_pairs.append(
+                            {
+                                "sample_i": str(adata_kinship.obs.index[i]),
+                                "sample_j": str(adata_kinship.obs.index[j]),
+                                "kinship_coeff": float(grm[i, j]),
+                            }
+                        )
 
             # Store in AnnData
             adata_kinship.obsm["kinship_matrix"] = grm
@@ -564,7 +564,9 @@ class GWASService:
                 "kinship_threshold": kinship_threshold,
                 "estimator": estimator,
                 "mean_kinship": float(np.mean(upper_triangle)),
-                "max_kinship": float(np.max(upper_triangle)) if len(upper_triangle) > 0 else 0.0,
+                "max_kinship": (
+                    float(np.max(upper_triangle)) if len(upper_triangle) > 0 else 0.0
+                ),
             }
 
             logger.info(
@@ -699,12 +701,17 @@ class GWASService:
                         other_chrom = str(adata_clumped.var["CHROM"].iloc[other_idx])
                         other_pos = int(adata_clumped.var["POS"].iloc[other_idx])
 
-                        if other_chrom == idx_chrom and abs(other_pos - idx_pos) < clump_window_bp:
+                        if (
+                            other_chrom == idx_chrom
+                            and abs(other_pos - idx_pos) < clump_window_bp
+                        ):
                             member_indices.append(other_idx)
 
                 # Assign clump_id to all members
                 for member_idx in member_indices:
-                    adata_clumped.var.iloc[member_idx, adata_clumped.var.columns.get_loc("clump_id")] = clump_id
+                    adata_clumped.var.iloc[
+                        member_idx, adata_clumped.var.columns.get_loc("clump_id")
+                    ] = clump_id
                     claimed.add(member_idx)
 
                 # Record clump info

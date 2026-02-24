@@ -113,15 +113,11 @@ class QueuePreparationService:
         try:
             from lobster.core.component_registry import component_registry
 
-            for name, preparer_cls in (
-                component_registry.list_queue_preparers().items()
-            ):
+            for name, preparer_cls in component_registry.list_queue_preparers().items():
                 try:
                     preparer = preparer_cls(self.data_manager)
                     self.register_preparer(preparer)
-                    logger.debug(
-                        f"Registered queue preparer '{name}' from entry point"
-                    )
+                    logger.debug(f"Registered queue preparer '{name}' from entry point")
                 except Exception as e:
                     logger.warning(
                         f"Failed to load queue preparer '{name}' "

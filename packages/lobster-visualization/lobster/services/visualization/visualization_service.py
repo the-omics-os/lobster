@@ -854,9 +854,9 @@ class SingleCellVisualizationService:
                         colorscale=self.expression_colorscale,
                         showscale=True,
                         colorbar=dict(title="Mean<br>Expression", x=1.15),
-                        cmin=np.min(colors)
-                        if len(colors) > 0
-                        else 0,  # Explicit color range
+                        cmin=(
+                            np.min(colors) if len(colors) > 0 else 0
+                        ),  # Explicit color range
                         cmax=np.max(colors) if len(colors) > 0 else 1,
                         line=dict(width=0.5, color="black"),
                     ),
@@ -1166,9 +1166,9 @@ class SingleCellVisualizationService:
                     "M. Doublet Detection" if has_doublet else "M. Ribo% Distribution",
                     "N. QC Thresholds",  # Threshold visualization
                     "O. Cell Filtering Impact",  # Before/after
-                    "P. Batch Effects"
-                    if batch_col
-                    else "",  # FIX ISSUE 4: Remove subtitle for gauge (it has its own title)
+                    (
+                        "P. Batch Effects" if batch_col else ""
+                    ),  # FIX ISSUE 4: Remove subtitle for gauge (it has its own title)
                 ],
                 specs=[
                     [

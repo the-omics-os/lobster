@@ -1337,7 +1337,11 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
         )
 
         adata_result = adata.copy()
-        X = adata_result.X.toarray() if hasattr(adata_result.X, "toarray") else adata_result.X.copy()
+        X = (
+            adata_result.X.toarray()
+            if hasattr(adata_result.X, "toarray")
+            else adata_result.X.copy()
+        )
         n_samples, n_proteins = X.shape
 
         # Step 1: Calculate detection rate per protein
@@ -1375,7 +1379,9 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
             elif method == "mad":
                 variability[j] = np.median(np.abs(valid - np.median(valid)))
             else:
-                raise ValueError(f"Unknown method '{method}'. Use 'cv', 'variance', or 'mad'.")
+                raise ValueError(
+                    f"Unknown method '{method}'. Use 'cv', 'variance', or 'mad'."
+                )
 
         # Step 3: Select top N by variability
         valid_variability = np.where(np.isnan(variability), -np.inf, variability)

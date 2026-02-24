@@ -117,9 +117,7 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
                 metadata["study_status"] = study_data.get(
                     "studyStatus", study_data.get("status", "")
                 )
-                metadata["submission_date"] = study_data.get(
-                    "submissionDate", ""
-                )
+                metadata["submission_date"] = study_data.get("submissionDate", "")
                 metadata["release_date"] = study_data.get(
                     "publicReleaseDate", study_data.get("releaseDate", "")
                 )
@@ -158,14 +156,10 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
                 if assays:
                     metadata["assay_count"] = len(assays)
                     metadata["assay_technologies"] = [
-                        a.get("technology", "")
-                        for a in assays
-                        if isinstance(a, dict)
+                        a.get("technology", "") for a in assays if isinstance(a, dict)
                     ]
                     metadata["assay_platforms"] = [
-                        a.get("platform", "")
-                        for a in assays
-                        if isinstance(a, dict)
+                        a.get("platform", "") for a in assays if isinstance(a, dict)
                     ]
 
                 # Contacts
@@ -187,16 +181,11 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
 
         except requests.exceptions.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
-                raise RuntimeError(
-                    f"MetaboLights study {accession} not found (404)"
-                )
-            raise RuntimeError(
-                f"MetaboLights API error for {accession}: {e}"
-            )
+                raise RuntimeError(f"MetaboLights study {accession} not found (404)")
+            raise RuntimeError(f"MetaboLights API error for {accession}: {e}")
         except requests.exceptions.RequestException as e:
             raise RuntimeError(
-                f"Network error fetching MetaboLights metadata for "
-                f"{accession}: {e}"
+                f"Network error fetching MetaboLights metadata for " f"{accession}: {e}"
             )
 
     def extract_download_urls(self, accession: str) -> "DownloadUrlResult":
@@ -357,8 +346,7 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
             )
         # Check for mzML files
         elif url_data.raw_files and any(
-            f.filename.lower().endswith(MZML_EXTENSIONS)
-            for f in url_data.raw_files
+            f.filename.lower().endswith(MZML_EXTENSIONS) for f in url_data.raw_files
         ):
             strategy_name = "MZML_FIRST"
             confidence = 0.75
@@ -406,8 +394,7 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
             confidence=confidence,
             rationale=rationale,
             strategy_params={
-                "file_type_priority": strategy_name.replace("_FIRST", "")
-                .lower(),
+                "file_type_priority": strategy_name.replace("_FIRST", "").lower(),
                 "include_metadata": True,
             },
             execution_params={
@@ -447,9 +434,7 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
 
         # Validate format first
         if not MTBLS_PATTERN.match(accession):
-            logger.warning(
-                f"Invalid MetaboLights accession format: '{accession}'"
-            )
+            logger.warning(f"Invalid MetaboLights accession format: '{accession}'")
             return False
 
         session = self._get_session()
@@ -468,9 +453,7 @@ class MetaboLightsQueuePreparer(IQueuePreparer):
                 response = session.get(url, timeout=30)
                 return response.status_code == 200
         except requests.exceptions.RequestException as e:
-            logger.warning(
-                f"Could not validate MetaboLights study {accession}: {e}"
-            )
+            logger.warning(f"Could not validate MetaboLights study {accession}: {e}")
             return False
 
     # =========================================================================

@@ -123,9 +123,6 @@ def proteomics_expert(
     quality_service = ProteomicsQualityService()
     analysis_service = ProteomicsAnalysisService()
 
-    # Store forced platform type for tools to access
-    _forced_platform_type = force_platform_type
-
     # =========================================================================
     # GET SHARED TOOLS (QC, filter, normalize, patterns, impute, variable selection, summary)
     # =========================================================================
@@ -163,10 +160,14 @@ def proteomics_expert(
             str: Peptide mapping results
         """
         # DEPRECATED: Merged into import_proteomics_data (shared_tools.py)
-        logger.warning("add_peptide_mapping is deprecated. Use import_proteomics_data which automatically extracts peptide mapping from parser output.")
-        return "DEPRECATED: add_peptide_mapping has been merged into import_proteomics_data. " \
-               "MaxQuant/DIA-NN/Spectronaut parsers automatically extract peptide counts, " \
-               "unique peptides, and sequence coverage during import."
+        logger.warning(
+            "add_peptide_mapping is deprecated. Use import_proteomics_data which automatically extracts peptide mapping from parser output."
+        )
+        return (
+            "DEPRECATED: add_peptide_mapping has been merged into import_proteomics_data. "
+            "MaxQuant/DIA-NN/Spectronaut parsers automatically extract peptide counts, "
+            "unique peptides, and sequence coverage during import."
+        )
 
     @tool
     def validate_antibody_specificity(
@@ -207,7 +208,9 @@ def proteomics_expert(
 
             if adata_validated.n_vars > 1:
                 df = pd.DataFrame(X, columns=adata_validated.var_names)
-                correlation_matrix = df.corr(method='pearson', min_periods=3).fillna(0).values
+                correlation_matrix = (
+                    df.corr(method="pearson", min_periods=3).fillna(0).values
+                )
 
                 for i in range(len(correlation_matrix)):
                     for j in range(i + 1, len(correlation_matrix)):
@@ -293,7 +296,9 @@ for i, j, _ in cross_reactive_pairs:
             response = f"Successfully validated antibody specificity for '{modality_name}'!\n\n"
             response += "**Antibody Validation Results:**\n"
             response += f"- Total proteins analyzed: {adata_validated.n_vars}\n"
-            response += f"- Cross-reactive pairs detected: {len(cross_reactive_pairs)}\n"
+            response += (
+                f"- Cross-reactive pairs detected: {len(cross_reactive_pairs)}\n"
+            )
             response += f"- Correlation threshold: {cross_reactivity_threshold}\n\n"
 
             if cross_reactive_pairs:
@@ -301,7 +306,9 @@ for i, j, _ in cross_reactive_pairs:
                 for protein_i, protein_j, correlation in cross_reactive_pairs[:5]:
                     response += f"- {protein_i} <-> {protein_j}: r={correlation:.3f}\n"
                 if len(cross_reactive_pairs) > 5:
-                    response += f"- ... and {len(cross_reactive_pairs) - 5} more pairs\n"
+                    response += (
+                        f"- ... and {len(cross_reactive_pairs) - 5} more pairs\n"
+                    )
                 response += "\n**Recommendations:**\n"
                 response += "- Review antibody specificity documentation\n"
                 response += "- Consider removing highly cross-reactive antibodies\n"
@@ -366,31 +373,57 @@ for i, j, _ in cross_reactive_pairs:
                 plates = adata.obs[plate_column].unique()
                 if len(plates) >= 2:
                     # Compute before-correction inter-plate correlation
-                    X_before = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
+                    X_before = (
+                        adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
+                    )
                     before_plate_medians = {}
                     for plate in plates:
                         plate_mask = (adata.obs[plate_column] == plate).values
                         if plate_mask.sum() > 0:
-                            before_plate_medians[str(plate)] = np.nanmedian(X_before[plate_mask, :], axis=0)
+                            before_plate_medians[str(plate)] = np.nanmedian(
+                                X_before[plate_mask, :], axis=0
+                            )
 
                     if len(before_plate_medians) >= 2:
                         before_df = pd.DataFrame(before_plate_medians)
-                        before_corr_matrix = before_df.corr(method="pearson", min_periods=3)
+                        before_corr_matrix = before_df.corr(
+                            method="pearson", min_periods=3
+                        )
                         # Extract upper triangle (excluding diagonal)
-                        mask = np.triu(np.ones_like(before_corr_matrix, dtype=bool), k=1)
-                        before_median_corr = float(before_corr_matrix.values[mask].mean()) if mask.sum() > 0 else np.nan
+                        mask = np.triu(
+                            np.ones_like(before_corr_matrix, dtype=bool), k=1
+                        )
+                        before_median_corr = (
+                            float(before_corr_matrix.values[mask].mean())
+                            if mask.sum() > 0
+                            else np.nan
+                        )
 
                         # Compute after-correction inter-plate correlation
-                        X_after = corrected_adata.X.toarray() if hasattr(corrected_adata.X, "toarray") else corrected_adata.X
+                        X_after = (
+                            corrected_adata.X.toarray()
+                            if hasattr(corrected_adata.X, "toarray")
+                            else corrected_adata.X
+                        )
                         after_plate_medians = {}
                         for plate in plates:
-                            plate_mask = (corrected_adata.obs[plate_column] == plate).values
+                            plate_mask = (
+                                corrected_adata.obs[plate_column] == plate
+                            ).values
                             if plate_mask.sum() > 0:
-                                after_plate_medians[str(plate)] = np.nanmedian(X_after[plate_mask, :], axis=0)
+                                after_plate_medians[str(plate)] = np.nanmedian(
+                                    X_after[plate_mask, :], axis=0
+                                )
 
                         after_df = pd.DataFrame(after_plate_medians)
-                        after_corr_matrix = after_df.corr(method="pearson", min_periods=3)
-                        after_median_corr = float(after_corr_matrix.values[mask].mean()) if mask.sum() > 0 else np.nan
+                        after_corr_matrix = after_df.corr(
+                            method="pearson", min_periods=3
+                        )
+                        after_median_corr = (
+                            float(after_corr_matrix.values[mask].mean())
+                            if mask.sum() > 0
+                            else np.nan
+                        )
 
                         delta = after_median_corr - before_median_corr
 
@@ -435,7 +468,9 @@ for i, j, _ in cross_reactive_pairs:
             response += f"- Plate column: {plate_column}\n"
 
             if "n_batches_corrected" in batch_stats:
-                response += f"- Plates corrected: {batch_stats['n_batches_corrected']}\n"
+                response += (
+                    f"- Plates corrected: {batch_stats['n_batches_corrected']}\n"
+                )
 
             response += validation_msg
 
@@ -459,8 +494,8 @@ for i, j, _ in cross_reactive_pairs:
 
     # Platform-specific tools (kept inline; add_peptide_mapping deprecated — use import_proteomics_data)
     platform_tools = [
-        validate_antibody_specificity, # Affinity-specific
-        correct_plate_effects,         # Affinity-specific
+        validate_antibody_specificity,  # Affinity-specific
+        correct_plate_effects,  # Affinity-specific
     ]
 
     # Combine: shared tools + platform tools

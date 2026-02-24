@@ -56,9 +56,7 @@ class MetabolomicsAdapter(BaseAdapter):
         self.handle_missing_values = handle_missing_values
 
         # Create validator for metabolomics data
-        self.validator = MetabolomicsSchema.create_validator(
-            strict=strict_validation
-        )
+        self.validator = MetabolomicsSchema.create_validator(strict=strict_validation)
 
         # Get QC thresholds
         self.qc_thresholds = MetabolomicsSchema.get_recommended_qc_thresholds()
@@ -532,9 +530,7 @@ class MetabolomicsAdapter(BaseAdapter):
                     (~np.isnan(adata.X)).sum(axis=0)
                 ).flatten()
             else:
-                adata.var["n_samples"] = np.array(
-                    (adata.X > 0).sum(axis=0)
-                ).flatten()
+                adata.var["n_samples"] = np.array((adata.X > 0).sum(axis=0)).flatten()
 
         if "mean_intensity" not in adata.var.columns:
             # Mean intensity per metabolite
@@ -544,13 +540,13 @@ class MetabolomicsAdapter(BaseAdapter):
             # Prevalence: proportion of samples with detection (non-NaN, non-zero)
             if hasattr(adata.X, "isnan"):
                 detected = (~np.isnan(adata.X)) & (adata.X > 0)
-                adata.var["prevalence"] = np.array(
-                    detected.sum(axis=0)
-                ).flatten() / adata.n_obs
+                adata.var["prevalence"] = (
+                    np.array(detected.sum(axis=0)).flatten() / adata.n_obs
+                )
             else:
-                adata.var["prevalence"] = np.array(
-                    (adata.X > 0).sum(axis=0)
-                ).flatten() / adata.n_obs
+                adata.var["prevalence"] = (
+                    np.array((adata.X > 0).sum(axis=0)).flatten() / adata.n_obs
+                )
 
         if "cv" not in adata.var.columns:
             # Coefficient of variation (%)

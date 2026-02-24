@@ -77,6 +77,9 @@ class PLINKAdapter(BaseAdapter):
         self._log_operation("loading", source=str(source))
 
         try:
+            # Resolve PLINK file paths first (validates file existence)
+            bed_path = self._resolve_plink_path(source)
+
             # Import bed-reader (optional dependency)
             try:
                 from bed_reader import open_bed
@@ -85,9 +88,6 @@ class PLINKAdapter(BaseAdapter):
                     "bed-reader package is required for PLINK support. "
                     "Install with: pip install bed-reader"
                 )
-
-            # Resolve PLINK file paths
-            bed_path = self._resolve_plink_path(source)
 
             # Extract kwargs
             iid_filter = kwargs.get("iid_filter", None)

@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.services.vector instead."""
+
 import warnings as _w
 
 _w.warn(
@@ -8,4 +9,8 @@ _w.warn(
     stacklevel=2,
 )
 from lobster.services.vector import *  # noqa: F401,F403
-from lobster.services.vector import ONTOLOGY_COLLECTIONS, VectorSearchConfig, VectorSearchService
+from lobster.services.vector import (
+    ONTOLOGY_COLLECTIONS,
+    VectorSearchConfig,
+    VectorSearchService,
+)

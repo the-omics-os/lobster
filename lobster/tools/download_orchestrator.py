@@ -105,9 +105,10 @@ class DownloadOrchestrator:
         try:
             from lobster.core.component_registry import component_registry
 
-            for name, service_cls in (
-                component_registry.list_download_services().items()
-            ):
+            for (
+                name,
+                service_cls,
+            ) in component_registry.list_download_services().items():
                 try:
                     service = service_cls(self.data_manager)
                     self.register_service(service)

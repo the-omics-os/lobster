@@ -2776,7 +2776,9 @@ class AgentClient(BaseClient):
                 "exported_at": datetime.now().isoformat(),
                 "lobster_version": self._get_version(),
                 "provenance": {
-                    "session_dir": str(self._session_dir) if self._session_dir else None,
+                    "session_dir": (
+                        str(self._session_dir) if self._session_dir else None
+                    ),
                     "activity_count": (
                         len(self.data_manager.provenance.activities)
                         if self.data_manager.provenance

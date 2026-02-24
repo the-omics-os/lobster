@@ -109,11 +109,11 @@ def de_analysis_expert(
     differential_service = ProteomicsDifferentialService()
 
     # Lazy imports for downstream analysis services (inside factory, not module level)
-    from lobster.services.analysis.proteomics_pathway_service import (
-        ProteomicsPathwayService,
-    )
     from lobster.services.analysis.proteomics_kinase_service import (
         ProteomicsKinaseService,
+    )
+    from lobster.services.analysis.proteomics_pathway_service import (
+        ProteomicsPathwayService,
     )
     from lobster.services.analysis.proteomics_string_service import (
         ProteomicsStringService,
@@ -209,9 +209,7 @@ def de_analysis_expert(
 
             # Apply platform-aware defaults
             if method is None:
-                method = (
-                    "limma_like" if detected_platform == "mass_spec" else "t_test"
-                )
+                method = "limma_like" if detected_platform == "mass_spec" else "t_test"
 
             if fold_change_threshold is None:
                 fold_change_threshold = platform_config.default_fold_change_threshold
@@ -223,14 +221,16 @@ def de_analysis_expert(
             )
 
             # Call the stateless differential service
-            adata_de, de_stats, de_ir = differential_service.perform_differential_expression(
-                adata_copy,
-                group_column=group_column,
-                comparison_pairs=None,  # All pairwise comparisons
-                test_method=method,
-                fdr_method="benjamini_hochberg",
-                fdr_threshold=fdr_threshold,
-                fold_change_threshold=fold_change_threshold,
+            adata_de, de_stats, de_ir = (
+                differential_service.perform_differential_expression(
+                    adata_copy,
+                    group_column=group_column,
+                    comparison_pairs=None,  # All pairwise comparisons
+                    test_method=method,
+                    fdr_method="benjamini_hochberg",
+                    fdr_threshold=fdr_threshold,
+                    fold_change_threshold=fold_change_threshold,
+                )
             )
 
             # Store result as new modality
@@ -278,8 +278,12 @@ def de_analysis_expert(
             response += "**Results:**\n"
             response += f"- Samples processed: {de_stats.get('samples_processed', 0)}\n"
             response += f"- Proteins tested: {de_stats.get('proteins_processed', 0)}\n"
-            response += f"- Total tests performed: {de_stats.get('total_tests_performed', 0)}\n"
-            response += f"- Significant proteins: {de_stats.get('n_significant_proteins', 0)}\n"
+            response += (
+                f"- Total tests performed: {de_stats.get('total_tests_performed', 0)}\n"
+            )
+            response += (
+                f"- Significant proteins: {de_stats.get('n_significant_proteins', 0)}\n"
+            )
             response += f"- Significance rate: {de_stats.get('overall_significance_rate', 0):.1%}\n\n"
 
             # Top significant proteins
@@ -305,7 +309,9 @@ def de_analysis_expert(
                     response += f"- {name}: log2FC={log2fc:.2f}, FDR={padj:.2e} ({comparison})\n"
 
             response += f"\n**New modality created**: '{de_modality_name}'"
-            response += "\n**Detailed results stored in**: adata.uns['differential_expression']"
+            response += (
+                "\n**Detailed results stored in**: adata.uns['differential_expression']"
+            )
             response += "\n**Volcano plot data**: adata.uns['volcano_plot_data']"
 
             # Sample size warning
@@ -383,12 +389,14 @@ def de_analysis_expert(
             )
 
             # Call the stateless differential service
-            adata_tc, tc_stats, tc_ir = differential_service.perform_time_course_analysis(
-                adata_copy,
-                time_column=time_column,
-                group_column=group_column,
-                test_method=method,
-                fdr_threshold=fdr_threshold,
+            adata_tc, tc_stats, tc_ir = (
+                differential_service.perform_time_course_analysis(
+                    adata_copy,
+                    time_column=time_column,
+                    group_column=group_column,
+                    test_method=method,
+                    fdr_threshold=fdr_threshold,
+                )
             )
 
             # Store result as new modality
@@ -433,7 +441,9 @@ def de_analysis_expert(
 
             response += "**Data Summary:**\n"
             response += f"- Samples processed: {tc_stats.get('samples_processed', 0)}\n"
-            response += f"- Proteins analyzed: {tc_stats.get('proteins_processed', 0)}\n"
+            response += (
+                f"- Proteins analyzed: {tc_stats.get('proteins_processed', 0)}\n"
+            )
 
             time_range = tc_stats.get("time_range", (0, 0))
             response += f"- Time points: {tc_stats.get('n_time_points', 0)}\n"
@@ -442,7 +452,9 @@ def de_analysis_expert(
             response += "**Results:**\n"
             response += f"- Tests performed: {tc_stats.get('n_tests_performed', 0)}\n"
             response += f"- Significant time-dependent proteins: {tc_stats.get('n_significant_results', 0)}\n"
-            response += f"- Significance rate: {tc_stats.get('significance_rate', 0):.1%}\n"
+            response += (
+                f"- Significance rate: {tc_stats.get('significance_rate', 0):.1%}\n"
+            )
 
             # Show significant results from uns
             tc_results = adata_tc.uns.get("time_course_analysis", {})
@@ -462,7 +474,9 @@ def de_analysis_expert(
                     response += f"- {name}: FDR={padj:.2e}, R2={r2:.3f}{group_str}\n"
 
             response += f"\n**New modality created**: '{tc_modality_name}'"
-            response += "\n**Detailed results stored in**: adata.uns['time_course_analysis']"
+            response += (
+                "\n**Detailed results stored in**: adata.uns['time_course_analysis']"
+            )
 
             return response
 
@@ -523,12 +537,14 @@ def de_analysis_expert(
             )
 
             # Call the stateless differential service
-            adata_corr, corr_stats, corr_ir = differential_service.perform_correlation_analysis(
-                adata_copy,
-                target_column=target_column,
-                correlation_method=method,
-                fdr_threshold=fdr_threshold,
-                min_correlation=correlation_threshold,
+            adata_corr, corr_stats, corr_ir = (
+                differential_service.perform_correlation_analysis(
+                    adata_copy,
+                    target_column=target_column,
+                    correlation_method=method,
+                    fdr_threshold=fdr_threshold,
+                    min_correlation=correlation_threshold,
+                )
             )
 
             # Store result as new modality
@@ -571,31 +587,47 @@ def de_analysis_expert(
             response += f"- FDR threshold: {fdr_threshold}\n\n"
 
             response += "**Data Summary:**\n"
-            response += f"- Samples processed: {corr_stats.get('samples_processed', 0)}\n"
-            response += f"- Proteins analyzed: {corr_stats.get('proteins_processed', 0)}\n"
+            response += (
+                f"- Samples processed: {corr_stats.get('samples_processed', 0)}\n"
+            )
+            response += (
+                f"- Proteins analyzed: {corr_stats.get('proteins_processed', 0)}\n"
+            )
 
             target_range = corr_stats.get("target_range", (0, 0))
-            response += f"- Target range: {target_range[0]:.2f} to {target_range[1]:.2f}\n\n"
+            response += (
+                f"- Target range: {target_range[0]:.2f} to {target_range[1]:.2f}\n\n"
+            )
 
             response += "**Results:**\n"
             response += f"- Tests performed: {corr_stats.get('n_tests_performed', 0)}\n"
             response += f"- Significant correlations: {corr_stats.get('n_significant_results', 0)}\n"
-            response += f"- Significance rate: {corr_stats.get('significance_rate', 0):.1%}\n"
+            response += (
+                f"- Significance rate: {corr_stats.get('significance_rate', 0):.1%}\n"
+            )
             response += f"- Median |correlation|: {corr_stats.get('median_abs_correlation', 0):.3f}\n"
-            response += f"- Max |correlation|: {corr_stats.get('max_abs_correlation', 0):.3f}\n"
+            response += (
+                f"- Max |correlation|: {corr_stats.get('max_abs_correlation', 0):.3f}\n"
+            )
 
             # Show significant results from uns
             corr_results = adata_corr.uns.get("correlation_analysis", {})
             significant_results = corr_results.get("significant_results", [])
             if significant_results:
                 # Split into positive and negative correlations
-                positive = [r for r in significant_results if r.get("correlation", 0) > 0]
-                negative = [r for r in significant_results if r.get("correlation", 0) < 0]
+                positive = [
+                    r for r in significant_results if r.get("correlation", 0) > 0
+                ]
+                negative = [
+                    r for r in significant_results if r.get("correlation", 0) < 0
+                ]
 
                 if positive:
                     response += "\n**Top Positive Correlations:**\n"
                     sorted_pos = sorted(
-                        positive, key=lambda x: abs(x.get("correlation", 0)), reverse=True
+                        positive,
+                        key=lambda x: abs(x.get("correlation", 0)),
+                        reverse=True,
                     )
                     for result in sorted_pos[:5]:
                         name = result.get("protein", "Unknown")
@@ -606,7 +638,9 @@ def de_analysis_expert(
                 if negative:
                     response += "\n**Top Negative Correlations:**\n"
                     sorted_neg = sorted(
-                        negative, key=lambda x: abs(x.get("correlation", 0)), reverse=True
+                        negative,
+                        key=lambda x: abs(x.get("correlation", 0)),
+                        reverse=True,
                     )
                     for result in sorted_neg[:5]:
                         name = result.get("protein", "Unknown")
@@ -615,8 +649,12 @@ def de_analysis_expert(
                         response += f"- {name}: r={corr:.3f}, FDR={padj:.2e}\n"
 
             response += f"\n**New modality created**: '{corr_modality_name}'"
-            response += "\n**Detailed results stored in**: adata.uns['correlation_analysis']"
-            response += "\n**Per-protein correlations**: adata.var['correlation_with_target']"
+            response += (
+                "\n**Detailed results stored in**: adata.uns['correlation_analysis']"
+            )
+            response += (
+                "\n**Per-protein correlations**: adata.var['correlation_with_target']"
+            )
 
             return response
 
@@ -732,7 +770,9 @@ def de_analysis_expert(
                     )
 
             response += f"\n**New modality created**: '{enriched_name}'"
-            response += "\n**Detailed results stored in**: adata.uns['pathway_enrichment']"
+            response += (
+                "\n**Detailed results stored in**: adata.uns['pathway_enrichment']"
+            )
 
             return response
 
@@ -791,23 +831,27 @@ def de_analysis_expert(
             )
 
             # Run DE on PTM site modality
-            ptm_de, ptm_stats, ptm_ir = differential_service.perform_differential_expression(
-                ptm_adata.copy(),
-                group_column=group_column,
-                comparison_pairs=None,
-                test_method="limma_like",
-                fdr_method="benjamini_hochberg",
-                fdr_threshold=fdr_threshold,
+            ptm_de, ptm_stats, ptm_ir = (
+                differential_service.perform_differential_expression(
+                    ptm_adata.copy(),
+                    group_column=group_column,
+                    comparison_pairs=None,
+                    test_method="limma_like",
+                    fdr_method="benjamini_hochberg",
+                    fdr_threshold=fdr_threshold,
+                )
             )
 
             # Run DE on protein modality
-            prot_de, prot_stats, prot_ir = differential_service.perform_differential_expression(
-                protein_adata.copy(),
-                group_column=group_column,
-                comparison_pairs=None,
-                test_method="limma_like",
-                fdr_method="benjamini_hochberg",
-                fdr_threshold=fdr_threshold,
+            prot_de, prot_stats, prot_ir = (
+                differential_service.perform_differential_expression(
+                    protein_adata.copy(),
+                    group_column=group_column,
+                    comparison_pairs=None,
+                    test_method="limma_like",
+                    fdr_method="benjamini_hochberg",
+                    fdr_threshold=fdr_threshold,
+                )
             )
 
             # Build protein-level FC lookup
@@ -893,18 +937,22 @@ def de_analysis_expert(
             )
 
             # Format response
-            import numpy as _np
-
             response = "## Differential PTM Analysis Complete\n\n"
             response += f"**PTM Modality**: '{modality_name}'\n"
             response += f"**Protein Modality**: '{protein_modality_name}'\n\n"
 
             response += "**Summary:**\n"
-            response += f"- PTM sites tested: {ptm_stats.get('proteins_processed', 0)}\n"
+            response += (
+                f"- PTM sites tested: {ptm_stats.get('proteins_processed', 0)}\n"
+            )
             response += f"- Significant PTM sites: {len(significant_sites)}\n"
-            response += f"- Proteins tested: {prot_stats.get('proteins_processed', 0)}\n"
+            response += (
+                f"- Proteins tested: {prot_stats.get('proteins_processed', 0)}\n"
+            )
             n_discordant = sum(1 for s in significant_sites if s["discordant"])
-            response += f"- Discordant sites (PTM vs protein direction): {n_discordant}\n\n"
+            response += (
+                f"- Discordant sites (PTM vs protein direction): {n_discordant}\n\n"
+            )
 
             # Top sites by adjusted FC
             if significant_sites:
@@ -926,7 +974,9 @@ def de_analysis_expert(
                     )
 
             response += f"\n**New modality created**: '{ptm_de_name}'"
-            response += "\n**Detailed results stored in**: adata.uns['differential_ptm']"
+            response += (
+                "\n**Detailed results stored in**: adata.uns['differential_ptm']"
+            )
 
             return response
 
@@ -974,7 +1024,11 @@ def de_analysis_expert(
             # Validate DE or PTM DE results exist
             has_de = "differential_expression" in adata.uns
             has_ptm = "differential_ptm" in adata.uns
-            has_var_fc = "log2_fold_change" in adata.var.columns if hasattr(adata.var, "columns") else False
+            has_var_fc = (
+                "log2_fold_change" in adata.var.columns
+                if hasattr(adata.var, "columns")
+                else False
+            )
 
             if not (has_de or has_ptm or has_var_fc):
                 return (
@@ -1027,8 +1081,12 @@ def de_analysis_expert(
             response += f"**Modality**: '{modality_name}'\n\n"
 
             response += "**Summary:**\n"
-            response += f"- Sites with fold changes: {ksea_stats.get('n_sites_available', 0)}\n"
-            response += f"- Kinases in mapping: {ksea_stats.get('n_kinases_in_map', 0)}\n"
+            response += (
+                f"- Sites with fold changes: {ksea_stats.get('n_sites_available', 0)}\n"
+            )
+            response += (
+                f"- Kinases in mapping: {ksea_stats.get('n_kinases_in_map', 0)}\n"
+            )
             response += f"- Kinases tested (>= {min_substrates} substrates): {ksea_stats.get('n_kinases_tested', 0)}\n"
             response += f"- Significant kinases (FDR < {fdr_threshold}): {ksea_stats.get('n_significant', 0)}\n\n"
 
@@ -1144,15 +1202,25 @@ def de_analysis_expert(
             response += f"**Modality**: '{modality_name}'\n\n"
 
             response += "**Query Parameters:**\n"
-            response += f"- Species: {species} ({'human' if species == 9606 else 'other'})\n"
+            response += (
+                f"- Species: {species} ({'human' if species == 9606 else 'other'})\n"
+            )
             response += f"- Score threshold: {score_threshold}\n"
             response += f"- Network type: {network_type}\n\n"
 
             response += "**Network Statistics:**\n"
-            response += f"- Proteins queried: {net_stats.get('n_proteins_queried', 0)}\n"
-            response += f"- Nodes in network: {net_stats.get('n_nodes_in_network', 0)}\n"
-            response += f"- Interactions found: {net_stats.get('n_interactions_found', 0)}\n"
-            response += f"- Network density: {net_stats.get('network_density', 0):.4f}\n\n"
+            response += (
+                f"- Proteins queried: {net_stats.get('n_proteins_queried', 0)}\n"
+            )
+            response += (
+                f"- Nodes in network: {net_stats.get('n_nodes_in_network', 0)}\n"
+            )
+            response += (
+                f"- Interactions found: {net_stats.get('n_interactions_found', 0)}\n"
+            )
+            response += (
+                f"- Network density: {net_stats.get('network_density', 0):.4f}\n\n"
+            )
 
             # Hub proteins
             network_data = adata_net.uns.get("string_network", {})

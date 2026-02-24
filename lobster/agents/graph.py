@@ -195,20 +195,6 @@ def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str)
     return invoke_agent
 
 
-def _create_delegation_tool(agent_name: str, agent, description: str):
-    """Create a delegation tool for parent-child agent relationships.
-
-    This is a simplified version for hierarchical delegation within agent families
-    (e.g., transcriptomics_expert -> de_analysis_expert).
-    """
-    return _create_agent_tool(
-        agent_name=agent_name,
-        agent=agent,
-        tool_name=f"handoff_to_{agent_name}",
-        description=f"Delegate task to {agent_name}. {description}",
-    )
-
-
 def _create_lazy_delegation_tool(
     agent_name: str,
     agents_dict: Dict[str, Any],
@@ -354,6 +340,7 @@ def create_bioinformatics_graph(
 
         def agent_filter(name, config):
             return is_agent_available(name, subscription_tier)
+
     logger.debug("Creating bioinformatics multi-agent graph")
 
     # Get model configuration for the supervisor

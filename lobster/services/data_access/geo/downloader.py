@@ -202,7 +202,6 @@ class GEODownloadManager:
                     )
 
                     # Setup progress tracking for extraction
-                    sum(member.size for member in safe_members)
                     progress_columns = [
                         BarColumn(),
                         "•",

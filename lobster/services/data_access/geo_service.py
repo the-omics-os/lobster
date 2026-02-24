@@ -3018,9 +3018,7 @@ class GEOService:
                 "alignment_percentage": 0.0,
             }
 
-    def _inject_clinical_metadata(
-        self, adata, geo_id: str
-    ) -> None:
+    def _inject_clinical_metadata(self, adata, geo_id: str) -> None:
         """
         Inject clinical metadata from GEO characteristics_ch1 into adata.obs.
 
@@ -3068,9 +3066,7 @@ class GEOService:
                     parsed_samples[gsm_id] = parsed
 
             if not parsed_samples:
-                logger.debug(
-                    f"No parseable characteristics_ch1 found for {geo_id}"
-                )
+                logger.debug(f"No parseable characteristics_ch1 found for {geo_id}")
                 return
 
             # Skip keys that would conflict with existing obs columns
@@ -3202,12 +3198,19 @@ class GEOService:
         """
         try:
             from lobster.core.omics_registry import DataTypeDetector
+
             return DataTypeDetector().determine_data_type(metadata)
         except ImportError:
             # Fallback inline detection
             combined_text = str(metadata.get("platforms", "")).lower()
             combined_text += " " + str(metadata.get("overall_design", "")).lower()
-            proteomics_kw = ["proteomics", "mass spectrometry", "lc-ms", "orbitrap", "tmt"]
+            proteomics_kw = [
+                "proteomics",
+                "mass spectrometry",
+                "lc-ms",
+                "orbitrap",
+                "tmt",
+            ]
             if any(kw in combined_text for kw in proteomics_kw):
                 return "proteomics"
             sc_kw = ["single cell", "single-cell", "10x", "chromium", "droplet"]
@@ -3371,7 +3374,7 @@ class GEOService:
 3. **Proceed to download** the full dataset if satisfied
 4. **Use:** `download_geo_dataset('{geo_id}')` to download expression data
 
-💡 **Note:** This metadata has been cached and validated against our transcriptomics schema. 
+💡 **Note:** This metadata has been cached and validated against our transcriptomics schema.
 The actual expression data download will be much faster now that metadata is prepared."""
 
             return summary_text

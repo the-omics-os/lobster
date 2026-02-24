@@ -241,7 +241,11 @@ Dataset: {entry.dataset_id}
 
             # 2. BUILD STRATEGY OVERRIDE (if applicable)
             strategy_override_dict = None
-            if entry.recommended_strategy or concatenation_strategy != "auto" or strategy_override:
+            if (
+                entry.recommended_strategy
+                or concatenation_strategy != "auto"
+                or strategy_override
+            ):
                 strategy_override_dict = {}
                 if entry.recommended_strategy:
                     strategy_override_dict["strategy_name"] = (
@@ -309,11 +313,14 @@ Dataset: {entry.dataset_id}
                     or "protein" in modality_lower
                 )
                 labeled_as_transcriptomics = (
-                    "transcriptomics" in modality_lower
-                    or "rna" in modality_lower
+                    "transcriptomics" in modality_lower or "rna" in modality_lower
                 )
 
-                if labeled_as_proteomics and likely_transcriptomics and not likely_proteomics:
+                if (
+                    labeled_as_proteomics
+                    and likely_transcriptomics
+                    and not likely_proteomics
+                ):
                     type_warning = (
                         f"\n⚠️ **Data type mismatch detected**: Dataset was labeled as proteomics "
                         f"but loaded data has {n_vars} features, which is characteristic of "
@@ -321,7 +328,11 @@ Dataset: {entry.dataset_id}
                         f"This may be an RNA-seq dataset, not proteomics. "
                         f"Verify before running proteomics-specific analysis.\n"
                     )
-                elif labeled_as_transcriptomics and likely_proteomics and not likely_transcriptomics:
+                elif (
+                    labeled_as_transcriptomics
+                    and likely_proteomics
+                    and not likely_transcriptomics
+                ):
                     type_warning = (
                         f"\n⚠️ **Data type mismatch detected**: Dataset was labeled as transcriptomics "
                         f"but loaded data has only {n_vars} features, which may indicate "
@@ -360,7 +371,9 @@ You can now analyze this dataset using the appropriate analysis tools.
                 return response
 
             except Exception as download_error:
-                logger.error(f"Download failed for {entry.dataset_id}: {download_error}")
+                logger.error(
+                    f"Download failed for {entry.dataset_id}: {download_error}"
+                )
 
                 response = f"## Download Failed: {entry.dataset_id}\n\n"
                 response += "❌ **Status**: Download failed\n"
@@ -375,9 +388,15 @@ You can now analyze this dataset using the appropriate analysis tools.
                 response += '   - strategy_override="SUPPLEMENTARY_FIRST"\n'
                 response += '   - strategy_override="H5_FIRST"\n'
                 response += "4. Try different concatenation mode:\n"
-                response += '   - concatenation_strategy="union" (preserves all genes)\n'
-                response += '   - concatenation_strategy="intersection" (only common genes)\n'
-                response += "5. Review error log: `get_queue_status(status_filter='FAILED')`\n"
+                response += (
+                    '   - concatenation_strategy="union" (preserves all genes)\n'
+                )
+                response += (
+                    '   - concatenation_strategy="intersection" (only common genes)\n'
+                )
+                response += (
+                    "5. Review error log: `get_queue_status(status_filter='FAILED')`\n"
+                )
 
                 return response
 

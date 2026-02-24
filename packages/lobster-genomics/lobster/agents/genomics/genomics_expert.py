@@ -36,13 +36,13 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
 from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.quality.genomics_quality_service import GenomicsQualityService
 from lobster.services.analysis.gwas_service import GWASService
 from lobster.services.analysis.variant_annotation_service import (
     VariantAnnotationService,
 )
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.quality.genomics_quality_service import GenomicsQualityService
 from lobster.tools.knowledgebase_tools import (
     create_summarize_modality_tool,
 )
@@ -332,7 +332,9 @@ adata = adapter.from_source(
     source={{ file_path | repr }},
     maf_min={{ maf_min | repr }},
 )""",
-                imports=["from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter"],
+                imports=[
+                    "from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter"
+                ],
                 parameters={
                     "file_path": file_path,
                     "maf_min": maf_min,
@@ -1191,7 +1193,9 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 for i, pair in enumerate(stats["related_pairs"][:10], 1):
                     related_info += f"  {i}. {pair['sample_1']} <-> {pair['sample_2']}: kinship={pair['kinship']:.4f}\n"
                 if len(stats["related_pairs"]) > 10:
-                    related_info += f"  ... and {len(stats['related_pairs']) - 10} more pairs\n"
+                    related_info += (
+                        f"  ... and {len(stats['related_pairs']) - 10} more pairs\n"
+                    )
 
             response = f"""Kinship analysis completed: '{kinship_modality_name}'
 

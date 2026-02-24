@@ -397,7 +397,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                         f"No features selected by '{feature_col}'. "
                         "Run feature selection first."
                     )
-                adata_selected = adata_processed[:, adata_processed.var[feature_col]].copy()
+                adata_selected = adata_processed[
+                    :, adata_processed.var[feature_col]
+                ].copy()
                 logger.info(f"Subset to {n_selected} features via '{feature_col}'")
             else:
                 adata_selected = adata_processed.copy()
@@ -435,8 +437,12 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 adata_processed.uns["pca"] = adata_selected.uns["pca"]
 
             # Compute statistics
-            variance_ratio = adata_processed.uns.get("pca", {}).get("variance_ratio", [])
-            total_variance = float(np.sum(variance_ratio) * 100) if len(variance_ratio) > 0 else 0.0
+            variance_ratio = adata_processed.uns.get("pca", {}).get(
+                "variance_ratio", []
+            )
+            total_variance = (
+                float(np.sum(variance_ratio) * 100) if len(variance_ratio) > 0 else 0.0
+            )
 
             stats = {
                 "analysis_type": "pca",
@@ -1130,6 +1136,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 sc.tl.leiden(adata, resolution=resolution, key_added="leiden")
 
             self._update_progress("Leiden clustering completed")
+            cluster_col = "leiden"
 
             # UMAP for visualization using custom embedding
             logger.info("Computing UMAP coordinates from custom embedding")
@@ -2742,7 +2749,9 @@ print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
         marker_summary = ""
         if "rank_genes_groups" in adata.uns:
             marker_summary = "\n\n**Top Marker Genes by Cluster:**\n"
-            for cluster in sorted(adata.obs[cluster_key].unique(), key=lambda x: int(x)):
+            for cluster in sorted(
+                adata.obs[cluster_key].unique(), key=lambda x: int(x)
+            ):
                 genes = adata.uns["rank_genes_groups"]["names"][cluster][:5]
                 adata.uns["rank_genes_groups"]["scores"][cluster][:5]
                 marker_summary += f"- Cluster {cluster}: {', '.join(genes)}\n"

@@ -79,7 +79,9 @@ class OmicsTypeConfig:
     display_name: str  # "Proteomics"
 
     # Schema routing
-    schema_class: Optional[str] = None  # dotted path "lobster.core.schemas.proteomics:ProteomicsSchema"
+    schema_class: Optional[str] = (
+        None  # dotted path "lobster.core.schemas.proteomics:ProteomicsSchema"
+    )
 
     # Adapter names that handle this type
     adapter_names: List[str] = field(default_factory=list)
@@ -123,185 +125,329 @@ def _register_builtin_types() -> None:
     extracted from existing code."""
 
     # --- Transcriptomics ---
-    register_omics_type(OmicsTypeConfig(
-        name="transcriptomics",
-        display_name="Transcriptomics",
-        schema_class="lobster.core.schemas.transcriptomics_schema:TranscriptomicsSchema",
-        adapter_names=["transcriptomics_single_cell", "transcriptomics_bulk"],
-        preferred_databases=["geo", "sra"],
-        data_type_aliases=["single_cell_rna_seq", "bulk_rna_seq", "rna_seq"],
-        detection=OmicsDetectionConfig(
-            keywords=[
-                "single-cell", "single cell", "scRNA-seq", "scrna-seq", "scrnaseq",
-                "10x", "10X", "droplet", "Drop-seq", "Smart-seq", "CEL-seq",
-                "inDrop", "single nuclei", "snRNA-seq", "scATAC-seq", "Chromium",
-                "bulk", "tissue", "total rna", "population",
-                "RNA-seq", "rna-seq", "transcriptome", "transcriptomics",
-                "gene expression", "microarray",
-            ],
-            platform_patterns=["GPL24676", "GPL24247", "10X", "Chromium", "Illumina"],
-            feature_count_range=(5_000, 60_000),
-            library_strategy_patterns=["single", "10x", "RNA-Seq", "rna-seq"],
-            column_signatures={
-                "obs": ["n_genes", "n_genes_by_counts", "total_counts", "pct_counts_mt"],
-                "var": ["n_cells", "n_cells_by_counts", "highly_variable"],
+    register_omics_type(
+        OmicsTypeConfig(
+            name="transcriptomics",
+            display_name="Transcriptomics",
+            schema_class="lobster.core.schemas.transcriptomics_schema:TranscriptomicsSchema",
+            adapter_names=["transcriptomics_single_cell", "transcriptomics_bulk"],
+            preferred_databases=["geo", "sra"],
+            data_type_aliases=["single_cell_rna_seq", "bulk_rna_seq", "rna_seq"],
+            detection=OmicsDetectionConfig(
+                keywords=[
+                    "single-cell",
+                    "single cell",
+                    "scRNA-seq",
+                    "scrna-seq",
+                    "scrnaseq",
+                    "10x",
+                    "10X",
+                    "droplet",
+                    "Drop-seq",
+                    "Smart-seq",
+                    "CEL-seq",
+                    "inDrop",
+                    "single nuclei",
+                    "snRNA-seq",
+                    "scATAC-seq",
+                    "Chromium",
+                    "bulk",
+                    "tissue",
+                    "total rna",
+                    "population",
+                    "RNA-seq",
+                    "rna-seq",
+                    "transcriptome",
+                    "transcriptomics",
+                    "gene expression",
+                    "microarray",
+                ],
+                platform_patterns=[
+                    "GPL24676",
+                    "GPL24247",
+                    "10X",
+                    "Chromium",
+                    "Illumina",
+                ],
+                feature_count_range=(5_000, 60_000),
+                library_strategy_patterns=["single", "10x", "RNA-Seq", "rna-seq"],
+                column_signatures={
+                    "obs": [
+                        "n_genes",
+                        "n_genes_by_counts",
+                        "total_counts",
+                        "pct_counts_mt",
+                    ],
+                    "var": ["n_cells", "n_cells_by_counts", "highly_variable"],
+                },
+                weight=8,  # Lower than proteomics — GEO default is transcriptomics
+            ),
+            qc_thresholds={
+                "min_genes": 200,
+                "min_cells": 3,
+                "max_pct_mt": 20.0,
             },
-            weight=8,  # Lower than proteomics — GEO default is transcriptomics
-        ),
-        qc_thresholds={
-            "min_genes": 200,
-            "min_cells": 3,
-            "max_pct_mt": 20.0,
-        },
-    ))
+        )
+    )
 
     # --- Proteomics ---
-    register_omics_type(OmicsTypeConfig(
-        name="proteomics",
-        display_name="Proteomics",
-        schema_class="lobster.core.schemas.proteomics_schema:ProteomicsSchema",
-        adapter_names=["proteomics_ms", "proteomics_affinity"],
-        preferred_databases=["pride", "massive", "geo"],
-        data_type_aliases=["mass_spectrometry_proteomics", "ms_proteomics", "affinity_proteomics"],
-        detection=OmicsDetectionConfig(
-            keywords=[
-                "proteomics", "proteome", "mass spectrometry", "mass spec",
-                "ms/ms", "lc-ms", "lc/ms", "orbitrap", "q-tof", "qtof",
-                "maldi", "triple tof", "tripletof", "q exactive", "qexactive",
-                "tmt", "itraq", "silac", "label-free quantification",
-                "label free quantification", "lfq", "dia", "dda",
-                "data-independent acquisition", "data-dependent acquisition",
-                "swath", "olink", "somascan", "soma logic",
-                "proximity extension assay", "protein expression",
-                "protein abundance", "peptide", "tandem mass",
+    register_omics_type(
+        OmicsTypeConfig(
+            name="proteomics",
+            display_name="Proteomics",
+            schema_class="lobster.core.schemas.proteomics_schema:ProteomicsSchema",
+            adapter_names=["proteomics_ms", "proteomics_affinity"],
+            preferred_databases=["pride", "massive", "geo"],
+            data_type_aliases=[
+                "mass_spectrometry_proteomics",
+                "ms_proteomics",
+                "affinity_proteomics",
             ],
-            platform_patterns=[
-                "Orbitrap", "Q-TOF", "MALDI", "TripleTOF", "QExactive",
-                "Lumos", "Exploris", "timsTOF", "Olink", "SomaScan",
-            ],
-            feature_count_range=(100, 12_000),
-            characteristic_patterns=[
-                "assay: protein", "technology: ms", "instrument:",
-                "mass spectrometer", "fractionation:", "enzyme: trypsin",
-            ],
-            column_signatures={
-                "var": ["protein_id", "gene_name", "peptide_count", "coverage"],
+            detection=OmicsDetectionConfig(
+                keywords=[
+                    "proteomics",
+                    "proteome",
+                    "mass spectrometry",
+                    "mass spec",
+                    "ms/ms",
+                    "lc-ms",
+                    "lc/ms",
+                    "orbitrap",
+                    "q-tof",
+                    "qtof",
+                    "maldi",
+                    "triple tof",
+                    "tripletof",
+                    "q exactive",
+                    "qexactive",
+                    "tmt",
+                    "itraq",
+                    "silac",
+                    "label-free quantification",
+                    "label free quantification",
+                    "lfq",
+                    "dia",
+                    "dda",
+                    "data-independent acquisition",
+                    "data-dependent acquisition",
+                    "swath",
+                    "olink",
+                    "somascan",
+                    "soma logic",
+                    "proximity extension assay",
+                    "protein expression",
+                    "protein abundance",
+                    "peptide",
+                    "tandem mass",
+                ],
+                platform_patterns=[
+                    "Orbitrap",
+                    "Q-TOF",
+                    "MALDI",
+                    "TripleTOF",
+                    "QExactive",
+                    "Lumos",
+                    "Exploris",
+                    "timsTOF",
+                    "Olink",
+                    "SomaScan",
+                ],
+                feature_count_range=(100, 12_000),
+                characteristic_patterns=[
+                    "assay: protein",
+                    "technology: ms",
+                    "instrument:",
+                    "mass spectrometer",
+                    "fractionation:",
+                    "enzyme: trypsin",
+                ],
+                column_signatures={
+                    "var": ["protein_id", "gene_name", "peptide_count", "coverage"],
+                },
+                weight=12,  # Higher priority — proteomics keywords are more specific
+            ),
+            qc_thresholds={
+                "max_missing_pct": 50.0,
+                "min_proteins": 100,
+                "cv_threshold": 30.0,
             },
-            weight=12,  # Higher priority — proteomics keywords are more specific
-        ),
-        qc_thresholds={
-            "max_missing_pct": 50.0,
-            "min_proteins": 100,
-            "cv_threshold": 30.0,
-        },
-    ))
+        )
+    )
 
     # --- Genomics ---
-    register_omics_type(OmicsTypeConfig(
-        name="genomics",
-        display_name="Genomics",
-        schema_class="lobster.core.schemas.genomics_schema:GenomicsSchema",
-        adapter_names=["genomics_vcf", "genomics_plink"],
-        preferred_databases=["geo", "sra", "dbgap"],
-        data_type_aliases=["vcf", "gwas", "wgs", "wes"],
-        detection=OmicsDetectionConfig(
-            keywords=[
-                "whole genome", "whole exome", "WGS", "WES", "exome sequencing",
-                "variant calling", "VCF", "SNP", "SNV", "indel",
-                "GWAS", "genome-wide association", "genotyping",
-                "PLINK", "copy number variation", "CNV",
-                "structural variant", "somatic mutation", "germline",
-            ],
-            platform_patterns=["Illumina", "NovaSeq", "HiSeq"],
-            feature_count_range=(10_000, 10_000_000),
-            library_strategy_patterns=["WGS", "WXS", "WES"],
-            column_signatures={
-                "var": ["chrom", "pos", "ref", "alt", "qual", "rsid"],
+    register_omics_type(
+        OmicsTypeConfig(
+            name="genomics",
+            display_name="Genomics",
+            schema_class="lobster.core.schemas.genomics_schema:GenomicsSchema",
+            adapter_names=["genomics_vcf", "genomics_plink"],
+            preferred_databases=["geo", "sra", "dbgap"],
+            data_type_aliases=["vcf", "gwas", "wgs", "wes"],
+            detection=OmicsDetectionConfig(
+                keywords=[
+                    "whole genome",
+                    "whole exome",
+                    "WGS",
+                    "WES",
+                    "exome sequencing",
+                    "variant calling",
+                    "VCF",
+                    "SNP",
+                    "SNV",
+                    "indel",
+                    "GWAS",
+                    "genome-wide association",
+                    "genotyping",
+                    "PLINK",
+                    "copy number variation",
+                    "CNV",
+                    "structural variant",
+                    "somatic mutation",
+                    "germline",
+                ],
+                platform_patterns=["Illumina", "NovaSeq", "HiSeq"],
+                feature_count_range=(10_000, 10_000_000),
+                library_strategy_patterns=["WGS", "WXS", "WES"],
+                column_signatures={
+                    "var": ["chrom", "pos", "ref", "alt", "qual", "rsid"],
+                },
+                weight=9,
+            ),
+            qc_thresholds={
+                "min_call_rate": 0.95,
+                "min_depth": 10,
+                "hwe_p_threshold": 1e-6,
             },
-            weight=9,
-        ),
-        qc_thresholds={
-            "min_call_rate": 0.95,
-            "min_depth": 10,
-            "hwe_p_threshold": 1e-6,
-        },
-    ))
+        )
+    )
 
     # --- Metabolomics ---
-    register_omics_type(OmicsTypeConfig(
-        name="metabolomics",
-        display_name="Metabolomics",
-        schema_class="lobster.core.schemas.metabolomics:MetabolomicsSchema",
-        adapter_names=["metabolomics_lc_ms", "metabolomics_gc_ms", "metabolomics_nmr"],
-        preferred_databases=["metabolights", "metabolomics_workbench", "geo"],
-        data_type_aliases=["lcms", "gcms", "nmr", "lipidomics"],
-        detection=OmicsDetectionConfig(
-            keywords=[
-                "metabolomics", "metabolome", "metabolite", "metabolic profiling",
-                "lipidomics", "lipidome", "lipid profiling",
-                "untargeted metabolomics", "targeted metabolomics",
-                "LC-MS", "GC-MS", "NMR", "nuclear magnetic resonance",
-                "mass spectrometry metabolomics", "HILIC", "RPLC",
-                "mzML", "mzXML", "MetaboLights", "MTBLS",
-                "metabolomics workbench", "small molecule",
-                "flux analysis", "isotope tracing", "stable isotope",
+    register_omics_type(
+        OmicsTypeConfig(
+            name="metabolomics",
+            display_name="Metabolomics",
+            schema_class="lobster.core.schemas.metabolomics:MetabolomicsSchema",
+            adapter_names=[
+                "metabolomics_lc_ms",
+                "metabolomics_gc_ms",
+                "metabolomics_nmr",
             ],
-            platform_patterns=["QTRAP", "Agilent", "Waters", "Bruker"],
-            feature_count_range=(50, 5_000),
-            characteristic_patterns=[
-                "metabolite:", "compound:", "ionization mode:",
-                "chromatography:", "derivatization:",
-            ],
-            column_signatures={
-                "var": ["mz", "retention_time", "rt", "m/z", "adduct", "formula"],
+            preferred_databases=["metabolights", "metabolomics_workbench", "geo"],
+            data_type_aliases=["lcms", "gcms", "nmr", "lipidomics"],
+            detection=OmicsDetectionConfig(
+                keywords=[
+                    "metabolomics",
+                    "metabolome",
+                    "metabolite",
+                    "metabolic profiling",
+                    "lipidomics",
+                    "lipidome",
+                    "lipid profiling",
+                    "untargeted metabolomics",
+                    "targeted metabolomics",
+                    "LC-MS",
+                    "GC-MS",
+                    "NMR",
+                    "nuclear magnetic resonance",
+                    "mass spectrometry metabolomics",
+                    "HILIC",
+                    "RPLC",
+                    "mzML",
+                    "mzXML",
+                    "MetaboLights",
+                    "MTBLS",
+                    "metabolomics workbench",
+                    "small molecule",
+                    "flux analysis",
+                    "isotope tracing",
+                    "stable isotope",
+                ],
+                platform_patterns=["QTRAP", "Agilent", "Waters", "Bruker"],
+                feature_count_range=(50, 5_000),
+                characteristic_patterns=[
+                    "metabolite:",
+                    "compound:",
+                    "ionization mode:",
+                    "chromatography:",
+                    "derivatization:",
+                ],
+                column_signatures={
+                    "var": ["mz", "retention_time", "rt", "m/z", "adduct", "formula"],
+                },
+                weight=11,  # Higher than transcriptomics to avoid false routing
+            ),
+            qc_thresholds={
+                "max_missing_pct": 30.0,
+                "min_metabolites": 30,
+                "cv_threshold": 30.0,
+                "rsd_qc_threshold": 20.0,
             },
-            weight=11,  # Higher than transcriptomics to avoid false routing
-        ),
-        qc_thresholds={
-            "max_missing_pct": 30.0,
-            "min_metabolites": 30,
-            "cv_threshold": 30.0,
-            "rsd_qc_threshold": 20.0,
-        },
-    ))
+        )
+    )
 
     # --- Metagenomics ---
-    register_omics_type(OmicsTypeConfig(
-        name="metagenomics",
-        display_name="Metagenomics",
-        schema_class="lobster.core.schemas.metagenomics:MetagenomicsSchema",
-        adapter_names=["metagenomics_amplicon", "metagenomics_shotgun"],
-        preferred_databases=["sra", "geo", "mg-rast"],
-        data_type_aliases=["16s", "its", "amplicon", "microbiome", "sra_amplicon"],
-        detection=OmicsDetectionConfig(
-            keywords=[
-                "metagenomics", "metagenome", "metagenomic",
-                "16S", "16s rRNA", "ITS", "amplicon", "microbiome",
-                "microbiota", "gut microbiome", "oral microbiome",
-                "shotgun metagenomics", "taxonomic profiling",
-                "OTU", "ASV", "QIIME", "DADA2", "mothur",
-                "microbial community", "microbial diversity",
-            ],
-            platform_patterns=["MiSeq", "Ion Torrent"],
-            feature_count_range=(100, 50_000),
-            library_strategy_patterns=["AMPLICON", "WGS"],
-            column_signatures={
-                "var": ["taxonomy", "kingdom", "phylum", "class", "order", "family", "genus", "species"],
-                "obs": ["sample_type", "collection_site", "host"],
+    register_omics_type(
+        OmicsTypeConfig(
+            name="metagenomics",
+            display_name="Metagenomics",
+            schema_class="lobster.core.schemas.metagenomics:MetagenomicsSchema",
+            adapter_names=["metagenomics_amplicon", "metagenomics_shotgun"],
+            preferred_databases=["sra", "geo", "mg-rast"],
+            data_type_aliases=["16s", "its", "amplicon", "microbiome", "sra_amplicon"],
+            detection=OmicsDetectionConfig(
+                keywords=[
+                    "metagenomics",
+                    "metagenome",
+                    "metagenomic",
+                    "16S",
+                    "16s rRNA",
+                    "ITS",
+                    "amplicon",
+                    "microbiome",
+                    "microbiota",
+                    "gut microbiome",
+                    "oral microbiome",
+                    "shotgun metagenomics",
+                    "taxonomic profiling",
+                    "OTU",
+                    "ASV",
+                    "QIIME",
+                    "DADA2",
+                    "mothur",
+                    "microbial community",
+                    "microbial diversity",
+                ],
+                platform_patterns=["MiSeq", "Ion Torrent"],
+                feature_count_range=(100, 50_000),
+                library_strategy_patterns=["AMPLICON", "WGS"],
+                column_signatures={
+                    "var": [
+                        "taxonomy",
+                        "kingdom",
+                        "phylum",
+                        "class",
+                        "order",
+                        "family",
+                        "genus",
+                        "species",
+                    ],
+                    "obs": ["sample_type", "collection_site", "host"],
+                },
+                weight=10,
+            ),
+            qc_thresholds={
+                "min_reads": 1000,
+                "min_taxa": 10,
+                "rarefaction_depth": 10000,
             },
-            weight=10,
-        ),
-        qc_thresholds={
-            "min_reads": 1000,
-            "min_taxa": 10,
-            "rarefaction_depth": 10000,
-        },
-    ))
+        )
+    )
 
 
 # =============================================================================
 # DATA TYPE DETECTOR — unified replacement for scattered detection functions
 # =============================================================================
+
 
 class DataTypeDetector:
     """Unified omics data type detection using the OmicsTypeRegistry.
@@ -316,9 +462,7 @@ class DataTypeDetector:
     # Text fields to search in metadata dicts
     TEXT_FIELDS = ("title", "summary", "overall_design", "type", "description")
 
-    def detect_from_metadata(
-        self, metadata: dict
-    ) -> List[Tuple[str, float]]:
+    def detect_from_metadata(self, metadata: dict) -> List[Tuple[str, float]]:
         """Detect omics type from GEO/repository metadata.
 
         Scores each registered omics type against metadata text fields,
@@ -356,32 +500,27 @@ class DataTypeDetector:
             score = 0.0
 
             # Keyword matching (primary signal)
-            keyword_hits = sum(
-                1 for kw in det.keywords if kw.lower() in combined_text
-            )
+            keyword_hits = sum(1 for kw in det.keywords if kw.lower() in combined_text)
             if det.keywords:
                 score += (keyword_hits / len(det.keywords)) * 0.6
 
             # Platform matching
             platform_hits = sum(
-                1 for p in det.platform_patterns
-                if p.lower() in platforms_text
+                1 for p in det.platform_patterns if p.lower() in platforms_text
             )
             if det.platform_patterns:
                 score += (platform_hits / len(det.platform_patterns)) * 0.15
 
             # Characteristics matching
             char_hits = sum(
-                1 for cp in det.characteristic_patterns
-                if cp.lower() in chars_text
+                1 for cp in det.characteristic_patterns if cp.lower() in chars_text
             )
             if det.characteristic_patterns:
                 score += (char_hits / len(det.characteristic_patterns)) * 0.15
 
             # Library strategy matching
             strategy_hits = sum(
-                1 for ls in det.library_strategy_patterns
-                if ls.lower() in lib_strategy
+                1 for ls in det.library_strategy_patterns if ls.lower() in lib_strategy
             )
             if det.library_strategy_patterns:
                 score += (strategy_hits / len(det.library_strategy_patterns)) * 0.1
@@ -395,9 +534,7 @@ class DataTypeDetector:
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return ranked
 
-    def detect_from_data(
-        self, adata: Any
-    ) -> List[Tuple[str, float]]:
+    def detect_from_data(self, adata: Any) -> List[Tuple[str, float]]:
         """Detect omics type from loaded AnnData characteristics.
 
         Uses feature count ranges and column signatures to score each type.
@@ -410,8 +547,12 @@ class DataTypeDetector:
         """
         scores: Dict[str, float] = {}
         n_vars = getattr(adata, "n_vars", 0)
-        obs_cols = set(getattr(adata, "obs", {}).keys()) if hasattr(adata, "obs") else set()
-        var_cols = set(getattr(adata, "var", {}).keys()) if hasattr(adata, "var") else set()
+        obs_cols = (
+            set(getattr(adata, "obs", {}).keys()) if hasattr(adata, "obs") else set()
+        )
+        var_cols = (
+            set(getattr(adata, "var", {}).keys()) if hasattr(adata, "var") else set()
+        )
 
         for name, config in OMICS_TYPE_REGISTRY.items():
             det = config.detection
@@ -504,17 +645,28 @@ class DataTypeDetector:
 
         # Additionally check for single-cell specific keywords
         # Include text fields + platform fields for full coverage
-        combined = " ".join(
-            str(metadata.get(f, "")) for f in self.TEXT_FIELDS
-        ).lower()
+        combined = " ".join(str(metadata.get(f, "")) for f in self.TEXT_FIELDS).lower()
         combined += " " + str(metadata.get("platform", "")).lower()
         combined += " " + str(metadata.get("platforms", "")).lower()
         combined += " " + str(metadata.get("library_strategy", "")).lower()
         sc_keywords = [
-            "single-cell", "single cell", "scRNA-seq", "scrna-seq", "scrnaseq",
-            "10x", "droplet", "Drop-seq", "Smart-seq", "CEL-seq",
-            "inDrop", "single nuclei", "snRNA-seq", "scATAC-seq", "Chromium",
-            "GPL24676", "GPL24247",
+            "single-cell",
+            "single cell",
+            "scRNA-seq",
+            "scrna-seq",
+            "scrnaseq",
+            "10x",
+            "droplet",
+            "Drop-seq",
+            "Smart-seq",
+            "CEL-seq",
+            "inDrop",
+            "single nuclei",
+            "snRNA-seq",
+            "scATAC-seq",
+            "Chromium",
+            "GPL24676",
+            "GPL24247",
         ]
         return any(kw.lower() in combined for kw in sc_keywords)
 
@@ -569,13 +721,16 @@ class DataTypeDetector:
 # ENTRY POINT DISCOVERY for external omics types
 # =============================================================================
 
+
 def _discover_external_omics_types() -> None:
     """Discover and register omics types from lobster.omics_types entry points."""
     if sys.version_info >= (3, 10):
         from importlib.metadata import entry_points
+
         discovered = entry_points(group="lobster.omics_types")
     else:
         from importlib.metadata import entry_points
+
         eps = entry_points()
         discovered = eps.get("lobster.omics_types", [])
 

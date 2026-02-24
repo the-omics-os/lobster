@@ -597,3 +597,7 @@ class DIANNParser(ProteomicsParser):
             "Modified.Sequence": "modified_sequence",
             "Stripped.Sequence": "stripped_sequence",
         }
+
+
+# Alias for consistent naming convention across parsers (MaxQuantParser, OlinkParser, etc.)
+DiaNNParser = DIANNParser

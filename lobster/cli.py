@@ -1869,8 +1869,8 @@ def init_client(
     # When no global LOBSTER_LLM_PROVIDER env var is set and no global config exists,
     # a new workspace would fail to resolve a provider. Copy from the CWD default
     # workspace if available.
-    from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.config.global_config import GlobalProviderConfig
+    from lobster.config.workspace_config import WorkspaceProviderConfig
 
     if not WorkspaceProviderConfig.exists(workspace_path):
         env_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
@@ -1878,9 +1878,8 @@ def init_client(
             # No workspace config, no global config, no env var — look for
             # the CWD default workspace's provider_config.json to copy from
             default_workspace = Path.cwd() / ".lobster_workspace"
-            if (
-                default_workspace != workspace_path
-                and WorkspaceProviderConfig.exists(default_workspace)
+            if default_workspace != workspace_path and WorkspaceProviderConfig.exists(
+                default_workspace
             ):
                 source_config = WorkspaceProviderConfig.load(default_workspace)
                 if source_config.global_provider:
@@ -2098,9 +2097,7 @@ def init_client(
         from lobster.core.uv_tool_env import is_uv_tool_env
 
         error_msg = str(e)
-        console.print(
-            "\n[red bold]Missing provider package[/red bold]"
-        )
+        console.print("\n[red bold]Missing provider package[/red bold]")
         console.print(f"[red]  {error_msg}[/red]\n")
         console.print("[yellow]How to fix:[/yellow]")
         # Extract the lobster-ai extra name from "pip install lobster-ai[extra]"
@@ -3474,17 +3471,23 @@ def _display_status_info():
         )
     except ImportError:
         capabilities.append(
-            ("[dim]○[/dim]", "Semantic Search", "pip install 'lobster-ai\\[vector-search]'")
+            (
+                "[dim]○[/dim]",
+                "Semantic Search",
+                "pip install 'lobster-ai\\[vector-search]'",
+            )
         )
     try:
         import docling  # noqa: F401
 
-        capabilities.append(
-            ("[green]✓[/green]", "Document Intelligence", "docling")
-        )
+        capabilities.append(("[green]✓[/green]", "Document Intelligence", "docling"))
     except ImportError:
         capabilities.append(
-            ("[dim]○[/dim]", "Document Intelligence", "pip install 'lobster-ai\\[docling]'")
+            (
+                "[dim]○[/dim]",
+                "Document Intelligence",
+                "pip install 'lobster-ai\\[docling]'",
+            )
         )
 
     cap_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
@@ -4734,8 +4737,8 @@ def _download_ontology_databases() -> bool:
     """
     try:
         from lobster.services.vector.backends.chromadb_backend import (
-            ChromaDBBackend,
             ONTOLOGY_TARBALLS,
+            ChromaDBBackend,
         )
     except ImportError:
         console.print(
@@ -4797,9 +4800,7 @@ def _prompt_smart_standardization(
             "proteomics_expert": "Proteomics Expert",
         }
         benefiting = [
-            agent_display[a]
-            for a in selected_agents
-            if a in _SMART_STD_AGENTS
+            agent_display[a] for a in selected_agents if a in _SMART_STD_AGENTS
         ]
 
     console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
@@ -4811,11 +4812,11 @@ def _prompt_smart_standardization(
     )
     if benefiting:
         agents_str = ", ".join(benefiting)
-        console.print(
-            f"  [dim]Your selected agents that benefit: {agents_str}[/dim]"
-        )
+        console.print(f"  [dim]Your selected agents that benefit: {agents_str}[/dim]")
     console.print()
-    console.print("    [cyan]1[/cyan] - Yes, set up locally (OpenAI key + ChromaDB + ontology download)")
+    console.print(
+        "    [cyan]1[/cyan] - Yes, set up locally (OpenAI key + ChromaDB + ontology download)"
+    )
     console.print("    [cyan]2[/cyan] - Skip for now")
     console.print()
 
@@ -4836,7 +4837,9 @@ def _prompt_smart_standardization(
     # --- OpenAI API key ---
     existing_key = os.environ.get("OPENAI_API_KEY", "")
     if existing_key:
-        console.print(f"  [green]✓[/green] OPENAI_API_KEY detected (sk-...{existing_key[-4:]})")
+        console.print(
+            f"  [green]✓[/green] OPENAI_API_KEY detected (sk-...{existing_key[-4:]})"
+        )
         env_lines.append(f"OPENAI_API_KEY={existing_key}")
     else:
         openai_key = Prompt.ask(
@@ -4856,9 +4859,7 @@ def _prompt_smart_standardization(
     env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
 
     # --- Install ChromaDB + OpenAI packages ---
-    console.print(
-        "\n  [dim]Installing Smart Standardization dependencies...[/dim]"
-    )
+    console.print("\n  [dim]Installing Smart Standardization dependencies...[/dim]")
     from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
     s1, _ = _uv_pip_install("chromadb>=1.0.0")
@@ -5253,9 +5254,7 @@ def init(
             # Profile provided - validate it
             if profile not in valid_profiles:
                 console.print(f"[red]❌ Error: Invalid profile '{profile}'[/red]")
-                console.print(
-                    f"Valid profiles: {', '.join(VALID_PROFILES)}"
-                )
+                console.print(f"Valid profiles: {', '.join(VALID_PROFILES)}")
                 raise typer.Exit(1)
 
             # Resolve deprecated aliases
@@ -5580,9 +5579,7 @@ def init(
             "  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support"
         )
         console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
-        console.print(
-            "  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models"
-        )
+        console.print("  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models")
         console.print()
 
         provider = Prompt.ask(
@@ -7578,7 +7575,7 @@ when they are started by agents or analysis workflows.
 
     elif cmd.startswith("/vector-search"):
         # Parse: /vector-search "query" [--top-k N]
-        raw_args = cmd[len("/vector-search"):].strip()
+        raw_args = cmd[len("/vector-search") :].strip()
         if not raw_args:
             console.print("[cyan]Usage: /vector-search <query> [--top-k N][/cyan]")
             console.print('[dim]Example: /vector-search "glioblastoma"[/dim]')
@@ -7593,7 +7590,9 @@ when they are started by agents or analysis workflows.
             try:
                 vs_top_k = int(parts_vs[1].strip().split()[0])
             except (ValueError, IndexError):
-                console.print("[yellow]Invalid --top-k value, using default (5)[/yellow]")
+                console.print(
+                    "[yellow]Invalid --top-k value, using default (5)[/yellow]"
+                )
 
         # Strip surrounding quotes from query
         query_text = raw_args.strip().strip("\"'")
@@ -7607,12 +7606,19 @@ when they are started by agents or analysis workflows.
             result = vector_search_all_collections(query_text, top_k=vs_top_k)
             console.print()
             console.print(
-                Syntax(json.dumps(result, indent=2), "json", theme="monokai", line_numbers=False)
+                Syntax(
+                    json.dumps(result, indent=2),
+                    "json",
+                    theme="monokai",
+                    line_numbers=False,
+                )
             )
             console.print()
             # Summary for conversation history
             total = sum(len(v) for v in result["results"].values())
-            return f"Vector search for '{query_text}': {total} matches across 3 ontologies"
+            return (
+                f"Vector search for '{query_text}': {total} matches across 3 ontologies"
+            )
         except ImportError as e:
             console.print(f"[red]{e}[/red]")
             return None
@@ -8017,9 +8023,7 @@ def _command_save(client, output, force: bool = False) -> Optional[str]:
         for item in actual_saves:
             output.print(f"Saved: {item}", style="info")
         if skipped_count > 0:
-            output.print(
-                f"Skipped {skipped_count} unchanged modalities", style="info"
-            )
+            output.print(f"Skipped {skipped_count} unchanged modalities", style="info")
         return f"Saved {len(actual_saves)} items, skipped {skipped_count} unchanged"
     else:
         output.print("All modalities already up-to-date", style="info")
@@ -8136,9 +8140,7 @@ def _dispatch_command(cmd_str: str, client, output):
             return workspace_info(client, output, args)
         elif sub == "load" and args:
             current_directory = Path(client.workspace_path)
-            return workspace_load(
-                client, output, args, current_directory, PathResolver
-            )
+            return workspace_load(client, output, args, current_directory, PathResolver)
         elif sub == "remove" and args:
             return workspace_remove(client, output, args)
         else:

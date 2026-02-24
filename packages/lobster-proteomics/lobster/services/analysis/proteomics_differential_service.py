@@ -732,8 +732,16 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             g2_values = group2_data[:, i]
 
             # Remove missing values (NaN only — zeros are valid for log-transformed data)
-            g1_clean = g1_values[~np.isnan(g1_values)] if np.issubdtype(g1_values.dtype, np.floating) else g1_values
-            g2_clean = g2_values[~np.isnan(g2_values)] if np.issubdtype(g2_values.dtype, np.floating) else g2_values
+            g1_clean = (
+                g1_values[~np.isnan(g1_values)]
+                if np.issubdtype(g1_values.dtype, np.floating)
+                else g1_values
+            )
+            g2_clean = (
+                g2_values[~np.isnan(g2_values)]
+                if np.issubdtype(g2_values.dtype, np.floating)
+                else g2_values
+            )
 
             if len(g1_clean) < 2 or len(g2_clean) < 2:
                 continue
@@ -769,7 +777,8 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             # Perform statistical test
             if test_method == "limma_like" and prior_variance is not None:
                 t_stat, p_value = self._moderated_t_test(
-                    g1_clean, g2_clean,
+                    g1_clean,
+                    g2_clean,
                     prior_variance=prior_variance,
                     prior_df=prior_df,
                 )
@@ -987,7 +996,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         if is_log:
             # Log2 data: difference of means IS the log2 fold change
             log2_fold_change = mean1 - mean2
-            fold_change = 2.0 ** log2_fold_change
+            fold_change = 2.0**log2_fold_change
         else:
             # Linear data: compute ratio with data-adaptive pseudocount
             # Pseudocount = 1% of minimum non-zero value across both groups
@@ -1163,7 +1172,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         top_upregulated = sorted_by_fc[:10]  # Top 10 upregulated
         top_downregulated = sorted(
             all_results, key=lambda x: x.get("log2_fold_change", 0)
-        )[:10]  # Top 10 downregulated
+        )[
+            :10
+        ]  # Top 10 downregulated
 
         # Effect size distribution
         effect_sizes = [
@@ -1238,7 +1249,11 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                 protein_values = group_X[:, i]
 
                 # Remove missing values (NaN only — zeros are valid for log-transformed data)
-                valid_mask = ~np.isnan(protein_values) if np.issubdtype(protein_values.dtype, np.floating) else np.ones(len(protein_values), dtype=bool)
+                valid_mask = (
+                    ~np.isnan(protein_values)
+                    if np.issubdtype(protein_values.dtype, np.floating)
+                    else np.ones(len(protein_values), dtype=bool)
+                )
 
                 if valid_mask.sum() < 4:  # Need at least 4 points for trend analysis
                     continue
@@ -1311,7 +1326,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
 
             # t-statistic and p-value
             if se_slope < 1e-10:
-                return reg.coef_[0], 1.0, 0.0
+                # Perfect fit (zero residuals) — slope is exact, p-value effectively 0
+                r_squared = r2_score(y, y_pred)
+                return reg.coef_[0], 0.0, r_squared
 
             t_stat = reg.coef_[0] / se_slope
             p_value = 2 * (1 - stats.t.cdf(abs(t_stat), n - 2))
@@ -1372,7 +1389,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             # Remove missing values (NaN only — zeros are valid for log-transformed data)
             valid_mask = ~np.isnan(protein_values) & ~np.isnan(target_values)
 
-            if valid_mask.sum() < 5:  # Need at least 5 points for meaningful correlation
+            if (
+                valid_mask.sum() < 5
+            ):  # Need at least 5 points for meaningful correlation
                 continue
 
             valid_protein = protein_values[valid_mask]

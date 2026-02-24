@@ -165,44 +165,37 @@ class ProviderRegistry:
         Ensure providers are initialized (lazy loading).
 
         This triggers import of concrete providers if not already done.
+        If modules are already imported (e.g., after a reset()), it
+        explicitly re-registers the provider instances.
         """
         if cls._initialized:
             return
 
-        # Import concrete providers to trigger registration
-        try:
-            from lobster.config.providers import anthropic_provider  # noqa: F401
-        except ImportError:
-            logger.debug("AnthropicProvider not available")
+        # Provider modules and their provider class names
+        _provider_specs = [
+            ("lobster.config.providers.anthropic_provider", "AnthropicProvider"),
+            ("lobster.config.providers.bedrock_provider", "BedrockProvider"),
+            ("lobster.config.providers.ollama_provider", "OllamaProvider"),
+            ("lobster.config.providers.gemini_provider", "GeminiProvider"),
+            ("lobster.config.providers.azure_provider", "AzureProvider"),
+            ("lobster.config.providers.openai_provider", "OpenAIProvider"),
+        ]
 
-        try:
-            from lobster.config.providers import bedrock_provider  # noqa: F401
-        except ImportError:
-            logger.debug("BedrockProvider not available")
+        import sys
 
-        try:
-            from lobster.config.providers import ollama_provider  # noqa: F401
-        except ImportError:
-            logger.debug("OllamaProvider not available")
-
-        try:
-            from lobster.config.providers import gemini_provider  # noqa: F401
-        except ImportError:
-            logger.debug("GeminiProvider not available")
-
-        try:
-            from lobster.config.providers import azure_provider  # noqa: F401
-        except ImportError:
-            logger.debug(
-                "AzureProvider not available (langchain-azure-ai not installed)"
-            )
-
-        try:
-            from lobster.config.providers import openai_provider  # noqa: F401
-        except ImportError:
-            logger.debug(
-                "OpenAIProvider not available (langchain-openai not installed)"
-            )
+        for module_path, class_name in _provider_specs:
+            try:
+                if module_path in sys.modules:
+                    # Module already imported — re-register from cached module
+                    mod = sys.modules[module_path]
+                    provider_cls = getattr(mod, class_name, None)
+                    if provider_cls is not None:
+                        cls.register(provider_cls())
+                else:
+                    # First import — module-level register() call will fire
+                    __import__(module_path)
+            except ImportError:
+                logger.debug(f"{class_name} not available")
 
         cls._initialized = True
 

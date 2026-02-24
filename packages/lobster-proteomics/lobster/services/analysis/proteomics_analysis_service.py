@@ -25,8 +25,8 @@ from sklearn.preprocessing import StandardScaler
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.analysis.pathway_enrichment_service import (
-    PathwayEnrichmentService,
     PathwayEnrichmentError,
+    PathwayEnrichmentService,
 )
 from lobster.utils.logger import get_logger
 

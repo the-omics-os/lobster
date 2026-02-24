@@ -455,9 +455,7 @@ def de_analysis_expert(
                 status = (
                     "OK"
                     if count >= 4
-                    else "LOW POWER"
-                    if count >= 3
-                    else "INSUFFICIENT"
+                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
                 )
                 response += f"\n- {group}: {count} replicates ({status})"
 
@@ -704,7 +702,11 @@ def de_analysis_expert(
 
             else:
                 # Direct bulk / simple 2-group DE path
-                method_map = {"deseq2": "deseq2_like", "wilcoxon": "wilcoxon", "t_test": "t_test"}
+                method_map = {
+                    "deseq2": "deseq2_like",
+                    "wilcoxon": "wilcoxon",
+                    "t_test": "t_test",
+                }
                 internal_method = method_map.get(method, method)
 
                 adata_de, de_stats, ir = (
@@ -969,12 +971,16 @@ def de_analysis_expert(
 
             # Validate groupby exists
             if groupby not in metadata.columns:
-                available_vars = [col for col in metadata.columns if not col.startswith("_")]
+                available_vars = [
+                    col for col in metadata.columns if not col.startswith("_")
+                ]
                 return f"Variable '{groupby}' not found. Available: {available_vars}"
 
             # Validate covariates if provided
             if covariates:
-                missing_covariates = [c for c in covariates if c not in metadata.columns]
+                missing_covariates = [
+                    c for c in covariates if c not in metadata.columns
+                ]
                 if missing_covariates:
                     return f"Covariates not found: {missing_covariates}"
 
@@ -1002,8 +1008,13 @@ def de_analysis_expert(
 
             # Check for confounding (single-level factors)
             for term in formula_terms:
-                if term in variable_analysis and variable_analysis[term]["unique_values"] < 2:
-                    validation_errors.append(f"Variable '{term}' has only 1 level - cannot be used in formula")
+                if (
+                    term in variable_analysis
+                    and variable_analysis[term]["unique_values"] < 2
+                ):
+                    validation_errors.append(
+                        f"Variable '{term}' has only 1 level - cannot be used in formula"
+                    )
 
             # Check replicate counts
             replicate_validation = _validate_replicate_counts(
@@ -1021,7 +1032,9 @@ def de_analysis_expert(
             design_result = None
             if formula_valid:
                 try:
-                    formula_components = formula_service.parse_formula(formula, metadata)
+                    formula_components = formula_service.parse_formula(
+                        formula, metadata
+                    )
                     design_result = formula_service.construct_design_matrix(
                         formula_components, metadata
                     )
@@ -1042,27 +1055,35 @@ def de_analysis_expert(
             # Generate alternative suggestions
             suggestions = []
             batch_vars = [
-                col for col in categorical_vars
+                col
+                for col in categorical_vars
                 if col.lower() in ["batch", "sample", "donor", "patient", "subject"]
-                or (variable_analysis[col]["unique_values"] > 2 and variable_analysis[col]["unique_values"] <= 6)
+                or (
+                    variable_analysis[col]["unique_values"] > 2
+                    and variable_analysis[col]["unique_values"] <= 6
+                )
             ]
 
             if batch_vars and not covariates:
                 primary_batch = batch_vars[0]
-                suggestions.append({
-                    "formula": f"~{groupby} + {primary_batch}",
-                    "description": f"Add batch correction for {primary_batch}",
-                    "min_samples": 8,
-                })
+                suggestions.append(
+                    {
+                        "formula": f"~{groupby} + {primary_batch}",
+                        "description": f"Add batch correction for {primary_batch}",
+                        "min_samples": 8,
+                    }
+                )
 
             if len(batch_vars) > 1 or continuous_vars:
                 extra_covs = batch_vars[:2] + continuous_vars[:1]
                 all_terms = [groupby] + extra_covs
-                suggestions.append({
-                    "formula": f"~{' + '.join(all_terms)}",
-                    "description": f"Multi-factor model with {len(extra_covs)} covariates",
-                    "min_samples": max(12, len(all_terms) * 4),
-                })
+                suggestions.append(
+                    {
+                        "formula": f"~{' + '.join(all_terms)}",
+                        "description": f"Multi-factor model with {len(extra_covs)} covariates",
+                        "min_samples": max(12, len(all_terms) * 4),
+                    }
+                )
 
             # Store formula in modality
             adata.uns["constructed_formula"] = {
@@ -1124,7 +1145,9 @@ def de_analysis_expert(
             response += "**Key Variables:**\n"
             for col, info in list(variable_analysis.items())[:6]:
                 if col in categorical_vars + continuous_vars:
-                    response += f"- **{col}**: {info['type']}, {info['unique_values']} levels"
+                    response += (
+                        f"- **{col}**: {info['type']}, {info['unique_values']} levels"
+                    )
                     if info["type"] == "categorical":
                         response += f" ({', '.join(map(str, info['sample_values']))})"
                     response += "\n"
@@ -1158,7 +1181,11 @@ def de_analysis_expert(
 
             response += "\n**Replicate Counts:**\n"
             for group, count in replicate_validation["group_counts"].items():
-                status = "OK" if count >= 4 else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                status = (
+                    "OK"
+                    if count >= 4
+                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                )
                 response += f"- {group}: {count} replicates ({status})\n"
 
             if suggestions:
@@ -1197,7 +1224,9 @@ def de_analysis_expert(
             include_interactions: Whether to include interaction terms
             validate_design: Whether to validate the design
         """
-        logger.warning("construct_de_formula_interactive is deprecated. Use suggest_de_formula instead.")
+        logger.warning(
+            "construct_de_formula_interactive is deprecated. Use suggest_de_formula instead."
+        )
         return "DEPRECATED: Use suggest_de_formula for formula construction and validation."
 
     @tool
@@ -1945,8 +1974,7 @@ def de_analysis_expert(
             # Find DE results key
             if de_results_key is None:
                 de_keys = [
-                    key for key in adata.uns.keys()
-                    if key.startswith("de_results")
+                    key for key in adata.uns.keys() if key.startswith("de_results")
                 ]
                 if not de_keys:
                     return "No DE results found in adata.uns. Run differential expression analysis first."
@@ -2068,7 +2096,9 @@ def de_analysis_expert(
                 gene_lfc = sorted_df.loc[gene, lfc_col]
                 gene_padj = sorted_df.loc[gene, padj_col]
                 direction = "UP" if gene_lfc > 0 else "DOWN"
-                top_genes.append(f"- {gene}: LFC={gene_lfc:.2f}, padj={gene_padj:.2e} ({direction})")
+                top_genes.append(
+                    f"- {gene}: LFC={gene_lfc:.2f}, padj={gene_padj:.2e} ({direction})"
+                )
 
             response = f"""## DE Results Filtered for '{modality_name}'
 
@@ -2134,8 +2164,7 @@ def de_analysis_expert(
             # Find DE results key
             if de_results_key is None:
                 de_keys = [
-                    key for key in adata.uns.keys()
-                    if key.startswith("de_results")
+                    key for key in adata.uns.keys() if key.startswith("de_results")
                 ]
                 if not de_keys:
                     return "No DE results found in adata.uns. Run differential expression analysis first."
@@ -2190,12 +2219,18 @@ def de_analysis_expert(
 
             # Determine output path
             if output_path is None:
-                export_dir = Path(data_manager.workspace) / "exports" if hasattr(data_manager, "workspace") else Path("exports")
+                export_dir = (
+                    Path(data_manager.workspace) / "exports"
+                    if hasattr(data_manager, "workspace")
+                    else Path("exports")
+                )
                 export_dir.mkdir(parents=True, exist_ok=True)
 
                 suffix = "_filtered" if filtered_only else ""
                 clean_key = de_results_key.replace("de_results_", "")
-                output_path = str(export_dir / f"de_results_{clean_key}{suffix}.{output_format}")
+                output_path = str(
+                    export_dir / f"de_results_{clean_key}{suffix}.{output_format}"
+                )
 
             # Export
             output_path_obj = Path(output_path)
@@ -2320,8 +2355,7 @@ def de_analysis_expert(
             # Validate group_key exists
             if group_key not in adata.obs.columns:
                 available_cols = [
-                    col for col in adata.obs.columns
-                    if not col.startswith("_")
+                    col for col in adata.obs.columns if not col.startswith("_")
                 ]
                 return f"Group key '{group_key}' not found in obs columns. Available: {available_cols}"
 
@@ -2508,8 +2542,7 @@ def de_analysis_expert(
             # Find DE results key
             if de_results_key is None:
                 de_keys = [
-                    key for key in adata.uns.keys()
-                    if key.startswith("de_results")
+                    key for key in adata.uns.keys() if key.startswith("de_results")
                 ]
                 if not de_keys:
                     return "No DE results found in adata.uns. Run differential expression analysis first."
@@ -2550,14 +2583,18 @@ def de_analysis_expert(
                 # Default: score = log2FoldChange
                 scores = results_df[lfc_col].fillna(0)
 
-            ranked_df = pd.DataFrame({
-                "gene": results_df.index.tolist(),
-                "score": scores.values,
-            })
+            ranked_df = pd.DataFrame(
+                {
+                    "gene": results_df.index.tolist(),
+                    "score": scores.values,
+                }
+            )
 
             # Drop NaN scores and sort descending
             ranked_df = ranked_df.dropna(subset=["score"])
-            ranked_df = ranked_df.sort_values("score", ascending=False).reset_index(drop=True)
+            ranked_df = ranked_df.sort_values("score", ascending=False).reset_index(
+                drop=True
+            )
 
             if len(ranked_df) < 15:
                 return f"Only {len(ranked_df)} ranked genes available. GSEA requires at least {min_size} genes per set."
@@ -2568,19 +2605,23 @@ def de_analysis_expert(
             )
 
             # Initialize PathwayEnrichmentService
-            from lobster.services.analysis.pathway_enrichment_service import PathwayEnrichmentService
+            from lobster.services.analysis.pathway_enrichment_service import (
+                PathwayEnrichmentService,
+            )
 
             pathway_service = PathwayEnrichmentService()
 
             # Run GSEA
             db_list = databases or ["GO_Biological_Process_2023", "KEGG_2021_Human"]
-            adata_gsea, gsea_stats, ir_from_service = pathway_service.gene_set_enrichment_analysis(
-                adata=adata,
-                ranked_genes=ranked_df,
-                databases=db_list,
-                organism=organism,
-                min_size=min_size,
-                max_size=max_size,
+            adata_gsea, gsea_stats, ir_from_service = (
+                pathway_service.gene_set_enrichment_analysis(
+                    adata=adata,
+                    ranked_genes=ranked_df,
+                    databases=db_list,
+                    organism=organism,
+                    min_size=min_size,
+                    max_size=max_size,
+                )
             )
 
             # Store GSEA result as new modality if requested
@@ -2705,8 +2746,7 @@ def de_analysis_expert(
             # Find DE results key
             if de_results_key is None:
                 de_keys = [
-                    key for key in adata.uns.keys()
-                    if key.startswith("de_results")
+                    key for key in adata.uns.keys() if key.startswith("de_results")
                 ]
                 if not de_keys:
                     return "No DE results found in adata.uns. Run differential expression analysis first."
@@ -2726,14 +2766,21 @@ def de_analysis_expert(
             shrinkage_note = ""
             if shrink_lfc:
                 # Check if a DeseqDataSet is stored (required for pyDESeq2 shrinkage)
-                dds_stored = de_data.get("parameters", {}).get("method", "") in ["pydeseq2", "deseq2"]
+                dds_stored = de_data.get("parameters", {}).get("method", "") in [
+                    "pydeseq2",
+                    "deseq2",
+                ]
                 if dds_stored and "log2FoldChange" in results_df.columns:
                     # pyDESeq2 shrinkage is typically applied during the DE step.
                     # Check if shrinkage was already applied
-                    already_shrunk = de_data.get("parameters", {}).get("shrink_lfc", False)
+                    already_shrunk = de_data.get("parameters", {}).get(
+                        "shrink_lfc", False
+                    )
                     if already_shrunk:
                         shrinkage_applied = True
-                        shrinkage_note = "LFC shrinkage was already applied during DE analysis."
+                        shrinkage_note = (
+                            "LFC shrinkage was already applied during DE analysis."
+                        )
                     else:
                         # Try to apply shrinkage via BulkRNASeqService if possible
                         # Note: pyDESeq2 shrinkage requires the DeseqDataSet object which
@@ -2770,7 +2817,9 @@ def de_analysis_expert(
             if padj_threshold < 1.0 and "padj" in results_df.columns:
                 results_df = results_df[results_df["padj"] <= padj_threshold]
             if lfc_threshold > 0 and "log2FoldChange" in results_df.columns:
-                results_df = results_df[abs(results_df["log2FoldChange"]) >= lfc_threshold]
+                results_df = results_df[
+                    abs(results_df["log2FoldChange"]) >= lfc_threshold
+                ]
 
             sig_genes = len(results_df)
 
@@ -2784,7 +2833,14 @@ def de_analysis_expert(
 
             # Select publication columns (in standard order)
             pub_cols = []
-            for col in ["baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj"]:
+            for col in [
+                "baseMean",
+                "log2FoldChange",
+                "lfcSE",
+                "stat",
+                "pvalue",
+                "padj",
+            ]:
                 if col in results_df.columns:
                     pub_cols.append(col)
             # Include any remaining columns
@@ -2793,11 +2849,17 @@ def de_analysis_expert(
 
             # Determine output path
             if output_path is None:
-                export_dir = Path(data_manager.workspace) / "exports" if hasattr(data_manager, "workspace") else Path("exports")
+                export_dir = (
+                    Path(data_manager.workspace) / "exports"
+                    if hasattr(data_manager, "workspace")
+                    else Path("exports")
+                )
                 export_dir.mkdir(parents=True, exist_ok=True)
 
                 clean_key = de_results_key.replace("de_results_", "")
-                output_path = str(export_dir / f"de_publication_{clean_key}.{output_format}")
+                output_path = str(
+                    export_dir / f"de_publication_{clean_key}.{output_format}"
+                )
 
             # Export
             output_path_obj = Path(output_path)

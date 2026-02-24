@@ -164,7 +164,9 @@ class ComponentRegistry:
         # Omics plugin groups — adapters, providers, download services, queue preparers
         self._load_entry_point_group("lobster.adapters", self._adapters)
         self._load_entry_point_group("lobster.providers", self._providers)
-        self._load_entry_point_group("lobster.download_services", self._download_services)
+        self._load_entry_point_group(
+            "lobster.download_services", self._download_services
+        )
         self._load_entry_point_group("lobster.queue_preparers", self._queue_preparers)
 
         self._loaded = True
@@ -391,7 +393,9 @@ class ComponentRegistry:
     # ADAPTER API (factory callables returning configured instances)
     # =========================================================================
 
-    def get_adapter(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+    def get_adapter(
+        self, name: str, required: bool = False
+    ) -> Optional[Union[Callable, Type[Any]]]:
         """Get an adapter factory by name.
 
         Adapters are registered as factory callables that return configured
@@ -430,7 +434,9 @@ class ComponentRegistry:
     # PROVIDER API
     # =========================================================================
 
-    def get_provider(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+    def get_provider(
+        self, name: str, required: bool = False
+    ) -> Optional[Union[Callable, Type[Any]]]:
         """Get a provider class/factory by name.
 
         Args:
@@ -466,7 +472,9 @@ class ComponentRegistry:
     # DOWNLOAD SERVICE API
     # =========================================================================
 
-    def get_download_service(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+    def get_download_service(
+        self, name: str, required: bool = False
+    ) -> Optional[Union[Callable, Type[Any]]]:
         """Get a download service class/factory by name.
 
         Args:
@@ -502,7 +510,9 @@ class ComponentRegistry:
     # QUEUE PREPARER API
     # =========================================================================
 
-    def get_queue_preparer(self, name: str, required: bool = False) -> Optional[Union[Callable, Type[Any]]]:
+    def get_queue_preparer(
+        self, name: str, required: bool = False
+    ) -> Optional[Union[Callable, Type[Any]]]:
         """Get a queue preparer class/factory by name.
 
         Args:

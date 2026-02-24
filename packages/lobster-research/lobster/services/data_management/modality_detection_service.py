@@ -30,6 +30,29 @@ class ModalityDetectionService:
         """Initialize stateless service."""
         logger.debug(f"Initializing {self.__class__.__name__}")
 
+    def detect_modality(
+        self,
+        file_paths: List[str],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[str, float, List[str], AnalysisStep]:
+        """
+        Detect modality/platform type from file patterns.
+
+        This is the primary public API method. Delegates to detect_platform_from_files.
+
+        Args:
+            file_paths: List of file names/paths to analyze
+            metadata: Optional metadata dictionary for additional context
+
+        Returns:
+            Tuple containing:
+            - platform_type: Detected platform (e.g., "10x", "h5ad", "kallisto")
+            - confidence: Confidence score (0.0-1.0)
+            - warnings: List of detection warnings
+            - ir: AnalysisStep for provenance tracking
+        """
+        return self.detect_platform_from_files(file_paths, metadata)
+
     def detect_platform_from_files(
         self,
         file_paths: List[str],

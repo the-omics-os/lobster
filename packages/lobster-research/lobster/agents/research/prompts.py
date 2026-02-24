@@ -22,7 +22,7 @@ def _build_routing_table() -> str:
             if config.preferred_databases:
                 dbs = ", ".join(config.preferred_databases)
                 lines.append(
-                    f"  - {config.display_name}: search {dbs} (data_type=\"{name}\")"
+                    f'  - {config.display_name}: search {dbs} (data_type="{name}")'
                 )
         if lines:
             return "\n".join(lines)
@@ -31,11 +31,11 @@ def _build_routing_table() -> str:
 
     # Fallback: hardcoded routing if registry unavailable
     return (
-        "  - Transcriptomics: search geo, sra (data_type=\"transcriptomics\")\n"
-        "  - Proteomics: search pride, massive, geo (data_type=\"proteomics\")\n"
-        "  - Genomics: search geo, sra, dbgap (data_type=\"genomics\")\n"
-        "  - Metabolomics: search metabolights, metabolomics_workbench, geo (data_type=\"metabolomics\")\n"
-        "  - Metagenomics: search sra, geo (data_type=\"metagenomics\")"
+        '  - Transcriptomics: search geo, sra (data_type="transcriptomics")\n'
+        '  - Proteomics: search pride, massive, geo (data_type="proteomics")\n'
+        '  - Genomics: search geo, sra, dbgap (data_type="genomics")\n'
+        '  - Metabolomics: search metabolights, metabolomics_workbench, geo (data_type="metabolomics")\n'
+        '  - Metagenomics: search sra, geo (data_type="metagenomics")'
     )
 
 

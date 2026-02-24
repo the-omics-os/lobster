@@ -1,0 +1,52 @@
+[importlinter]
+root_package = lobster
+include_external_packages = True
+
+# =============================================================================
+# Layer Contract: Core -> Agents direction
+# =============================================================================
+# Agents depend on core, but core must NOT import from agents.
+# This enforces the plugin architecture boundary.
+[importlinter:contract:core-agents-layers]
+name = Core must not import agents (agents depend on core)
+type = layers
+layers =
+    lobster.agents
+    lobster.services
+    lobster.tools
+    lobster.core
+    lobster.config
+
+# =============================================================================
+# Forbidden Contract: No domain libraries in core
+# =============================================================================
+# Core must not import domain-specific bioinformatics libraries.
+# These libraries belong in agent packages (lobster-transcriptomics, etc.)
+[importlinter:contract:no-domain-deps-in-core]
+name = Core must not import domain-specific libraries
+type = forbidden
+source_modules =
+    lobster.core
+    lobster.config
+forbidden_modules =
+    scanpy
+    pydeseq2
+    cyvcf2
+    leidenalg
+    scrublet
+    scvi
+    torch
+    igraph
+
+# =============================================================================
+# Independence Contract: Core modules loosely coupled
+# =============================================================================
+# Core modules should not have circular dependencies.
+# Each can depend on shared infrastructure but not on each other.
+[importlinter:contract:core-independence]
+name = Core modules are loosely coupled
+type = independence
+modules =
+    lobster.core.data_manager_v2
+    lobster.core.component_registry
+    lobster.core.download_queue

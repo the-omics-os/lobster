@@ -119,7 +119,9 @@ print(f"RSD: {stats['median_rsd']:.1f}%, Missing: {stats['missing_pct']:.1f}%, T
                 X = np.array(adata_qc.X, dtype=np.float64)
 
             n_samples, n_features = X.shape
-            logger.info(f"Input data shape: {n_samples} samples x {n_features} features")
+            logger.info(
+                f"Input data shape: {n_samples} samples x {n_features} features"
+            )
 
             # --- Per-feature RSD ---
             with np.errstate(divide="ignore", invalid="ignore"):
@@ -157,7 +159,9 @@ print(f"RSD: {stats['median_rsd']:.1f}%, Missing: {stats['missing_pct']:.1f}%, T
             # --- QC sample evaluation ---
             qc_stats: Dict[str, Any] = {}
             if "sample_type" in adata_qc.obs.columns:
-                qc_mask = adata_qc.obs["sample_type"].astype(str).str.strip() == qc_label
+                qc_mask = (
+                    adata_qc.obs["sample_type"].astype(str).str.strip() == qc_label
+                )
                 if qc_mask.any():
                     X_qc = X[qc_mask.values]
                     with np.errstate(divide="ignore", invalid="ignore"):
@@ -171,8 +175,16 @@ print(f"RSD: {stats['median_rsd']:.1f}%, Missing: {stats['missing_pct']:.1f}%, T
                     valid_qc_rsd = qc_rsd[~np.isnan(qc_rsd)]
                     qc_stats = {
                         "n_qc_samples": int(qc_mask.sum()),
-                        "median_qc_rsd": float(np.nanmedian(valid_qc_rsd)) if len(valid_qc_rsd) > 0 else 0.0,
-                        "features_below_threshold": int((valid_qc_rsd < rsd_threshold).sum()) if len(valid_qc_rsd) > 0 else 0,
+                        "median_qc_rsd": (
+                            float(np.nanmedian(valid_qc_rsd))
+                            if len(valid_qc_rsd) > 0
+                            else 0.0
+                        ),
+                        "features_below_threshold": (
+                            int((valid_qc_rsd < rsd_threshold).sum())
+                            if len(valid_qc_rsd) > 0
+                            else 0
+                        ),
                     }
                     adata_qc.var["qc_rsd"] = qc_rsd
 
@@ -181,8 +193,12 @@ print(f"RSD: {stats['median_rsd']:.1f}%, Missing: {stats['missing_pct']:.1f}%, T
             stats: Dict[str, Any] = {
                 "n_samples": n_samples,
                 "n_features": n_features,
-                "median_rsd": float(np.nanmedian(valid_rsd)) if len(valid_rsd) > 0 else 0.0,
-                "high_rsd_features": int((valid_rsd > rsd_threshold).sum()) if len(valid_rsd) > 0 else 0,
+                "median_rsd": (
+                    float(np.nanmedian(valid_rsd)) if len(valid_rsd) > 0 else 0.0
+                ),
+                "high_rsd_features": (
+                    int((valid_rsd > rsd_threshold).sum()) if len(valid_rsd) > 0 else 0
+                ),
                 "missing_pct": float(missing_pct),
                 "tic_cv": float(tic_cv),
                 "qc_stats": qc_stats,
@@ -201,6 +217,4 @@ print(f"RSD: {stats['median_rsd']:.1f}%, Missing: {stats['missing_pct']:.1f}%, T
 
         except Exception as e:
             logger.exception(f"Error in metabolomics quality assessment: {e}")
-            raise MetabolomicsQualityError(
-                f"Quality assessment failed: {str(e)}"
-            )
+            raise MetabolomicsQualityError(f"Quality assessment failed: {str(e)}")

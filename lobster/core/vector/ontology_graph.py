@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.services.vector.ontology_graph instead."""
+
 import warnings as _w
 
 _w.warn(
@@ -8,4 +9,8 @@ _w.warn(
     stacklevel=2,
 )
 from lobster.services.vector.ontology_graph import *  # noqa: F401,F403
-from lobster.services.vector.ontology_graph import OBO_URLS, get_neighbors, load_ontology_graph
+from lobster.services.vector.ontology_graph import (
+    OBO_URLS,
+    get_neighbors,
+    load_ontology_graph,
+)

@@ -41,52 +41,49 @@ try:
 except ImportError:
     HAS_ONTOLOGY_SERVICE = False
 
+# Import helper functions from config module
+from lobster.agents.metadata_assistant.config import (
+    convert_list_to_dict,
+    detect_metadata_pattern,
+    phase1_column_rescan,
+    phase2_llm_abstract_extraction,
+    phase3_llm_methods_extraction,
+    phase4_manual_mappings,
+    suppress_logs,
+)
+
+# Import prompt factory
+from lobster.agents.metadata_assistant.prompts import create_metadata_assistant_prompt
+
 # Publication queue schemas
 from lobster.core.schemas.publication_queue import HandoffStatus, PublicationStatus
-
 from lobster.services.execution.custom_code_execution_service import (
     CustomCodeExecutionService,
 )
-from lobster.tools.custom_code_tool import (
-    create_execute_custom_code_tool,
-    metadata_store_post_processor,
-)
-from lobster.tools.knowledgebase_tools import create_cross_database_id_mapping_tool
 from lobster.services.metadata.metadata_standardization_service import (
     MetadataStandardizationService,
 )
 
 # Sample mapping service
 from lobster.services.metadata.sample_mapping_service import SampleMappingService
-
-from lobster.utils.logger import get_logger
-
-# Import helper functions from config module
-from lobster.agents.metadata_assistant.config import (
-    suppress_logs,
-    detect_metadata_pattern,
-    convert_list_to_dict,
-    phase1_column_rescan,
-    phase2_llm_abstract_extraction,
-    phase3_llm_methods_extraction,
-    phase4_manual_mappings,
+from lobster.tools.custom_code_tool import (
+    create_execute_custom_code_tool,
+    metadata_store_post_processor,
 )
-
-# Import prompt factory
-from lobster.agents.metadata_assistant.prompts import create_metadata_assistant_prompt
-
+from lobster.tools.knowledgebase_tools import create_cross_database_id_mapping_tool
+from lobster.utils.logger import get_logger
 
 # Optional microbiome features (not in public lobster-local)
 try:
     from lobster.services.metadata.disease_standardization_service import (
         DiseaseStandardizationService,
     )
-    from lobster.services.metadata.microbiome_filtering_service import (
-        MicrobiomeFilteringService,
-    )
     from lobster.services.metadata.metadata_filtering_service import (
         MetadataFilteringService,
         extract_disease_with_fallback,
+    )
+    from lobster.services.metadata.microbiome_filtering_service import (
+        MicrobiomeFilteringService,
     )
 
     MICROBIOME_FEATURES_AVAILABLE = True
@@ -98,12 +95,13 @@ except ImportError:
 
 # Optional Rich UI for progress visualization
 try:
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     from lobster.ui.components.parallel_workers_progress import (
         parallel_workers_progress,
     )
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    import threading
-    import time
 
     PROGRESS_UI_AVAILABLE = True
 except ImportError:
@@ -455,8 +453,8 @@ def metadata_assistant(
                     )
                     try:
                         from lobster.services.data_access.workspace_content_service import (
-                            WorkspaceContentService,
                             ContentType,
+                            WorkspaceContentService,
                         )
 
                         workspace_service = WorkspaceContentService(data_manager)
@@ -1947,6 +1945,7 @@ Which approach would you prefer?"""
                 status.update("[bold cyan]Finalizing: writing to workspace...")
 
                 from datetime import datetime
+
                 from lobster.services.data_access.workspace_content_service import (
                     ContentType,
                     MetadataContent,

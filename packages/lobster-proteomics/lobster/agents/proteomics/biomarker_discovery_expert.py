@@ -183,7 +183,9 @@ def biomarker_discovery_expert(
             response += "**WGCNA-lite Module Identification Results:**\n"
             response += f"- Modules found: {stats['n_modules']}\n"
             response += f"- Proteins in modules: {stats['n_proteins_in_modules']}\n"
-            response += f"- Proteins unassigned (grey): {stats['n_proteins_unassigned']}\n"
+            response += (
+                f"- Proteins unassigned (grey): {stats['n_proteins_unassigned']}\n"
+            )
             response += f"- Proteins analyzed: {stats['n_proteins_analyzed']}\n"
             response += f"- Correlation method: {stats['correlation_method']}\n"
 
@@ -271,7 +273,9 @@ def biomarker_discovery_expert(
             )
 
             # Format response
-            response = f"Successfully correlated modules with traits in '{modality_name}'!\n\n"
+            response = (
+                f"Successfully correlated modules with traits in '{modality_name}'!\n\n"
+            )
             response += "**Module-Trait Correlation Results:**\n"
             response += f"- Modules analyzed: {stats['n_modules']}\n"
             response += f"- Traits tested: {stats['n_traits']}\n"
@@ -289,11 +293,15 @@ def biomarker_discovery_expert(
                         f"r={pair['correlation']:.3f} ({direction})\n"
                     )
             else:
-                response += "\nNo significant module-trait correlations found at FDR < 0.05.\n"
+                response += (
+                    "\nNo significant module-trait correlations found at FDR < 0.05.\n"
+                )
                 response += "Consider using more samples or relaxing the threshold.\n"
 
             response += f"\n**New modality created**: '{result_name}'"
-            response += "\n\n**Next steps**: Examine hub proteins in significant modules"
+            response += (
+                "\n\n**Next steps**: Examine hub proteins in significant modules"
+            )
 
             return response
 
@@ -400,14 +408,20 @@ def biomarker_discovery_expert(
             significant_proteins = stats.get("significant_proteins", [])
             if significant_proteins:
                 display_count = min(len(significant_proteins), 20)
-                response += f"\n**Significant Proteins** ({len(significant_proteins)} total):\n"
+                response += (
+                    f"\n**Significant Proteins** ({len(significant_proteins)} total):\n"
+                )
                 response += f"- {', '.join(significant_proteins[:display_count])}"
                 if len(significant_proteins) > display_count:
-                    response += f"\n- ... and {len(significant_proteins) - display_count} more"
+                    response += (
+                        f"\n- ... and {len(significant_proteins) - display_count} more"
+                    )
                 response += "\n"
             else:
                 response += "\nNo proteins reached significance at the specified FDR threshold.\n"
-                response += "Consider relaxing the threshold or checking data quality.\n"
+                response += (
+                    "Consider relaxing the threshold or checking data quality.\n"
+                )
 
             response += f"\n**New modality created**: '{result_name}'"
             response += "\n\n**Next steps**: find_survival_biomarkers() for Kaplan-Meier curves of top candidates"
@@ -494,7 +508,9 @@ def biomarker_discovery_expert(
             )
 
             # Format response
-            response = f"Successfully screened survival biomarkers in '{modality_name}'!\n\n"
+            response = (
+                f"Successfully screened survival biomarkers in '{modality_name}'!\n\n"
+            )
             response += "**Batch Kaplan-Meier Biomarker Screening Results:**\n"
             response += f"- Proteins tested: {stats['n_proteins_tested']}\n"
             response += f"- Significant biomarkers (FDR < {fdr_threshold}): {stats['n_significant']}\n"
@@ -506,22 +522,32 @@ def biomarker_discovery_expert(
                 response += f"\n**Significant Survival Biomarkers** ({len(significant_proteins)} total):\n"
                 response += f"- {', '.join(significant_proteins[:display_count])}"
                 if len(significant_proteins) > display_count:
-                    response += f"\n- ... and {len(significant_proteins) - display_count} more"
+                    response += (
+                        f"\n- ... and {len(significant_proteins) - display_count} more"
+                    )
                 response += "\n"
 
                 response += "\n**Interpretation:**\n"
                 response += "- These proteins show significantly different survival curves between high/low expression groups\n"
-                response += "- Higher log-rank statistic indicates stronger separation\n"
+                response += (
+                    "- Higher log-rank statistic indicates stronger separation\n"
+                )
                 response += "- Validate top candidates with independent cohorts\n"
             else:
-                response += "\nNo proteins reached significance as survival biomarkers.\n"
+                response += (
+                    "\nNo proteins reached significance as survival biomarkers.\n"
+                )
                 response += "Consider:\n"
                 response += "- Increasing sample size\n"
-                response += "- Using 'optimal' stratification for better cutpoint selection\n"
+                response += (
+                    "- Using 'optimal' stratification for better cutpoint selection\n"
+                )
                 response += "- Relaxing the FDR threshold\n"
 
             response += f"\n**New modality created**: '{result_name}'"
-            response += "\n\n**Next steps**: Examine individual KM curves for top biomarkers"
+            response += (
+                "\n\n**Next steps**: Examine individual KM curves for top biomarkers"
+            )
 
             return response
 
@@ -630,7 +656,9 @@ def biomarker_discovery_expert(
                     "n_selected": n_lasso,
                     "alpha": float(lasso.alpha_),
                 }
-                logger.info(f"LASSO selected {n_lasso} proteins (alpha={lasso.alpha_:.4f})")
+                logger.info(
+                    f"LASSO selected {n_lasso} proteins (alpha={lasso.alpha_:.4f})"
+                )
 
             # --- Stability selection ---
             if "stability" in method_list:
@@ -707,9 +735,7 @@ def biomarker_discovery_expert(
                     "n_selected": n_boruta,
                     "note": "experimental (simplified Boruta)",
                 }
-                logger.info(
-                    f"Boruta (simplified): {n_boruta} proteins selected"
-                )
+                logger.info(f"Boruta (simplified): {n_boruta} proteins selected")
 
             # --- Consensus scoring ---
             consensus_score = np.zeros(n_proteins)
@@ -729,14 +755,15 @@ def biomarker_discovery_expert(
                 sort_keys += np.abs(adata_copy.var["lasso_coef"].values) * 1e-8
 
             panel_idx = np.argsort(sort_keys)[-n_features:][::-1]
-            panel_proteins = [protein_names[i] for i in panel_idx if consensus_score[i] > 0]
+            panel_proteins = [
+                protein_names[i] for i in panel_idx if consensus_score[i] > 0
+            ]
 
             # Trim to only those with non-zero consensus
             if not panel_proteins:
                 # Fallback: take top by any single method
                 panel_proteins = [
-                    protein_names[i]
-                    for i in np.argsort(sort_keys)[-n_features:][::-1]
+                    protein_names[i] for i in np.argsort(sort_keys)[-n_features:][::-1]
                 ]
 
             adata_copy.uns["biomarker_panel"] = {
@@ -845,7 +872,9 @@ stability_selected = stability_freq > 0.6""",
             )
 
             # Format response
-            response = f"Successfully selected biomarker panel from '{modality_name}'!\n\n"
+            response = (
+                f"Successfully selected biomarker panel from '{modality_name}'!\n\n"
+            )
             response += "**Multi-Method Biomarker Panel Selection Results:**\n"
             response += f"- Methods used: {', '.join(method_list)}\n"
             response += f"- Target: {target_column}\n\n"
@@ -949,7 +978,9 @@ stability_selected = stability_freq > 0.6""",
             # Validate proteins exist in var
             valid_proteins = [p for p in proteins if p in adata_copy.var_names]
             if not valid_proteins:
-                return f"None of the specified proteins found in the modality var_names."
+                return (
+                    f"None of the specified proteins found in the modality var_names."
+                )
             if len(valid_proteins) < len(proteins):
                 logger.warning(
                     f"{len(proteins) - len(valid_proteins)} proteins not found, "
@@ -984,6 +1015,7 @@ stability_selected = stability_freq > 0.6""",
 
                 def make_clf():
                     return LogisticRegression(max_iter=1000, random_state=random_state)
+
             elif classifier == "random_forest":
                 from sklearn.ensemble import RandomForestClassifier
 
@@ -991,6 +1023,7 @@ stability_selected = stability_freq > 0.6""",
                     return RandomForestClassifier(
                         n_estimators=100, random_state=random_state
                     )
+
             else:
                 return f"Unknown classifier '{classifier}'. Use 'logistic' or 'random_forest'."
 
@@ -1062,8 +1095,12 @@ stability_selected = stability_freq > 0.6""",
             aucs = [r["auc"] for r in per_fold_results]
             mean_auc = float(np.mean(aucs))
             std_auc = float(np.std(aucs))
-            mean_sensitivity = float(np.mean([r["sensitivity"] for r in per_fold_results]))
-            mean_specificity = float(np.mean([r["specificity"] for r in per_fold_results]))
+            mean_sensitivity = float(
+                np.mean([r["sensitivity"] for r in per_fold_results])
+            )
+            mean_specificity = float(
+                np.mean([r["specificity"] for r in per_fold_results])
+            )
 
             # Store evaluation results
             adata_copy.uns["biomarker_evaluation"] = {
@@ -1176,11 +1213,15 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
             )
 
             # Format response
-            response = f"Successfully evaluated biomarker panel from '{modality_name}'!\n\n"
+            response = (
+                f"Successfully evaluated biomarker panel from '{modality_name}'!\n\n"
+            )
             response += "**Nested Cross-Validation Results:**\n"
             response += f"- Classifier: {classifier}\n"
             response += f"- Panel size: {len(valid_proteins)} proteins\n"
-            response += f"- Outer folds: {n_outer_folds}, Inner folds: {n_inner_folds}\n\n"
+            response += (
+                f"- Outer folds: {n_outer_folds}, Inner folds: {n_inner_folds}\n\n"
+            )
             response += f"**Overall Performance:**\n"
             response += f"- **AUC: {mean_auc:.3f} +/- {std_auc:.3f}**\n"
             response += f"- Sensitivity: {mean_sensitivity:.3f}\n"
@@ -1261,9 +1302,7 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
             adata_kme, kme_stats, _ = network_service.calculate_module_membership(adata)
 
             # Determine target modules
-            all_modules = [
-                m for m in adata_kme.var["module"].unique() if m != "grey"
-            ]
+            all_modules = [m for m in adata_kme.var["module"].unique() if m != "grey"]
             if module_colors is not None:
                 target_modules = [m for m in module_colors if m in all_modules]
                 if not target_modules:
@@ -1289,7 +1328,9 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
             for module in target_modules:
                 kme_col = f"kME_{module}"
                 if kme_col not in adata_kme.var.columns:
-                    logger.warning(f"kME column '{kme_col}' not found, skipping module {module}")
+                    logger.warning(
+                        f"kME column '{kme_col}' not found, skipping module {module}"
+                    )
                     continue
 
                 # Filter to proteins in this module
@@ -1321,8 +1362,7 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
             # Store results in adata
             adata_kme.uns["hub_proteins"] = {
                 "per_module": {
-                    m: [h["protein"] for h in hubs]
-                    for m, hubs in hub_results.items()
+                    m: [h["protein"] for h in hubs] for m, hubs in hub_results.items()
                 },
                 "total_hubs": total_hubs,
                 "kme_threshold": kme_threshold,
@@ -1400,7 +1440,9 @@ for module in target_modules:
             )
 
             # Format response
-            response = f"Successfully extracted hub proteins from '{modality_name}'!\n\n"
+            response = (
+                f"Successfully extracted hub proteins from '{modality_name}'!\n\n"
+            )
             response += f"**Hub Protein Extraction Results:**\n"
             response += f"- Modules analyzed: {len(target_modules)}\n"
             response += f"- kME threshold: {kme_threshold}\n"
@@ -1418,7 +1460,9 @@ for module in target_modules:
 
             if not hub_results:
                 response += "No hub proteins found above the kME threshold.\n"
-                response += f"Consider lowering kme_threshold (current: {kme_threshold}).\n\n"
+                response += (
+                    f"Consider lowering kme_threshold (current: {kme_threshold}).\n\n"
+                )
 
             response += f"**New modality created**: '{result_name}'"
             response += "\n\n**Next steps**:\n"

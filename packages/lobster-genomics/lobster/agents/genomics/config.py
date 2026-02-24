@@ -20,9 +20,7 @@ __all__ = [
 # Agent metadata
 AGENT_NAME = "genomics_expert"
 AGENT_DISPLAY_NAME = "Genomics Expert"
-AGENT_DESCRIPTION = (
-    "WGS and SNP array analysis: QC, filtering, GWAS, LD pruning, kinship, variant annotation"
-)
+AGENT_DESCRIPTION = "WGS and SNP array analysis: QC, filtering, GWAS, LD pruning, kinship, variant annotation"
 
 # Default QC thresholds (UK Biobank standards)
 DEFAULT_MIN_CALL_RATE = 0.95  # Minimum call rate (samples/variants)

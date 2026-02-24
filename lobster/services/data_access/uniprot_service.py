@@ -283,9 +283,7 @@ class UniProtService:
         if response.status_code == 200 or response.status_code == 303:
             return
         if response.status_code == 404:
-            raise UniProtNotFoundError(
-                f"Not found: {response.url}"
-            )
+            raise UniProtNotFoundError(f"Not found: {response.url}")
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After", "unknown")
             raise UniProtRateLimitError(
@@ -296,7 +294,5 @@ class UniProtService:
                 detail = response.json()
             except Exception:
                 detail = response.text
-            raise UniProtServiceError(
-                f"Bad request ({response.status_code}): {detail}"
-            )
+            raise UniProtServiceError(f"Bad request ({response.status_code}): {detail}")
         response.raise_for_status()

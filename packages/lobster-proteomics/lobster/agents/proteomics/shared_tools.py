@@ -75,7 +75,9 @@ def create_shared_tools(
             adata = data_manager.get_modality(modality_name)
             detected_type = detect_platform_type(adata)
             if detected_type == "unknown":
-                logger.warning(f"Platform type ambiguous for '{modality_name}'. Defaulting to mass_spec. Use platform_type parameter to override.")
+                logger.warning(
+                    f"Platform type ambiguous for '{modality_name}'. Defaulting to mass_spec. Use platform_type parameter to override."
+                )
                 return get_platform_config("mass_spec")
             return get_platform_config(detected_type)
         except ValueError:
@@ -204,7 +206,9 @@ def create_shared_tools(
                             if any(ind in obs_col.lower() for ind in bridge_indicators):
                                 bridge_col_found = obs_col
                                 try:
-                                    n_bridge = int(adata.obs[obs_col].astype(bool).sum())
+                                    n_bridge = int(
+                                        adata.obs[obs_col].astype(bool).sum()
+                                    )
                                 except (ValueError, TypeError):
                                     n_bridge = 0
                                 break
@@ -212,7 +216,9 @@ def create_shared_tools(
                             response += f"- Bridge samples detected: {n_bridge} samples (column: {bridge_col_found})\n"
 
                         # AFP-06: Panel info
-                        panel_info = adata.uns.get("assay_version") or adata.uns.get("panel_info")
+                        panel_info = adata.uns.get("assay_version") or adata.uns.get(
+                            "panel_info"
+                        )
                         platform_name = adata.uns.get("platform", "")
                         if panel_info:
                             response += f"- Panel info: {panel_info}\n"
@@ -378,7 +384,11 @@ def create_shared_tools(
                 if lod_col is not None or has_lod_uns:
                     response += "\n**LOD Quality:**\n"
                     if lod_col is not None:
-                        X_vals = final_adata.X.toarray() if hasattr(final_adata.X, "toarray") else final_adata.X
+                        X_vals = (
+                            final_adata.X.toarray()
+                            if hasattr(final_adata.X, "toarray")
+                            else final_adata.X
+                        )
                         lod_values = final_adata.var[lod_col].values
                         n_below_lod = 0
                         n_proteins_with_lod = 0
@@ -393,9 +403,17 @@ def create_shared_tools(
                                 n_below_lod += int(below)
                                 total_comparisons += int(valid_mask.sum())
 
-                        overall_below_pct = (n_below_lod / total_comparisons * 100) if total_comparisons > 0 else 0
-                        response += f"- Proteins with LOD values: {n_proteins_with_lod}\n"
-                        response += f"- Overall below-LOD rate: {overall_below_pct:.1f}%\n"
+                        overall_below_pct = (
+                            (n_below_lod / total_comparisons * 100)
+                            if total_comparisons > 0
+                            else 0
+                        )
+                        response += (
+                            f"- Proteins with LOD values: {n_proteins_with_lod}\n"
+                        )
+                        response += (
+                            f"- Overall below-LOD rate: {overall_below_pct:.1f}%\n"
+                        )
                         response += f"- Measurements below LOD: {n_below_lod} / {total_comparisons}\n"
                     else:
                         response += "- LOD values available in uns (run assess_lod_quality for details)\n"
@@ -966,7 +984,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 response += f"- Percentage imputed: {impute_stats['imputation_percentage']:.1f}%\n"
 
             if platform_config.platform_type == "mass_spec" and method == "knn":
-                response += "\n**Warning:** KNN imputation may not be ideal for MS data "
+                response += (
+                    "\n**Warning:** KNN imputation may not be ideal for MS data "
+                )
                 response += "(MNAR pattern). Consider 'min_prob' for MNAR-appropriate imputation.\n"
 
             response += f"\n**New modality created**: '{imputed_name}'"
@@ -1048,7 +1068,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
 
             response = f"Variable protein selection complete for '{modality_name}'!\n\n"
             response += f"**Method**: {method}\n"
-            response += f"**Proteins selected**: {stats['n_selected']} / {stats['n_total']} "
+            response += (
+                f"**Proteins selected**: {stats['n_selected']} / {stats['n_total']} "
+            )
             response += f"({stats['n_selected'] / stats['n_total'] * 100:.1f}%)\n"
             response += f"**Proteins passing detection filter**: {stats['n_passing_detection']}\n"
             response += f"**Min detection rate**: {min_detection_rate * 100:.0f}%\n"
@@ -1060,7 +1082,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             if save_result:
                 response += f"\n**Saved to**: {save_path}"
 
-            response += "\n\n**Next steps**: analyze_proteomics_patterns() for PCA/clustering"
+            response += (
+                "\n\n**Next steps**: analyze_proteomics_patterns() for PCA/clustering"
+            )
 
             analysis_results["details"]["variable_protein_selection"] = response
             return response
@@ -1101,10 +1125,10 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
         """
         try:
             from lobster.services.data_access.proteomics_parsers import (
-                get_parser_for_file,
-                MaxQuantParser,
                 DIANNParser,
+                MaxQuantParser,
                 SpectronautParser,
+                get_parser_for_file,
             )
 
             parser = None
@@ -1160,7 +1184,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
 from lobster.services.data_access.proteomics_parsers import get_parser_for_file
 parser = get_parser_for_file({{ file_path | tojson }})
 adata, stats = parser.parse({{ file_path | tojson }})""",
-                    imports=["from lobster.services.data_access.proteomics_parsers import get_parser_for_file"],
+                    imports=[
+                        "from lobster.services.data_access.proteomics_parsers import get_parser_for_file"
+                    ],
                     parameters={"file_path": file_path, "software": software},
                 )
             else:
@@ -1176,7 +1202,9 @@ adata, stats = parser.parse({{ file_path | tojson }})""",
 from lobster.services.data_access.proteomics_parsers import get_parser_for_file
 parser = get_parser_for_file({{ file_path | tojson }})
 adata = parser.parse({{ file_path | tojson }})""",
-                    imports=["from lobster.services.data_access.proteomics_parsers import get_parser_for_file"],
+                    imports=[
+                        "from lobster.services.data_access.proteomics_parsers import get_parser_for_file"
+                    ],
                     parameters={"file_path": file_path, "software": software},
                 )
 
@@ -1305,7 +1333,9 @@ adata = parser.parse({{ file_path | tojson }})""",
             if "n_class_i_sites" in stats:
                 response += f"**Class I sites (prob >= {localization_threshold}):** {stats['n_class_i_sites']}\n"
             if "n_total_sites" in stats:
-                response += f"**Total sites before filtering:** {stats['n_total_sites']}\n"
+                response += (
+                    f"**Total sites before filtering:** {stats['n_total_sites']}\n"
+                )
 
             response += f"\n**Modality created:** '{name}'"
             if save_result:
@@ -1393,7 +1423,9 @@ adata = parser.parse({{ file_path | tojson }})""",
             response += f"**Batch column:** {batch_column}\n"
 
             if "n_batches_corrected" in batch_stats:
-                response += f"**Batches corrected:** {batch_stats['n_batches_corrected']}\n"
+                response += (
+                    f"**Batches corrected:** {batch_stats['n_batches_corrected']}\n"
+                )
             if "n_samples" in batch_stats:
                 response += f"**Samples:** {batch_stats['n_samples']}\n"
 
@@ -1609,11 +1641,11 @@ adata = parser.parse({{ file_path | tojson }})""",
             str: Import summary with platform, sample count, analyte count, and data characteristics
         """
         try:
+            import pandas as pd
+
+            from lobster.services.data_access.luminex_parser import LuminexParser
             from lobster.services.data_access.olink_parser import OlinkParser
             from lobster.services.data_access.somascan_parser import SomaScanParser
-            from lobster.services.data_access.luminex_parser import LuminexParser
-
-            import pandas as pd
 
             file_p = Path(file_path)
             if not file_p.exists():
@@ -1691,7 +1723,9 @@ adata = parser.parse({{ file_path | tojson }})""",
                         common_samples = adata.obs.index.intersection(meta_df.index)
                         if len(common_samples) > 0:
                             for col in meta_df.columns:
-                                adata.obs[col] = meta_df.loc[adata.obs.index, col].values
+                                adata.obs[col] = meta_df.loc[
+                                    adata.obs.index, col
+                                ].values
                                 n_metadata_cols += 1
                             metadata_merged = True
                         else:
@@ -1731,7 +1765,9 @@ adata = parser.parse({{ file_path | tojson }})""",
 from lobster.services.data_access.{detected_platform}_parser import {parser.__class__.__name__}
 parser = {parser.__class__.__name__}()
 adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
-                imports=[f"from lobster.services.data_access.{detected_platform}_parser import {parser.__class__.__name__}"],
+                imports=[
+                    f"from lobster.services.data_access.{detected_platform}_parser import {parser.__class__.__name__}"
+                ],
                 parameters={
                     "file_path": file_path,
                     "platform": detected_platform,
@@ -1804,7 +1840,11 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
             import pandas as pd
 
             adata_result = adata.copy()
-            X = adata_result.X.toarray() if hasattr(adata_result.X, "toarray") else adata_result.X
+            X = (
+                adata_result.X.toarray()
+                if hasattr(adata_result.X, "toarray")
+                else adata_result.X
+            )
 
             platform = adata.uns.get("platform", "unknown")
 
@@ -1815,7 +1855,9 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
             # Check var columns
             for candidate in [lod_column, lod_column.lower(), "lod", "LOD", "Lod"]:
                 if candidate in adata_result.var.columns:
-                    lod_values = pd.to_numeric(adata_result.var[candidate], errors="coerce").values
+                    lod_values = pd.to_numeric(
+                        adata_result.var[candidate], errors="coerce"
+                    ).values
                     lod_source = f"var['{candidate}']"
                     break
 
@@ -1842,7 +1884,11 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
                     # Luminex: use global 1st percentile as LOD proxy
                     valid_vals = X[~np.isnan(X)]
                     if len(valid_vals) > 0:
-                        global_lod = np.percentile(valid_vals[valid_vals > 0], 1) if np.any(valid_vals > 0) else 0
+                        global_lod = (
+                            np.percentile(valid_vals[valid_vals > 0], 1)
+                            if np.any(valid_vals > 0)
+                            else 0
+                        )
                         lod_values = np.full(adata_result.n_vars, global_lod)
                     else:
                         lod_values = np.full(adata_result.n_vars, np.nan)
@@ -1867,7 +1913,9 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
                 if valid_mask.sum() == 0:
                     below_lod_pct[j] = 100.0
                 else:
-                    below_lod_pct[j] = (col[valid_mask] < lod_val).sum() / valid_mask.sum() * 100
+                    below_lod_pct[j] = (
+                        (col[valid_mask] < lod_val).sum() / valid_mask.sum() * 100
+                    )
 
             # Store results in adata
             adata_result.var["below_lod_pct"] = below_lod_pct
@@ -1949,8 +1997,12 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
             response += f"**LOD threshold:** {max_below_lod_pct}% below-LOD maximum\n\n"
 
             response += "**Summary:**\n"
-            response += f"- Proteins passing LOD filter: {n_passing} / {adata_result.n_vars}\n"
-            response += f"- Proteins flagged (>{max_below_lod_pct}% below LOD): {n_flagged}\n"
+            response += (
+                f"- Proteins passing LOD filter: {n_passing} / {adata_result.n_vars}\n"
+            )
+            response += (
+                f"- Proteins flagged (>{max_below_lod_pct}% below LOD): {n_flagged}\n"
+            )
             response += f"- Median below-LOD percentage: {median_below:.1f}%\n\n"
 
             if worst_proteins:
@@ -2019,7 +2071,11 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
                 )
 
             adata_result = adata.copy()
-            X = adata_result.X.toarray() if hasattr(adata_result.X, "toarray") else adata_result.X.copy()
+            X = (
+                adata_result.X.toarray()
+                if hasattr(adata_result.X, "toarray")
+                else adata_result.X.copy()
+            )
 
             # Identify bridge samples
             bridge_mask = adata_result.obs[bridge_column].astype(bool).values
@@ -2074,7 +2130,11 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
                 plate_factors[str(plate)] = factors
 
                 # Apply correction to all samples on this plate
-                sample_mask = plate_mask & (~bridge_mask if remove_bridges else np.ones_like(plate_mask, dtype=bool))
+                sample_mask = plate_mask & (
+                    ~bridge_mask
+                    if remove_bridges
+                    else np.ones_like(plate_mask, dtype=bool)
+                )
                 X[plate_mask, :] = X[plate_mask, :] + factors
 
             # Remove bridge samples if requested
@@ -2153,9 +2213,15 @@ adata.X = X""",
 
             # Compute correction magnitude summary
             all_factors = np.concatenate(list(plate_factors.values()))
-            median_correction = float(np.median(np.abs(all_factors[~np.isnan(all_factors)]))) if len(all_factors) > 0 else 0
+            median_correction = (
+                float(np.median(np.abs(all_factors[~np.isnan(all_factors)])))
+                if len(all_factors) > 0
+                else 0
+            )
 
-            response = f"Successfully normalized '{modality_name}' using bridge samples!\n\n"
+            response = (
+                f"Successfully normalized '{modality_name}' using bridge samples!\n\n"
+            )
             response += "**Bridge Normalization Results:**\n"
             response += f"- Plates: {len(plates)}\n"
             response += f"- Bridge samples: {n_bridges}\n"
@@ -2168,7 +2234,11 @@ adata.X = X""",
 
             response += "\n**Per-Plate Factors (median absolute correction):**\n"
             for plate, factors in plate_factors.items():
-                plate_median = float(np.median(np.abs(factors[~np.isnan(factors)]))) if len(factors) > 0 else 0
+                plate_median = (
+                    float(np.median(np.abs(factors[~np.isnan(factors)])))
+                    if len(factors) > 0
+                    else 0
+                )
                 response += f"- Plate {plate}: {plate_median:.3f}\n"
 
             response += f"\n**New modality created:** '{result_name}'"
@@ -2285,13 +2355,15 @@ adata.X = X""",
                 else:
                     r, p = scipy_stats.pearsonr(vals1[valid], vals2[valid])
 
-                correlations.append({
-                    "protein": p1_name,
-                    "protein_2": p2_name,
-                    "correlation": float(r) if not np.isnan(r) else 0.0,
-                    "p_value": float(p) if not np.isnan(p) else 1.0,
-                    "n_samples": int(valid.sum()),
-                })
+                correlations.append(
+                    {
+                        "protein": p1_name,
+                        "protein_2": p2_name,
+                        "correlation": float(r) if not np.isnan(r) else 0.0,
+                        "p_value": float(p) if not np.isnan(p) else 1.0,
+                        "n_samples": int(valid.sum()),
+                    }
+                )
 
             if not correlations:
                 return (

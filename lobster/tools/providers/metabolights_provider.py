@@ -222,9 +222,7 @@ class MetaboLightsProvider(BasePublicationProvider):
                 if submission_date:
                     result += f"   Submitted: {submission_date}\n"
 
-                result += (
-                    f"   URL: https://www.ebi.ac.uk/metabolights/{accession}\n"
-                )
+                result += f"   URL: https://www.ebi.ac.uk/metabolights/{accession}\n"
                 result += "\n"
 
             if len(studies) > 10:
@@ -329,7 +327,9 @@ class MetaboLightsProvider(BasePublicationProvider):
             )
 
         except Exception as e:
-            logger.error(f"Error extracting MetaboLights metadata for {identifier}: {e}")
+            logger.error(
+                f"Error extracting MetaboLights metadata for {identifier}: {e}"
+            )
             return PublicationMetadata(
                 uid=identifier,
                 title=f"MetaboLights Study {identifier}",
@@ -497,9 +497,7 @@ class MetaboLightsProvider(BasePublicationProvider):
             logger.error(f"Error getting MetaboLights study files for {accession}: {e}")
             return []
 
-    def _parse_search_response(
-        self, response_data: Any
-    ) -> List[Dict[str, Any]]:
+    def _parse_search_response(self, response_data: Any) -> List[Dict[str, Any]]:
         """
         Parse search API response into a normalized list of study dicts.
 
@@ -660,16 +658,24 @@ class MetaboLightsProvider(BasePublicationProvider):
         lower = filename.lower()
 
         # ISA-Tab metadata files
-        if (
-            lower.startswith(("i_", "s_", "a_", "m_"))
-            and lower.endswith((".txt", ".tsv"))
+        if lower.startswith(("i_", "s_", "a_", "m_")) and lower.endswith(
+            (".txt", ".tsv")
         ):
             return "metadata"
 
         # Raw instrument data extensions
         raw_extensions = (
-            ".mzml", ".mzxml", ".nmrml", ".raw", ".wiff", ".wiff2",
-            ".d", ".cdf", ".fid", ".ser", ".baf",
+            ".mzml",
+            ".mzxml",
+            ".nmrml",
+            ".raw",
+            ".wiff",
+            ".wiff2",
+            ".d",
+            ".cdf",
+            ".fid",
+            ".ser",
+            ".baf",
         )
         if any(lower.endswith(ext) for ext in raw_extensions):
             return "raw"

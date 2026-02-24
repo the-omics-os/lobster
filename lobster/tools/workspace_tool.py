@@ -110,7 +110,9 @@ def generate_contextual_error(
     param_name: str,
 ) -> str:
     """Generate helpful error message with fuzzy-match suggestions."""
-    error_msg = f"Error: Invalid value '{invalid_value}' for parameter '{param_name}'\n\n"
+    error_msg = (
+        f"Error: Invalid value '{invalid_value}' for parameter '{param_name}'\n\n"
+    )
 
     suggestion = get_close_matches(invalid_value, valid_options, n=1, cutoff=0.6)
     if suggestion:

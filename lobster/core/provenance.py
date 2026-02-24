@@ -58,12 +58,15 @@ class ProvenanceTracker:
         self.entities: Dict[str, Dict[str, Any]] = {}
         self.agents: Dict[str, Dict[str, Any]] = {}
         self.logger = logger
+        self._software_versions_cache: Optional[Dict[str, str]] = None
 
         # Disk persistence attributes
         if session_dir is not None:
             self.session_dir: Optional[Path] = Path(session_dir)
             self.session_dir.mkdir(parents=True, exist_ok=True)
-            self._provenance_file: Optional[Path] = self.session_dir / "provenance.jsonl"
+            self._provenance_file: Optional[Path] = (
+                self.session_dir / "provenance.jsonl"
+            )
             self._metadata_file: Optional[Path] = self.session_dir / "metadata.json"
             self._created_at = datetime.datetime.now(datetime.timezone.utc)
             # Load existing activities from disk
@@ -115,9 +118,7 @@ class ProvenanceTracker:
                     self.activities.append(data)
 
                 except (json.JSONDecodeError, Exception) as e:
-                    warnings.warn(
-                        f"Skipping corrupt provenance line {line_num}: {e}"
-                    )
+                    warnings.warn(f"Skipping corrupt provenance line {line_num}: {e}")
                     continue  # Line-independent recovery
 
     def _persist_activity(self, activity: Dict[str, Any]) -> None:
@@ -591,6 +592,30 @@ class ProvenanceTracker:
             ).isoformat(),
         }
 
+    def export_to_json(self, path: str) -> str:
+        """
+        Export provenance data to a JSON file.
+
+        Convenience wrapper around to_dict() that writes the provenance
+        data directly to a file on disk.
+
+        Args:
+            path: File path to write JSON output to
+
+        Returns:
+            str: The path written to
+
+        Example:
+            >>> tracker.export_to_json("/tmp/provenance.json")
+            '/tmp/provenance.json'
+        """
+        data = self.to_dict()
+        file_path = Path(path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        return str(file_path)
+
     def from_dict(self, data: Dict[str, Any]) -> None:
         """
         Import provenance data from dictionary.
@@ -642,7 +667,16 @@ class ProvenanceTracker:
         return format_mapping.get(extension, "unknown")
 
     def _get_software_versions(self) -> Dict[str, str]:
-        """Get versions of key software packages."""
+        """Get versions of key software packages.
+
+        Results are cached for the lifetime of the tracker instance since
+        package versions do not change during a session. This avoids
+        repeated importlib.metadata lookups which are expensive at scale
+        (e.g., 10K+ activity creations).
+        """
+        if self._software_versions_cache is not None:
+            return self._software_versions_cache
+
         from importlib.metadata import PackageNotFoundError, version
 
         versions = {}
@@ -678,4 +712,5 @@ class ProvenanceTracker:
             except ImportError:
                 versions["lobster"] = "unknown"
 
+        self._software_versions_cache = versions
         return versions

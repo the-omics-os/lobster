@@ -31,7 +31,14 @@ class ProteomicsKinaseError(Exception):
 # Built-in minimal SIGNOR-style kinase-substrate mapping
 # Format: kinase -> list of substrate_site (gene_residuePosition)
 DEFAULT_KINASE_SUBSTRATE_MAP: Dict[str, List[str]] = {
-    "AKT1": ["GSK3B_S9", "FOXO3_S253", "MTOR_S1261", "BAD_S136", "TSC2_S939", "PRAS40_T246"],
+    "AKT1": [
+        "GSK3B_S9",
+        "FOXO3_S253",
+        "MTOR_S1261",
+        "BAD_S136",
+        "TSC2_S939",
+        "PRAS40_T246",
+    ],
     "AKT2": ["GSK3A_S21", "FOXO1_S256", "AS160_T642"],
     "MAPK1": ["ELK1_S383", "RSK1_T573", "MNK1_T255", "STMN1_S25", "ETS1_T38"],
     "MAPK3": ["ELK1_S383", "RSK1_T359", "STMN1_S16", "MYC_S62"],
@@ -120,9 +127,7 @@ class ProteomicsKinaseService:
         )
         return DEFAULT_KINASE_SUBSTRATE_MAP
 
-    def _extract_site_fold_changes(
-        self, adata: anndata.AnnData
-    ) -> Dict[str, float]:
+    def _extract_site_fold_changes(self, adata: anndata.AnnData) -> Dict[str, float]:
         """
         Extract site-level fold changes from DE results or var annotations.
 
@@ -148,9 +153,7 @@ class ProteomicsKinaseService:
                 log2fc = result.get("log2_fold_change", 0.0)
                 if protein:
                     site_fcs[protein] = float(log2fc)
-            logger.info(
-                f"Extracted {len(site_fcs)} site fold changes from DE results"
-            )
+            logger.info(f"Extracted {len(site_fcs)} site fold changes from DE results")
             return site_fcs
 
         # Try differential_ptm results
@@ -160,7 +163,9 @@ class ProteomicsKinaseService:
         if ptm_results:
             for result in ptm_results:
                 site = result.get("site", "")
-                log2fc = result.get("adjusted_log2fc", result.get("log2_fold_change", 0.0))
+                log2fc = result.get(
+                    "adjusted_log2fc", result.get("log2_fold_change", 0.0)
+                )
                 if site:
                     site_fcs[site] = float(log2fc)
             logger.info(
@@ -173,9 +178,7 @@ class ProteomicsKinaseService:
             for name, fc in zip(adata.var_names, adata.var["log2_fold_change"]):
                 if not np.isnan(fc):
                     site_fcs[name] = float(fc)
-            logger.info(
-                f"Extracted {len(site_fcs)} fold changes from var annotations"
-            )
+            logger.info(f"Extracted {len(site_fcs)} fold changes from var annotations")
             return site_fcs
 
         raise ProteomicsKinaseError(
