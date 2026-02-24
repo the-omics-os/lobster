@@ -4,18 +4,26 @@ Proteomics parsers namespace package.
 Re-exports parser classes from lobster-proteomics package and provides
 the get_parser_for_file() utility for automatic parser selection.
 
+Uses a detect-then-route pattern: FileClassifier inspects the file once
+and returns a classification, which is used to route to the correct parser
+or signal a generic matrix fallback.
+
 When lobster-proteomics is not installed, parsers will not be available
-and get_parser_for_file() returns None.
+and get_parser_for_file() returns (None, classification).
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from lobster.services.data_access.proteomics_parsers.base_parser import (
     FileValidationError,
     ParsingError,
     ProteomicsParser,
     ProteomicsParserError,
+)
+from lobster.services.data_access.proteomics_parsers.file_classifier import (
+    FileClassification,
+    FileClassifier,
 )
 from lobster.utils.logger import get_logger
 
@@ -56,51 +64,65 @@ try:
 except ImportError:
     pass
 
+# Map classifier format names to parser classes
+_FORMAT_TO_PARSER = {
+    "maxquant": lambda: MaxQuantParser,
+    "diann": lambda: DIANNParser,
+    "spectronaut": lambda: SpectronautParser,
+    "olink_npx": lambda: OlinkParser,
+}
 
-def get_parser_for_file(file_path: str) -> Optional[ProteomicsParser]:
+
+def get_parser_for_file(
+    file_path: str,
+) -> Tuple[Optional[ProteomicsParser], FileClassification]:
     """
-    Auto-detect and return the appropriate parser for a proteomics file.
+    Classify a proteomics file and return the appropriate parser.
 
-    Iterates through available parsers and returns the first one whose
-    validate_file() returns True for the given file.
+    Uses FileClassifier to inspect the file once, then routes to the
+    correct parser. Returns both the parser and the classification so
+    callers get useful context even when no vendor parser matches.
 
     Args:
         file_path: Path to the proteomics output file.
 
     Returns:
-        An instantiated parser if one matches, or None if no parser
-        can handle the file (or lobster-proteomics is not installed).
+        Tuple of (parser_instance_or_None, FileClassification).
+        - If a vendor parser matches: (parser, classification)
+        - If generic matrix detected: (None, classification) with format="generic_matrix"
+        - If unknown: (None, classification) with diagnostics
     """
-    # Build list of available parser classes (skip None entries)
-    available_parsers = [
-        cls
-        for cls in (MaxQuantParser, DIANNParser, SpectronautParser, OlinkParser)
-        if cls is not None
-    ]
+    classification = FileClassifier.classify(file_path)
 
-    if not available_parsers:
-        logger.warning(
-            "No proteomics parsers available. "
-            "Install lobster-proteomics: pip install lobster-proteomics"
-        )
-        return None
-
-    for parser_cls in available_parsers:
-        try:
-            parser = parser_cls()
-            if parser.validate_file(file_path):
+    # Try to get a vendor parser based on classification
+    parser_factory = _FORMAT_TO_PARSER.get(classification.format)
+    if parser_factory:
+        parser_cls = parser_factory()
+        if parser_cls is not None:
+            try:
+                parser = parser_cls()
                 logger.debug(
-                    f"Selected {parser_cls.__name__} for {Path(file_path).name}"
+                    f"Selected {parser_cls.__name__} for {Path(file_path).name} "
+                    f"(confidence: {classification.confidence:.0%})"
                 )
-                return parser
-        except Exception as e:
-            logger.debug(
-                f"{parser_cls.__name__} validation failed for {file_path}: {e}"
-            )
-            continue
+                return parser, classification
+            except Exception as e:
+                logger.debug(f"Failed to instantiate {parser_cls.__name__}: {e}")
 
-    logger.warning(f"No parser found for file: {Path(file_path).name}")
-    return None
+    # For generic_matrix, somascan_adat (handled by SomaScan parser externally),
+    # or unknown — return None with classification diagnostics
+    if classification.format not in ("generic_matrix", "unknown"):
+        logger.warning(
+            f"Classified as {classification.format} but no parser available for "
+            f"{Path(file_path).name}. Install the appropriate package."
+        )
+    elif classification.format == "unknown":
+        logger.warning(
+            f"Could not classify file: {Path(file_path).name}. "
+            f"{classification.diagnostics}"
+        )
+
+    return None, classification
 
 
 __all__ = [
@@ -108,6 +130,8 @@ __all__ = [
     "ProteomicsParserError",
     "FileValidationError",
     "ParsingError",
+    "FileClassification",
+    "FileClassifier",
     "MaxQuantParser",
     "DIANNParser",
     "SpectronautParser",

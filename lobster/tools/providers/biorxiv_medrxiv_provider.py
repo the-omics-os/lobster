@@ -181,7 +181,7 @@ class BioRxivMedRxivProvider(BasePublicationProvider):
                     **STEALTH_HEADERS,
                 }
             )
-            logger.warning(
+            logger.debug(
                 "cloudscraper not available - bioRxiv content fetching may fail. "
                 "Install with: pip install cloudscraper"
             )

@@ -221,7 +221,7 @@ def create_lineage_metadata(
     if version is None:
         if parent_adata is not None and LINEAGE_KEY in parent_adata.uns:
             parent_version = parent_adata.uns[LINEAGE_KEY].get("version", 0)
-            version = parent_version + 1
+            version = int(parent_version) + 1
         else:
             version = 1  # Raw data starts at 1
 

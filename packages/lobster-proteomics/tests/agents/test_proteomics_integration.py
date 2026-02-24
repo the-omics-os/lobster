@@ -47,17 +47,17 @@ class TestParentAgentConfig:
 class TestDESubAgentConfig:
     """Tests for DE analysis sub-agent AGENT_CONFIG."""
 
-    def test_de_not_supervisor_accessible(self):
-        assert DE_CONFIG.supervisor_accessible is False
+    def test_de_supervisor_accessible(self):
+        assert DE_CONFIG.supervisor_accessible is True
 
     def test_de_name(self):
         assert DE_CONFIG.name == "proteomics_de_analysis_expert"
 
-    def test_de_no_handoff_tool(self):
-        assert DE_CONFIG.handoff_tool_name is None
+    def test_de_has_handoff_tool(self):
+        assert DE_CONFIG.handoff_tool_name == "handoff_to_proteomics_de_analysis_expert"
 
-    def test_de_no_handoff_description(self):
-        assert DE_CONFIG.handoff_tool_description is None
+    def test_de_has_handoff_description(self):
+        assert DE_CONFIG.handoff_tool_description is not None
 
     def test_de_tier_free(self):
         assert DE_CONFIG.tier_requirement == "free"

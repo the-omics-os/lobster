@@ -1208,7 +1208,7 @@ Next suggested step: Import quantification data with tximport for differential e
             try:
                 import h5py  # noqa: F401
             except ImportError:
-                logger.warning("h5py not available, falling back to TSV format")
+                logger.debug("h5py not available, falling back to TSV format")
                 use_h5 = False
 
         # FIX BUG-BULK-006: Check for single-sample in root
@@ -1705,7 +1705,7 @@ Next suggested step: Import quantification data with tximport for differential e
             status["pydeseq2_available"] = True  # Add expected key for tests
             logger.debug("pyDESeq2 core components available")
         except ImportError as e:
-            logger.warning(f"pyDESeq2 not available: {e}")
+            logger.debug(f"pyDESeq2 not available: {e}")
             status["pydeseq2"] = False
             status["pydeseq2_available"] = False
 
@@ -1715,7 +1715,7 @@ Next suggested step: Import quantification data with tximport for differential e
             status["pydeseq2_inference"] = True
             logger.debug("pyDESeq2 inference components available")
         except ImportError as e:
-            logger.warning(f"pyDESeq2 inference not available: {e}")
+            logger.debug(f"pyDESeq2 inference not available: {e}")
             status["pydeseq2_inference"] = False
 
         try:
@@ -1724,7 +1724,7 @@ Next suggested step: Import quantification data with tximport for differential e
             status["numba"] = True
             logger.debug(f"numba version {numba.__version__} available")
         except ImportError:
-            logger.warning("numba not available - pyDESeq2 performance may be reduced")
+            logger.debug("numba not available - pyDESeq2 performance may be reduced")
             status["numba"] = False
 
         try:
@@ -1733,7 +1733,7 @@ Next suggested step: Import quantification data with tximport for differential e
             status["statsmodels"] = True
             logger.debug(f"statsmodels version {statsmodels.__version__} available")
         except ImportError:
-            logger.warning("statsmodels not available")
+            logger.debug("statsmodels not available")
             status["statsmodels"] = False
 
         return status

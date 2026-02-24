@@ -224,7 +224,7 @@ class ContentAccessService:
             self.registry.register_provider(sra_provider)
             logger.debug("SRAProvider registered successfully")
         except ImportError:
-            logger.warning(
+            logger.debug(
                 "pysradb not available - SRA provider disabled. "
                 "Install with: pip install pysradb"
             )

@@ -231,7 +231,7 @@ class PRIDEDownloadService(IDownloadService):
 
             # Step 5: Parse primary file
             primary_file = local_files[0]
-            parser = get_parser_for_file(str(primary_file))
+            parser, _classification = get_parser_for_file(str(primary_file))
 
             if not parser:
                 raise RuntimeError(f"No parser available for file: {primary_file.name}")

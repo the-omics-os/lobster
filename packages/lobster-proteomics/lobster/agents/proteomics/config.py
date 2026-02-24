@@ -243,11 +243,14 @@ def get_platform_config(platform_type: str) -> PlatformConfig:
     Get the configuration for a specific platform type.
 
     Args:
-        platform_type: "mass_spec" or "affinity"
+        platform_type: "mass_spec", "affinity", or "unknown"
 
     Returns:
         PlatformConfig for the specified platform
     """
+    if platform_type == "unknown":
+        # Default to mass_spec for unknown platform types (safe defaults)
+        platform_type = "mass_spec"
     if platform_type not in PLATFORM_CONFIGS:
         raise ValueError(
             f"Unknown platform type: {platform_type}. Choose from: {list(PLATFORM_CONFIGS.keys())}"

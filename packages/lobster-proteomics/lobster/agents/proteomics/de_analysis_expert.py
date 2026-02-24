@@ -19,9 +19,9 @@ AGENT_CONFIG = AgentRegistryConfig(
     display_name="Proteomics DE Analysis Expert",
     description="Proteomics differential expression: statistical testing, time course, correlation analysis",
     factory_function="lobster.agents.proteomics.de_analysis_expert.de_analysis_expert",
-    handoff_tool_name=None,
-    handoff_tool_description=None,
-    supervisor_accessible=False,
+    handoff_tool_name="handoff_to_proteomics_de_analysis_expert",
+    handoff_tool_description="Run differential expression on proteomics data: compare protein abundance between groups, find differentially expressed proteins, time course analysis, pathway enrichment (GO/Reactome/KEGG), kinase activity (KSEA), STRING protein networks. Use when user asks to compare groups, find DE proteins, or run downstream proteomics analysis.",
+    supervisor_accessible=True,
     tier_requirement="free",
 )
 
@@ -326,8 +326,10 @@ def de_analysis_expert(
             return response
 
         except Exception as e:
-            logger.error(f"Error in differential protein expression analysis: {e}")
-            return f"Error in differential expression analysis: {str(e)}"
+            import traceback
+            tb = traceback.format_exc()
+            logger.error(f"Error in differential protein expression analysis: {e}\n{tb}")
+            return f"Error in differential expression analysis: {str(e)}\nTraceback:\n{tb}"
 
     # =========================================================================
     # TOOL 2: run_time_course_analysis

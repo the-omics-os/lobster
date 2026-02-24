@@ -1170,7 +1170,7 @@ class GEOParser:
             return pd.DataFrame(adata.X, index=adata.obs_names, columns=adata.var_names)
 
         except ImportError:
-            logger.warning("anndata package not available, cannot parse h5ad")
+            logger.debug("anndata package not available, cannot parse h5ad")
             return None
 
         except TypeError as e:
@@ -1338,7 +1338,7 @@ class GEOParser:
                 return df
 
         except ImportError:
-            logger.error("h5py package not available for legacy H5AD parsing")
+            logger.debug("h5py package not available for legacy H5AD parsing")
             return None
         except Exception as e:
             logger.error(f"Failed to parse legacy H5AD format: {e}")
@@ -1382,7 +1382,7 @@ class GEOParser:
                     if result and result[list(result.keys())[0]] is not None:
                         return result[list(result.keys())[0]]
                 except ImportError:
-                    logger.warning("pyreadr package not available, cannot parse RDS")
+                    logger.debug("pyreadr package not available, cannot parse RDS")
                     return None
                 except Exception as e:
                     logger.warning(f"Failed to parse RDS file: {e}")

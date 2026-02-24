@@ -1249,14 +1249,14 @@ AVAILABLE_AGENT_PACKAGES = [
     ),
     (
         "lobster-genomics",
-        "Genomics/DNA analysis (VCF, GWAS)",
-        ["genomics_expert"],
+        "Genomics/DNA analysis (VCF, GWAS, clinical variants)",
+        ["genomics_expert", "variant_analysis_expert"],
         True,
     ),
     (
         "lobster-proteomics",
-        "Mass spec proteomics analysis",
-        ["proteomics_expert"],
+        "Mass spec & affinity proteomics analysis",
+        ["proteomics_expert", "proteomics_de_analysis_expert", "biomarker_discovery_expert"],
         True,
     ),
     (
@@ -7745,9 +7745,9 @@ def query(
         help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration.",
     ),
     stream: bool = typer.Option(
-        True,
+        False,
         "--stream/--no-stream",
-        help="Enable real-time text streaming (default: on)",
+        help="Enable real-time text streaming (default: off for query mode)",
     ),
     json_output: bool = typer.Option(
         False,

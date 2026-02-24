@@ -498,8 +498,9 @@ class TestSpectronautParserIntegration:
     def test_auto_detection_spectronaut_file(self):
         """Test auto-detection correctly identifies Spectronaut files."""
         file_path = FIXTURES_DIR / "spectronaut_long_format.tsv"
-        parser = get_parser_for_file(str(file_path))
+        parser, classification = get_parser_for_file(str(file_path))
         assert isinstance(parser, SpectronautParser)
+        assert classification.format == "spectronaut"
 
     def test_column_mapping(self):
         """Test column mapping is comprehensive."""

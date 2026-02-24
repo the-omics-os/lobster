@@ -132,9 +132,9 @@ class DownloadOrchestrator:
             )
 
             self.register_service(GEODownloadService(self.data_manager))
-            logger.info("Auto-registered GEODownloadService")
+            logger.debug("Auto-registered GEODownloadService")
         except ImportError as e:
-            logger.warning(f"GEODownloadService not available: {e}")
+            logger.debug(f"GEODownloadService not available: {e}")
 
         # Try to register SRA service
         try:
@@ -143,9 +143,9 @@ class DownloadOrchestrator:
             )
 
             self.register_service(SRADownloadService(self.data_manager))
-            logger.info("Auto-registered SRADownloadService")
+            logger.debug("Auto-registered SRADownloadService")
         except ImportError as e:
-            logger.warning(f"SRADownloadService not available: {e}")
+            logger.debug(f"SRADownloadService not available: {e}")
 
         # Try to register PRIDE service
         try:
@@ -154,9 +154,9 @@ class DownloadOrchestrator:
             )
 
             self.register_service(PRIDEDownloadService(self.data_manager))
-            logger.info("Auto-registered PRIDEDownloadService")
+            logger.debug("Auto-registered PRIDEDownloadService")
         except ImportError as e:
-            logger.warning(f"PRIDEDownloadService not available: {e}")
+            logger.debug(f"PRIDEDownloadService not available: {e}")
 
         # Try to register MassIVE service
         try:
@@ -165,9 +165,9 @@ class DownloadOrchestrator:
             )
 
             self.register_service(MassIVEDownloadService(self.data_manager))
-            logger.info("Auto-registered MassIVEDownloadService")
+            logger.debug("Auto-registered MassIVEDownloadService")
         except ImportError as e:
-            logger.warning(f"MassIVEDownloadService not available: {e}")
+            logger.debug(f"MassIVEDownloadService not available: {e}")
 
     def register_service(self, service: IDownloadService) -> None:
         """

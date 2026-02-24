@@ -85,6 +85,138 @@ def create_shared_tools(
             return get_platform_config("mass_spec")
 
     # -------------------------
+    # GENERIC MATRIX IMPORT HELPER (used by import_proteomics_data and import_affinity_data)
+    # -------------------------
+    def _import_generic_matrix(
+        file_path: str,
+        classification,
+        sample_metadata_path: str = None,
+        modality_name: str = "",
+        save_result: bool = True,
+        tool_name: str = "import_proteomics_data",
+        modality_prefix: str = "proteomics",
+    ) -> str:
+        """Import a generic CSV/TSV expression matrix via ProteomicsAdapter.
+
+        Uses the FileClassification's orientation info to auto-transpose if needed.
+        """
+        try:
+            from lobster.core.adapters.proteomics_adapter import ProteomicsAdapter
+
+            adapter = ProteomicsAdapter(data_type="mass_spectrometry")
+            adata = adapter._load_csv_proteomics_data(
+                path=file_path,
+                orientation=classification.orientation,
+                sample_metadata_path=sample_metadata_path,
+            )
+
+            # Generate modality name
+            name = modality_name or f"{modality_prefix}_generic_{Path(file_path).stem}"
+
+            # Tag as generic import in uns
+            adata.uns["import_method"] = "generic_matrix"
+            adata.uns["file_classification"] = {
+                "format": classification.format,
+                "orientation": classification.orientation,
+                "n_rows": classification.n_rows,
+                "n_cols": classification.n_cols,
+                "confidence": classification.confidence,
+            }
+
+            data_manager.store_modality(
+                name=name,
+                adata=adata,
+                step_summary=f"Imported generic expression matrix: {adata.n_obs} samples x {adata.n_vars} proteins",
+            )
+
+            if save_result:
+                data_manager.save_modality(name, f"{name}.h5ad")
+
+            ir = AnalysisStep(
+                operation="proteomics.import.generic_matrix",
+                tool_name=tool_name,
+                description=f"Imported generic expression matrix from {Path(file_path).name}",
+                library="lobster.core.adapters.proteomics_adapter",
+                code_template="""# Import generic proteomics expression matrix
+import pandas as pd
+import anndata as ad
+
+df = pd.read_csv({{ file_path | tojson }}, index_col=0)
+{% if transpose %}df = df.T{% endif %}
+adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
+                    obs=pd.DataFrame(index=df.index),
+                    var=pd.DataFrame(index=df.columns))""",
+                imports=["import pandas as pd", "import anndata as ad"],
+                parameters={
+                    "file_path": file_path,
+                    "orientation": classification.orientation,
+                    "transpose": classification.orientation == "features_as_rows",
+                },
+                parameter_schema={
+                    "file_path": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=True,
+                        default_value="",
+                        required=True,
+                        description="Path to proteomics expression matrix file",
+                    ),
+                    "orientation": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=False,
+                        default_value="features_as_rows",
+                        required=False,
+                        description="Matrix orientation: features_as_rows or samples_as_rows",
+                    ),
+                    "transpose": ParameterSpec(
+                        param_type="bool",
+                        papermill_injectable=False,
+                        default_value=True,
+                        required=False,
+                        description="Whether to transpose the matrix",
+                    ),
+                },
+            )
+
+            data_manager.log_tool_usage(
+                tool_name=tool_name,
+                parameters={
+                    "file_path": file_path,
+                    "format": "generic_matrix",
+                    "orientation": classification.orientation,
+                },
+                description=f"Imported generic expression matrix from {Path(file_path).name}",
+                ir=ir,
+            )
+
+            X = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
+            missing_pct = np.isnan(X).sum() / X.size * 100 if X.size > 0 else 0
+
+            response = f"Successfully imported generic expression matrix from '{Path(file_path).name}'!\n\n"
+            response += f"**Format:** Generic CSV/TSV matrix\n"
+            response += f"**Orientation:** {classification.orientation} (auto-detected)\n"
+            response += f"**Samples:** {adata.n_obs}\n"
+            response += f"**Proteins/Features:** {adata.n_vars}\n"
+            response += f"**Missing values:** {missing_pct:.1f}%\n"
+
+            if sample_metadata_path:
+                response += f"**Metadata:** merged from {Path(sample_metadata_path).name}\n"
+
+            response += (
+                f"\n**Modality created:** '{name}'\n"
+                "**Note:** Imported as generic expression matrix. Platform-specific QC features "
+                "(contaminant filtering, peptide mapping) are not available for this format."
+            )
+
+            if save_result:
+                response += f"\n**Saved to:** {name}.h5ad"
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error importing generic matrix: {e}")
+            return f"Error importing generic expression matrix: {str(e)}"
+
+    # -------------------------
     # STATUS TOOL
     # -------------------------
     @tool
@@ -1103,20 +1235,23 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
         intensity_type: str = "auto",
         filter_contaminants: bool = True,
         filter_reverse: bool = True,
+        sample_metadata_path: str = "",
         modality_name: str = "",
         save_result: bool = True,
     ) -> str:
-        """Import MS proteomics data from search engine output files (MaxQuant, DIA-NN, Spectronaut).
+        """Import MS proteomics data from search engine outputs or generic expression matrices.
 
-        Auto-detects the file format and uses the appropriate parser. Peptide mapping
-        (counts, unique peptides, sequence coverage) is extracted automatically during import.
+        Auto-detects the file format (MaxQuant, DIA-NN, Spectronaut) and uses the
+        appropriate parser. Also handles generic CSV/TSV expression matrices (e.g.,
+        preprocessed data from GEO) with automatic orientation detection.
 
         Args:
-            file_path: Path to the proteomics output file (e.g., proteinGroups.txt, report.tsv)
+            file_path: Path to the proteomics output file (e.g., proteinGroups.txt, report.tsv, expression.csv)
             software: Parser to use ("auto", "maxquant", "diann", "spectronaut")
             intensity_type: Intensity column type ("auto", "lfq", "intensity", "maxlfq")
             filter_contaminants: Remove known contaminant proteins (default True)
             filter_reverse: Remove reverse database hits (default True)
+            sample_metadata_path: Optional path to CSV with sample metadata to merge (for generic matrix import)
             modality_name: Name for the imported modality (auto-generated if empty)
             save_result: Whether to save the modality to disk
 
@@ -1131,14 +1266,35 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 get_parser_for_file,
             )
 
+            file_p = Path(file_path)
+            if not file_p.exists():
+                return f"File not found: {file_path}"
+
             parser = None
+            classification = None
+
             if software == "auto":
-                parser = get_parser_for_file(file_path)
+                parser, classification = get_parser_for_file(file_path)
+
+                # If no vendor parser but classified as generic matrix, use adapter path
+                if parser is None and classification.format == "generic_matrix":
+                    return _import_generic_matrix(
+                        file_path=file_path,
+                        classification=classification,
+                        sample_metadata_path=sample_metadata_path or None,
+                        modality_name=modality_name,
+                        save_result=save_result,
+                        tool_name="import_proteomics_data",
+                        modality_prefix="proteomics",
+                    )
+
                 if parser is None:
+                    diag = classification.diagnostics if classification else ""
                     return (
-                        f"No parser found for '{Path(file_path).name}'. "
-                        "Supported formats: MaxQuant proteinGroups.txt, DIA-NN report.tsv, "
-                        "Spectronaut report. Specify software='maxquant'/'diann'/'spectronaut' to force."
+                        f"Could not identify format for '{file_p.name}'. {diag}\n\n"
+                        "Supported vendor formats: MaxQuant proteinGroups.txt, DIA-NN report.tsv, "
+                        "Spectronaut report. Generic CSV/TSV expression matrices are also supported.\n"
+                        "Specify software='maxquant'/'diann'/'spectronaut' to force a specific parser."
                     )
             else:
                 parser_map = {
@@ -1182,7 +1338,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                     library="lobster.services.data_access.proteomics_parsers",
                     code_template="""# Import proteomics data
 from lobster.services.data_access.proteomics_parsers import get_parser_for_file
-parser = get_parser_for_file({{ file_path | tojson }})
+parser, classification = get_parser_for_file({{ file_path | tojson }})
 adata, stats = parser.parse({{ file_path | tojson }})""",
                     imports=[
                         "from lobster.services.data_access.proteomics_parsers import get_parser_for_file"
@@ -1200,7 +1356,7 @@ adata, stats = parser.parse({{ file_path | tojson }})""",
                     library="lobster.services.data_access.proteomics_parsers",
                     code_template="""# Import proteomics data
 from lobster.services.data_access.proteomics_parsers import get_parser_for_file
-parser = get_parser_for_file({{ file_path | tojson }})
+parser, classification = get_parser_for_file({{ file_path | tojson }})
 adata = parser.parse({{ file_path | tojson }})""",
                     imports=[
                         "from lobster.services.data_access.proteomics_parsers import get_parser_for_file"
@@ -1628,6 +1784,7 @@ adata = parser.parse({{ file_path | tojson }})""",
         """Import affinity proteomics data (Olink NPX, SomaScan ADAT, Luminex MFI).
 
         Auto-detects platform from file extension and content, or uses specified platform.
+        Also handles generic CSV/TSV expression matrices with automatic orientation detection.
         Optionally merges external sample metadata from a CSV file.
 
         Args:
@@ -1643,9 +1800,10 @@ adata = parser.parse({{ file_path | tojson }})""",
         try:
             import pandas as pd
 
-            from lobster.services.data_access.luminex_parser import LuminexParser
-            from lobster.services.data_access.olink_parser import OlinkParser
-            from lobster.services.data_access.somascan_parser import SomaScanParser
+            from lobster.services.data_access.proteomics_parsers import (
+                FileClassifier,
+                get_parser_for_file,
+            )
 
             file_p = Path(file_path)
             if not file_p.exists():
@@ -1655,38 +1813,67 @@ adata = parser.parse({{ file_path | tojson }})""",
             detected_platform = platform
 
             if platform == "auto":
-                # Auto-detect based on file extension and content
-                ext = file_p.suffix.lower()
-                if ext == ".adat":
+                # Use FileClassifier for initial classification
+                classification = FileClassifier.classify(file_path)
+
+                # Extension-based shortcuts for native formats
+                if classification.format == "somascan_adat":
+                    from lobster.services.data_access.somascan_parser import SomaScanParser
                     parser = SomaScanParser()
                     detected_platform = "somascan"
-                elif ext == ".npx":
+                elif classification.format == "olink_npx":
+                    from lobster.services.data_access.olink_parser import OlinkParser
                     parser = OlinkParser()
                     detected_platform = "olink"
+                elif classification.format == "luminex":
+                    from lobster.services.data_access.luminex_parser import LuminexParser
+                    parser = LuminexParser()
+                    detected_platform = "luminex"
+                elif classification.format == "generic_matrix":
+                    # Generic expression matrix — use adapter path
+                    return _import_generic_matrix(
+                        file_path=file_path,
+                        classification=classification,
+                        sample_metadata_path=sample_metadata_path or None,
+                        modality_name=modality_name,
+                        save_result=save_result,
+                        tool_name="import_affinity_data",
+                        modality_prefix="affinity",
+                    )
                 else:
-                    # Check file content for platform indicators
-                    olink_parser = OlinkParser()
-                    somascan_parser = SomaScanParser()
-                    luminex_parser = LuminexParser()
+                    # Try vendor parser validation as fallback
+                    from lobster.services.data_access.luminex_parser import LuminexParser
+                    from lobster.services.data_access.olink_parser import OlinkParser
+                    from lobster.services.data_access.somascan_parser import SomaScanParser
 
-                    if olink_parser.validate_file(file_path):
-                        parser = olink_parser
-                        detected_platform = "olink"
-                    elif somascan_parser.validate_file(file_path):
-                        parser = somascan_parser
-                        detected_platform = "somascan"
-                    elif luminex_parser.validate_file(file_path):
-                        parser = luminex_parser
-                        detected_platform = "luminex"
+                    for parser_cls, pname in [
+                        (OlinkParser, "olink"),
+                        (SomaScanParser, "somascan"),
+                        (LuminexParser, "luminex"),
+                    ]:
+                        try:
+                            p = parser_cls()
+                            if p.validate_file(file_path):
+                                parser = p
+                                detected_platform = pname
+                                break
+                        except Exception:
+                            continue
 
                 if parser is None:
+                    diag = classification.diagnostics if classification else ""
                     return (
-                        f"Could not auto-detect affinity platform for '{file_p.name}'. "
+                        f"Could not auto-detect affinity platform for '{file_p.name}'. {diag}\n\n"
                         "Supported: Olink (.npx, .csv with NPX columns), "
-                        "SomaScan (.adat), Luminex (.csv/.xlsx with MFI columns). "
+                        "SomaScan (.adat), Luminex (.csv/.xlsx with MFI columns), "
+                        "or any generic CSV/TSV expression matrix.\n"
                         "Specify platform='olink'/'somascan'/'luminex' to force."
                     )
             else:
+                from lobster.services.data_access.luminex_parser import LuminexParser
+                from lobster.services.data_access.olink_parser import OlinkParser
+                from lobster.services.data_access.somascan_parser import SomaScanParser
+
                 parser_map = {
                     "olink": OlinkParser,
                     "somascan": SomaScanParser,

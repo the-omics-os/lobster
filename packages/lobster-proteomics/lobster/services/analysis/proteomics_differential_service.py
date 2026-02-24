@@ -682,6 +682,12 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
         for group1, group2 in comparison_pairs:
             logger.info(f"Analyzing comparison: {group1} vs {group2}")
 
+            # Coerce comparison values to match the group column dtype
+            # (handles string "33" vs int 33 mismatch from JSON tool calls)
+            unique_groups = set(groups.unique())
+            group1 = self._coerce_group_value(group1, unique_groups)
+            group2 = self._coerce_group_value(group2, unique_groups)
+
             # Get group data
             group1_mask = groups == group1
             group2_mask = groups == group2
@@ -709,6 +715,25 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             all_results = self._apply_fdr_correction(all_results, fdr_method)
 
         return all_results
+
+    @staticmethod
+    def _coerce_group_value(val, unique_groups: set):
+        """Coerce a comparison value to match the dtype of the group column."""
+        if val in unique_groups:
+            return val
+        # Try converting to the type of existing group values
+        for existing in unique_groups:
+            try:
+                coerced = type(existing)(val)
+                if coerced in unique_groups:
+                    return coerced
+            except (ValueError, TypeError):
+                continue
+        # Try string representation match
+        str_map = {str(g): g for g in unique_groups}
+        if str(val) in str_map:
+            return str_map[str(val)]
+        return val
 
     def _test_proteins_pairwise(
         self,
@@ -832,6 +857,9 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             elif method == "limma_like":
                 # Simplified limma-like approach using moderated t-test
                 statistic, p_value = self._moderated_t_test(group1, group2)
+            elif method in ("anova", "one_way_anova", "kruskal"):
+                # For pairwise comparisons, ANOVA/Kruskal reduce to t-test/Mann-Whitney
+                statistic, p_value = stats.ttest_ind(group1, group2)
             else:
                 logger.warning(f"Unknown test method: {method}, falling back to t-test")
                 statistic, p_value = stats.ttest_ind(group1, group2)

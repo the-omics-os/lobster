@@ -307,14 +307,24 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-sonnet",
             # Genomics (lobster-genomics)
             "genomics_expert": "claude-4-sonnet",
+            "variant_analysis_expert": "claude-4-sonnet",
+            # Metabolomics (lobster-metabolomics)
+            "metabolomics_expert": "claude-4-sonnet",
             # Proteomics (lobster-proteomics)
             "proteomics_expert": "claude-4-sonnet",
+            "proteomics_de_analysis_expert": "claude-4-sonnet",
+            "biomarker_discovery_expert": "claude-4-sonnet",
             # ML (lobster-ml)
             "machine_learning_expert": "claude-4-sonnet",
             "feature_selection_expert": "claude-4-sonnet",
             "survival_analysis_expert": "claude-4-sonnet",
             # Structural viz (lobster-structural-viz)
             "protein_structure_visualization_expert": "claude-4-sonnet",
+            # Drug discovery (lobster-drug-discovery)
+            "drug_discovery_expert": "claude-4-sonnet",
+            "cheminformatics_expert": "claude-4-sonnet",
+            "clinical_dev_expert": "claude-4-sonnet",
+            "pharmacogenomics_expert": "claude-4-sonnet",
             "thinking": {},  # No thinking in development mode for faster testing
         },
         "production": {
@@ -334,14 +344,24 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-sonnet",
             # Genomics
             "genomics_expert": "claude-4-sonnet",
+            "variant_analysis_expert": "claude-4-sonnet",
+            # Metabolomics
+            "metabolomics_expert": "claude-4-sonnet",
             # Proteomics
             "proteomics_expert": "claude-4-sonnet",
+            "proteomics_de_analysis_expert": "claude-4-sonnet",
+            "biomarker_discovery_expert": "claude-4-sonnet",
             # ML
             "machine_learning_expert": "claude-4-sonnet",
             "feature_selection_expert": "claude-4-sonnet",
             "survival_analysis_expert": "claude-4-sonnet",
             # Structural viz
             "protein_structure_visualization_expert": "claude-4-sonnet",
+            # Drug discovery (lobster-drug-discovery)
+            "drug_discovery_expert": "claude-4-sonnet",
+            "cheminformatics_expert": "claude-4-sonnet",
+            "clinical_dev_expert": "claude-4-sonnet",
+            "pharmacogenomics_expert": "claude-4-sonnet",
             "thinking": {},  # No thinking configured for production
         },
         "performance": {
@@ -361,14 +381,24 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-5-sonnet",
             # Genomics
             "genomics_expert": "claude-4-5-sonnet",
+            "variant_analysis_expert": "claude-4-5-sonnet",
+            # Metabolomics
+            "metabolomics_expert": "claude-4-5-sonnet",
             # Proteomics
             "proteomics_expert": "claude-4-5-sonnet",
+            "proteomics_de_analysis_expert": "claude-4-5-sonnet",
+            "biomarker_discovery_expert": "claude-4-5-sonnet",
             # ML
             "machine_learning_expert": "claude-4-5-sonnet",
             "feature_selection_expert": "claude-4-5-sonnet",
             "survival_analysis_expert": "claude-4-5-sonnet",
             # Structural viz
             "protein_structure_visualization_expert": "claude-4-5-sonnet",
+            # Drug discovery (lobster-drug-discovery)
+            "drug_discovery_expert": "claude-4-5-sonnet",
+            "cheminformatics_expert": "claude-4-5-sonnet",
+            "clinical_dev_expert": "claude-4-5-sonnet",
+            "pharmacogenomics_expert": "claude-4-5-sonnet",
             "thinking": {},  # No thinking configured for performance
         },
         "max": {
@@ -388,14 +418,24 @@ class LobsterAgentConfigurator:
             "metadata_assistant": "claude-4-5-sonnet",
             # Genomics
             "genomics_expert": "claude-4-5-sonnet",
+            "variant_analysis_expert": "claude-4-5-sonnet",
+            # Metabolomics
+            "metabolomics_expert": "claude-4-5-sonnet",
             # Proteomics
             "proteomics_expert": "claude-4-5-sonnet",
+            "proteomics_de_analysis_expert": "claude-4-5-sonnet",
+            "biomarker_discovery_expert": "claude-4-5-sonnet",
             # ML
             "machine_learning_expert": "claude-4-5-sonnet",
             "feature_selection_expert": "claude-4-5-sonnet",
             "survival_analysis_expert": "claude-4-5-sonnet",
             # Structural viz
             "protein_structure_visualization_expert": "claude-4-5-sonnet",
+            # Drug discovery (lobster-drug-discovery)
+            "drug_discovery_expert": "claude-4-5-sonnet",
+            "cheminformatics_expert": "claude-4-5-sonnet",
+            "clinical_dev_expert": "claude-4-5-sonnet",
+            "pharmacogenomics_expert": "claude-4-5-sonnet",
             "thinking": {},  # No thinking configured for max
         },
     }

@@ -165,7 +165,7 @@ def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str)
                 including all relevant context. Should be in task format starting
                 with 'Your task is to ...'
         """
-        logger.debug(f"Invoking {agent_name} with task: {task_description[:100]}...")
+        logger.warning(f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ===")
 
         # Pass explicit agent name in config for proper callback attribution.
         # metadata propagates to all sub-calls and is passed to handle*Start
@@ -243,8 +243,8 @@ def _create_lazy_delegation_tool(
             )
             return f"Agent '{_name}' is not available. It may be excluded by configuration or subscription tier."
 
-        logger.debug(
-            f"[lazy delegation] Invoking {_name} with task: {task_description[:100]}..."
+        logger.info(
+            f"=== CHILD DELEGATION TO {_name} ===\n{task_description[:500]}\n=== END CHILD DELEGATION ==="
         )
 
         # Pass explicit agent name in config for proper callback attribution.
@@ -396,6 +396,20 @@ def create_bioinformatics_graph(
     # Filter to enabled agents
     if enabled_set:
         worker_agents = {n: c for n, c in all_agents.items() if n in enabled_set}
+        # Auto-include child agents for enabled parents
+        # When a parent is enabled, its children MUST also be in worker_agents
+        # otherwise delegation tools won't be created.
+        child_additions = {}
+        for agent_name, agent_config in list(worker_agents.items()):
+            if agent_config.child_agents:
+                for child_name in agent_config.child_agents:
+                    if child_name not in worker_agents and child_name in all_agents:
+                        child_additions[child_name] = all_agents[child_name]
+        if child_additions:
+            worker_agents.update(child_additions)
+            logger.info(
+                f"Auto-included child agents for enabled parents: {list(child_additions.keys())}"
+            )
         # Log agents requested but not available
         skipped = enabled_set - set(worker_agents.keys())
         if skipped:

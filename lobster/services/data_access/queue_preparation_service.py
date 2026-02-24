@@ -135,9 +135,9 @@ class QueuePreparationService:
             )
 
             self.register_preparer(GEOQueuePreparer(self.data_manager))
-            logger.info("Auto-registered GEOQueuePreparer")
+            logger.debug("Auto-registered GEOQueuePreparer")
         except ImportError as e:
-            logger.warning(f"GEOQueuePreparer not available: {e}")
+            logger.debug(f"GEOQueuePreparer not available: {e}")
 
         # PRIDE
         try:
@@ -146,9 +146,9 @@ class QueuePreparationService:
             )
 
             self.register_preparer(PRIDEQueuePreparer(self.data_manager))
-            logger.info("Auto-registered PRIDEQueuePreparer")
+            logger.debug("Auto-registered PRIDEQueuePreparer")
         except ImportError as e:
-            logger.warning(f"PRIDEQueuePreparer not available: {e}")
+            logger.debug(f"PRIDEQueuePreparer not available: {e}")
 
         # SRA
         try:
@@ -157,9 +157,9 @@ class QueuePreparationService:
             )
 
             self.register_preparer(SRAQueuePreparer(self.data_manager))
-            logger.info("Auto-registered SRAQueuePreparer")
+            logger.debug("Auto-registered SRAQueuePreparer")
         except ImportError as e:
-            logger.warning(f"SRAQueuePreparer not available: {e}")
+            logger.debug(f"SRAQueuePreparer not available: {e}")
 
         # MassIVE
         try:
@@ -168,9 +168,9 @@ class QueuePreparationService:
             )
 
             self.register_preparer(MassIVEQueuePreparer(self.data_manager))
-            logger.info("Auto-registered MassIVEQueuePreparer")
+            logger.debug("Auto-registered MassIVEQueuePreparer")
         except ImportError as e:
-            logger.warning(f"MassIVEQueuePreparer not available: {e}")
+            logger.debug(f"MassIVEQueuePreparer not available: {e}")
 
     def register_preparer(self, preparer: IQueuePreparer) -> None:
         """

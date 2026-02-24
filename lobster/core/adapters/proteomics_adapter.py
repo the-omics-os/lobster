@@ -149,34 +149,77 @@ class ProteomicsAdapter(BaseAdapter):
     def _load_csv_proteomics_data(
         self, path: Union[str, Path], **kwargs
     ) -> anndata.AnnData:
-        """Load proteomics data from CSV/TSV with proper handling."""
+        """Load proteomics data from CSV/TSV with proper handling.
+
+        Supports orientation auto-detection and optional sample metadata merge.
+
+        Additional kwargs:
+            transpose: Explicit transpose override (default: auto-detect)
+            orientation: Pre-detected orientation from FileClassifier
+                ("features_as_rows", "features_as_cols", or "unknown")
+            sample_metadata_path: Path to CSV with sample metadata to merge into obs
+            protein_id_col: Column name for protein identifiers
+            intensity_columns: Explicit list of intensity column names
+            missing_value_indicators: Values to treat as missing
+        """
         # Extract parameters
-        transpose = kwargs.get(
-            "transpose", False
-        )  # Samples as rows by default for proteomics
+        transpose = kwargs.get("transpose", None)  # None = auto-detect
+        orientation = kwargs.get("orientation", None)
+        sample_metadata_path = kwargs.get("sample_metadata_path", None)
         protein_id_col = kwargs.get("protein_id_col", None)
         intensity_columns = kwargs.get("intensity_columns", None)
         missing_value_indicators = kwargs.get(
             "missing_value_indicators", ["", "NA", "NaN", "NULL"]
         )
 
+        # Filter kwargs before passing to pandas
+        _csv_excluded = {
+            "transpose",
+            "orientation",
+            "sample_metadata_path",
+            "protein_id_col",
+            "intensity_columns",
+            "missing_value_indicators",
+            "dataset_id",
+            "dataset_type",
+            "validate",
+            "adapter",
+        }
+
         # Load the data
         df = self._load_csv_data(
             path,
             index_col=0 if protein_id_col is None else protein_id_col,
             na_values=missing_value_indicators,
-            **{
-                k: v
-                for k, v in kwargs.items()
-                if k
-                not in [
-                    "transpose",
-                    "protein_id_col",
-                    "intensity_columns",
-                    "missing_value_indicators",
-                ]
-            },
+            **{k: v for k, v in kwargs.items() if k not in _csv_excluded},
         )
+
+        # Auto-detect orientation if transpose not explicitly set
+        if transpose is None:
+            if orientation == "features_as_rows":
+                transpose = True
+                logger.info(
+                    f"Auto-detected features-as-rows orientation for {Path(path).name} "
+                    f"({df.shape[0]} rows x {df.shape[1]} cols) — will transpose."
+                )
+            elif orientation == "features_as_cols":
+                transpose = False
+            elif df.shape[0] > df.shape[1] * 3:
+                # Heuristic: way more rows than columns → features are likely rows
+                first_col_vals = df.index.astype(str)[:20]
+                looks_like_ids = sum(
+                    1 for v in first_col_vals if not v.replace(".", "").replace("-", "").isdigit()
+                )
+                if looks_like_ids > len(first_col_vals) * 0.5:
+                    transpose = True
+                    logger.info(
+                        f"Auto-detected features-as-rows for {Path(path).name} "
+                        f"({df.shape[0]} rows x {df.shape[1]} cols, row labels are identifiers) — will transpose."
+                    )
+                else:
+                    transpose = False
+            else:
+                transpose = False
 
         # Handle intensity columns selection
         if intensity_columns is not None:
@@ -184,6 +227,19 @@ class ProteomicsAdapter(BaseAdapter):
             metadata_cols = [col for col in df.columns if col not in intensity_columns]
             intensity_df = df[intensity_columns]
             metadata_df = df[metadata_cols] if metadata_cols else None
+        elif orientation in ("features_as_rows", "features_as_cols"):
+            # Generic matrix mode: treat all numeric columns as intensity data.
+            # Skip metadata separation since column names are feature/sample IDs,
+            # not vendor-specific metadata fields.
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols:
+                intensity_df = df[numeric_cols]
+                non_numeric = [c for c in df.columns if c not in numeric_cols]
+                metadata_df = df[non_numeric] if non_numeric else None
+            else:
+                # All columns are strings — try converting
+                intensity_df = df.apply(pd.to_numeric, errors="coerce")
+                metadata_df = None
         else:
             # Try to auto-detect intensity vs metadata columns
             intensity_df, metadata_df = self._separate_intensity_metadata_columns(df)
@@ -200,6 +256,43 @@ class ProteomicsAdapter(BaseAdapter):
         adata = self._create_anndata_from_dataframe(
             intensity_df, var_metadata=var_metadata, transpose=transpose
         )
+
+        # Merge external sample metadata if provided
+        if sample_metadata_path:
+            adata = self._merge_sample_metadata(adata, sample_metadata_path)
+
+        return adata
+
+    def _merge_sample_metadata(
+        self, adata: anndata.AnnData, metadata_path: Union[str, Path]
+    ) -> anndata.AnnData:
+        """Merge external sample metadata CSV into adata.obs."""
+        metadata_path = Path(metadata_path)
+        if not metadata_path.exists():
+            logger.warning(f"Sample metadata file not found: {metadata_path}")
+            return adata
+
+        try:
+            meta_df = pd.read_csv(metadata_path, index_col=0)
+            common_samples = adata.obs.index.intersection(meta_df.index)
+
+            if len(common_samples) == 0:
+                logger.warning(
+                    f"No matching sample IDs between data ({adata.n_obs} samples) "
+                    f"and metadata ({len(meta_df)} rows). Check that index columns match."
+                )
+                return adata
+
+            for col in meta_df.columns:
+                if col not in adata.obs.columns:
+                    adata.obs[col] = meta_df.reindex(adata.obs.index)[col]
+
+            logger.info(
+                f"Merged {len(meta_df.columns)} metadata columns for "
+                f"{len(common_samples)}/{adata.n_obs} samples from {metadata_path.name}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to merge sample metadata from {metadata_path}: {e}")
 
         return adata
 
@@ -611,13 +704,20 @@ class ProteomicsAdapter(BaseAdapter):
 
         # Contaminant and reverse metrics
         if "is_contaminant" in adata.var.columns:
-            metrics["contaminant_proteins"] = int((adata.var["is_contaminant"]).sum())
+            try:
+                contaminant_sum = int(adata.var["is_contaminant"].astype(bool).sum())
+            except (TypeError, ValueError):
+                contaminant_sum = 0
+            metrics["contaminant_proteins"] = contaminant_sum
             metrics["contaminant_percentage"] = float(
-                ((adata.var["is_contaminant"]).sum() / len(adata.var)) * 100
+                (contaminant_sum / len(adata.var)) * 100
             )
 
         if "is_reverse" in adata.var.columns:
-            metrics["reverse_hits"] = int((adata.var["is_reverse"]).sum())
+            try:
+                metrics["reverse_hits"] = int(adata.var["is_reverse"].astype(bool).sum())
+            except (TypeError, ValueError):
+                metrics["reverse_hits"] = 0
 
         return metrics
 
