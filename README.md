@@ -13,7 +13,7 @@
 
 ## What is Lobster AI?
 
-Lobster AI is an open-source multi-agent platform for bioinformatics. Describe your analysis in natural language — Lobster routes it to specialized AI agents that handle single-cell RNA-seq, bulk RNA-seq, proteomics, genomics, literature mining, and machine learning. Results are reproducible (W3C-PROV), exportable as Jupyter notebooks, and backed by the same open-source tools researchers already trust (Scanpy, PyDESeq2, AnnData).
+Lobster AI is an open-source multi-agent platform for bioinformatics. Describe your analysis in natural language — Lobster routes it to 18 specialized AI agents across 9 packages that handle single-cell RNA-seq, bulk RNA-seq, proteomics (mass spec + affinity), genomics (GWAS + clinical), metabolomics (LC-MS/GC-MS/NMR), literature mining, and machine learning. Results are reproducible (W3C-PROV), exportable as Jupyter notebooks, and backed by the same open-source tools researchers already trust (Scanpy, PyDESeq2, AnnData).
 
 Built for bioinformaticians, computational biologists, and research teams who need intelligent workflows without writing code.
 
@@ -53,15 +53,16 @@ Lobster AI uses a modular architecture. Install exactly the agents you need.
 
 | Package | Agents | Status |
 |---------|--------|--------|
-| **lobster-ai** | Supervisor, Core infrastructure | Beta |
-| **lobster-transcriptomics** | Transcriptomics, Annotation, DE Analysis | Beta |
-| **lobster-research** | Research, Data Expert | Beta |
-| **lobster-visualization** | Visualization Expert | Beta |
-| **lobster-metadata** | Metadata Assistant | Beta |
+| **lobster-ai** | Supervisor, Core infrastructure | Stable |
+| **lobster-transcriptomics** | Transcriptomics Expert (SC + bulk), Annotation Expert, DE Analysis Expert | Stable |
+| **lobster-research** | Research Agent, Data Expert | Stable |
+| **lobster-visualization** | Visualization Expert | Stable |
+| **lobster-metadata** | Metadata Assistant | Stable |
 | **lobster-structural-viz** | Protein Structure Visualization | Beta |
-| **lobster-genomics** | Genomics Expert | Alpha |
-| **lobster-proteomics** | Proteomics Expert | Alpha |
-| **lobster-ml** | ML, Feature Selection, Survival Analysis | Alpha |
+| **lobster-genomics** | Genomics Expert, Variant Analysis Expert | Beta |
+| **lobster-proteomics** | Proteomics Expert, DE Analysis Expert, Biomarker Discovery Expert | Beta |
+| **lobster-metabolomics** | Metabolomics Expert | Beta |
+| **lobster-ml** | ML Expert, Feature Selection Expert, Survival Analysis Expert | Beta |
 
 **Add individual agents** (uv tool installs):
 ```bash
@@ -118,22 +119,35 @@ Configure via `lobster init` or set environment variables manually.
 
 ## Features
 
-**Multi-Omics Analysis**
-- Single-cell RNA-seq (QC, clustering, cell type annotation, trajectory)
-- Bulk RNA-seq (Kallisto/Salmon import, DE with PyDESeq2)
-- Proteomics (DDA/DIA, missing values, normalization)
-- Genomics (VCF/PLINK, GWAS, PCA, variant annotation)
-- Multi-omics integration (MOFA, pathway enrichment)
+**Transcriptomics**
+- Single-cell RNA-seq: QC, doublet detection (Scrublet), batch integration (Harmony/scVI), clustering, cell type annotation, trajectory inference (DPT/PAGA)
+- Bulk RNA-seq: Salmon/kallisto/featureCounts import, sample QC, batch detection, normalization (DESeq2/VST/CPM), DE with PyDESeq2, GSEA, publication-ready export
+
+**Genomics**
+- GWAS pipeline: VCF/PLINK import, LD pruning, kinship, association testing, result clumping
+- Clinical genomics: variant annotation (VEP), gnomAD frequencies, ClinVar pathogenicity, variant prioritization
+
+**Proteomics**
+- Mass spec: MaxQuant/DIA-NN/Spectronaut import, PTM analysis (phospho/acetyl/ubiquitin), peptide-to-protein rollup, batch correction
+- Affinity: Olink NPX/SomaScan ADAT/Luminex MFI import, LOD quality assessment, bridge normalization, cross-platform concordance
+- Downstream: pathway enrichment (GO/Reactome/KEGG), kinase enrichment (KSEA), STRING PPI networks, biomarker panel selection with nested CV
+
+**Metabolomics**
+- LC-MS, GC-MS, NMR platform support with auto-detection
+- QC (RSD, TIC), filtering, imputation, normalization (PQN/TIC/IS)
+- Multivariate analysis: PCA, PLS-DA, OPLS-DA
+- Metabolite annotation via m/z matching (HMDB/KEGG), lipid class analysis
 
 **Machine Learning**
 - Feature selection (stability selection, LASSO, variance filter)
 - Survival analysis (Cox models, Kaplan-Meier, risk stratification)
 - Cross-validation (stratified k-fold, nested CV)
 - Interpretability (SHAP, feature importance)
+- Multi-omics integration (MOFA)
 
 **Research & Metadata**
 - Literature discovery (PubMed, PMC, GEO)
-- Dataset downloads (GEO, SRA, PRIDE)
+- Dataset downloads (GEO, SRA, PRIDE, MetaboLights)
 - Metadata harmonization and validation
 - Sample grouping and filtering
 
