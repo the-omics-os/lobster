@@ -154,16 +154,7 @@ proteomics = [
     "lobster-research~=1.0.0",
     "lobster-visualization~=1.0.0",
 ]
-machine-learning = [
-    "lobster-ml[full]~=1.0.0",
-    "lobster-ai[transcriptomics]",
-]
 research = [
-    "lobster-research~=1.0.0",
-    "lobster-visualization~=1.0.0",
-]
-drug-discovery = [
-    "lobster-drug-discovery~=1.0.0",
     "lobster-research~=1.0.0",
     "lobster-visualization~=1.0.0",
 ]
@@ -191,7 +182,7 @@ azure = [
 recommended = ["lobster-ai[anthropic,transcriptomics,tui,extended-data]"]
 # Everything except docling and plink (which have platform constraints)
 full = [
-    "lobster-ai[transcriptomics,genomics,proteomics,machine-learning]",
+    "lobster-ai[transcriptomics,genomics,proteomics]",
     "lobster-ai[all-providers,tui,extended-data,hdf5,docling,vector-search]",
 ]
 
@@ -314,11 +305,7 @@ lobster-research = { workspace = true }
 lobster-visualization = { workspace = true }
 lobster-genomics = { workspace = true }
 lobster-proteomics = { workspace = true }
-# Private packages (still in workspace for local dev)
 lobster-metadata = { workspace = true }
-lobster-structural-viz = { workspace = true }
-lobster-ml = { workspace = true }
-lobster-drug-discovery = { workspace = true }
 
 [tool.setuptools.packages.find]
 # Core lobster-ai package discovery with extracted agent exclusions

@@ -1259,22 +1259,6 @@ AVAILABLE_AGENT_PACKAGES = [
         ["proteomics_expert", "proteomics_de_analysis_expert", "biomarker_discovery_expert"],
         True,
     ),
-    (
-        "lobster-ml",
-        "Machine learning & feature selection",
-        [
-            "machine_learning_expert",
-            "feature_selection_expert",
-            "survival_analysis_expert",
-        ],
-        False,
-    ),
-    (
-        "lobster-structural-viz",
-        "Protein structure visualization",
-        ["protein_structure_visualization_expert"],
-        False,
-    ),
 ]
 
 
@@ -1531,10 +1515,8 @@ def _check_and_prompt_install_packages(
         "proteomics_expert": "lobster-proteomics",
         "genomics_expert": "lobster-genomics",
         "visualization_expert_agent": "lobster-visualization",
-        "machine_learning_expert_agent": "lobster-ml",
         "research_agent": "lobster-research",
         "metadata_assistant": "lobster-metadata",
-        "protein_structure_visualization_expert": "lobster-structural-viz",
     }
 
     for agent in missing:
@@ -4578,10 +4560,8 @@ def _uv_tool_env_handoff(
         "proteomics_expert": "lobster-proteomics",
         "genomics_expert": "lobster-genomics",
         "visualization_expert_agent": "lobster-visualization",
-        "machine_learning_expert_agent": "lobster-ml",
         "research_agent": "lobster-research",
         "metadata_assistant": "lobster-metadata",
-        "protein_structure_visualization_expert": "lobster-structural-viz",
     }
 
     # Only include packages that are published on public PyPI

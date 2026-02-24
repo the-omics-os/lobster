@@ -90,7 +90,7 @@ make test                     # Run all tests
 make format                   # black + isort
 
 # Setup (end-user testing via uv tool)
-uv tool install 'lobster-ai[full,anthropic]'   # Install as users see it
+uv tool install 'lobster-ai[full,<provider tag>]'   # Install as users see it
 uv tool upgrade lobster-ai                      # Upgrade to latest
 
 # Running
