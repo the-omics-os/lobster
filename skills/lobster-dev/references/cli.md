@@ -57,14 +57,37 @@ Options:
 
 ### `lobster init`
 
-Initialize a new workspace.
+Interactive setup wizard for LLM provider, API keys, agent selection, and optional packages.
 
 ```bash
-lobster init [OPTIONS] [PATH]
+lobster init [OPTIONS]
 
 Options:
-  --template TEMPLATE     Workspace template
+  --global, -g              Save config globally (~/.config/lobster/) for all projects
+  --force, -f               Overwrite existing configuration
+  --non-interactive         Non-interactive mode (for CI/CD and coding agents)
+  --anthropic-key KEY       Claude API key (non-interactive)
+  --gemini-key KEY          Google Gemini API key (non-interactive)
+  --openai-key KEY          OpenAI API key (non-interactive)
+  --bedrock-access-key KEY  AWS Bedrock access key (non-interactive)
+  --bedrock-secret-key KEY  AWS Bedrock secret key (non-interactive)
+  --use-ollama              Use Ollama local LLM (non-interactive)
+  --ollama-model MODEL      Ollama model name (default: llama3:8b-instruct)
+  --profile PROFILE         Agent profile: development, production, performance, max
+  --ncbi-key KEY            NCBI API key (optional)
+  --cloud-key KEY           Omics-OS Cloud API key (optional)
+  --agents LIST             Comma-separated agent names to enable
+  --preset NAME             Agent preset: scrna-basic, scrna-full, multiomics-full
+  --auto-agents             LLM-powered agent suggestion (requires --agents-description)
+  --skip-docling            Skip docling install prompt
+  --install-docling         Install docling for PDF intelligence
+  --skip-extras             Skip all optional package prompts
+  --skip-ssl-test           Skip SSL connectivity test
 ```
+
+**NOTE:** The default (interactive) mode is a terminal wizard that requires user keyboard
+input. Coding agents should use `--non-interactive` with the appropriate provider flags,
+or ask the user to run `lobster init` in a separate terminal.
 
 ### `lobster config`
 
@@ -91,32 +114,27 @@ lobster agents disable AGENT  # Disable agent
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LOBSTER_WORKSPACE` | Default workspace path | `./workspace` |
-| `LOBSTER_MODEL` | Default LLM model | `gpt-4-turbo` |
-| `LOBSTER_PROVIDER` | LLM provider | `openai` |
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) API key | — |
+| `GOOGLE_API_KEY` | Google Gemini API key | — |
 | `OPENAI_API_KEY` | OpenAI API key | — |
-| `ANTHROPIC_API_KEY` | Anthropic API key | — |
-| `AWS_PROFILE` | AWS profile for Bedrock | — |
+| `AWS_BEDROCK_ACCESS_KEY` | AWS Bedrock access key | — |
+| `AWS_BEDROCK_SECRET_ACCESS_KEY` | AWS Bedrock secret key | — |
+| `LOBSTER_PROFILE` | Agent profile (development/production/performance/max) | production |
+| `NCBI_API_KEY` | NCBI API key for PubMed/GEO | — |
+| `LOBSTER_CLOUD_KEY` | Omics-OS Cloud API key | — |
+| `LOBSTER_SSL_VERIFY` | Enable/disable SSL verification | true |
+| `LOBSTER_SSL_CERT_PATH` | Custom CA certificate bundle path | — |
 
-## Configuration File
+## Configuration Files
 
-Located at `~/.lobster/config.yaml` or `./lobster.yaml`:
+Created by `lobster init`:
 
-```yaml
-model:
-  provider: openai
-  name: gpt-4-turbo
-  
-workspace:
-  default_path: ./workspace
-  
-logging:
-  level: INFO
-  
-agents:
-  disabled:
-    - premium_agent_name
-```
+| Mode | Config | Credentials |
+|------|--------|-------------|
+| Workspace (default) | `.lobster_workspace/provider_config.json` | `.env` |
+| Global (`--global`) | `~/.config/lobster/providers.json` | `~/.config/lobster/credentials.env` (0600) |
+
+Agent selection stored in `.lobster_workspace/agents.json`.
 
 ## Session Management
 

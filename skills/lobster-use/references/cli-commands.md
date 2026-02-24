@@ -44,10 +44,20 @@ Or run `lobster init` to interactively select agents and generate the command.
 ### Configure / reconfigure
 
 ```bash
-lobster init                    # Workspace setup (interactive)
-lobster init --global           # Global defaults
+lobster init                    # Interactive wizard (user must run this themselves)
+lobster init --global           # Global defaults (~/.config/lobster/)
 lobster init --force            # Overwrite existing config
 ```
+
+**Non-interactive init (coding agents can run this):**
+```bash
+lobster init --non-interactive --anthropic-key "sk-ant-..." --profile production
+lobster init --non-interactive --gemini-key "AIza..."
+lobster init --non-interactive --openai-key "sk-..."
+lobster init --non-interactive --use-ollama
+```
+
+See SKILL.md "Initialization" section for full flag reference.
 
 ## Starting Lobster
 

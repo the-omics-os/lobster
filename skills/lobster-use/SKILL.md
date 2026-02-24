@@ -50,7 +50,7 @@ pip install lobster-ai[genomics]       # Genomics + research + visualization
 pip install lobster-ai[transcriptomics] # scRNA-seq + bulk RNA-seq
 ```
 
-After install, `lobster init` configures API keys and selects agent packages.
+After install, Lobster must be initialized before first use. See the next section.
 
 ### Upgrading
 - uv tool: `uv tool upgrade lobster-ai`
@@ -60,6 +60,98 @@ After install, `lobster init` configures API keys and selects agent packages.
 Users with uv tool installs add agents via:
 `uv tool install lobster-ai --with lobster-transcriptomics --with lobster-proteomics`
 Running `lobster init` will guide this process and generate the command.
+
+## Initialization (`lobster init`)
+
+**IMPORTANT FOR CODING AGENTS:** `lobster init` is an interactive terminal wizard. You CANNOT
+run it directly — it requires user keyboard input. You have two options:
+
+### Option A: Ask the user to run it themselves (recommended for first-time setup)
+
+Tell the user to open a separate terminal and run:
+```bash
+lobster init              # Workspace config (current directory)
+lobster init --global     # Global config (all projects)
+lobster init --force      # Overwrite existing config
+```
+
+The wizard walks them through:
+1. **Agent selection** — choose which agent packages to enable (presets available: `scrna-basic`, `scrna-full`, `multiomics-full`)
+2. **LLM provider** — Claude API, AWS Bedrock, Ollama (local), Google Gemini, Azure AI, or OpenAI
+3. **API key** — masked input for the chosen provider
+4. **Profile** (Anthropic/Bedrock only) — `development` (Sonnet 4), `production` (Sonnet 4 + 4.5 supervisor), `performance` (Sonnet 4.5), `max` (Opus 4.5)
+5. **NCBI API key** — optional, for faster PubMed/GEO access (supports multiple keys)
+6. **License/tier** — Free, activation code, or Cloud API key
+7. **Optional packages** — docling (PDF intelligence), vector search, TUI support
+8. **SSL connectivity test** — validates NCBI access
+
+### Option B: Non-interactive init (agent can run this directly)
+
+If you know the user's provider and API key, you can run init non-interactively.
+**Ask the user for their provider choice and API key first**, then run:
+
+```bash
+# Claude (Anthropic) — most common
+lobster init --non-interactive --anthropic-key "sk-ant-..." --profile production
+
+# Google Gemini
+lobster init --non-interactive --gemini-key "AIza..."
+
+# OpenAI
+lobster init --non-interactive --openai-key "sk-..."
+
+# AWS Bedrock
+lobster init --non-interactive --bedrock-access-key "AKIA..." --bedrock-secret-key "..."
+
+# Ollama (local, no API key needed)
+lobster init --non-interactive --use-ollama --ollama-model "llama3:8b-instruct"
+```
+
+**Additional non-interactive flags:**
+
+| Flag | Purpose |
+|------|---------|
+| `--global` | Save config globally (`~/.config/lobster/`) instead of workspace |
+| `--force` | Overwrite existing configuration |
+| `--profile <name>` | Agent profile: `development`, `production`, `performance`, `max` (Anthropic/Bedrock only) |
+| `--ncbi-key <key>` | NCBI API key for PubMed/GEO (optional but recommended) |
+| `--cloud-key <key>` | Omics-OS Cloud API key (enables premium tier) |
+| `--agents <list>` | Comma-separated agent names to enable |
+| `--preset <name>` | Agent preset: `scrna-basic`, `scrna-full`, `multiomics-full` |
+| `--skip-docling` | Skip docling installation |
+| `--install-docling` | Install docling for PDF intelligence |
+| `--skip-extras` | Skip all optional package prompts |
+| `--skip-ssl-test` | Skip SSL connectivity test |
+
+**Full non-interactive example with all options:**
+```bash
+lobster init --non-interactive \
+  --anthropic-key "sk-ant-..." \
+  --profile production \
+  --ncbi-key "abc123" \
+  --preset multiomics-full \
+  --skip-docling \
+  --skip-ssl-test
+```
+
+### Checking if already configured
+
+Before initializing, check if Lobster is already set up:
+```bash
+lobster config-test --json    # Returns structured status
+lobster status                # Human-readable status
+```
+
+If `config-test` succeeds, no init is needed.
+
+### Configuration files created
+
+| Mode | Config file | Credentials |
+|------|-------------|-------------|
+| Workspace (default) | `.lobster_workspace/provider_config.json` | `.env` |
+| Global (`--global`) | `~/.config/lobster/providers.json` | `~/.config/lobster/credentials.env` (mode 0600) |
+
+**Credential priority:** workspace `.env` > global `credentials.env` > environment variables.
 
 ## Quick Reference
 
