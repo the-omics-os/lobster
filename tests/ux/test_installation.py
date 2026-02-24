@@ -51,54 +51,47 @@ def test_skill_installer_syntax_valid():
 
 
 def test_skill_installer_has_required_variables():
-    """Verify installer script defines required variables."""
+    """Verify installer script defines required variables and functions."""
     if not INSTALLER_SCRIPT.exists():
         pytest.skip(f"Installer script not found: {INSTALLER_SCRIPT}")
 
     content = INSTALLER_SCRIPT.read_text()
 
+    # The MANIFEST-based installer uses these core variables
     required_vars = [
         "REPO=",
         "BRANCH=",
         "BASE_URL=",
-        "USER_SKILL_PATH=",
-        "DEV_SKILL_PATH=",
-        "USER_SKILL_FILES=",
-        "DEV_SKILL_FILES=",
     ]
 
     for var in required_vars:
         assert var in content, f"Missing variable: {var}"
 
+    # Must define the SKILLS array with skill definitions
+    assert "SKILLS=(" in content, "Missing SKILLS array"
 
-def test_skill_installer_file_arrays_match_actual_files():
-    """Verify USER_SKILL_FILES and DEV_SKILL_FILES arrays match actual skill files."""
-    if not INSTALLER_SCRIPT.exists():
-        pytest.skip(f"Installer script not found: {INSTALLER_SCRIPT}")
+    # Must have the MANIFEST-based file discovery function
+    assert "get_skill_files" in content, "Missing get_skill_files function"
+    assert "MANIFEST" in content, "Missing MANIFEST reference"
 
-    content = INSTALLER_SCRIPT.read_text()
 
-    # Extract USER_SKILL_FILES array
-    user_match = re.search(r"USER_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
-    assert user_match, "USER_SKILL_FILES array not found"
-    user_files = re.findall(r'"([^"]+)"', user_match.group(1))
+def test_skill_installer_manifest_files_match_actual_files():
+    """Verify MANIFEST files list actual skill files that exist on disk."""
+    for skill_name in ["lobster-use", "lobster-dev"]:
+        manifest_path = SKILLS_DIR / skill_name / "MANIFEST"
+        assert manifest_path.exists(), f"MANIFEST not found: {manifest_path}"
 
-    # Extract DEV_SKILL_FILES array
-    dev_match = re.search(r"DEV_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
-    assert dev_match, "DEV_SKILL_FILES array not found"
-    dev_files = re.findall(r'"([^"]+)"', dev_match.group(1))
+        manifest_content = manifest_path.read_text()
+        manifest_files = [
+            line.strip()
+            for line in manifest_content.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
 
-    # Verify lobster-use files exist
-    user_skill_dir = SKILLS_DIR / "lobster-use"
-    for file in user_files:
-        file_path = user_skill_dir / file
-        assert file_path.exists(), f"User skill file missing: {file_path}"
-
-    # Verify lobster-dev files exist
-    dev_skill_dir = SKILLS_DIR / "lobster-dev"
-    for file in dev_files:
-        file_path = dev_skill_dir / file
-        assert file_path.exists(), f"Dev skill file missing: {file_path}"
+        skill_dir = SKILLS_DIR / skill_name
+        for file in manifest_files:
+            file_path = skill_dir / file
+            assert file_path.exists(), f"Skill file listed in MANIFEST missing: {file_path}"
 
 
 def test_skill_installer_handles_missing_directories():
@@ -216,30 +209,28 @@ def test_skills_content_reference_files_not_empty():
             assert len(content) > 100, f"Reference file too small: {ref_file}"
 
 
-def test_skills_content_total_file_count_matches_installer():
-    """Verify total skill files match installer script arrays."""
-    if not INSTALLER_SCRIPT.exists():
-        pytest.skip(f"Installer script not found: {INSTALLER_SCRIPT}")
+def test_skills_content_total_file_count_matches_manifest():
+    """Verify total skill .md files match MANIFEST file counts."""
+    for skill_name in ["lobster-use", "lobster-dev"]:
+        manifest_path = SKILLS_DIR / skill_name / "MANIFEST"
+        if not manifest_path.exists():
+            pytest.skip(f"MANIFEST not found: {manifest_path}")
 
-    content = INSTALLER_SCRIPT.read_text()
+        manifest_content = manifest_path.read_text()
+        manifest_files = [
+            line.strip()
+            for line in manifest_content.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        manifest_count = len(manifest_files)
 
-    # Extract file counts from arrays
-    user_match = re.search(r"USER_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
-    user_count = len(re.findall(r'"([^"]+)"', user_match.group(1))) if user_match else 0
+        # Count actual .md files on disk
+        actual_files = list((SKILLS_DIR / skill_name).rglob("*.md"))
+        actual_count = len(actual_files)
 
-    dev_match = re.search(r"DEV_SKILL_FILES=\((.*?)\)", content, re.DOTALL)
-    dev_count = len(re.findall(r'"([^"]+)"', dev_match.group(1))) if dev_match else 0
-
-    # Count actual files
-    user_files = list((SKILLS_DIR / "lobster-use").rglob("*.md"))
-    dev_files = list((SKILLS_DIR / "lobster-dev").rglob("*.md"))
-
-    assert (
-        len(user_files) == user_count
-    ), f"User skill file count mismatch: {len(user_files)} != {user_count}"
-    assert (
-        len(dev_files) == dev_count
-    ), f"Dev skill file count mismatch: {len(dev_files)} != {dev_count}"
+        assert (
+            actual_count == manifest_count
+        ), f"{skill_name} file count mismatch: {actual_count} on disk != {manifest_count} in MANIFEST"
 
 
 # =============================================================================

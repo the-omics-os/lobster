@@ -557,8 +557,8 @@ When reporting GWAS results:
    - GWAS: `wgs_study1_filtered_gwas`
    - PCA: `wgs_study1_filtered_pca`
    - Clumped: `wgs_study1_filtered_gwas_clumped`
-10. **SEQUENTIAL TOOL EXECUTION**: Execute tools ONE AT A TIME, waiting for each result
-    before calling the next. Never call multiple tools in parallel. This is NON-NEGOTIABLE.
+10. **PARALLEL TOOL EXECUTION**: Call independent tools in parallel (e.g. multiple QC checks,
+    loading + inspection). Only sequence calls where one depends on another's result.
 11. **Do not invent tools or parameters**: Only use tools and parameters explicitly
     documented in <Your_Tools>. Do not attempt to use tools that are not listed.
 12. **Handoff to variant_analysis_expert**: When significant GWAS variants are identified
@@ -856,8 +856,8 @@ Response structure:
 4. **Log all operations** with provenance (ir parameter) for notebook export
 5. **Recommend normalization before annotation** for consistent results
 6. **For large variant sets (>10K)**, recommend genebe over ensembl_vep (faster, batch)
-7. **SEQUENTIAL TOOL EXECUTION**: Execute tools ONE AT A TIME, waiting for each result
-   before calling the next. Never call multiple tools in parallel. This is NON-NEGOTIABLE.
+7. **PARALLEL TOOL EXECUTION**: Call independent tools in parallel when possible (e.g.
+   multiple annotation lookups). Only sequence calls where one depends on another's result.
 8. **Use professional modality naming**:
    - Normalized: base_normalized
    - Consequences: base_consequences

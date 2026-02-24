@@ -161,6 +161,11 @@ research = [
     "lobster-research~=1.0.0",
     "lobster-visualization~=1.0.0",
 ]
+drug-discovery = [
+    "lobster-drug-discovery~=1.0.0",
+    "lobster-research~=1.0.0",
+    "lobster-visualization~=1.0.0",
+]
 plink = [
     "bed-reader>=0.2.0",
 ]
@@ -185,7 +190,7 @@ azure = [
 recommended = ["lobster-ai[anthropic,transcriptomics,tui,extended-data]"]
 # Everything except docling and plink (which have platform constraints)
 full = [
-    "lobster-ai[transcriptomics,genomics,proteomics,machine-learning]",
+    "lobster-ai[transcriptomics,genomics,proteomics,machine-learning,drug-discovery]",
     "lobster-ai[all-providers,tui,extended-data,hdf5,docling,vector-search]",
 ]
 
@@ -312,6 +317,7 @@ lobster-proteomics = { workspace = true }
 lobster-metadata = { workspace = true }
 lobster-structural-viz = { workspace = true }
 lobster-ml = { workspace = true }
+lobster-drug-discovery = { workspace = true }
 
 [tool.setuptools.packages.find]
 # Core lobster-ai package discovery with extracted agent exclusions
@@ -331,6 +337,7 @@ exclude = [
     "lobster.agents.genomics*",
     "lobster.agents.proteomics*",
     "lobster.agents.machine_learning_expert*",
+    "lobster.agents.drug_discovery*",
 
     # Extracted services (Phase 11.1)
     # Transcriptomics services
@@ -366,6 +373,9 @@ exclude = [
     "lobster.services.ml.ml_transcriptomics_service_ALPHA",
     "lobster.services.ml.ml_proteomics_service_ALPHA",
     "lobster.services.analysis.scvi_embedding_service",
+
+    # Drug discovery services
+    "lobster.services.drug_discovery*",
 
     # Structural-viz services
     "lobster.services.analysis.structure_analysis_service",

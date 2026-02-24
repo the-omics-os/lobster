@@ -1042,7 +1042,7 @@ if PROMPT_TOOLKIT_AVAILABLE:
                 if text == "/config model":
                     try:
                         from lobster.config.llm_factory import LLMFactory
-                        from lobster.config.model_service import ModelServiceFactory
+                        from lobster.config.providers import get_provider
 
                         # Get current provider (from client, not adapter)
                         current_provider = (
@@ -1050,9 +1050,9 @@ if PROMPT_TOOLKIT_AVAILABLE:
                             or LLMFactory.get_current_provider()
                         )
 
-                        # Get model service for current provider
-                        service = ModelServiceFactory.get_service(current_provider)
-                        models = service.list_models()
+                        # Get models from provider
+                        provider_obj = get_provider(current_provider)
+                        models = provider_obj.list_models() if provider_obj else []
 
                         for model in models:
                             meta = f"{model.display_name}"
@@ -1103,7 +1103,7 @@ if PROMPT_TOOLKIT_AVAILABLE:
                     # Provider-aware model completion
                     try:
                         from lobster.config.llm_factory import LLMFactory
-                        from lobster.config.model_service import ModelServiceFactory
+                        from lobster.config.providers import get_provider
 
                         # Get current provider (from client, not adapter)
                         current_provider = (
@@ -1111,9 +1111,9 @@ if PROMPT_TOOLKIT_AVAILABLE:
                             or LLMFactory.get_current_provider()
                         )
 
-                        # Get model service for current provider
-                        service = ModelServiceFactory.get_service(current_provider)
-                        models = service.list_models()
+                        # Get models from provider
+                        provider_obj = get_provider(current_provider)
+                        models = provider_obj.list_models() if provider_obj else []
 
                         for model in models:
                             if model.name.lower().startswith(prefix.lower()):
@@ -3817,31 +3817,18 @@ def config_test(
             # Test LLM connectivity
             if provider is not None:
                 try:
-                    # provider is a string
-                    if provider == "ollama":
-                        test_config = {
-                            "model_id": "",
-                            "temperature": 1.0,
-                            "max_tokens": 50,
-                        }
-                    elif provider == "anthropic":
-                        test_config = {
-                            "model_id": "claude-3-5-haiku-20241022",
-                            "temperature": 1.0,
-                            "max_tokens": 50,
-                        }
-                    elif provider == "gemini":
-                        test_config = {
-                            "model_id": "gemini-2.0-flash-exp",
-                            "temperature": 1.0,
-                            "max_tokens": 50,
-                        }
-                    else:  # bedrock
-                        test_config = {
-                            "model_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
-                            "temperature": 1.0,
-                            "max_tokens": 50,
-                        }
+                    # Use provider's default model for connectivity test
+                    from lobster.config.providers import get_provider
+
+                    provider_obj = get_provider(provider)
+                    default_model = (
+                        provider_obj.get_default_model() if provider_obj else ""
+                    )
+                    test_config = {
+                        "model_id": default_model,
+                        "temperature": 1.0,
+                        "max_tokens": 50,
+                    }
 
                     test_llm = LLMFactory.create_llm(
                         test_config, "config_test", workspace_path=workspace_path
@@ -5849,16 +5836,16 @@ def init(
             console.print("Choose which Claude models to use for analysis:")
             console.print()
             console.print(
-                "  [cyan]1[/cyan] - Development  (Haiku 4.5 - fastest, most affordable)"
+                "  [cyan]1[/cyan] - Development  (Sonnet 4 - fastest, most affordable)"
             )
             console.print(
-                "  [cyan]2[/cyan] - Production   (Sonnet 4 - balanced quality & speed) [recommended]"
+                "  [cyan]2[/cyan] - Production   (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]"
             )
             console.print(
-                "  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality, slower)"
+                "  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality)"
             )
             console.print(
-                "  [cyan]4[/cyan] - Max          (Opus 4.1 - most capable, most expensive)"
+                "  [cyan]4[/cyan] - Max          (Opus 4.5 supervisor - most capable, most expensive)"
             )
             console.print()
             console.print(
@@ -9213,16 +9200,16 @@ LOBSTER_CACHE_DIR=data/cache
 # EXAMPLE CONFIGURATIONS
 # =============================================================================
 
-# Example 1: Development setup (Claude Haiku 4.5 - fastest, most affordable)
+# Example 1: Development setup (Claude Sonnet 4 - fastest, most affordable)
 # LOBSTER_PROFILE=development
 
-# Example 2: Production setup (Claude Sonnet 4 - balanced quality & speed)
+# Example 2: Production setup (Claude Sonnet 4 + Sonnet 4.5 supervisor)
 # LOBSTER_PROFILE=production
 
 # Example 3: Performance setup (Claude Sonnet 4.5 - highest quality)
 # LOBSTER_PROFILE=performance
 
-# Example 4: Max setup (Claude Opus 4.1 - most capable, most expensive)
+# Example 4: Max setup (Claude Opus 4.5 supervisor - most capable, most expensive)
 # LOBSTER_PROFILE=max
 """
 

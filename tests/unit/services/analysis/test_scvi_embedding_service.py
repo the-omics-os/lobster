@@ -10,7 +10,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
+# Check if the scvi_embedding_service module is available (requires lobster-ml package)
+try:
+    from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
+
+    SERVICE_AVAILABLE = True
+except ImportError:
+    SERVICE_AVAILABLE = False
+    ScviEmbeddingService = None  # type: ignore[assignment,misc]
 
 # Check if scVI is available for conditional testing
 try:
@@ -20,6 +27,11 @@ try:
     SCVI_AVAILABLE = True
 except ImportError:
     SCVI_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not SERVICE_AVAILABLE,
+    reason="lobster-ml package not installed (scvi_embedding_service unavailable)",
+)
 
 
 class TestScviEmbeddingServiceBasics:
@@ -244,18 +256,19 @@ class TestScviTrainingIntegration:
             mock_import.return_value = (mock_torch, mock_scvi)
             mock_setup_device.return_value = "cpu"
 
-            # Train the model
-            model, training_info = service.train_scvi_embedding(
+            # Train the model (returns 3-tuple: adata, stats_dict, ir)
+            result_adata, stats, ir = service.train_scvi_embedding(
                 adata=mock_adata, n_latent=10, max_epochs=100
             )
 
             # Verify results
-            assert model == mock_model
-            assert training_info["n_latent"] == 10
-            assert training_info["device"] == "cpu"
-            assert training_info["n_cells"] == 100
-            assert training_info["n_genes"] == 2000
-            assert training_info["embedding_shape"] == mock_embeddings.shape
+            assert result_adata == mock_adata
+            assert stats["n_latent"] == 10
+            assert stats["device"] == "cpu"
+            assert stats["n_cells"] == 100
+            assert stats["n_genes"] == 2000
+            assert stats["embedding_shape"] == mock_embeddings.shape
+            assert ir is not None
 
             # Verify scVI setup was called
             mock_scvi.model.SCVI.setup_anndata.assert_called_once()
@@ -298,12 +311,13 @@ class TestScviTrainingIntegration:
             mock_import.return_value = mock_torch
             mock_setup_device.return_value = "cpu"
 
-            model, training_info = service.train_scvi_embedding(
+            result_adata, stats, ir = service.train_scvi_embedding(
                 adata=mock_adata, batch_key="sample", n_latent=15
             )
 
             # Verify batch key was used
-            assert training_info["batch_key"] == "sample"
+            assert stats["batch_key"] == "sample"
+            assert ir is not None
             mock_scvi_class.setup_anndata.assert_called_once()
             call_kwargs = mock_scvi_class.setup_anndata.call_args[1]
             assert call_kwargs["batch_key"] == "sample"

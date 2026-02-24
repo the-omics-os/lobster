@@ -269,10 +269,12 @@ class TestSemanticAnnotationBasic:
             "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
         ) as mock_create:
             from lobster.agents.transcriptomics.annotation_expert import (
-                HAS_VECTOR_SEARCH,
                 annotation_expert as ae_factory,
             )
 
+            # HAS_VECTOR_SEARCH was refactored from a module-level constant into a
+            # factory-local variable (Hard Rule #10). Use the test module's own
+            # HAS_VECTOR_SEARCH (defined at the top of this file) to verify deps.
             assert HAS_VECTOR_SEARCH is True
 
             mock_create.return_value = Mock()
@@ -309,8 +311,11 @@ class TestSemanticAnnotationBasic:
         assert isinstance(result, str)
         assert "Successfully annotated" in result
 
-        # Verify modality stored
-        assert "test_modality_semantic_annotated" in mock_data_manager.modalities
+        # Verify modality stored via store_modality()
+        mock_data_manager.store_modality.assert_called_once()
+        store_call = mock_data_manager.store_modality.call_args
+        stored_name = store_call.kwargs.get("name") or store_call.args[0]
+        assert stored_name == "test_modality_semantic_annotated"
 
         # Verify IR logged
         mock_data_manager.log_tool_usage.assert_called_once()
@@ -439,11 +444,16 @@ class TestSemanticToolDirect:
     def test_semantic_annotation_stores_modality(
         self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
     ):
-        """Semantic tool stores annotated modality in data_manager."""
+        """Semantic tool stores annotated modality in data_manager via store_modality()."""
         result, dm, _ = self._build_and_call_tool(
             mock_data_manager, mock_singlecell_service, mock_vector_service
         )
-        assert "test_modality_semantic_annotated" in dm.modalities
+        # Source code calls data_manager.store_modality(name=..., adata=...)
+        # instead of directly assigning to data_manager.modalities dict.
+        dm.store_modality.assert_called_once()
+        call_kwargs = dm.store_modality.call_args
+        stored_name = call_kwargs.kwargs.get("name") or call_kwargs.args[0]
+        assert stored_name == "test_modality_semantic_annotated"
 
     def test_ir_logged(
         self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
@@ -546,10 +556,6 @@ class TestSemanticToolDirect:
         self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
     ):
         """Call with save_result=False, verify modality NOT stored."""
-        # Reset modalities dict to track what gets added
-        mock_data_manager.modalities = {"test_modality": mock_data_manager.get_modality.return_value}
-        initial_keys = set(mock_data_manager.modalities.keys())
-
         result, dm, _ = self._build_and_call_tool(
             mock_data_manager,
             mock_singlecell_service,
@@ -557,8 +563,8 @@ class TestSemanticToolDirect:
             tool_kwargs={"save_result": False},
         )
 
-        # The semantic_annotated modality should NOT have been added
-        assert "test_modality_semantic_annotated" not in dm.modalities
+        # store_modality should NOT have been called when save_result=False
+        dm.store_modality.assert_not_called()
 
     def test_marker_query_format(
         self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
@@ -593,9 +599,9 @@ class TestConditionalRegistration:
     """Test that semantic tool is conditionally registered."""
 
     def test_conditional_registration_when_available(self, mock_data_manager, mock_provider_config):
-        """Verify annotate_cell_types_semantic is in tools list when HAS_VECTOR_SEARCH=True."""
-        from lobster.agents.transcriptomics.annotation_expert import HAS_VECTOR_SEARCH
-
+        """Verify annotate_cell_types_semantic is in tools list when vector search deps are available."""
+        # HAS_VECTOR_SEARCH was refactored from a module-level constant into a
+        # factory-local variable (Hard Rule #10). Use the test module's own check.
         assert HAS_VECTOR_SEARCH is True
 
         # Capture tools list by patching create_react_agent
@@ -627,7 +633,7 @@ class TestConditionalRegistration:
         )
 
         # Also verify existing tools are still present
-        assert "annotate_cell_types" in tool_names
+        assert "annotate_cell_types_auto" in tool_names
         assert "manually_annotate_clusters" in tool_names
 
 

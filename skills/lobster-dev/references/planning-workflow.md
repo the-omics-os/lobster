@@ -113,16 +113,15 @@ Reusable:
 
 ## Phase 3: Find Domain Knowledge
 
-Use the bioSkills bridge to discover external domain expertise.
+Use the GPTomics bio-skills library to discover external domain expertise.
 
 > **Load [references/bioskills-bridge.md](bioskills-bridge.md)** and follow the
-> dynamic discovery process to find relevant bioSkills for the domain.
+> dynamic discovery process to find relevant GPTomics skills for the domain.
 >
-> Read discovered SKILL.md files for tool parameters, workflow steps, QC criteria,
-> and best practices. Use this as a **requirements specification** for Lobster
-> service design -- do NOT copy code verbatim.
+> Use discovered skills as a **requirements specification** for Lobster
+> service design -- parameters, workflows, QC criteria, best practices.
 
-If bioSkills is not available or has no coverage for the domain, fall back to:
+If GPTomics skills don't cover the domain, fall back to:
 1. Official documentation for the key tools/libraries
 2. Published workflow papers (Nature Methods, Bioinformatics)
 3. PyPI packages that wrap the tools
@@ -185,13 +184,13 @@ Based on findings, recommend **one** of these options:
 - Metagenomics (taxonomy, diversity, functional profiling)
 - Spatial transcriptomics (coordinate-aware analysis)
 - Flow cytometry (gating, compensation, population analysis)
-- Metabolomics (peak detection, annotation, pathway mapping)
 
 **Action:**
-1. Generate package scaffold: `copier copy gh:omics-os/lobster-agent-template lobster-{domain}`
-2. Implement agent, services, and tools per [creating-agents.md](creating-agents.md)
+1. Follow the full package structure in [creating-agents.md](creating-agents.md)
+2. Implement agent, services, tools, prompts, config, state
 3. Register entry points in `pyproject.toml`
 4. Pass all contract tests
+5. Complete the 28-step checklist
 
 ### Option C: Service Only (No New Agent)
 
@@ -220,7 +219,7 @@ Based on findings, recommend **one** of these options:
 - Tool that doesn't produce or consume AnnData-compatible data
 
 **Action:**
-- Suggest using bioSkills directly or building a standalone package
+- Suggest using GPTomics skills directly or building a standalone package
 - If the developer disagrees, revisit -- they may see integration potential you missed
 
 ### Recommendation Template
@@ -244,7 +243,7 @@ Once the developer approves the recommendation, execute:
 | Approach | Implementation Steps |
 |----------|---------------------|
 | A (Extend) | Read existing agent code -> add services -> add tools -> update prompts -> test |
-| B (New package) | Run copier template -> implement per [creating-agents.md](creating-agents.md) -> test |
+| B (New package) | Follow [creating-agents.md](creating-agents.md) scaffold -> implement -> test |
 | C (Service only) | Implement per [creating-services.md](creating-services.md) -> register as tool -> test |
 | D (Not Lobster) | Guide developer to appropriate approach outside Lobster |
 

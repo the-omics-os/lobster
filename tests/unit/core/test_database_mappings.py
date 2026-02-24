@@ -420,8 +420,8 @@ class TestRegistryCompleteness:
 
     def test_registry_total_count(self):
         """Test total number of unique accession types."""
-        # Reduced to 37 from 38 due to Qiita being disabled
-        assert len(DATABASE_ACCESSION_REGISTRY) == 37
+        # 41 = 37 base + 4 KNOWLEDGEBASE_ACCESSIONS (uniprot, ensembl gene/transcript/protein)
+        assert len(DATABASE_ACCESSION_REGISTRY) == 41
 
     def test_all_accessions_have_examples(self):
         """Test all accessions have valid example values."""

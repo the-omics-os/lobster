@@ -415,7 +415,7 @@ class EnhancedLobsterTestRunner:
                 enable_reasoning=False,  # Disable for cleaner test output
                 enable_langfuse=False,  # Disable for tests
                 manual_model_params={
-                    "model_id": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+                    "model_id": "us.anthropic.claude-sonnet-4-20250514-v1:0",
                     "temperature": 0.7,
                     "region_name": "us-east-1",
                     "aws_access_key_id": os.environ.get("AWS_BEDROCK_ACCESS_KEY"),

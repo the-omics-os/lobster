@@ -49,7 +49,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
     Attributes:
         global_provider: LLM provider for all agents (bedrock | anthropic | ollama | gemini)
         anthropic_model: Anthropic model to use (e.g., "claude-sonnet-4-20250514")
-        bedrock_model: Bedrock model ID to use (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
+        bedrock_model: Bedrock model ID to use (e.g., "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
         ollama_model: Ollama model to use (e.g., "llama3:70b-instruct")
         ollama_host: Ollama server URL (default: http://localhost:11434)
         per_agent_providers: Provider override per agent (e.g., {"supervisor": "ollama"})
@@ -83,12 +83,12 @@ class WorkspaceProviderConfig(ProviderConfigBase):
     # Per-provider model settings
     anthropic_model: Optional[str] = Field(
         None,
-        description="Anthropic model (e.g., 'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022')",
+        description="Anthropic model (e.g., 'claude-sonnet-4-20250514', 'claude-sonnet-4-5-20250929')",
     )
 
     bedrock_model: Optional[str] = Field(
         None,
-        description="Bedrock model ID (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0')",
+        description="Bedrock model ID (e.g., 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')",
     )
 
     ollama_model: Optional[str] = Field(

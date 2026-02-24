@@ -23,10 +23,10 @@ from lobster.config.agent_config import CustomAgentConfig
 #
 # Uses dynamic model reference to follow research_agent's configuration.
 # This ensures metadata_assistant adapts to the customer's provider settings:
-#   - development profile → claude-4-5-haiku
-#   - production profile → claude-4-sonnet
-#   - ultra profile → claude-4-5-sonnet
-#   - godmode profile → claude-4-5-sonnet
+#   - development profile → claude-4-sonnet
+#   - production profile → claude-4-sonnet (supervisor: claude-4-5-sonnet)
+#   - performance profile → claude-4-5-sonnet
+#   - max profile → claude-4-5-opus (supervisor)
 
 METADATA_ASSISTANT_CONFIG = CustomAgentConfig(
     name="metadata_assistant",

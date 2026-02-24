@@ -13,7 +13,8 @@ def test_valid_providers_includes_all():
     assert "ollama" in VALID_PROVIDERS
     assert "gemini" in VALID_PROVIDERS
     assert "azure" in VALID_PROVIDERS
-    assert len(VALID_PROVIDERS) == 5
+    assert "openai" in VALID_PROVIDERS
+    assert len(VALID_PROVIDERS) == 6
 
 
 def test_valid_profiles_includes_all():

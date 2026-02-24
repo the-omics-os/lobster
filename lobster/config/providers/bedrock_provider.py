@@ -49,15 +49,23 @@ class BedrockProvider(ILLMProvider):
         DEFAULT_REGION: Default AWS region for Bedrock API
     """
 
-    # Static model catalog - extracted from BedrockModelService.MODELS
-    # Note: Availability may vary by AWS region
-    # Model IDs follow AWS Bedrock format: "anthropic." (standard) or "us.anthropic." (cross-region)
+    # Static model catalog (single source of truth for Bedrock models)
+    # All cross-region IDs for maximum availability
     MODELS = [
-        # Cross-region model IDs (us. prefix) - Used by agent_config.py profiles
+        ModelInfo(
+            name="us.anthropic.claude-sonnet-4-20250514-v1:0",
+            display_name="Claude Sonnet 4 (Bedrock)",
+            description="Claude 4 Sonnet - balanced quality and speed",
+            provider="bedrock",
+            context_window=200000,
+            is_default=False,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
+        ),
         ModelInfo(
             name="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            display_name="Claude Sonnet 4.5 (Bedrock Cross-Region)",
-            description="Claude 4.5 Sonnet via Bedrock - ultra profile",
+            display_name="Claude Sonnet 4.5 (Bedrock)",
+            description="Claude 4.5 Sonnet - highest quality Sonnet",
             provider="bedrock",
             context_window=200000,
             is_default=True,
@@ -65,68 +73,14 @@ class BedrockProvider(ILLMProvider):
             output_cost_per_million=15.0,
         ),
         ModelInfo(
-            name="us.anthropic.claude-sonnet-4-20250514-v1:0",
-            display_name="Claude Sonnet 4 (Bedrock Cross-Region)",
-            description="Claude 4 Sonnet via Bedrock - production profile",
+            name="global.anthropic.claude-opus-4-5-20251101-v1:0",
+            display_name="Claude Opus 4.5 (Bedrock)",
+            description="Claude 4.5 Opus - most capable model",
             provider="bedrock",
             context_window=200000,
-            input_cost_per_million=3.0,
-            output_cost_per_million=15.0,
-        ),
-        ModelInfo(
-            name="us.anthropic.claude-haiku-4-5-20251001-v1:0",
-            display_name="Claude Haiku 4.5 (Bedrock Cross-Region)",
-            description="Claude 4.5 Haiku via Bedrock - development profile",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=1.0,
-            output_cost_per_million=5.0,
-        ),
-        ModelInfo(
-            name="us.anthropic.claude-opus-4-1-20250805-v1:0",
-            display_name="Claude Opus 4.1 (Bedrock Cross-Region)",
-            description="Claude 4.1 Opus via Bedrock - godmode profile",
-            provider="bedrock",
-            context_window=200000,
+            is_default=False,
             input_cost_per_million=15.0,
             output_cost_per_million=75.0,
-        ),
-        # Standard region model IDs (anthropic. prefix)
-        ModelInfo(
-            name="anthropic.claude-sonnet-4-20250514-v1:0",
-            display_name="Claude Sonnet 4 (Bedrock)",
-            description="Latest Sonnet via Bedrock - best balance",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=3.0,
-            output_cost_per_million=15.0,
-        ),
-        ModelInfo(
-            name="anthropic.claude-opus-4-20250514-v1:0",
-            display_name="Claude Opus 4 (Bedrock)",
-            description="Most capable via Bedrock - complex reasoning",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=15.0,
-            output_cost_per_million=75.0,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-5-sonnet-20241022-v2:0",
-            display_name="Claude 3.5 Sonnet v2 (Bedrock)",
-            description="Claude 3.5 Sonnet - fast and capable",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=3.0,
-            output_cost_per_million=15.0,
-        ),
-        ModelInfo(
-            name="anthropic.claude-3-5-haiku-20241022-v1:0",
-            display_name="Claude 3.5 Haiku (Bedrock)",
-            description="Fastest Claude via Bedrock",
-            provider="bedrock",
-            context_window=200000,
-            input_cost_per_million=1.0,
-            output_cost_per_million=5.0,
         ),
     ]
 

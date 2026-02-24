@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-proteomics"
-version = "1.0.10"
+version = "1.0.11"
 description = "Proteomics agent for Lobster AI (DDA/DIA mass spectrometry, affinity platforms)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

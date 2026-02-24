@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-metabolomics"
-version = "1.0.0"
+version = "1.0.11"
 description = "Metabolomics agent for Lobster AI (LC-MS, GC-MS, NMR untargeted metabolomics)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

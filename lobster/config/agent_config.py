@@ -228,46 +228,36 @@ class LobsterAgentConfigurator:
     - Thinking/reasoning support for compatible models
     """
 
-    # Pre-defined model configurations - 3 models
+    # Pre-defined model configurations - 3 models (matching BedrockProvider.MODELS)
     MODEL_PRESETS = {
-        # Development Model - Claude 4.5 Haiku (fastest, lightweight)
-        "claude-4-5-haiku": ModelConfig(
-            provider=ModelProvider.BEDROCK_ANTHROPIC,
-            model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0",
-            tier=ModelTier.LIGHTWEIGHT,
-            temperature=1.0,
-            region="us-east-1",
-            description="Claude 4.5 haiku for development and worker agents",
-            supports_thinking=True,
-        ),
-        # Production Model - Claude 4 Sonnet (balanced performance)
+        # Development/Production Model - Claude 4 Sonnet (balanced quality and speed)
         "claude-4-sonnet": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
             model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
             tier=ModelTier.STANDARD,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 4 Sonnet for production",
+            description="Claude 4 Sonnet - balanced quality and speed",
             supports_thinking=True,
         ),
-        # Performance Mode - Claude 4.5 Sonnet (advanced capabilities)
+        # Performance Mode - Claude 4.5 Sonnet (highest quality Sonnet)
         "claude-4-5-sonnet": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
             model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
             tier=ModelTier.HEAVY,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 4.5 Sonnet for performance profile",
+            description="Claude 4.5 Sonnet - highest quality Sonnet",
             supports_thinking=True,
         ),
-        # Max Mode - Claude 4.1 Opus (most capable)
-        "claude-4-1-opus": ModelConfig(
+        # Max Mode - Claude 4.5 Opus (most capable)
+        "claude-4-5-opus": ModelConfig(
             provider=ModelProvider.BEDROCK_ANTHROPIC,
-            model_id="us.anthropic.claude-opus-4-1-20250805-v1:0",
+            model_id="global.anthropic.claude-opus-4-5-20251101-v1:0",
             tier=ModelTier.PERFORMANCE,
             temperature=1.0,
             region="us-east-1",
-            description="Claude 4.1 Opus for max profile",
+            description="Claude 4.5 Opus - most capable model",
             supports_thinking=True,
         ),
     }
@@ -301,30 +291,30 @@ class LobsterAgentConfigurator:
     # These cover all agents from lobster-ai packages.
     TESTING_PROFILES = {
         "development": {
-            "supervisor": "claude-4-5-haiku",
-            "assistant": "claude-4-5-haiku",
+            "supervisor": "claude-4-sonnet",
+            "assistant": "claude-4-sonnet",
             # Research & data (lobster-research)
-            "research_agent": "claude-4-5-haiku",
-            "data_expert_agent": "claude-4-5-haiku",
-            "data_expert_assistant": "claude-4-5-haiku",
+            "research_agent": "claude-4-sonnet",
+            "data_expert_agent": "claude-4-sonnet",
+            "data_expert_assistant": "claude-4-sonnet",
             # Transcriptomics (lobster-transcriptomics)
-            "transcriptomics_expert": "claude-4-5-haiku",
-            "annotation_expert": "claude-4-5-haiku",
-            "de_analysis_expert": "claude-4-5-haiku",
+            "transcriptomics_expert": "claude-4-sonnet",
+            "annotation_expert": "claude-4-sonnet",
+            "de_analysis_expert": "claude-4-sonnet",
             # Visualization (lobster-visualization)
-            "visualization_expert_agent": "claude-4-5-haiku",
+            "visualization_expert_agent": "claude-4-sonnet",
             # Metadata (lobster-metadata)
-            "metadata_assistant": "claude-4-5-haiku",
+            "metadata_assistant": "claude-4-sonnet",
             # Genomics (lobster-genomics)
-            "genomics_expert": "claude-4-5-haiku",
+            "genomics_expert": "claude-4-sonnet",
             # Proteomics (lobster-proteomics)
-            "proteomics_expert": "claude-4-5-haiku",
+            "proteomics_expert": "claude-4-sonnet",
             # ML (lobster-ml)
-            "machine_learning_expert": "claude-4-5-haiku",
-            "feature_selection_expert": "claude-4-5-haiku",
-            "survival_analysis_expert": "claude-4-5-haiku",
+            "machine_learning_expert": "claude-4-sonnet",
+            "feature_selection_expert": "claude-4-sonnet",
+            "survival_analysis_expert": "claude-4-sonnet",
             # Structural viz (lobster-structural-viz)
-            "protein_structure_visualization_expert": "claude-4-5-haiku",
+            "protein_structure_visualization_expert": "claude-4-sonnet",
             "thinking": {},  # No thinking in development mode for faster testing
         },
         "production": {
@@ -382,7 +372,7 @@ class LobsterAgentConfigurator:
             "thinking": {},  # No thinking configured for performance
         },
         "max": {
-            "supervisor": "claude-4-1-opus",
+            "supervisor": "claude-4-5-opus",
             "assistant": "claude-4-5-sonnet",
             # Research & data
             "research_agent": "claude-4-5-sonnet",

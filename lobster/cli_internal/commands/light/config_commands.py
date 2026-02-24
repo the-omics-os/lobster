@@ -550,7 +550,7 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
     Returns:
         Summary string for conversation history, or None
     """
-    from lobster.config.model_service import ModelServiceFactory
+    from lobster.config.providers import get_provider
     from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.core.config_resolver import ConfigResolver
 
@@ -562,18 +562,19 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
     )
 
     try:
-        service = ModelServiceFactory.get_service(current_provider)
+        provider_obj = get_provider(current_provider)
+        if not provider_obj:
+            output.print(f"[red]✗ Provider '{current_provider}' not registered[/red]")
+            return None
 
         # For Ollama, check if server is available
         if current_provider == "ollama":
-            from lobster.config.ollama_service import OllamaService
-
-            if not OllamaService.is_available():
+            if not provider_obj.is_available():
                 output.print("[red]✗ Ollama server not accessible[/red]")
                 output.print("[dim]Make sure Ollama is running: 'ollama serve'[/dim]")
                 return None
 
-        models = service.list_models()
+        models = provider_obj.list_models()
 
         if not models:
             if current_provider == "ollama":
@@ -667,7 +668,7 @@ def config_model_switch(
     Returns:
         Summary string for conversation history, or None
     """
-    from lobster.config.model_service import ModelServiceFactory
+    from lobster.config.providers import get_provider
     from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.core.config_resolver import ConfigResolver
 
@@ -679,21 +680,23 @@ def config_model_switch(
     )
 
     try:
-        service = ModelServiceFactory.get_service(current_provider)
+        provider_obj = get_provider(current_provider)
+        if not provider_obj:
+            output.print(f"[red]✗ Provider '{current_provider}' not registered[/red]")
+            return None
 
         # For Ollama, check server availability
         if current_provider == "ollama":
-            from lobster.config.ollama_service import OllamaService
-
-            if not OllamaService.is_available():
+            if not provider_obj.is_available():
                 output.print("[red]✗ Ollama server not accessible[/red]")
                 output.print("[dim]Make sure Ollama is running: 'ollama serve'[/dim]")
                 return None
 
         # Validate model
-        if not service.validate_model(model_name):
-            available = ", ".join(service.get_model_names()[:5])
-            if len(service.get_model_names()) > 5:
+        if not provider_obj.validate_model(model_name):
+            model_names = provider_obj.get_model_names()
+            available = ", ".join(model_names[:5])
+            if len(model_names) > 5:
                 available += ", ..."
             hint = f"Available models: {available}"
             if current_provider == "ollama":

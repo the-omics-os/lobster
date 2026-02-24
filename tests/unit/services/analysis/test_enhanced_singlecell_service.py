@@ -1192,10 +1192,12 @@ def test_annotate_with_seurat_clusters(service):
     assert stats["n_clusters"] == 3
 
 
-def test_annotate_requires_cluster_key(service, clustered_adata):
-    """Test that cluster_key is required (no default)."""
-    with pytest.raises(TypeError):
-        service.annotate_cell_types(clustered_adata)
+def test_annotate_uses_default_cluster_key(service, clustered_adata):
+    """Test that cluster_key defaults to 'leiden' when not provided."""
+    result_adata, stats, _ = service.annotate_cell_types(clustered_adata)
+
+    assert "cell_type" in result_adata.obs.columns
+    assert stats["analysis_type"] == "cell_type_annotation"
 
 
 def test_annotate_wrong_cluster_key_shows_columns(service, clustered_adata):

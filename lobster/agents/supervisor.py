@@ -105,8 +105,9 @@ to understand what data is loaded (names, dimensions, type). If the live context
 may be stale (agents have loaded/processed data since prompt creation), re-check
 with list_available_modalities before routing.
 
-SEQUENTIAL EXECUTION: Execute tools ONE AT A TIME. Wait for each result before
-calling the next tool. Parallel tool calls cause race conditions. This is non-negotiable.
+PARALLEL EXECUTION: When multiple independent tool calls are needed (e.g. handoffs
+to different agents, or data inspection + planning), call them in parallel. Only
+sequence calls that depend on a previous result.
 </Cognitive Protocol>"""
 
 

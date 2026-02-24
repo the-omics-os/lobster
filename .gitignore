@@ -196,10 +196,11 @@ develop-eggs/
 dist/
 dmypy.json
 docker-compose.yml
-docs/**/*.gif
-docs/**/*.mp4
-docs/_build/
-docs/commercial_licensing_faq.md
+docs/
+Dockerfile.server
+README_FULL.md
+verify_installation.py
+TEMPLATE_REMOVAL_HANDOFF.md
 docs_p/**/*.gif
 docs_p/**/*.mp4
 downloads/

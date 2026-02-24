@@ -6,8 +6,8 @@ enabling access to Claude models via the official Anthropic API.
 
 Architecture:
     - Implements ILLMProvider interface for consistency
-    - Uses static model catalog from AnthropicModelService
-    - Integrates pricing data from settings.py
+    - Uses static model catalog with pricing
+    - Integrates with ProviderRegistry for discovery
     - Creates ChatAnthropic instances via LangChain
 
 Example:
@@ -48,7 +48,7 @@ class AnthropicProvider(ILLMProvider):
         >>> llm = provider.create_chat_model(models[0].name)
     """
 
-    # Static model catalog with pricing (matches AnthropicModelService.MODELS)
+    # Static model catalog with pricing
     # Source: https://www.anthropic.com/pricing (January 2025)
     MODELS = [
         ModelInfo(

@@ -231,7 +231,11 @@ class TestResearchAgentIntegration:
                 )
                 # Verify LLM was created with correct parameters
                 mock_create_llm.assert_called_once_with(
-                    "research_agent", {"temperature": 0.1}, workspace_path=None
+                    "research_agent",
+                    {"temperature": 0.1},
+                    provider_override=None,
+                    model_override=None,
+                    workspace_path=None,
                 )
 
 

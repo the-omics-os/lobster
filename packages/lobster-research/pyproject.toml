@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-research"
-version = "1.0.10"
+version = "1.0.11"
 description = "Research agents for Lobster AI - literature discovery and data management"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

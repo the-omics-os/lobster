@@ -513,13 +513,6 @@ install: $(VENV_PATH) setup-env
 	@echo ""
 	@echo "$(GREEN)🎉 Installation complete!$(NC)"
 	@echo ""
-	@echo "$(BLUE)🔍 Running installation verification...$(NC)"
-	@$(VENV_PATH)/bin/python verify_installation.py || { \
-		echo "$(YELLOW)⚠️ Some verification checks showed warnings$(NC)"; \
-		echo "$(YELLOW)   Missing proteomics modules are expected in the public distribution$(NC)"; \
-		echo "$(YELLOW)   Installation is complete for transcriptomics functionality$(NC)"; \
-	}
-	@echo ""
 	@echo "$(BLUE)📋 Next steps:$(NC)"
 	@echo "1. Activate the virtual environment:"
 	@echo "   $(YELLOW)source $(VENV_PATH)/bin/activate$(NC)"
@@ -820,17 +813,13 @@ check-env: $(VENV_PATH)
 
 # Comprehensive installation validation
 verify: $(VENV_PATH)
-	@echo "🧪 Running comprehensive installation verification..."
-	@echo "   Note: Missing proteomics modules are expected in the public distribution"
-	@$(VENV_PATH)/bin/python verify_installation.py || { \
-		EXIT_CODE=$$?; \
-		if [ $$EXIT_CODE -eq 1 ]; then \
-			echo "$(YELLOW)⚠️ Some optional components are missing$(NC)"; \
-			echo "$(YELLOW)   This is expected for the public distribution$(NC)"; \
-			echo "$(GREEN)✅ Core functionality is available$(NC)"; \
-		fi; \
-		exit 0; \
-	}
+	@echo "🧪 Running installation verification..."
+	@$(VENV_PATH)/bin/python -c "from lobster.version import __version__; print(f'✅ lobster-ai {__version__}')" || { \
+		echo "$(RED)❌ lobster-ai not importable$(NC)"; exit 1; }
+	@$(VENV_PATH)/bin/python -c "from lobster.core.component_registry import component_registry; agents = component_registry.list_agents(); print(f'✅ {len(agents)} agents discovered')" || { \
+		echo "$(YELLOW)⚠️ Agent discovery failed$(NC)"; }
+	@$(VENV_PATH)/bin/python -c "from lobster.cli import app; print('✅ CLI available')" || { \
+		echo "$(RED)❌ CLI not importable$(NC)"; exit 1; }
 
 run: $(VENV_PATH)
 	@echo "🦞 Starting Lobster AI..."

@@ -24,7 +24,7 @@ This skill teaches you how to work with, extend, and contribute to the codebase.
 | Task | Documentation |
 |------|---------------|
 | **Planning new capabilities** | [references/planning-workflow.md](references/planning-workflow.md) |
-| **Domain knowledge (bioSkills)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
+| **Domain knowledge (GPTomics)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
 | **Architecture overview** | [references/architecture.md](references/architecture.md) |
 | **Plugin architecture (omics types, providers, adapters)** | [references/plugin-architecture.md](references/plugin-architecture.md) |
 | **Creating new agents** | [references/creating-agents.md](references/creating-agents.md) |
@@ -41,7 +41,7 @@ This skill teaches you how to work with, extend, and contribute to the codebase.
 |-------|---------|
 | 1. Understand Need | Structured Q&A -- what domain, workflow, tools, data formats |
 | 2. Check What Exists | Dynamically scan Lobster packages + core services for overlap |
-| 3. Find Domain Knowledge | Dynamically discover relevant bioSkills for the domain |
+| 3. Find Domain Knowledge | Discover relevant GPTomics bio-skills for the domain |
 | 4. Present Findings | Show developer what exists vs. what's missing |
 | 5. Recommend Approach | Extend existing vs. new package vs. service-only vs. not Lobster |
 | 6. Build & Test | Apply lobster-dev patterns with domain knowledge |
@@ -71,7 +71,8 @@ lobster/
 │   ├── lobster-structural-viz/  # protein_structure_visualization_expert
 │   ├── lobster-genomics/        # genomics_expert
 │   ├── lobster-proteomics/      # proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert
-│   └── lobster-ml/              # machine_learning_expert
+│   ├── lobster-metabolomics/    # metabolomics_expert
+│   └── lobster-ml/              # machine_learning_expert, feature_selection_expert, survival_analysis_expert
 └── lobster/                     # Core SDK
     ├── agents/supervisor.py     # Supervisor (stays in core)
     ├── agents/graph.py          # LangGraph builder
@@ -183,13 +184,13 @@ Full documentation at **docs.omics-os.com** (or local `docs-site/`):
 
 ### Adding a New Agent
 
-1. Create package: `packages/lobster-mydomain/`
-2. Define AGENT_CONFIG at top of agent file
-3. Register entry point in `pyproject.toml`
-4. Implement agent with tools
-5. Add tests in `tests/unit/agents/`
+1. Follow the planning workflow (Phase 1–5) to scope the work
+2. Create package: `packages/lobster-mydomain/` with full structure (agent, config, prompts, state, shared_tools)
+3. Define AGENT_CONFIG at top of agent file (before heavy imports)
+4. Implement factory, tools, services following patterns
+5. Pass contract tests + the 28-step checklist
 
-See [references/creating-agents.md](references/creating-agents.md) for full guide.
+See [references/creating-agents.md](references/creating-agents.md) for the complete guide with code templates.
 
 ### Adding a New Service
 

@@ -28,6 +28,8 @@ import pandas as pd
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
+# Re-export state class so it can be imported from this module
+from lobster.agents.visualization_state import VisualizationExpertState  # noqa: F401
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
@@ -35,9 +37,6 @@ from lobster.services.visualization.visualization_service import (
     SingleCellVisualizationService,
 )
 from lobster.utils.logger import get_logger
-
-# Re-export state class so it can be imported from this module
-from lobster.agents.visualization_state import VisualizationExpertState  # noqa: F401
 
 logger = get_logger(__name__)
 

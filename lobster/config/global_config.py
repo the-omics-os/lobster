@@ -245,7 +245,7 @@ class GlobalProviderConfig(ProviderConfigBase):
 
     bedrock_default_model: Optional[str] = Field(
         None,
-        description="Default Bedrock model ID (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0')",
+        description="Default Bedrock model ID (e.g., 'us.anthropic.claude-sonnet-4-5-20250929-v1:0')",
     )
 
     ollama_default_model: Optional[str] = Field(

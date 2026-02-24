@@ -470,7 +470,7 @@ class TestBulkRNASeqBenchmarking:
         bulk_service = BulkRNASeqService(results_dir=tmp_path)
 
         # Run pyDESeq2 analysis using the service (service expects genes × samples)
-        lobster_results = bulk_service.run_pydeseq2_analysis(
+        lobster_results, lobster_stats, lobster_ir = bulk_service.run_pydeseq2_analysis(
             count_matrix=counts_df_filtered.astype(int),  # genes × samples
             metadata=metadata_df,
             formula="~condition",
@@ -630,7 +630,7 @@ class TestBulkRNASeqBenchmarking:
         # Lobster workflow (expects genes × samples)
         bulk_service = BulkRNASeqService(results_dir=tmp_path)
 
-        lobster_results = bulk_service.run_pydeseq2_analysis(
+        lobster_results, lobster_stats, lobster_ir = bulk_service.run_pydeseq2_analysis(
             count_matrix=counts_df_filtered.astype(int),
             metadata=metadata,
             formula="~batch + condition",
