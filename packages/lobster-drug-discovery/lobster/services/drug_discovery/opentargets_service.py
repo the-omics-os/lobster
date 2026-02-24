@@ -11,6 +11,7 @@ All methods handle HTTP errors gracefully and return error information
 in the stats dict rather than raising exceptions to the caller.
 """
 
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -357,7 +358,14 @@ print(f"Tractability for {data['approvedSymbol']}: {len(data.get('tractability',
                     headers={"Content-Type": "application/json"},
                 )
                 response.raise_for_status()
-                body = response.json()
+                try:
+                    body = response.json()
+                except (ValueError, json.JSONDecodeError) as exc:
+                    msg = (
+                        f"Open Targets API returned invalid JSON: {exc}"
+                    )
+                    logger.error(msg)
+                    return None, msg
 
             # Check for GraphQL-level errors
             if "errors" in body:

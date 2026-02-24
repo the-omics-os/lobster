@@ -221,6 +221,37 @@ class TestCreateLineageMetadata:
         assert lineage.base_name == "geo_gse12345"  # Inherited from parent
         assert lineage.parent_modality == "geo_gse12345_normalized"
 
+    def test_version_increments_from_string_parent(self):
+        """Regression: parent version stored as string after h5ad round-trip.
+
+        Bug: lineage.py used string concatenation instead of int addition when
+        parent_version was a string, producing "21" instead of 3.
+        Fix: int(parent_version) + 1
+        """
+        parent_adata = anndata.AnnData(
+            X=np.random.rand(10, 5),
+            obs=pd.DataFrame(index=[f"cell_{i}" for i in range(10)]),
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(5)]),
+        )
+        # After h5ad save/load, version is stored as string
+        parent_adata.uns[LINEAGE_KEY] = {
+            "base_name": "geo_gse12345",
+            "version": "2",
+            "processing_step": "normalized",
+            "parent_modality": "geo_gse12345_raw",
+            "step_summary": "Normalized",
+            "created_at": "2026-02-08T10:00:00",
+        }
+
+        lineage = create_lineage_metadata(
+            modality_name="geo_gse12345_clustered",
+            parent_modality="geo_gse12345_normalized",
+            parent_adata=parent_adata,
+        )
+
+        assert lineage.version == 3  # Must be int 3, not string "21"
+        assert isinstance(lineage.version, int)
+
     def test_explicit_values_override_inference(self):
         """Test that explicit values override inference."""
         lineage = create_lineage_metadata(

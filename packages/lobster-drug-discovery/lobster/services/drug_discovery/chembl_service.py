@@ -11,6 +11,7 @@ All methods handle HTTP errors gracefully and return error information
 in the stats dict rather than raising exceptions to the caller.
 """
 
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -268,7 +269,14 @@ print(f"Found {len(activities)} {{{ activity_type | tojson }}} records for targe
                             logger.error(msg)
                             return None, msg
                     else:
-                        return response.json(), None
+                        try:
+                            return response.json(), None
+                        except (ValueError, json.JSONDecodeError) as exc:
+                            msg = (
+                                f"ChEMBL API returned invalid JSON for {url}: {exc}"
+                            )
+                            logger.error(msg)
+                            return None, msg
                 except httpx.TimeoutException:
                     last_error = (
                         f"ChEMBL API timeout after {DEFAULT_HTTP_TIMEOUT}s for {url}"

@@ -935,3 +935,47 @@ class TestPerformanceAndMemory:
 
         assert result_adata is not None
         assert stats["n_time_points"] == n_time_points
+
+
+# ===============================================================================
+# Regression Tests
+# ===============================================================================
+
+
+class TestCoerceGroupValueRegression:
+    """Regression: _coerce_group_value handles dtype mismatches.
+
+    Bug: when group column contains strings like 'APOE33' but comparison
+    values were passed differently (or when pandas uses StringDtype vs object),
+    group filtering silently returned empty DataFrames.
+    Fix: _coerce_group_value tries type casting and string representation matching.
+    """
+
+    def test_string_value_matches_string_group(self):
+        svc = ProteomicsDifferentialService()
+        groups = {"APOE33", "APOE44"}
+        assert svc._coerce_group_value("APOE33", groups) == "APOE33"
+
+    def test_int_value_matches_int_group(self):
+        svc = ProteomicsDifferentialService()
+        groups = {1, 2, 3}
+        assert svc._coerce_group_value(1, groups) == 1
+
+    def test_string_int_coercion(self):
+        """String '1' should match integer group 1."""
+        svc = ProteomicsDifferentialService()
+        groups = {1, 2, 3}
+        result = svc._coerce_group_value("1", groups)
+        assert result == 1
+
+    def test_int_string_coercion(self):
+        """Integer 1 should match string group '1'."""
+        svc = ProteomicsDifferentialService()
+        groups = {"1", "2", "3"}
+        result = svc._coerce_group_value(1, groups)
+        assert result == "1"
+
+    def test_unmatched_value_returned_as_is(self):
+        svc = ProteomicsDifferentialService()
+        groups = {"APOE33", "APOE44"}
+        assert svc._coerce_group_value("APOE99", groups) == "APOE99"

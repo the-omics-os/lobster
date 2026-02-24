@@ -94,6 +94,37 @@ class TestBiomarkerSubAgentConfig:
         )
 
 
+class TestPlatformConfigRegressions:
+    """Regression tests for platform config handling."""
+
+    def test_unknown_platform_defaults_to_mass_spec(self):
+        """Regression: get_platform_config('unknown') raised ValueError.
+
+        Bug: auto-detection sometimes returns 'unknown' for ambiguous data.
+        Fix: map 'unknown' to 'mass_spec' as safe default.
+        """
+        from lobster.agents.proteomics.config import (
+            PLATFORM_CONFIGS,
+            get_platform_config,
+        )
+
+        config = get_platform_config("unknown")
+        assert config == PLATFORM_CONFIGS["mass_spec"]
+
+    def test_valid_platforms_still_work(self):
+        from lobster.agents.proteomics.config import get_platform_config
+
+        for platform in ["mass_spec", "affinity"]:
+            config = get_platform_config(platform)
+            assert config.platform_type == platform
+
+    def test_invalid_platform_still_raises(self):
+        from lobster.agents.proteomics.config import get_platform_config
+
+        with pytest.raises(ValueError, match="Unknown platform type"):
+            get_platform_config("nonexistent_platform")
+
+
 class TestSharedTools:
     """Tests for shared tools factory."""
 

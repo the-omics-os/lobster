@@ -15,6 +15,7 @@ All methods handle HTTP errors gracefully and return error information
 in the stats dict rather than raising exceptions to the caller.
 """
 
+import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -132,7 +133,8 @@ import httpx, time
 from urllib.parse import quote
 
 # Step 1: Initiate async search (URL-encode SMILES for safety)
-url = f"{{ base_url }}/compound/similarity/smiles/{quote({{ smiles | tojson }}, safe='')}/JSON"
+smiles_encoded = quote({{ smiles | tojson }}, safe='')
+url = f"{{ base_url }}/compound/similarity/smiles/{smiles_encoded}/JSON"
 params = {"Threshold": {{ threshold }}, "MaxRecords": {{ limit }}}
 response = httpx.post(url, params=params, timeout={{ timeout }})
 response.raise_for_status()
@@ -257,7 +259,14 @@ print(f"Found {len(synonyms)} synonyms for '{{ identifier }}'")""",
             with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as client:
                 response = client.get(url, params=params)
                 response.raise_for_status()
-                return response.json(), None
+                try:
+                    return response.json(), None
+                except (ValueError, json.JSONDecodeError) as exc:
+                    msg = (
+                        f"PubChem API returned invalid JSON for {url}: {exc}"
+                    )
+                    logger.error(msg)
+                    return None, msg
         except httpx.TimeoutException:
             msg = f"PubChem API timeout after {DEFAULT_HTTP_TIMEOUT}s for {url}"
             logger.error(msg)
@@ -295,7 +304,14 @@ print(f"Found {len(synonyms)} synonyms for '{{ identifier }}'")""",
             with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as client:
                 response = client.post(url, params=params)
                 response.raise_for_status()
-                return response.json(), None
+                try:
+                    return response.json(), None
+                except (ValueError, json.JSONDecodeError) as exc:
+                    msg = (
+                        f"PubChem API returned invalid JSON for POST {url}: {exc}"
+                    )
+                    logger.error(msg)
+                    return None, msg
         except httpx.TimeoutException:
             msg = f"PubChem API timeout after {DEFAULT_HTTP_TIMEOUT}s for POST {url}"
             logger.error(msg)
@@ -591,7 +607,14 @@ print(f"Found {len(synonyms)} synonyms for '{{ identifier }}'")""",
                     poll_response = client.get(poll_url)
 
                 if poll_response.status_code == 200:
-                    poll_data = poll_response.json()
+                    try:
+                        poll_data = poll_response.json()
+                    except (ValueError, json.JSONDecodeError) as exc:
+                        poll_error = (
+                            f"PubChem poll returned invalid JSON: {exc}"
+                        )
+                        logger.warning(poll_error)
+                        continue
                     properties_table = poll_data.get("PropertyTable", {})
                     properties_list = properties_table.get("Properties", [])
                     compounds = self._parse_property_list(properties_list)
