@@ -92,6 +92,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         self.agent_stack: List[str] = []
         self.events: List[AgentEvent] = []
         self.start_times: Dict[str, datetime] = {}
+        self._minimal_agent_shown: bool = False  # Track if first agent shown in minimal mode
 
         # Display components
         self.progress: Optional[Progress] = None
@@ -125,17 +126,21 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         """Display an agent event with Rich formatting."""
         agent_display = self._format_agent_name(event.agent_name)
 
-        # Minimal mode: oh-my-zsh style (◀ Agent Name)
+        # Minimal mode: only show the first non-supervisor agent, skip handoff noise
         if self.minimal:
             if event.type == EventType.AGENT_START:
-                self.console.print(f"[dim]◀ {agent_display}[/dim]")
-            elif event.type == EventType.AGENT_THINKING and self.show_reasoning:
-                # In minimal mode, only show agent indicator once (on start)
-                pass
+                # Skip supervisor — only show the specialist agent
+                if event.agent_name != "supervisor" and not self._minimal_agent_shown:
+                    self.console.print(f"[dim]◀ {agent_display}[/dim]")
+                    self._minimal_agent_shown = True
             elif event.type == EventType.HANDOFF:
                 to_agent = event.metadata.get("to", "Unknown")
-                self.console.print(f"[dim]◀ {self._format_agent_name(to_agent)}[/dim]")
-            # Skip other events in minimal mode
+                if to_agent != "supervisor" and not self._minimal_agent_shown:
+                    self.console.print(
+                        f"[dim]◀ {self._format_agent_name(to_agent)}[/dim]"
+                    )
+                    self._minimal_agent_shown = True
+            # Skip thinking, other events in minimal mode
             return
 
         # Standard verbose mode (existing behavior)
@@ -204,9 +209,10 @@ class TerminalCallbackHandler(BaseCallbackHandler):
                 )
 
         elif event.type == EventType.TOOL_ERROR:
-            self.console.print(
-                f"[red]      ✗ {tool_name} failed: {event.content}[/red]"
-            )
+            if self.verbose:
+                self.console.print(
+                    f"[red]      ✗ {tool_name} failed: {event.content}[/red]"
+                )
 
     # LangChain Callback Methods
 
@@ -648,6 +654,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         self.agent_stack = []
         self.events = []
         self.start_times = {}
+        self._minimal_agent_shown = False
         self.current_task = None
 
 
@@ -699,7 +706,7 @@ class SimpleTerminalCallback(TerminalCallbackHandler):
             console=console,
             verbose=False,  # Less verbose for CLI
             show_reasoning=show_reasoning,
-            show_tools=True,
+            show_tools=False,  # Hide raw tool names by default
             use_panels=False,  # Simpler output for CLI
             minimal=minimal,  # oh-my-zsh style output
         )
@@ -1273,23 +1280,12 @@ class TokenTrackingCallback(BaseCallbackHandler):
 
     def get_minimal_summary(self) -> str:
         """
-        Get minimal one-line token usage summary with compact agent abbreviations.
+        Get clean session cost summary for end-of-session display.
 
-        Returns:
-            Compact string with total and per-agent breakdown
-            Format: "💰 10.4k tokens ($0.03) | S(2.3k) | R(6.6k) | D(1.5k)"
-
-        Agent abbreviations:
-            S = supervisor
-            R = research_agent
-            D = data_expert_agent
-            T = transcriptomics_expert
-            V = visualization_expert_agent
-            M = machine_learning_expert_agent
-            P = proteomics_expert
-            A = annotation_expert
-            E = de_analysis_expert
-            U = unknown
+        For cloud providers (cost > 0):
+            "Session cost: $0.16"
+        For local models (cost == 0):
+            "Session: 39.5k tokens (local)"
         """
         if not self.invocations:
             return ""
@@ -1300,40 +1296,53 @@ class TokenTrackingCallback(BaseCallbackHandler):
                 return f"{count / 1000:.1f}k"
             return str(count)
 
-        def agent_abbreviation(agent_name: str) -> str:
-            """Get single-letter abbreviation for agent."""
-            mapping = {
-                "supervisor": "S",
-                "research_agent": "R",
-                "data_expert_agent": "D",
-                "transcriptomics_expert": "T",
-                "visualization_expert_agent": "V",
-                "machine_learning_expert_agent": "M",
-                "proteomics_expert": "P",
-                "annotation_expert": "A",
-                "de_analysis_expert": "E",
-                "metadata_assistant": "Meta",
-                "protein_structure_visualization_expert_agent": "Prot",
-                "custom_feature_agent": "Custom",
-                "unknown": "U",
-            }
-            return mapping.get(agent_name, agent_name[0].upper())
+        total_str = format_tokens(self.total_tokens)
 
-        # Build per-agent breakdown with abbreviations
-        agent_parts = []
-        for agent_name, stats in sorted(self.by_agent.items()):
-            abbrev = agent_abbreviation(agent_name)
-            tokens_str = format_tokens(stats["total_tokens"])
-            agent_parts.append(f"{abbrev}({tokens_str})")
+        if self.total_cost_usd > 0:
+            cost_str = f"${self.total_cost_usd:.4f}".rstrip("0").rstrip(".")
+            if cost_str == "$0.":
+                cost_str = "$0.00"
+            return f"Session cost: {cost_str}"
+        else:
+            return f"Session: {total_str} tokens (local)"
 
-        # Combine into single line
+    def get_verbose_summary(self) -> str:
+        """
+        Get detailed token usage summary with per-agent breakdown.
+
+        Returns tree-style breakdown:
+            "💰 39.5k tokens ($0.16)
+              Supervisor        9.1k
+              Research Agent    6.6k
+              Data Expert      21.1k"
+        """
+        if not self.invocations:
+            return ""
+
+        def format_tokens(count: int) -> str:
+            if count >= 1000:
+                return f"{count / 1000:.1f}k"
+            return str(count)
+
         total_str = format_tokens(self.total_tokens)
         cost_str = f"${self.total_cost_usd:.4f}".rstrip("0").rstrip(".")
         if cost_str == "$0.":
             cost_str = "$0.00"
 
-        breakdown = " | ".join(agent_parts) if agent_parts else "U(0)"
-        return f"💰 {total_str} tokens ({cost_str}) | {breakdown}"
+        lines = [f"💰 {total_str} tokens ({cost_str})"]
+
+        # Per-agent breakdown, sorted by token count descending
+        sorted_agents = sorted(
+            self.by_agent.items(),
+            key=lambda x: x[1]["total_tokens"],
+            reverse=True,
+        )
+        for agent_name, stats in sorted_agents:
+            display_name = agent_name.replace("_", " ").title()
+            tokens_str = format_tokens(stats["total_tokens"])
+            lines.append(f"  {display_name:<30s} {tokens_str}")
+
+        return "\n".join(lines)
 
     def save_to_workspace(self, workspace_path: Path):
         """

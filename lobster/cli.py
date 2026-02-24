@@ -67,6 +67,9 @@ logging.getLogger("langchain_aws").setLevel(logging.ERROR)
 # httpx and httpcore are verbose
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+# Suppress external API error logging that agents recover from
+logging.getLogger("lobster.services.drug_discovery").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
 # Suppress deprecation warnings from third-party libs
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain.*")
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic.*")
@@ -6607,7 +6610,10 @@ def chat(
 
                 # Display session token usage summary
                 if hasattr(client, "token_tracker") and client.token_tracker:
-                    summary = client.token_tracker.get_minimal_summary()
+                    if verbose:
+                        summary = client.token_tracker.get_verbose_summary()
+                    else:
+                        summary = client.token_tracker.get_minimal_summary()
                     if summary:
                         console.print(f"[dim]{summary}[/dim]")
                 console.print()  # Empty line before exit
@@ -7642,7 +7648,10 @@ when they are started by agents or analysis workflows.
 
             # Display session token usage summary
             if hasattr(client, "token_tracker") and client.token_tracker:
-                summary = client.token_tracker.get_minimal_summary()
+                if verbose:
+                    summary = client.token_tracker.get_verbose_summary()
+                else:
+                    summary = client.token_tracker.get_minimal_summary()
                 if summary:
                     console.print(f"[dim]{summary}[/dim]")
             console.print()  # Empty line before exit
@@ -7933,9 +7942,12 @@ def query(
             f"(use --session-id latest for follow-ups)[/dim]"
         )
 
-        # Display minimal token usage summary
+        # Display session token usage summary
         if hasattr(client, "token_tracker") and client.token_tracker:
-            summary = client.token_tracker.get_minimal_summary()
+            if verbose:
+                summary = client.token_tracker.get_verbose_summary()
+            else:
+                summary = client.token_tracker.get_minimal_summary()
             if summary:
                 console.print(f"[dim]{summary}[/dim]")
     else:

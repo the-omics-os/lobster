@@ -399,7 +399,7 @@ def create_bioinformatics_graph(
         # Log agents requested but not available
         skipped = enabled_set - set(worker_agents.keys())
         if skipped:
-            logger.warning(f"Config requested agents not available: {skipped}")
+            logger.debug(f"Config requested agents not available: {skipped}")
     else:
         worker_agents = all_agents
 
