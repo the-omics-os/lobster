@@ -290,6 +290,20 @@ class BedrockProvider(ILLMProvider):
         # Pass through any remaining kwargs
         bedrock_params.update(kwargs)
 
+        # Set generous timeouts for multi-tool agent turns
+        # Default boto3 read_timeout (60s) is too short when agents make
+        # multiple external API calls (Open Targets, ChEMBL, PubChem) in one turn
+        try:
+            from botocore.config import Config as BotoConfig
+
+            bedrock_params["config"] = BotoConfig(
+                read_timeout=600,
+                connect_timeout=10,
+                retries={"max_attempts": 3},
+            )
+        except ImportError:
+            pass  # botocore should always be available with langchain-aws
+
         logger.debug(
             f"Creating ChatBedrockConverse with model={model_id}, "
             f"region={region}, temperature={temperature}"
