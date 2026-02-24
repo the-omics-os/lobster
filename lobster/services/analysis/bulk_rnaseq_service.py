@@ -26,6 +26,7 @@ from scipy import sparse
 
 from lobster.core import FormulaError
 from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.sparse_utils import safe_toarray
 from lobster.services.analysis.differential_formula_service import (
     DifferentialFormulaService,
 )
@@ -521,9 +522,7 @@ Next suggested step: Import quantification data with tximport for differential e
             logger.info("Applying DEG filtering for biological significance...")
 
             # Get expression data (convert sparse to dense if needed)
-            X_normalized = (
-                adata_de.X if not sparse.issparse(adata_de.X) else adata_de.X.toarray()
-            )
+            X_normalized = safe_toarray(adata_de.X)
 
             # Get group indices
             group1_mask = adata_de.obs[groupby] == group1
@@ -854,12 +853,8 @@ Next suggested step: Import quantification data with tximport for differential e
         logger.info(f"Running DESeq2-like analysis: {group1_name} vs {group2_name}")
 
         # Extract expression matrices
-        if hasattr(group1_data.X, "toarray"):
-            group1_expr = group1_data.X.toarray()
-            group2_expr = group2_data.X.toarray()
-        else:
-            group1_expr = group1_data.X
-            group2_expr = group2_data.X
+        group1_expr = safe_toarray(group1_data.X)
+        group2_expr = safe_toarray(group2_data.X)
 
         n_genes = group1_data.n_vars
         gene_names = group1_data.var_names
@@ -921,12 +916,8 @@ Next suggested step: Import quantification data with tximport for differential e
         from scipy import stats
 
         # Extract expression matrices
-        if hasattr(group1_data.X, "toarray"):
-            group1_expr = group1_data.X.toarray()
-            group2_expr = group2_data.X.toarray()
-        else:
-            group1_expr = group1_data.X
-            group2_expr = group2_data.X
+        group1_expr = safe_toarray(group1_data.X)
+        group2_expr = safe_toarray(group2_data.X)
 
         n_genes = group1_data.n_vars
         gene_names = group1_data.var_names
@@ -983,12 +974,8 @@ Next suggested step: Import quantification data with tximport for differential e
         from scipy import stats
 
         # Extract expression matrices
-        if hasattr(group1_data.X, "toarray"):
-            group1_expr = group1_data.X.toarray()
-            group2_expr = group2_data.X.toarray()
-        else:
-            group1_expr = group1_data.X
-            group2_expr = group2_data.X
+        group1_expr = safe_toarray(group1_data.X)
+        group2_expr = safe_toarray(group2_data.X)
 
         n_genes = group1_data.n_vars
         gene_names = group1_data.var_names

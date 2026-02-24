@@ -43,6 +43,13 @@ uv tool install 'lobster-ai[full,anthropic]' && lobster init
 # or: pip install 'lobster-ai[full]' && lobster init
 ```
 
+### Targeted domain install
+```bash
+pip install lobster-ai[proteomics]     # Proteomics + research + visualization
+pip install lobster-ai[genomics]       # Genomics + research + visualization
+pip install lobster-ai[transcriptomics] # scRNA-seq + bulk RNA-seq
+```
+
 After install, `lobster init` configures API keys and selects agent packages.
 
 ### Upgrading
@@ -115,7 +122,7 @@ lobster config-test --json  # Verify configuration
 
 ## Agent System
 
-Lobster routes to specialist agents automatically. 14 agents across 8 packages:
+Lobster routes to specialist agents automatically. 20+ agents across 10 packages:
 
 | Agent | Package | Handles |
 |-------|---------|---------|
@@ -127,11 +134,14 @@ Lobster routes to specialist agents automatically. 14 agents across 8 packages:
 | **DE Analysis Expert** | lobster-transcriptomics | Differential expression, statistical testing |
 | **Visualization Expert** | lobster-visualization | UMAP, heatmaps, volcano plots, dot plots |
 | **Metadata Assistant** | lobster-metadata | ID mapping, metadata standardization |
-| **Proteomics Expert** | lobster-proteomics | Mass spec & affinity platform analysis [alpha] |
-| **Genomics Expert** | lobster-genomics | VCF, PLINK, GWAS, variant annotation [alpha] |
-| **ML Expert** | lobster-ml | ML prep, scVI embeddings, data export [alpha] |
-| **Feature Selection Expert** | lobster-ml | Stability, LASSO, variance filtering [alpha] |
-| **Survival Analysis Expert** | lobster-ml | Cox models, Kaplan-Meier, risk stratification [alpha] |
+| **Proteomics Expert** | lobster-proteomics | Mass spec & affinity proteomics: import (CSV/MaxQuant/DIA-NN/Olink/SomaScan), QC, normalization, batch correction |
+| **Proteomics DE Analysis Expert** | lobster-proteomics | Differential expression, pathway enrichment (GO/Reactome/KEGG), kinase enrichment (KSEA), STRING PPI networks |
+| **Biomarker Discovery Expert** | lobster-proteomics | Panel selection (LASSO/stability/Boruta), nested CV, hub proteins |
+| **Metabolomics Expert** | lobster-metabolomics | LC-MS/GC-MS/NMR QC, normalization, PCA/PLS-DA, metabolite annotation |
+| **Genomics Expert** | lobster-genomics | VCF, PLINK, GWAS, variant annotation |
+| **ML Expert** | lobster-ml | ML prep, scVI embeddings, data export |
+| **Feature Selection Expert** | lobster-ml | Stability, LASSO, variance filtering |
+| **Survival Analysis Expert** | lobster-ml | Cox models, Kaplan-Meier, risk stratification |
 | **Protein Structure Viz** | lobster-structural-viz | PDB fetch, PyMOL visualization, RMSD |
 
 Details and hierarchy: [references/agents.md](references/agents.md)
@@ -218,12 +228,10 @@ lobster query --session-id "gen" "Annotate significant variants"
 ```
 Details: [docs.omics-os.com/docs/agents/genomics](https://docs.omics-os.com/raw/docs/agents/genomics.md)
 
-### Proteomics [alpha]
+### Proteomics
 ```bash
-lobster query -w ./prot --session-id "prot" "Load the MaxQuant proteinGroups.txt"
-lobster query --session-id "prot" "Run quality control"
-lobster query --session-id "prot" "Filter and normalize"
-lobster query --session-id "prot" "Find differentially abundant proteins: treatment vs control"
+lobster query -w ./prot --session-id "prot" \
+  "Import the proteomics CSV at ./data/expression_matrix.csv with metadata from ./data/metadata.csv as 'my_proteomics'. Assess quality, normalize, and run differential expression comparing treatment vs control in the group column."
 ```
 Details: [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/raw/docs/agents/proteomics.md)
 
@@ -254,4 +262,4 @@ Key sections:
 - Getting Started -> Installation & Configuration
 - Guides -> CLI Commands, Data Formats
 - Tutorials -> Single-Cell, Bulk RNA-seq, Proteomics
-- Agents -> Per-agent documentation (all 14 agents)
+- Agents -> Per-agent documentation (all agents)

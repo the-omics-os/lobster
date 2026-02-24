@@ -494,6 +494,7 @@ def _validate_missing_values(adata) -> "ValidationResult":
     import numpy as np
 
     from lobster.core.interfaces.validator import ValidationResult
+    from lobster.core.sparse_utils import SparseConversionError, safe_toarray
 
     result = ValidationResult()
 
@@ -501,13 +502,20 @@ def _validate_missing_values(adata) -> "ValidationResult":
     # NOTE: For metabolomics, missing values are NaN (not zero). In sparse format,
     # NaN is converted to 0, losing the distinction. Use dense conversion for
     # accurate missing value detection.
-    if hasattr(adata.X, "toarray"):  # Sparse matrix
-        X_dense = adata.X.toarray()
-        missing_pct = (
-            np.isnan(X_dense).sum() / X_dense.size * 100 if X_dense.size > 0 else 0
+    try:
+        X_dense = safe_toarray(adata.X)
+    except SparseConversionError:
+        result.add_warning(
+            "Sparse matrix too large to convert to dense for missing value "
+            "validation. Skipping missing value checks. Consider filtering "
+            "features or subsampling before validation."
         )
-    else:  # Dense matrix
-        missing_pct = np.isnan(adata.X).sum() / adata.X.size * 100
+        return result
+
+    if X_dense.size > 0:
+        missing_pct = np.isnan(X_dense).sum() / X_dense.size * 100
+    else:
+        missing_pct = 0
 
     if missing_pct > 70:
         result.add_warning(
@@ -521,11 +529,6 @@ def _validate_missing_values(adata) -> "ValidationResult":
         )
 
     # Check for metabolites with high missing rates
-    if hasattr(adata.X, "toarray"):
-        X_dense = adata.X.toarray()
-    else:
-        X_dense = adata.X
-
     metabolite_missing = np.isnan(X_dense).sum(axis=0) / X_dense.shape[0] * 100
     high_missing = (metabolite_missing > 50).sum()
 

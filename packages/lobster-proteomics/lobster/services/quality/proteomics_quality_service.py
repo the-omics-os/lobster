@@ -18,6 +18,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.sparse_utils import safe_toarray
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1337,11 +1338,7 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
         )
 
         adata_result = adata.copy()
-        X = (
-            adata_result.X.toarray()
-            if hasattr(adata_result.X, "toarray")
-            else adata_result.X.copy()
-        )
+        X = safe_toarray(adata_result.X, copy=True)
         n_samples, n_proteins = X.shape
 
         # Step 1: Calculate detection rate per protein

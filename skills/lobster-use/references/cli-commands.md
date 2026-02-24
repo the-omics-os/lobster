@@ -17,6 +17,14 @@ Complete reference for Lobster AI command-line interface.
 | Windows (PowerShell) | `irm https://install.lobsterbio.com/windows \| iex` |
 | Manual (any) | `uv tool install 'lobster-ai[full,anthropic]' && lobster init` |
 | pip (any) | `pip install 'lobster-ai[full]' && lobster init` |
+| pip (targeted) | See targeted domain extras below |
+
+**Targeted domain install** (lighter than `[full]`):
+```bash
+pip install 'lobster-ai[proteomics]'      # Proteomics agents + research + viz
+pip install 'lobster-ai[genomics]'        # Genomics agents + research + viz
+pip install 'lobster-ai[transcriptomics]' # RNA-seq agents + research + viz
+```
 
 ### Upgrade
 
@@ -54,6 +62,10 @@ lobster chat --verbose                # Debug output
 lobster query "Your request"
 lobster query --session-id latest "Follow-up"
 lobster query --output results.md "Generate report"
+lobster query --stream "Your request"        # Real-time streaming output
+
+# Note: `lobster query` runs with streaming OFF by default (returns complete
+# result). Use `--stream` to enable real-time output.
 
 # Dashboard (visual monitoring)
 lobster dashboard
@@ -183,6 +195,18 @@ lobster chat --workspace ./project-b    # Session B (separate)
 - Commands: `/` + Tab
 - Files: `/read` + Tab
 - Datasets: `/workspace load` + Tab
+
+## Key Flags for `lobster query`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--session-id <name>` | (none) | Named session for cross-terminal continuity |
+| `--output <file>` | (none) | Write response to file |
+| `--json` | off | Structured JSON output (stdout), Rich UI to stderr |
+| `--stream / --no-stream` | off | Real-time streaming output (off by default; returns complete result) |
+| `--reasoning` | off | Show detailed agent reasoning |
+| `--verbose` | off | Debug output |
+| `-w / --workspace <path>` | auto | Explicit workspace directory |
 
 ## Output Formats
 

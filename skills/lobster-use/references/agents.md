@@ -16,16 +16,21 @@ Supervisor (routes all queries)
 ├── Research Agent          (online: literature, datasets)
 ├── Data Expert             (offline: downloads, file loading)
 ├── Transcriptomics Expert
-│   ├── Annotation Expert       (sub-agent)
-│   └── DE Analysis Expert      (sub-agent)
+│   ├── Annotation Expert              (sub-agent)
+│   └── DE Analysis Expert             (sub-agent)
 ├── Visualization Expert
-├── Proteomics Expert       [alpha]
+├── Proteomics Expert
+│   ├── Proteomics DE Analysis Expert* (sub-agent)
+│   └── Biomarker Discovery Expert     (sub-agent)
 ├── Genomics Expert         [alpha]
+├── Metabolomics Expert
 ├── ML Expert               [alpha]
-│   ├── Feature Selection Expert    (sub-agent)
-│   └── Survival Analysis Expert    (sub-agent)
+│   ├── Feature Selection Expert       (sub-agent)
+│   └── Survival Analysis Expert       (sub-agent)
 ├── Metadata Assistant      (internal)
 └── Protein Structure Viz Expert
+
+* = also directly accessible from supervisor
 ```
 
 ## Core Agents
@@ -107,21 +112,49 @@ Delegates to Annotation Expert and DE Analysis Expert for specialized tasks.
 
 ---
 
-### Proteomics Expert [alpha]
-**Package:** `lobster-proteomics`
+### Proteomics Expert
+**Package:** `lobster-proteomics` | **Tools:** 21
 
-Mass spectrometry (DDA/DIA) and affinity platform (Olink/SomaScan) analysis.
-Auto-detects platform type from data characteristics. 10 tools: shared QC/normalization/DE
-plus MS-specific peptide mapping and affinity-specific antibody validation and plate correction.
+Unified proteomics parent agent handling mass spectrometry (MaxQuant, DIA-NN, Spectronaut) and affinity platforms (Olink NPX, SomaScan ADAT, Luminex MFI). Also imports generic CSV/TSV expression matrices via auto-detection. Delegates DE and biomarker tasks to sub-agents.
+
+**Import capabilities:** generic CSV, MaxQuant, DIA-NN, Spectronaut, Olink, SomaScan, Luminex
+
+**Key operations:** QC assessment, filtering, normalization, batch correction, imputation, PTM analysis, peptide-to-protein rollup
 
 **Example queries:**
 ```
 "Analyze the MaxQuant output"
-"Find differentially abundant proteins"
-"Run quality control on the Olink data"
+"Import and QC the Olink NPX data"
+"Run quality control on the SomaScan data"
+"Normalize and batch-correct the proteomics dataset"
 ```
 
 **Docs:** [docs.omics-os.com/docs/agents/proteomics](https://docs.omics-os.com/raw/docs/agents/proteomics.md)
+
+---
+
+### Metabolomics Expert
+**Package:** `lobster-metabolomics` | **Tools:** 10
+
+Handles LC-MS, GC-MS, and NMR metabolomics data with platform-aware defaults.
+
+**Key operations:**
+- Import metabolomics data (various formats)
+- QC assessment (RSD, TIC, missing values)
+- Filtering, imputation, normalization (PQN, TIC, median)
+- Statistical analysis: PCA, PLS-DA, OPLS-DA
+- Metabolite annotation (m/z matching)
+- Lipid class analysis
+
+**Example queries:**
+```
+"Import the LC-MS metabolomics data"
+"Run QC and normalize using PQN"
+"Perform PLS-DA to separate treatment groups"
+"Annotate features by m/z matching"
+```
+
+**Docs:** [docs.omics-os.com/docs/agents/metabolomics](https://docs.omics-os.com/raw/docs/agents/metabolomics.md)
 
 ---
 
@@ -160,7 +193,7 @@ specialized workflows. 7 direct tools.
 
 ## Sub-Agents
 
-These are not directly accessible -- their parent agent delegates to them automatically.
+Most are not directly accessible -- their parent agent delegates to them. Exception: proteomics_de_analysis_expert is also supervisor-accessible for direct routing.
 
 ### Annotation Expert
 **Package:** `lobster-transcriptomics` | **Parent:** Transcriptomics Expert
@@ -187,6 +220,37 @@ Supports complex designs (multi-factor, interaction, time series).
 "Run differential expression: treatment vs control"
 "Compare cell types for DE genes"
 "Find genes with FDR < 0.05 and |log2FC| > 1"
+```
+
+---
+
+### Proteomics DE Analysis Expert
+**Package:** `lobster-proteomics` | **Parent:** Proteomics Expert | **Also supervisor-accessible**
+
+Proteomics differential expression, pathway enrichment, and network analysis.
+7 tools: find_differential_proteins, run_time_course_analysis, run_correlation_analysis, run_pathway_enrichment, run_differential_ptm_analysis, run_kinase_enrichment, run_string_network_analysis.
+
+**Example queries:**
+```
+"Find differentially abundant proteins between treatment and control"
+"Run pathway enrichment on the DE results"
+"Perform kinase enrichment analysis (KSEA)"
+"Build a STRING PPI network for the significant proteins"
+```
+
+---
+
+### Biomarker Discovery Expert
+**Package:** `lobster-proteomics` | **Parent:** Proteomics Expert
+
+Biomarker panel selection and validation.
+7 tools: select_biomarker_panel (LASSO/stability/Boruta), evaluate_panel_performance, extract_hub_proteins, run_nested_cv, run_survival_biomarker_analysis.
+
+**Example queries:**
+```
+"Select a biomarker panel using stability selection"
+"Evaluate the panel with nested cross-validation"
+"Extract hub proteins from the PPI network"
 ```
 
 ---

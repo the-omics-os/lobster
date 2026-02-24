@@ -22,6 +22,7 @@ from sklearn.decomposition import PCA
 from sklearn.impute import KNNImputer, SimpleImputer
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.sparse_utils import safe_toarray
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -1132,9 +1133,7 @@ print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matc
                 )
 
             # 2. Get intensity matrix (handle sparse -> dense)
-            X = adata.X
-            if hasattr(X, "toarray"):
-                X = X.toarray()
+            X = safe_toarray(adata.X)
             X = np.array(X, dtype=np.float64)
 
             n_peptides = X.shape[1]
@@ -1244,14 +1243,10 @@ print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matc
             logger.info(f"Starting PTM-to-protein normalization with method: {method}")
 
             # Get matrices
-            ptm_X = ptm_adata.X
-            if hasattr(ptm_X, "toarray"):
-                ptm_X = ptm_X.toarray()
+            ptm_X = safe_toarray(ptm_adata.X)
             ptm_X = np.array(ptm_X, dtype=np.float64)
 
-            prot_X = protein_adata.X
-            if hasattr(prot_X, "toarray"):
-                prot_X = prot_X.toarray()
+            prot_X = safe_toarray(protein_adata.X)
             prot_X = np.array(prot_X, dtype=np.float64)
 
             # Build protein lookup: var_name -> column index in protein_adata

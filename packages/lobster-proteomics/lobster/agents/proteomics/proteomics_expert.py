@@ -195,12 +195,10 @@ def proteomics_expert(
             return f"Modality '{modality_name}' not found. Available: {data_manager.list_modalities()}"
 
         try:
+            from lobster.core.sparse_utils import safe_toarray
+
             adata_validated = adata.copy()
-            X = (
-                adata_validated.X.toarray()
-                if hasattr(adata_validated.X, "toarray")
-                else adata_validated.X
-            )
+            X = safe_toarray(adata_validated.X)
 
             import pandas as pd
 
