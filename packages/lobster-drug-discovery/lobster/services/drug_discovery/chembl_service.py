@@ -11,10 +11,7 @@ All methods handle HTTP errors gracefully and return error information
 in the stats dict rather than raising exceptions to the caller.
 """
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
-
-import httpx
 
 from lobster.agents.drug_discovery.config import (
     CHEMBL_API_BASE,
@@ -22,12 +19,13 @@ from lobster.agents.drug_discovery.config import (
     DEFAULT_SEARCH_LIMIT,
 )
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.drug_discovery.base_api_service import BaseAPIService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class ChEMBLService:
+class ChEMBLService(BaseAPIService):
     """
     Stateless service for querying the ChEMBL REST API.
 
@@ -38,6 +36,10 @@ class ChEMBLService:
 
     def __init__(self) -> None:
         """Initialize the ChEMBL service (stateless)."""
+        super().__init__(
+            service_name="ChEMBL",
+            default_timeout=DEFAULT_HTTP_TIMEOUT,
+        )
         logger.debug("Initializing stateless ChEMBLService")
 
     # =========================================================================
@@ -212,109 +214,6 @@ print(f"Found {len(activities)} {{{ activity_type | tojson }}} records for targe
             input_entities=[],
             output_entities=["target_compound_results"],
         )
-
-    # =========================================================================
-    # Internal HTTP helper
-    # =========================================================================
-
-    # Shared headers for ChEMBL API requests
-    _HEADERS = {
-        "Accept": "application/json",
-        "User-Agent": "lobster-ai/1.0 (https://github.com/the-omics-os/lobster)",
-    }
-
-    def _get_json(
-        self,
-        url: str,
-        params: Dict[str, Any],
-        max_retries: int = 2,
-    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """
-        Execute a GET request with retry logic for timeouts and 5xx errors.
-
-        Retries up to *max_retries* times with exponential backoff plus jitter.
-        Client errors (4xx) are never retried.  The httpx client is reused
-        across retries to benefit from connection pooling.
-
-        Returns:
-            Tuple of (json_data, error_message). Exactly one will be None.
-        """
-        import random
-        import time
-
-        last_error: Optional[str] = None
-        with httpx.Client(
-            timeout=DEFAULT_HTTP_TIMEOUT, headers=self._HEADERS
-        ) as client:
-            for attempt in range(max_retries + 1):
-                try:
-                    response = client.get(url, params=params)
-                    response.raise_for_status()
-                    # Validate content-type before parsing
-                    content_type = response.headers.get("content-type", "")
-                    if "json" not in content_type:
-                        msg = (
-                            f"ChEMBL API returned non-JSON response "
-                            f"({content_type}) for {url}"
-                        )
-                        if attempt < max_retries:
-                            last_error = msg
-                            logger.warning(
-                                "%s (attempt %d/%d)",
-                                msg,
-                                attempt + 1,
-                                max_retries + 1,
-                            )
-                        else:
-                            logger.error(msg)
-                            return None, msg
-                    else:
-                        try:
-                            return response.json(), None
-                        except (ValueError, json.JSONDecodeError) as exc:
-                            msg = (
-                                f"ChEMBL API returned invalid JSON for {url}: {exc}"
-                            )
-                            logger.error(msg)
-                            return None, msg
-                except httpx.TimeoutException:
-                    last_error = (
-                        f"ChEMBL API timeout after {DEFAULT_HTTP_TIMEOUT}s for {url}"
-                    )
-                    logger.warning(
-                        "%s (attempt %d/%d)",
-                        last_error,
-                        attempt + 1,
-                        max_retries + 1,
-                    )
-                except httpx.HTTPStatusError as exc:
-                    if exc.response.status_code >= 500 and attempt < max_retries:
-                        last_error = (
-                            f"ChEMBL API HTTP {exc.response.status_code} for {url}"
-                        )
-                        logger.warning(
-                            "%s (attempt %d/%d)",
-                            last_error,
-                            attempt + 1,
-                            max_retries + 1,
-                        )
-                    else:
-                        # 4xx errors or final attempt — don't retry
-                        msg = (
-                            f"ChEMBL API HTTP {exc.response.status_code} for {url}: "
-                            f"{exc.response.text[:200]}"
-                        )
-                        logger.error(msg)
-                        return None, msg
-                except httpx.RequestError as exc:
-                    msg = f"ChEMBL API request error for {url}: {exc}"
-                    logger.error(msg)
-                    return None, msg
-                if attempt < max_retries:
-                    time.sleep(2 ** (attempt + 1) + random.uniform(0, 1))
-
-        logger.error(last_error)
-        return None, last_error
 
     # =========================================================================
     # Public methods

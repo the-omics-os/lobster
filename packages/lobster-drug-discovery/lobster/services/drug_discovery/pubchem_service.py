@@ -28,6 +28,7 @@ from lobster.agents.drug_discovery.config import (
     PUBCHEM_API_BASE,
 )
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.drug_discovery.base_api_service import BaseAPIService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -46,7 +47,7 @@ _MAX_POLL_ATTEMPTS = 15
 _POLL_INTERVAL = 2.0
 
 
-class PubChemService:
+class PubChemService(BaseAPIService):
     """
     Stateless service for querying the PubChem PUG REST API.
 
@@ -55,9 +56,22 @@ class PubChemService:
     following the Lobster AI service pattern.
     """
 
+    _VALID_ID_TYPES = {"name", "cid", "smiles", "inchikey"}
+
     def __init__(self) -> None:
         """Initialize the PubChem service (stateless)."""
+        super().__init__(
+            service_name="PubChem",
+            default_timeout=DEFAULT_HTTP_TIMEOUT,
+        )
         logger.debug("Initializing stateless PubChemService")
+
+    def _validate_id_type(self, id_type: str) -> None:
+        """Validate that id_type is one of the supported identifier types."""
+        if id_type not in self._VALID_ID_TYPES:
+            raise ValueError(
+                f"Invalid id_type '{id_type}'. Must be one of: {', '.join(sorted(self._VALID_ID_TYPES))}"
+            )
 
     # =========================================================================
     # IR builders
@@ -241,94 +255,6 @@ print(f"Found {len(synonyms)} synonyms for '{{ identifier }}'")""",
         )
 
     # =========================================================================
-    # Internal HTTP helpers
-    # =========================================================================
-
-    def _get_json(
-        self,
-        url: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """
-        Execute a GET request and return parsed JSON or an error string.
-
-        Returns:
-            Tuple of (json_data, error_message). Exactly one will be None.
-        """
-        try:
-            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as client:
-                response = client.get(url, params=params)
-                response.raise_for_status()
-                try:
-                    return response.json(), None
-                except (ValueError, json.JSONDecodeError) as exc:
-                    msg = (
-                        f"PubChem API returned invalid JSON for {url}: {exc}"
-                    )
-                    logger.error(msg)
-                    return None, msg
-        except httpx.TimeoutException:
-            msg = f"PubChem API timeout after {DEFAULT_HTTP_TIMEOUT}s for {url}"
-            logger.error(msg)
-            return None, msg
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            # PubChem returns 404 for "not found" which is a valid response
-            if status == 404:
-                msg = f"Compound not found in PubChem (HTTP 404)"
-                logger.warning(msg)
-                return None, msg
-            msg = (
-                f"PubChem API HTTP {status} for {url}: "
-                f"{exc.response.text[:200]}"
-            )
-            logger.error(msg)
-            return None, msg
-        except httpx.RequestError as exc:
-            msg = f"PubChem API request error for {url}: {exc}"
-            logger.error(msg)
-            return None, msg
-
-    def _post_json(
-        self,
-        url: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """
-        Execute a POST request (used for async search initiation).
-
-        Returns:
-            Tuple of (json_data, error_message). Exactly one will be None.
-        """
-        try:
-            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as client:
-                response = client.post(url, params=params)
-                response.raise_for_status()
-                try:
-                    return response.json(), None
-                except (ValueError, json.JSONDecodeError) as exc:
-                    msg = (
-                        f"PubChem API returned invalid JSON for POST {url}: {exc}"
-                    )
-                    logger.error(msg)
-                    return None, msg
-        except httpx.TimeoutException:
-            msg = f"PubChem API timeout after {DEFAULT_HTTP_TIMEOUT}s for POST {url}"
-            logger.error(msg)
-            return None, msg
-        except httpx.HTTPStatusError as exc:
-            msg = (
-                f"PubChem API HTTP {exc.response.status_code} for POST {url}: "
-                f"{exc.response.text[:200]}"
-            )
-            logger.error(msg)
-            return None, msg
-        except httpx.RequestError as exc:
-            msg = f"PubChem API request error for POST {url}: {exc}"
-            logger.error(msg)
-            return None, msg
-
-    # =========================================================================
     # Internal Lipinski evaluation
     # =========================================================================
 
@@ -429,17 +355,20 @@ print(f"Found {len(synonyms)} synonyms for '{{ identifier }}'")""",
         Returns:
             Tuple of (None, stats_dict, AnalysisStep).
         """
+        self._validate_id_type(id_type)
+
         logger.info(
             f"Getting PubChem properties: {id_type}='{identifier}'"
         )
 
         ir = self._create_ir_get_compound_properties(identifier, id_type)
 
-        # URL-encode identifier when it's a SMILES string — characters like
-        # # (triple bond), @ (chirality), / (stereochemistry) are URL-unsafe.
+        # URL-encode ALL identifier types — SMILES contain # @ /, InChIKeys
+        # contain /, compound names may have spaces or parentheses.  CIDs
+        # (pure digits) are unaffected by percent-encoding.
         from urllib.parse import quote
 
-        safe_id = quote(identifier, safe="") if id_type == "smiles" else identifier
+        safe_id = quote(identifier, safe="")
         url = (
             f"{PUBCHEM_API_BASE}/compound/{id_type}/{safe_id}"
             f"/property/{_PROPERTY_LIST}/JSON"
@@ -697,16 +626,20 @@ print(f"Found {len(synonyms)} synonyms for '{{ identifier }}'")""",
         Returns:
             Tuple of (None, stats_dict, AnalysisStep).
         """
+        self._validate_id_type(id_type)
+
         logger.info(
             f"Getting PubChem synonyms: {id_type}='{identifier}'"
         )
 
         ir = self._create_ir_get_compound_synonyms(identifier, id_type)
 
-        # URL-encode identifier when it's a SMILES string
+        # URL-encode ALL identifier types — SMILES contain # @ /, InChIKeys
+        # contain /, compound names may have spaces or parentheses.  CIDs
+        # (pure digits) are unaffected by percent-encoding.
         from urllib.parse import quote
 
-        safe_id = quote(identifier, safe="") if id_type == "smiles" else identifier
+        safe_id = quote(identifier, safe="")
         url = (
             f"{PUBCHEM_API_BASE}/compound/{id_type}/{safe_id}/synonyms/JSON"
         )

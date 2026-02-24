@@ -11,10 +11,7 @@ All methods handle HTTP errors gracefully and return error information
 in the stats dict rather than raising exceptions to the caller.
 """
 
-import json
 from typing import Any, Dict, List, Optional, Tuple
-
-import httpx
 
 from lobster.agents.drug_discovery.config import (
     DEFAULT_HTTP_TIMEOUT,
@@ -22,12 +19,13 @@ from lobster.agents.drug_discovery.config import (
     TARGET_EVIDENCE_WEIGHTS,
 )
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.services.drug_discovery.base_api_service import BaseAPIService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class OpenTargetsService:
+class OpenTargetsService(BaseAPIService):
     """
     Stateless service for querying the Open Targets Platform GraphQL API.
 
@@ -39,6 +37,11 @@ class OpenTargetsService:
 
     def __init__(self) -> None:
         """Initialize the Open Targets service (stateless)."""
+        super().__init__(
+            service_name="Open Targets",
+            default_timeout=DEFAULT_HTTP_TIMEOUT,
+            default_headers={"Content-Type": "application/json"},
+        )
         logger.debug("Initializing stateless OpenTargetsService")
 
     # =========================================================================
@@ -347,54 +350,31 @@ print(f"Tractability for {data['approvedSymbol']}: {len(data.get('tractability',
         """
         Execute a GraphQL POST request and return parsed data or error.
 
+        Delegates the HTTP POST to :meth:`BaseAPIService._post_json` for
+        retry, backoff, content-type validation, and JSON decode safety.
+        Then performs GraphQL-level error checking on the response body.
+
         Returns:
             Tuple of (response_data_dict, error_message). Exactly one is None.
         """
-        try:
-            with httpx.Client(timeout=DEFAULT_HTTP_TIMEOUT) as client:
-                response = client.post(
-                    OPENTARGETS_GRAPHQL,
-                    json={"query": query, "variables": variables},
-                    headers={"Content-Type": "application/json"},
-                )
-                response.raise_for_status()
-                try:
-                    body = response.json()
-                except (ValueError, json.JSONDecodeError) as exc:
-                    msg = (
-                        f"Open Targets API returned invalid JSON: {exc}"
-                    )
-                    logger.error(msg)
-                    return None, msg
+        body, error = self._post_json(
+            OPENTARGETS_GRAPHQL,
+            json_body={"query": query, "variables": variables},
+        )
 
-            # Check for GraphQL-level errors
-            if "errors" in body:
-                error_msgs = [
-                    e.get("message", "Unknown error") for e in body["errors"]
-                ]
-                msg = f"Open Targets GraphQL errors: {'; '.join(error_msgs)}"
-                logger.error(msg)
-                return None, msg
+        if error is not None:
+            return None, error
 
-            return body.get("data", {}), None
-
-        except httpx.TimeoutException:
-            msg = (
-                f"Open Targets API timeout after {DEFAULT_HTTP_TIMEOUT}s"
-            )
+        # Check for GraphQL-level errors
+        if body and "errors" in body:
+            error_msgs = [
+                e.get("message", "Unknown error") for e in body["errors"]
+            ]
+            msg = f"Open Targets GraphQL errors: {'; '.join(error_msgs)}"
             logger.error(msg)
             return None, msg
-        except httpx.HTTPStatusError as exc:
-            msg = (
-                f"Open Targets API HTTP {exc.response.status_code}: "
-                f"{exc.response.text[:200]}"
-            )
-            logger.error(msg)
-            return None, msg
-        except httpx.RequestError as exc:
-            msg = f"Open Targets API request error: {exc}"
-            logger.error(msg)
-            return None, msg
+
+        return (body.get("data", {}) if body else {}), None
 
     # =========================================================================
     # Public methods
@@ -763,9 +743,9 @@ print(f"Tractability for {data['approvedSymbol']}: {len(data.get('tractability',
             }
             return None, stats, ir
 
-        # Parse indications
+        # Parse indications (client-side limit — OT indications has no pagination)
         indications_data = drug_data.get("indications", {})
-        indication_rows = indications_data.get("rows", [])
+        indication_rows = indications_data.get("rows", [])[:limit]
         indications: List[Dict[str, Any]] = []
         phase_distribution: Dict[int, int] = {}
 
