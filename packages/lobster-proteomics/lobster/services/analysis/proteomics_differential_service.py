@@ -1031,7 +1031,12 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
             non_zero = all_values[all_values > 0]
             pseudocount = np.min(non_zero) * 0.01 if len(non_zero) > 0 else 1.0
             fold_change = (mean1 + pseudocount) / (mean2 + pseudocount)
-            log2_fold_change = np.log2(fold_change)
+            # Guard against negative fold change (can happen after batch correction
+            # when means become negative) — log2(negative) is undefined
+            if fold_change > 0:
+                log2_fold_change = np.log2(fold_change)
+            else:
+                log2_fold_change = np.nan
 
         # Cohen's d (effect size)
         pooled_std = np.sqrt(((n1 - 1) * std1**2 + (n2 - 1) * std2**2) / (n1 + n2 - 2))

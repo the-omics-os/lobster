@@ -761,8 +761,16 @@ class MetaboLightsDownloadService(IDownloadService):
         intensity_df = maf_df[intensity_cols].apply(pd.to_numeric, errors="coerce")
         X = intensity_df.values.T  # Transpose: samples x metabolites
 
-        # Replace NaN with 0 for the intensity matrix (common in metabolomics)
-        X = np.nan_to_num(X, nan=0.0)
+        # Preserve NaN values — they represent below-LOD measurements (MNAR).
+        # Domain-specific imputation services handle NaN appropriately.
+        # Converting NaN→0 here would silently corrupt downstream DE and imputation.
+        nan_count = int(np.isnan(X).sum())
+        if nan_count > 0:
+            total = X.size
+            logger.info(
+                f"MetaboLights matrix contains {nan_count}/{total} NaN values "
+                f"({nan_count/total*100:.1f}%). Preserved for imputation."
+            )
 
         # Build var (metabolite annotations)
         var_df = pd.DataFrame(index=range(len(maf_df)))

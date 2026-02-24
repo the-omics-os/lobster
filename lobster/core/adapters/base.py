@@ -238,7 +238,8 @@ class BaseAdapter(IModalityAdapter):
             # Check if data is sparse and convert if appropriate
             # (sparse if >80% zeros and reasonably large)
             if X.size > 10000:  # Only check for large matrices
-                sparsity = (X == 0).sum() / X.size
+                nonzero = np.count_nonzero(X)
+                sparsity = 1.0 - (nonzero / X.size)
                 if sparsity > 0.8:
                     from scipy.sparse import csr_matrix
 
@@ -289,12 +290,27 @@ class BaseAdapter(IModalityAdapter):
             if not np.issubdtype(adata.X.dtype, np.floating):
                 adata.X = adata.X.astype(np.float32)
 
-            # Handle NaN values
-            if hasattr(adata.X, "isnan"):
-                nan_count = np.isnan(adata.X).sum()
+            # Count NaN values but do NOT coerce to zero.
+            # In proteomics/metabolomics, NaN = below detection limit (MNAR).
+            # Replacing NaN with 0 corrupts downstream DE and imputation.
+            # Domain adapters handle NaN via appropriate imputation strategies.
+            try:
+                if hasattr(adata.X, 'toarray'):
+                    # Sparse matrix — NaN in sparse is unusual but check anyway
+                    nan_count = np.isnan(adata.X.data).sum() if hasattr(adata.X, 'data') else 0
+                else:
+                    nan_count = int(np.isnan(adata.X).sum())
                 if nan_count > 0:
-                    self.logger.warning(f"Found {nan_count} NaN values, filling with 0")
-                    adata.X = np.nan_to_num(adata.X, nan=0.0)
+                    total = adata.X.shape[0] * adata.X.shape[1]
+                    pct = nan_count / total * 100
+                    self.logger.info(
+                        f"Matrix contains {nan_count} NaN values ({pct:.1f}%). "
+                        f"NaN preserved for domain-specific imputation."
+                    )
+                    adata.uns["nan_count"] = nan_count
+                    adata.uns["nan_percentage"] = round(pct, 2)
+            except (TypeError, ValueError):
+                pass  # Non-numeric edge case, skip NaN check
 
             return adata
         except Exception as e:
@@ -313,19 +329,46 @@ class BaseAdapter(IModalityAdapter):
         Returns:
             anndata.AnnData: AnnData with basic metadata
         """
-        # Add basic observation metadata if missing
-        if "n_genes" not in adata.obs.columns:
-            adata.obs["n_genes"] = np.array((adata.X > 0).sum(axis=1)).flatten()
+        # Add basic observation metadata if missing.
+        # Use domain-neutral names — subclasses can add domain-specific aliases
+        # (e.g., transcriptomics adds "n_genes", proteomics adds "n_proteins").
+        if "n_features_detected" not in adata.obs.columns and "n_genes" not in adata.obs.columns:
+            try:
+                from scipy.sparse import issparse
+                if issparse(adata.X):
+                    # Sparse: getnnz is O(nnz), avoids full boolean matrix
+                    adata.obs["n_features_detected"] = np.array(adata.X.getnnz(axis=1))
+                else:
+                    adata.obs["n_features_detected"] = np.array(
+                        (adata.X > 0).sum(axis=1)
+                    ).flatten()
+            except (TypeError, ValueError, ImportError):
+                pass
 
         if "total_counts" not in adata.obs.columns:
-            adata.obs["total_counts"] = np.array(adata.X.sum(axis=1)).flatten()
+            try:
+                adata.obs["total_counts"] = np.array(adata.X.sum(axis=1)).flatten()
+            except (TypeError, ValueError):
+                pass
 
         # Add basic variable metadata if missing
-        if "n_cells" not in adata.var.columns:
-            adata.var["n_cells"] = np.array((adata.X > 0).sum(axis=0)).flatten()
+        if "n_samples_detected" not in adata.var.columns and "n_cells" not in adata.var.columns:
+            try:
+                from scipy.sparse import issparse
+                if issparse(adata.X):
+                    adata.var["n_samples_detected"] = np.array(adata.X.getnnz(axis=0))
+                else:
+                    adata.var["n_samples_detected"] = np.array(
+                        (adata.X > 0).sum(axis=0)
+                    ).flatten()
+            except (TypeError, ValueError, ImportError):
+                pass
 
         if "mean_counts" not in adata.var.columns:
-            adata.var["mean_counts"] = np.array(adata.X.mean(axis=0)).flatten()
+            try:
+                adata.var["mean_counts"] = np.array(adata.X.mean(axis=0)).flatten()
+            except (TypeError, ValueError):
+                pass
 
         # Add source information to uns
         if source_path:
@@ -450,7 +493,7 @@ class BaseAdapter(IModalityAdapter):
                         float(adata.X.nnz / (adata.X.shape[0] * adata.X.shape[1]))
                         if hasattr(adata.X, "nnz")  # Sparse matrix - O(1) operation
                         else (
-                            float(1.0 - (adata.X == 0).sum() / adata.X.size)
+                            float(np.count_nonzero(adata.X) / adata.X.size)
                             if hasattr(adata.X, "size")
                             else 0.0
                         )
