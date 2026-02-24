@@ -307,6 +307,10 @@ class TestLLMFactoryThinking:
 class TestBedrockThinkingIntegration:
     """Test Bedrock-specific thinking configuration."""
 
+    @classmethod
+    def setup_class(cls):
+        pytest.importorskip("langchain_aws")
+
     @patch("langchain_aws.ChatBedrockConverse")
     def test_bedrock_provider_accepts_thinking_config(self, mock_chat_bedrock):
         """Test that BedrockProvider passes thinking config to ChatBedrockConverse."""
@@ -556,21 +560,22 @@ class TestSettingsThinkingIntegration:
 
     def test_settings_passes_through_thinking_config(self):
         """Test that Settings.get_agent_llm_params() preserves thinking configuration."""
-        from lobster.config.agent_config import ThinkingConfig
-        from lobster.config.settings import Settings
+        from lobster.config.agent_config import (
+            LobsterAgentConfigurator,
+            ThinkingConfig,
+        )
 
-        # Create settings with test profile
-        settings = Settings()
+        # Test the configurator directly to avoid Settings() module-level side effects
+        configurator = LobsterAgentConfigurator(profile="production")
 
         # Enable thinking for supervisor
         agent_name = "supervisor"
         thinking_config = ThinkingConfig(enabled=True, budget_tokens=3000)
-        settings.agent_configurator._agent_configs[agent_name].thinking_config = (
-            thinking_config
-        )
+        agent_model_config = configurator.get_agent_model_config(agent_name)
+        agent_model_config.thinking_config = thinking_config
 
-        # Get params
-        params = settings.get_agent_llm_params(agent_name)
+        # Get params via the configurator's public API
+        params = configurator.get_llm_params(agent_name)
 
         # Verify thinking config is present
         assert "additional_model_request_fields" in params

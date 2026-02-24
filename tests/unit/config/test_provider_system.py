@@ -703,37 +703,38 @@ def test_llm_factory_fails_without_config(tmp_path):
         )
 
 
-@patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False)
-@patch("langchain_anthropic.ChatAnthropic")
-def test_llm_factory_with_valid_config(mock_chat, tmp_path):
+def test_llm_factory_with_valid_config(tmp_path):
     """Test that LLMFactory creates LLM with valid configuration."""
+    pytest.importorskip("langchain_anthropic", reason="langchain-anthropic not installed")
     from lobster.config.llm_factory import LLMFactory
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    # Mock return value
-    mock_chat.return_value = MagicMock()
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False), \
+         patch("langchain_anthropic.ChatAnthropic") as mock_chat:
+        # Mock return value
+        mock_chat.return_value = MagicMock()
 
-    # Create workspace config
-    workspace_path = tmp_path / ".lobster_workspace"
-    workspace_path.mkdir()
+        # Create workspace config
+        workspace_path = tmp_path / ".lobster_workspace"
+        workspace_path.mkdir()
 
-    config = WorkspaceProviderConfig(
-        global_provider="anthropic", anthropic_model="claude-sonnet-4-20250514"
-    )
-    config.save(workspace_path)
+        config = WorkspaceProviderConfig(
+            global_provider="anthropic", anthropic_model="claude-sonnet-4-20250514"
+        )
+        config.save(workspace_path)
 
-    llm = LLMFactory.create_llm(
-        model_config={"temperature": 0.7, "max_tokens": 4096},
-        agent_name="test_agent",
-        workspace_path=workspace_path,
-    )
+        llm = LLMFactory.create_llm(
+            model_config={"temperature": 0.7, "max_tokens": 4096},
+            agent_name="test_agent",
+            workspace_path=workspace_path,
+        )
 
-    # Verify ChatAnthropic was called with correct params
-    mock_chat.assert_called_once()
-    call_kwargs = mock_chat.call_args.kwargs
-    assert call_kwargs["model"] == "claude-sonnet-4-20250514"
-    assert call_kwargs["temperature"] == 0.7
-    assert call_kwargs["max_tokens"] == 4096
+        # Verify ChatAnthropic was called with correct params
+        mock_chat.assert_called_once()
+        call_kwargs = mock_chat.call_args.kwargs
+        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        assert call_kwargs["temperature"] == 0.7
+        assert call_kwargs["max_tokens"] == 4096
 
 
 def test_llm_factory_get_available_providers():
@@ -757,67 +758,69 @@ def test_llm_factory_get_available_providers():
 # =============================================================================
 
 
-@patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False)
-@patch("langchain_anthropic.ChatAnthropic")
-def test_end_to_end_provider_selection(mock_chat, tmp_path):
+def test_end_to_end_provider_selection(tmp_path):
     """Test complete workflow from config to LLM creation."""
+    pytest.importorskip("langchain_anthropic", reason="langchain-anthropic not installed")
     from lobster.config.llm_factory import create_llm
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    # Mock return value
-    mock_chat.return_value = MagicMock()
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False), \
+         patch("langchain_anthropic.ChatAnthropic") as mock_chat:
+        # Mock return value
+        mock_chat.return_value = MagicMock()
 
-    # Step 1: Create workspace config
-    workspace_path = tmp_path / ".lobster_workspace"
-    workspace_path.mkdir()
+        # Step 1: Create workspace config
+        workspace_path = tmp_path / ".lobster_workspace"
+        workspace_path.mkdir()
 
-    config = WorkspaceProviderConfig(
-        global_provider="anthropic",
-        anthropic_model="claude-sonnet-4-20250514",
-        profile="production",
-    )
-    config.save(workspace_path)
+        config = WorkspaceProviderConfig(
+            global_provider="anthropic",
+            anthropic_model="claude-sonnet-4-20250514",
+            profile="production",
+        )
+        config.save(workspace_path)
 
-    # Step 2: Create LLM via convenience function
-    llm = create_llm(
-        agent_name="supervisor",
-        model_params={"temperature": 0.5},
-        workspace_path=workspace_path,
-    )
+        # Step 2: Create LLM via convenience function
+        llm = create_llm(
+            agent_name="supervisor",
+            model_params={"temperature": 0.5},
+            workspace_path=workspace_path,
+        )
 
-    # Verify provider was selected correctly
-    mock_chat.assert_called_once()
-    call_kwargs = mock_chat.call_args.kwargs
-    assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+        # Verify provider was selected correctly
+        mock_chat.assert_called_once()
+        call_kwargs = mock_chat.call_args.kwargs
+        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
 
 
-@patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False)
-@patch("langchain_anthropic.ChatAnthropic")
-def test_runtime_override_priority(mock_chat, tmp_path):
+def test_runtime_override_priority(tmp_path):
     """Test that runtime overrides beat workspace config."""
+    pytest.importorskip("langchain_anthropic", reason="langchain-anthropic not installed")
     from lobster.config.llm_factory import create_llm
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    # Mock return value
-    mock_chat.return_value = MagicMock()
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False), \
+         patch("langchain_anthropic.ChatAnthropic") as mock_chat:
+        # Mock return value
+        mock_chat.return_value = MagicMock()
 
-    # Setup workspace with bedrock
-    workspace_path = tmp_path / ".lobster_workspace"
-    workspace_path.mkdir()
+        # Setup workspace with bedrock
+        workspace_path = tmp_path / ".lobster_workspace"
+        workspace_path.mkdir()
 
-    config = WorkspaceProviderConfig(global_provider="bedrock")
-    config.save(workspace_path)
+        config = WorkspaceProviderConfig(global_provider="bedrock")
+        config.save(workspace_path)
 
-    # Override with anthropic at runtime
-    llm = create_llm(
-        agent_name="test",
-        model_params={},
-        provider_override="anthropic",  # Runtime override
-        workspace_path=workspace_path,
-    )
+        # Override with anthropic at runtime
+        llm = create_llm(
+            agent_name="test",
+            model_params={},
+            provider_override="anthropic",  # Runtime override
+            workspace_path=workspace_path,
+        )
 
-    # Should use Anthropic despite workspace config saying Bedrock
-    mock_chat.assert_called_once()
+        # Should use Anthropic despite workspace config saying Bedrock
+        mock_chat.assert_called_once()
 
 
 # =============================================================================
