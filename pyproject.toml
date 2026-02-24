@@ -190,7 +190,7 @@ azure = [
 recommended = ["lobster-ai[anthropic,transcriptomics,tui,extended-data]"]
 # Everything except docling and plink (which have platform constraints)
 full = [
-    "lobster-ai[transcriptomics,genomics,proteomics,machine-learning,drug-discovery]",
+    "lobster-ai[transcriptomics,genomics,proteomics,machine-learning]",
     "lobster-ai[all-providers,tui,extended-data,hdf5,docling,vector-search]",
 ]
 
