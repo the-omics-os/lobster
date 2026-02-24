@@ -814,7 +814,10 @@ def _validate_sequences(adata) -> "ValidationResult":
 
     # Check for chimeras if flag is present
     if "is_chimera" in adata.var.columns:
-        chimeras = adata.var["is_chimera"].sum()
+        try:
+            chimeras = int(adata.var["is_chimera"].astype(bool).sum())
+        except (TypeError, ValueError):
+            chimeras = 0
         if chimeras > 0:
             chimera_pct = (chimeras / len(adata.var)) * 100
             if chimera_pct > 5:

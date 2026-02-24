@@ -391,7 +391,10 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
 
             # Subset to selected features for PCA computation
             if feature_col is not None:
-                n_selected = int(adata_processed.var[feature_col].sum())
+                try:
+                    n_selected = int(adata_processed.var[feature_col].astype(bool).sum())
+                except (TypeError, ValueError):
+                    n_selected = 0
                 if n_selected == 0:
                     raise ClusteringError(
                         f"No features selected by '{feature_col}'. "

@@ -740,7 +740,10 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
             )
 
             # Calculate statistics
-            n_selected = int(adata_processed.var["highly_variable"].sum())
+            try:
+                n_selected = int(adata_processed.var["highly_variable"].astype(bool).sum())
+            except (TypeError, ValueError):
+                n_selected = 0
             selected_genes = adata_processed.var_names[
                 adata_processed.var["highly_variable"]
             ].tolist()

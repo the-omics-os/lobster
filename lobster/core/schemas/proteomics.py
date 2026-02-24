@@ -558,7 +558,10 @@ def _validate_ms_metrics(adata) -> "ValidationResult":
 
     # Check for contaminants
     if "is_contaminant" in adata.var.columns:
-        contaminants = adata.var["is_contaminant"].sum()
+        try:
+            contaminants = int(adata.var["is_contaminant"].astype(bool).sum())
+        except (TypeError, ValueError):
+            contaminants = 0
         contaminant_pct = (contaminants / len(adata.var)) * 100
         if contaminant_pct > 10:
             result.add_warning(

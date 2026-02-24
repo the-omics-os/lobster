@@ -1143,8 +1143,14 @@ print(f"Format: {{ format_type }}, Missing: {stats['missing_percentage']:.1f}%")
             reverse_pattern, case=False, na=False, regex=True
         )
 
-        n_contaminants = adata.var["is_contaminant"].sum()
-        n_reverse = adata.var["is_reverse"].sum()
+        try:
+            n_contaminants = adata.var["is_contaminant"].astype(bool).sum()
+        except (TypeError, ValueError):
+            n_contaminants = 0
+        try:
+            n_reverse = adata.var["is_reverse"].astype(bool).sum()
+        except (TypeError, ValueError):
+            n_reverse = 0
 
         if n_contaminants > 0:
             logger.info(f"Flagged {n_contaminants} potential contaminants")

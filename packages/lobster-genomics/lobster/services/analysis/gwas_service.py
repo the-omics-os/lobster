@@ -220,7 +220,10 @@ class GWASService:
             lambda_gc = self._calculate_lambda_gc(pvalues[valid_mask])
 
             # Compile statistics
-            n_significant = int(adata_gwas.var["gwas_significant"].sum())
+            try:
+                n_significant = int(adata_gwas.var["gwas_significant"].astype(bool).sum())
+            except (TypeError, ValueError):
+                n_significant = 0
             n_tested = valid_mask.sum()
 
             stats = {

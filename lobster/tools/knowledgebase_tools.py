@@ -572,7 +572,10 @@ def create_summarize_modality_tool(data_manager: DataManagerV2):
                             f"  - Mean sample call rate: {adata.obs['call_rate'].mean():.4f}"
                         )
                     if "qc_pass" in adata.var.columns:
-                        n_pass = int(adata.var["qc_pass"].sum())
+                        try:
+                            n_pass = int(adata.var["qc_pass"].astype(bool).sum())
+                        except (TypeError, ValueError):
+                            n_pass = 0
                         lines.append(
                             f"  - Variants passing QC: {n_pass:,}/{adata.n_vars:,}"
                         )

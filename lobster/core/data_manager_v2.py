@@ -1112,7 +1112,7 @@ class DataManagerV2:
                 {
                     "name": name,
                     "base_name": lineage.get("base_name", name),
-                    "version": lineage.get("version", 1),
+                    "version": int(lineage.get("version", 1)),
                     "processing_step": lineage.get("processing_step", "raw"),
                     "parent_modality": lineage.get("parent_modality"),
                     "step_summary": lineage.get("step_summary"),
@@ -1140,7 +1140,7 @@ class DataManagerV2:
         for name, adata in self.modalities.items():
             lineage = adata.uns.get(LINEAGE_KEY, {})
             if lineage.get("base_name") == base_name:
-                result.append((name, lineage.get("version", 0)))
+                result.append((name, int(lineage.get("version", 0))))
 
         # Sort by version and return just names
         return [name for name, _ in sorted(result, key=lambda x: x[1])]

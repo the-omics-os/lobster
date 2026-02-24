@@ -29,6 +29,24 @@ class BaseAdapter(IModalityAdapter):
     Subclasses need only implement the modality-specific methods.
     """
 
+    # Lobster-internal kwargs that must NOT be passed to pandas read functions.
+    # Subclasses may extend this set in their own filtering logic.
+    _LOBSTER_INTERNAL_KWARGS = frozenset({
+        "adapter",
+        "dataset_id",
+        "dataset_type",
+        "intensity_columns",
+        "missing_value_indicators",
+        "orientation",
+        "protein_id_col",
+        "sample_metadata_path",
+        "transpose",
+        "validate",
+        "metabolite_id_col",
+        "gene_id_col",
+        "modality_name",
+    })
+
     def __init__(
         self, name: Optional[str] = None, config: Optional[Dict[str, Any]] = None
     ):
@@ -101,7 +119,8 @@ class BaseAdapter(IModalityAdapter):
                 sep = ","  # Default
 
         try:
-            df = pd.read_csv(path, sep=sep, index_col=index_col, **kwargs)
+            safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+            df = pd.read_csv(path, sep=sep, index_col=index_col, **safe_kwargs)
             self.logger.info(f"Loaded CSV data from {path}: shape {df.shape}")
             return df
         except Exception as e:
@@ -127,8 +146,9 @@ class BaseAdapter(IModalityAdapter):
             pd.DataFrame: Loaded data
         """
         try:
+            safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
             df = pd.read_excel(
-                path, sheet_name=sheet_name, index_col=index_col, **kwargs
+                path, sheet_name=sheet_name, index_col=index_col, **safe_kwargs
             )
             self.logger.info(f"Loaded Excel data from {path}: shape {df.shape}")
             return df
@@ -153,7 +173,8 @@ class BaseAdapter(IModalityAdapter):
                 "pyarrow is required to load parquet files: pip install pyarrow"
             )
         try:
-            df = pd.read_parquet(path, **kwargs)
+            safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+            df = pd.read_parquet(path, **safe_kwargs)
             self.logger.info(f"Loaded parquet data from {path}: shape {df.shape}")
             return df
         except Exception as e:
@@ -481,17 +502,15 @@ class BaseAdapter(IModalityAdapter):
         self, path: Union[str, Path], index_col: int = 0, **kwargs
     ) -> pd.DataFrame:
         """Legacy alias for _load_csv_data (for backward compatibility)."""
-        # For tests expecting exact pandas signature, call directly
-        # This is a legacy method that bypasses our enhancements
-        return pd.read_csv(path, index_col=index_col, **kwargs)
+        safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+        return pd.read_csv(path, index_col=index_col, **safe_kwargs)
 
     def _load_excel_file(
         self, path: Union[str, Path], index_col: int = 0, **kwargs
     ) -> pd.DataFrame:
         """Legacy alias for _load_excel_data (for backward compatibility)."""
-        # For tests expecting exact pandas signature, call directly
-        # This is a legacy method that bypasses our enhancements
-        return pd.read_excel(path, index_col=index_col, **kwargs)
+        safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+        return pd.read_excel(path, index_col=index_col, **safe_kwargs)
 
     def _load_h5ad_file(self, path: Union[str, Path]) -> anndata.AnnData:
         """Legacy alias for _load_h5ad_data (for backward compatibility)."""
