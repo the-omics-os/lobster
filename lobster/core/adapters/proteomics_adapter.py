@@ -173,17 +173,13 @@ class ProteomicsAdapter(BaseAdapter):
         )
 
         # Filter kwargs before passing to pandas
-        _csv_excluded = {
+        _csv_excluded = self._LOBSTER_INTERNAL_KWARGS | {
             "transpose",
             "orientation",
             "sample_metadata_path",
             "protein_id_col",
             "intensity_columns",
             "missing_value_indicators",
-            "dataset_id",
-            "dataset_type",
-            "validate",
-            "adapter",
         }
 
         # Load the data

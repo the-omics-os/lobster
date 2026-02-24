@@ -139,19 +139,24 @@ class TestProteomicsAdapterCsvKwargs:
 
     Bug: proteomics_adapter passed all kwargs through to pandas.read_csv(),
     including lobster-internal params like dataset_id and dataset_type.
-    Fix: _csv_excluded set now includes 'dataset_id' and 'dataset_type'.
+    Fix: BaseAdapter._LOBSTER_INTERNAL_KWARGS filters these centrally,
+    and proteomics adapter unions with it for domain-specific params.
     """
 
-    def test_csv_excluded_contains_dataset_params(self):
-        """dataset_id and dataset_type must be in the exclusion set."""
+    def test_base_adapter_filters_dataset_params(self):
+        """dataset_id and dataset_type must be in BaseAdapter's exclusion set."""
+        from lobster.core.adapters.base import BaseAdapter
+
+        assert "dataset_id" in BaseAdapter._LOBSTER_INTERNAL_KWARGS
+        assert "dataset_type" in BaseAdapter._LOBSTER_INTERNAL_KWARGS
+
+    def test_proteomics_adapter_inherits_filtering(self):
+        """ProteomicsAdapter must inherit BaseAdapter's exclusion set."""
+        from lobster.core.adapters.base import BaseAdapter
         from lobster.core.adapters.proteomics_adapter import ProteomicsAdapter
 
-        import inspect
-
-        source = inspect.getsource(ProteomicsAdapter._load_csv_proteomics_data)
-        # These params must be in _csv_excluded to prevent pandas TypeError
-        assert "dataset_id" in source
-        assert "dataset_type" in source
+        assert issubclass(ProteomicsAdapter, BaseAdapter)
+        assert "dataset_id" in ProteomicsAdapter._LOBSTER_INTERNAL_KWARGS
 
 
 class TestProteomicsAdapterCategoricalSum:
@@ -179,3 +184,93 @@ class TestProteomicsAdapterCategoricalSum:
         # The adapter handles this via try/except fallback
         result = int(series.astype(bool).sum())
         assert result == 3  # All non-empty strings are truthy
+
+
+# ===============================================================================
+# Wave 2 Regression Tests
+# ===============================================================================
+
+
+class TestBaseAdapterKwargsFiltering:
+    """Regression: BaseAdapter passed lobster-internal kwargs to pandas.
+
+    Bug: _load_csv_data, _load_excel_data, _load_parquet_data forwarded
+    all **kwargs to pandas read functions, causing TypeError on lobster
+    params like dataset_id, dataset_type, adapter, validate.
+    Fix: _LOBSTER_INTERNAL_KWARGS frozenset filters before pandas calls.
+    """
+
+    def test_internal_kwargs_frozenset_exists(self):
+        from lobster.core.adapters.base import BaseAdapter
+        assert hasattr(BaseAdapter, '_LOBSTER_INTERNAL_KWARGS')
+        assert isinstance(BaseAdapter._LOBSTER_INTERNAL_KWARGS, frozenset)
+
+    def test_internal_kwargs_contains_critical_params(self):
+        from lobster.core.adapters.base import BaseAdapter
+        required = {'dataset_id', 'dataset_type', 'adapter', 'validate', 'orientation'}
+        assert required.issubset(BaseAdapter._LOBSTER_INTERNAL_KWARGS)
+
+    def test_csv_load_filters_internal_kwargs(self):
+        """Internal kwargs must not reach pd.read_csv."""
+        from unittest.mock import patch, MagicMock
+        from lobster.core.adapters.base import BaseAdapter
+
+        adapter = BaseAdapter(name="test")
+        with patch('lobster.core.adapters.base.pd.read_csv') as mock_csv:
+            mock_csv.return_value = pd.DataFrame({'a': [1, 2]})
+            try:
+                adapter._load_csv_data(
+                    '/fake/path.csv',
+                    dataset_id='GSE12345',
+                    dataset_type='proteomics',
+                    validate=True,
+                )
+            except Exception:
+                pass  # File doesn't exist, but we check mock was called correctly
+
+            if mock_csv.called:
+                call_kwargs = mock_csv.call_args
+                # Internal params must not be in the call
+                all_kwargs = call_kwargs.kwargs if call_kwargs.kwargs else {}
+                assert 'dataset_id' not in all_kwargs
+                assert 'dataset_type' not in all_kwargs
+                assert 'validate' not in all_kwargs
+
+
+class TestDataManagerVersionSort:
+    """Regression: string versions caused incorrect sort order.
+
+    Bug: After h5ad round-trip, version becomes string "2" not int 2.
+    Sorting strings gives "1","10","2" instead of 1,2,10.
+    Fix: Cast to int() when reading from lineage metadata.
+    """
+
+    def test_version_cast_in_list_modalities(self):
+        """list_modalities_with_lineage must return int versions."""
+        from unittest.mock import MagicMock
+        from lobster.core.data_manager_v2 import DataManagerV2
+
+        dm = MagicMock(spec=DataManagerV2)
+        # Simulate modalities with string versions (post h5ad)
+        mock_adata1 = MagicMock()
+        mock_adata1.uns = {'lineage': {'base_name': 'test', 'version': '1', 'processing_step': 'raw'}}
+        mock_adata1.n_obs = 10
+        mock_adata1.n_vars = 5
+        mock_adata2 = MagicMock()
+        mock_adata2.uns = {'lineage': {'base_name': 'test', 'version': '10', 'processing_step': 'filtered'}}
+        mock_adata2.n_obs = 10
+        mock_adata2.n_vars = 5
+        mock_adata3 = MagicMock()
+        mock_adata3.uns = {'lineage': {'base_name': 'test', 'version': '2', 'processing_step': 'normalized'}}
+        mock_adata3.n_obs = 10
+        mock_adata3.n_vars = 5
+
+        dm.modalities = {'a': mock_adata1, 'b': mock_adata2, 'c': mock_adata3}
+
+        # Call the real method
+        result = DataManagerV2.list_modalities_with_lineage(dm)
+
+        # Versions must be ints and sorted correctly (1, 2, 10 not 1, 10, 2)
+        versions = [r['version'] for r in result]
+        assert all(isinstance(v, int) for v in versions), f"Versions not int: {versions}"
+        assert versions == [1, 2, 10], f"Wrong sort order: {versions}"

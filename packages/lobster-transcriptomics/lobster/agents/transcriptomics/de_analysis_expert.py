@@ -646,6 +646,7 @@ def de_analysis_expert(
                         "alpha": alpha,
                         "shrink_lfc": shrink_lfc,
                     },
+                    parameter_schema={},
                     code_template=(
                         "from pydeseq2.dds import DeseqDataSet\n"
                         "from pydeseq2.ds import DeseqStats\n"
@@ -1114,6 +1115,7 @@ def de_analysis_expert(
                     "include_interaction": include_interaction,
                     "formula": formula,
                 },
+                parameter_schema={},
                 code_template=(
                     "# Formula: {{ formula }}\n"
                     "# Main variable: {{ groupby }}\n"
@@ -2065,6 +2067,7 @@ def de_analysis_expert(
                     "lfc_threshold": lfc_threshold,
                     "min_base_mean": min_base_mean,
                 },
+                parameter_schema={},
                 code_template=(
                     "# Filter DE results\n"
                     "results_df = adata.uns['{{ de_results_key }}']['results_df']\n"
@@ -2260,6 +2263,7 @@ def de_analysis_expert(
                     "filtered_only": filtered_only,
                     "sort_by": sort_by,
                 },
+                parameter_schema={},
                 code_template=(
                     "results_df = adata.uns['{{ de_results_key }}']['results_df']\n"
                     "results_df = results_df.sort_values('{{ sort_by }}')\n"
@@ -2428,6 +2432,7 @@ def de_analysis_expert(
                     "group2": group2,
                     "alpha": alpha,
                 },
+                parameter_schema={},
                 code_template=(
                     "from pydeseq2.dds import DeseqDataSet\n"
                     "from pydeseq2.ds import DeseqStats\n"
@@ -2894,6 +2899,7 @@ def de_analysis_expert(
                     "padj_threshold": padj_threshold,
                     "lfc_threshold": lfc_threshold,
                 },
+                parameter_schema={},
                 code_template=(
                     "# Extract and export DE results\n"
                     "results_df = adata.uns['{{ de_results_key }}']['results_df'].copy()\n"

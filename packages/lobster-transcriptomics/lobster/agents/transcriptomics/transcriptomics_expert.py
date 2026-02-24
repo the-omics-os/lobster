@@ -1403,6 +1403,7 @@ Please check:
                     "source": detected_source,
                     "gene_id_column": gene_id_column,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(
@@ -1538,6 +1539,7 @@ Please check:
                     "metadata_file": metadata_file,
                     "sample_id_column": sample_id_column,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(
@@ -2093,6 +2095,7 @@ Please check:
                     "source_type": source_type,
                     "target_type": target_type,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(
@@ -2251,6 +2254,7 @@ Please check:
                     "group_key": group_key,
                     "design_factors": design_factors,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(

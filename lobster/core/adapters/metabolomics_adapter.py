@@ -159,21 +159,17 @@ class MetabolomicsAdapter(BaseAdapter):
         )
 
         # Load the data
+        _excluded = self._LOBSTER_INTERNAL_KWARGS | {
+            "transpose",
+            "metabolite_id_col",
+            "intensity_columns",
+            "missing_value_indicators",
+        }
         df = self._load_csv_data(
             path,
             index_col=0 if metabolite_id_col is None else metabolite_id_col,
             na_values=missing_value_indicators,
-            **{
-                k: v
-                for k, v in kwargs.items()
-                if k
-                not in [
-                    "transpose",
-                    "metabolite_id_col",
-                    "intensity_columns",
-                    "missing_value_indicators",
-                ]
-            },
+            **{k: v for k, v in kwargs.items() if k not in _excluded},
         )
 
         # Handle intensity columns selection

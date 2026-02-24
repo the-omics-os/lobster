@@ -1344,6 +1344,7 @@ adata, stats = parser.parse({{ file_path | tojson }})""",
                         "from lobster.services.data_access.proteomics_parsers import get_parser_for_file"
                     ],
                     parameters={"file_path": file_path, "software": software},
+                    parameter_schema={},
                 )
             else:
                 # Single AnnData return
@@ -1362,6 +1363,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                         "from lobster.services.data_access.proteomics_parsers import get_parser_for_file"
                     ],
                     parameters={"file_path": file_path, "software": software},
+                    parameter_schema={},
                 )
 
             # Generate modality name if not provided
@@ -1959,6 +1961,7 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
                     "file_path": file_path,
                     "platform": detected_platform,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(
@@ -2384,6 +2387,7 @@ adata.X = X""",
                     "plate_column": plate_column,
                     "remove_bridges": remove_bridges,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(
@@ -2609,6 +2613,7 @@ for protein in common_proteins:
                     "modality_name_2": modality_name_2,
                     "method": method,
                 },
+                parameter_schema={},
             )
 
             data_manager.log_tool_usage(

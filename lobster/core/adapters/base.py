@@ -124,7 +124,7 @@ class BaseAdapter(IModalityAdapter):
             self.logger.info(f"Loaded CSV data from {path}: shape {df.shape}")
             return df
         except Exception as e:
-            raise ValueError(f"Failed to load CSV data from {path}: {e}")
+            raise ValueError(f"Failed to load CSV data from {path}: {e}") from e
 
     def _load_excel_data(
         self,
@@ -153,7 +153,7 @@ class BaseAdapter(IModalityAdapter):
             self.logger.info(f"Loaded Excel data from {path}: shape {df.shape}")
             return df
         except Exception as e:
-            raise ValueError(f"Failed to load Excel data from {path}: {e}")
+            raise ValueError(f"Failed to load Excel data from {path}: {e}") from e
 
     def _load_parquet_data(self, path: Union[str, Path], **kwargs) -> pd.DataFrame:
         """
@@ -178,7 +178,7 @@ class BaseAdapter(IModalityAdapter):
             self.logger.info(f"Loaded parquet data from {path}: shape {df.shape}")
             return df
         except Exception as e:
-            raise ValueError(f"Failed to load parquet data from {path}: {e}")
+            raise ValueError(f"Failed to load parquet data from {path}: {e}") from e
 
     def _load_h5ad_data(self, path: Union[str, Path]) -> anndata.AnnData:
         """
@@ -198,7 +198,7 @@ class BaseAdapter(IModalityAdapter):
             )
             return adata
         except Exception as e:
-            raise ValueError(f"Failed to load H5AD data from {path}: {e}")
+            raise ValueError(f"Failed to load H5AD data from {path}: {e}") from e
 
     def _create_anndata_from_dataframe(
         self,
@@ -272,7 +272,7 @@ class BaseAdapter(IModalityAdapter):
             return adata
 
         except Exception as e:
-            raise ValueError(f"Failed to create AnnData from DataFrame: {e}")
+            raise ValueError(f"Failed to create AnnData from DataFrame: {e}") from e
 
     def _ensure_numeric_matrix(self, adata: anndata.AnnData) -> anndata.AnnData:
         """
@@ -298,7 +298,7 @@ class BaseAdapter(IModalityAdapter):
 
             return adata
         except Exception as e:
-            raise ValueError(f"Failed to ensure numeric matrix: {e}")
+            raise ValueError(f"Failed to ensure numeric matrix: {e}") from e
 
     def _add_basic_metadata(
         self, adata: anndata.AnnData, source_path: Optional[Union[str, Path]] = None

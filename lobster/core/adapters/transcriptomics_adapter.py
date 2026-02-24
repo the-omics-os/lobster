@@ -294,22 +294,16 @@ class TranscriptomicsAdapter(BaseAdapter):
         gene_symbols_col = kwargs.get("gene_symbols_col", None)
 
         # Filter kwargs for _load_csv_data to avoid passing metadata fields
-        csv_params = {
-            k: v
-            for k, v in kwargs.items()
-            if k
-            not in [
-                "transpose",
-                "first_column_names",
-                "gene_symbols_col",
-                "dataset_id",
-                "dataset_type",
-                "source_metadata",
-                "processing_date",
-                "download_source",
-                "processing_method",
-            ]
+        _excluded = self._LOBSTER_INTERNAL_KWARGS | {
+            "transpose",
+            "first_column_names",
+            "gene_symbols_col",
+            "source_metadata",
+            "processing_date",
+            "download_source",
+            "processing_method",
         }
+        csv_params = {k: v for k, v in kwargs.items() if k not in _excluded}
 
         # Load the data
         df = self._load_csv_data(

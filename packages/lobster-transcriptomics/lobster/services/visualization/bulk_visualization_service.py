@@ -134,6 +134,11 @@ class BulkVisualizationService:
                         operation="volcano_plot",
                         tool_name="create_volcano_plot",
                         description="Volcano plot (empty - no genes)",
+                        library="plotly",
+                        code_template="# Volcano plot (empty - no genes to plot)",
+                        imports=["import plotly.graph_objects as go"],
+                        parameters={},
+                        parameter_schema={},
                     )
                 )
                 return fig, stats, ir
