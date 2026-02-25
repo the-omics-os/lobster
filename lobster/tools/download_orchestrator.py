@@ -169,6 +169,17 @@ class DownloadOrchestrator:
         except ImportError as e:
             logger.debug(f"MassIVEDownloadService not available: {e}")
 
+        # Try to register MetaboLights service
+        try:
+            from lobster.services.data_access.metabolights_download_service import (
+                MetaboLightsDownloadService,
+            )
+
+            self.register_service(MetaboLightsDownloadService(self.data_manager))
+            logger.debug("Auto-registered MetaboLightsDownloadService")
+        except ImportError as e:
+            logger.debug(f"MetaboLightsDownloadService not available: {e}")
+
     def register_service(self, service: IDownloadService) -> None:
         """
         Register a download service for one or more databases.

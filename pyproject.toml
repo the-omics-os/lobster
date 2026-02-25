@@ -135,7 +135,7 @@ extended-data = [
 #   pip install lobster-ai[full]               # Everything
 # =============================================================================
 transcriptomics = [
-    "lobster-transcriptomics~=1.0.0",
+    "lobster-transcriptomics[batch-integration]~=1.0.0",
     "lobster-research~=1.0.0",
     "lobster-visualization~=1.0.0",
 ]

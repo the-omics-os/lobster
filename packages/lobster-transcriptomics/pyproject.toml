@@ -54,6 +54,9 @@ seurat-v3 = [
 doublet-detection = [
     "scrublet>=0.2.3",
 ]
+batch-integration = [
+    "harmonypy>=0.0.6",
+]
 
 [project.urls]
 Homepage = "https://omics-os.com"
