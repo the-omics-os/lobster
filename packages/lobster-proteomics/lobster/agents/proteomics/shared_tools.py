@@ -649,18 +649,30 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                     adata_filtered = adata_filtered[:, peptide_filter].copy()
 
                 # MS: Remove contaminants
+                # MaxQuant uses '+' or True for contaminants; empty string or
+                # NaN means not a contaminant. Normalize to boolean mask.
                 if platform_config.platform_specific.get("remove_contaminants", True):
                     if "is_contaminant" in adata_filtered.var.columns:
-                        adata_filtered = adata_filtered[
-                            :, ~adata_filtered.var["is_contaminant"]
-                        ].copy()
+                        col = adata_filtered.var["is_contaminant"]
+                        if col.dtype == object or col.dtype.name == "category":
+                            mask = col.fillna("").astype(str).isin(
+                                ["+", "True", "true", "1", "yes", "Yes"]
+                            )
+                        else:
+                            mask = col.fillna(False).astype(bool)
+                        adata_filtered = adata_filtered[:, ~mask].copy()
 
-                # MS: Remove reverse hits
+                # MS: Remove reverse hits (same convention as contaminants)
                 if platform_config.platform_specific.get("remove_reverse_hits", True):
                     if "is_reverse" in adata_filtered.var.columns:
-                        adata_filtered = adata_filtered[
-                            :, ~adata_filtered.var["is_reverse"]
-                        ].copy()
+                        col = adata_filtered.var["is_reverse"]
+                        if col.dtype == object or col.dtype.name == "category":
+                            mask = col.fillna("").astype(str).isin(
+                                ["+", "True", "true", "1", "yes", "Yes"]
+                            )
+                        else:
+                            mask = col.fillna(False).astype(bool)
+                        adata_filtered = adata_filtered[:, ~mask].copy()
             else:
                 # Affinity: Filter by CV (column added by external Olink/SomaScan metadata, not by Lobster tools)
                 if "cv" in adata_filtered.var.columns:

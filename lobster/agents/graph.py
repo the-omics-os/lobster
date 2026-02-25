@@ -449,15 +449,24 @@ def create_bioinformatics_graph(
     # (once without delegation tools, then again with them). Lazy delegation tools
     # capture the created_agents dict by reference and resolve agents at invocation time.
 
+    failed_agents = set()
+
     for agent_name, agent_config in worker_agents.items():
-        factory_function = import_agent_factory(agent_config.factory_function)
+        try:
+            factory_function = import_agent_factory(agent_config.factory_function)
+        except (ImportError, ModuleNotFoundError, AttributeError, SyntaxError) as e:
+            logger.warning(
+                f"Skipping agent '{agent_name}': factory import failed: {e}"
+            )
+            failed_agents.add(agent_name)
+            continue
 
         # Create delegation tools LAZILY (reference dict, not agent instance)
         delegation_tools = None
         if agent_config.child_agents:
             delegation_tools = []
             for child_name in agent_config.child_agents:
-                if child_name in worker_agents:  # Only if child is enabled
+                if child_name in worker_agents and child_name not in failed_agents:
                     child_config = worker_agents[child_name]
                     delegation_tools.append(
                         _create_lazy_delegation_tool(
@@ -496,11 +505,30 @@ def create_bioinformatics_graph(
         # limit of 25. Sub-agents are invoked via agent.invoke() in tool functions,
         # which creates a separate execution context (not a subgraph), so the
         # parent graph's recursion_limit does NOT propagate.
-        created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
-            {"recursion_limit": 50}
-        )
+        try:
+            created_agents[agent_name] = factory_function(
+                **factory_kwargs
+            ).with_config({"recursion_limit": 50})
+        except Exception as e:
+            logger.warning(
+                f"Skipping agent '{agent_name}': factory execution failed: {e}"
+            )
+            failed_agents.add(agent_name)
+            continue
+
         logger.debug(
             f"Created agent: {agent_config.display_name} ({agent_name}) [single pass]"
+        )
+
+    # Remove failed agents from worker_agents so Phases 3-5 are consistent.
+    # This prevents KeyError in tool wiring and phantom agents in metadata.
+    if failed_agents:
+        worker_agents = {
+            k: v for k, v in worker_agents.items() if k not in failed_agents
+        }
+        logger.warning(
+            f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}. "
+            f"Graph continues with {len(worker_agents)} agents."
         )
 
     # ==========================================================================

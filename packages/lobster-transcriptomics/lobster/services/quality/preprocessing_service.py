@@ -689,6 +689,20 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
             adata_processed = adata.copy()
             original_n_genes = adata_processed.n_vars
 
+            # Ensure X is float for log/dispersion calculations in HVG.
+            # Integer sparse matrices cause ufunc errors in scanpy's HVG
+            # selection. Cast the sparse .data array in-place to avoid
+            # duplicating the full matrix structure.
+            import scipy.sparse as _sp
+
+            if _sp.issparse(adata_processed.X):
+                if adata_processed.X.dtype not in (np.float32, np.float64):
+                    adata_processed.X.data = adata_processed.X.data.astype(
+                        np.float32, copy=False
+                    )
+            elif adata_processed.X.dtype not in (np.float32, np.float64):
+                adata_processed.X = adata_processed.X.astype(np.float32)
+
             # Early check: seurat_v3 requires scikit-misc (Fortran-compiled LOESS)
             if flavor == "seurat_v3":
                 _require_scikit_misc("select_features_hvg with flavor='seurat_v3'")

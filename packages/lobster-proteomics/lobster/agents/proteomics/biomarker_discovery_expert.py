@@ -616,8 +616,13 @@ def biomarker_discovery_expert(
                 X = X.toarray()
             X = np.asarray(X, dtype=np.float64)
 
-            # Encode target labels
-            y_raw = adata_copy.obs[target_column].values
+            # Encode target labels — handle pandas Categorical dtype
+            import pandas as pd
+
+            y_raw = adata_copy.obs[target_column]
+            if isinstance(y_raw.dtype, pd.CategoricalDtype):
+                y_raw = y_raw.astype(str)
+            y_raw = y_raw.values
             if not np.issubdtype(y_raw.dtype, np.number):
                 le = LabelEncoder()
                 y = le.fit_transform(y_raw)
@@ -630,6 +635,17 @@ def biomarker_discovery_expert(
                 col_medians = np.nanmedian(X, axis=0)
                 inds = np.where(nan_mask)
                 X[inds] = np.take(col_medians, inds[1])
+                # Drop all-NaN columns (proteins undetected across all samples)
+                all_nan_cols = np.isnan(col_medians)
+                if all_nan_cols.any():
+                    keep_cols = ~all_nan_cols
+                    X = X[:, keep_cols]
+                    protein_names_arr = np.array(adata_copy.var_names.tolist())
+                    dropped = protein_names_arr[all_nan_cols].tolist()
+                    logger.warning(
+                        f"Dropped {len(dropped)} all-NaN features: {dropped[:5]}"
+                    )
+                    adata_copy = adata_copy[:, keep_cols].copy()
 
             # Scale features
             scaler = StandardScaler()
@@ -994,8 +1010,13 @@ stability_selected = stability_freq > 0.6""",
                 X = X.toarray()
             X = np.asarray(X, dtype=np.float64)
 
-            # Encode target
-            y_raw = adata_copy.obs[target_column].values
+            # Encode target — handle pandas Categorical dtype
+            import pandas as pd
+
+            y_raw = adata_copy.obs[target_column]
+            if isinstance(y_raw.dtype, pd.CategoricalDtype):
+                y_raw = y_raw.astype(str)
+            y_raw = y_raw.values
             if not np.issubdtype(y_raw.dtype, np.number):
                 le = LabelEncoder()
                 y = le.fit_transform(y_raw)
@@ -1008,6 +1029,19 @@ stability_selected = stability_freq > 0.6""",
                 col_medians = np.nanmedian(X, axis=0)
                 inds = np.where(nan_mask)
                 X[inds] = np.take(col_medians, inds[1])
+                # Drop all-NaN columns
+                all_nan_cols = np.isnan(col_medians)
+                if all_nan_cols.any():
+                    keep_cols = ~all_nan_cols
+                    X = X[:, keep_cols]
+                    valid_proteins = [
+                        p
+                        for p, keep in zip(valid_proteins, keep_cols)
+                        if keep
+                    ]
+                    logger.warning(
+                        f"Dropped {int(all_nan_cols.sum())} all-NaN panel proteins"
+                    )
 
             # Select classifier
             if classifier == "logistic":

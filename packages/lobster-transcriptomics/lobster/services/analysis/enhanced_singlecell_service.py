@@ -1293,6 +1293,30 @@ for cluster in adata.obs[cluster_col].unique():
             # Create working copy
             adata_markers = adata.copy()
 
+            # Ensure X and raw.X are float for log fold-change computation.
+            # Integer sparse matrices cause ufunc 'log' errors in scanpy's
+            # rank_genes_groups. Cast the sparse .data array in-place to
+            # avoid duplicating the full matrix structure.
+            import scipy.sparse as sp
+
+            if sp.issparse(adata_markers.X):
+                if adata_markers.X.dtype not in (np.float32, np.float64):
+                    adata_markers.X.data = adata_markers.X.data.astype(
+                        np.float32, copy=False
+                    )
+            elif adata_markers.X.dtype not in (np.float32, np.float64):
+                adata_markers.X = adata_markers.X.astype(np.float32)
+
+            if adata_markers.raw is not None:
+                raw_X = adata_markers.raw.X
+                if sp.issparse(raw_X):
+                    if raw_X.dtype not in (np.float32, np.float64):
+                        raw_X.data = raw_X.data.astype(np.float32, copy=False)
+                elif raw_X.dtype not in (np.float32, np.float64):
+                    raw_adata = adata_markers.raw.to_adata()
+                    raw_adata.X = raw_adata.X.astype(np.float32)
+                    adata_markers.raw = raw_adata
+
             # Run differential expression analysis
             # Note: Only pass 'groups' parameter if explicitly set (not None)
             # Scanpy distinguishes between "parameter not provided" vs "parameter=None"
