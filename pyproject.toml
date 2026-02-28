@@ -427,6 +427,7 @@ addopts = [
 markers = [
     "unit: Unit tests for individual components",
     "integration: Integration tests for multi-component workflows",
+    "contract: Contract tests validating plugin API and AQUADIF taxonomy compliance",
     "system: System tests for complete workflows",
     "performance: Performance and benchmarking tests",
     "slow: Tests that take more than 30 seconds",
