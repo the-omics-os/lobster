@@ -34,6 +34,15 @@ When designing tools for a new agent, internalize these categories first. Tools 
 - `load_10x_data` — Parses 10X Genomics CellRanger output (matrix.mtx, barcodes.tsv, features.tsv) into single-cell AnnData
 - `import_h5ad` — Loads saved AnnData objects from disk for session resumption
 
+**Conceptual examples from other domains** (not exhaustive — adapt to your domain):
+- Importing genomic interval files (BED, narrowPeak, broadPeak) as region-by-sample matrices
+- Importing signal track files (bigWig, bedGraph) as coverage matrices over defined genomic windows
+- Importing fragment files from assays that produce per-read coordinate data (e.g., ATAC-seq fragments)
+
+These illustrate that IMPORT is not limited to count matrices — any domain-specific file format that needs parsing into the internal AnnData representation is an IMPORT tool.
+
+**Boundary with `data_expert`:** Lobster's `data_expert` agent (in core) already handles generic file loading via `load_modality(adapter="...")` and database downloads via `execute_download_from_queue`. Your domain IMPORT tools should only handle **formats requiring domain expertise to parse** (vendor-specific outputs, domain-specific file structures with scientific defaults). Do not duplicate generic CSV/H5AD loading — that is `data_expert`'s job. See `creating-agents.md` → "Data Loading Boundary" for the full decision rule.
+
 ### QUALITY
 
 **Definition:** Assess data integrity, calculate QC metrics, detect technical artifacts.
@@ -287,7 +296,7 @@ def create_shared_tools(data_manager, quality_service, analysis_service):
    - IMPORT, QUALITY, FILTER, PREPROCESS, ANALYZE, ANNOTATE, SYNTHESIZE → `True`
    - DELEGATE, UTILITY → `False`
    - CODE_EXEC → `True` if code modifies data, `False` if code only inspects
-5. **tags mirrors categories** — LangChain uses tags for callback propagation; keep them in sync
+5. **tags mirrors categories** — `.tags` must be set because LangChain callbacks receive `.tags` but not `.metadata`. Both fields must always contain the same category list
 6. **Multi-step tools** — if a tool calls multiple services, combine the `AnalysisStep` objects (use `+` operator)
 
 ### For provenance-required tools:
@@ -295,13 +304,29 @@ def create_shared_tools(data_manager, quality_service, analysis_service):
 The tool MUST call `log_tool_usage()` with the `ir` parameter (AnalysisStep object from service).
 
 ```python
-# CORRECT: Provenance logged
+# CORRECT: Provenance logged (provenance: True)
 result, stats, ir = service.analyze(adata)
 data_manager.log_tool_usage("tool_name", params, stats, ir=ir)
 
 # INCORRECT: Provenance missing (contract tests will fail)
 result, stats, ir = service.analyze(adata)
 data_manager.log_tool_usage("tool_name", params, stats)  # ir parameter missing!
+```
+
+### For non-provenance tools (UTILITY, DELEGATE):
+
+If `metadata["provenance"]` is `False`, do NOT call `log_tool_usage(ir=ir)`. The metadata declaration must match runtime behavior — logging provenance while declaring `provenance: False` is a contract violation. Use a simple return without provenance tracking:
+
+```python
+# CORRECT: UTILITY tool — no provenance logging
+@tool
+def list_modalities() -> str:
+    """List available datasets."""
+    modalities = data_manager.list_modalities()
+    return f"Available: {modalities}"
+
+list_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
+list_modalities.tags = ["UTILITY"]
 ```
 
 ## Contract Tests
@@ -331,6 +356,59 @@ pytest -v -k "contract" packages/
 ```
 
 If a test fails, read the assertion message — it will tell you which tool and which rule failed.
+
+**Copy-paste test template** for your agent's test file:
+
+```python
+VALID_CATEGORIES = {
+    "IMPORT", "QUALITY", "FILTER", "PREPROCESS", "ANALYZE",
+    "ANNOTATE", "DELEGATE", "SYNTHESIZE", "UTILITY", "CODE_EXEC",
+}
+PROVENANCE_REQUIRED = {
+    "IMPORT", "QUALITY", "FILTER", "PREPROCESS",
+    "ANALYZE", "ANNOTATE", "SYNTHESIZE",
+}
+
+class TestAquadifCompliance:
+    """Validate AQUADIF contract compliance for all tools."""
+
+    def test_all_tools_have_metadata(self, tools):
+        for t in tools:
+            assert hasattr(t, "metadata"), f"{t.name}: missing .metadata"
+            assert "categories" in t.metadata, f"{t.name}: missing categories"
+            assert "provenance" in t.metadata, f"{t.name}: missing provenance"
+
+    def test_categories_are_valid(self, tools):
+        for t in tools:
+            for cat in t.metadata["categories"]:
+                assert cat in VALID_CATEGORIES, f"{t.name}: invalid category '{cat}'"
+
+    def test_max_three_categories(self, tools):
+        for t in tools:
+            assert len(t.metadata["categories"]) <= 3, f"{t.name}: >3 categories"
+
+    def test_provenance_matches_primary(self, tools):
+        for t in tools:
+            primary = t.metadata["categories"][0]
+            expected = primary in PROVENANCE_REQUIRED
+            assert t.metadata["provenance"] == expected, \
+                f"{t.name}: provenance={t.metadata['provenance']} but {primary} requires {expected}"
+
+    def test_tags_match_categories(self, tools):
+        for t in tools:
+            assert hasattr(t, "tags"), f"{t.name}: missing .tags"
+            assert t.tags == t.metadata["categories"], \
+                f"{t.name}: .tags {t.tags} != .metadata['categories'] {t.metadata['categories']}"
+
+    def test_tool_count_in_range(self, tools):
+        assert 8 <= len(tools) <= 20, f"Tool count {len(tools)} outside 8-20 range"
+
+    def test_minimum_viable_parent(self, tools):
+        cats = {cat for t in tools for cat in t.metadata["categories"]}
+        assert "IMPORT" in cats, "Missing IMPORT tool"
+        assert "QUALITY" in cats, "Missing QUALITY tool"
+        assert "ANALYZE" in cats or "DELEGATE" in cats, "Missing ANALYZE or DELEGATE"
+```
 
 ## Example: Transcriptomics Tool Categorization
 

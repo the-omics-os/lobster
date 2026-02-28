@@ -48,6 +48,37 @@ Read [references/aquadif-contract.md](aquadif-contract.md) first to internalize 
 **New package when:** New omics domain, >1 agent, domain-specific services.
 **Extend existing package when:** Adding a child, adding tools, adding services for existing domain.
 
+### Data Loading Boundary: data_expert vs. Domain IMPORT Tools
+
+Lobster has a **two-layer data loading architecture**. Understanding this boundary prevents your agent from duplicating functionality that already exists in core.
+
+**Layer 1 — `data_expert` (core, in `lobster-research` package):**
+- Downloads from public databases via `execute_download_from_queue` → `DownloadOrchestrator` → database-specific services (GEO, SRA, PRIDE, MetaboLights, etc.)
+- Loads local files via `load_modality(adapter="...")` → generic adapter system
+- Manages modalities (list, remove, concatenate, validate)
+- Has **ZERO** domain-specific parsing logic — it dispatches to adapters
+
+**Layer 2 — Domain agent IMPORT tools (your package):**
+- Parse **vendor-specific or domain-specific file formats** that require domain expertise
+- Apply scientific defaults during import (contaminant filtering, localization thresholds, orientation detection)
+- Examples: MaxQuant `proteinGroups.txt` (proteomics), Salmon `quant.sf` directories (transcriptomics), VCF files via cyvcf2 (genomics)
+
+**Decision rule for your IMPORT tools:**
+
+| Your domain has... | Action |
+|---------------------|--------|
+| Vendor-specific formats requiring specialized parsing (e.g., narrowPeak, IDAT, vendor software output) | Create domain IMPORT tools in your agent |
+| Only generic CSV/TSV/H5AD files | Register an **adapter** via `lobster.adapters` entry point — `data_expert.load_modality()` handles loading |
+| Both specialized formats AND generic files | Create IMPORT tools for specialized formats; let `data_expert` handle generic loading |
+
+**Do NOT** duplicate generic CSV/H5AD loading in your IMPORT tools — `data_expert` already handles that. Your IMPORT tools should accept domain-specific formats and apply domain knowledge that the generic adapter cannot.
+
+**Real examples from existing agents:**
+- `proteomics_expert.import_proteomics_data` — auto-detects MaxQuant/DIA-NN/Spectronaut, applies contaminant filtering, selects intensity types (LFQ vs raw)
+- `transcriptomics_expert.import_bulk_counts` — auto-detects Salmon/kallisto/featureCounts, handles `#` comment headers, auto-transposes gene-vs-sample orientation
+- `genomics_expert.load_vcf` — uses cyvcf2 for VCF parsing, supports region filtering, PASS-only selection
+- `metabolomics_expert` — has NO import tools; metabolomics data loads through `data_expert.load_modality()` via adapters
+
 ---
 
 ## Package Structure
@@ -122,20 +153,21 @@ DomainExpertState = "lobster.agents.DOMAIN.state:DomainExpertState"
 packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
 ```
 
-### __init__.py (Tier-Aware)
+### __init__.py (PEP 420 Namespace)
+
+PEP 420 namespace packages do not need `__init__.py` at the agent level. Agent discovery happens through entry points in `pyproject.toml`, not eager imports. If you need an `__init__.py` for state exports, keep it minimal:
 
 ```python
+# __init__.py — PEP 420 namespace, minimal exports only
+# Agent discovery happens through entry points in pyproject.toml
+# Do NOT use try/except ImportError — it contradicts PEP 420 and Hard Rule #8
+
 from lobster.agents.DOMAIN.state import DomainExpertState
 
-try:
-    from lobster.agents.DOMAIN.domain_expert import domain_expert
-    DOMAIN_EXPERT_AVAILABLE = True
-except ImportError:
-    DOMAIN_EXPERT_AVAILABLE = False
-    domain_expert = None
-
-__all__ = ["DOMAIN_EXPERT_AVAILABLE", "domain_expert", "DomainExpertState"]
+__all__ = ["DomainExpertState"]
 ```
+
+**WARNING:** Do NOT import agent functions or use `try/except ImportError` here. Entry points handle agent availability — see `pyproject.toml` entry points above.
 
 ---
 
@@ -534,7 +566,7 @@ IMPLEMENT
 [ ] 12. Write AGENT_CONFIG at top of agent file
 [ ] 13. Write factory function
 [ ] 14. Write prompts.py with all required sections
-[ ] 15. Write __init__.py with tier-aware exports
+[ ] 15. Write __init__.py — PEP 420 namespace, NO try/except ImportError (use entry points for discovery)
 
 TEST
 [ ] 16. Contract tests pass
@@ -554,4 +586,5 @@ VERIFY
 [ ] 26. Modality naming follows conventions
 [ ] 27. Prompt documents all tools by name
 [ ] 28. No module-level component_registry calls
+[ ] 29. No try/except ImportError in __init__.py (use entry points, not eager imports)
 ```
