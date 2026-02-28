@@ -17,6 +17,8 @@ def analyze(self, adata: AnnData, **params) -> Tuple[AnnData, Dict, AnalysisStep
     pass
 ```
 
+> **AQUADIF Provenance Rule:** Services for tools in these AQUADIF categories MUST return a valid `AnalysisStep` as the third element: IMPORT, QUALITY, FILTER, PREPROCESS, ANALYZE, ANNOTATE, SYNTHESIZE. Services for DELEGATE and UTILITY tools may return `None` for the third element. See [references/aquadif-contract.md](aquadif-contract.md) for category definitions.
+
 ## Basic Service Structure
 
 ```python

@@ -46,6 +46,10 @@ provider = component_registry.get_provider("metabolights")
 
 **Full docs:** [docs.omics-os.com/docs/core/component-registry](https://docs.omics-os.com/docs/core/component-registry)
 
+### Tool Metadata Propagation
+
+Every tool in Lobster AI carries `.metadata` (dict) and `.tags` (list) fields via LangChain's `BaseTool`. These fields propagate automatically to callback handlers during tool invocation. Tools declare their AQUADIF category (what the tool does) and provenance requirement (whether provenance tracking is mandatory) in these fields. See the [AQUADIF contract](../aquadif-contract.md) in the lobster-dev skill for category definitions.
+
 ### DataManagerV2 (`lobster/core/data_manager_v2.py`)
 
 Manages data, workspaces, modalities, and provenance persistence.

@@ -10,6 +10,14 @@ or working on core infrastructure. This is for NEW capabilities only.
 
 ---
 
+## Prerequisite: Internalize AQUADIF
+
+Before starting this workflow, read [references/aquadif-contract.md](aquadif-contract.md).
+
+AQUADIF is the 10-category taxonomy for Lobster AI tools. Every tool you design must declare what it does (category) and whether it produces provenance. Understanding AQUADIF before you scope a new capability ensures your tool inventory maps cleanly to the taxonomy from the start.
+
+---
+
 ## Phase 1: Understand the Need
 
 Ask these 6 questions in order. Do not proceed until you have clear answers.
@@ -126,6 +134,16 @@ If GPTomics skills don't cover the domain, fall back to:
 2. Published workflow papers (Nature Methods, Bioinformatics)
 3. PyPI packages that wrap the tools
 4. Developer-provided reference code or scripts
+
+### Map Domain Knowledge to AQUADIF Categories
+
+After discovering domain workflows (via GPTomics bio-skills or manual research), map each workflow step to an AQUADIF category:
+
+| Domain Step | AQUADIF Category | Rationale |
+|-------------|-----------------|-----------|
+| [workflow step] | [category] | [why this fits] |
+
+This mapping becomes your tool inventory for agent design. See [references/aquadif-contract.md](aquadif-contract.md) for category definitions and the multi-category decision flowchart.
 
 ---
 

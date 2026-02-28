@@ -23,6 +23,7 @@ This skill teaches you how to work with, extend, and contribute to the codebase.
 
 | Task | Documentation |
 |------|---------------|
+| **AQUADIF tool taxonomy** | [references/aquadif-contract.md](references/aquadif-contract.md) |
 | **Planning new capabilities** | [references/planning-workflow.md](references/planning-workflow.md) |
 | **Domain knowledge (GPTomics)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
 | **Architecture overview** | [references/architecture.md](references/architecture.md) |
@@ -47,6 +48,8 @@ This skill teaches you how to work with, extend, and contribute to the codebase.
 | 6. Build & Test | Apply lobster-dev patterns with domain knowledge |
 
 **Full workflow details:** [references/planning-workflow.md](references/planning-workflow.md)
+
+**All tools MUST be categorized using AQUADIF.** Read the [AQUADIF contract](references/aquadif-contract.md) before designing any tools.
 
 **Skip this if:** fixing a bug, adding a tool to an existing agent, or working
 on core infrastructure. This workflow is for NEW capabilities only.
