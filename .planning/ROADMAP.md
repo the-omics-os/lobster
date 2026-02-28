@@ -13,7 +13,7 @@ This roadmap transforms Lobster AI's ~180 tool bindings across 18 agents by addi
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: AQUADIF Skill Creation** - Create and validate lobster-dev skill for tool categorization (2026-02-28)
-- [ ] **Phase 2: Contract Test Infrastructure** - Implement automated validation of taxonomy compliance
+- [x] **Phase 2: Contract Test Infrastructure** - Implement automated validation of taxonomy compliance (2026-02-28)
 - [ ] **Phase 3: Reference Implementation** - Apply pattern to transcriptomics expert (24 tools)
 - [ ] **Phase 4: Agent Rollout** - Tag all remaining 156 tools across 16 agents with metadata
 - [ ] **Phase 5: Monitoring Infrastructure** - Build runtime callback handler for category tracking and provenance enforcement
@@ -57,8 +57,8 @@ Plans:
 - **Test template for skill docs:** All 3 eval agents independently invented AQUADIF validation tests. Include a copy-paste test template in the contract to standardize.
 
 Plans:
-- [ ] 02-01: Create AquadifCategory enum and add 5 basic contract test methods to mixin (TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, TEST-07)
-- [ ] 02-02: Add parent agent and AST provenance validation tests, smoke test, pytest marker (TEST-06, TEST-08)
+- [x] 02-01: Create AquadifCategory enum and add 5 basic contract test methods to mixin (TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, TEST-07) — Complete (2026-02-28)
+- [x] 02-02: Add parent agent and AST provenance validation tests, smoke test, pytest marker (TEST-06, TEST-08) — Complete (2026-02-28)
 
 ### Phase 3: Reference Implementation
 **Goal**: Apply the AQUADIF pattern to transcriptomics expert to validate it works on a complete agent before rolling out to 156 additional tools
