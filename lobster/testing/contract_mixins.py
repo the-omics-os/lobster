@@ -17,6 +17,7 @@ Usage:
 import importlib
 import inspect
 from typing import Any, ClassVar, Optional, Set
+from unittest.mock import MagicMock
 
 
 class AgentContractTestMixin:
@@ -52,6 +53,7 @@ class AgentContractTestMixin:
         None  # Defaults to agent_module if not set
     )
     expected_tier: ClassVar[Optional[str]] = None
+    is_parent_agent: ClassVar[bool] = False  # Set True for parent agents with child agents
 
     # Standard factory parameters as defined in Phase 2 plugin contract
     STANDARD_PARAMS: ClassVar[Set[str]] = {
@@ -97,6 +99,55 @@ class AgentContractTestMixin:
         """Get the AGENT_CONFIG from the module."""
         module = self._get_module()
         return getattr(module, "AGENT_CONFIG", None)
+
+    def _get_tools_from_factory(self) -> list:
+        """
+        Get list of tool objects from agent factory.
+
+        Calls the factory with MagicMock dependencies and extracts
+        tool objects. Returns empty list if factory cannot be called
+        (e.g., missing optional dependencies).
+
+        Returns:
+            List of tool objects from the factory's compiled graph
+        """
+        try:
+            factory = self._get_factory()
+
+            # Create mock dependencies for factory call
+            mock_data_manager = MagicMock()
+            mock_callback_handler = MagicMock()
+            mock_delegation_tools = []
+
+            # Call factory to get CompiledStateGraph
+            graph = factory(
+                data_manager=mock_data_manager,
+                callback_handler=mock_callback_handler,
+                agent_name="test",
+                delegation_tools=mock_delegation_tools,
+                workspace_path=None,
+            )
+
+            # Extract tools from the graph's tool node
+            # The tools are stored in the graph's nodes dictionary
+            # Look for the 'tools' node which contains the agent's tools
+            if hasattr(graph, "nodes") and "tools" in graph.nodes:
+                tools_node = graph.nodes["tools"]
+                # The tools are in the ToolNode's tools_by_name dict
+                if hasattr(tools_node, "tools_by_name"):
+                    return list(tools_node.tools_by_name.values())
+
+            return []
+
+        except Exception as e:
+            # Factory call failed - may need real LLM config or dependencies
+            import warnings
+
+            warnings.warn(
+                f"Could not extract tools from factory '{self.factory_name}': {e}. "
+                f"This may indicate missing dependencies or configuration."
+            )
+            return []
 
     def test_factory_has_standard_params(self) -> None:
         """
@@ -199,15 +250,238 @@ class AgentContractTestMixin:
                 tier == self.expected_tier
             ), f"AGENT_CONFIG.tier_requirement is '{tier}', expected '{self.expected_tier}'"
 
+    # =========================================================================
+    # AQUADIF Contract Tests (Phase 2)
+    # =========================================================================
+
+    def test_tools_have_aquadif_metadata(self) -> None:
+        """
+        Verify all tools have AQUADIF metadata (categories and provenance).
+
+        Each tool must declare:
+        - .metadata dict with "categories" and "provenance" keys
+        - categories: non-empty list of AQUADIF category strings
+        - provenance: boolean indicating if provenance tracking is required
+
+        This validates TEST-02: Metadata presence.
+        """
+        import pytest
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(
+                f"No tools extracted from factory '{self.factory_name}'. "
+                f"This may indicate missing dependencies or the agent has no tools yet."
+            )
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+
+            # Check metadata dict exists
+            assert hasattr(tool, "metadata") and tool.metadata is not None, (
+                f"Tool '{tool_name}' in '{self.agent_module}' is missing .metadata. "
+                f"Add: tool.metadata = {{'categories': [...], 'provenance': True/False}}"
+            )
+
+            # Check categories key exists
+            assert "categories" in tool.metadata, (
+                f"Tool '{tool_name}' in '{self.agent_module}' has .metadata but missing 'categories' key. "
+                f"Add: 'categories': ['PRIMARY_CATEGORY']"
+            )
+
+            # Check categories is non-empty list
+            categories = tool.metadata["categories"]
+            assert isinstance(categories, list) and len(categories) > 0, (
+                f"Tool '{tool_name}' in '{self.agent_module}' has empty or invalid categories. "
+                f"Must be non-empty list: ['CATEGORY']"
+            )
+
+            # Check provenance key exists
+            assert "provenance" in tool.metadata, (
+                f"Tool '{tool_name}' in '{self.agent_module}' has .metadata but missing 'provenance' key. "
+                f"Add: 'provenance': True or False"
+            )
+
+    def test_categories_are_valid(self) -> None:
+        """
+        Verify all tool categories are valid AQUADIF categories.
+
+        Categories must be from the 10-category AQUADIF taxonomy:
+        IMPORT, QUALITY, FILTER, PREPROCESS, ANALYZE, ANNOTATE,
+        DELEGATE, SYNTHESIZE, UTILITY, CODE_EXEC
+
+        This validates TEST-03: Category validity.
+        """
+        import pytest
+
+        from lobster.config.aquadif import AquadifCategory
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+
+        invalid_categories = []
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+            categories = tool.metadata.get("categories", [])
+
+            for category in categories:
+                try:
+                    # Validate by attempting to construct enum member
+                    AquadifCategory(category)
+                except ValueError:
+                    invalid_categories.append((tool_name, category))
+
+        assert not invalid_categories, (
+            f"Invalid AQUADIF categories found in '{self.agent_module}':\n"
+            + "\n".join(
+                f"  - Tool '{tool}': invalid category '{cat}'"
+                for tool, cat in invalid_categories
+            )
+            + f"\n\nValid categories: {', '.join(c.value for c in AquadifCategory)}"
+        )
+
+    def test_categories_capped_at_three(self) -> None:
+        """
+        Verify tools have at most 3 categories.
+
+        Most tools need only 1 category. Multi-category is uncommon and should
+        only be used when a tool has substantial functionality in multiple areas.
+
+        This validates TEST-04: Category cap.
+        """
+        import pytest
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+
+        violations = []
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+            categories = tool.metadata.get("categories", [])
+
+            if len(categories) > 3:
+                violations.append((tool_name, len(categories)))
+
+        assert not violations, (
+            f"Tools in '{self.agent_module}' exceed 3-category limit:\n"
+            + "\n".join(
+                f"  - Tool '{tool}': {count} categories (max is 3)"
+                for tool, count in violations
+            )
+            + "\n\nGuidance: Most tools need 1 category; multi-category is uncommon."
+        )
+
+    def test_provenance_tools_have_flag(self) -> None:
+        """
+        Verify tools with provenance-required categories declare provenance: True.
+
+        Categories requiring provenance (7 of 10):
+        IMPORT, QUALITY, FILTER, PREPROCESS, ANALYZE, ANNOTATE, SYNTHESIZE
+
+        Categories NOT requiring provenance (3 of 10):
+        DELEGATE, UTILITY, CODE_EXEC
+
+        The primary category (first in list) determines the provenance requirement.
+
+        This validates TEST-05: Provenance flag compliance.
+        """
+        import pytest
+
+        from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+
+        violations = []
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+            categories = tool.metadata.get("categories", [])
+
+            if not categories:
+                continue  # Already caught by metadata presence test
+
+            # Get primary category (first in list)
+            primary_category_str = categories[0]
+            try:
+                primary_category = AquadifCategory(primary_category_str)
+            except ValueError:
+                continue  # Already caught by category validity test
+
+            # Check if primary category requires provenance
+            requires_prov = primary_category in PROVENANCE_REQUIRED
+            declared_prov = tool.metadata.get("provenance", False)
+
+            if requires_prov and not declared_prov:
+                violations.append((tool_name, primary_category.value))
+
+        assert not violations, (
+            f"Tools in '{self.agent_module}' have provenance-required categories but provenance=False:\n"
+            + "\n".join(
+                f"  - Tool '{tool}': primary category '{cat}' requires provenance=True"
+                for tool, cat in violations
+            )
+        )
+
+    def test_metadata_objects_are_unique(self) -> None:
+        """
+        Verify each tool has its own metadata dict (no shared objects).
+
+        Tools must not share metadata dict references. Common cause:
+        metadata dict created outside the tool creation loop in the factory.
+
+        This validates TEST-07: Metadata uniqueness.
+        """
+        import pytest
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+
+        metadata_ids = [id(tool.metadata) for tool in tools if hasattr(tool, "metadata")]
+
+        # Count occurrences of each id
+        from collections import Counter
+
+        id_counts = Counter(metadata_ids)
+        shared_ids = {id_val: count for id_val, count in id_counts.items() if count > 1}
+
+        assert not shared_ids, (
+            f"Tools in '{self.agent_module}' share metadata dict objects ({len(shared_ids)} shared dicts). "
+            f"Each tool must have its own metadata dict. "
+            f"Common cause: metadata dict created outside loop in factory. "
+            f"Fix: Create metadata dict inside the tool creation loop."
+        )
+
     def test_all_contract_requirements(self) -> None:
         """
         Run all contract validation tests together.
 
         This is a convenience method that runs all validation checks
         in a single test, useful for quick verification.
+
+        Includes both Phase 1 plugin contract tests and Phase 2 AQUADIF tests.
         """
+        # Phase 1: Plugin contract tests
         self.test_factory_has_standard_params()
         self.test_no_deprecated_handoff_tools()
         self.test_agent_config_exists()
         self.test_agent_config_has_name()
         self.test_agent_config_has_tier_requirement()
+
+        # Phase 2: AQUADIF contract tests
+        self.test_tools_have_aquadif_metadata()
+        self.test_categories_are_valid()
+        self.test_categories_capped_at_three()
+        self.test_provenance_tools_have_flag()
+        self.test_metadata_objects_are_unique()

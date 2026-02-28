@@ -31,7 +31,7 @@ Example - Contract testing:
     ...     agent_module = 'my_package.my_agent'
     ...     factory_name = 'my_agent'
     ...
-    >>> # Run with pytest - validates plugin API compliance
+    >>> # Run with pytest - validates plugin API compliance and AQUADIF metadata
 """
 
 from lobster.testing.contract_mixins import AgentContractTestMixin
