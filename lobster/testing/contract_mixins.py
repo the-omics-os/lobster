@@ -14,8 +14,10 @@ Usage:
     # Then run with pytest
 """
 
+import ast
 import importlib
 import inspect
+import textwrap
 from typing import Any, ClassVar, Optional, Set
 from unittest.mock import MagicMock
 
@@ -148,6 +150,28 @@ class AgentContractTestMixin:
                 f"This may indicate missing dependencies or configuration."
             )
             return []
+
+    def _has_log_tool_usage_with_ir(self, tree: ast.AST) -> bool:
+        """
+        Check if AST tree contains log_tool_usage call with ir= keyword argument.
+
+        This helper walks the AST tree looking for method calls to log_tool_usage
+        that include an ir= keyword argument, which indicates proper provenance tracking.
+
+        Args:
+            tree: AST tree from parsed tool source code
+
+        Returns:
+            True if log_tool_usage(ir=ir) call found, False otherwise
+        """
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Attribute):
+                    if node.func.attr == "log_tool_usage":
+                        for keyword in node.keywords:
+                            if keyword.arg == "ir":
+                                return True
+        return False
 
     def test_factory_has_standard_params(self) -> None:
         """
@@ -463,6 +487,149 @@ class AgentContractTestMixin:
             f"Fix: Create metadata dict inside the tool creation loop."
         )
 
+    def test_minimum_viable_parent(self) -> None:
+        """
+        Verify parent agents have minimum viable category set.
+
+        Parent agents (domain experts with child agents) must provide:
+        - IMPORT: Ability to load data
+        - QUALITY: Ability to assess data quality
+        - ANALYZE or DELEGATE: Either perform analysis or delegate to children
+
+        This validates TEST-06: Minimum viable parent agent capabilities.
+        """
+        import pytest
+
+        # Skip if not a parent agent
+        if not self.is_parent_agent:
+            pytest.skip("Not a parent agent")
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+
+        # Collect all unique categories across all tools
+        all_categories = set()
+        for tool in tools:
+            categories = tool.metadata.get("categories", [])
+            all_categories.update(categories)
+
+        # Check for minimum viable set
+        has_import = "IMPORT" in all_categories
+        has_quality = "QUALITY" in all_categories
+        has_analyze_or_delegate = "ANALYZE" in all_categories or "DELEGATE" in all_categories
+
+        missing = []
+        if not has_import:
+            missing.append("IMPORT")
+        if not has_quality:
+            missing.append("QUALITY")
+        if not has_analyze_or_delegate:
+            missing.append("ANALYZE or DELEGATE")
+
+        assert not missing, (
+            f"Parent agent '{self.factory_name}' missing minimum viable categories. "
+            f"Has: {sorted(all_categories)}. "
+            f"Missing: {', '.join(missing)}. "
+            f"Parent agents need: IMPORT + QUALITY + (ANALYZE or DELEGATE)"
+        )
+
+    def test_provenance_ast_validation(self) -> None:
+        """
+        Verify tools with provenance metadata call log_tool_usage(ir=ir).
+
+        This is the CRITICAL test addressing the Phase 1 eval finding that
+        100% of agents copied provenance boilerplate mechanically without
+        adjusting based on metadata flags. This test catches metadata-runtime
+        disconnect at test time by parsing tool source code.
+
+        Rules:
+        - If primary category requires provenance AND tool declares provenance=True:
+          MUST call log_tool_usage(ir=ir)
+        - If primary category does NOT require provenance BUT tool declares provenance=True:
+          MUST call log_tool_usage(ir=ir) (if you declare it, follow through)
+
+        This validates TEST-08: Provenance AST validation.
+        """
+        import pytest
+
+        from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+
+        violations = []
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+            categories = tool.metadata.get("categories", [])
+
+            if not categories:
+                continue  # Already caught by metadata presence test
+
+            # Get primary category
+            primary_category_str = categories[0]
+            try:
+                primary_category = AquadifCategory(primary_category_str)
+            except ValueError:
+                continue  # Already caught by category validity test
+
+            # Check provenance requirements
+            requires_prov = primary_category in PROVENANCE_REQUIRED
+            declared_prov = tool.metadata.get("provenance", False)
+
+            # Only validate if tool declares provenance OR category requires it
+            if not (declared_prov or requires_prov):
+                continue
+
+            # Try to get tool source code
+            try:
+                source = inspect.getsource(tool.func)
+                # Dedent in case source is indented (nested functions)
+                source = textwrap.dedent(source)
+            except (OSError, TypeError) as e:
+                # Cannot get source (built-in, dynamically generated, etc.)
+                # Skip this tool with a note
+                import warnings
+                warnings.warn(
+                    f"Cannot validate provenance for tool '{tool_name}': "
+                    f"source code not available ({e.__class__.__name__})"
+                )
+                continue
+
+            # Parse source and check for log_tool_usage(ir=ir) call
+            try:
+                tree = ast.parse(source)
+                has_ir_call = self._has_log_tool_usage_with_ir(tree)
+            except SyntaxError as e:
+                import warnings
+                warnings.warn(
+                    f"Cannot parse source for tool '{tool_name}': {e}"
+                )
+                continue
+
+            # Validate based on metadata declaration
+            if declared_prov and not has_ir_call:
+                violations.append(
+                    (tool_name, primary_category.value, "declares provenance=True but does NOT call log_tool_usage(ir=ir)")
+                )
+            elif requires_prov and declared_prov and not has_ir_call:
+                violations.append(
+                    (tool_name, primary_category.value, "primary category requires provenance and declares provenance=True but does NOT call log_tool_usage(ir=ir)")
+                )
+
+        assert not violations, (
+            f"Tools in '{self.agent_module}' have provenance metadata-runtime disconnect:\n"
+            + "\n".join(
+                f"  - Tool '{tool}' (category: {cat}): {reason}"
+                for tool, cat, reason in violations
+            )
+            + "\n\nFix: Ensure tools with provenance=True call log_tool_usage(ir=ir) in their implementation."
+        )
+
     def test_all_contract_requirements(self) -> None:
         """
         Run all contract validation tests together.
@@ -479,9 +646,13 @@ class AgentContractTestMixin:
         self.test_agent_config_has_name()
         self.test_agent_config_has_tier_requirement()
 
-        # Phase 2: AQUADIF contract tests
+        # Phase 2: AQUADIF contract tests (basic metadata)
         self.test_tools_have_aquadif_metadata()
         self.test_categories_are_valid()
         self.test_categories_capped_at_three()
         self.test_provenance_tools_have_flag()
         self.test_metadata_objects_are_unique()
+
+        # Phase 2: AQUADIF contract tests (advanced)
+        self.test_minimum_viable_parent()  # Skips if not parent agent
+        self.test_provenance_ast_validation()
