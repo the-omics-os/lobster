@@ -16,8 +16,7 @@ description: |
 
 # Lobster AI Development Guide
 
-**Lobster AI** is a multi-agent bioinformatics platform using LangGraph for orchestration.
-This skill teaches you how to work with, extend, and contribute to the codebase.
+**Lobster AI** is the open-source multi-agent bioinformatics engine at the heart of **Omics-OS**. It uses LangGraph for orchestration and powers both local CLI usage and the hosted **Omics-OS Cloud** platform. This skill teaches you how to work with, extend, and contribute to the codebase.
 
 ## Quick Navigation
 
@@ -64,25 +63,17 @@ on core infrastructure. This workflow is for NEW capabilities only.
 
 ## Package Structure
 
-```
-lobster/
-├── packages/                    # Agent packages (PEP 420)
-│   ├── lobster-transcriptomics/ # transcriptomics_expert, annotation_expert, de_analysis_expert
-│   ├── lobster-research/        # research_agent, data_expert_agent
-│   ├── lobster-visualization/   # visualization_expert
-│   ├── lobster-metadata/        # metadata_assistant
-│   ├── lobster-structural-viz/  # protein_structure_visualization_expert
-│   ├── lobster-genomics/        # genomics_expert
-│   ├── lobster-proteomics/      # proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert
-│   ├── lobster-metabolomics/    # metabolomics_expert
-│   └── lobster-ml/              # machine_learning_expert, feature_selection_expert, survival_analysis_expert
-└── lobster/                     # Core SDK
-    ├── agents/supervisor.py     # Supervisor (stays in core)
-    ├── agents/graph.py          # LangGraph builder
-    ├── core/                    # Infrastructure (registry, data_manager, provenance)
-    ├── services/                # Analysis services
-    └── tools/                   # Agent tools
-```
+Lobster AI uses a modular monorepo architecture:
+
+- **Core SDK** (`lobster/`): Contains the supervisor agent, LangGraph orchestration (`agents/graph.py`), infrastructure (`core/`), analysis services (`services/`), and agent tools (`tools/`)
+- **Domain packages** (`packages/lobster-{domain}/`): Each is an independent PyPI package containing 1-3 specialist agents for a specific omics domain (transcriptomics, proteomics, genomics, metabolomics, etc.)
+
+**Key architectural patterns:**
+- Packages use **PEP 420 implicit namespace packages** (no `__init__.py`) so they merge into the `lobster.agents` namespace at runtime
+- Agent discovery is **automatic via entry points**: each package declares its agents in `pyproject.toml` under `[project.entry-points."lobster.agents"]`
+- `ComponentRegistry` scans the `lobster.agents` entry point group to discover all available agents dynamically
+
+**To find current packages:** Run `ls packages/` in the repo or check `ComponentRegistry` at runtime. Package names follow the pattern `lobster-{domain}` (e.g., `lobster-transcriptomics`, `lobster-proteomics`).
 
 ## Quick Commands
 
@@ -175,7 +166,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 
 ## Online Documentation
 
-Full documentation at **docs.omics-os.com** (or local `docs-site/`):
+Full documentation for Lobster AI and Omics-OS Cloud at **docs.omics-os.com** (or local `docs-site/`):
 
 - **Getting Started**: `docs/getting-started/`
 - **Core SDK**: `docs/core/`
@@ -217,15 +208,14 @@ See [references/plugin-architecture.md](references/plugin-architecture.md) for f
 
 ### Understanding Data Flow
 
-```
-User Query → CLI → LobsterClientAdapter → AgentClient
-                                              ↓
-                            LangGraph (supervisor → agents)
-                                              ↓
-                               Services → DataManagerV2
-                                              ↓
-                                    Results + Provenance
-```
+| Stage | Component | Responsibility |
+|-------|-----------|----------------|
+| 1. Input | CLI (`lobster chat` / `lobster query`) | Captures user query, manages session |
+| 2. Client | `LobsterClientAdapter` → `AgentClient` | Routes to local LangGraph or Omics-OS Cloud API |
+| 3. Orchestration | LangGraph supervisor | Analyzes intent, delegates to specialist agent(s) |
+| 4. Execution | Specialist agent tools | Call services, manage data via `DataManagerV2` |
+| 5. Services | Domain services (3-tuple pattern) | Run analysis, return `(AnnData, Dict, AnalysisStep)` |
+| 6. Output | Results + W3C-PROV provenance | Stored in workspace, surfaced to user |
 
 ## Testing
 
@@ -244,6 +234,8 @@ pytest --cov=lobster tests/
 ```
 
 ## Contributing
+
+Lobster AI is open-source and welcomes contributions. Omics-OS Cloud builds on top of this engine, so improvements here benefit the entire ecosystem.
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/my-feature`
