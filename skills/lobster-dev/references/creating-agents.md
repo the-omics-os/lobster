@@ -4,21 +4,25 @@ Complete guide for building Lobster AI agents — from scoping through PR.
 
 ## Scoping: Before You Write Code
 
-### Tool Inventory
+### Tool Inventory via AQUADIF Categories
 
-Enumerate candidate tools by workflow stage:
+Enumerate candidate tools by AQUADIF category to ensure comprehensive domain coverage.
+Read [references/aquadif-contract.md](aquadif-contract.md) first to internalize the taxonomy — AQUADIF is the design basis for all Lobster tools.
 
-| Stage | Example Tools |
-|-------|--------------|
-| Import/Load | `import_data`, `load_from_file` |
-| QC | `assess_quality`, `calculate_qc_metrics` |
-| Filtering | `filter_samples`, `filter_features` |
-| Preprocessing | `normalize`, `batch_correct`, `impute` |
-| Analysis | `run_analysis`, `run_statistics` |
-| Annotation | `annotate_features`, `classify_subtypes` |
-| Export | `export_results` |
+| AQUADIF Category | Purpose | Provenance |
+|------------------|---------|------------|
+| IMPORT | Load external data formats | Required |
+| QUALITY | QC metrics, artifact detection | Required |
+| FILTER | Subset data (remove samples/features) | Required |
+| PREPROCESS | Transform representation (normalize, batch correct) | Required |
+| ANALYZE | Extract patterns (PCA, clustering, statistics) | Required |
+| ANNOTATE | Add biological meaning | Required |
+| DELEGATE | Handoff to specialist child agent | Not required |
+| UTILITY | Workspace management, status, export | Not required |
 
 **Tool count target: 8–15 per agent.** <5 feels incomplete. >20 degrades LLM tool selection.
+
+**AQUADIF guides completeness:** Every parent agent needs at minimum IMPORT + QUALITY + one of ANALYZE or DELEGATE. If a category is missing, verify it's intentional — the agent either handles it differently or delegates to a child.
 
 ### Parent vs Child Decision
 
@@ -512,6 +516,11 @@ RESEARCH
 [ ] 3. Decide: new package vs extend existing
 [ ] 4. Decide: parent-only vs parent+children
 [ ] 5. Decide: platform-aware defaults needed?
+
+AQUADIF
+[ ] 5a. Map candidate tools to AQUADIF categories (see aquadif-contract.md)
+[ ] 5b. Verify: parent has IMPORT + QUALITY + ANALYZE or DELEGATE
+[ ] 5c. Set .metadata and .tags on every tool in create_shared_tools()
 
 SCAFFOLD
 [ ] 6. Create package directory structure
