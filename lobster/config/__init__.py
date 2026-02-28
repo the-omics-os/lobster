@@ -15,6 +15,11 @@ from lobster.config.agent_presets import (
     get_preset_description,
     list_presets,
 )
+from lobster.config.aquadif import (
+    AquadifCategory,
+    PROVENANCE_REQUIRED,
+    requires_provenance,
+)
 from lobster.config.workspace_agent_config import (
     AgentSettings,
     ProviderSettings,
@@ -34,4 +39,8 @@ __all__ = [
     # Agent config resolution
     "AgentConfigResolver",
     "resolve_agents_for_graph",
+    # AQUADIF tool taxonomy
+    "AquadifCategory",
+    "PROVENANCE_REQUIRED",
+    "requires_provenance",
 ]
