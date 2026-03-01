@@ -98,17 +98,33 @@ cd ../.testing/skill-eval
 | iter-02 | Gemini 3.1 Pro | **C** | 8 | 208s | Correct skeleton, all stubs. Wrong import paths. Module-level imports. |
 | iter-02 | Codex gpt-5.3 | **B-** | 15 | 242s | Best AQUADIF understanding (9/10 categories). Built standalone, not plugin. |
 
-### Skill Fixes Applied (This Iteration)
+**Note:** smoke-01 and iter-02 were run BEFORE `lobster scaffold` and `lobster validate-plugin` existed. iter-03 will be the first evaluation with these features available to agents.
+
+### Skill Fixes Applied (Pre iter-03)
 
 | Change | File | What |
 |--------|------|------|
-| CHANGE 1 (Critical) | `lobster-dev/references/creating-agents.md` | Replaced `try/except ImportError` code example with PEP 420 pattern in `__init__.py` section |
-| CHANGE 2 (Medium) | `lobster-dev/references/aquadif-contract.md` | Added signal track / fragment file IMPORT examples |
+| CHANGE 1 (Critical) | `creating-agents.md` | Replaced `try/except ImportError` with PEP 420 pattern |
+| CHANGE 2 (Medium) | `aquadif-contract.md` | Added signal track / fragment file IMPORT examples |
 | CHANGE 3 (High) | Both files | Added "Data Loading Boundary: data_expert vs Domain IMPORT Tools" section |
+| CHANGE 4 (Major) | `scaffold.md` + `SKILL.md` | Added `lobster scaffold agent` as mandatory first step |
+| CHANGE 5 (Major) | `scaffold.md` + `SKILL.md` | Added `lobster validate-plugin` with 7 structural checks |
 
-### Infrastructure Fixes
+### What scaffold + validate-plugin Now Enforce
 
-- `run-test.sh`: Added `~/.codex/auth.json` mount for Codex Docker auth
+These structural issues from iter-02 are now **automatically prevented** by the scaffold:
+- `src/` layout → scaffold generates flat layout (`lobster/agents/{domain}/`)
+- Missing pyproject.toml → scaffold generates it with correct entry points
+- Missing AGENT_CONFIG → scaffold generates it at module top
+- Wrong `__init__.py` → scaffold generates PEP 420 compliant files
+- Missing contract tests → scaffold generates AQUADIF contract test template
+
+And `validate-plugin` catches anything that slips through (7 checks: pyproject.toml, entry points, AGENT_CONFIG, PEP 420, factory function, service 3-tuple, AQUADIF metadata).
+
+### Infrastructure Changes (for iter-03)
+
+- Docker images now install **lobster-ai from source** (not PyPI) — `build.sh` rsyncs lobster source into build context, Dockerfiles install from `/tmp/lobster-src`. Agents get `lobster scaffold` + `lobster validate-plugin` before PyPI release.
+- `run-test.sh`: Added `~/.codex/auth.json` mount for Codex Docker auth.
 
 ---
 
@@ -118,90 +134,72 @@ cd ../.testing/skill-eval
 
 Make the lobster-dev skill reliably teach ANY coding agent (Claude, Gemini, Codex) to produce a **structurally correct, ecosystem-integrated** Lobster plugin package. Target: all agents score B+ or higher.
 
-### Phase 1: Fix Known Skill Gaps (current)
+### Phase 1: Fix Known Skill Gaps — MOSTLY COMPLETE
 
-Skill changes identified from smoke-01 + iter-02 evaluations:
+Skill changes from smoke-01 + iter-02 evaluations:
 
 - [x] Fix `__init__.py` code example (CHANGE 1)
 - [x] Broaden IMPORT examples (CHANGE 2)
 - [x] Add data_expert boundary (CHANGE 3)
-- [ ] Add visual lazy import annotation — separate module-level (AGENT_CONFIG only) from factory-level (everything else)
-- [ ] Ban `src/` layout explicitly — "MUST use flat layout, NOT src/"
-- [ ] Add "you are a plugin, not standalone" note — anndata.AnnData required, no custom data containers
-- [ ] Emphasize pyproject.toml as mandatory first file
-- [ ] Document correct import paths in reference table (not just in template)
-- [ ] Fix factory return type emphasis — "MUST return create_react_agent() CompiledGraph"
+- [x] `lobster scaffold` as mandatory first step — enforces flat layout, pyproject.toml, AGENT_CONFIG, PEP 420
+- [x] `lobster validate-plugin` — 7 structural checks catch remaining issues
+
+Remaining nice-to-haves (lower priority now that scaffold enforces these):
+- [ ] Add import path reference table to creating-agents.md (helps Gemini avoid hallucinated paths)
+- [ ] Add visual lazy import annotation (module-level vs factory-level separation)
 
 ### Phase 2: Template Integration — COMPLETED
 
-**Resolved:** `lobster scaffold agent` now generates AQUADIF-compliant plugin packages.
-The old Copier template (`lobster-agent-template/`) has been deleted. All scaffolding
-is now built into the core package at `lobster/scaffold/`.
+`lobster scaffold agent` generates AQUADIF-compliant packages. `lobster validate-plugin` validates them.
+Old Copier template deleted. All scaffolding built into core at `lobster/scaffold/`.
 
-### Phase 3: WITHOUT Condition Baseline
+### Phase 3: iter-03 — Re-run All 3 Agents (NEXT)
 
-Run all 3 agents WITHOUT skills to measure skill impact. This gives us:
-- Delta between with/without per agent
-- Evidence that skills actually improve output (not just agent capability)
+Re-run Claude + Gemini + Codex with current skill (scaffold + validate-plugin available).
+This is the first evaluation where agents have access to `lobster scaffold` and `lobster validate-plugin`.
+Expect significant grade improvements from structural enforcement.
 
-### Phase 4: Automated Scoring
+### Phase 4: WITHOUT Condition Baseline
 
-Parse generated files programmatically:
-- AST-check for AGENT_CONFIG position
-- Grep for entry points in pyproject.toml
-- Count tools and verify AQUADIF metadata
-- Check provenance `ir=ir` calls
-- Score against ground truth patterns
-- Output structured JSON for comparison
+Run all 3 agents WITHOUT skills to measure skill impact delta.
 
-### Phase 5: Multi-Domain
+### Phase 5: Automated Scoring
 
-Expand beyond epigenomics:
-- `prompts/multi-omics.txt` already exists
-- Add more ground truth files
-- Validate skill generalization across domains
+Parse generated files programmatically (AST checks, grep patterns, structured JSON output).
+
+### Phase 6: Multi-Domain
+
+Expand beyond epigenomics (`prompts/multi-omics.txt` already exists).
 
 ---
 
 ## Scratchpad
 
-### Bugs
+### Known Issues
 
-1. ~~**Template `__init__.py` eager imports**~~ — FIXED: Old Copier template deleted. `lobster scaffold` generates correct PEP 420 pattern.
+1. **Gemini hallucinated import paths** — `lobster.core.config` and `lobster.core.client` don't exist. Skill shows correct paths but Gemini didn't follow. An import path reference table in creating-agents.md might help. **Will re-evaluate after iter-03** — scaffold may make this less of an issue since generated code has correct imports.
 
-2. ~~**Template factory has module-level heavy imports**~~ — FIXED: `lobster scaffold` generates correct lazy import pattern.
+2. **Codex exit code 1** — "Failed to shutdown rollout recorder" — Codex CLI internal cleanup error, code gen succeeds. `run-test.sh` should check workspace files exist before treating non-zero exit as failure.
 
-3. ~~**Template uses `state_modifier` not `prompt`**~~ — FIXED: `lobster scaffold` uses `prompt=system_prompt`.
-
-4. **Gemini hallucinated import paths** — `lobster.core.config` and `lobster.core.client` don't exist. Skill shows correct paths but Gemini didn't follow. Need paths in a more prominent location (reference table?).
-
-5. **Codex exit code 1** — "Failed to shutdown rollout recorder" — Codex CLI internal cleanup error. Code gen succeeded. May need to handle non-zero exit codes that aren't real failures in `run-test.sh`.
-
-6. **AQUADIF metadata migration needed** — Validator found 5/9 existing packages fail AQUADIF checks:
-   - 4 packages (metabolomics, transcriptomics, proteomics, ml) have 0 AQUADIF metadata on ~41 tools
-   - 1 package (research) has cross-agent import boundary violation
-   - 4 packages pass (genomics, visualization, metadata, structural-viz)
+3. **AQUADIF metadata migration needed** — 5/9 existing packages fail AQUADIF checks (separate from eval work, tracked in main lobster backlog).
 
 ### Todos
 
-- [ ] Run iter-03 after applying remaining Phase 1 fixes
-- [ ] Run WITHOUT condition for all 3 agents (baseline measurement)
-- [x] ~~Update template `__init__.py` to PEP 420 pattern~~ — Replaced with `lobster scaffold`
-- [x] ~~Add AQUADIF contract test template to copier template~~ — Built into `lobster scaffold`
-- [x] ~~Consider: should `creating-agents.md` tell agents to run copier first?~~ — Skill now routes through `lobster scaffold`
-- [ ] Add import path reference table to creating-agents.md
-- [ ] Handle Codex "rollout recorder" exit code in run-test.sh (check workspace files exist → treat as success)
-- [ ] Migrate AQUADIF metadata to 4 existing packages (metabolomics, transcriptomics, proteomics, ml)
-- [ ] Fix cross-agent import in lobster-research (research_agent imports from data_expert)
+- [ ] **Run iter-03** — all 3 agents WITH skill, epigenomics domain (NEXT)
+- [ ] Run WITHOUT condition baseline for all 3 agents
+- [ ] Add import path reference table to creating-agents.md (if Gemini still hallucinates in iter-03)
+- [ ] Handle Codex "rollout recorder" exit code in run-test.sh
+- [ ] Migrate AQUADIF metadata to existing packages (metabolomics, transcriptomics, proteomics, ml)
 
-### Agent Personality Notes (from evaluations)
+### Agent Personality Notes (from smoke-01 / iter-02)
 
-- **Claude** — "The Integrator". Deep ecosystem knowledge, real algorithms, follows patterns precisely. Slow (689s). Over-implements.
-- **Gemini** — "The Scaffolder". Fast (208s), correct structure, zero depth. Hallucination risk on import paths. All stubs.
-- **Codex** — "The Engineer". Best AQUADIF grasp, protocol interfaces, DRY patterns. Builds standalone packages instead of plugins. Creates compat shims.
+- **Claude** — "The Integrator". Real algorithms, follows patterns precisely. Slow (689s). Over-implements.
+- **Gemini** — "The Scaffolder". Fast (208s), correct structure, zero depth. Hallucination risk.
+- **Codex** — "The Engineer". Best AQUADIF grasp, DRY patterns. Builds standalone instead of plugins.
+
+**iter-03 hypothesis:** With `lobster scaffold` available, Codex's standalone-build problem should disappear and Gemini's structural issues should be enforced away. Implementation depth remains a model capability question.
 
 ### Open Questions
 
-1. ~~**Template-first vs skill-first?**~~ RESOLVED: `lobster scaffold` generates boilerplate, skill teaches how to fill it in. Agents run scaffold first, then follow skill guidance for domain logic.
-2. **Should we test lobster-use skill too?** Currently only evaluating lobster-dev. The end-user skill has different failure modes.
-3. **How to handle service implementation depth?** Claude writes real TMM normalization; Gemini writes stubs. Is this a skill problem or a model knowledge problem? Probably model knowledge — can't teach bioinformatics algorithms via a skill.
+1. **Should we test lobster-use skill too?** Currently only evaluating lobster-dev.
+2. **Service implementation depth** — Claude writes real algorithms; Gemini writes stubs. Model knowledge, not skill problem.

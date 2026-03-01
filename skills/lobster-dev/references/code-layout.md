@@ -13,22 +13,15 @@ lobster/                          # Repository root
 │   ├── tools/                    # Agent tools
 │   └── cli.py                    # CLI implementation (3,900+ lines)
 ├── packages/                     # Agent packages (PEP 420)
-│   ├── lobster-transcriptomics/
-│   ├── lobster-research/
-│   ├── lobster-visualization/
-│   ├── lobster-metadata/
-│   ├── lobster-structural-viz/
-│   ├── lobster-genomics/        # [alpha]
-│   ├── lobster-proteomics/      # [alpha]
-│   └── lobster-ml/              # [alpha]
+│   ├── lobster-<domain>/         # A domain agent installed from the lobster pypi repository
+│   └── lobster-research/         # The reserach agent of lobster allowing for interactions with biological databasese
+
 ├── tests/
 │   ├── unit/
 │   └── integration/
 ├── .claude/                      # Claude Code integration
 │   ├── docs/                     # Internal docs
 │   └── skills/                   # Skills for Claude Code
-├── wiki/                         # User documentation (58 pages)
-└── docs/                         # Developer documentation
 ```
 
 ## Core SDK (`lobster/lobster/`)
