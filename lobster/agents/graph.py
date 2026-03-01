@@ -274,6 +274,9 @@ def _create_lazy_delegation_tool(
 
         return content
 
+    invoke_agent_lazy.metadata = {"categories": ["DELEGATE"], "provenance": False}
+    invoke_agent_lazy.tags = ["DELEGATE"]
+
     return invoke_agent_lazy
 
 

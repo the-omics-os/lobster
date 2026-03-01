@@ -158,6 +158,9 @@ def create_shared_tools(
             logger.error(f"Error in quality assessment: {e}")
             return f"Error assessing quality: {str(e)}"
 
+    assess_metabolomics_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_metabolomics_quality.tags = ["QUALITY"]
+
     # =========================================================================
     # Tool 2: Feature Filtering
     # =========================================================================
@@ -232,6 +235,9 @@ def create_shared_tools(
             logger.error(f"Error in feature filtering: {e}")
             return f"Error filtering features: {str(e)}"
 
+    filter_metabolomics_features.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_metabolomics_features.tags = ["FILTER"]
+
     # =========================================================================
     # Tool 3: Missing Value Imputation
     # =========================================================================
@@ -300,6 +306,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in missing value imputation: {e}")
             return f"Error imputing missing values: {str(e)}"
+
+    handle_missing_values.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    handle_missing_values.tags = ["PREPROCESS"]
 
     # =========================================================================
     # Tool 4: Normalization
@@ -381,6 +390,9 @@ def create_shared_tools(
             logger.error(f"Error in normalization: {e}")
             return f"Error normalizing data: {str(e)}"
 
+    normalize_metabolomics.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    normalize_metabolomics.tags = ["PREPROCESS"]
+
     # =========================================================================
     # Tool 5: Batch Effect Correction
     # =========================================================================
@@ -451,6 +463,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in batch correction: {e}")
             return f"Error correcting batch effects: {str(e)}"
+
+    correct_batch_effects.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    correct_batch_effects.tags = ["PREPROCESS"]
 
     # =========================================================================
     # Tool 6: Univariate Statistics + Fold Changes
@@ -540,6 +555,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in statistical analysis: {e}")
             return f"Error running statistics: {str(e)}"
+
+    run_metabolomics_statistics.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_metabolomics_statistics.tags = ["ANALYZE"]
 
     # =========================================================================
     # Tool 7: Multivariate Analysis (PCA / PLS-DA / OPLS-DA)
@@ -672,6 +690,9 @@ def create_shared_tools(
             logger.error(f"Error in multivariate analysis: {e}")
             return f"Error running {method.upper()}: {str(e)}"
 
+    run_multivariate_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_multivariate_analysis.tags = ["ANALYZE"]
+
     # =========================================================================
     # Tool 8: Metabolite Annotation
     # =========================================================================
@@ -755,6 +776,9 @@ def create_shared_tools(
             logger.error(f"Error in metabolite annotation: {e}")
             return f"Error annotating metabolites: {str(e)}"
 
+    annotate_metabolites.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    annotate_metabolites.tags = ["ANNOTATE"]
+
     # =========================================================================
     # Tool 9: Lipid Class Analysis
     # =========================================================================
@@ -815,6 +839,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in lipid classification: {e}")
             return f"Error classifying lipids: {str(e)}"
+
+    analyze_lipid_classes.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    analyze_lipid_classes.tags = ["ANALYZE"]
 
     # =========================================================================
     # Tool 10: Pathway Enrichment
@@ -1013,6 +1040,9 @@ results = service.overrepresentation_analysis(
         except Exception as e:
             logger.error(f"Error in pathway enrichment: {e}")
             return f"Error running pathway enrichment: {str(e)}"
+
+    run_pathway_enrichment.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_pathway_enrichment.tags = ["ANALYZE"]
 
     # =========================================================================
     # Return all 10 tools
