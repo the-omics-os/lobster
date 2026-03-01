@@ -48,12 +48,12 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 
 ### Monitoring
 
-- [ ] **MON-01**: `AquadifCallbackHandler` in `lobster/core/aquadif_callback.py` logs category with every tool invocation
-- [ ] **MON-02**: Callback handler tracks category distribution per session
-- [ ] **MON-03**: Callback handler flags CODE_EXEC usage with details
-- [ ] **MON-04**: Callback handler checks provenance compliance at runtime (was `log_tool_usage` called for provenance-required tools?)
-- [ ] **MON-05**: Callback handler integrated with existing callback infrastructure in `graph.py`
-- [ ] **MON-06**: Callback handler emits structured events consumable by Omics-OS Cloud
+- [x] **MON-01**: `AquadifMonitor` in `lobster/core/aquadif_monitor.py` logs category with every tool invocation via `record_tool_invocation()` — Complete (05-01, 05-02)
+- [x] **MON-02**: Monitor tracks category distribution per session via `get_category_distribution()` — Complete (05-01)
+- [x] **MON-03**: Monitor flags CODE_EXEC usage with details via bounded `deque(maxlen=100)` log and `get_code_exec_log()` — Complete (05-01)
+- [x] **MON-04**: Monitor checks provenance compliance at runtime via `record_provenance_call()` called from `DataManagerV2.log_tool_usage` — Complete (05-01, 05-02)
+- [x] **MON-05**: Monitor injected into existing callback chain — `TokenTrackingCallback.on_tool_start` calls `record_tool_invocation`, `graph.py` builds tool metadata map — Complete (05-02)
+- [x] **MON-06**: Monitor emits structured events via `get_session_summary()` consumable by Omics-OS Cloud — Complete (05-01)
 
 ### Extension Case Study
 
@@ -125,12 +125,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | ROLL-08 | Phase 4 | Complete |
 | ROLL-09 | Phase 4 | Complete |
 | ROLL-10 | Phase 4 | Complete |
-| MON-01 | Phase 5 | Pending |
-| MON-02 | Phase 5 | Pending |
-| MON-03 | Phase 5 | Pending |
-| MON-04 | Phase 5 | Pending |
-| MON-05 | Phase 5 | Pending |
-| MON-06 | Phase 5 | Pending |
+| MON-01 | Phase 5 | Complete (05-01, 05-02) |
+| MON-02 | Phase 5 | Complete (05-01) |
+| MON-03 | Phase 5 | Complete (05-01) |
+| MON-04 | Phase 5 | Complete (05-01, 05-02) |
+| MON-05 | Phase 5 | Complete (05-02) |
+| MON-06 | Phase 5 | Complete (05-01) |
 | CASE-01 | Phase 6 | Pending |
 | CASE-02 | Phase 6 | Pending |
 | CASE-03 | Phase 6 | Pending |
@@ -145,4 +145,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-02-27*
-*Last updated: 2026-02-28 — Fixed IMPL-01 tool count: 24 -> 15 (verified: 15 @tool in transcriptomics_expert.py, 7 in shared_tools.py = 22 total)*
+*Last updated: 2026-03-01 — MON-01..MON-06 complete: AquadifMonitor (renamed from AquadifCallbackHandler after brutalist review) implemented and wired into callback chain*
