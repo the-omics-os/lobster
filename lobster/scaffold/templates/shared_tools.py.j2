@@ -1,0 +1,221 @@
+"""
+Shared tools for {{ display_name }} analysis.
+
+This module provides AQUADIF-categorized tools for the {{ agent_name }} agent.
+Each tool wraps a stateless service method and declares its AQUADIF category
+and provenance requirements.
+
+Tool categories (AQUADIF taxonomy):
+    IMPORT: Load external data formats into workspace
+    QUALITY: Assess data integrity, calculate QC metrics
+    FILTER: Subset data by removing samples/features
+    PREPROCESS: Transform data (normalize, batch correct, scale)
+    ANALYZE: Extract patterns, statistical tests, embeddings
+    ANNOTATE: Add biological meaning
+    UTILITY: Workspace management, status checks
+"""
+
+from typing import Any, Callable, Dict, List, Optional
+
+from langchain_core.tools import tool
+
+from lobster.config.aquadif import AquadifCategory
+from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def create_shared_tools(
+    data_manager: DataManagerV2,
+    # TODO: Add your stateless service parameters here
+    # quality_service: YourQualityService,
+    # analysis_service: YourAnalysisService,
+) -> List[Callable]:
+    """
+    Create shared {{ domain }} tools with AQUADIF metadata.
+
+    # IMPORTANT: Provenance-required categories (IMPORT, QUALITY, FILTER, PREPROCESS,
+    # ANALYZE, ANNOTATE, SYNTHESIZE) MUST be listed FIRST in categories.
+    # Contract test test_provenance_categories_not_buried() enforces this.
+
+    Args:
+        data_manager: DataManagerV2 instance for modality management
+
+    Returns:
+        List of tool functions with AQUADIF metadata assigned
+    """
+
+    # =========================================================================
+    # IMPORT tools — Load external data formats into workspace
+    # =========================================================================
+
+    @tool
+    def import_{{ domain }}_data(
+        file_path: str,
+        modality_name: Optional[str] = None,
+    ) -> str:
+        """Import {{ domain }} data from file into workspace.
+
+        Args:
+            file_path: Path to the data file
+            modality_name: Optional name for the modality (auto-generated if not provided)
+        """
+        # TODO: Implement data loading logic
+        # 1. Parse the file (vendor-specific format)
+        # 2. Create AnnData object
+        # 3. Store modality
+        # 4. Log provenance
+
+        # Example provenance (ir) pattern:
+        ir = AnalysisStep(
+            operation="{{ domain }}.import.data",
+            tool_name="import_{{ domain }}_data",
+            description="Imported {{ domain }} data",
+            library="lobster.agents.{{ domain }}",
+            code_template="# TODO: Add reproducible code template",
+            imports=[],
+            parameters={"file_path": file_path},
+            parameter_schema={},
+            input_entities=[],
+            output_entities=["adata"],
+        )
+
+        data_manager.log_tool_usage(
+            tool_name="import_{{ domain }}_data",
+            parameters={"file_path": file_path},
+            description="Imported {{ domain }} data",
+            ir=ir,
+        )
+        return f"Imported {{ domain }} data from {file_path}"
+
+    # IMPORTANT: Provenance-required categories (IMPORT, QUALITY, FILTER, PREPROCESS,
+    # ANALYZE, ANNOTATE, SYNTHESIZE) MUST be listed FIRST in categories.
+    # Contract test test_provenance_categories_not_buried() enforces this.
+    import_{{ domain }}_data.metadata = {
+        "categories": [AquadifCategory.IMPORT.value],
+        "provenance": True,
+    }
+    import_{{ domain }}_data.tags = [AquadifCategory.IMPORT.value]
+
+    # =========================================================================
+    # QUALITY tools — Assess data integrity
+    # =========================================================================
+
+    @tool
+    def assess_{{ domain }}_quality(modality_name: str) -> str:
+        """Assess quality of {{ domain }} data.
+
+        Args:
+            modality_name: Name of the modality to assess
+        """
+        adata = data_manager.get_modality(modality_name)
+
+        # TODO: Implement quality assessment
+        # result_adata, stats, ir = quality_service.assess(adata)
+        stats = {"n_obs": adata.n_obs, "n_vars": adata.n_vars}
+
+        ir = AnalysisStep(
+            operation="{{ domain }}.quality.assess",
+            tool_name="assess_{{ domain }}_quality",
+            description="Assessed {{ domain }} data quality",
+            library="lobster.agents.{{ domain }}",
+            code_template="# TODO: Add reproducible code template",
+            imports=[],
+            parameters={"modality_name": modality_name},
+            parameter_schema={},
+            input_entities=["adata"],
+            output_entities=["adata_qc"],
+        )
+
+        data_manager.log_tool_usage(
+            tool_name="assess_{{ domain }}_quality",
+            parameters={"modality_name": modality_name},
+            description="Assessed {{ domain }} data quality",
+            ir=ir,
+        )
+        return f"Quality assessment complete: {stats}"
+
+    assess_{{ domain }}_quality.metadata = {
+        "categories": [AquadifCategory.QUALITY.value],
+        "provenance": True,
+    }
+    assess_{{ domain }}_quality.tags = [AquadifCategory.QUALITY.value]
+
+    # =========================================================================
+    # ANALYZE tools — Extract patterns
+    # =========================================================================
+
+    @tool
+    def analyze_{{ domain }}(
+        modality_name: str,
+        method: str = "pca",
+    ) -> str:
+        """Run analysis on {{ domain }} data.
+
+        Args:
+            modality_name: Name of the modality to analyze
+            method: Analysis method to use
+        """
+        adata = data_manager.get_modality(modality_name)
+
+        # TODO: Implement analysis logic
+        # result_adata, stats, ir = analysis_service.analyze(adata, method=method)
+        stats = {"method": method, "n_obs": adata.n_obs}
+
+        ir = AnalysisStep(
+            operation=f"{{ domain }}.analyze.{method}",
+            tool_name="analyze_{{ domain }}",
+            description=f"Analyzed {{ domain }} data with {method}",
+            library="lobster.agents.{{ domain }}",
+            code_template="# TODO: Add reproducible code template",
+            imports=[],
+            parameters={"modality_name": modality_name, "method": method},
+            parameter_schema={},
+            input_entities=["adata"],
+            output_entities=["adata_analyzed"],
+        )
+
+        data_manager.log_tool_usage(
+            tool_name="analyze_{{ domain }}",
+            parameters={"modality_name": modality_name, "method": method},
+            description=f"Analyzed {{ domain }} data with {method}",
+            ir=ir,
+        )
+        return f"Analysis complete: {stats}"
+
+    analyze_{{ domain }}.metadata = {
+        "categories": [AquadifCategory.ANALYZE.value],
+        "provenance": True,
+    }
+    analyze_{{ domain }}.tags = [AquadifCategory.ANALYZE.value]
+
+    # =========================================================================
+    # UTILITY tools — Workspace management
+    # =========================================================================
+
+    @tool
+    def list_{{ domain }}_modalities() -> str:
+        """List all {{ domain }} modalities in the workspace."""
+        modalities = data_manager.list_modalities()
+        if not modalities:
+            return "No modalities loaded. Use import_{{ domain }}_data first."
+        return f"Available modalities: {', '.join(modalities)}"
+
+    list_{{ domain }}_modalities.metadata = {
+        "categories": [AquadifCategory.UTILITY.value],
+        "provenance": False,
+    }
+    list_{{ domain }}_modalities.tags = [AquadifCategory.UTILITY.value]
+
+    # =========================================================================
+    # Return all tools
+    # =========================================================================
+
+    return [
+        import_{{ domain }}_data,
+        assess_{{ domain }}_quality,
+        analyze_{{ domain }},
+        list_{{ domain }}_modalities,
+    ]

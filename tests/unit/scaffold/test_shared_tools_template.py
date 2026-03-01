@@ -1,0 +1,47 @@
+import ast
+
+from lobster.scaffold.generators.agent import _render_template
+
+
+class TestSharedToolsTemplate:
+    """Verify shared_tools template generates AQUADIF-compliant tools."""
+
+    CONTEXT = {
+        "agent_name": "epigenomics_expert",
+        "domain": "epigenomics",
+        "display_name": "Epigenomics Expert",
+    }
+
+    def test_renders_valid_python(self):
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        ast.parse(content)
+
+    def test_has_aquadif_import(self):
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        assert "from lobster.config.aquadif import AquadifCategory" in content
+
+    def test_tools_have_metadata_assignment(self):
+        """Every tool must have .metadata and .tags assigned."""
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        assert ".metadata = {" in content
+        assert ".tags = [" in content
+
+    def test_provenance_tools_have_ir(self):
+        """Tools with provenance must call log_tool_usage(ir=ir)."""
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        assert "ir=ir" in content
+
+    def test_factory_returns_list(self):
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        assert "return [" in content
+
+    def test_factory_takes_data_manager(self):
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        assert "data_manager: DataManagerV2" in content
+
+    def test_provenance_categories_first_comment(self):
+        """Delta 2: Template must have comment about provenance category ordering."""
+        content = _render_template("shared_tools.py.j2", self.CONTEXT)
+        assert "Provenance-required categories" in content
+        assert "MUST be listed FIRST" in content
+        assert "test_provenance_categories_not_buried" in content
