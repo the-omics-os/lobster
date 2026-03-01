@@ -163,7 +163,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. AQUADIF Skill Creation | 3/3 | ✓ Complete | 2026-02-28 |
 | 2. Contract Test Infrastructure | 2/2 | ✓ Complete | 2026-02-28 |
 | 3. Reference Implementation | 2/2 | ✓ Complete | 2026-03-01 |
-| 4. Agent Rollout | 0/7 | Planned | - |
+| 4. Agent Rollout | 2/7 | In Progress|  |
 | 5. Monitoring Infrastructure | 0/? | Not started | - |
 | 6. Extension Case Study | 0/? | Not started | - |
 | 7. Documentation & Release | 0/? | Not started | - |
