@@ -55,6 +55,15 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 - [x] **MON-05**: Monitor injected into existing callback chain — `TokenTrackingCallback.on_tool_start` calls `record_tool_invocation`, `graph.py` builds tool metadata map — Complete (05-02)
 - [x] **MON-06**: Monitor emits structured events via `get_session_summary()` consumable by Omics-OS Cloud — Complete (05-01)
 
+### Documentation & Release
+
+- [x] **DOC-01**: Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections — Complete (06-01)
+- [x] **DOC-02**: `.github/CLAUDE.md` documents AQUADIF metadata as a requirement for new tools and PRs (Hard Rules 11-12) — Complete (06-01)
+- [ ] **DOC-03**: `docs-site/` has an AQUADIF page explaining the taxonomy at `extending/aquadif-taxonomy.mdx` — Planned (06-02)
+- [ ] **DOC-04**: `lobster-dev` skill references are current with scaffold workflow + AQUADIF validation — Planned (06-02)
+- [ ] **DOC-05**: `lobster-use` skill references mention AQUADIF categories where relevant — Planned (06-02)
+- [x] **DOC-06**: `master_mermaid.md` includes AQUADIF metadata flow and contract test infrastructure (section 12) — Complete (06-01)
+
 ### Extension Case Study
 
 - [ ] **CASE-01**: Coding agent (Claude Code) loads updated lobster-dev skill and designs epigenomics (ChIP-seq) tool set with correct AQUADIF categories
@@ -131,6 +140,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | MON-04 | Phase 5 | Complete (05-01, 05-02) |
 | MON-05 | Phase 5 | Complete (05-02) |
 | MON-06 | Phase 5 | Complete (05-01) |
+| DOC-01 | Phase 6 | Complete (06-01) |
+| DOC-02 | Phase 6 | Complete (06-01) |
+| DOC-03 | Phase 6 | Pending |
+| DOC-04 | Phase 6 | Pending |
+| DOC-05 | Phase 6 | Pending |
+| DOC-06 | Phase 6 | Complete (06-01) |
 | CASE-01 | Phase 6 | Pending |
 | CASE-02 | Phase 6 | Pending |
 | CASE-03 | Phase 6 | Pending |

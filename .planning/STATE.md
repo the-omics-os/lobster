@@ -172,11 +172,13 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 
 **Phase 6: Documentation & Release — IN PROGRESS** (started 2026-03-01)
 
-**Plan 01: AQUADIF rules in .github/CLAUDE.md, agent table, CLAUDE.md files — COMPLETE** (2026-03-01)
-- Added AQUADIF Hard Rules 11-12 to `.github/CLAUDE.md` (all tools need metadata, PRs need contract tests)
-- Updated agent table with 4 drug-discovery agents (cheminformatics, clinical_dev, pharmacogenomics)
-- Added AQUADIF section to root CLAUDE.md and lobster/CLAUDE.md (monitoring infrastructure, key files)
-- Requirements completed: DOC-01, DOC-02
+**Plan 01: Internal documentation updates (CLAUDE.md files + master_mermaid.md) — COMPLETE** (2026-03-01)
+- Root CLAUDE.md: lobster/ row in Directory Index now includes "AQUADIF tool taxonomy"
+- lobster/CLAUDE.md: AquadifMonitor runtime monitoring subsection added (5 methods, callback chain, provenance states); core/aquadif_monitor.py added to key files
+- .github/CLAUDE.md: Hard Rules 11-12 added; package tree 8→10 packages; agent table 13→22 agents; 3 AQUADIF key files added
+- master_mermaid.md: Section 12 appended — AQUADIF Metadata Flow & Contract Test Infrastructure (4-subgraph Mermaid diagram + 4 design decisions)
+- Commits: 95671c2 (.github/CLAUDE.md, lobster repo), 71070ef/9a5551f/20fb545 (CLAUDE.md files + master_mermaid.md, Omics-OS repo)
+- Requirements completed: DOC-01, DOC-02, DOC-06
 
 **Plan 02: AQUADIF docs-site page + skill reference updates — COMPLETE** (2026-03-01)
 - New MDX page `docs-site/content/docs/extending/aquadif-taxonomy.mdx` (10 categories, metadata pattern, provenance rules, contract testing, runtime monitoring, category decision guide)

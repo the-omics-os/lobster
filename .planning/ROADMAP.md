@@ -22,7 +22,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 ### 📋 v1.1 Monitoring & Validation (Planned)
 
 - [x] **Phase 5: Monitoring Infrastructure** — Shared AquadifMonitor service injected into existing callback chain (not a new handler) (completed 2006-03-01)
-- [ ] **Phase 6: Documentation & Release** — Update all docs, architecture files, and skill references to reflect AQUADIF as shipped
+- [x] **Phase 6: Documentation & Release** — Update all docs, architecture files, and skill references to reflect AQUADIF as shipped (completed 2026-03-01)
 
 ### Phase 5: Monitoring Infrastructure
 **Goal**: Enable runtime introspection of tool category usage and provenance compliance via a shared monitor service injected into the existing callback chain
@@ -90,7 +90,7 @@ AquadifMonitor (lobster/core/aquadif_monitor.py)
 **Goal**: Update all documentation, architecture files, and skill references to reflect AQUADIF as a shipped, validated system
 **Depends on**: Phase 5
 **Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 06-01-PLAN.md — Internal docs: CLAUDE.md files (root, lobster/, .github/) + master_mermaid.md architecture diagram
@@ -116,4 +116,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Reference Implementation | v1.0 | 2/2 | ✓ Complete | 2006-03-01 |
 | 4. Agent Rollout | v1.0 | 7/7 | ✓ Complete | 2006-03-01 |
 | 5. Monitoring Infrastructure | v1.1 | 2/2 | ✓ Complete | 2006-03-01 |
-| 6. Documentation & Release | v1.1 | 0/2 | Not started | - |
+| 6. Documentation & Release | 2/2 | Complete   | 2026-03-01 | - |
