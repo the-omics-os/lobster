@@ -59,9 +59,9 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 
 - [x] **DOC-01**: Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections — Complete (06-01)
 - [x] **DOC-02**: `.github/CLAUDE.md` documents AQUADIF metadata as a requirement for new tools and PRs (Hard Rules 11-12) — Complete (06-01)
-- [ ] **DOC-03**: `docs-site/` has an AQUADIF page explaining the taxonomy at `extending/aquadif-taxonomy.mdx` — Planned (06-02)
-- [ ] **DOC-04**: `lobster-dev` skill references are current with scaffold workflow + AQUADIF validation — Planned (06-02)
-- [ ] **DOC-05**: `lobster-use` skill references mention AQUADIF categories where relevant — Planned (06-02)
+- [x] **DOC-03**: `docs-site/` has an AQUADIF page explaining the taxonomy at `extending/aquadif-taxonomy.mdx` — Complete (06-02)
+- [x] **DOC-04**: `lobster-dev` skill references are current with scaffold workflow + AQUADIF validation — Complete (06-02)
+- [x] **DOC-05**: `lobster-use` skill references mention AQUADIF categories where relevant — Complete (06-02)
 - [x] **DOC-06**: `master_mermaid.md` includes AQUADIF metadata flow and contract test infrastructure (section 12) — Complete (06-01)
 
 ### Extension Case Study
@@ -142,9 +142,9 @@ Deferred to future release. Tracked but not in current roadmap.
 | MON-06 | Phase 5 | Complete (05-01) |
 | DOC-01 | Phase 6 | Complete (06-01) |
 | DOC-02 | Phase 6 | Complete (06-01) |
-| DOC-03 | Phase 6 | Pending |
-| DOC-04 | Phase 6 | Pending |
-| DOC-05 | Phase 6 | Pending |
+| DOC-03 | Phase 6 | Complete (06-02) |
+| DOC-04 | Phase 6 | Complete (06-02) |
+| DOC-05 | Phase 6 | Complete (06-02) |
 | DOC-06 | Phase 6 | Complete (06-01) |
 | CASE-01 | Phase 6 | Pending |
 | CASE-02 | Phase 6 | Pending |
@@ -160,4 +160,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-02-27*
-*Last updated: 2026-03-01 — MON-01..MON-06 complete: AquadifMonitor (renamed from AquadifCallbackHandler after brutalist review) implemented and wired into callback chain*
+*Last updated: 2026-03-01 — DOC-01..DOC-06 complete: all internal docs, public docs-site page, skill references, and master_mermaid updated for AQUADIF*

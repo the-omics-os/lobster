@@ -93,8 +93,8 @@ AquadifMonitor (lobster/core/aquadif_monitor.py)
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 06-01-PLAN.md — Internal docs: CLAUDE.md files (root, lobster/, .github/) + master_mermaid.md architecture diagram
-- [ ] 06-02-PLAN.md — External docs: docs-site AQUADIF page + lobster-dev/lobster-use skill reference updates
+- [x] 06-01-PLAN.md — Internal docs: CLAUDE.md files (root, lobster/, .github/) + master_mermaid.md architecture diagram
+- [x] 06-02-PLAN.md — External docs: docs-site AQUADIF page + lobster-dev/lobster-use skill reference updates
 
 **Success Criteria** (what must be TRUE):
   1. Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections
@@ -116,4 +116,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 3. Reference Implementation | v1.0 | 2/2 | ✓ Complete | 2006-03-01 |
 | 4. Agent Rollout | v1.0 | 7/7 | ✓ Complete | 2006-03-01 |
 | 5. Monitoring Infrastructure | v1.1 | 2/2 | ✓ Complete | 2006-03-01 |
-| 6. Documentation & Release | 2/2 | Complete   | 2026-03-01 | - |
+| 6. Documentation & Release | v1.1 | 2/2 | ✓ Complete | 2026-03-01 |
