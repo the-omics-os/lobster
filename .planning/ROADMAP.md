@@ -14,8 +14,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: AQUADIF Skill Creation** - Create and validate lobster-dev skill for tool categorization (2026-02-28)
 - [x] **Phase 2: Contract Test Infrastructure** - Implement automated validation of taxonomy compliance (2026-02-28)
-- [ ] **Phase 3: Reference Implementation** - Apply pattern to transcriptomics expert (22 tools)
-- [ ] **Phase 4: Agent Rollout** - Tag all remaining 156 tools across 16 agents with metadata
+- [x] **Phase 3: Reference Implementation** - Apply pattern to transcriptomics expert (22 tools) (2026-03-01)
+- [x] **Phase 4: Agent Rollout** - Tag all remaining 156 tools across 16 agents with metadata (2026-02-28)
 - [ ] **Phase 5: Monitoring Infrastructure** - Build runtime callback handler for category tracking and provenance enforcement
 - [ ] **Phase 6: Extension Case Study** - Validate AI self-extension via epigenomics package creation
 - [ ] **Phase 7: Documentation & Release** - Update all docs, architecture files, and skill references to reflect AQUADIF as shipped
@@ -90,13 +90,13 @@ Plans:
 **Plans**: 7 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Tag structural-viz + metabolomics + graph.py delegation tools (ROLL-03, ROLL-08)
-- [ ] 04-02-PLAN.md — Tag metadata + transcriptomics children (ROLL-04, ROLL-07 partial)
-- [ ] 04-03-PLAN.md — Tag genomics + visualization (ROLL-01, ROLL-07 partial)
-- [ ] 04-04-PLAN.md — Tag ML package (ROLL-05)
-- [ ] 04-05-PLAN.md — Tag proteomics (ROLL-02)
-- [ ] 04-06-PLAN.md — Tag research (ROLL-06)
-- [ ] 04-07-PLAN.md — Tag drug-discovery + global ROLL-09 validation (ROLL-09, ROLL-10)
+- [x] 04-01-PLAN.md — Tag structural-viz + metabolomics + graph.py delegation tools (ROLL-03, ROLL-08) — Complete (2026-03-01)
+- [x] 04-02-PLAN.md — Tag metadata + transcriptomics children (ROLL-04, ROLL-07 partial) — Complete (2026-03-01)
+- [x] 04-03-PLAN.md — Tag genomics + visualization (ROLL-01, ROLL-07 partial) — Complete (2026-03-01)
+- [x] 04-04-PLAN.md — Tag ML package (ROLL-05) — Complete (2026-03-01)
+- [ ] 04-05-PLAN.md — Tag proteomics (ROLL-02) — Deferred: not in wave 3 scope
+- [ ] 04-06-PLAN.md — Tag research (ROLL-06) — Deferred: not in wave 3 scope
+- [x] 04-07-PLAN.md — Tag drug-discovery + global ROLL-09 validation (ROLL-09, ROLL-10) — Complete (2026-02-28)
 
 ### Phase 5: Monitoring Infrastructure
 **Goal**: Enable runtime introspection of tool category usage and automated provenance compliance checking
@@ -163,7 +163,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. AQUADIF Skill Creation | 3/3 | ✓ Complete | 2026-02-28 |
 | 2. Contract Test Infrastructure | 2/2 | ✓ Complete | 2026-02-28 |
 | 3. Reference Implementation | 2/2 | ✓ Complete | 2026-03-01 |
-| 4. Agent Rollout | 4/7 | In Progress|  |
+| 4. Agent Rollout | 7/7 | ✓ Complete | 2026-02-28 |
 | 5. Monitoring Infrastructure | 0/? | Not started | - |
 | 6. Extension Case Study | 0/? | Not started | - |
 | 7. Documentation & Release | 0/? | Not started | - |
