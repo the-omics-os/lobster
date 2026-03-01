@@ -322,6 +322,10 @@ def transcriptomics_expert(
             logger.error(f"Unexpected error in single-cell clustering: {e}")
             return f"Unexpected error: {str(e)}"
 
+    # AQUADIF metadata
+    cluster_cells.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    cluster_cells.tags = ["ANALYZE"]
+
     @tool
     def subcluster_cells(
         modality_name: str,
@@ -518,6 +522,10 @@ Please check:
         except Exception as e:
             logger.error(f"Unexpected error in sub-clustering: {e}")
             return f"Unexpected error: {str(e)}"
+
+    # AQUADIF metadata
+    subcluster_cells.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    subcluster_cells.tags = ["ANALYZE"]
 
     @tool
     def evaluate_clustering_quality(
@@ -766,6 +774,10 @@ Please check:
             logger.error(f"Unexpected error in clustering quality evaluation: {e}")
             return f"Unexpected error: {str(e)}"
 
+    # AQUADIF metadata
+    evaluate_clustering_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    evaluate_clustering_quality.tags = ["QUALITY"]
+
     @tool
     def find_marker_genes(
         modality_name: str,
@@ -940,6 +952,10 @@ Please check:
             logger.error(f"Unexpected error finding single-cell marker genes: {e}")
             return f"Unexpected error: {str(e)}"
 
+    # AQUADIF metadata
+    find_marker_genes.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    find_marker_genes.tags = ["ANALYZE"]
+
     # =========================================================================
     # SC ANALYSIS TOOLS
     # =========================================================================
@@ -1041,6 +1057,10 @@ Please check:
         except Exception as e:
             logger.error(f"Unexpected error in doublet detection: {e}")
             return f"Unexpected error: {str(e)}"
+
+    # AQUADIF metadata
+    detect_doublets.metadata = {"categories": ["QUALITY"], "provenance": True}
+    detect_doublets.tags = ["QUALITY"]
 
     @tool
     def integrate_batches(
@@ -1152,6 +1172,10 @@ Please check:
             logger.error(f"Unexpected error in batch integration: {e}")
             return f"Unexpected error: {str(e)}"
 
+    # AQUADIF metadata
+    integrate_batches.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    integrate_batches.tags = ["PREPROCESS"]
+
     @tool
     def compute_trajectory(
         modality_name: str,
@@ -1260,6 +1284,10 @@ Please check:
         except Exception as e:
             logger.error(f"Unexpected error in trajectory computation: {e}")
             return f"Unexpected error: {str(e)}"
+
+    # AQUADIF metadata
+    compute_trajectory.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compute_trajectory.tags = ["ANALYZE"]
 
     # =========================================================================
     # BULK RNA-SEQ TOOLS
@@ -1433,6 +1461,10 @@ Please check:
             logger.error(f"Error importing bulk counts: {e}")
             return f"Error importing bulk counts: {str(e)}"
 
+    # AQUADIF metadata
+    import_bulk_counts.metadata = {"categories": ["IMPORT"], "provenance": True}
+    import_bulk_counts.tags = ["IMPORT"]
+
     @tool
     def merge_sample_metadata(
         modality_name: str,
@@ -1583,6 +1615,10 @@ Please check:
             logger.error(f"Error merging sample metadata: {e}")
             return f"Error merging sample metadata: {str(e)}"
 
+    # AQUADIF metadata
+    merge_sample_metadata.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    merge_sample_metadata.tags = ["ANNOTATE"]
+
     @tool
     def assess_bulk_sample_quality(
         modality_name: str,
@@ -1681,6 +1717,10 @@ Please check:
             logger.error(f"Error assessing bulk sample quality: {e}")
             return f"Error assessing bulk sample quality: {str(e)}"
 
+    # AQUADIF metadata
+    assess_bulk_sample_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_bulk_sample_quality.tags = ["QUALITY"]
+
     @tool
     def filter_bulk_genes(
         modality_name: str,
@@ -1758,6 +1798,10 @@ Please check:
         except Exception as e:
             logger.error(f"Error filtering bulk genes: {e}")
             return f"Error filtering bulk genes: {str(e)}"
+
+    # AQUADIF metadata
+    filter_bulk_genes.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_bulk_genes.tags = ["FILTER"]
 
     @tool
     def normalize_bulk_counts(
@@ -1839,6 +1883,10 @@ Please check:
         except Exception as e:
             logger.error(f"Error normalizing bulk counts: {e}")
             return f"Error normalizing bulk counts: {str(e)}"
+
+    # AQUADIF metadata
+    normalize_bulk_counts.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    normalize_bulk_counts.tags = ["PREPROCESS"]
 
     @tool
     def detect_batch_effects(
@@ -1939,6 +1987,10 @@ Please check:
         except Exception as e:
             logger.error(f"Error detecting batch effects: {e}")
             return f"Error detecting batch effects: {str(e)}"
+
+    # AQUADIF metadata
+    detect_batch_effects.metadata = {"categories": ["QUALITY"], "provenance": True}
+    detect_batch_effects.tags = ["QUALITY"]
 
     @tool
     def convert_gene_identifiers(
@@ -2133,6 +2185,10 @@ Please check:
             logger.error(f"Error converting gene identifiers: {e}")
             return f"Error converting gene identifiers: {str(e)}"
 
+    # AQUADIF metadata
+    convert_gene_identifiers.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    convert_gene_identifiers.tags = ["ANNOTATE"]
+
     @tool
     def prepare_bulk_for_de(
         modality_name: str,
@@ -2306,6 +2362,10 @@ Please check:
         except Exception as e:
             logger.error(f"Error preparing bulk for DE: {e}")
             return f"Error preparing bulk for DE: {str(e)}"
+
+    # AQUADIF metadata
+    prepare_bulk_for_de.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    prepare_bulk_for_de.tags = ["PREPROCESS"]
 
     # =========================================================================
     # COLLECT ALL TOOLS

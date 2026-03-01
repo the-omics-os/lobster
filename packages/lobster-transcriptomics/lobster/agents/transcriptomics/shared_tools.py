@@ -168,6 +168,10 @@ def create_shared_tools(
             logger.error(f"Error checking data status: {e}")
             return f"Error checking data status: {str(e)}"
 
+    # AQUADIF metadata
+    check_data_status.metadata = {"categories": ["UTILITY"], "provenance": False}
+    check_data_status.tags = ["UTILITY"]
+
     # -------------------------
     # QUALITY ASSESSMENT TOOL
     # -------------------------
@@ -313,6 +317,10 @@ Proceed with filtering and normalization for downstream analysis."""
         except Exception as e:
             logger.error(f"Error in quality assessment: {e}")
             return f"Error in quality assessment: {str(e)}"
+
+    # AQUADIF metadata
+    assess_data_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_data_quality.tags = ["QUALITY"]
 
     # -------------------------
     # FILTER AND NORMALIZE TOOL
@@ -500,6 +508,10 @@ Proceed with filtering and normalization for downstream analysis."""
             logger.error(f"Error in filtering/normalization: {e}")
             return f"Error filtering and normalizing modality: {str(e)}"
 
+    # AQUADIF metadata
+    filter_and_normalize.metadata = {"categories": ["PREPROCESS", "FILTER"], "provenance": True}
+    filter_and_normalize.tags = ["PREPROCESS", "FILTER"]
+
     # -------------------------
     # ANALYSIS SUMMARY TOOL
     # -------------------------
@@ -663,6 +675,10 @@ Proceed with filtering and normalization for downstream analysis."""
             logger.error(f"Error creating analysis summary: {e}")
             return f"Error creating analysis summary: {str(e)}"
 
+    # AQUADIF metadata
+    create_analysis_summary.metadata = {"categories": ["UTILITY"], "provenance": False}
+    create_analysis_summary.tags = ["UTILITY"]
+
     # -------------------------
     # FEATURE SELECTION TOOL
     # -------------------------
@@ -770,6 +786,10 @@ Proceed with filtering and normalization for downstream analysis."""
             logger.error(f"Error in feature selection: {e}")
             return f"Error selecting features: {str(e)}"
 
+    # AQUADIF metadata
+    select_variable_features.metadata = {"categories": ["FILTER"], "provenance": True}
+    select_variable_features.tags = ["FILTER"]
+
     # -------------------------
     # PCA TOOL
     # -------------------------
@@ -859,6 +879,10 @@ Proceed with filtering and normalization for downstream analysis."""
             logger.error(f"Error in PCA: {e}")
             return f"Error running PCA: {str(e)}"
 
+    # AQUADIF metadata
+    run_pca.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_pca.tags = ["ANALYZE"]
+
     # -------------------------
     # NEIGHBORS + EMBEDDING TOOL
     # -------------------------
@@ -944,6 +968,10 @@ Proceed with filtering and normalization for downstream analysis."""
         except Exception as e:
             logger.error(f"Error in neighbors/embedding: {e}")
             return f"Error computing neighbors/embedding: {str(e)}"
+
+    # AQUADIF metadata
+    compute_neighbors_and_embed.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compute_neighbors_and_embed.tags = ["ANALYZE"]
 
     # Return list of tools
     tools = [
