@@ -133,6 +133,8 @@ class AgentContractTestMixin:
             return self.__class__._tools_cache[cache_key]
 
         try:
+            from unittest.mock import patch
+
             factory = self._get_factory()
 
             # Create mock dependencies for factory call
@@ -140,21 +142,40 @@ class AgentContractTestMixin:
             mock_callback_handler = MagicMock()
             mock_delegation_tools = []
 
-            # Call factory to get CompiledStateGraph
-            graph = factory(
-                data_manager=mock_data_manager,
-                callback_handler=mock_callback_handler,
-                agent_name="test",
-                delegation_tools=mock_delegation_tools,
-                workspace_path=None,
+            # Patch LLM creation — factories need LLMs but contract tests
+            # don't execute tools, they only inspect metadata.
+            # Patch at both the definition site and the factory's module to
+            # handle both `from X import create_llm` and `X.create_llm()`.
+            factory_module_path = (
+                self.factory_module if self.factory_module else self.agent_module
             )
+            with patch(
+                "lobster.config.llm_factory.create_llm",
+                return_value=MagicMock(),
+            ), patch(
+                f"{factory_module_path}.create_llm",
+                return_value=MagicMock(),
+            ):
+                # Call factory to get CompiledStateGraph
+                graph = factory(
+                    data_manager=mock_data_manager,
+                    callback_handler=mock_callback_handler,
+                    agent_name="test",
+                    delegation_tools=mock_delegation_tools,
+                    workspace_path=None,
+                )
 
             # Extract tools from the graph's tool node
+            # LangGraph wraps ToolNode in PregelNode — check both levels
             tools = []
             if hasattr(graph, "nodes") and "tools" in graph.nodes:
                 tools_node = graph.nodes["tools"]
                 if hasattr(tools_node, "tools_by_name"):
                     tools = list(tools_node.tools_by_name.values())
+                elif hasattr(tools_node, "bound") and hasattr(
+                    tools_node.bound, "tools_by_name"
+                ):
+                    tools = list(tools_node.bound.tools_by_name.values())
 
             self.__class__._tools_cache[cache_key] = tools
             return tools
