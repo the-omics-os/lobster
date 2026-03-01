@@ -306,7 +306,7 @@ def create_shared_tools(data_manager, quality_service, analysis_service):
 
 ### Key teaching points from this pattern:
 
-1. **Import AquadifCategory** at the top of your agent file for enum access (though string literals work for simple cases)
+1. **Use string literals** for category names (`"ANALYZE"`, `"IMPORT"`, etc.) — do NOT import `AquadifCategory` enum in tool files
 2. **Metadata assignment happens AFTER @tool** — the decorator must finish first
 3. **categories is a list** — order matters, first element determines provenance requirement
 4. **provenance is a boolean** — match it to the primary category's requirement:

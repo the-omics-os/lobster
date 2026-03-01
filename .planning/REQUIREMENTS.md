@@ -13,7 +13,7 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 - [x] **SKIL-02**: `skills/lobster-dev/references/creating-agents.md` updated to include AQUADIF as the tool organization framework with assignment pattern examples
 - [x] **SKIL-03**: `skills/lobster-dev/references/planning-workflow.md` updated so Phase 3 (domain knowledge) maps to AQUADIF categories
 - [x] **SKIL-04**: `skills/lobster-dev/SKILL.md` references AQUADIF in main instructions and `MANIFEST` includes new reference file
-- [ ] **SKIL-05**: Skill validated by having a coding agent design an epigenomics tool set with correct categories without additional prompting
+- [x] **SKIL-05**: Skill validated by having a coding agent design an epigenomics tool set with correct categories without additional prompting — Complete (validated externally via skill-eval: Claude A, Codex A-, Gemini B)
 
 ### Contract Tests
 
@@ -64,14 +64,9 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 - [x] **DOC-05**: `lobster-use` skill references mention AQUADIF categories where relevant — Complete (06-02)
 - [x] **DOC-06**: `master_mermaid.md` includes AQUADIF metadata flow and contract test infrastructure (section 12) — Complete (06-01)
 
-### Extension Case Study
+### Extension Case Study — REMOVED
 
-- [ ] **CASE-01**: Coding agent (Claude Code) loads updated lobster-dev skill and designs epigenomics (ChIP-seq) tool set with correct AQUADIF categories
-- [ ] **CASE-02**: Coding agent generates epigenomics package structure following lobster-dev skill
-- [ ] **CASE-03**: Generated package passes all AQUADIF contract tests on first or second attempt
-- [ ] **CASE-04**: Package auto-registers via entry points without core modification
-- [ ] **CASE-05**: Supervisor correctly routes epigenomics queries to the new agent
-- [ ] **CASE-06**: Metrics collected: time from skill invocation to passing tests, LOC generated vs edited, correction cycles, contract test first-attempt pass rate
+> Removed from v1.1 scope (commit 28c448e). CASE-01..CASE-06 validated externally via skill-eval Docker harness. See `skills/CLAUDE.md` for evaluation results (3 agents, 5 campaigns, all agents B+ or higher).
 
 ## v2 Requirements
 
@@ -111,7 +106,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | SKIL-02 | Phase 1 | Complete |
 | SKIL-03 | Phase 1 | Complete |
 | SKIL-04 | Phase 1 | Complete |
-| SKIL-05 | Phase 1 | Pending |
+| SKIL-05 | Phase 1 | Complete (external) |
 | TEST-01 | Phase 2 | Complete (02-01) |
 | TEST-02 | Phase 2 | Complete (02-01) |
 | TEST-03 | Phase 2 | Complete (02-01) |
@@ -146,16 +141,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | DOC-04 | Phase 6 | Complete (06-02) |
 | DOC-05 | Phase 6 | Complete (06-02) |
 | DOC-06 | Phase 6 | Complete (06-01) |
-| CASE-01 | Phase 6 | Pending |
-| CASE-02 | Phase 6 | Pending |
-| CASE-03 | Phase 6 | Pending |
-| CASE-04 | Phase 6 | Pending |
-| CASE-05 | Phase 6 | Pending |
-| CASE-06 | Phase 6 | Pending |
+| ~~CASE-01..06~~ | — | Removed (validated externally) |
 
 **Coverage:**
-- v1 requirements: 37 total
-- Mapped to phases: 37
+- v1 requirements: 31 active (6 CASE-* removed — validated externally)
+- Mapped to phases: 31
+- Complete: 31/31
 - Unmapped: 0
 
 ---
