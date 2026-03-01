@@ -265,7 +265,7 @@ These can be applied as a quick task before or during Phase 2.
 
 Last session: 2026-02-28 (Phase 4 Plan 07 execution)
 Stopped at: Completed 04-07-PLAN.md (commit: 95e9580)
-Resume: Phase 4 complete (7/7 plans). Proceed to Phase 5 (Monitoring: AquadifCallbackHandler) — all 221 tools across 10 packages are AQUADIF-compliant
+Resume: Phase 4 complete (7/7 plans, including Plan 05 proteomics AQUADIF rollout). Proceed to Phase 5 (Monitoring: AquadifCallbackHandler) — all 221+ tools across 10 packages are AQUADIF-compliant
 Key artifacts:
 - Contract test mixin: `lobster/testing/contract_mixins.py` (14 test methods, fail-by-default, cached, LLM mock + PregelNode)
 - AST helper: `lobster/config/aquadif.py` → `has_provenance_call()` (standalone, reusable)
