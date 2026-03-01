@@ -1,0 +1,24 @@
+"""
+Contract tests for {{ display_name }} agent.
+
+These tests validate that the {{ agent_name }} agent follows the Lobster AI
+plugin contract including AQUADIF compliance.
+"""
+
+import pytest
+
+from lobster.testing.contract_mixins import AgentContractTestMixin
+
+
+@pytest.mark.contract
+class Test{{ agent_class_name }}Contract(AgentContractTestMixin):
+    """Contract compliance tests for {{ agent_name }}."""
+
+    agent_module = "lobster.agents.{{ domain }}.{{ agent_name }}"
+    factory_name = "{{ agent_name }}"
+{% if has_children %}
+    is_parent_agent = True
+{% else %}
+    is_parent_agent = False
+{% endif %}
+    expected_tier = "{{ tier }}"

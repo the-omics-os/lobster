@@ -1,0 +1,44 @@
+# {{ display_name }} Agent Module
+# {{ description }}
+#
+# Note: The {{ agent_name }} agent is a {{ tier | upper }} feature.
+# This module uses graceful imports to avoid crashes if dependencies are missing.
+
+# State classes are always available
+from lobster.agents.{{ domain }}.state import {{ state_class }}
+
+# Try to import agent components, gracefully degrade if not available
+try:
+    from lobster.agents.{{ domain }}.config import (
+        PLATFORM_CONFIGS,
+        detect_platform_type,
+        get_platform_config,
+    )
+    from lobster.agents.{{ domain }}.{{ agent_name }} import {{ agent_name }}
+    from lobster.agents.{{ domain }}.prompts import (
+        create_{{ agent_name }}_prompt,
+    )
+
+    {{ agent_name | upper }}_AVAILABLE = True
+except ImportError:
+    {{ agent_name | upper }}_AVAILABLE = False
+    {{ agent_name }} = None
+    create_{{ agent_name }}_prompt = None
+    PLATFORM_CONFIGS = {}
+    detect_platform_type = None
+    get_platform_config = None
+
+__all__ = [
+    # Availability flag
+    "{{ agent_name | upper }}_AVAILABLE",
+    # Main agent (may be None if dependencies missing)
+    "{{ agent_name }}",
+    # Platform configuration (may be None)
+    "PLATFORM_CONFIGS",
+    "detect_platform_type",
+    "get_platform_config",
+    # Prompt (may be None)
+    "create_{{ agent_name }}_prompt",
+    # State classes (always available)
+    "{{ state_class }}",
+]

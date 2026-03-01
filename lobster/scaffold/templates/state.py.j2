@@ -1,0 +1,35 @@
+"""
+State definitions for the {{ agent_name }} agent.
+
+This module defines the state class for the {{ agent_name }} agent,
+following the LangGraph multi-agent template pattern.
+"""
+
+from typing import Any, Dict, List
+
+from langgraph.prebuilt.chat_agent_executor import AgentState
+
+__all__ = [
+    "{{ state_class }}",
+]
+
+
+class {{ state_class }}(AgentState):
+    """
+    State for the {{ agent_name }} agent.
+
+    This agent handles {{ description | lower }}.
+    """
+
+    next: str = ""
+
+    # Task context
+    task_description: str = ""
+
+    # Analysis state
+    quality_metrics: Dict[str, Any] = {}
+    analysis_results: Dict[str, Any] = {}
+
+    # Cross-cutting
+    file_paths: List[str] = []
+    intermediate_outputs: Dict[str, Any] = {}

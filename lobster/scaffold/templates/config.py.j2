@@ -1,0 +1,75 @@
+"""
+Platform configuration for {{ domain }} analysis.
+
+This module defines platform-specific configurations and detection logic
+for {{ domain }} data types.
+"""
+
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
+
+import anndata
+
+__all__ = [
+    "{{ domain | capitalize }}PlatformConfig",
+    "PLATFORM_CONFIGS",
+    "detect_platform_type",
+    "get_platform_config",
+]
+
+
+@dataclass
+class {{ domain | capitalize }}PlatformConfig:
+    """Configuration for a {{ domain }} platform type."""
+
+    platform_type: str
+    display_name: str
+    description: str
+
+    # TODO: Add domain-specific configuration fields
+    # Example:
+    # max_missing_per_sample: float
+    # default_normalization: str
+
+    def get_defaults(self) -> Dict[str, Any]:
+        """Get default parameters for this platform."""
+        return {
+            "platform_type": self.platform_type,
+        }
+
+
+# Platform configurations
+PLATFORM_CONFIGS: Dict[str, {{ domain | capitalize }}PlatformConfig] = {
+    # TODO: Add your platform configurations here
+    # Example:
+    # "default": {{ domain | capitalize }}PlatformConfig(
+    #     platform_type="default",
+    #     display_name="Default",
+    #     description="Default {{ domain }} platform",
+    # ),
+}
+
+
+def detect_platform_type(adata: anndata.AnnData) -> str:
+    """Detect the {{ domain }} platform type from data characteristics.
+
+    Args:
+        adata: AnnData object to inspect
+
+    Returns:
+        Platform type string (key in PLATFORM_CONFIGS)
+    """
+    # TODO: Implement platform detection logic
+    return "default"
+
+
+def get_platform_config(platform_type: str) -> Optional[{{ domain | capitalize }}PlatformConfig]:
+    """Get platform configuration for a given platform type.
+
+    Args:
+        platform_type: Platform type identifier
+
+    Returns:
+        Platform configuration or None if not found
+    """
+    return PLATFORM_CONFIGS.get(platform_type)

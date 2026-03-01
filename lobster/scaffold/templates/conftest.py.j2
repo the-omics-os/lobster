@@ -1,0 +1,25 @@
+"""
+Test fixtures for {{ display_name }} agent tests.
+"""
+
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+
+@pytest.fixture
+def mock_data_manager():
+    """Create a mock DataManagerV2 for testing."""
+    dm = MagicMock()
+    dm.list_modalities.return_value = []
+    dm.get_modality.return_value = MagicMock()
+    return dm
+
+
+@pytest.fixture
+def workspace_path(tmp_path):
+    """Create a temporary workspace directory."""
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    return ws

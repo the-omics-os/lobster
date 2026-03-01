@@ -1,0 +1,59 @@
+# {{ package_name }}
+
+{{ description }}
+
+## Installation
+
+```bash
+# Development (editable install)
+uv pip install -e '.[dev]'
+
+# From PyPI (when published)
+uv pip install {{ package_name }}
+```
+
+## Usage
+
+After installation, the {{ agent_name }} agent is automatically discovered by
+Lobster AI via entry points. No manual registration needed.
+
+```bash
+# Verify discovery
+lobster agents list
+
+# Use in chat
+lobster chat
+> Analyze my {{ domain }} data
+```
+
+## Development
+
+```bash
+# Run tests
+python -m pytest tests/ -v
+
+# Run contract tests only
+python -m pytest tests/ -v -m contract
+
+# Validate plugin structure
+lobster validate-plugin .
+```
+
+## Plugin Structure
+
+```
+{{ package_name }}/
+├── pyproject.toml                          # Package config + entry points
+├── lobster/                                # PEP 420 namespace (NO __init__.py)
+│   └── agents/                             # PEP 420 namespace (NO __init__.py)
+│       └── {{ domain }}/
+│           ├── __init__.py                 # Graceful imports
+│           ├── {{ agent_name }}.py         # AGENT_CONFIG + factory
+│           ├── shared_tools.py             # AQUADIF-categorized tools
+│           ├── state.py                    # LangGraph state
+│           ├── config.py                   # Platform configuration
+│           └── prompts.py                  # System prompt
+└── tests/
+    ├── conftest.py                         # Test fixtures
+    └── test_contract.py                    # Contract compliance tests
+```
