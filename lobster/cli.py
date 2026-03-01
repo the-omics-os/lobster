@@ -136,6 +136,7 @@ from lobster.cli_internal.commands import (
 )
 from lobster.cli_internal.commands.light.agent_commands import agents_app
 from lobster.cli_internal.commands.light.scaffold_commands import scaffold_app
+from lobster.cli_internal.commands.light.validate_commands import validate_app
 from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
     PathResolver,
 )
@@ -1736,6 +1737,9 @@ app.add_typer(agents_app, name="agents")
 
 # Register scaffold subcommand group
 app.add_typer(scaffold_app, name="scaffold")
+
+# Register validate-plugin command
+app.add_typer(validate_app, name="validate-plugin")
 
 
 # App callback to show help when no subcommand is provided
