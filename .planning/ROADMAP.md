@@ -31,8 +31,8 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 05-01-PLAN.md — AquadifMonitor service class with TDD (thread-safe, fail-open, bounded data structures)
-- [ ] 05-02-PLAN.md — Wire monitor into client/graph/callback/DataManagerV2 chain
+- [x] 05-01-PLAN.md — AquadifMonitor service class with TDD (thread-safe, fail-open, bounded data structures)
+- [x] 05-02-PLAN.md — Wire monitor into client/graph/callback/DataManagerV2 chain
 
 **Architecture** (revised after Codex + Gemini brutalist review 2006-03-01):
 
@@ -88,8 +88,14 @@ AquadifMonitor (lobster/core/aquadif_monitor.py)
 
 ### Phase 6: Documentation & Release
 **Goal**: Update all documentation, architecture files, and skill references to reflect AQUADIF as a shipped, validated system
-**Depends on**: Phase 6
+**Depends on**: Phase 5
 **Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
+**Plans:** 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Internal docs: CLAUDE.md files (root, lobster/, .github/) + master_mermaid.md architecture diagram
+- [ ] 06-02-PLAN.md — External docs: docs-site AQUADIF page + lobster-dev/lobster-use skill reference updates
+
 **Success Criteria** (what must be TRUE):
   1. Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections
   2. `.github/CLAUDE.md` documents AQUADIF metadata as a requirement for new tools and PRs
@@ -97,7 +103,6 @@ AquadifMonitor (lobster/core/aquadif_monitor.py)
   4. `lobster-dev` skill references are current with scaffold workflow + AQUADIF validation
   5. `lobster-use` skill references mention AQUADIF categories where relevant
   6. `master_mermaid.md` includes AQUADIF metadata flow and contract test infrastructure
-**Plans**: TBD
 
 ## Progress
 
@@ -110,5 +115,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Contract Test Infrastructure | v1.0 | 2/2 | ✓ Complete | 2006-02-28 |
 | 3. Reference Implementation | v1.0 | 2/2 | ✓ Complete | 2006-03-01 |
 | 4. Agent Rollout | v1.0 | 7/7 | ✓ Complete | 2006-03-01 |
-| 5. Monitoring Infrastructure | 2/2 | Complete   | 2006-03-01 | - |
-| 6. Documentation & Release | v1.1 | 0/? | Not started | - |
+| 5. Monitoring Infrastructure | v1.1 | 2/2 | ✓ Complete | 2006-03-01 |
+| 6. Documentation & Release | v1.1 | 0/2 | Not started | - |
