@@ -2,7 +2,7 @@
 
 ## Overview
 
-This roadmap transforms Lobster AI's ~180 tool bindings across 18 agents by adding a 10-category metadata taxonomy (AQUADIF) using native LangChain `BaseTool.metadata` and `BaseTool.tags` fields. The journey starts with skill creation to validate teachability BEFORE touching any code, then builds contract tests to define correctness, applies the pattern to a reference implementation (transcriptomics expert), rolls out systematically to all remaining agents, adds runtime monitoring infrastructure, and culminates in an extension case study where a coding agent builds an epigenomics package following the AQUADIF skill — providing concrete evidence for the NeurIPS publication's "skill-guided self-extension" claim.
+This roadmap transforms Lobster AI's ~180 tool bindings across 18 agents by adding a 10-category metadata taxonomy (AQUADIF) using native LangChain `BaseTool.metadata` and `BaseTool.tags` fields. The journey starts with skill creation to validate teachability BEFORE touching any code, then builds contract tests to define correctness, applies the pattern to a reference implementation (transcriptomics expert), rolls out systematically to all remaining agents, adds runtime monitoring infrastructure, validates via an extension case study where a coding agent builds an epigenomics package following the AQUADIF skill, and closes with comprehensive documentation updates across all repos and skill references.
 
 ## Phases
 
@@ -14,10 +14,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: AQUADIF Skill Creation** - Create and validate lobster-dev skill for tool categorization (2026-02-28)
 - [x] **Phase 2: Contract Test Infrastructure** - Implement automated validation of taxonomy compliance (2026-02-28)
-- [ ] **Phase 3: Reference Implementation** - Apply pattern to transcriptomics expert (24 tools)
+- [ ] **Phase 3: Reference Implementation** - Apply pattern to transcriptomics expert (22 tools)
 - [ ] **Phase 4: Agent Rollout** - Tag all remaining 156 tools across 16 agents with metadata
 - [ ] **Phase 5: Monitoring Infrastructure** - Build runtime callback handler for category tracking and provenance enforcement
 - [ ] **Phase 6: Extension Case Study** - Validate AI self-extension via epigenomics package creation
+- [ ] **Phase 7: Documentation & Release** - Update all docs, architecture files, and skill references to reflect AQUADIF as shipped
 
 ## Phase Details
 
@@ -65,15 +66,16 @@ Plans:
 **Depends on**: Phase 2
 **Requirements**: IMPL-01, IMPL-02, IMPL-03, IMPL-04
 **Success Criteria** (what must be TRUE):
-  1. All 24 tools in `transcriptomics_expert.py` have `.metadata` dict with `categories` and `provenance` keys and `.tags` list set correctly per dry run mapping
-  2. Shared tools in the transcriptomics package (if any) have correct metadata
+  1. All 22 tools (15 in transcriptomics_expert.py + 7 in shared_tools.py) have `.metadata` dict with `categories` and `provenance` keys and `.tags` list set correctly
+  2. Shared tools in the transcriptomics package have correct metadata set at the source (shared_tools.py)
   3. All existing transcriptomics tests still pass (backward compatibility validated)
   4. Contract tests pass for the transcriptomics package
   5. Reference implementation pattern is documented as a template for Phase 4 rollout
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — Tag all 22 tools with AQUADIF metadata and create contract tests (IMPL-01, IMPL-02, IMPL-03)
+- [ ] 03-02-PLAN.md — Create migration reference template for Phase 4 rollout (IMPL-04)
 
 ### Phase 4: Agent Rollout
 **Goal**: Systematically tag all remaining 156 tools across 16 agents with AQUADIF metadata following the validated reference pattern
@@ -129,16 +131,33 @@ Plans:
 Plans:
 - [ ] 06-01: TBD
 
+### Phase 7: Documentation & Release
+**Goal**: Update all documentation, architecture files, and skill references to reflect AQUADIF as a shipped, validated system — ensuring new contributors, coding agents, and users see the current state
+**Depends on**: Phase 6
+**Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
+**Success Criteria** (what must be TRUE):
+  1. Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections (agent table includes categories, service pattern shows metadata assignment)
+  2. `.github/CLAUDE.md` (contributor guidelines) documents AQUADIF metadata as a requirement for new tools and PRs
+  3. `docs-site/` has an AQUADIF page (or section) explaining the taxonomy for end users and contributors
+  4. `lobster-dev` skill references are current: `creating-agents.md`, `creating-services.md`, `architecture.md`, `code-layout.md` all reflect scaffold workflow + AQUADIF validation
+  5. `lobster-use` skill references mention AQUADIF categories where relevant (e.g., tool capabilities per agent)
+  6. `master_mermaid.md` architecture diagram includes AQUADIF metadata flow and contract test infrastructure
+**Plans**: TBD
+
+Plans:
+- [ ] 07-01: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. AQUADIF Skill Creation | 3/3 | ✓ Complete | 2026-02-28 |
-| 2. Contract Test Infrastructure | 1/? | In Progress | - |
-| 3. Reference Implementation | 0/? | Not started | - |
+| 2. Contract Test Infrastructure | 2/2 | ✓ Complete | 2026-02-28 |
+| 3. Reference Implementation | 0/2 | Planned | - |
 | 4. Agent Rollout | 0/? | Not started | - |
 | 5. Monitoring Infrastructure | 0/? | Not started | - |
 | 6. Extension Case Study | 0/? | Not started | - |
+| 7. Documentation & Release | 0/? | Not started | - |
