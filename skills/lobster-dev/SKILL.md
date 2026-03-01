@@ -22,6 +22,7 @@ description: |
 
 | Task | Documentation |
 |------|---------------|
+| **Scaffold a new agent** | [references/scaffold.md](references/scaffold.md) |
 | **AQUADIF tool taxonomy** | [references/aquadif-contract.md](references/aquadif-contract.md) |
 | **Planning new capabilities** | [references/planning-workflow.md](references/planning-workflow.md) |
 | **Domain knowledge (GPTomics)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
@@ -33,18 +34,47 @@ description: |
 | **Testing patterns** | [references/testing.md](references/testing.md) |
 | **CLI reference** | [references/cli.md](references/cli.md) |
 
+## First Step: Scaffold
+
+Before writing any agent code, run `lobster scaffold` to generate the correct package structure:
+
+```bash
+lobster scaffold agent --name <agent_name> --display-name "<Display Name>" \
+  --description "<capabilities>" --tier free
+```
+
+This generates a complete, AQUADIF-compliant plugin package with correct entry points, PEP 420 namespaces, contract tests, and provenance patterns. Then fill in the domain-specific logic in the generated TODO sections.
+
+After scaffolding, validate your plugin:
+```bash
+lobster validate-plugin ./lobster-<domain>/
+```
+
+**Full scaffold reference:** [references/scaffold.md](references/scaffold.md)
+
+## What To Read Based On Your Task
+
+| User wants to... | First action | Then read |
+|-------------------|-------------|-----------|
+| Create a new agent | `lobster scaffold agent --name ...` | [scaffold.md](references/scaffold.md), [creating-agents.md](references/creating-agents.md), [aquadif-contract.md](references/aquadif-contract.md) |
+| Add a database provider | (scaffold provider coming soon) | [plugin-architecture.md](references/plugin-architecture.md) §Provider |
+| Add a data format adapter | (scaffold adapter coming soon) | [plugin-architecture.md](references/plugin-architecture.md) §Adapter |
+| Understand the architecture | Read docs | [architecture.md](references/architecture.md) |
+| Write tests | Read docs | [testing.md](references/testing.md) |
+| Fix a bug | Investigate | [code-layout.md](references/code-layout.md) |
+
 ## Before You Build
 
-**STOP.** Before creating any new agent, service, or package, follow this workflow.
+**STOP.** Before creating any new agent, service, or package, follow this planning workflow.
 
 | Phase | Purpose |
 |-------|---------|
 | 1. Understand Need | Structured Q&A -- what domain, workflow, tools, data formats |
-| 2. Check What Exists | Dynamically scan Lobster packages + core services for overlap |
+| 2. Check What Exists | Is and where is lobster already installed, identify plugin path |
 | 3. Find Domain Knowledge | Discover relevant GPTomics bio-skills for the domain |
 | 4. Present Findings | Show developer what exists vs. what's missing |
 | 5. Recommend Approach | Extend existing vs. new package vs. service-only vs. not Lobster |
-| 6. Build & Test | Apply lobster-dev patterns with domain knowledge |
+| 6. Scaffold & Build | Run `lobster scaffold agent`, then fill in domain logic |
 
 **Full workflow details:** [references/planning-workflow.md](references/planning-workflow.md)
 
