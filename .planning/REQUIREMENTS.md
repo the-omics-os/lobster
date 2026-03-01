@@ -40,7 +40,7 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 - [x] **ROLL-03**: `metabolomics_expert` (10 tools) has metadata and passes contract tests
 - [x] **ROLL-04**: `annotation_expert` (10 tools) and `de_analysis_expert` (14 tools) have metadata and pass contract tests
 - [x] **ROLL-05**: `machine_learning_expert` (9 tools), `feature_selection_expert` (6 tools), and `survival_analysis_expert` (6 tools) have metadata and pass contract tests
-- [ ] **ROLL-06**: `research_agent` (13 tools) and `data_expert` (10 tools) have metadata and pass contract tests
+- [x] **ROLL-06**: `research_agent` (13 tools) and `data_expert` (10 tools) have metadata and pass contract tests
 - [x] **ROLL-07**: `visualization_expert` (11 tools), `metadata_assistant` (~8 tools), and `protein_structure_visualization_expert` (~4 tools) have metadata and pass contract tests
 - [x] **ROLL-08**: Dynamic DELEGATE tools in `graph.py` (`_create_lazy_delegation_tool`) have DELEGATE metadata
 - [x] **ROLL-09**: All ~180 tools across 18 agents pass contract tests; multi-category usage is <40% — 1/221 tools multi-category (0.5%)
@@ -120,7 +120,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | ROLL-03 | Phase 4 | Complete |
 | ROLL-04 | Phase 4 | Complete |
 | ROLL-05 | Phase 4 | Complete |
-| ROLL-06 | Phase 4 | Pending |
+| ROLL-06 | Phase 4 | Complete |
 | ROLL-07 | Phase 4 | Complete |
 | ROLL-08 | Phase 4 | Complete |
 | ROLL-09 | Phase 4 | Complete |
