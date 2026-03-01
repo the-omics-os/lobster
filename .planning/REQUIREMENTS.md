@@ -35,11 +35,11 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 
 ### Agent Rollout
 
-- [ ] **ROLL-01**: `genomics_expert` (12 tools) and `variant_analysis_expert` (8 tools) have metadata and pass contract tests
+- [x] **ROLL-01**: `genomics_expert` (12 tools) and `variant_analysis_expert` (8 tools) have metadata and pass contract tests
 - [ ] **ROLL-02**: `proteomics_expert` (21 tools), `proteomics_de_analysis_expert` (7 tools), and `biomarker_discovery_expert` (7 tools) have metadata and pass contract tests
 - [x] **ROLL-03**: `metabolomics_expert` (10 tools) has metadata and passes contract tests
 - [x] **ROLL-04**: `annotation_expert` (10 tools) and `de_analysis_expert` (14 tools) have metadata and pass contract tests
-- [ ] **ROLL-05**: `machine_learning_expert` (9 tools), `feature_selection_expert` (6 tools), and `survival_analysis_expert` (6 tools) have metadata and pass contract tests
+- [x] **ROLL-05**: `machine_learning_expert` (9 tools), `feature_selection_expert` (6 tools), and `survival_analysis_expert` (6 tools) have metadata and pass contract tests
 - [ ] **ROLL-06**: `research_agent` (13 tools) and `data_expert` (10 tools) have metadata and pass contract tests
 - [x] **ROLL-07**: `visualization_expert` (11 tools), `metadata_assistant` (~8 tools), and `protein_structure_visualization_expert` (~4 tools) have metadata and pass contract tests
 - [x] **ROLL-08**: Dynamic DELEGATE tools in `graph.py` (`_create_lazy_delegation_tool`) have DELEGATE metadata
@@ -114,11 +114,11 @@ Deferred to future release. Tracked but not in current roadmap.
 | IMPL-02 | Phase 3 | Complete (03-01) |
 | IMPL-03 | Phase 3 | Complete (03-01) |
 | IMPL-04 | Phase 3 | Complete |
-| ROLL-01 | Phase 4 | Pending |
+| ROLL-01 | Phase 4 | Complete |
 | ROLL-02 | Phase 4 | Pending |
 | ROLL-03 | Phase 4 | Complete |
 | ROLL-04 | Phase 4 | Complete |
-| ROLL-05 | Phase 4 | Pending |
+| ROLL-05 | Phase 4 | Complete |
 | ROLL-06 | Phase 4 | Pending |
 | ROLL-07 | Phase 4 | Complete |
 | ROLL-08 | Phase 4 | Complete |
