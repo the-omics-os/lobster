@@ -77,6 +77,8 @@ def feature_selection_expert(
 
     # Use shared tool from workspace_tool.py (consistent with data_expert and supervisor)
     list_available_modalities = create_list_modalities_tool(data_manager)
+    list_available_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
+    list_available_modalities.tags = ["UTILITY"]
 
     @tool
     def get_feature_selection_results(modality_name: str) -> str:
