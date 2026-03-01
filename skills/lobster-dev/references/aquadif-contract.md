@@ -217,6 +217,23 @@ These are the most common ambiguities. When in doubt, use these rules.
 - ANNOTATE: Assigns biological meaning using external knowledge (ontologies, references, markers).
 - Example: Clustering cells into groups is ANALYZE. Labeling those clusters as "T cells" is ANNOTATE.
 
+### Category Decision Quick Reference
+
+When categorizing a tool, find what it does in this table:
+
+| If your tool... | Category |
+|---|---|
+| Reads files from disk or downloads data into AnnData | IMPORT |
+| Calculates QC metrics, checks data fitness, detects artifacts | QUALITY |
+| Removes rows/columns, subsets observations or features | FILTER |
+| Normalizes, batch corrects, scales, imputes, reshapes values | PREPROCESS |
+| Clusters, embeds, runs statistics, computes trajectories | ANALYZE |
+| Assigns labels using ontologies, references, or ID mappings | ANNOTATE |
+| Hands off to a child agent | DELEGATE |
+| Combines results from multiple analyses into interpretation | SYNTHESIZE |
+| Lists datasets, shows status, exports files (read-only ops) | UTILITY |
+| Executes arbitrary user code | CODE_EXEC |
+
 ## Metadata Assignment Pattern
 
 After creating a tool with the `@tool` decorator, assign AQUADIF metadata and tags. This pattern works for both shared tools and agent-specific tools.
@@ -327,6 +344,31 @@ def list_modalities() -> str:
 
 list_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
 list_modalities.tags = ["UTILITY"]
+```
+
+### Anti-Patterns (what NOT to do)
+
+```python
+# WRONG: Metadata before @tool (decorator overwrites it)
+my_tool.metadata = {"categories": ["ANALYZE"], "provenance": True}
+@tool
+def my_tool(...): ...
+
+# WRONG: Only setting .metadata (callbacks won't see categories)
+my_tool.metadata = {"categories": ["ANALYZE"], "provenance": True}
+# Missing: my_tool.tags = ["ANALYZE"]
+
+# WRONG: .tags differs from .metadata["categories"]
+my_tool.metadata = {"categories": ["ANALYZE"], "provenance": True}
+my_tool.tags = ["ANALYZE", "EXTRA"]  # Mismatch!
+
+# WRONG: Provenance flag contradicts primary category
+my_tool.metadata = {"categories": ["IMPORT"], "provenance": False}  # IMPORT requires True
+
+# WRONG: Importing enum in tool file (unnecessary coupling)
+from lobster.config.aquadif import AquadifCategory
+my_tool.metadata = {"categories": [AquadifCategory.ANALYZE], "provenance": True}
+# Use string literals instead: "ANALYZE"
 ```
 
 ## Contract Tests
@@ -530,6 +572,81 @@ Both `research_agent` and `data_expert` are parents of `metadata_assistant` at r
 
 ---
 
-**Version:** Phase 4 (2026-03-01) — Research package reference implementation added
-**Previous:** Phase 1 (2026-02-27) — Initial specification
+## Runtime Monitoring
+
+The `AquadifMonitor` service (`lobster/core/aquadif_monitor.py`) tracks AQUADIF compliance at runtime. It is wired into the callback chain and requires zero configuration from plugin authors — your tools are automatically monitored once metadata is assigned.
+
+**What it tracks:**
+- **Category distribution** — per-session count of tool invocations by category (`get_category_distribution()`)
+- **Provenance status** — per-tool status: `real_ir` (genuine AnalysisStep), `hollow_ir` (ir=None bridge), `missing` (no provenance call observed) (`get_provenance_status()`)
+- **CODE_EXEC log** — bounded circular buffer (100 entries) of custom code executions with agent attribution (`get_code_exec_log()`)
+- **Session summary** — structured dict consumable by Omics-OS Cloud SSE enrichment (`get_session_summary()`)
+
+**How it's wired:**
+1. `client.py` constructs `AquadifMonitor(tool_metadata_map={})`
+2. `graph.py` builds `tool_name -> {categories, provenance}` lookup dict from all agent tools and populates the monitor's map
+3. `TokenTrackingCallback.on_tool_start` calls `monitor.record_tool_invocation()` (single injection point — no other handlers call monitor)
+4. `DataManagerV2.log_tool_usage` calls `monitor.record_provenance_call(tool_name, has_real_ir)` — provenance detection by observation
+
+**Design properties:** Pure stdlib (threading, collections.deque), fail-open (monitor errors never crash tool invocations), thread-safe, bounded data structures.
+
+**For plugin authors:** You do NOT need to interact with AquadifMonitor directly. Assign `.metadata` and `.tags` to your tools, and the monitor will track them automatically.
+
+## Migrating Existing Agents to AQUADIF
+
+Use this checklist when adding AQUADIF metadata to an agent that already has tools but lacks `.metadata` and `.tags`.
+
+### Migration Checklist
+
+1. **Inventory tools** — `grep -rn "@tool" packages/lobster-<domain>/lobster/agents/<domain>/`. Skip delegation tools (auto-tagged by graph builder).
+2. **Categorize each tool** — Primary category first ("What is the ONE thing this tool does?"). Secondary only if substantial. Apply the 80% rule: if 80%+ of logic is one category, use only that.
+3. **Determine provenance** — Check primary category against the Quick Reference table above.
+4. **Add metadata inline** — After each `@tool` closure, add `.metadata` and `.tags` (use string literals, not enum imports).
+5. **Create contract test** — One `AgentContractTestMixin` class per agent. Set `is_parent_agent = False` for child agents.
+6. **Run contract tests** — `pytest -m contract tests/agents/test_aquadif_<domain>.py -v`. All 14 mixin methods must pass.
+7. **Run existing tests** — `pytest packages/lobster-<domain>/tests/ -v`. Confirm zero regressions — metadata assignment does not change tool behavior.
+
+**Common failures:** Missing `.tags`, `.tags` ≠ `.metadata["categories"]`, provenance flag contradicts primary category, missing `log_tool_usage(ir=ir)` in provenance-required tool.
+
+### Worked Example: Transcriptomics (22 tools)
+
+The transcriptomics package was the first migrated. All 22 tools across 2 files:
+
+**transcriptomics_expert.py (15 tools):**
+
+| Tool | Category | Prov | Notes |
+|---|---|---|---|
+| `cluster_cells` | ANALYZE | Yes | |
+| `subcluster_cells` | ANALYZE | Yes | |
+| `evaluate_clustering_quality` | QUALITY | Yes | |
+| `find_marker_genes` | ANALYZE | Yes | |
+| `detect_doublets` | QUALITY | Yes | |
+| `integrate_batches` | PREPROCESS | Yes | |
+| `compute_trajectory` | ANALYZE | Yes | |
+| `import_bulk_counts` | IMPORT | Yes | |
+| `merge_sample_metadata` | ANNOTATE | Yes | Enriches obs with labels, not file loading |
+| `assess_bulk_sample_quality` | QUALITY | Yes | |
+| `filter_bulk_genes` | FILTER | Yes | |
+| `normalize_bulk_counts` | PREPROCESS | Yes | |
+| `detect_batch_effects` | QUALITY | Yes | |
+| `convert_gene_identifiers` | ANNOTATE | Yes | ID mapping = biological meaning, not transform |
+| `prepare_bulk_for_de` | PREPROCESS | Yes | Reshaping = data transformation |
+
+**shared_tools.py (7 tools):**
+
+| Tool | Category | Prov | Notes |
+|---|---|---|---|
+| `check_data_status` | UTILITY | No | |
+| `assess_data_quality` | QUALITY | Yes | |
+| `filter_and_normalize` | PREPROCESS, FILTER | Yes | Rare multi-category: normalization 80%, filtering 20% |
+| `create_analysis_summary` | UTILITY | No | |
+| `select_variable_features` | FILTER | Yes | Subsets feature space, not pattern extraction |
+| `run_pca` | ANALYZE | Yes | |
+| `compute_neighbors_and_embed` | ANALYZE | Yes | |
+
+**Distribution:** ANALYZE 32%, QUALITY 23%, PREPROCESS 18%, FILTER 14%, ANNOTATE 9%, IMPORT 5%, UTILITY 9%. 21/22 single-category. This lean ratio is expected.
+
+---
+
+**Version:** Phase 4 (2026-03-01) — Research package reference + migration guide merged
 **Contract tests:** `packages/lobster-research/tests/agents/test_aquadif_research.py`

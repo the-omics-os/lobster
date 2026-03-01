@@ -236,6 +236,8 @@ Lobster routes to specialist agents automatically. 20+ agents across 10 packages
 | **Survival Analysis Expert** | lobster-ml | Cox models, Kaplan-Meier, risk stratification |
 | **Protein Structure Viz** | lobster-structural-viz | PDB fetch, PyMOL visualization, RMSD |
 
+Each agent's tools are organized by the **AQUADIF taxonomy** — 10 categories (IMPORT, QUALITY, FILTER, PREPROCESS, ANALYZE, ANNOTATE, DELEGATE, SYNTHESIZE, UTILITY, CODE_EXEC) that describe what each tool does. This internal organization helps Lobster route your requests to the right tools and track provenance for reproducibility. You don't need to know the categories — just describe what you want in natural language.
+
 Details and hierarchy: [references/agents.md](references/agents.md)
 
 ## How Multi-Agent Coordination Works

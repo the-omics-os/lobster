@@ -161,8 +161,7 @@ class TestMyAgent:
         from lobster.config.agent_registry import AgentRegistryConfig
 
         assert isinstance(AGENT_CONFIG, AgentRegistryConfig)
-        assert AGENT_CONFIG.name == "my_expert_agent"
-        assert AGENT_CONFIG.tier_requirement in ("free", "premium", "enterprise")
+        assert AGENT_CONFIG.name == "<domain>_expert"
 
     def test_agent_config_loads_fast(self):
         """Config must load in <50ms (entry point discovery)."""
@@ -304,6 +303,18 @@ pytest tests/ -v --timeout=300 --ignore=tests/integration/slow/
 # Coverage report
 pytest --cov=lobster --cov-report=xml tests/
 ```
+
+## AQUADIF Contract Tests
+
+All agents are validated for AQUADIF compliance using `AgentContractTestMixin` (14 methods). These run on every CI push/PR via `.github/workflows/ci-basic.yml`.
+
+**Run contract tests locally:**
+```bash
+pytest -m contract                      # All agents
+pytest -m contract -k transcriptomics   # Single package
+```
+
+**Full reference:** See `aquadif-contract.md` for contract test method descriptions, factory setup patterns, and LLM mock configuration.
 
 ## Best Practices
 
