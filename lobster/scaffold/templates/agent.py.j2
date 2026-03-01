@@ -28,7 +28,6 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import Optional
 
-from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
 
 from lobster.agents.{{ domain }}.shared_tools import create_shared_tools
@@ -86,12 +85,6 @@ def {{ agent_name }}(
             else [callback_handler]
         )
         llm = llm.with_config(callbacks=callbacks)
-
-    # Validate data manager type
-    if not isinstance(data_manager, DataManagerV2):
-        raise ValueError(
-            "{{ display_name }} requires DataManagerV2 for modular analysis"
-        )
 
     # TODO: Initialize your stateless services here
     # Example:

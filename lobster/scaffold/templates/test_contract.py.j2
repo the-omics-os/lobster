@@ -22,3 +22,5 @@ class Test{{ agent_class_name }}Contract(AgentContractTestMixin):
     is_parent_agent = False
 {% endif %}
     expected_tier = "{{ tier }}"
+    # Set to True once your factory produces working tools with real services
+    tools_required = False
