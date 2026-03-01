@@ -11,6 +11,7 @@ import pytest
 from lobster.config.aquadif import (
     AquadifCategory,
     PROVENANCE_REQUIRED,
+    has_provenance_call,
     requires_provenance,
 )
 
@@ -128,3 +129,48 @@ class TestAquadifCategory:
 
         # Also verify value access
         assert AquadifCategory.IMPORT.value == "IMPORT"
+
+
+class TestHasProvenanceCall:
+    """Test has_provenance_call AST helper function."""
+
+    def test_detects_ir_keyword(self):
+        """Should detect log_tool_usage with ir= keyword argument."""
+        import ast
+
+        tree = ast.parse('data_manager.log_tool_usage("test", params, stats, ir=ir)')
+        assert has_provenance_call(tree) is True
+
+    def test_rejects_without_ir(self):
+        """Should return False when log_tool_usage has no ir= keyword."""
+        import ast
+
+        tree = ast.parse('data_manager.log_tool_usage("test", params, stats)')
+        assert has_provenance_call(tree) is False
+
+    def test_detects_ir_in_multiline(self):
+        """Should detect ir= in multi-line function body."""
+        import ast
+
+        source = """
+def my_tool(data):
+    result, stats, ir = service.analyze(adata)
+    data_manager.log_tool_usage("my_tool", {"data": data}, stats, ir=ir)
+    return "done"
+"""
+        tree = ast.parse(source)
+        assert has_provenance_call(tree) is True
+
+    def test_rejects_unrelated_call(self):
+        """Should not match unrelated method names."""
+        import ast
+
+        tree = ast.parse('data_manager.save_results("test", ir=ir)')
+        assert has_provenance_call(tree) is False
+
+    def test_empty_tree(self):
+        """Should return False for empty/trivial AST."""
+        import ast
+
+        tree = ast.parse("pass")
+        assert has_provenance_call(tree) is False
