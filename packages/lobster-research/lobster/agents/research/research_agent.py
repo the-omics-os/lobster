@@ -2391,7 +2391,11 @@ Could not extract content for: {identifier}
 
     # Create workspace tools using shared factories (Phase 7+: deduplication complete)
     write_to_workspace = create_write_to_workspace_tool(data_manager)
+    write_to_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
+    write_to_workspace.tags = ["UTILITY"]
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
+    get_content_from_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_content_from_workspace.tags = ["UTILITY"]
 
     base_tools = [
         # --------------------------------
