@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-last_updated: "2026-03-01T04:07:33Z"
+last_updated: "2026-03-01T04:13:37Z"
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Every tool in Lobster AI declares what it does (category) and whether it must produce provenance — making the system introspectable, enforceable, and teachable to coding agents.
-**Current focus:** Phase 3 execution (Plan 01 complete, Plan 02 pending)
+**Current focus:** Phase 3 complete. Ready for Phase 4 rollout (156 tools across 8 packages)
 
 ## Current Position
 
-Phase: 3 of 6 (Reference Implementation) — IN PROGRESS
-Plan: 1 of 2 (complete)
-Status: Phase 3 Plan 01 complete, Plan 02 pending
-Last activity: 2026-03-01 — Phase 3 Plan 01 reference implementation (42b67c8)
+Phase: 3 of 6 (Reference Implementation) — COMPLETE
+Plan: 2 of 2 (complete)
+Status: Phase 3 complete. Ready for Phase 4 rollout.
+Last activity: 2026-03-01 — Phase 3 Plan 02 migration guide (94fb3a9)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 50%
 
 ## Phase 1 Completion Summary
 
@@ -76,7 +76,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 
 ## Phase 3 Progress
 
-**Phase 3: Reference Implementation — IN PROGRESS** (2026-03-01)
+**Phase 3: Reference Implementation — COMPLETE** (2026-03-01)
 
 **Plan 01: AQUADIF metadata for transcriptomics package — COMPLETE** (2026-03-01)
 - 22 tools tagged with AQUADIF metadata (15 in transcriptomics_expert.py, 7 in shared_tools.py)
@@ -85,17 +85,22 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - 262 existing service tests still pass (zero backward compatibility regressions)
 - Complete categorization mapping table in SUMMARY for Plan 02
 
-**Plan 02: Migration guide — PENDING**
+**Plan 02: AQUADIF migration guide — COMPLETE** (2026-03-01)
+- 302-line migration reference document at `skills/lobster-dev/references/aquadif-migration.md`
+- 7-step migration checklist, 5 annotated code patterns, transcriptomics worked example
+- MANIFEST updated for automatic skill distribution
+- Ready for Phase 4 executor to tag 156 remaining tools across 8 packages
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Phase 1 plan execution: 229s (2 automated plans)
 - Phase 1 checkpoint: multi-day eval cycle (exceeded scope — full cross-agent validation)
 - Phase 2 plan 1 execution: 181s (2 tasks, fully automated)
 - Phase 2 plan 2 execution: 332s (2 tasks, fully automated)
 - Phase 3 plan 1 execution: 541s (2 tasks, fully automated)
+- Phase 3 plan 2 execution: 118s (2 tasks, fully automated)
 
 **By Phase:**
 
@@ -103,7 +108,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 |-------|-------|--------|------|
 | 01 | 3/3 | ✓ Complete | 2026-02-28 |
 | 02 | 2/2 | ✓ Complete | 2026-02-28 |
-| 03 | 1/2 | In Progress | 2026-03-01 |
+| 03 | 2/2 | ✓ Complete | 2026-03-01 |
 
 ## Accumulated Context
 
@@ -122,6 +127,7 @@ Recent decisions affecting Phase 2:
 - **Contract marker in both configs (02-02):** Register in pytest.ini AND pyproject.toml for compatibility regardless of which file is authoritative
 - **Post-decorator inline pattern (03-01):** .metadata and .tags assigned after each @tool closure, using string literals (no enum import in tool files)
 - **Contract mixin enhanced for real factories (03-01):** LLM mock patching via dual-site patch + PregelNode traversal unblocks Phase 4 rollout testing
+- **Migration guide as skill reference (03-02):** Lives in lobster-dev/references/ for automatic distribution; includes anti-patterns section from Phase 1 eval findings
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -168,9 +174,9 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-03-01 (Phase 3 Plan 01 execution)
-Stopped at: Completed 03-01-PLAN.md (commits: 7aa36bd, 42b67c8)
-Resume: Execute Phase 3 Plan 02 (migration guide) or proceed to Phase 4 rollout
+Last session: 2026-03-01 (Phase 3 Plan 02 execution)
+Stopped at: Completed 03-02-PLAN.md (commits: 035a4e8, 94fb3a9)
+Resume: Phase 3 complete. Proceed to Phase 4 rollout (tag 156 remaining tools across 8 packages)
 Key artifacts:
 - Contract test mixin: `lobster/testing/contract_mixins.py` (14 test methods, fail-by-default, cached, LLM mock + PregelNode)
 - AST helper: `lobster/config/aquadif.py` → `has_provenance_call()` (standalone, reusable)
@@ -178,4 +184,5 @@ Key artifacts:
 - CI enforcement: `.github/workflows/ci-basic.yml` → `pytest -m contract`
 - Transcriptomics reference: `packages/lobster-transcriptomics/` — 22 tools with AQUADIF metadata
 - Contract tests: `packages/lobster-transcriptomics/tests/agents/test_aquadif_transcriptomics.py` — 14/14 passing
+- Migration guide: `skills/lobster-dev/references/aquadif-migration.md` — 302-line rollout reference
 - Scaffold (in progress): `lobster/scaffold/` + `lobster validate-plugin` CLI

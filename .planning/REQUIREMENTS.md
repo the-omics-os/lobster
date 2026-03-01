@@ -31,7 +31,7 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 - [x] **IMPL-01**: All 15 tools in `transcriptomics_expert.py` have correct `metadata` and `tags` set per dry run mapping (15 tools in transcriptomics_expert.py + 7 shared tools = 22 total in package) — Complete (03-01)
 - [x] **IMPL-02**: Shared tools in transcriptomics package (if any) have correct metadata — Complete (03-01)
 - [x] **IMPL-03**: All existing transcriptomics tests still pass after metadata addition — Complete (03-01)
-- [ ] **IMPL-04**: Reference implementation pattern documented for other agents to follow
+- [x] **IMPL-04**: Reference implementation pattern documented for other agents to follow
 
 ### Agent Rollout
 
@@ -113,7 +113,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | IMPL-01 | Phase 3 | Complete (03-01) |
 | IMPL-02 | Phase 3 | Complete (03-01) |
 | IMPL-03 | Phase 3 | Complete (03-01) |
-| IMPL-04 | Phase 3 | Pending |
+| IMPL-04 | Phase 3 | Complete |
 | ROLL-01 | Phase 4 | Pending |
 | ROLL-02 | Phase 4 | Pending |
 | ROLL-03 | Phase 4 | Pending |
