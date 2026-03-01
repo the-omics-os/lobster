@@ -1,0 +1,121 @@
+"""
+{{ display_name }} agent for Lobster AI.
+
+This agent handles {{ description | lower }}.
+"""
+
+# Agent configuration for entry point discovery (must be at top, before heavy imports)
+from lobster.config.agent_registry import AgentRegistryConfig
+
+AGENT_CONFIG = AgentRegistryConfig(
+    name="{{ agent_name }}",
+    display_name="{{ display_name }}",
+    description="{{ description }}",
+    factory_function="lobster.agents.{{ domain }}.{{ agent_name }}.{{ agent_name }}",
+    handoff_tool_name="handoff_to_{{ agent_name }}",
+    handoff_tool_description="{{ handoff_description }}",
+{% if has_children %}
+    child_agents={{ children }},
+{% else %}
+    child_agents=None,
+{% endif %}
+    supervisor_accessible=True,
+    tier_requirement="{{ tier }}",
+    package_name="{{ package_name }}",
+)
+
+# === Heavy imports below (after AGENT_CONFIG for <50ms entry point discovery) ===
+from pathlib import Path
+from typing import Optional
+
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+
+from lobster.agents.{{ domain }}.shared_tools import create_shared_tools
+from lobster.agents.{{ domain }}.state import {{ state_class }}
+from lobster.config.llm_factory import create_llm
+from lobster.config.settings import get_settings
+from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def {{ agent_name }}(
+    data_manager: DataManagerV2,
+    callback_handler=None,
+    agent_name: str = "{{ agent_name }}",
+    delegation_tools: list = None,
+    workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
+):
+    """
+    Factory function for {{ display_name }} agent.
+
+    Args:
+        data_manager: DataManagerV2 instance for modality management
+        callback_handler: Optional callback handler for LLM interactions
+        agent_name: Name identifier for the agent instance
+        delegation_tools: List of delegation tools for child agents
+        workspace_path: Optional workspace path for LLM operations
+        provider_override: Optional LLM provider override
+        model_override: Optional model override
+
+    Returns:
+        Configured ReAct agent (CompiledGraph from create_react_agent)
+    """
+    # Lazy prompt import (allows AGENT_CONFIG discovery before prompt module exists)
+    from lobster.agents.{{ domain }}.prompts import create_{{ agent_name }}_prompt
+
+    settings = get_settings()
+    model_params = settings.get_agent_llm_params("{{ agent_name }}")
+    llm = create_llm(
+        "{{ agent_name }}",
+        model_params,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
+    )
+
+    # Normalize callbacks to a flat list
+    if callback_handler and hasattr(llm, "with_config"):
+        callbacks = (
+            callback_handler
+            if isinstance(callback_handler, list)
+            else [callback_handler]
+        )
+        llm = llm.with_config(callbacks=callbacks)
+
+    # Validate data manager type
+    if not isinstance(data_manager, DataManagerV2):
+        raise ValueError(
+            "{{ display_name }} requires DataManagerV2 for modular analysis"
+        )
+
+    # TODO: Initialize your stateless services here
+    # Example:
+    # quality_service = YourQualityService()
+    # analysis_service = YourAnalysisService()
+
+    # Get shared tools from tool factory
+    shared_tools = create_shared_tools(
+        data_manager,
+        # Pass your services here
+    )
+
+    # Collect all tools
+    tools = shared_tools
+    if delegation_tools:
+        tools = tools + delegation_tools
+
+    # Create system prompt
+    system_prompt = create_{{ agent_name }}_prompt()
+
+    return create_react_agent(
+        model=llm,
+        tools=tools,
+        prompt=system_prompt,
+        name=agent_name,
+        state_schema={{ state_class }},
+    )
