@@ -1,31 +1,32 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v1.1
+milestone_name: Monitoring & Validation
 status: unknown
-last_updated: "2026-03-01T06:49:09.399Z"
+last_updated: "2026-03-01T09:31:54.572Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
+  total_phases: 1
+  completed_phases: 0
+  total_plans: 2
+  completed_plans: 1
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-28)
+See: .planning/PROJECT.md (updated 2026-03-01)
 
 **Core value:** Every tool in Lobster AI declares what it does (category) and whether it must produce provenance — making the system introspectable, enforceable, and teachable to coding agents.
+**Current focus:** v1.0 shipped. Next: v1.1 Monitoring & Validation (Phases 5-7) or new milestone via `/gsd:new-milestone`.
 **Current focus:** Phase 4 rollout in progress (Plans 01-04 complete: 18 tools in ML package; 57 tools remain across 3 plans)
 
 ## Current Position
 
-Phase: 4 of 6 (Agent Rollout) — COMPLETE
-Plan: 7 of 7 (complete)
-Status: Phase 4 complete. All 7 plans done. Drug-discovery package (35 tools, 4 agents) tagged and tested. Global ROLL-09 passed: 1/221 tools multi-category (0.5%). All 10 packages 100% AQUADIF-compliant.
-Last activity: 2026-02-28 — Phase 4 Plan 07 AQUADIF metadata rollout + global validation (95e9580)
+Phase: 5 of 6 (Monitoring Infrastructure) — IN PROGRESS
+Plan: 1 of 2 (complete)
+Status: Phase 5 Plan 01 complete. AquadifMonitor service class created with 55 unit tests (TDD). Ready for Plan 02 callback chain wiring.
+Last activity: 2026-03-01 — Phase 5 Plan 01 AquadifMonitor TDD implementation (fcae6e9)
 
 Progress: [█████████░] 93%
 
@@ -143,10 +144,23 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - Commits: 95a8926 (metadata + ROLL-10), 95e9580 (contract tests + isinstance fix)
 - **Phase 4 now COMPLETE — all 10 packages AQUADIF-compliant**
 
+## Phase 5 Progress
+
+**Phase 5: Monitoring Infrastructure — IN PROGRESS** (started 2026-03-01)
+
+**Plan 01: AquadifMonitor service class (TDD) — COMPLETE** (2026-03-01)
+- `AquadifMonitor` class with 6 public methods: record_tool_invocation, record_provenance_call, get_category_distribution, get_provenance_status, get_code_exec_log, get_session_summary
+- `CodeExecEntry` dataclass with tool_name, timestamp (ISO), agent fields
+- 55 unit tests: category counting, provenance state machine (real_ir/hollow_ir/missing), CODE_EXEC bounded log, thread safety, fail-open, edge cases, no-lobster-imports enforcement
+- Pure stdlib (threading.Lock, collections.deque, dataclasses, datetime) — zero new dependencies
+- Zero lobster.* imports (prevents circular import when callbacks.py imports monitor in Plan 02)
+- Commits: 68a88b1 (test/RED), fcae6e9 (feat/GREEN)
+- Requirements completed: MON-01, MON-05, MON-06
+
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 12
 - Phase 1 plan execution: 229s (2 automated plans)
 - Phase 1 checkpoint: multi-day eval cycle (exceeded scope — full cross-agent validation)
 - Phase 2 plan 1 execution: 181s (2 tasks, fully automated)
@@ -155,6 +169,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - Phase 3 plan 2 execution: 118s (2 tasks, fully automated)
 - Phase 4 plan 1 execution: 348s (2 tasks, fully automated)
 - Phase 4 plan 4 execution: ~900s (2 tasks, fully automated)
+- Phase 5 plan 1 execution: 154s (1 TDD feature, 2 commits: test + feat)
 
 **By Phase:**
 
@@ -168,6 +183,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 | Phase 04-agent-rollout P02 | 70 | 2 tasks | 5 files |
 | Phase 04-agent-rollout P03 | 365 | 2 tasks | 7 files |
 | Phase 04-agent-rollout P04 | 900 | 2 tasks | 6 files |
+| Phase 05-monitoring-infrastructure P01 | 154 | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -199,6 +215,9 @@ Recent decisions affecting Phase 2:
 - [Phase 04-agent-rollout]: is_parent_agent=False for data-prep agents: machine_learning_expert has no IMPORT/QUALITY tools by design — MVP parent check does not apply to data-preparation-focused agents
 - [Phase 04-agent-rollout]: list_available_modalities needs metadata at injection site: shared workspace tool injected via create_list_modalities_tool() needs .metadata/.tags assigned in each agent factory that includes it
 - [Phase 04-agent-rollout]: ML shared_tools.py pattern: survival analysis and feature selection tools tagged at source inside factory functions, not in child agent files — metadata flows to all consuming agents automatically
+- [Phase 05-monitoring-infrastructure]: AquadifMonitor uses zero lobster.* imports to prevent circular import when callbacks.py imports it
+- [Phase 05-monitoring-infrastructure]: threading.Lock only on compound mutations (deque append + dict update); single dict increments are GIL-safe in CPython
+- [Phase 05-monitoring-infrastructure]: real_ir status cannot be downgraded to hollow_ir (non-downgrade rule for provenance state machine)
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -245,15 +264,13 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-03-01 (Phase 4 Plan 04 execution)
-Stopped at: Completed 04-04-PLAN.md (commit: 390653e)
-Resume: Phase 4 Plan 04 complete. Proceed to Plan 05 (Wave 2: proteomics package — 3 agents with complex parent-child hierarchy)
+Last session: 2026-03-01 (Phase 5 Plan 01 execution)
+Stopped at: Completed 05-01-PLAN.md (commit: fcae6e9)
+Resume: Phase 5 Plan 01 complete. Proceed to Plan 02 (callback chain wiring — inject AquadifMonitor into TokenTrackingCallback, graph.py, DataManagerV2, and client.py)
 Key artifacts:
-- Contract test mixin: `lobster/testing/contract_mixins.py` (14 test methods, fail-by-default, cached, LLM mock + PregelNode)
-- AST helper: `lobster/config/aquadif.py` → `has_provenance_call()` (standalone, reusable)
-- Enforcement tests: `tests/unit/agents/test_aquadif_compliance.py` (11 tests)
-- CI enforcement: `.github/workflows/ci-basic.yml` → `pytest -m contract`
-- ML package tests: `packages/lobster-ml/tests/agents/test_aquadif_ml.py` — 36/36 passing
-- Migration guide: `skills/lobster-dev/references/aquadif-migration.md` — 302-line rollout reference
-- Key decision: is_parent_agent=False for data-prep focused agents without IMPORT/QUALITY tools
-- Key pattern: list_available_modalities needs .metadata/.tags at injection site in each agent factory
+- AquadifMonitor: `lobster/core/aquadif_monitor.py` (pure stdlib, 6 public methods, 55 tests)
+- Unit tests: `tests/unit/core/test_aquadif_monitor.py` (55 tests, all passing)
+- Import path for Plan 02: `from lobster.core.aquadif_monitor import AquadifMonitor, CodeExecEntry`
+- Key decision: zero lobster imports in aquadif_monitor.py (prevents circular import)
+- Key decision: real_ir cannot be downgraded to hollow_ir (non-downgrade rule)
+- Key pattern: monitor constructed with empty tool_metadata_map={}, populated by graph.py after tool creation

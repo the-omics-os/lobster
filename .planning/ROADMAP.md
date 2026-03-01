@@ -29,7 +29,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 **Goal**: Enable runtime introspection of tool category usage and provenance compliance via a shared monitor service injected into the existing callback chain
 **Depends on**: v1.0 (Phase 4)
 **Requirements**: MON-01, MON-02, MON-03, MON-04, MON-05, MON-06
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 05-01-PLAN.md — AquadifMonitor service class with TDD (thread-safe, fail-open, bounded data structures)
@@ -127,6 +127,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 2. Contract Test Infrastructure | v1.0 | 2/2 | ✓ Complete | 2026-02-28 |
 | 3. Reference Implementation | v1.0 | 2/2 | ✓ Complete | 2026-03-01 |
 | 4. Agent Rollout | v1.0 | 7/7 | ✓ Complete | 2026-03-01 |
-| 5. Monitoring Infrastructure | v1.1 | 0/2 | Not started | - |
+| 5. Monitoring Infrastructure | 1/2 | In Progress|  | - |
 | 6. Extension Case Study | v1.1 | 0/? | Not started | - |
 | 7. Documentation & Release | v1.1 | 0/? | Not started | - |
