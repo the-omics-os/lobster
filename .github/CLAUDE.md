@@ -26,9 +26,11 @@ lobster-ai (core SDK)
 ├── lobster-visualization    # 1 agent (plotting)
 ├── lobster-metadata         # 1 agent (ID mapping, filtering)
 ├── lobster-structural-viz   # 1 agent (protein structure)
-├── lobster-genomics         # 1 agent (VCF, GWAS)
-├── lobster-proteomics       # 1 agent (DDA/DIA)
-└── lobster-ml               # 3 agents (ML, feature selection, survival)
+├── lobster-genomics         # 2 agents (genomics, variant analysis)
+├── lobster-proteomics       # 3 agents (proteomics, proteomics DE, biomarker discovery)
+├── lobster-metabolomics     # 1 agent (LC-MS/GC-MS/NMR)
+├── lobster-ml               # 3 agents (ML, feature selection, survival)
+└── lobster-drug-discovery   # 4 agents (drug discovery, cheminformatics, clinical dev, pharmacogenomics)
 ```
 
 Agents register via **entry points** — `ComponentRegistry` is the single source of truth.
@@ -47,6 +49,8 @@ Agents register via **entry points** — `ComponentRegistry` is the single sourc
 8. **Agent packages in `packages/`** — new agents go in separate packages, NOT in core
 9. **No module-level `component_registry` calls** — causes slow startup and import side effects
 10. **Run `make format` before committing** — black + isort
+11. **All tools MUST have AQUADIF metadata** — `.metadata` and `.tags` assigned after `@tool` decorator. Use string literals (`"ANALYZE"`), not enum imports. See `skills/lobster-dev/references/aquadif-contract.md`
+12. **PRs adding new tools MUST include contract tests** — run `pytest -m contract` before submitting. CI validates this automatically on every PR
 
 ---
 
@@ -83,6 +87,9 @@ def analyze_modality(modality_name: str, **params) -> str:
 | `core/provenance.py` | W3C-PROV tracking |
 | `tools/download_orchestrator.py` | Download execution (9-step pipeline) |
 | `core/omics_registry.py` | Omics type metadata and detection |
+| `config/aquadif.py` | AQUADIF taxonomy — AquadifCategory enum, provenance rules |
+| `testing/contract_mixins.py` | AgentContractTestMixin — 14 contract test methods |
+| `core/aquadif_monitor.py` | Runtime AQUADIF monitoring (category + provenance tracking) |
 
 ---
 
@@ -93,16 +100,25 @@ def analyze_modality(modality_name: str, **params) -> str:
 | `supervisor` | core | Route user intents, manage handoffs |
 | `research_agent` | lobster-research | Literature discovery, URL extraction (online) |
 | `data_expert` | lobster-research | Execute downloads, load files (ZERO online access) |
-| `transcriptomics_expert` | lobster-transcriptomics | scRNA-seq: QC, clustering, markers |
+| `transcriptomics_expert` | lobster-transcriptomics | scRNA-seq + bulk RNA-seq: QC, clustering, normalization |
 | `annotation_expert` | lobster-transcriptomics | Cell type annotation (sub-agent) |
-| `de_analysis_expert` | lobster-transcriptomics | Differential expression (sub-agent) |
-| `proteomics_expert` | lobster-proteomics | DDA/DIA workflows, normalization |
-| `genomics_expert` | lobster-genomics | VCF/PLINK, GWAS, PCA |
+| `de_analysis_expert` | lobster-transcriptomics | Differential expression, GSEA, pathway enrichment (sub-agent) |
+| `genomics_expert` | lobster-genomics | VCF/PLINK, LD pruning, kinship, GWAS, PCA |
+| `variant_analysis_expert` | lobster-genomics | Variant annotation, ClinVar, gnomAD (sub-agent) |
+| `proteomics_expert` | lobster-proteomics | MS import (MaxQuant/DIA-NN/Spectronaut), affinity proteomics, batch correction |
+| `proteomics_de_analysis_expert` | lobster-proteomics | Proteomics DE, pathway enrichment, KSEA, STRING PPI (sub-agent) |
+| `biomarker_discovery_expert` | lobster-proteomics | Panel selection, nested CV, hub protein extraction (sub-agent) |
+| `metabolomics_expert` | lobster-metabolomics | LC-MS/GC-MS/NMR QC, normalization, PCA/PLS-DA, m/z annotation |
 | `machine_learning_expert` | lobster-ml | ML parent, routes to sub-agents |
-| `feature_selection_expert` | lobster-ml | Stability selection, LASSO, variance filter |
-| `survival_analysis_expert` | lobster-ml | Cox models, Kaplan-Meier |
+| `feature_selection_expert` | lobster-ml | Stability selection, LASSO, variance filter (sub-agent) |
+| `survival_analysis_expert` | lobster-ml | Cox models, Kaplan-Meier, risk stratification (sub-agent) |
 | `visualization_expert` | lobster-visualization | General-purpose Plotly plotting |
 | `metadata_assistant` | lobster-metadata | ID mapping, filtering, validation |
+| `protein_structure_visualization_expert` | lobster-structural-viz | PDB fetch, protein structure visualization |
+| `drug_discovery_expert` | lobster-drug-discovery | Drug discovery workflows, routes to sub-agents |
+| `cheminformatics_expert` | lobster-drug-discovery | Molecular descriptors, fingerprints, similarity search (sub-agent) |
+| `clinical_dev_expert` | lobster-drug-discovery | Clinical trial design, endpoint analysis, safety signals (sub-agent) |
+| `pharmacogenomics_expert` | lobster-drug-discovery | PGx variants, drug-gene interactions, metabolizer phenotyping (sub-agent) |
 
 ---
 
