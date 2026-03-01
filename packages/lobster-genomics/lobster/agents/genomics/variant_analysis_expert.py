@@ -197,6 +197,9 @@ def variant_analysis_expert(
             logger.error(f"Unexpected error in variant normalization: {e}")
             return f"Unexpected error: {str(e)}"
 
+    normalize_variants.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    normalize_variants.tags = ["PREPROCESS"]
+
     # =========================================================================
     # CONSEQUENCE PREDICTION TOOL
     # =========================================================================
@@ -296,6 +299,9 @@ def variant_analysis_expert(
             logger.error(f"Unexpected error in consequence prediction: {e}")
             return f"Unexpected error: {str(e)}"
 
+    predict_consequences.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    predict_consequences.tags = ["ANNOTATE"]
+
     # =========================================================================
     # POPULATION FREQUENCY TOOL
     # =========================================================================
@@ -384,6 +390,9 @@ def variant_analysis_expert(
             logger.error(f"Unexpected error in population frequency query: {e}")
             return f"Unexpected error: {str(e)}"
 
+    query_population_frequencies.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    query_population_frequencies.tags = ["ANNOTATE"]
+
     # =========================================================================
     # CLINICAL DATABASE TOOL
     # =========================================================================
@@ -461,6 +470,9 @@ def variant_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in clinical database query: {e}")
             return f"Unexpected error: {str(e)}"
+
+    query_clinical_databases.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    query_clinical_databases.tags = ["ANNOTATE"]
 
     # =========================================================================
     # VARIANT PRIORITIZATION TOOL
@@ -548,6 +560,9 @@ def variant_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in variant prioritization: {e}")
             return f"Unexpected error: {str(e)}"
+
+    prioritize_variants.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    prioritize_variants.tags = ["ANALYZE"]
 
     # =========================================================================
     # SINGLE-VARIANT LOOKUP TOOL
@@ -711,6 +726,7 @@ def variant_analysis_expert(
                     "notation_type": notation_type,
                 },
                 description=f"Variant lookup for {notation}: {most_severe}",
+                ir=None,
             )
 
             return "\n".join(lines)
@@ -719,12 +735,20 @@ def variant_analysis_expert(
             logger.error(f"Error in variant lookup: {e}")
             return f"Error looking up variant: {str(e)}"
 
+    lookup_variant.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    lookup_variant.tags = ["ANNOTATE"]
+
     # =========================================================================
     # RELOCATED TOOLS (from parent via factories)
     # =========================================================================
 
     retrieve_sequence = create_sequence_retrieval_tool(data_manager)
+    retrieve_sequence.metadata = {"categories": ["UTILITY"], "provenance": False}
+    retrieve_sequence.tags = ["UTILITY"]
+
     summarize_modality = create_summarize_modality_tool(data_manager)
+    summarize_modality.metadata = {"categories": ["UTILITY"], "provenance": False}
+    summarize_modality.tags = ["UTILITY"]
 
     # =========================================================================
     # COLLECT ALL TOOLS

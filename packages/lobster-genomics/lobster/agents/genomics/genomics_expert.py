@@ -269,6 +269,9 @@ adata = adapter.from_source(
             logger.error(f"Error loading VCF: {e}")
             return f"Error loading VCF file: {str(e)}"
 
+    load_vcf.metadata = {"categories": ["IMPORT"], "provenance": True}
+    load_vcf.tags = ["IMPORT"]
+
     @tool
     def load_plink(
         file_path: str,
@@ -398,6 +401,9 @@ adata = adapter.from_source(
             logger.error(f"Error loading PLINK: {e}")
             return f"Error loading PLINK file: {str(e)}"
 
+    load_plink.metadata = {"categories": ["IMPORT"], "provenance": True}
+    load_plink.tags = ["IMPORT"]
+
     # =========================================================================
     # QUALITY CONTROL TOOLS
     # =========================================================================
@@ -518,6 +524,9 @@ adata = adapter.from_source(
             logger.error(f"Unexpected error in quality assessment: {e}")
             return f"Unexpected error: {str(e)}"
 
+    assess_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_quality.tags = ["QUALITY"]
+
     @tool
     def filter_samples(
         modality_name: str,
@@ -609,6 +618,9 @@ adata = adapter.from_source(
         except Exception as e:
             logger.error(f"Unexpected error in sample filtering: {e}")
             return f"Unexpected error: {str(e)}"
+
+    filter_samples.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_samples.tags = ["FILTER"]
 
     @tool
     def filter_variants(
@@ -710,6 +722,9 @@ This dataset can now be used for downstream analysis (GWAS, annotation - coming 
         except Exception as e:
             logger.error(f"Unexpected error in variant filtering: {e}")
             return f"Unexpected error: {str(e)}"
+
+    filter_variants.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_variants.tags = ["FILTER"]
 
     # =========================================================================
     # GWAS & ADVANCED ANALYSIS TOOLS (Phase 2)
@@ -830,6 +845,9 @@ Lambda GC > 1.1 suggests uncorrected population structure.
             logger.error(f"Unexpected error in GWAS: {e}")
             return f"Unexpected error: {str(e)}"
 
+    run_gwas.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_gwas.tags = ["ANALYZE"]
+
     @tool
     def calculate_pca(
         modality_name: str,
@@ -937,6 +955,9 @@ Lambda GC > 1.1 suggests uncorrected population structure.
             logger.error(f"Unexpected error in PCA: {e}")
             return f"Unexpected error: {str(e)}"
 
+    calculate_pca.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    calculate_pca.tags = ["ANALYZE"]
+
     @tool
     def annotate_variants(
         modality_name: str,
@@ -1028,6 +1049,9 @@ Lambda GC > 1.1 suggests uncorrected population structure.
         except Exception as e:
             logger.error(f"Unexpected error in annotation: {e}")
             return f"Unexpected error: {str(e)}"
+
+    annotate_variants.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    annotate_variants.tags = ["ANNOTATE"]
 
     # =========================================================================
     # GWAS PIPELINE TOOLS (NEW)
@@ -1125,6 +1149,9 @@ Lambda GC > 1.1 suggests uncorrected population structure.
             logger.error(f"Unexpected error in LD pruning: {e}")
             return f"Unexpected error: {str(e)}"
 
+    ld_prune.metadata = {"categories": ["FILTER"], "provenance": True}
+    ld_prune.tags = ["FILTER"]
+
     @tool
     def compute_kinship(
         modality_name: str,
@@ -1221,6 +1248,9 @@ Lambda GC > 1.1 suggests uncorrected population structure.
         except Exception as e:
             logger.error(f"Unexpected error in kinship computation: {e}")
             return f"Unexpected error: {str(e)}"
+
+    compute_kinship.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compute_kinship.tags = ["ANALYZE"]
 
     @tool
     def clump_results(
@@ -1331,12 +1361,17 @@ variant_analysis_expert."""
             logger.error(f"Unexpected error in clumping: {e}")
             return f"Unexpected error: {str(e)}"
 
+    clump_results.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    clump_results.tags = ["ANALYZE"]
+
     # =========================================================================
     # COLLECT ALL TOOLS
     # =========================================================================
 
     # Shared helper tool (merges list_modalities + get_modality_info)
     summarize_modality = create_summarize_modality_tool(data_manager)
+    summarize_modality.metadata = {"categories": ["UTILITY"], "provenance": False}
+    summarize_modality.tags = ["UTILITY"]
 
     # Core genomics tools
     genomics_tools = [

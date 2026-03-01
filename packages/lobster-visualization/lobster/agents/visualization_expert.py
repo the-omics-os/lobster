@@ -128,6 +128,9 @@ def visualization_expert(
         except Exception as e:
             return f"Error checking visualization readiness: {str(e)}"
 
+    check_visualization_readiness.metadata = {"categories": ["UTILITY"], "provenance": False}
+    check_visualization_readiness.tags = ["UTILITY"]
+
     @tool
     def create_umap_plot(
         modality_name: str,
@@ -221,6 +224,7 @@ def visualization_expert(
                     "plot_id": plot_id,
                 },
                 description=f"Created UMAP plot (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ UMAP plot created successfully!
@@ -242,6 +246,9 @@ def visualization_expert(
         except Exception as e:
             logger.error(f"Error creating UMAP plot: {e}")
             return f"❌ Error creating UMAP plot: {str(e)}"
+
+    create_umap_plot.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_umap_plot.tags = ["ANALYZE"]
 
     @tool
     def create_qc_plots(
@@ -353,6 +360,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created QC plots (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ QC plots created successfully!
@@ -372,6 +380,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating QC plots: {e}")
             return f"❌ Error creating QC plots: {str(e)}"
+
+    create_qc_plots.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_qc_plots.tags = ["ANALYZE"]
 
     @tool
     def create_violin_plot(
@@ -457,6 +468,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created violin plot (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ Violin plot created successfully!
@@ -477,6 +489,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating violin plot: {e}")
             return f"❌ Error creating violin plot: {str(e)}"
+
+    create_violin_plot.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_violin_plot.tags = ["ANALYZE"]
 
     @tool
     def create_feature_plot(
@@ -560,6 +575,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created feature plot (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ Feature plot created successfully!
@@ -581,6 +597,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating feature plot: {e}")
             return f"❌ Error creating feature plot: {str(e)}"
+
+    create_feature_plot.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_feature_plot.tags = ["ANALYZE"]
 
     @tool
     def create_dot_plot(
@@ -676,6 +695,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created dot plot (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ Dot plot created successfully!
@@ -701,6 +721,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating dot plot: {e}")
             return f"❌ Error creating dot plot: {str(e)}"
+
+    create_dot_plot.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_dot_plot.tags = ["ANALYZE"]
 
     @tool
     def create_heatmap(
@@ -791,6 +814,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created heatmap (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ Heatmap created successfully!
@@ -812,6 +836,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating heatmap: {e}")
             return f"❌ Error creating heatmap: {str(e)}"
+
+    create_heatmap.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_heatmap.tags = ["ANALYZE"]
 
     @tool
     def create_elbow_plot(
@@ -872,6 +899,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created elbow plot (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ Elbow plot created successfully!
@@ -895,6 +923,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating elbow plot: {e}")
             return f"❌ Error creating elbow plot: {str(e)}"
+
+    create_elbow_plot.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_elbow_plot.tags = ["ANALYZE"]
 
     @tool
     def create_cluster_composition_plot(
@@ -980,6 +1011,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                     "plot_id": plot_id,
                 },
                 description=f"Created cluster composition plot (ID: {plot_id})",
+                ir=None,
             )
 
             return f"""✅ Cluster composition plot created successfully!
@@ -1000,6 +1032,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             logger.error(f"Error creating cluster composition plot: {e}")
             return f"❌ Error creating cluster composition plot: {str(e)}"
+
+    create_cluster_composition_plot.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    create_cluster_composition_plot.tags = ["ANALYZE"]
 
     @tool
     def get_visualization_history() -> str:
@@ -1024,6 +1059,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
         except Exception as e:
             return f"Error retrieving history: {str(e)}"
 
+    get_visualization_history.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_visualization_history.tags = ["UTILITY"]
+
     @tool
     def report_visualization_complete(
         requesting_agent: str, plot_id: str, status: str = "success", message: str = ""
@@ -1046,6 +1084,9 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
 
         except Exception as e:
             return f"Error reporting completion: {str(e)}"
+
+    report_visualization_complete.metadata = {"categories": ["UTILITY"], "provenance": False}
+    report_visualization_complete.tags = ["UTILITY"]
 
     # Combine base tools with any handoff tools
     base_tools = [
