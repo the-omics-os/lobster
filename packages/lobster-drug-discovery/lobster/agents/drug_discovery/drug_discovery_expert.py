@@ -119,12 +119,6 @@ def drug_discovery_expert(
         )
         llm = llm.with_config(callbacks=callbacks)
 
-    # Validate data manager type
-    if not isinstance(data_manager, DataManagerV2):
-        raise ValueError(
-            "DrugDiscoveryExpert requires DataManagerV2 for modular analysis"
-        )
-
     # Initialize stateless services
     chembl_service = ChEMBLService()
     opentargets_service = OpenTargetsService()

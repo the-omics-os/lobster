@@ -105,12 +105,6 @@ def pharmacogenomics_expert(
         )
         llm = llm.with_config(callbacks=callbacks)
 
-    # Validate data manager
-    if not isinstance(data_manager, DataManagerV2):
-        raise ValueError(
-            "pharmacogenomics_expert requires DataManagerV2 for modular analysis"
-        )
-
     # Initialize stateless services
     from lobster.services.drug_discovery.chembl_service import ChEMBLService
     from lobster.services.drug_discovery.opentargets_service import (
