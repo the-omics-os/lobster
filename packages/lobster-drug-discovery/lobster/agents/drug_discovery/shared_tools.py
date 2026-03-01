@@ -141,6 +141,9 @@ def create_shared_tools(
             logger.error(f"Error in search_drug_targets: {e}")
             return f"Error searching drug targets: {str(e)}"
 
+    search_drug_targets.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    search_drug_targets.tags = ["ANALYZE"]
+
     # -------------------------------------------------------------------------
     # TOOL 2: score_drug_target
     # -------------------------------------------------------------------------
@@ -241,6 +244,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in score_drug_target: {e}")
             return f"Error scoring target '{gene_symbol}': {str(e)}"
+
+    score_drug_target.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    score_drug_target.tags = ["ANALYZE"]
 
     # -------------------------------------------------------------------------
     # TOOL 3: rank_targets
@@ -363,6 +369,9 @@ def create_shared_tools(
             logger.error(f"Error in rank_targets: {e}")
             return f"Error ranking targets: {str(e)}"
 
+    rank_targets.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    rank_targets.tags = ["ANALYZE"]
+
     # -------------------------------------------------------------------------
     # TOOL 4: search_compounds
     # -------------------------------------------------------------------------
@@ -449,6 +458,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in search_compounds: {e}")
             return f"Error searching compounds: {str(e)}"
+
+    search_compounds.metadata = {"categories": ["UTILITY"], "provenance": False}
+    search_compounds.tags = ["UTILITY"]
 
     # -------------------------------------------------------------------------
     # TOOL 5: get_compound_bioactivity
@@ -542,6 +554,9 @@ def create_shared_tools(
             logger.error(f"Error in get_compound_bioactivity: {e}")
             return f"Error getting bioactivity for {chembl_id}: {str(e)}"
 
+    get_compound_bioactivity.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    get_compound_bioactivity.tags = ["ANALYZE"]
+
     # -------------------------------------------------------------------------
     # TOOL 6: get_target_compounds
     # -------------------------------------------------------------------------
@@ -625,6 +640,9 @@ def create_shared_tools(
             logger.error(f"Error in get_target_compounds: {e}")
             return f"Error finding compounds for {target_chembl_id}: {str(e)}"
 
+    get_target_compounds.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    get_target_compounds.tags = ["ANALYZE"]
+
     # -------------------------------------------------------------------------
     # TOOL 7: get_compound_properties
     # -------------------------------------------------------------------------
@@ -705,6 +723,9 @@ def create_shared_tools(
         except Exception as e:
             logger.error(f"Error in get_compound_properties: {e}")
             return f"Error getting compound properties: {str(e)}"
+
+    get_compound_properties.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    get_compound_properties.tags = ["ANALYZE"]
 
     # -------------------------------------------------------------------------
     # TOOL 8: get_drug_indications
@@ -788,6 +809,9 @@ def create_shared_tools(
             logger.error(f"Error in get_drug_indications: {e}")
             return f"Error getting indications for {chembl_id}: {str(e)}"
 
+    get_drug_indications.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    get_drug_indications.tags = ["ANNOTATE"]
+
     # -------------------------------------------------------------------------
     # TOOL 9: check_drug_discovery_status
     # -------------------------------------------------------------------------
@@ -868,6 +892,9 @@ def create_shared_tools(
             logger.error(f"Error in check_drug_discovery_status: {e}")
             return f"Error checking drug discovery status: {str(e)}"
 
+    check_drug_discovery_status.metadata = {"categories": ["UTILITY"], "provenance": False}
+    check_drug_discovery_status.tags = ["UTILITY"]
+
     # -------------------------------------------------------------------------
     # TOOL 10: list_available_databases
     # -------------------------------------------------------------------------
@@ -918,6 +945,9 @@ def create_shared_tools(
             )
 
         return response
+
+    list_available_databases.metadata = {"categories": ["UTILITY"], "provenance": False}
+    list_available_databases.tags = ["UTILITY"]
 
     # =========================================================================
     # Return all tools

@@ -44,6 +44,7 @@ Requirements for the AQUADIF refactor. Each maps to roadmap phases.
 - [x] **ROLL-07**: `visualization_expert` (11 tools), `metadata_assistant` (~8 tools), and `protein_structure_visualization_expert` (~4 tools) have metadata and pass contract tests
 - [x] **ROLL-08**: Dynamic DELEGATE tools in `graph.py` (`_create_lazy_delegation_tool`) have DELEGATE metadata
 - [ ] **ROLL-09**: All ~180 tools across 18 agents pass contract tests; multi-category usage is <40%
+- [ ] **ROLL-10**: `drug_discovery_expert` (10 shared tools), `cheminformatics_expert` (9 tools), `clinical_dev_expert` (8 tools), and `pharmacogenomics_expert` (8 tools) have metadata and pass contract tests
 
 ### Monitoring
 
@@ -123,6 +124,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | ROLL-07 | Phase 4 | Complete |
 | ROLL-08 | Phase 4 | Complete |
 | ROLL-09 | Phase 4 | Pending |
+| ROLL-10 | Phase 4 | Pending |
 | MON-01 | Phase 5 | Pending |
 | MON-02 | Phase 5 | Pending |
 | MON-03 | Phase 5 | Pending |

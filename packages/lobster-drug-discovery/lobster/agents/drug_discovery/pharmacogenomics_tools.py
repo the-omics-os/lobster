@@ -309,6 +309,9 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error predicting mutation effect: {e}"
 
+    predict_mutation_effect.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    predict_mutation_effect.tags = ["ANALYZE"]
+
     @tool
     def extract_protein_embedding(
         sequence: str, model: str = "esm2"
@@ -375,6 +378,9 @@ def create_pharmacogenomics_tools(
             )
         except Exception as e:
             return f"Error extracting protein embedding: {e}"
+
+    extract_protein_embedding.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    extract_protein_embedding.tags = ["ANALYZE"]
 
     @tool
     def compare_variant_sequences(wt_sequence: str, mutations: str) -> str:
@@ -491,6 +497,9 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error comparing variant sequences: {e}"
 
+    compare_variant_sequences.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compare_variant_sequences.tags = ["ANALYZE"]
+
     @tool
     def get_variant_drug_interactions(target_id: str) -> str:
         """Get drug-variant interaction evidence for a target from Open Targets pharmacogenomics data. Args: target_id - Ensembl gene ID (e.g. ENSG00000157764)."""
@@ -549,6 +558,9 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error getting variant-drug interactions: {e}"
 
+    get_variant_drug_interactions.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    get_variant_drug_interactions.tags = ["ANNOTATE"]
+
     @tool
     def get_pharmacogenomic_evidence(chembl_id: str) -> str:
         """Get pharmacogenomic bioactivity evidence for a compound from ChEMBL. Shows target-specific activity with organism and assay details. Args: chembl_id - ChEMBL molecule ID (e.g. CHEMBL25)."""
@@ -600,6 +612,9 @@ def create_pharmacogenomics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error getting pharmacogenomic evidence: {e}"
+
+    get_pharmacogenomic_evidence.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    get_pharmacogenomic_evidence.tags = ["ANNOTATE"]
 
     @tool
     def score_variant_impact(
@@ -719,6 +734,9 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error scoring variant impact: {e}"
 
+    score_variant_impact.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    score_variant_impact.tags = ["ANALYZE"]
+
     @tool
     def expression_drug_sensitivity(target_id: str) -> str:
         """Get expression and drug sensitivity correlation data for a target from Open Targets. Shows disease associations with expression-related evidence. Args: target_id - Ensembl gene ID (e.g. ENSG00000157764)."""
@@ -786,6 +804,9 @@ def create_pharmacogenomics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error getting expression-drug sensitivity: {e}"
+
+    expression_drug_sensitivity.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    expression_drug_sensitivity.tags = ["ANALYZE"]
 
     @tool
     def mutation_frequency_analysis(
@@ -905,6 +926,9 @@ def create_pharmacogenomics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error analyzing mutation frequency: {e}"
+
+    mutation_frequency_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    mutation_frequency_analysis.tags = ["ANALYZE"]
 
     return [
         predict_mutation_effect,

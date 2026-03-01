@@ -100,6 +100,9 @@ def create_clinical_tools(
         except Exception as e:
             return f"Error getting target-disease evidence: {e}"
 
+    get_target_disease_evidence.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    get_target_disease_evidence.tags = ["ANALYZE"]
+
     @tool
     def score_drug_synergy(
         effect_a: float,
@@ -179,6 +182,9 @@ def create_clinical_tools(
         except Exception as e:
             return f"Error scoring drug synergy: {e}"
 
+    score_drug_synergy.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    score_drug_synergy.tags = ["ANALYZE"]
+
     @tool
     def combination_matrix(
         modality_name: str,
@@ -250,6 +256,9 @@ def create_clinical_tools(
         except Exception as e:
             return f"Error scoring combination matrix: {e}"
 
+    combination_matrix.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    combination_matrix.tags = ["ANALYZE"]
+
     @tool
     def get_drug_safety_profile(target_id: str) -> str:
         """Get known adverse events and safety liabilities for a drug target from Open Targets. Args: target_id - Ensembl gene ID (e.g. ENSG00000157764)."""
@@ -297,6 +306,9 @@ def create_clinical_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error getting safety profile: {e}"
+
+    get_drug_safety_profile.metadata = {"categories": ["QUALITY"], "provenance": True}
+    get_drug_safety_profile.tags = ["QUALITY"]
 
     @tool
     def assess_clinical_tractability(target_id: str) -> str:
@@ -346,6 +358,9 @@ def create_clinical_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error assessing tractability: {e}"
+
+    assess_clinical_tractability.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    assess_clinical_tractability.tags = ["ANALYZE"]
 
     @tool
     def search_clinical_trials(chembl_id: str) -> str:
@@ -404,6 +419,9 @@ def create_clinical_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error searching clinical trials: {e}"
+
+    search_clinical_trials.metadata = {"categories": ["UTILITY"], "provenance": False}
+    search_clinical_trials.tags = ["UTILITY"]
 
     @tool
     def indication_mapping(chembl_id: str) -> str:
@@ -471,6 +489,9 @@ def create_clinical_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error mapping indications: {e}"
+
+    indication_mapping.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    indication_mapping.tags = ["ANNOTATE"]
 
     @tool
     def compare_drug_candidates(candidates: str) -> str:
@@ -570,6 +591,9 @@ def create_clinical_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error comparing drug candidates: {e}"
+
+    compare_drug_candidates.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compare_drug_candidates.tags = ["ANALYZE"]
 
     return [
         get_target_disease_evidence,

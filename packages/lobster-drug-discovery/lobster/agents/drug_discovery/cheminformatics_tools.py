@@ -77,6 +77,9 @@ def create_cheminformatics_tools(
         except Exception as e:
             return f"Error calculating descriptors: {e}"
 
+    calculate_descriptors.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    calculate_descriptors.tags = ["ANALYZE"]
+
     @tool
     def lipinski_check(smiles: str) -> str:
         """Check Lipinski Rule of Five compliance for oral bioavailability. A molecule passes if it violates at most 1 of 4 rules (MW<=500, LogP<=5, HBD<=5, HBA<=10). Args: smiles - SMILES representation of the molecule."""
@@ -111,6 +114,9 @@ def create_cheminformatics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error running Lipinski check: {e}"
+
+    lipinski_check.metadata = {"categories": ["QUALITY"], "provenance": True}
+    lipinski_check.tags = ["QUALITY"]
 
     @tool
     def fingerprint_similarity(
@@ -155,6 +161,9 @@ def create_cheminformatics_tools(
             )
         except Exception as e:
             return f"Error computing fingerprint similarity: {e}"
+
+    fingerprint_similarity.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    fingerprint_similarity.tags = ["ANALYZE"]
 
     @tool
     def predict_admet(smiles: str) -> str:
@@ -232,6 +241,9 @@ def create_cheminformatics_tools(
         except Exception as e:
             return f"Error predicting ADMET: {e}"
 
+    predict_admet.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    predict_admet.tags = ["ANALYZE"]
+
     @tool
     def prepare_molecule_3d(smiles: str, n_conformers: int = 1) -> str:
         """Generate 3D molecular conformation from SMILES using ETKDG embedding and MMFF94 force field optimization. Args: smiles - SMILES representation of the molecule, n_conformers - number of conformers to generate (best is selected, default 1)."""
@@ -264,6 +276,9 @@ def create_cheminformatics_tools(
             )
         except Exception as e:
             return f"Error preparing 3D structure: {e}"
+
+    prepare_molecule_3d.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    prepare_molecule_3d.tags = ["PREPROCESS"]
 
     @tool
     def cas_to_smiles(cas_numbers: str) -> str:
@@ -298,6 +313,9 @@ def create_cheminformatics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error converting CAS numbers: {e}"
+
+    cas_to_smiles.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    cas_to_smiles.tags = ["ANNOTATE"]
 
     @tool
     def search_similar_compounds(
@@ -344,6 +362,9 @@ def create_cheminformatics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error searching similar compounds: {e}"
+
+    search_similar_compounds.metadata = {"categories": ["UTILITY"], "provenance": False}
+    search_similar_compounds.tags = ["UTILITY"]
 
     @tool
     def identify_binding_site(
@@ -420,6 +441,9 @@ def create_cheminformatics_tools(
         except Exception as e:
             return f"Error identifying binding site: {e}"
 
+    identify_binding_site.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    identify_binding_site.tags = ["ANALYZE"]
+
     @tool
     def compare_molecules(smiles_a: str, smiles_b: str) -> str:
         """Side-by-side comparison of two molecules' molecular properties and Tanimoto similarity. Args: smiles_a - SMILES of first molecule, smiles_b - SMILES of second molecule."""
@@ -466,6 +490,9 @@ def create_cheminformatics_tools(
             return "\n".join(lines)
         except Exception as e:
             return f"Error comparing molecules: {e}"
+
+    compare_molecules.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compare_molecules.tags = ["ANALYZE"]
 
     return [
         calculate_descriptors,
