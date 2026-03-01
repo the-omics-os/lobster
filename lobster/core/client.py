@@ -133,6 +133,13 @@ class AgentClient(BaseClient):
         )
         self.callbacks.append(self.token_tracker)
 
+        # AQUADIF runtime monitoring (opt-in, fail-open)
+        # Constructed with empty tool_metadata_map; graph.py populates it after tool creation.
+        from lobster.core.aquadif_monitor import AquadifMonitor
+
+        self.aquadif_monitor = AquadifMonitor(tool_metadata_map={})
+        self.token_tracker.aquadif_monitor = self.aquadif_monitor
+
         if enable_langfuse and os.getenv("LANGFUSE_PUBLIC_KEY"):
             # Lazy import to avoid requiring langchain when langfuse is not used
             from langfuse.langchain import CallbackHandler as LangfuseCallback
@@ -163,6 +170,7 @@ class AgentClient(BaseClient):
             model_override=model_override,  # Pass model override to graph
             workspace_path=self.workspace_path,  # Use resolved workspace path (always set)
             config=agent_config,  # Phase 5: filter agents based on config.toml
+            aquadif_monitor=self.aquadif_monitor,  # AQUADIF monitoring wiring
         )
 
         # Conversation state

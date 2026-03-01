@@ -1759,6 +1759,16 @@ class DataManagerV2:
                 ir=ir,
             )
 
+            # AQUADIF monitoring: observe provenance call (fail-open)
+            if hasattr(self, "_aquadif_monitor") and self._aquadif_monitor is not None:
+                try:
+                    self._aquadif_monitor.record_provenance_call(
+                        tool_name=tool_name,
+                        has_real_ir=(ir is not None),
+                    )
+                except Exception:
+                    pass  # Fail-open: monitor exception never disrupts provenance tracking
+
             # Find and return the activity dict
             for activity in self.provenance.activities:
                 if activity["id"] == activity_id:

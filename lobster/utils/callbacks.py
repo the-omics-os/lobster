@@ -820,6 +820,10 @@ class TokenTrackingCallback(BaseCallbackHandler):
         # Cache valid agent names from registry (lazy-loaded)
         self._valid_agents: Optional[set] = None
 
+        # AQUADIF runtime monitoring (set externally by AgentClient if monitoring enabled)
+        # IMPORTANT: Only this callback should call the monitor — never Terminal/Streaming handlers
+        self.aquadif_monitor = None
+
     # =================================================================
     # AGENT NAME DETECTION (Core Logic)
     # =================================================================
@@ -1022,6 +1026,19 @@ class TokenTrackingCallback(BaseCallbackHandler):
                 self.current_agent = target
         elif tool_name == "transfer_back_to_supervisor":
             self.current_agent = "supervisor"
+
+        # AQUADIF monitoring — single injection point (fail-open)
+        # IMPORTANT: Only TokenTrackingCallback calls the monitor.
+        # Display handlers (Terminal, Textual, Streaming) must NOT call the monitor
+        # to prevent double-counting in cloud sessions.
+        if self.aquadif_monitor is not None:
+            try:
+                self.aquadif_monitor.record_tool_invocation(
+                    tool_name=tool_name,
+                    current_agent=self.current_agent or "unknown",
+                )
+            except Exception:
+                pass  # Fail-open: monitor exception never crashes tool invocation
 
     def on_tool_end(self, output: str, **kwargs) -> None:
         """Clear tool context when tool completes."""

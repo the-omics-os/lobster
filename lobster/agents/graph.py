@@ -294,6 +294,7 @@ def create_bioinformatics_graph(
     workspace_path: Optional[Path] = None,
     config: Optional["WorkspaceAgentConfig"] = None,
     enabled_agents: Optional[List[str]] = None,
+    aquadif_monitor=None,
 ) -> Tuple:
     """Create the bioinformatics multi-agent graph using langgraph_supervisor.
 
@@ -673,4 +674,45 @@ def create_bioinformatics_graph(
         f"Graph metadata: {len(available_agent_infos)} agents, "
         f"{len(supervisor_accessible_names)} supervisor-accessible"
     )
+
+    # ==========================================================================
+    # AQUADIF Monitoring: build tool_metadata_map and wire monitor
+    # ==========================================================================
+    if aquadif_monitor is not None:
+        tool_metadata_map: Dict[str, Any] = {}
+
+        # Collect from supervisor-accessible handoff tools (DELEGATE metadata)
+        for t in agent_tools:
+            if hasattr(t, "metadata"):
+                tool_metadata_map[t.name] = t.metadata
+
+        # Collect from shared workspace tools
+        for t in [
+            list_available_modalities,
+            get_content_from_workspace,
+            delete_from_workspace,
+            execute_custom_code,
+        ]:
+            if hasattr(t, "metadata"):
+                tool_metadata_map[t.name] = t.metadata
+
+        # Collect from all child agent tools (PregelNode traversal)
+        for agent_name, agent in created_agents.items():
+            try:
+                tools_node = agent.nodes.get("tools")
+                if tools_node and hasattr(tools_node, "runnable"):
+                    for t in tools_node.runnable.tools or []:
+                        if hasattr(t, "metadata"):
+                            tool_metadata_map[t.name] = t.metadata
+            except Exception:
+                pass  # Fail-open: skip agents whose tools can't be extracted
+
+        # Populate monitor's tool map (monitor already attached to callback by reference)
+        aquadif_monitor._tool_metadata_map = tool_metadata_map
+
+        # Wire monitor to DataManagerV2 (setattr avoids changing DM constructor)
+        data_manager._aquadif_monitor = aquadif_monitor
+
+        logger.debug(f"AQUADIF monitor: {len(tool_metadata_map)} tools mapped")
+
     return graph, metadata
