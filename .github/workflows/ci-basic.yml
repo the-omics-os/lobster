@@ -44,6 +44,14 @@ jobs:
         pip install ruff
         ruff check lobster/ || echo "Ruff linting completed with issues"
 
+    - name: Run contract tests
+      run: |
+        python -m pytest -m contract \
+          --no-cov \
+          --maxfail=5 \
+          --durations=10 \
+          -v
+
     - name: Run unit/config tests
       run: |
         python -m pytest tests/unit/config \
