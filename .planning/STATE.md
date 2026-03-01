@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Monitoring & Validation
 status: unknown
-last_updated: "2026-03-01T09:31:54.572Z"
+last_updated: "2026-03-01T09:39:09Z"
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,12 +23,12 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 5 of 6 (Monitoring Infrastructure) — IN PROGRESS
-Plan: 1 of 2 (complete)
-Status: Phase 5 Plan 01 complete. AquadifMonitor service class created with 55 unit tests (TDD). Ready for Plan 02 callback chain wiring.
-Last activity: 2026-03-01 — Phase 5 Plan 01 AquadifMonitor TDD implementation (fcae6e9)
+Phase: 5 of 6 (Monitoring Infrastructure) — COMPLETE
+Plan: 2 of 2 (complete)
+Status: Phase 5 COMPLETE. AquadifMonitor wired into runtime callback chain. All 4 integration files modified, 223 tests passing. Ready for Phase 6 (Validation Campaign).
+Last activity: 2026-03-01 — Phase 5 Plan 02 callback chain wiring (777af3d)
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100% (Phase 5)
 
 ## Phase 1 Completion Summary
 
@@ -157,6 +157,17 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - Commits: 68a88b1 (test/RED), fcae6e9 (feat/GREEN)
 - Requirements completed: MON-01, MON-05, MON-06
 
+**Plan 02: AquadifMonitor callback chain wiring — COMPLETE** (2026-03-01)
+- client.py: constructs AquadifMonitor(tool_metadata_map={}), sets on token_tracker, passes to create_bioinformatics_graph
+- callbacks.py: TokenTrackingCallback.aquadif_monitor=None attribute + fail-open record_tool_invocation in on_tool_start (single injection point — Terminal/Streaming/Simple handlers untouched)
+- graph.py: aquadif_monitor=None param; builds tool_metadata_map from agent_tools + shared tools + PregelNode child agent traversal; populates monitor map; sets data_manager._aquadif_monitor
+- data_manager_v2.py: fail-open record_provenance_call hook inside if self.provenance block; hasattr guard for zero-overhead opt-out
+- 223 tests passing, 0 regressions; single injection point verified; no circular imports
+- Commit: 777af3d
+- Requirements completed: MON-02, MON-03, MON-04
+
+**Phase 5: Monitoring Infrastructure — COMPLETE** (2026-03-01)
+
 ## Performance Metrics
 
 **Velocity:**
@@ -170,6 +181,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - Phase 4 plan 1 execution: 348s (2 tasks, fully automated)
 - Phase 4 plan 4 execution: ~900s (2 tasks, fully automated)
 - Phase 5 plan 1 execution: 154s (1 TDD feature, 2 commits: test + feat)
+- Phase 5 plan 2 execution: ~480s (2 tasks, fully automated, 1 commit)
 
 **By Phase:**
 
@@ -184,6 +196,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 | Phase 04-agent-rollout P03 | 365 | 2 tasks | 7 files |
 | Phase 04-agent-rollout P04 | 900 | 2 tasks | 6 files |
 | Phase 05-monitoring-infrastructure P01 | 154 | 1 tasks | 2 files |
+| Phase 05-monitoring-infrastructure P02 | 480 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -218,6 +231,10 @@ Recent decisions affecting Phase 2:
 - [Phase 05-monitoring-infrastructure]: AquadifMonitor uses zero lobster.* imports to prevent circular import when callbacks.py imports it
 - [Phase 05-monitoring-infrastructure]: threading.Lock only on compound mutations (deque append + dict update); single dict increments are GIL-safe in CPython
 - [Phase 05-monitoring-infrastructure]: real_ir status cannot be downgraded to hollow_ir (non-downgrade rule for provenance state machine)
+- [Phase 05-02]: Single injection point in TokenTrackingCallback — Terminal/Streaming/Simple handlers never call monitor to prevent double-counting in cloud sessions
+- [Phase 05-02]: Attribute-set pattern for both token_tracker and DataManagerV2 avoids constructor signature changes for existing callers
+- [Phase 05-02]: AquadifMonitor constructed with empty tool_metadata_map before graph creation; graph.py populates it after tool objects exist; shared reference ensures monitor sees complete map
+- [Phase 05-02]: PregelNode traversal via agent.nodes.get("tools").runnable.tools with fail-open exception handling for non-standard agent structures
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -264,13 +281,12 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-03-01 (Phase 5 Plan 01 execution)
-Stopped at: Completed 05-01-PLAN.md (commit: fcae6e9)
-Resume: Phase 5 Plan 01 complete. Proceed to Plan 02 (callback chain wiring — inject AquadifMonitor into TokenTrackingCallback, graph.py, DataManagerV2, and client.py)
+Last session: 2026-03-01 (Phase 5 Plan 02 execution)
+Stopped at: Completed 05-02-PLAN.md (commit: 777af3d)
+Resume: Phase 5 COMPLETE. Both plans done. Proceed to Phase 6 (Validation Campaign) or new milestone via `/gsd:new-milestone`.
 Key artifacts:
 - AquadifMonitor: `lobster/core/aquadif_monitor.py` (pure stdlib, 6 public methods, 55 tests)
 - Unit tests: `tests/unit/core/test_aquadif_monitor.py` (55 tests, all passing)
-- Import path for Plan 02: `from lobster.core.aquadif_monitor import AquadifMonitor, CodeExecEntry`
-- Key decision: zero lobster imports in aquadif_monitor.py (prevents circular import)
-- Key decision: real_ir cannot be downgraded to hollow_ir (non-downgrade rule)
-- Key pattern: monitor constructed with empty tool_metadata_map={}, populated by graph.py after tool creation
+- Wired files: client.py (construction), graph.py (tool_metadata_map), callbacks.py (single injection point), data_manager_v2.py (provenance hook)
+- Key decision: single injection point in TokenTrackingCallback.on_tool_start prevents double-counting
+- Key decision: attribute-set pattern preserves backward compatibility for all callers
