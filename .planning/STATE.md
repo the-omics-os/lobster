@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-last_updated: "2026-03-01T04:13:37Z"
+status: unknown
+last_updated: "2026-03-01T05:54:11.897Z"
 progress:
-  total_phases: 7
+  total_phases: 4
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
+  total_plans: 14
+  completed_plans: 8
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Every tool in Lobster AI declares what it does (category) and whether it must produce provenance — making the system introspectable, enforceable, and teachable to coding agents.
-**Current focus:** Phase 3 complete. Ready for Phase 4 rollout (156 tools across 8 packages)
+**Current focus:** Phase 4 rollout in progress (Plan 01 complete: 15 domain tools + 12 delegation tools tagged; 141 tools remain across 7 plans)
 
 ## Current Position
 
-Phase: 3 of 6 (Reference Implementation) — COMPLETE
-Plan: 2 of 2 (complete)
-Status: Phase 3 complete. Ready for Phase 4 rollout.
-Last activity: 2026-03-01 — Phase 3 Plan 02 migration guide (94fb3a9)
+Phase: 4 of 6 (Agent Rollout) — IN PROGRESS
+Plan: 1 of 7 (complete)
+Status: Phase 4 in progress. Plan 01 complete (metabolomics + structural-viz + graph.py).
+Last activity: 2026-03-01 — Phase 4 Plan 01 AQUADIF metadata rollout (7e5f539)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 57%
 
 ## Phase 1 Completion Summary
 
@@ -91,16 +91,30 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - MANIFEST updated for automatic skill distribution
 - Ready for Phase 4 executor to tag 156 remaining tools across 8 packages
 
+## Phase 4 Progress
+
+**Phase 4: Agent Rollout — IN PROGRESS** (started 2026-03-01)
+
+**Plan 01: AQUADIF metadata for metabolomics, structural-viz, and graph.py — COMPLETE** (2026-03-01)
+- 10 metabolomics tools tagged in shared_tools.py (QUALITY/FILTER/PREPROCESS/ANALYZE/ANNOTATE)
+- 5 structural-viz tools tagged in protein_structure_visualization_expert.py (IMPORT/ANNOTATE/ANALYZE)
+- 12 graph.py delegation tools tagged at factory creation time (DELEGATE)
+- Contract tests: 12/12 pass for metabolomics_expert and protein_structure_visualization_expert
+- Rule 3 fix: removed isinstance(DataManagerV2) guard blocking contract test mixin
+- Note: lobster-structural-viz is private (.gitignore) — metadata applied locally, test file not committed
+- Commits: 4d32cd8 (metadata), 7e5f539 (tests + fix)
+
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Phase 1 plan execution: 229s (2 automated plans)
 - Phase 1 checkpoint: multi-day eval cycle (exceeded scope — full cross-agent validation)
 - Phase 2 plan 1 execution: 181s (2 tasks, fully automated)
 - Phase 2 plan 2 execution: 332s (2 tasks, fully automated)
 - Phase 3 plan 1 execution: 541s (2 tasks, fully automated)
 - Phase 3 plan 2 execution: 118s (2 tasks, fully automated)
+- Phase 4 plan 1 execution: 348s (2 tasks, fully automated)
 
 **By Phase:**
 
@@ -109,6 +123,8 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 | 01 | 3/3 | ✓ Complete | 2026-02-28 |
 | 02 | 2/2 | ✓ Complete | 2026-02-28 |
 | 03 | 2/2 | ✓ Complete | 2026-03-01 |
+| 04 | 1/7 | ⟳ In Progress | 2026-03-01 |
+| Phase 04-agent-rollout P01 | 348 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -128,6 +144,9 @@ Recent decisions affecting Phase 2:
 - **Post-decorator inline pattern (03-01):** .metadata and .tags assigned after each @tool closure, using string literals (no enum import in tool files)
 - **Contract mixin enhanced for real factories (03-01):** LLM mock patching via dual-site patch + PregelNode traversal unblocks Phase 4 rollout testing
 - **Migration guide as skill reference (03-02):** Lives in lobster-dev/references/ for automatic distribution; includes anti-patterns section from Phase 1 eval findings
+- [Phase 04-agent-rollout]: graph.py delegation tagging at creation time: 2 lines before return in _create_lazy_delegation_tool ensures all 12 tools are tagged automatically
+- [Phase 04-agent-rollout]: DELEGATE provenance=False: delegation tools hand off to child agents that track their own provenance
+- [Phase 04-agent-rollout]: Private package .gitignore limitation: structural-viz tagged locally but not committable; contract tests pass locally
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -174,9 +193,9 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-03-01 (Phase 3 Plan 02 execution)
-Stopped at: Completed 03-02-PLAN.md (commits: 035a4e8, 94fb3a9)
-Resume: Phase 3 complete. Proceed to Phase 4 rollout (tag 156 remaining tools across 8 packages)
+Last session: 2026-03-01 (Phase 4 Plan 01 execution)
+Stopped at: Completed 04-01-PLAN.md (commits: 4d32cd8, 7e5f539)
+Resume: Phase 4 Plan 01 complete. Proceed to Plan 02 (lobster-research + lobster-visualization, Wave 1)
 Key artifacts:
 - Contract test mixin: `lobster/testing/contract_mixins.py` (14 test methods, fail-by-default, cached, LLM mock + PregelNode)
 - AST helper: `lobster/config/aquadif.py` → `has_provenance_call()` (standalone, reusable)
