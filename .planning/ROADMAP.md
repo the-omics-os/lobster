@@ -75,22 +75,28 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Tag all 22 tools with AQUADIF metadata and create contract tests (IMPL-01, IMPL-02, IMPL-03) — Complete (2026-03-01)
-- [ ] 03-02-PLAN.md — Create migration reference template for Phase 4 rollout (IMPL-04)
+- [x] 03-02-PLAN.md — Create migration reference template for Phase 4 rollout (IMPL-04) — Complete (2026-03-01)
 
 ### Phase 4: Agent Rollout
 **Goal**: Systematically tag all remaining 156 tools across 16 agents with AQUADIF metadata following the validated reference pattern
 **Depends on**: Phase 3
-**Requirements**: ROLL-01, ROLL-02, ROLL-03, ROLL-04, ROLL-05, ROLL-06, ROLL-07, ROLL-08, ROLL-09
+**Requirements**: ROLL-01, ROLL-02, ROLL-03, ROLL-04, ROLL-05, ROLL-06, ROLL-07, ROLL-08, ROLL-09, ROLL-10
 **Success Criteria** (what must be TRUE):
-  1. All 9 agent packages (genomics, proteomics, metabolomics, research, visualization, metadata, structural-viz, ml) have metadata on every tool
+  1. All 10 agent packages (genomics, proteomics, metabolomics, research, visualization, metadata, structural-viz, ml, drug-discovery) have metadata on every tool
   2. Dynamic delegation tools in `graph.py` (`_create_lazy_delegation_tool`) have DELEGATE category metadata
-  3. Contract tests pass for all 9 packages with zero failures
-  4. Multi-category usage is under 40% across all 180 tools (category minimalism validated)
+  3. Contract tests pass for all 10 packages with zero failures
+  4. Multi-category usage is under 40% across all ~222 tools (category minimalism validated)
   5. All existing tests across all packages still pass (no backward compatibility breaks)
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Tag structural-viz + metabolomics + graph.py delegation tools (ROLL-03, ROLL-08)
+- [ ] 04-02-PLAN.md — Tag metadata + transcriptomics children (ROLL-04, ROLL-07 partial)
+- [ ] 04-03-PLAN.md — Tag genomics + visualization (ROLL-01, ROLL-07 partial)
+- [ ] 04-04-PLAN.md — Tag ML package (ROLL-05)
+- [ ] 04-05-PLAN.md — Tag proteomics (ROLL-02)
+- [ ] 04-06-PLAN.md — Tag research (ROLL-06)
+- [ ] 04-07-PLAN.md — Tag drug-discovery + global ROLL-09 validation (ROLL-09, ROLL-10)
 
 ### Phase 5: Monitoring Infrastructure
 **Goal**: Enable runtime introspection of tool category usage and automated provenance compliance checking
@@ -156,8 +162,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. AQUADIF Skill Creation | 3/3 | ✓ Complete | 2026-02-28 |
 | 2. Contract Test Infrastructure | 2/2 | ✓ Complete | 2026-02-28 |
-| 3. Reference Implementation | 1/2 | In Progress | - |
-| 4. Agent Rollout | 0/? | Not started | - |
+| 3. Reference Implementation | 2/2 | ✓ Complete | 2026-03-01 |
+| 4. Agent Rollout | 0/7 | Planned | - |
 | 5. Monitoring Infrastructure | 0/? | Not started | - |
 | 6. Extension Case Study | 0/? | Not started | - |
 | 7. Documentation & Release | 0/? | Not started | - |
