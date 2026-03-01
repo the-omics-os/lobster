@@ -146,6 +146,7 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
                             "backend": "ensembl_xrefs",
                         },
                         description=f"Mapped {ensembl_id} via Ensembl xrefs → {len(xrefs)} results",
+                        ir=None,
                     )
                     return "\n".join(lines)
 
@@ -192,6 +193,7 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
                     "backend": "uniprot_idmapping",
                 },
                 description=f"Mapped {len(id_list)} IDs via UniProt → {len(results_list)} results",
+                ir=None,
             )
             return "\n".join(lines)
 

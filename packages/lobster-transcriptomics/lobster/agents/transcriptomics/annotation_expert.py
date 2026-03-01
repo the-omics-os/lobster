@@ -278,6 +278,9 @@ def annotation_expert(
             logger.error(f"Unexpected error in single-cell cell type annotation: {e}")
             return f"Unexpected error: {str(e)}"
 
+    annotate_cell_types_auto.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    annotate_cell_types_auto.tags = ["ANNOTATE"]
+
     @tool
     def manually_annotate_clusters_interactive(
         modality_name: str, cluster_key: str, save_result: bool = True
@@ -301,6 +304,9 @@ def annotation_expert(
             "DEPRECATED: This tool requires terminal access and is incompatible with "
             "cloud deployment. Use manually_annotate_clusters for direct cluster annotation."
         )
+
+    manually_annotate_clusters_interactive.metadata = {"categories": ["UTILITY"], "provenance": False}
+    manually_annotate_clusters_interactive.tags = ["UTILITY"]
 
     @tool
     def manually_annotate_clusters(
@@ -405,6 +411,9 @@ def annotation_expert(
             logger.error(f"Error in manual annotation: {e}")
             return f"Error applying manual annotations: {str(e)}"
 
+    manually_annotate_clusters.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    manually_annotate_clusters.tags = ["ANNOTATE"]
+
     @tool
     def collapse_clusters_to_celltype(
         modality_name: str,
@@ -507,6 +516,9 @@ def annotation_expert(
         except Exception as e:
             logger.error(f"Error collapsing clusters: {e}")
             return f"Error collapsing clusters: {str(e)}"
+
+    collapse_clusters_to_celltype.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    collapse_clusters_to_celltype.tags = ["ANNOTATE"]
 
     @tool
     def mark_clusters_as_debris(
@@ -632,6 +644,9 @@ def annotation_expert(
             logger.error(f"Error marking debris clusters: {e}")
             return f"Error marking clusters as debris: {str(e)}"
 
+    mark_clusters_as_debris.metadata = {"categories": ["QUALITY"], "provenance": True}
+    mark_clusters_as_debris.tags = ["QUALITY"]
+
     @tool
     def suggest_debris_clusters(
         modality_name: str,
@@ -729,6 +744,9 @@ def annotation_expert(
             logger.error(f"Error suggesting debris clusters: {e}")
             return f"Error suggesting debris clusters: {str(e)}"
 
+    suggest_debris_clusters.metadata = {"categories": ["QUALITY"], "provenance": True}
+    suggest_debris_clusters.tags = ["QUALITY"]
+
     @tool
     def review_annotation_assignments(
         modality_name: str,
@@ -799,6 +817,9 @@ def annotation_expert(
         except Exception as e:
             logger.error(f"Error reviewing annotations: {e}")
             return f"Error reviewing annotation assignments: {str(e)}"
+
+    review_annotation_assignments.metadata = {"categories": ["UTILITY"], "provenance": False}
+    review_annotation_assignments.tags = ["UTILITY"]
 
     @tool
     def apply_annotation_template(
@@ -928,6 +949,9 @@ def annotation_expert(
             logger.error(f"Error applying annotation template: {e}")
             return f"Error applying annotation template: {str(e)}"
 
+    apply_annotation_template.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    apply_annotation_template.tags = ["ANNOTATE"]
+
     @tool
     def export_annotation_mapping(
         modality_name: str,
@@ -1050,6 +1074,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
         except Exception as e:
             logger.error(f"Error exporting annotation mapping: {e}")
             return f"Error exporting annotation mapping: {str(e)}"
+
+    export_annotation_mapping.metadata = {"categories": ["UTILITY"], "provenance": False}
+    export_annotation_mapping.tags = ["UTILITY"]
 
     @tool
     def import_annotation_mapping(
@@ -1187,6 +1214,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
         except Exception as e:
             logger.error(f"Error importing annotation mapping: {e}")
             return f"Error importing annotation mapping: {str(e)}"
+
+    import_annotation_mapping.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    import_annotation_mapping.tags = ["ANNOTATE"]
 
     # -------------------------
     # GENE SET SCORING
@@ -1373,6 +1403,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
         except Exception as e:
             logger.error(f"Unexpected error in gene set scoring: {e}")
             return f"Unexpected error in gene set scoring: {str(e)}"
+
+    score_gene_set.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    score_gene_set.tags = ["ANALYZE"]
 
     # -------------------------
     # SEMANTIC ANNOTATION (optional - requires vector-search deps)
@@ -1687,6 +1720,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
         except Exception as e:
             logger.error(f"Unexpected error in semantic cell type annotation: {e}")
             return f"Unexpected error in semantic annotation: {str(e)}"
+
+    annotate_cell_types_semantic.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    annotate_cell_types_semantic.tags = ["ANNOTATE"]
 
     # -------------------------
     # TOOL REGISTRY

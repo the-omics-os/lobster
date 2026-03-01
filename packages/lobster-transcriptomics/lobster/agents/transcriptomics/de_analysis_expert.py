@@ -351,6 +351,9 @@ def de_analysis_expert(
             logger.error(f"Unexpected error in pseudobulk creation: {e}")
             return f"Unexpected error: {str(e)}"
 
+    create_pseudobulk_matrix.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    create_pseudobulk_matrix.tags = ["PREPROCESS"]
+
     @tool
     def prepare_de_design(
         modality_name: str,
@@ -483,6 +486,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in DE design preparation: {e}")
             return f"Unexpected error: {str(e)}"
+
+    prepare_de_design.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    prepare_de_design.tags = ["PREPROCESS"]
 
     @tool
     def run_differential_expression(
@@ -791,6 +797,9 @@ def de_analysis_expert(
             logger.error(f"Unexpected error in differential expression: {e}")
             return f"Unexpected error: {str(e)}"
 
+    run_differential_expression.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_differential_expression.tags = ["ANALYZE"]
+
     @tool
     def validate_experimental_design(
         modality_name: str,
@@ -879,6 +888,13 @@ def de_analysis_expert(
                     "**Conclusion**: Please address issues before running analysis\n"
                 )
 
+            data_manager.log_tool_usage(
+                tool_name="validate_experimental_design",
+                parameters={"modality_name": modality_name, "formula": formula},
+                description=f"Validated experimental design: {'valid' if validation_result['valid'] else 'invalid'}",
+                ir=None,
+            )
+
             return response
 
         except ModalityNotFoundError as e:
@@ -887,6 +903,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error validating experimental design: {e}")
             return f"Error: {str(e)}"
+
+    validate_experimental_design.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_experimental_design.tags = ["QUALITY"]
 
     @tool
     def suggest_de_formula(
@@ -1206,6 +1225,9 @@ def de_analysis_expert(
             logger.error(f"Error in suggest_de_formula: {e}")
             return f"Error analyzing design for formula suggestions: {str(e)}"
 
+    suggest_de_formula.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    suggest_de_formula.tags = ["ANALYZE"]
+
     @tool
     def construct_de_formula_interactive(
         pseudobulk_modality: str,
@@ -1230,6 +1252,9 @@ def de_analysis_expert(
             "construct_de_formula_interactive is deprecated. Use suggest_de_formula instead."
         )
         return "DEPRECATED: Use suggest_de_formula for formula construction and validation."
+
+    construct_de_formula_interactive.metadata = {"categories": ["UTILITY"], "provenance": False}
+    construct_de_formula_interactive.tags = ["UTILITY"]
 
     @tool
     def run_de_with_formula(
@@ -1426,6 +1451,7 @@ def de_analysis_expert(
                     "lfc_threshold": lfc_threshold,
                 },
                 description=f"Formula-based DE analysis: {analysis_stats['n_significant_genes']} significant genes",
+                ir=None,
             )
 
             return response
@@ -1433,6 +1459,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error in formula-based DE analysis: {e}")
             return f"Error running differential expression with formula: {str(e)}"
+
+    run_de_with_formula.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_de_with_formula.tags = ["ANALYZE"]
 
     # NOTE: run_differential_expression_analysis has been merged into run_differential_expression above.
     # The merged tool auto-detects pseudobulk vs direct bulk data.
@@ -1623,6 +1652,7 @@ def de_analysis_expert(
                     "compare_to_previous": compare_to_previous,
                 },
                 description=f"DE iteration {current_iter}: {current_stats['n_significant_genes']} significant genes",
+                ir=None,
             )
 
             return response
@@ -1630,6 +1660,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error in DE iteration: {e}")
             return f"Error in DE analysis iteration: {str(e)}"
+
+    iterate_de_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    iterate_de_analysis.tags = ["ANALYZE"]
 
     @tool
     def compare_de_iterations(
@@ -1838,6 +1871,7 @@ def de_analysis_expert(
                     "show_unique": show_unique,
                 },
                 description=f"Compared iterations: {len(overlap)} overlapping, {len(unique1)}+{len(unique2)} unique genes",
+                ir=None,
             )
 
             return response
@@ -1845,6 +1879,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error comparing DE iterations: {e}")
             return f"Error comparing DE iterations: {str(e)}"
+
+    compare_de_iterations.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compare_de_iterations.tags = ["ANALYZE"]
 
     @tool
     def run_pathway_enrichment(
@@ -1936,6 +1973,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in pathway enrichment: {e}")
             return f"Unexpected error: {str(e)}"
+
+    run_pathway_enrichment.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_pathway_enrichment.tags = ["ANALYZE"]
 
     # -------------------------
     # RESULT TOOLS
@@ -2132,6 +2172,9 @@ def de_analysis_expert(
             logger.error(f"Unexpected error filtering DE results: {e}")
             return f"Unexpected error: {str(e)}"
 
+    filter_de_results.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_de_results.tags = ["FILTER"]
+
     @tool
     def export_de_results(
         modality_name: str,
@@ -2306,6 +2349,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error exporting DE results: {e}")
             return f"Unexpected error: {str(e)}"
+
+    export_de_results.metadata = {"categories": ["UTILITY"], "provenance": False}
+    export_de_results.tags = ["UTILITY"]
 
     # -------------------------
     # BULK DE PIPELINE TOOLS
@@ -2503,6 +2549,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in bulk DE direct: {e}")
             return f"Unexpected error: {str(e)}"
+
+    run_bulk_de_direct.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_bulk_de_direct.tags = ["ANALYZE"]
 
     # -------------------------
     # GSEA TOOL
@@ -2710,6 +2759,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in GSEA: {e}")
             return f"Unexpected error in GSEA: {str(e)}"
+
+    run_gsea_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_gsea_analysis.tags = ["ANALYZE"]
 
     # -------------------------
     # PUBLICATION EXPORT TOOL
@@ -2954,6 +3006,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Unexpected error in extract_and_export_de_results: {e}")
             return f"Unexpected error: {str(e)}"
+
+    extract_and_export_de_results.metadata = {"categories": ["UTILITY"], "provenance": False}
+    extract_and_export_de_results.tags = ["UTILITY"]
 
     # -------------------------
     # TOOL REGISTRY

@@ -219,6 +219,11 @@ def metadata_assistant(
     # Cross-database ID mapping tool (UniProt + Ensembl)
     map_cross_database_ids = create_cross_database_id_mapping_tool(data_manager)
 
+    execute_custom_code.metadata = {"categories": ["CODE_EXEC"], "provenance": False}
+    execute_custom_code.tags = ["CODE_EXEC"]
+    map_cross_database_ids.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    map_cross_database_ids.tags = ["ANNOTATE"]
+
     logger.debug("metadata_assistant agent initialized")
 
     # Import pandas at factory function level for type hints in helper functions
@@ -359,6 +364,7 @@ def metadata_assistant(
                     "strategies": strategies,
                 },
                 description=f"Mapped {result.summary['exact_matches']} exact, {result.summary['fuzzy_matches']} fuzzy, {result.summary['unmapped']} unmapped ({result.summary['mapping_rate']:.1%} rate)",
+                ir=None,
             )
 
             # Format report
@@ -375,6 +381,9 @@ def metadata_assistant(
         except Exception as e:
             logger.error(f"Unexpected mapping error: {e}", exc_info=True)
             return f"❌ Unexpected error during mapping: {str(e)}"
+
+    map_samples_by_id.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    map_samples_by_id.tags = ["ANNOTATE"]
 
     # =========================================================================
     # Tool 2: Read Sample Metadata
@@ -562,6 +571,9 @@ def metadata_assistant(
             logger.error(f"Unexpected metadata read error: {e}", exc_info=True)
             return f"❌ Unexpected error reading metadata: {str(e)}"
 
+    read_sample_metadata.metadata = {"categories": ["UTILITY"], "provenance": False}
+    read_sample_metadata.tags = ["UTILITY"]
+
     # =========================================================================
     # Tool 3: Standardize Sample Metadata
     # =========================================================================
@@ -688,6 +700,9 @@ def metadata_assistant(
         except Exception as e:
             logger.error(f"Unexpected standardization error: {e}", exc_info=True)
             return f"❌ Unexpected error during standardization: {str(e)}"
+
+    standardize_sample_metadata.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    standardize_sample_metadata.tags = ["ANNOTATE"]
 
     # =========================================================================
     # Tool 4: Validate Dataset Content
@@ -911,6 +926,9 @@ def metadata_assistant(
         except Exception as e:
             logger.error(f"Unexpected validation error: {e}", exc_info=True)
             return f"❌ Unexpected error during validation: {str(e)}"
+
+    validate_dataset_content.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_dataset_content.tags = ["QUALITY"]
 
     # =========================================================================
     # Helper: Disease Extraction from Diverse SRA Fields
@@ -1401,6 +1419,9 @@ Which approach would you prefer?"""
             logger.error(f"Unexpected filtering error: {e}", exc_info=True)
             return f"❌ Unexpected error during filtering: {str(e)}"
 
+    filter_samples_by.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_samples_by.tags = ["FILTER"]
+
     # =========================================================================
     # Phase 4c NEW TOOLS: Publication Queue Processing (3 tools)
     # =========================================================================
@@ -1419,6 +1440,11 @@ Which approach would you prefer?"""
     # Create shared workspace tools
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
     write_to_workspace = create_write_to_workspace_tool(data_manager)
+
+    get_content_from_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_content_from_workspace.tags = ["UTILITY"]
+    write_to_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
+    write_to_workspace.tags = ["UTILITY"]
 
     @tool
     def process_metadata_entry(
@@ -1650,6 +1676,9 @@ Which approach would you prefer?"""
         except Exception as e:
             logger.error(f"Error processing entry {entry_id}: {e}")
             return f"❌ Error processing entry: {str(e)}"
+
+    process_metadata_entry.metadata = {"categories": ["UTILITY"], "provenance": False}
+    process_metadata_entry.tags = ["UTILITY"]
 
     def _process_single_entry_for_queue(
         entry, filter_criteria, min_disease_coverage, strict_disease_validation
@@ -2563,6 +2592,9 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
             logger.error(f"Error processing queue: {e}")
             return f"❌ Error processing queue: {str(e)}"
 
+    process_metadata_queue.metadata = {"categories": ["UTILITY"], "provenance": False}
+    process_metadata_queue.tags = ["UTILITY"]
+
     @tool
     def update_metadata_status(
         entry_id: str,
@@ -2601,6 +2633,9 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         except Exception as e:
             logger.error(f"Error updating status: {e}")
             return f"❌ Error updating status: {str(e)}"
+
+    update_metadata_status.metadata = {"categories": ["UTILITY"], "provenance": False}
+    update_metadata_status.tags = ["UTILITY"]
 
     @tool
     def enrich_samples_with_disease(
@@ -2795,7 +2830,21 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
                     "  3. Skip disease filtering (omit disease terms from filter_criteria)"
                 )
 
+        data_manager.log_tool_usage(
+            tool_name="enrich_samples_with_disease",
+            parameters={
+                "workspace_key": workspace_key,
+                "enrichment_mode": enrichment_mode,
+                "dry_run": dry_run,
+            },
+            description=f"Disease enrichment: {total_enriched} samples enriched, {final_coverage:.1f}% coverage",
+            ir=None,
+        )
+
         return "\n".join(report)
+
+    enrich_samples_with_disease.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    enrich_samples_with_disease.tags = ["ANNOTATE"]
 
     # Helper functions for queue processing
     def _extract_samples_from_workspace(
@@ -3268,6 +3317,9 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         except Exception as e:
             return f"Error standardizing tissue term '{term}': {e}"
 
+    standardize_tissue_term.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    standardize_tissue_term.tags = ["ANNOTATE"]
+
     # =========================================================================
     # Tool 12: Semantic Disease Term Standardization (optional, requires ontology service)
     # =========================================================================
@@ -3349,6 +3401,9 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
 
         except Exception as e:
             return f"Error standardizing disease term '{term}': {e}"
+
+    standardize_disease_term.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    standardize_disease_term.tags = ["ANNOTATE"]
 
     # =========================================================================
     # Tool Registry
