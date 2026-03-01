@@ -170,6 +170,10 @@ class ComponentRegistry:
         self._load_entry_point_group("lobster.queue_preparers", self._queue_preparers)
 
         self._loaded = True
+
+        # Soft AQUADIF enforcement: warn about agents missing contract fields
+        self._check_agent_contract_compliance()
+
         logger.debug(
             f"Component discovery complete. "
             f"Services: {len(self._services)}, "
@@ -180,6 +184,27 @@ class ComponentRegistry:
             f"Download services: {len(self._download_services)}, "
             f"Queue preparers: {len(self._queue_preparers)}"
         )
+
+    def _check_agent_contract_compliance(self) -> None:
+        """Soft enforcement: warn about agents missing plugin contract fields.
+
+        Checks loaded AGENT_CONFIG objects for required fields (tier_requirement,
+        package_name). This is a detection mechanism, not a hard gate — existing
+        pre-AQUADIF agents won't be blocked.
+
+        Tool-level AQUADIF metadata is enforced by contract test mixin at test
+        time, not at discovery time (tools require factory instantiation).
+        """
+        for name, config in self._agents.items():
+            if not hasattr(config, "tier_requirement"):
+                logger.warning(
+                    f"Agent '{name}' missing tier_requirement field. "
+                    f"Add tier_requirement to AGENT_CONFIG for plugin contract compliance."
+                )
+            if not hasattr(config, "name") or not config.name:
+                logger.warning(
+                    f"Agent '{name}' has empty or missing name in AGENT_CONFIG."
+                )
 
     def _load_entry_point_group(self, group: str, target_dict: Dict[str, Any]) -> None:
         """Load all entry points from a specific group into target dict.
