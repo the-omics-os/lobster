@@ -1,118 +1,91 @@
 # Roadmap: AQUADIF Refactor
 
-## Overview
+## Milestones
 
-This roadmap transforms Lobster AI's ~180 tool bindings across 18 agents by adding a 10-category metadata taxonomy (AQUADIF) using native LangChain `BaseTool.metadata` and `BaseTool.tags` fields. The journey starts with skill creation to validate teachability BEFORE touching any code, then builds contract tests to define correctness, applies the pattern to a reference implementation (transcriptomics expert), rolls out systematically to all remaining agents, adds runtime monitoring infrastructure, validates via an extension case study where a coding agent builds an epigenomics package following the AQUADIF skill, and closes with comprehensive documentation updates across all repos and skill references.
+- ✅ **v1.0 AQUADIF Refactor** — Phases 1-4 (shipped 2026-03-01)
+- 📋 **v1.1 Monitoring & Validation** — Phases 5-7 (planned)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>✅ v1.0 AQUADIF Refactor (Phases 1-4) — SHIPPED 2026-03-01</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+- [x] Phase 1: AQUADIF Skill Creation (3/3 plans) — completed 2026-02-28
+- [x] Phase 2: Contract Test Infrastructure (2/2 plans) — completed 2026-02-28
+- [x] Phase 3: Reference Implementation (2/2 plans) — completed 2026-03-01
+- [x] Phase 4: Agent Rollout (7/7 plans) — completed 2026-03-01
 
-- [x] **Phase 1: AQUADIF Skill Creation** - Create and validate lobster-dev skill for tool categorization (2026-02-28)
-- [x] **Phase 2: Contract Test Infrastructure** - Implement automated validation of taxonomy compliance (2026-02-28)
-- [x] **Phase 3: Reference Implementation** - Apply pattern to transcriptomics expert (22 tools) (2026-03-01)
-- [x] **Phase 4: Agent Rollout** - Tag all remaining 156 tools across 16 agents with metadata (2026-02-28)
-- [ ] **Phase 5: Monitoring Infrastructure** - Build runtime callback handler for category tracking and provenance enforcement
-- [ ] **Phase 6: Extension Case Study** - Validate AI self-extension via epigenomics package creation
-- [ ] **Phase 7: Documentation & Release** - Update all docs, architecture files, and skill references to reflect AQUADIF as shipped
+Full details: `.planning/milestones/v1.0-ROADMAP.md`
 
-## Phase Details
+</details>
 
-### Phase 1: AQUADIF Skill Creation
-**Goal**: Validate that the AQUADIF categorization pattern is teachable to coding agents before investing in implementation
-**Depends on**: Nothing (first phase)
-**Requirements**: SKIL-01, SKIL-02, SKIL-03, SKIL-04, SKIL-05
-**Success Criteria** (what must be TRUE):
-  1. Contract reference document exists at `skills/lobster-dev/references/aquadif-contract.md` with all 10 category definitions, metadata assignment pattern, contract test requirements, and a complete example
-  2. Existing skill files (`creating-agents.md`, `planning-workflow.md`, `SKILL.md`) reference AQUADIF as the tool organization framework
-  3. A coding agent (Claude Code) can design a hypothetical epigenomics tool set with correct AQUADIF categories without additional prompting beyond the skill
-  4. Skill follows Anthropic Skills Guide format (progressive disclosure, under 5K words in SKILL.md body)
-  5. MANIFEST file includes the new reference file and skill installation works end-to-end
-**Plans**: 3 plans
+### 📋 v1.1 Monitoring & Validation (Planned)
 
-Plans:
-- [x] 01-01: Create AQUADIF contract reference document and update MANIFEST
-- [x] 01-02: Integrate AQUADIF into existing skill files (creating-agents, planning-workflow, SKILL.md, architecture, creating-services)
-- [x] 01-03: Teachability validation — epigenomics dry run (checkpoint) + cross-agent eval (Claude B+, Gemini C, Codex B-)
-
-### Phase 2: Contract Test Infrastructure
-**Goal**: Define and implement automated validation that enforces taxonomy compliance at test time
-**Depends on**: Phase 1
-**Requirements**: TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, TEST-06, TEST-07, TEST-08
-**Success Criteria** (what must be TRUE):
-  1. `AquadifCategory` enum exists in `lobster/config/aquadif.py` with all 10 categories and `PROVENANCE_REQUIRED` set defining the 7 categories that require provenance
-  2. Contract test mixin in `lobster/testing/contract_mixins.py` has 8 test methods covering metadata presence, category validity, category cap, provenance compliance, minimum viable parent, metadata uniqueness, and AST-based provenance call validation
-  3. Contract tests can be run against any agent's tool factory and produce clear pass/fail results
-  4. Tests catch all known pitfalls (closure scoping drift, category inflation, missing provenance calls)
-  5. Documentation explains how to run contract tests during agent development
-**Plans**: 2 plans
-
-**Phase 1 Eval Findings (must be addressed):**
-- **Metadata-runtime consistency test (critical):** AST-based validation that provenance-flagged tools actually call `log_tool_usage(ir=ir)` AND that non-provenance tools do NOT log provenance. Phase 1 eval found agents copy boilerplate mechanically without adjusting based on metadata flag.
-- **`try/except ImportError` detection:** 3/3 eval trials used prohibited pattern in `__init__.py`. Contract test should flag this.
-- **`.tags` auto-population helper:** Consider adding `aquadif_metadata()` helper that sets both `.metadata` and `.tags` from a single call to eliminate manual mirroring (brutalist: engineering bug, not docs fix).
-- **Test template for skill docs:** All 3 eval agents independently invented AQUADIF validation tests. Include a copy-paste test template in the contract to standardize.
-
-Plans:
-- [x] 02-01: Create AquadifCategory enum and add 5 basic contract test methods to mixin (TEST-01, TEST-02, TEST-03, TEST-04, TEST-05, TEST-07) — Complete (2026-02-28)
-- [x] 02-02: Add parent agent and AST provenance validation tests, smoke test, pytest marker (TEST-06, TEST-08) — Complete (2026-02-28)
-
-### Phase 3: Reference Implementation
-**Goal**: Apply the AQUADIF pattern to transcriptomics expert to validate it works on a complete agent before rolling out to 156 additional tools
-**Depends on**: Phase 2
-**Requirements**: IMPL-01, IMPL-02, IMPL-03, IMPL-04
-**Success Criteria** (what must be TRUE):
-  1. All 22 tools (15 in transcriptomics_expert.py + 7 in shared_tools.py) have `.metadata` dict with `categories` and `provenance` keys and `.tags` list set correctly
-  2. Shared tools in the transcriptomics package have correct metadata set at the source (shared_tools.py)
-  3. All existing transcriptomics tests still pass (backward compatibility validated)
-  4. Contract tests pass for the transcriptomics package
-  5. Reference implementation pattern is documented as a template for Phase 4 rollout
-**Plans**: 2 plans
-
-Plans:
-- [x] 03-01-PLAN.md — Tag all 22 tools with AQUADIF metadata and create contract tests (IMPL-01, IMPL-02, IMPL-03) — Complete (2026-03-01)
-- [x] 03-02-PLAN.md — Create migration reference template for Phase 4 rollout (IMPL-04) — Complete (2026-03-01)
-
-### Phase 4: Agent Rollout
-**Goal**: Systematically tag all remaining 156 tools across 16 agents with AQUADIF metadata following the validated reference pattern
-**Depends on**: Phase 3
-**Requirements**: ROLL-01, ROLL-02, ROLL-03, ROLL-04, ROLL-05, ROLL-06, ROLL-07, ROLL-08, ROLL-09, ROLL-10
-**Success Criteria** (what must be TRUE):
-  1. All 10 agent packages (genomics, proteomics, metabolomics, research, visualization, metadata, structural-viz, ml, drug-discovery) have metadata on every tool
-  2. Dynamic delegation tools in `graph.py` (`_create_lazy_delegation_tool`) have DELEGATE category metadata
-  3. Contract tests pass for all 10 packages with zero failures
-  4. Multi-category usage is under 40% across all ~222 tools (category minimalism validated)
-  5. All existing tests across all packages still pass (no backward compatibility breaks)
-**Plans**: 7 plans
-
-Plans:
-- [x] 04-01-PLAN.md — Tag structural-viz + metabolomics + graph.py delegation tools (ROLL-03, ROLL-08) — Complete (2026-03-01)
-- [x] 04-02-PLAN.md — Tag metadata + transcriptomics children (ROLL-04, ROLL-07 partial) — Complete (2026-03-01)
-- [x] 04-03-PLAN.md — Tag genomics + visualization (ROLL-01, ROLL-07 partial) — Complete (2026-03-01)
-- [x] 04-04-PLAN.md — Tag ML package (ROLL-05) — Complete (2026-03-01)
-- [ ] 04-05-PLAN.md — Tag proteomics (ROLL-02) — Deferred: not in wave 3 scope
-- [ ] 04-06-PLAN.md — Tag research (ROLL-06) — Deferred: not in wave 3 scope
-- [x] 04-07-PLAN.md — Tag drug-discovery + global ROLL-09 validation (ROLL-09, ROLL-10) — Complete (2026-02-28)
+- [ ] **Phase 5: Monitoring Infrastructure** — Shared AquadifMonitor service injected into existing callback chain (not a new handler)
+- [ ] **Phase 6: Extension Case Study** — Validate AI self-extension via epigenomics package creation (with control group + cross-domain)
+- [ ] **Phase 7: Documentation & Release** — Update all docs, architecture files, and skill references to reflect AQUADIF as shipped
 
 ### Phase 5: Monitoring Infrastructure
-**Goal**: Enable runtime introspection of tool category usage and automated provenance compliance checking
-**Depends on**: Phase 4
+**Goal**: Enable runtime introspection of tool category usage and provenance compliance via a shared monitor service injected into the existing callback chain
+**Depends on**: v1.0 (Phase 4)
 **Requirements**: MON-01, MON-02, MON-03, MON-04, MON-05, MON-06
-**Success Criteria** (what must be TRUE):
-  1. `AquadifCallbackHandler` class exists in `lobster/core/aquadif_callback.py` and logs category with every tool invocation
-  2. Callback handler tracks category distribution per session and exposes it via structured events
-  3. CODE_EXEC usage is flagged with details (which tool, when, what code executed)
-  4. Provenance compliance is checked at runtime (callback detects if provenance-required tools completed without calling `log_tool_usage`)
-  5. Callback handler integrates cleanly with existing callback infrastructure in `graph.py` without breaking existing monitoring
-  6. Structured events are consumable by Omics-OS Cloud for cross-session analytics
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md — AquadifMonitor service class with TDD (thread-safe, fail-open, bounded data structures)
+- [ ] 05-02-PLAN.md — Wire monitor into client/graph/callback/DataManagerV2 chain
+
+**Architecture** (revised after Codex + Gemini brutalist review 2026-03-01):
+
+Shared monitor service — NOT a new callback handler. `AquadifMonitor` is a thread-safe stateful service called from the always-on `TokenTrackingCallback.on_tool_start`. No additional handler in the callback chain.
+
+```
+AquadifMonitor (lobster/core/aquadif_monitor.py)
+├── __init__(tool_metadata_map: dict)          # tool_name → {categories, provenance} from graph.py
+├── record_tool_invocation(tool_name)          # Called ONLY from TokenTrackingCallback
+├── record_provenance_call(tool_name, has_real_ir: bool)  # Called from DataManagerV2.log_tool_usage
+├── get_category_distribution() → dict         # {"ANALYZE": 42, "IMPORT": 12, ...}
+├── get_provenance_status() → dict             # {real_ir: [...], hollow_ir: [...], missing: [...]}
+├── get_code_exec_log() → deque(maxlen=100)    # Bounded circular buffer
+├── get_session_summary() → dict               # Structured event for cloud
+└── All mutable state protected by threading.Lock
+```
+
+**Key design decisions (from brutalist review):**
+
+1. **Path B only for metadata access** — build `tool_name → metadata` lookup dict at graph construction time in `graph.py`. Do NOT rely on LangChain passing `.tags`/`.metadata` through `on_tool_start` kwargs — undocumented, fragile, breaks on LangChain upgrades.
+
+2. **Single injection point** — only `TokenTrackingCallback` (always-on) calls the monitor. Display handlers (Terminal, Textual, Streaming) do NOT call it. Eliminates double-counting in cloud sessions where both TokenTracker and StreamingCallback are active.
+
+3. **Provenance via DataManagerV2 instrumentation** — do NOT parse tool output strings. Instead, add a hook in `DataManagerV2.log_tool_usage()` that calls `monitor.record_provenance_call(tool_name, has_real_ir=(ir is not None))`. This observes the actual call, not a guess.
+
+4. **ir=None whitelist** — 20+ tools currently pass `ir=None` (hollow provenance from v1.0 bridge pattern). Monitor tracks these separately as `hollow_ir` status, not as violations. Prevents dashboard noise on day 1. Optionally report as warnings, not errors.
+
+5. **Fail-open** — all monitor calls wrapped in try/except inside callback methods. Monitor exception never crashes a tool invocation or LLM call. `aquadif_monitor=None` disables all monitoring with zero overhead.
+
+6. **Bounded data structures** — `code_exec_log` uses `collections.deque(maxlen=100)`. Category counters are simple dicts (thread-safe single-op under GIL). No unbounded lists. Session summary is O(1) to compute from counters.
+
+7. **Thread safety** — `threading.Lock` around all compound state mutations. Simple counter increments are GIL-safe. Cloud `StreamingCallbackHandler` reads summary via `get_session_summary()` which acquires lock for consistent snapshot.
+
+**Success Criteria** (what must be TRUE):
+  1. `AquadifMonitor` class exists in `lobster/core/aquadif_monitor.py` with thread-safe state, bounded data structures, and fail-open error handling
+  2. `graph.py` builds `tool_name → {categories, provenance}` lookup dict at graph construction time and passes it to monitor
+  3. `TokenTrackingCallback.on_tool_start` calls `monitor.record_tool_invocation()` (single injection point, no other handlers call monitor)
+  4. `DataManagerV2.log_tool_usage` calls `monitor.record_provenance_call(tool_name, has_real_ir)` — provenance detection by observation, not output parsing
+  5. CODE_EXEC invocations logged to bounded `deque` with tool name, timestamp, agent attribution
+  6. Provenance status distinguishes `real_ir` / `hollow_ir` / `missing` — ir=None tools tracked as hollow, not violations
+  7. `get_session_summary()` returns structured dict consumable by Omics-OS Cloud SSE enrichment
+  8. Monitor is opt-in: `aquadif_monitor=None` disables all monitoring; monitor exceptions never crash tool invocations
+  9. All existing tests pass — zero behavioral changes to tool execution
+
+**Brutalist review findings addressed:**
+- ~~Provenance via output parsing~~ → DataManagerV2 instrumentation (Codex #1, Gemini #3)
+- ~~Rely on LangChain kwargs~~ → Path B lookup dict (Codex #4, Gemini #2)
+- ~~Multiple handlers call monitor~~ → Single injection via TokenTrackingCallback (Codex #7)
+- ~~Unbounded memory~~ → Bounded deque + simple counters (Codex #9, Gemini #1)
+- ~~ir=None floods dashboard~~ → Whitelist as hollow_ir status (Codex #2, Gemini #4)
+- ~~Monitor crash kills requests~~ → Fail-open try/except (Codex #6)
+- ~~Thread safety unaddressed~~ → threading.Lock on compound mutations (Codex #3, Gemini #1)
 
 ### Phase 6: Extension Case Study
 **Goal**: Provide concrete evidence that a coding agent can build a new domain package (epigenomics) following the AQUADIF skill with minimal correction cycles
@@ -127,43 +100,33 @@ Plans:
   6. Metrics are collected and documented: total time from skill invocation to passing tests, LOC generated vs edited, correction cycles, contract test first-attempt pass rate
 **Plans**: TBD
 
-**Phase 1 Eval Findings (must be addressed):**
-- **Control group required:** Run baseline trial WITHOUT `aquadif-contract.md` to measure actual teaching effect vs pretraining knowledge (brutalist critique)
-- **Cross-domain trial required:** Test non-linear pipeline domain (e.g., spatial transcriptomics) to validate generalization beyond linear workflows (brutalist critique)
-- **Metadata-runtime consistency:** Validate that provenance flag in `.metadata` matches actual `log_tool_usage` calls in generated code (eval found disconnect)
-- **Evidence template:** Follow structured schema in `publications/papers/lobster-system/research/evidence/05-extension-easy-epigenomics.md`
-- **Phase 1 early data:** 3 Docker trials already collected (naive/professional/publication prompts, 13-16 tools each, 7/10 categories, ~7-8m). Raw data in `.planning/phases/01-aquadif-skill-creation/eval/`
-
-Plans:
-- [ ] 06-01: TBD
+**Prior eval data:** 4 iterations complete (smoke-01, iter-02, iter-03, iter-04) — see `skills/CLAUDE.md`
+**Required:** Control group (WITHOUT condition), cross-domain trial (non-linear domain)
 
 ### Phase 7: Documentation & Release
-**Goal**: Update all documentation, architecture files, and skill references to reflect AQUADIF as a shipped, validated system — ensuring new contributors, coding agents, and users see the current state
+**Goal**: Update all documentation, architecture files, and skill references to reflect AQUADIF as a shipped, validated system
 **Depends on**: Phase 6
 **Requirements**: DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06
 **Success Criteria** (what must be TRUE):
-  1. Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections (agent table includes categories, service pattern shows metadata assignment)
-  2. `.github/CLAUDE.md` (contributor guidelines) documents AQUADIF metadata as a requirement for new tools and PRs
-  3. `docs-site/` has an AQUADIF page (or section) explaining the taxonomy for end users and contributors
-  4. `lobster-dev` skill references are current: `creating-agents.md`, `creating-services.md`, `architecture.md`, `code-layout.md` all reflect scaffold workflow + AQUADIF validation
-  5. `lobster-use` skill references mention AQUADIF categories where relevant (e.g., tool capabilities per agent)
-  6. `master_mermaid.md` architecture diagram includes AQUADIF metadata flow and contract test infrastructure
+  1. Root `CLAUDE.md` and `lobster/CLAUDE.md` reflect AQUADIF taxonomy in architecture sections
+  2. `.github/CLAUDE.md` documents AQUADIF metadata as a requirement for new tools and PRs
+  3. `docs-site/` has an AQUADIF page explaining the taxonomy
+  4. `lobster-dev` skill references are current with scaffold workflow + AQUADIF validation
+  5. `lobster-use` skill references mention AQUADIF categories where relevant
+  6. `master_mermaid.md` includes AQUADIF metadata flow and contract test infrastructure
 **Plans**: TBD
-
-Plans:
-- [ ] 07-01: TBD
 
 ## Progress
 
 **Execution Order:**
 Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. AQUADIF Skill Creation | 3/3 | ✓ Complete | 2026-02-28 |
-| 2. Contract Test Infrastructure | 2/2 | ✓ Complete | 2026-02-28 |
-| 3. Reference Implementation | 2/2 | ✓ Complete | 2026-03-01 |
-| 4. Agent Rollout | 7/7 | Complete   | 2026-03-01 |
-| 5. Monitoring Infrastructure | 0/? | Not started | - |
-| 6. Extension Case Study | 0/? | Not started | - |
-| 7. Documentation & Release | 0/? | Not started | - |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. AQUADIF Skill Creation | v1.0 | 3/3 | ✓ Complete | 2026-02-28 |
+| 2. Contract Test Infrastructure | v1.0 | 2/2 | ✓ Complete | 2026-02-28 |
+| 3. Reference Implementation | v1.0 | 2/2 | ✓ Complete | 2026-03-01 |
+| 4. Agent Rollout | v1.0 | 7/7 | ✓ Complete | 2026-03-01 |
+| 5. Monitoring Infrastructure | v1.1 | 0/2 | Not started | - |
+| 6. Extension Case Study | v1.1 | 0/? | Not started | - |
+| 7. Documentation & Release | v1.1 | 0/? | Not started | - |
