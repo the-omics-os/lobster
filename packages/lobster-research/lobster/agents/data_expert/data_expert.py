@@ -125,6 +125,8 @@ def data_expert(
         agent_name="data_expert",
         post_processor=None,  # data_expert has no special post-processing
     )
+    execute_custom_code.metadata = {"categories": ["CODE_EXEC"], "provenance": False}
+    execute_custom_code.tags = ["CODE_EXEC"]
 
     # Try to initialize SDK delegation service (may fail if SDK not available)
     # SDKDelegationService may be None in open-core distribution
@@ -368,6 +370,12 @@ Concatenation: {concatenation_strategy}
 You can now analyze this dataset using the appropriate analysis tools.
 """
 
+                data_manager.log_tool_usage(
+                    tool_name="execute_download_from_queue",
+                    parameters={"entry_id": entry_id, "dataset_id": entry.dataset_id},
+                    description=f"Downloaded {entry.dataset_id} → {modality_name}",
+                    ir=None,
+                )
                 return response
 
             except Exception as download_error:
@@ -404,8 +412,13 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error in execute_download_from_queue: {e}")
             return f"Error processing queue entry '{entry_id}': {str(e)}"
 
+    execute_download_from_queue.metadata = {"categories": ["IMPORT"], "provenance": True}
+    execute_download_from_queue.tags = ["IMPORT"]
+
     # Use shared tool from workspace_tool.py (shared with supervisor)
     list_available_modalities = create_list_modalities_tool(data_manager)
+    list_available_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
+    list_available_modalities.tags = ["UTILITY"]
 
     @tool
     def get_modality_details(modality_name: str) -> str:
@@ -462,6 +475,9 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error getting modality details: {e}")
             return f"Error getting modality details: {str(e)}"
 
+    get_modality_details.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_modality_details.tags = ["UTILITY"]
+
     @tool
     def remove_modality(modality_name: str) -> str:
         """
@@ -493,6 +509,9 @@ You can now analyze this dataset using the appropriate analysis tools.
         except Exception as e:
             logger.error(f"Error removing modality {modality_name}: {e}")
             return f"Error removing modality: {str(e)}"
+
+    remove_modality.metadata = {"categories": ["UTILITY"], "provenance": False}
+    remove_modality.tags = ["UTILITY"]
 
     @tool
     def validate_modality_compatibility(modality_names: List[str]) -> str:
@@ -555,6 +574,9 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error validating compatibility: {e}")
             return f"Error validating compatibility: {str(e)}"
 
+    validate_modality_compatibility.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_modality_compatibility.tags = ["QUALITY"]
+
     @tool
     def load_modality(
         modality_name: str,
@@ -616,6 +638,9 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error loading modality {modality_name}: {e}")
             return f"Error loading modality: {str(e)}"
 
+    load_modality.metadata = {"categories": ["IMPORT"], "provenance": True}
+    load_modality.tags = ["IMPORT"]
+
     @tool
     def create_mudata_from_modalities(
         modality_names: List[str], output_name: str = "multimodal_analysis"
@@ -646,6 +671,12 @@ You can now analyze this dataset using the appropriate analysis tools.
             mudata_path = f"{output_name}.h5mu"
             data_manager.save_mudata(mudata_path, modalities=modality_names)
 
+            data_manager.log_tool_usage(
+                tool_name="create_mudata_from_modalities",
+                parameters={"modality_names": modality_names, "output_name": output_name},
+                description=f"Created MuData from {len(modality_names)} modalities → {mudata_path}",
+                ir=None,
+            )
             return f"""Successfully created MuData from {len(modality_names)} modalities.
 
 Combined modalities: {", ".join(modality_names)}
@@ -658,6 +689,9 @@ The MuData object contains all selected modalities and is ready for cross-modal 
         except Exception as e:
             logger.error(f"Error creating MuData: {e}")
             return f"Error creating MuData: {str(e)}"
+
+    create_mudata_from_modalities.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    create_mudata_from_modalities.tags = ["PREPROCESS"]
 
     @tool
     def get_adapter_info() -> str:
@@ -696,6 +730,9 @@ The MuData object contains all selected modalities and is ready for cross-modal 
         except Exception as e:
             logger.error(f"Error getting adapter info: {e}")
             return f"Error getting adapter info: {str(e)}"
+
+    get_adapter_info.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_adapter_info.tags = ["UTILITY"]
 
     @tool
     def concatenate_samples(
@@ -826,6 +863,9 @@ To save, run again with save_to_file=True"""
         except Exception as e:
             logger.error(f"Error concatenating samples: {e}")
             return f"Error concatenating samples: {str(e)}"
+
+    concatenate_samples.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    concatenate_samples.tags = ["PREPROCESS"]
 
     @tool
     def get_queue_status(
@@ -965,6 +1005,9 @@ To save, run again with save_to_file=True"""
         except Exception as e:
             logger.error(f"Error getting queue status: {e}")
             return f"Error getting queue status: {str(e)}"
+
+    get_queue_status.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_queue_status.tags = ["UTILITY"]
 
     # execute_custom_code is created via factory at line ~96 (v2.7+: unified tool)
     # See create_execute_custom_code_tool() in lobster/tools/custom_code_tool.py

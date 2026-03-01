@@ -333,6 +333,9 @@ def research_agent(
             logger.error(f"Error searching literature: {e}")
             return f"Error searching literature: {str(e)}"
 
+    search_literature.metadata = {"categories": ["UTILITY"], "provenance": False}
+    search_literature.tags = ["UTILITY"]
+
     @tool
     def find_related_entries(
         identifier: str,
@@ -400,6 +403,9 @@ def research_agent(
         except Exception as e:
             logger.error(f"Error finding datasets: {e}")
             return f"Error finding datasets from publication: {str(e)}"
+
+    find_related_entries.metadata = {"categories": ["UTILITY"], "provenance": False}
+    find_related_entries.tags = ["UTILITY"]
 
     @tool
     def fast_dataset_search(
@@ -521,6 +527,9 @@ def research_agent(
         except Exception as e:
             logger.error(f"Error searching datasets directly: {e}")
             return f"Error searching datasets directly: {str(e)}"
+
+    fast_dataset_search.metadata = {"categories": ["UTILITY"], "provenance": False}
+    fast_dataset_search.tags = ["UTILITY"]
 
     @tool
     def get_dataset_metadata(
@@ -702,6 +711,7 @@ def research_agent(
                         tool_name="get_dataset_metadata",
                         parameters={"identifier": identifier, "database": "uniprot"},
                         description=f"UniProt metadata: {identifier}",
+                        ir=None,
                     )
                     return formatted
 
@@ -769,6 +779,7 @@ def research_agent(
                         tool_name="get_dataset_metadata",
                         parameters={"identifier": identifier, "database": "ensembl"},
                         description=f"Ensembl metadata: {identifier}",
+                        ir=None,
                     )
                     return formatted
 
@@ -856,6 +867,7 @@ def research_agent(
                             tool_name="get_dataset_metadata",
                             parameters={"identifier": identifier, "database": "geo"},
                             description=f"GEO metadata: {identifier}",
+                            ir=None,
                         )
                         return formatted
                     except Exception as e:
@@ -918,6 +930,7 @@ def research_agent(
                             tool_name="get_dataset_metadata",
                             parameters={"identifier": identifier, "database": "pride"},
                             description=f"PRIDE metadata: {identifier}",
+                            ir=None,
                         )
                         return formatted
 
@@ -986,6 +999,7 @@ def research_agent(
                                 "database": "massive",
                             },
                             description=f"MassIVE metadata: {identifier}",
+                            ir=None,
                         )
                         return formatted
 
@@ -1034,12 +1048,16 @@ def research_agent(
                     tool_name="get_dataset_metadata",
                     parameters={"identifier": identifier, "database": "pubmed"},
                     description=f"Publication metadata: {identifier}",
+                    ir=None,
                 )
                 return formatted
 
         except Exception as e:
             logger.error(f"Error extracting metadata: {e}")
             return f"Error extracting metadata for {identifier}: {str(e)}"
+
+    get_dataset_metadata.metadata = {"categories": ["QUALITY"], "provenance": True}
+    get_dataset_metadata.tags = ["QUALITY"]
 
     @tool
     def validate_dataset_metadata(
@@ -1191,6 +1209,7 @@ def research_agent(
                     tool_name="validate_dataset_metadata",
                     parameters={"identifier": identifier, "add_to_queue": add_to_queue},
                     description=f"Metadata validation (cached): {identifier}",
+                    ir=None,
                 )
                 return "\n".join(response_parts)
 
@@ -1303,6 +1322,7 @@ def research_agent(
                                 "add_to_queue": add_to_queue,
                             },
                             description=f"Metadata validation: {identifier}",
+                            ir=None,
                         )
                         return report
                     else:
@@ -1321,6 +1341,9 @@ def research_agent(
         except Exception as e:
             logger.error(f"Error in metadata validation: {e}")
             return f"Error validating dataset metadata: {str(e)}"
+
+    validate_dataset_metadata.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_dataset_metadata.tags = ["QUALITY"]
 
     @tool
     def prepare_dataset_download(accession: str, priority: int = 5) -> str:
@@ -1436,6 +1459,9 @@ def research_agent(
         except Exception as e:
             logger.error(f"Failed to prepare download for {accession}: {e}")
             return f"Error preparing download for '{accession}': {str(e)}"
+
+    prepare_dataset_download.metadata = {"categories": ["UTILITY"], "provenance": False}
+    prepare_dataset_download.tags = ["UTILITY"]
 
     @tool
     def extract_methods(identifier: str, focus: str = None) -> str:
@@ -1649,6 +1675,9 @@ def research_agent(
             else:
                 return f"Error extracting methods from paper: {error_msg}"
 
+    extract_methods.metadata = {"categories": ["UTILITY"], "provenance": False}
+    extract_methods.tags = ["UTILITY"]
+
     # ============================================================
     # Phase 1 NEW TOOLS: Two-Tier Access & Webpage-First Strategy
     # ============================================================
@@ -1741,6 +1770,9 @@ Could not retrieve abstract for: {identifier}
 - Try using DOI if PMID failed, or vice versa
 - For non-PubMed papers, use read_full_publication() instead
 """
+
+    fast_abstract_search.metadata = {"categories": ["UTILITY"], "provenance": False}
+    fast_abstract_search.tags = ["UTILITY"]
 
     @tool
     def read_full_publication(identifier: str, prefer_webpage: bool = True) -> str:
@@ -1927,6 +1959,9 @@ Could not extract content for: {identifier}
 - Check if paper is freely accessible
 - For webpage URLs, ensure they're not behind paywall
 """
+
+    read_full_publication.metadata = {"categories": ["UTILITY"], "provenance": False}
+    read_full_publication.tags = ["UTILITY"]
 
     # ============================================================
     # Helper: Flexible Identifier Resolution for Publication Queue
@@ -2183,6 +2218,7 @@ Could not extract content for: {identifier}
                         "doi": entry.doi,
                     },
                     description=f"Updated publication status {entry_id}: {old_status} → {status_override.lower()}",
+                    ir=None,
                 )
 
                 response = f"""## Publication Status Updated (Manual Override)
@@ -2217,8 +2253,12 @@ Could not extract content for: {identifier}
                 "extraction_tasks": extraction_tasks,
             },
             description=f"Publication processed: {resolved_entry_id}",
+            ir=None,
         )
         return outcome.response_markdown
+
+    process_publication_entry.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    process_publication_entry.tags = ["PREPROCESS"]
 
     @tool
     def process_publication_queue(
@@ -2322,6 +2362,7 @@ Could not extract content for: {identifier}
                 tool_name="process_publication_queue",
                 parameters={"status_filter": status_filter, "max_entries": max_entries},
                 description=f"Batch processing: {len(entry_ids)} entries (parallel)",
+                ir=None,
             )
             return result.to_summary_string()
         else:
@@ -2337,8 +2378,12 @@ Could not extract content for: {identifier}
                 tool_name="process_publication_queue",
                 parameters={"status_filter": status_filter, "max_entries": max_entries},
                 description=f"Batch processing: sequential (status={final_status_filter})",
+                ir=None,
             )
             return result
+
+    process_publication_queue.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    process_publication_queue.tags = ["PREPROCESS"]
 
     # ============================================================
     # Phase 4 TOOLS: Workspace Management (shared tools from workspace_tool.py)
