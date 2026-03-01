@@ -24,9 +24,9 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 ## Current Position
 
 Phase: 6 of 6 (Documentation & Release) — IN PROGRESS
-Plan: 1 of 2 complete
-Status: Phase 6 Plan 01 COMPLETE. Internal docs updated: CLAUDE.md files + master_mermaid.md section 12 with AQUADIF layer diagram. DOC-01, DOC-02, DOC-06 complete. Ready for Plan 02 (docs-site AQUADIF page + skill reference updates).
-Last activity: 2026-03-01 — Phase 6 Plan 01 documentation updates (95671c2 lobster, 20fb545 Omics-OS)
+Plan: 2 of 2 (Plans 01-02 complete)
+Status: Phase 6 Plan 02 COMPLETE. AQUADIF taxonomy page live on docs-site. Skill references updated with monitoring section and contract test commands. DOC-03/04/05 complete.
+Last activity: 2026-03-01 — Phase 6 Plan 02 documentation updates (b7b711f lobster skills, 7b407ff docs-site)
 
 Progress: [██████████] 100% (Phase 5)
 
