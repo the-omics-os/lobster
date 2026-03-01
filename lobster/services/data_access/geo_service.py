@@ -3196,27 +3196,10 @@ class GEOService:
         Returns:
             str: Predicted data type ("proteomics", "single_cell_rna_seq", or "bulk_rna_seq")
         """
-        try:
-            from lobster.core.omics_registry import DataTypeDetector
+        from lobster.core.omics_registry import DataTypeDetector
 
+        try:
             return DataTypeDetector().determine_data_type(metadata)
-        except ImportError:
-            # Fallback inline detection
-            combined_text = str(metadata.get("platforms", "")).lower()
-            combined_text += " " + str(metadata.get("overall_design", "")).lower()
-            proteomics_kw = [
-                "proteomics",
-                "mass spectrometry",
-                "lc-ms",
-                "orbitrap",
-                "tmt",
-            ]
-            if any(kw in combined_text for kw in proteomics_kw):
-                return "proteomics"
-            sc_kw = ["single cell", "single-cell", "10x", "chromium", "droplet"]
-            if any(kw in combined_text for kw in sc_kw):
-                return "single_cell_rna_seq"
-            return "single_cell_rna_seq"
         except Exception as e:
             logger.warning(f"Error determining data type: {e}")
             return "single_cell_rna_seq"

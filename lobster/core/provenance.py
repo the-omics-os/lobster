@@ -705,12 +705,9 @@ class ProvenanceTracker:
             versions["lobster"] = version("lobster-ai")
         except PackageNotFoundError:
             # Fallback for development installs
-            try:
-                from lobster.version import __version__
+            from lobster.version import __version__
 
-                versions["lobster"] = __version__
-            except ImportError:
-                versions["lobster"] = "unknown"
+            versions["lobster"] = __version__
 
         self._software_versions_cache = versions
         return versions

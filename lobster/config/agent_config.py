@@ -556,11 +556,6 @@ class LobsterAgentConfigurator:
                 f"{list(custom_configs.keys())}"
             )
 
-        except ImportError:
-            # component_registry not available (shouldn't happen in normal installs)
-            logger.debug(
-                "component_registry not available, skipping custom agent configs"
-            )
         except Exception as e:
             # Don't let component discovery failures break the system
             logger.warning(f"Failed to load custom agent configs: {e}")

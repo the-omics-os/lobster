@@ -453,15 +453,6 @@ class TestNotebookExecutor:
         available = executor.validate_papermill_availability()
         assert isinstance(available, bool)
 
-    def test_validate_papermill_not_available(self, data_manager):
-        """Test Papermill not available."""
-        executor = NotebookExecutor(data_manager)
-
-        # Mock the PAPERMILL_AVAILABLE flag
-        with patch("lobster.core.notebook_executor.PAPERMILL_AVAILABLE", False):
-            available = executor.validate_papermill_availability()
-            assert not available
-
     def test_execute_output_path(self, data_manager, test_notebook, test_adata):
         """Test custom output path."""
         executor = NotebookExecutor(data_manager)

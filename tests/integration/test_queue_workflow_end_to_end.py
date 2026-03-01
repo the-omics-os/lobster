@@ -37,8 +37,8 @@ from pathlib import Path
 
 import pytest
 
-from lobster.agents.data_expert import data_expert
-from lobster.agents.research import research_agent
+from lobster.agents.data_expert.data_expert import data_expert
+from lobster.agents.research.research_agent import research_agent
 
 # from lobster.agents.supervisor import supervisor  # FIXME: supervisor no longer exported this way
 from lobster.core.data_manager_v2 import DataManagerV2

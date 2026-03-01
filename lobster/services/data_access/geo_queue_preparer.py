@@ -32,39 +32,9 @@ def _is_single_cell_dataset(metadata: dict) -> bool:
 
     Delegates to unified DataTypeDetector from omics_registry.
     """
-    try:
-        from lobster.core.omics_registry import DataTypeDetector
+    from lobster.core.omics_registry import DataTypeDetector
 
-        return DataTypeDetector().is_single_cell(metadata)
-    except ImportError:
-        # Fallback: inline detection if omics_registry not available
-        single_cell_keywords = [
-            "single-cell",
-            "single cell",
-            "scRNA-seq",
-            "10x",
-            "10X",
-            "droplet",
-            "Drop-seq",
-            "Smart-seq",
-            "CEL-seq",
-            "inDrop",
-            "single nuclei",
-            "snRNA-seq",
-            "scATAC-seq",
-            "Chromium",
-        ]
-        text_fields = [
-            metadata.get("title", ""),
-            metadata.get("summary", ""),
-            metadata.get("overall_design", ""),
-            metadata.get("type", ""),
-            metadata.get("description", ""),
-        ]
-        for field in text_fields:
-            if any(kw.lower() in field.lower() for kw in single_cell_keywords):
-                return True
-        return False
+    return DataTypeDetector().is_single_cell(metadata)
 
 
 def _is_proteomics_dataset(metadata: dict) -> bool:
@@ -72,35 +42,9 @@ def _is_proteomics_dataset(metadata: dict) -> bool:
 
     Delegates to unified DataTypeDetector from omics_registry.
     """
-    try:
-        from lobster.core.omics_registry import DataTypeDetector
+    from lobster.core.omics_registry import DataTypeDetector
 
-        return DataTypeDetector().is_proteomics(metadata)
-    except ImportError:
-        # Fallback: check main keywords only
-        proteomics_keywords = [
-            "proteomics",
-            "proteome",
-            "mass spectrometry",
-            "mass spec",
-            "ms/ms",
-            "lc-ms",
-            "orbitrap",
-            "tmt",
-            "itraq",
-            "silac",
-            "olink",
-            "somascan",
-        ]
-        text_fields = [
-            metadata.get("title", ""),
-            metadata.get("summary", ""),
-            metadata.get("overall_design", ""),
-        ]
-        for field in text_fields:
-            if any(kw.lower() in field.lower() for kw in proteomics_keywords):
-                return True
-        return False
+    return DataTypeDetector().is_proteomics(metadata)
 
 
 def _create_recommended_strategy(

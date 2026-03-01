@@ -1074,7 +1074,7 @@ def test_metadata_handoff(
         - retention_rate, csv_path, csv_row_count
         - handoff_status_transitions
     """
-    from lobster.agents.metadata_assistant import metadata_assistant
+    from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
     from lobster.core.schemas.publication_queue import HandoffStatus
 
     # Query queue for entries ready for metadata processing

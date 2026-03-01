@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from lobster.agents.research import research_agent
+from lobster.agents.research.research_agent import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.data_access.content_access_service import ContentAccessService
 from lobster.tools.providers.base_provider import PublicationMetadata

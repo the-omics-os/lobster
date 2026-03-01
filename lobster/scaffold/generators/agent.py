@@ -1,15 +1,17 @@
 """Agent plugin package generator."""
 
+import importlib.resources as pkg_resources
 from pathlib import Path
 from typing import List, Optional
 
 import jinja2
 
-
-_TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
+# Use importlib.resources for robust template resolution across namespace
+# packages, wheels, and zip installs — never rely on __file__ traversal.
+_TEMPLATE_DIR = str(pkg_resources.files("lobster.scaffold").joinpath("templates"))
 
 _env = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(str(_TEMPLATE_DIR)),
+    loader=jinja2.FileSystemLoader(_TEMPLATE_DIR),
     keep_trailing_newline=True,
     trim_blocks=True,
     lstrip_blocks=True,

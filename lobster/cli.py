@@ -482,10 +482,6 @@ def _add_command_to_history(
         logger.debug(f"✓ Logged command to graph state: {command[:50]}")
         primary_logged = True
 
-    except ImportError as e:
-        logger.error(f"Cannot import langchain message types: {e}")
-        return False
-
     except AttributeError as e:
         # BUG FIX #4: Full error logging with diagnostic info
         logger.error(
@@ -3381,36 +3377,25 @@ def _display_status_info():
     console.print()
 
     # Get entitlement status
-    try:
-        from lobster.core.license_manager import get_entitlement_status
+    from lobster.core.license_manager import get_entitlement_status
 
-        entitlement = get_entitlement_status()
-    except ImportError:
-        entitlement = {"tier": "free", "tier_display": "Free", "source": "default"}
+    entitlement = get_entitlement_status()
 
     # Get installed packages
-    try:
-        from lobster.core.plugin_loader import get_installed_packages
+    from lobster.core.plugin_loader import get_installed_packages
 
-        packages = get_installed_packages()
-    except ImportError:
-        packages = {"lobster-ai": "unknown"}
+    packages = get_installed_packages()
 
     # Get available agents
-    try:
-        from lobster.config.agent_registry import get_worker_agents
-        from lobster.config.subscription_tiers import is_agent_available
+    from lobster.config.agent_registry import get_worker_agents
+    from lobster.config.subscription_tiers import is_agent_available
 
-        worker_agents = get_worker_agents()
-        tier = entitlement.get("tier", "free")
-        available = [name for name in worker_agents if is_agent_available(name, tier)]
-        restricted = [
-            name for name in worker_agents if not is_agent_available(name, tier)
-        ]
-    except ImportError:
-        available = []
-        restricted = []
-        tier = "free"
+    worker_agents = get_worker_agents()
+    tier = entitlement.get("tier", "free")
+    available = [name for name in worker_agents if is_agent_available(name, tier)]
+    restricted = [
+        name for name in worker_agents if not is_agent_available(name, tier)
+    ]
 
     # Subscription tier section
     tier_display = entitlement.get("tier_display", "Free")
@@ -4108,24 +4093,21 @@ def activate(
     console.print()
 
     # Check if already activated
-    try:
-        from lobster.core.license_manager import get_entitlement_status
+    from lobster.core.license_manager import get_entitlement_status
 
-        current = get_entitlement_status()
-        if (
-            current.get("tier") not in ("free", None)
-            and current.get("source") == "license_file"
-        ):
-            console.print(
-                f"[yellow]⚠️  You already have an active {current.get('tier_display', 'Premium')} license[/yellow]"
-            )
-            console.print(f"[dim]Source: {current.get('source')}[/dim]")
-            console.print()
-            if not Confirm.ask("Replace existing license?", default=False):
-                console.print("[yellow]Activation cancelled[/yellow]")
-                raise typer.Exit(0)
-    except ImportError:
-        pass  # Continue with activation
+    current = get_entitlement_status()
+    if (
+        current.get("tier") not in ("free", None)
+        and current.get("source") == "license_file"
+    ):
+        console.print(
+            f"[yellow]⚠️  You already have an active {current.get('tier_display', 'Premium')} license[/yellow]"
+        )
+        console.print(f"[dim]Source: {current.get('source')}[/dim]")
+        console.print()
+        if not Confirm.ask("Replace existing license?", default=False):
+            console.print("[yellow]Activation cancelled[/yellow]")
+            raise typer.Exit(0)
 
     console.print("[dim]Contacting license server...[/dim]")
 
@@ -4201,10 +4183,6 @@ def activate(
             )
             raise typer.Exit(1)
 
-    except ImportError as e:
-        console.print(f"[red]❌ License manager not available: {e}[/red]")
-        console.print("[dim]This may indicate an incomplete installation.[/dim]")
-        raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]❌ Activation error: {e}[/red]")
         raise typer.Exit(1)
@@ -4288,8 +4266,8 @@ def deactivate():
             console.print("[red]❌ Failed to remove license file[/red]")
             raise typer.Exit(1)
 
-    except ImportError as e:
-        console.print(f"[red]❌ License manager not available: {e}[/red]")
+    except Exception as e:
+        console.print(f"[red]❌ License deactivation error: {e}[/red]")
         raise typer.Exit(1)
 
 
@@ -6042,8 +6020,6 @@ def init(
                         console.print(
                             "[dim]You can retry later with: lobster activate <code>[/dim]"
                         )
-                except ImportError:
-                    console.print("[yellow]⚠️  License manager not available[/yellow]")
                 except Exception as e:
                     console.print(f"[yellow]⚠️  Activation error: {e}[/yellow]")
                     console.print(

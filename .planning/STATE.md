@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-01T06:35:45.511Z"
+last_updated: "2026-03-01T06:49:09.399Z"
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
 ---
 
 # Project State
@@ -18,7 +18,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Every tool in Lobster AI declares what it does (category) and whether it must produce provenance — making the system introspectable, enforceable, and teachable to coding agents.
-**Current focus:** Phase 4 COMPLETE — all 10 packages AQUADIF-compliant (221 tools, 0.5% multi-category). Phase 5 (monitoring) is next.
+**Current focus:** Phase 4 rollout in progress (Plans 01-04 complete: 18 tools in ML package; 57 tools remain across 3 plans)
 
 ## Current Position
 
@@ -133,24 +133,6 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 - lobster-ml is private (.gitignore) — force-added with git add -f
 - Commits: f5641bc (metadata), 390653e (tests + list_available_modalities fix)
 
-**Plan 05: AQUADIF metadata for proteomics_expert, proteomics_de_analysis_expert, and biomarker_discovery_expert — COMPLETE** (2026-02-28)
-- 34 tools tagged across 4 files: shared_tools.py (17), proteomics_expert.py (3), de_analysis_expert.py (7), biomarker_discovery_expert.py (7)
-- Contract tests: 38/38 pass for all 3 proteomics agents (4 skipped: MVP parent checks for child agents)
-- is_parent_agent=True for proteomics_expert: has IMPORT/QUALITY/ANALYZE lifecycle — MVP parent check applies and passes
-- Rule 3 fix: removed isinstance(DataManagerV2) guard from proteomics_expert.py
-- Key decision: de_analysis_expert factory_name is 'de_analysis_expert' (Python function), not 'proteomics_de_analysis_expert'
-- lobster-proteomics is 100% AQUADIF-compliant
-- Commits: 757d4c9 (metadata), d7316be (contract tests + isinstance fix)
-
-**Plan 06: AQUADIF metadata for research_agent and data_expert — COMPLETE** (2026-03-01)
-- 11 research_agent tools tagged (UTILITY x7, QUALITY x2, PREPROCESS x2) + 2 workspace factory tools
-- 10 data_expert tools tagged (IMPORT x2, QUALITY x1, PREPROCESS x3, UTILITY x5, CODE_EXEC x1)
-- Added ir=None to 9 log_tool_usage calls; added log_tool_usage call to execute_download_from_queue + create_mudata_from_modalities
-- Contract tests: 26/26 pass (4 skipped — is_parent_agent=False for both agents; DELEGATE tools runtime-injected)
-- Key decisions: prepare_dataset_download UTILITY (queues download, doesn't load data); process_publication_entry PREPROCESS (transforms raw queue entry → structured metadata)
-- aquadif-contract.md updated with research package reference patterns table
-- Commits: c7ad487 (metadata), 10fd202 (tests), e5b3bad (skill docs)
-
 **Plan 07: AQUADIF metadata for drug_discovery_expert, cheminformatics_expert, clinical_dev_expert, pharmacogenomics_expert + global ROLL-09 validation — COMPLETE** (2026-02-28)
 - 35 tools tagged across 4 agent tool files: shared_tools.py (10), cheminformatics_tools.py (9), clinical_tools.py (8), pharmacogenomics_tools.py (8)
 - Contract tests: 48/48 pass for all 4 agents (8 skipped: MVP parent checks)
@@ -164,7 +146,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
+- Total plans completed: 11
 - Phase 1 plan execution: 229s (2 automated plans)
 - Phase 1 checkpoint: multi-day eval cycle (exceeded scope — full cross-agent validation)
 - Phase 2 plan 1 execution: 181s (2 tasks, fully automated)
@@ -181,13 +163,11 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 | 01 | 3/3 | ✓ Complete | 2026-02-28 |
 | 02 | 2/2 | ✓ Complete | 2026-02-28 |
 | 03 | 2/2 | ✓ Complete | 2026-03-01 |
-| 04 | 7/7 | ✓ Complete | 2026-02-28 |
+| 04 | 4/7 | ⟳ In Progress | 2026-03-01 |
 | Phase 04-agent-rollout P01 | 348 | 2 tasks | 7 files |
 | Phase 04-agent-rollout P02 | 70 | 2 tasks | 5 files |
 | Phase 04-agent-rollout P03 | 365 | 2 tasks | 7 files |
 | Phase 04-agent-rollout P04 | 900 | 2 tasks | 6 files |
-| Phase 04-agent-rollout P07 | 429 | 2 tasks | 12 files |
-| Phase 04-agent-rollout P05 | 482 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -219,17 +199,6 @@ Recent decisions affecting Phase 2:
 - [Phase 04-agent-rollout]: is_parent_agent=False for data-prep agents: machine_learning_expert has no IMPORT/QUALITY tools by design — MVP parent check does not apply to data-preparation-focused agents
 - [Phase 04-agent-rollout]: list_available_modalities needs metadata at injection site: shared workspace tool injected via create_list_modalities_tool() needs .metadata/.tags assigned in each agent factory that includes it
 - [Phase 04-agent-rollout]: ML shared_tools.py pattern: survival analysis and feature selection tools tagged at source inside factory functions, not in child agent files — metadata flows to all consuming agents automatically
-- [Phase 04-agent-rollout P07]: is_parent_agent=False for drug_discovery_expert: no IMPORT/QUALITY lifecycle — query/analysis-centric parent (same pattern as machine_learning_expert)
-- [Phase 04-agent-rollout P07]: search_compounds and search_similar_compounds as UTILITY: pure catalog searches without scientific scoring qualify as UTILITY not ANALYZE
-- [Phase 04-agent-rollout P07]: lipinski_check as QUALITY: Ro5 compliance is a drug development quality gate assessing fitness for oral bioavailability
-- [Phase 04-agent-rollout P07]: Global ROLL-09 passes first attempt: 0.5% multi-category ratio across 221 tools confirms single-category philosophy is consistently applied
-- [Phase 04-agent-rollout]: is_parent_agent=True for proteomics_expert: has full IMPORT/QUALITY lifecycle — MVP parent check applies and passes
-- [Phase 04-agent-rollout]: de_analysis_expert factory_name must match Python function name ('de_analysis_expert'), not entry point key ('proteomics_de_analysis_expert')
-- [Phase 04-agent-rollout]: isinstance(DataManagerV2) guard must be removed from parent agents — blocks contract test mixin MagicMock injection
-- [Phase 04-agent-rollout P06]: research_agent is_parent_agent=False: no IMPORT tools in base tools (searches/queues but doesn't load data); DELEGATE tools runtime-injected
-- [Phase 04-agent-rollout P06]: data_expert is_parent_agent=False: DELEGATE tools from graph.py are runtime-injected; not visible to contract test base_tools
-- [Phase 04-agent-rollout P06]: prepare_dataset_download tagged UTILITY not IMPORT: queues a download request (administrative), actual data loading happens in execute_download_from_queue
-- [Phase 04-agent-rollout P06]: process_publication_entry/queue PREPROCESS not UTILITY: transforms raw publication queue entries into structured enriched metadata (substantial data transformation)
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -276,9 +245,9 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-03-01 (Phase 4 Plan 06 execution)
-Stopped at: Completed 04-06-PLAN.md (commit: e5b3bad)
-Resume: Phase 4 complete (all 7 plans including Plan 06 research package). Proceed to Phase 5 (Monitoring: AquadifCallbackHandler) — all 10 packages AQUADIF-compliant (research_agent + data_expert now tagged)
+Last session: 2026-03-01 (Phase 4 Plan 04 execution)
+Stopped at: Completed 04-04-PLAN.md (commit: 390653e)
+Resume: Phase 4 Plan 04 complete. Proceed to Plan 05 (Wave 2: proteomics package — 3 agents with complex parent-child hierarchy)
 Key artifacts:
 - Contract test mixin: `lobster/testing/contract_mixins.py` (14 test methods, fail-by-default, cached, LLM mock + PregelNode)
 - AST helper: `lobster/config/aquadif.py` → `has_provenance_call()` (standalone, reusable)

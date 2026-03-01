@@ -19,12 +19,8 @@ import numpy as np
 import pandas as pd
 import psutil
 
-try:
-    import anndata
-    import anndata as ad
-except ImportError:
-    ad = None
-    anndata = None
+import anndata
+import anndata as ad
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2

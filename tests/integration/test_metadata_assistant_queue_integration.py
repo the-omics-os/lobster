@@ -153,7 +153,7 @@ class TestMetadataAssistantQueueIntegration:
         queue_entry_with_metadata,
     ):
         """Test processing entry updates harmonization_metadata field."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -229,7 +229,7 @@ class TestMetadataAssistantQueueIntegration:
         sample_sra_metadata_files,
     ):
         """Batch processing updates all matching entries."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -305,7 +305,7 @@ class TestMetadataAssistantQueueIntegration:
         integration_data_manager,
     ):
         """Test CSV export from aggregated samples."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
         from lobster.tools.workspace_tool import create_write_to_workspace_tool
 
         # Setup mocks
@@ -387,7 +387,7 @@ class TestSharedWorkspaceToolsIntegration:
         integration_data_manager,
     ):
         """Verify research_agent can use write_to_workspace."""
-        from lobster.agents.research import research_agent
+        from lobster.agents.research.research_agent import research_agent
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -427,7 +427,7 @@ class TestSharedWorkspaceToolsIntegration:
         integration_data_manager,
     ):
         """Verify metadata_assistant can use write_to_workspace."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -476,7 +476,7 @@ class TestQueueStatusTransitions:
         queue_entry_with_metadata,
     ):
         """Test status transition: HANDOFF_READY → METADATA_IN_PROGRESS → METADATA_COMPLETE."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -533,7 +533,7 @@ class TestWorkspaceToQueueRoundtrip:
         queue_entry_with_metadata,
     ):
         """Complete workflow: read workspace → filter → update queue → store aggregated."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()

@@ -11,10 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
 
-try:
-    import anndata as ad
-except ImportError:
-    ad = None  # Will fail at runtime if anndata not available
+import anndata as ad
 
 
 class MockProvenanceTracker:

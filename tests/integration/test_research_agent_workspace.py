@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.agents.research import research_agent
+from lobster.agents.research.research_agent import research_agent
 from lobster.core.data_manager_v2 import DataManagerV2
 
 # ===============================================================================

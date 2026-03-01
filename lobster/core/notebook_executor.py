@@ -15,13 +15,7 @@ from typing import Any, Dict, List, Optional, Union
 import anndata
 import nbformat
 
-try:
-    import papermill
-
-    PAPERMILL_AVAILABLE = True
-except ImportError:
-    papermill = None
-    PAPERMILL_AVAILABLE = False
+import papermill
 
 from lobster.core.data_manager_v2 import DataManagerV2
 
@@ -235,12 +229,6 @@ class NotebookExecutor:
 
         # Execute with Papermill
         try:
-            if not PAPERMILL_AVAILABLE:
-                return {
-                    "status": "failed",
-                    "error": "Papermill not installed. Install with: pip install papermill",
-                }
-
             start_time = time.time()
 
             logger.debug(f"Executing notebook: {notebook_path}")
@@ -385,6 +373,4 @@ class NotebookExecutor:
         Returns:
             True if Papermill can be imported, False otherwise
         """
-        if not PAPERMILL_AVAILABLE:
-            logger.error("Papermill not available. Install with: pip install papermill")
-        return PAPERMILL_AVAILABLE
+        return True

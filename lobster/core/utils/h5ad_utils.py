@@ -18,14 +18,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-# Optional imports for comprehensive type support
-try:
-    import pandas as pd
-
-    HAS_PANDAS = True
-except ImportError:
-    pd = None
-    HAS_PANDAS = False
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -150,26 +143,24 @@ def sanitize_value(
         return str(obj.item())
 
     # Pandas types → string representation
-    # Handle pandas-specific types if pandas is available
-    if HAS_PANDAS:
-        # pd.NA/NaT → empty string
-        # Skip numpy arrays and collections to avoid ambiguous truth value warnings
-        if not isinstance(obj, (np.ndarray, list, dict, tuple)):
-            try:
-                if pd.isna(obj):
-                    return ""
-            except (TypeError, ValueError):
-                # pd.isna() can raise exceptions for some types
-                pass
-        # pd.Timestamp → ISO format string
-        if isinstance(obj, pd.Timestamp):
-            return obj.isoformat()
-        # pd.Timedelta → string representation
-        if isinstance(obj, pd.Timedelta):
-            return str(obj)
-        # pd.Period → string representation
-        if hasattr(pd, "Period") and isinstance(obj, pd.Period):
-            return str(obj)
+    # pd.NA/NaT → empty string
+    # Skip numpy arrays and collections to avoid ambiguous truth value warnings
+    if not isinstance(obj, (np.ndarray, list, dict, tuple)):
+        try:
+            if pd.isna(obj):
+                return ""
+        except (TypeError, ValueError):
+            # pd.isna() can raise exceptions for some types
+            pass
+    # pd.Timestamp → ISO format string
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    # pd.Timedelta → string representation
+    if isinstance(obj, pd.Timedelta):
+        return str(obj)
+    # pd.Period → string representation
+    if hasattr(pd, "Period") and isinstance(obj, pd.Period):
+        return str(obj)
 
     # Datetime types → ISO format strings
     if isinstance(obj, datetime.datetime):
@@ -481,9 +472,6 @@ def convert_arrow_to_standard(adata):
     Returns:
         AnnData copy with all Arrow dtypes converted to standard pandas dtypes
     """
-    if not HAS_PANDAS:
-        return adata
-
     adata_copy = adata.copy()
 
     # Convert obs.index

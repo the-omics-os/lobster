@@ -29,14 +29,8 @@ from typing import Optional
 
 import numpy as np
 
-try:
-    import anndata as ad
-    import pandas as pd
-except ImportError as e:
-    raise ImportError(
-        "lobster.testing.fixtures requires anndata and pandas. "
-        "Install with: pip install anndata pandas"
-    ) from e
+import anndata as ad
+import pandas as pd
 
 
 def create_test_workspace(base_path: Path) -> Path:

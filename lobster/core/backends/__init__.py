@@ -8,10 +8,6 @@ for different storage systems including local files and future cloud storage.
 from .base import BaseBackend
 from .h5ad_backend import H5ADBackend
 
-try:
-    from .mudata_backend import MuDataBackend
+from .mudata_backend import MuDataBackend
 
-    __all__ = ["BaseBackend", "H5ADBackend", "MuDataBackend"]
-except ImportError:
-    # MuData not available
-    __all__ = ["BaseBackend", "H5ADBackend"]
+__all__ = ["BaseBackend", "H5ADBackend", "MuDataBackend"]

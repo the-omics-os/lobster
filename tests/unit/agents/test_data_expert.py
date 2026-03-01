@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.agents.data_expert import data_expert
+from lobster.agents.data_expert.data_expert import data_expert
 from lobster.agents.data_expert.assistant import DataExpertAssistant, StrategyConfig
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.data_access.geo_service import GEOService

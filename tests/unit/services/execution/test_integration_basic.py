@@ -80,7 +80,7 @@ class TestBasicIntegration:
     def test_data_expert_can_be_imported(self):
         """Test that data_expert module can be imported with new tools."""
         try:
-            from lobster.agents.data_expert import data_expert
+            from lobster.agents.data_expert.data_expert import data_expert
 
             assert data_expert is not None
         except ImportError as e:

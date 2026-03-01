@@ -4,7 +4,7 @@ Post-generation plugin validation.
 Provides AST-level and structural checks for generated plugin packages.
 Used by `lobster validate-plugin <dir>` CLI command.
 
-Seven validation checks (ordered by severity):
+Eight validation checks (ordered by severity):
 1. PEP 420 compliance — no __init__.py at lobster/ or lobster/agents/ level
 2. pyproject.toml entry points — lobster.agents group exists with correct format
 3. AGENT_CONFIG position — appears before heavy imports (AST check)
@@ -12,6 +12,7 @@ Seven validation checks (ordered by severity):
 5. AQUADIF metadata — tools have .metadata with categories and provenance
 6. Provenance calls — tools with provenance: True call log_tool_usage(ir=ir)
 7. No core imports — plugin doesn't import from lobster.agents.* core agents
+8. No ImportError guards — domain __init__.py must not use try/except ImportError
 """
 
 import ast
@@ -55,6 +56,7 @@ def validate_plugin(plugin_dir: Path) -> List[ValidationResult]:
     results.extend(_check_aquadif_metadata(plugin_dir))
     results.extend(_check_provenance_calls(plugin_dir))
     results.extend(_check_import_boundaries(plugin_dir))
+    results.extend(_check_no_import_error_guard(plugin_dir))
 
     return results
 
@@ -374,6 +376,74 @@ def _check_import_boundaries(plugin_dir: Path) -> List[ValidationResult]:
                 check="Import boundaries",
                 passed=True,
                 message=f"{module_path.name}: no cross-agent imports",
+            ))
+
+    return results
+
+
+def _check_no_import_error_guard(plugin_dir: Path) -> List[ValidationResult]:
+    """Check 8: Domain __init__.py must not use try/except ImportError.
+
+    Agent discovery uses entry points, not eager imports. The try/except
+    ImportError pattern contradicts PEP 420 and Hard Rule #8.
+    """
+    results = []
+
+    agents_dir = plugin_dir / "lobster" / "agents"
+    if not agents_dir.exists():
+        return results
+
+    for domain_dir in agents_dir.iterdir():
+        if not domain_dir.is_dir() or domain_dir.name == "__pycache__":
+            continue
+
+        init_file = domain_dir / "__init__.py"
+        if not init_file.exists():
+            continue
+
+        try:
+            source = init_file.read_text()
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+
+        # Walk AST looking for except ImportError handlers
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                exc_type = node.type
+                # Match: except ImportError, except (ImportError, ...), bare except
+                if exc_type is None:
+                    # Bare except — flag it
+                    results.append(ValidationResult(
+                        check="No ImportError guard",
+                        passed=False,
+                        message=f"{domain_dir.name}/__init__.py: bare except handler (line {node.lineno})",
+                    ))
+                    break
+                elif isinstance(exc_type, ast.Name) and exc_type.id == "ImportError":
+                    results.append(ValidationResult(
+                        check="No ImportError guard",
+                        passed=False,
+                        message=f"{domain_dir.name}/__init__.py: except ImportError at line {node.lineno} — use entry points for agent discovery",
+                    ))
+                    break
+                elif isinstance(exc_type, ast.Tuple):
+                    for elt in exc_type.elts:
+                        if isinstance(elt, ast.Name) and elt.id == "ImportError":
+                            results.append(ValidationResult(
+                                check="No ImportError guard",
+                                passed=False,
+                                message=f"{domain_dir.name}/__init__.py: except (..., ImportError) at line {node.lineno} — use entry points for agent discovery",
+                            ))
+                            break
+                    else:
+                        continue
+                    break
+        else:
+            results.append(ValidationResult(
+                check="No ImportError guard",
+                passed=True,
+                message=f"{domain_dir.name}/__init__.py: clean (no ImportError guards)",
             ))
 
     return results

@@ -391,9 +391,6 @@ class Settings:
             is_available_free = is_agent_available(agent_name, "free")
 
             return is_available_premium and not is_available_free
-        except ImportError:
-            # subscription_tiers not available, assume not premium
-            return False
         except Exception:
             # Any error, assume not premium
             return False
