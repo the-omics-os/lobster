@@ -26,6 +26,7 @@ Provenance Requirements:
     Not required (3 categories): DELEGATE, UTILITY, CODE_EXEC (conditional)
 """
 
+import ast
 from enum import Enum
 from typing import FrozenSet
 
@@ -100,3 +101,28 @@ def requires_provenance(primary_category: str) -> bool:
         ) from e
 
     return category in PROVENANCE_REQUIRED
+
+
+def has_provenance_call(tree: ast.AST) -> bool:
+    """
+    Check if an AST tree contains a log_tool_usage call with an ir= keyword argument.
+
+    Walks the AST looking for method calls to ``log_tool_usage`` that include
+    an ``ir=`` keyword argument, indicating proper provenance tracking.
+
+    Used by contract test mixin and ``lobster validate-plugin`` CLI command.
+
+    Args:
+        tree: Parsed AST tree from tool source code.
+
+    Returns:
+        True if a ``log_tool_usage(ir=...)`` call is found, False otherwise.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr == "log_tool_usage":
+                    for keyword in node.keywords:
+                        if keyword.arg == "ir":
+                            return True
+    return False

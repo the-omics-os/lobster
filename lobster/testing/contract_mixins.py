@@ -33,6 +33,7 @@ class AgentContractTestMixin:
     Optional:
         factory_module: str - Module containing the factory (defaults to agent_module)
         expected_tier: str - Expected tier requirement (default: None, skips check)
+        tools_required: bool - If True (default), empty tools = FAIL. If False, empty tools = skip.
 
     Example (same module for config and factory):
         class TestAnnotationExpert(AgentContractTestMixin):
@@ -56,6 +57,7 @@ class AgentContractTestMixin:
     )
     expected_tier: ClassVar[Optional[str]] = None
     is_parent_agent: ClassVar[bool] = False  # Set True for parent agents with child agents
+    tools_required: ClassVar[bool] = True  # Set False for agents still being scaffolded
 
     # Standard factory parameters as defined in Phase 2 plugin contract
     STANDARD_PARAMS: ClassVar[Set[str]] = {
@@ -76,6 +78,9 @@ class AgentContractTestMixin:
         "name",
         "tier_requirement",
     }
+
+    # Class-level cache for tool extraction (populated once per test class)
+    _tools_cache: ClassVar[dict] = {}
 
     def _get_module(self) -> Any:
         """Import and return the config module (contains AGENT_CONFIG)."""
@@ -107,12 +112,26 @@ class AgentContractTestMixin:
         Get list of tool objects from agent factory.
 
         Calls the factory with MagicMock dependencies and extracts
-        tool objects. Returns empty list if factory cannot be called
-        (e.g., missing optional dependencies).
+        tool objects. Raises on unexpected failures (fail-by-default).
+
+        Known-benign failures (ImportError for optional deps like torch/scvi)
+        raise ImportError which callers handle via pytest.skip().
+
+        Results are cached per class to avoid redundant graph compilation.
 
         Returns:
             List of tool objects from the factory's compiled graph
+
+        Raises:
+            ImportError: When factory needs optional dependencies not installed
+            Exception: All other errors propagate (fail-by-default)
         """
+        import pytest
+
+        cache_key = f"{self.agent_module}:{self.factory_name}"
+        if cache_key in self.__class__._tools_cache:
+            return self.__class__._tools_cache[cache_key]
+
         try:
             factory = self._get_factory()
 
@@ -131,32 +150,27 @@ class AgentContractTestMixin:
             )
 
             # Extract tools from the graph's tool node
-            # The tools are stored in the graph's nodes dictionary
-            # Look for the 'tools' node which contains the agent's tools
+            tools = []
             if hasattr(graph, "nodes") and "tools" in graph.nodes:
                 tools_node = graph.nodes["tools"]
-                # The tools are in the ToolNode's tools_by_name dict
                 if hasattr(tools_node, "tools_by_name"):
-                    return list(tools_node.tools_by_name.values())
+                    tools = list(tools_node.tools_by_name.values())
 
-            return []
+            self.__class__._tools_cache[cache_key] = tools
+            return tools
 
-        except Exception as e:
-            # Factory call failed - may need real LLM config or dependencies
-            import warnings
-
-            warnings.warn(
-                f"Could not extract tools from factory '{self.factory_name}': {e}. "
-                f"This may indicate missing dependencies or configuration."
+        except (ImportError, ModuleNotFoundError) as e:
+            # Known-benign: optional heavy deps (torch, scvi-tools) not installed
+            pytest.skip(
+                f"Factory '{self.factory_name}' requires unavailable dependency: {e}"
             )
-            return []
 
     def _has_log_tool_usage_with_ir(self, tree: ast.AST) -> bool:
         """
         Check if AST tree contains log_tool_usage call with ir= keyword argument.
 
-        This helper walks the AST tree looking for method calls to log_tool_usage
-        that include an ir= keyword argument, which indicates proper provenance tracking.
+        Delegates to the standalone ``has_provenance_call`` function in
+        ``lobster.config.aquadif`` for reusability by ``lobster validate-plugin``.
 
         Args:
             tree: AST tree from parsed tool source code
@@ -164,14 +178,29 @@ class AgentContractTestMixin:
         Returns:
             True if log_tool_usage(ir=ir) call found, False otherwise
         """
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                if isinstance(node.func, ast.Attribute):
-                    if node.func.attr == "log_tool_usage":
-                        for keyword in node.keywords:
-                            if keyword.arg == "ir":
-                                return True
-        return False
+        from lobster.config.aquadif import has_provenance_call
+
+        return has_provenance_call(tree)
+
+    def _require_tools(self) -> list:
+        """Get tools, failing or skipping based on tools_required setting."""
+        import pytest
+
+        tools = self._get_tools_from_factory()
+
+        if not tools:
+            if self.tools_required:
+                raise AssertionError(
+                    f"Factory '{self.factory_name}' returned no tools — "
+                    f"check graph construction in '{self.agent_module}'. "
+                    f"Set tools_required = False if this agent has no tools yet."
+                )
+            else:
+                pytest.skip(
+                    f"No tools from factory '{self.factory_name}' (tools_required=False)."
+                )
+
+        return tools
 
     def test_factory_has_standard_params(self) -> None:
         """
@@ -289,15 +318,7 @@ class AgentContractTestMixin:
 
         This validates TEST-02: Metadata presence.
         """
-        import pytest
-
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(
-                f"No tools extracted from factory '{self.factory_name}'. "
-                f"This may indicate missing dependencies or the agent has no tools yet."
-            )
+        tools = self._require_tools()
 
         for tool in tools:
             tool_name = getattr(tool, "name", str(tool))
@@ -337,14 +358,9 @@ class AgentContractTestMixin:
 
         This validates TEST-03: Category validity.
         """
-        import pytest
-
         from lobster.config.aquadif import AquadifCategory
 
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+        tools = self._require_tools()
 
         invalid_categories = []
 
@@ -377,12 +393,7 @@ class AgentContractTestMixin:
 
         This validates TEST-04: Category cap.
         """
-        import pytest
-
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+        tools = self._require_tools()
 
         violations = []
 
@@ -416,14 +427,9 @@ class AgentContractTestMixin:
 
         This validates TEST-05: Provenance flag compliance.
         """
-        import pytest
-
         from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
 
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+        tools = self._require_tools()
 
         violations = []
 
@@ -465,12 +471,7 @@ class AgentContractTestMixin:
 
         This validates TEST-07: Metadata uniqueness.
         """
-        import pytest
-
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+        tools = self._require_tools()
 
         metadata_ids = [id(tool.metadata) for tool in tools if hasattr(tool, "metadata")]
 
@@ -485,6 +486,59 @@ class AgentContractTestMixin:
             f"Each tool must have its own metadata dict. "
             f"Common cause: metadata dict created outside loop in factory. "
             f"Fix: Create metadata dict inside the tool creation loop."
+        )
+
+    def test_provenance_categories_not_buried(self) -> None:
+        """
+        Verify provenance-required categories are not buried behind non-provenance primary.
+
+        If ANY category in the list requires provenance, the PRIMARY (first) category
+        must also require provenance. This prevents gaming by reordering categories
+        to dodge provenance validation.
+
+        Example violation: categories: ["UTILITY", "IMPORT"] — IMPORT requires provenance
+        but UTILITY (primary) does not, so provenance checks would be bypassed.
+
+        This validates TEST-09: Category ordering integrity.
+        """
+        from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+
+        tools = self._require_tools()
+
+        violations = []
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+            categories = tool.metadata.get("categories", [])
+
+            if len(categories) < 2:
+                continue  # Single-category tools can't have ordering issues
+
+            # Parse all categories, skip if any are invalid (caught by other test)
+            parsed = []
+            for cat_str in categories:
+                try:
+                    parsed.append(AquadifCategory(cat_str))
+                except ValueError:
+                    break
+            else:
+                primary = parsed[0]
+                secondary_cats = parsed[1:]
+
+                primary_requires = primary in PROVENANCE_REQUIRED
+                any_secondary_requires = any(c in PROVENANCE_REQUIRED for c in secondary_cats)
+
+                if any_secondary_requires and not primary_requires:
+                    buried = [c.value for c in secondary_cats if c in PROVENANCE_REQUIRED]
+                    violations.append((tool_name, primary.value, buried))
+
+        assert not violations, (
+            f"Tools in '{self.agent_module}' have provenance-required categories buried behind non-provenance primary:\n"
+            + "\n".join(
+                f"  - Tool '{tool}': primary '{primary}' doesn't require provenance, "
+                f"but secondary {buried} does. Reorder so a provenance-required category is first."
+                for tool, primary, buried in violations
+            )
         )
 
     def test_minimum_viable_parent(self) -> None:
@@ -504,10 +558,7 @@ class AgentContractTestMixin:
         if not self.is_parent_agent:
             pytest.skip("Not a parent agent")
 
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+        tools = self._require_tools()
 
         # Collect all unique categories across all tools
         all_categories = set()
@@ -545,21 +596,15 @@ class AgentContractTestMixin:
         disconnect at test time by parsing tool source code.
 
         Rules:
-        - If primary category requires provenance AND tool declares provenance=True:
-          MUST call log_tool_usage(ir=ir)
-        - If primary category does NOT require provenance BUT tool declares provenance=True:
-          MUST call log_tool_usage(ir=ir) (if you declare it, follow through)
+        - If tool declares provenance=True: MUST call log_tool_usage(ir=ir)
+        - If primary category requires provenance: tool SHOULD declare provenance=True
+          (caught by test_provenance_tools_have_flag)
 
         This validates TEST-08: Provenance AST validation.
         """
-        import pytest
-
         from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
 
-        tools = self._get_tools_from_factory()
-
-        if not tools:
-            pytest.skip(f"No tools extracted from factory '{self.factory_name}'.")
+        tools = self._require_tools()
 
         violations = []
 
@@ -592,7 +637,6 @@ class AgentContractTestMixin:
                 source = textwrap.dedent(source)
             except (OSError, TypeError) as e:
                 # Cannot get source (built-in, dynamically generated, etc.)
-                # Skip this tool with a note
                 import warnings
                 warnings.warn(
                     f"Cannot validate provenance for tool '{tool_name}': "
@@ -611,15 +655,13 @@ class AgentContractTestMixin:
                 )
                 continue
 
-            # Validate based on metadata declaration
+            # Validate: if provenance is declared, the call must exist
             if declared_prov and not has_ir_call:
-                violations.append(
-                    (tool_name, primary_category.value, "declares provenance=True but does NOT call log_tool_usage(ir=ir)")
-                )
-            elif requires_prov and declared_prov and not has_ir_call:
-                violations.append(
-                    (tool_name, primary_category.value, "primary category requires provenance and declares provenance=True but does NOT call log_tool_usage(ir=ir)")
-                )
+                reason = "declares provenance=True"
+                if requires_prov:
+                    reason += f" (and primary category '{primary_category.value}' requires it)"
+                reason += " but does NOT call log_tool_usage(ir=ir)"
+                violations.append((tool_name, primary_category.value, reason))
 
         assert not violations, (
             f"Tools in '{self.agent_module}' have provenance metadata-runtime disconnect:\n"
@@ -652,6 +694,7 @@ class AgentContractTestMixin:
         self.test_categories_capped_at_three()
         self.test_provenance_tools_have_flag()
         self.test_metadata_objects_are_unique()
+        self.test_provenance_categories_not_buried()
 
         # Phase 2: AQUADIF contract tests (advanced)
         self.test_minimum_viable_parent()  # Skips if not parent agent

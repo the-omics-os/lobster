@@ -18,6 +18,7 @@ from lobster.config.agent_presets import (
 from lobster.config.aquadif import (
     AquadifCategory,
     PROVENANCE_REQUIRED,
+    has_provenance_call,
     requires_provenance,
 )
 from lobster.config.workspace_agent_config import (
@@ -42,5 +43,6 @@ __all__ = [
     # AQUADIF tool taxonomy
     "AquadifCategory",
     "PROVENANCE_REQUIRED",
+    "has_provenance_call",
     "requires_provenance",
 ]
