@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{{ package_name }}"
+version = "0.1.0"
+description = "{{ description }}"
+readme = "README.md"
+license = "MIT"
+requires-python = ">={{ python_version }},<3.14"
+authors = [
+    {name = "{{ author_name }}", email = "{{ author_email }}"},
+]
+dependencies = [
+    "lobster-ai~=1.0.0",
+    "anndata>=0.10.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.entry-points."lobster.agents"]
+{{ agent_name }} = "lobster.agents.{{ domain }}.{{ agent_name }}:AGENT_CONFIG"
+{% for child in children %}
+{{ child }} = "lobster.agents.{{ domain }}.{{ child }}:AGENT_CONFIG"
+{% endfor %}
+
+[project.entry-points."lobster.states"]
+{{ state_class }} = "lobster.agents.{{ domain }}.state:{{ state_class }}"
+{% for child_state in child_state_classes %}
+{{ child_state }} = "lobster.agents.{{ domain }}.state:{{ child_state }}"
+{% endfor %}
+
+[tool.setuptools]
+packages = {find = {where = ["."], include = ["lobster*"], namespaces = true}}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
