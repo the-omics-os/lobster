@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Monitoring & Validation
 status: unknown
-last_updated: "2026-03-01T10:00:42.933Z"
+last_updated: "2026-03-01T11:06:39.234Z"
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -23,10 +23,10 @@ See: .planning/PROJECT.md (updated 2026-03-01)
 
 ## Current Position
 
-Phase: 5 of 5 (Monitoring Infrastructure) — COMPLETE
-Plan: 2 of 2 (complete)
-Status: Phase 5 COMPLETE. AquadifMonitor wired into runtime callback chain. All 4 integration files modified, 223 tests passing. Ready for Phase 6 (Validation Campaign).
-Last activity: 2026-03-01 — Phase 5 Plan 02 callback chain wiring (777af3d)
+Phase: 6 of 6 (Documentation & Release) — IN PROGRESS
+Plan: 1 of 2 complete
+Status: Phase 6 Plan 01 COMPLETE. Internal docs updated: CLAUDE.md files + master_mermaid.md section 12 with AQUADIF layer diagram. DOC-01, DOC-02, DOC-06 complete. Ready for Plan 02 (docs-site AQUADIF page + skill reference updates).
+Last activity: 2026-03-01 — Phase 6 Plan 01 documentation updates (95671c2 lobster, 20fb545 Omics-OS)
 
 Progress: [██████████] 100% (Phase 5)
 
@@ -168,6 +168,26 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 
 **Phase 5: Monitoring Infrastructure — COMPLETE** (2026-03-01)
 
+## Phase 6 Progress
+
+**Phase 6: Documentation & Release — IN PROGRESS** (started 2026-03-01)
+
+**Plan 01: AQUADIF rules in .github/CLAUDE.md, agent table, CLAUDE.md files — COMPLETE** (2026-03-01)
+- Added AQUADIF Hard Rules 11-12 to `.github/CLAUDE.md` (all tools need metadata, PRs need contract tests)
+- Updated agent table with 4 drug-discovery agents (cheminformatics, clinical_dev, pharmacogenomics)
+- Added AQUADIF section to root CLAUDE.md and lobster/CLAUDE.md (monitoring infrastructure, key files)
+- Requirements completed: DOC-01, DOC-02
+
+**Plan 02: AQUADIF docs-site page + skill reference updates — COMPLETE** (2026-03-01)
+- New MDX page `docs-site/content/docs/extending/aquadif-taxonomy.mdx` (10 categories, metadata pattern, provenance rules, contract testing, runtime monitoring, category decision guide)
+- Updated `extending/meta.json` to include aquadif-taxonomy in pages array
+- Updated `skills/lobster-dev/references/aquadif-contract.md` with Runtime Monitoring section (AquadifMonitor, 4 tracked metrics, 4-step wiring)
+- Updated `skills/lobster-dev/references/testing.md` with AQUADIF Contract Tests section (pytest -m contract)
+- Updated `skills/lobster-use/SKILL.md` with one-paragraph AQUADIF mention in Agent System section
+- docs-site build verified: zero errors
+- Commits: b7b711f (lobster skills), 7b407ff (docs-site)
+- Requirements completed: DOC-03, DOC-04, DOC-05
+
 ## Performance Metrics
 
 **Velocity:**
@@ -197,6 +217,8 @@ All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened fro
 | Phase 04-agent-rollout P04 | 900 | 2 tasks | 6 files |
 | Phase 05-monitoring-infrastructure P01 | 154 | 1 tasks | 2 files |
 | Phase 05-monitoring-infrastructure P02 | 480 | 2 tasks | 4 files |
+| Phase 06-documentation-release P01 | 176 | 2 tasks | 4 files |
+| Phase 06-documentation-release P06-02 | 206 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -235,6 +257,12 @@ Recent decisions affecting Phase 2:
 - [Phase 05-02]: Attribute-set pattern for both token_tracker and DataManagerV2 avoids constructor signature changes for existing callers
 - [Phase 05-02]: AquadifMonitor constructed with empty tool_metadata_map before graph creation; graph.py populates it after tool objects exist; shared reference ensures monitor sees complete map
 - [Phase 05-02]: PregelNode traversal via agent.nodes.get("tools").runnable.tools with fail-open exception handling for non-standard agent structures
+- [Phase 06-01]: Root CLAUDE.md minimal: one-line AQUADIF mention in Directory Index — full details in lobster/CLAUDE.md
+- [Phase 06-01]: .github/CLAUDE.md: AQUADIF rules AND agent/package table update in same commit (pitfall 4 avoidance)
+- [Phase 06-01]: master_mermaid.md: exact Mermaid diagram from 06-RESEARCH.md used verbatim to preserve consistent node/style patterns
+- [Phase 06-02]: aquadif-taxonomy.mdx placed last in extending/ pages array — reference page, not getting-started
+- [Phase 06-02]: Runtime Monitoring section appended before Migration appendix in aquadif-contract.md — preserves existing content order
+- [Phase 06-02]: lobster-use AQUADIF mention is one paragraph only — end users need category names in context, not full contract details
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -281,9 +309,9 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-03-01 (Phase 5 Plan 02 execution)
-Stopped at: Completed 05-02-PLAN.md (commit: 777af3d)
-Resume: Phase 5 COMPLETE. Both plans done. Proceed to Phase 6 (Validation Campaign) or new milestone via `/gsd:new-milestone`.
+Last session: 2026-03-01 (Phase 6 Plan 02 execution)
+Stopped at: Completed 06-02-PLAN.md (lobster commit: b7b711f, docs-site commit: 7b407ff)
+Resume: Phase 6 Plan 02 COMPLETE. Public AQUADIF docs page live on docs-site. Skill references updated with monitoring section and contract test commands. DOC-03, DOC-04, DOC-05 complete.
 Key artifacts:
 - AquadifMonitor: `lobster/core/aquadif_monitor.py` (pure stdlib, 6 public methods, 55 tests)
 - Unit tests: `tests/unit/core/test_aquadif_monitor.py` (55 tests, all passing)
