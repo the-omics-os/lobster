@@ -169,6 +169,9 @@ def proteomics_expert(
             "unique peptides, and sequence coverage during import."
         )
 
+    add_peptide_mapping.metadata = {"categories": ["UTILITY"], "provenance": False}
+    add_peptide_mapping.tags = ["UTILITY"]
+
     @tool
     def validate_antibody_specificity(
         modality_name: str,
@@ -323,6 +326,9 @@ for i, j, _ in cross_reactive_pairs:
         except Exception as e:
             logger.error(f"Error validating antibody specificity: {e}")
             return f"Error in antibody validation: {str(e)}"
+
+    validate_antibody_specificity.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_antibody_specificity.tags = ["QUALITY"]
 
     @tool
     def correct_plate_effects(
@@ -485,6 +491,9 @@ for i, j, _ in cross_reactive_pairs:
         except Exception as e:
             logger.error(f"Error correcting plate effects: {e}")
             return f"Error in plate correction: {str(e)}"
+
+    correct_plate_effects.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    correct_plate_effects.tags = ["PREPROCESS"]
 
     # =========================================================================
     # COLLECT ALL TOOLS

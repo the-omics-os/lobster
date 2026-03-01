@@ -374,6 +374,9 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
             logger.error(f"Error checking proteomics status: {e}")
             return f"Error checking status: {str(e)}"
 
+    check_proteomics_status.metadata = {"categories": ["UTILITY"], "provenance": False}
+    check_proteomics_status.tags = ["UTILITY"]
+
     # -------------------------
     # QUALITY ASSESSMENT TOOL
     # -------------------------
@@ -567,6 +570,9 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
         except Exception as e:
             logger.error(f"Error in proteomics quality assessment: {e}")
             return f"Error in quality assessment: {str(e)}"
+
+    assess_proteomics_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_proteomics_quality.tags = ["QUALITY"]
 
     # -------------------------
     # FILTER TOOL
@@ -791,6 +797,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             logger.error(f"Error filtering proteomics data: {e}")
             return f"Error in filtering: {str(e)}"
 
+    filter_proteomics_data.metadata = {"categories": ["FILTER"], "provenance": True}
+    filter_proteomics_data.tags = ["FILTER"]
+
     # -------------------------
     # NORMALIZE TOOL
     # -------------------------
@@ -932,6 +941,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             logger.error(f"Error normalizing proteomics data: {e}")
             return f"Error in normalization: {str(e)}"
 
+    normalize_proteomics_data.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    normalize_proteomics_data.tags = ["PREPROCESS"]
+
     # -------------------------
     # PATTERN ANALYSIS TOOL
     # -------------------------
@@ -1055,6 +1067,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
             logger.error(f"Error analyzing proteomics patterns: {e}")
             return f"Error in pattern analysis: {str(e)}"
 
+    analyze_proteomics_patterns.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    analyze_proteomics_patterns.tags = ["ANALYZE"]
+
     # -------------------------
     # IMPUTE MISSING VALUES TOOL
     # -------------------------
@@ -1143,6 +1158,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
         except Exception as e:
             logger.error(f"Error imputing missing values: {e}")
             return f"Error in imputation: {str(e)}"
+
+    impute_missing_values.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    impute_missing_values.tags = ["PREPROCESS"]
 
     # -------------------------
     # SELECT VARIABLE PROTEINS TOOL
@@ -1236,6 +1254,9 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
         except Exception as e:
             logger.error(f"Error selecting variable proteins: {e}")
             return f"Error in variable protein selection: {str(e)}"
+
+    select_variable_proteins.metadata = {"categories": ["FILTER"], "provenance": True}
+    select_variable_proteins.tags = ["FILTER"]
 
     # -------------------------
     # IMPORT PROTEOMICS DATA TOOL
@@ -1433,6 +1454,9 @@ adata = parser.parse({{ file_path | tojson }})""",
             logger.error(f"Error importing proteomics data: {e}")
             return f"Error importing proteomics data: {str(e)}"
 
+    import_proteomics_data.metadata = {"categories": ["IMPORT"], "provenance": True}
+    import_proteomics_data.tags = ["IMPORT"]
+
     # -------------------------
     # IMPORT PTM SITES TOOL
     # -------------------------
@@ -1516,6 +1540,9 @@ adata = parser.parse({{ file_path | tojson }})""",
         except Exception as e:
             logger.error(f"Error importing PTM site data: {e}")
             return f"Error importing PTM sites: {str(e)}"
+
+    import_ptm_sites.metadata = {"categories": ["IMPORT"], "provenance": True}
+    import_ptm_sites.tags = ["IMPORT"]
 
     # -------------------------
     # CORRECT BATCH EFFECTS TOOL
@@ -1609,6 +1636,9 @@ adata = parser.parse({{ file_path | tojson }})""",
             logger.error(f"Error correcting batch effects: {e}")
             return f"Error in batch correction: {str(e)}"
 
+    correct_batch_effects.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    correct_batch_effects.tags = ["PREPROCESS"]
+
     # -------------------------
     # SUMMARIZE PEPTIDE TO PROTEIN TOOL
     # -------------------------
@@ -1690,6 +1720,9 @@ adata = parser.parse({{ file_path | tojson }})""",
         except Exception as e:
             logger.error(f"Error in peptide-to-protein summarization: {e}")
             return f"Error in peptide-to-protein rollup: {str(e)}"
+
+    summarize_peptide_to_protein.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    summarize_peptide_to_protein.tags = ["PREPROCESS"]
 
     # -------------------------
     # NORMALIZE PTM TO PROTEIN TOOL
@@ -1779,6 +1812,9 @@ adata = parser.parse({{ file_path | tojson }})""",
         except Exception as e:
             logger.error(f"Error normalizing PTM to protein: {e}")
             return f"Error in PTM-to-protein normalization: {str(e)}"
+
+    normalize_ptm_to_protein.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    normalize_ptm_to_protein.tags = ["PREPROCESS"]
 
     # =========================================================================
     # AFFINITY PROTEOMICS TOOLS (AFP-01 through AFP-04)
@@ -2010,6 +2046,9 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
             logger.error(f"Error importing affinity data: {e}")
             return f"Error importing affinity data: {str(e)}"
 
+    import_affinity_data.metadata = {"categories": ["IMPORT"], "provenance": True}
+    import_affinity_data.tags = ["IMPORT"]
+
     # -------------------------
     # ASSESS LOD QUALITY TOOL (AFP-02)
     # -------------------------
@@ -2224,6 +2263,9 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
         except Exception as e:
             logger.error(f"Error in LOD quality assessment: {e}")
             return f"Error in LOD assessment: {str(e)}"
+
+    assess_lod_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_lod_quality.tags = ["QUALITY"]
 
     # -------------------------
     # NORMALIZE BRIDGE SAMPLES TOOL (AFP-03)
@@ -2455,6 +2497,9 @@ adata.X = X""",
             logger.error(f"Error in bridge sample normalization: {e}")
             return f"Error in bridge normalization: {str(e)}"
 
+    normalize_bridge_samples.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    normalize_bridge_samples.tags = ["PREPROCESS"]
+
     # -------------------------
     # ASSESS CROSS-PLATFORM CONCORDANCE TOOL (AFP-04)
     # -------------------------
@@ -2681,6 +2726,9 @@ for protein in common_proteins:
             logger.error(f"Error in cross-platform concordance: {e}")
             return f"Error in concordance assessment: {str(e)}"
 
+    assess_cross_platform_concordance.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    assess_cross_platform_concordance.tags = ["ANALYZE"]
+
     # -------------------------
     # SUMMARY TOOL
     # -------------------------
@@ -2712,6 +2760,9 @@ for protein in common_proteins:
 
         analysis_results["summary"] = summary
         return summary
+
+    create_proteomics_summary.metadata = {"categories": ["UTILITY"], "provenance": False}
+    create_proteomics_summary.tags = ["UTILITY"]
 
     # Return all shared tools
     return [

@@ -331,6 +331,9 @@ def de_analysis_expert(
             logger.error(f"Error in differential protein expression analysis: {e}\n{tb}")
             return f"Error in differential expression analysis: {str(e)}\nTraceback:\n{tb}"
 
+    find_differential_proteins.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    find_differential_proteins.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 2: run_time_course_analysis
     # =========================================================================
@@ -485,6 +488,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error in time course analysis: {e}")
             return f"Error in time course analysis: {str(e)}"
+
+    run_time_course_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_time_course_analysis.tags = ["ANALYZE"]
 
     # =========================================================================
     # TOOL 3: run_correlation_analysis
@@ -664,6 +670,9 @@ def de_analysis_expert(
             logger.error(f"Error in correlation analysis: {e}")
             return f"Error in correlation analysis: {str(e)}"
 
+    run_correlation_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_correlation_analysis.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 4: run_pathway_enrichment
     # =========================================================================
@@ -781,6 +790,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error in pathway enrichment: {e}")
             return f"Error in pathway enrichment: {str(e)}"
+
+    run_pathway_enrichment.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_pathway_enrichment.tags = ["ANALYZE"]
 
     # =========================================================================
     # TOOL 5: run_differential_ptm_analysis
@@ -986,6 +998,9 @@ def de_analysis_expert(
             logger.error(f"Error in differential PTM analysis: {e}")
             return f"Error in differential PTM analysis: {str(e)}"
 
+    run_differential_ptm_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_differential_ptm_analysis.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 6: run_kinase_enrichment
     # =========================================================================
@@ -1115,6 +1130,9 @@ def de_analysis_expert(
             logger.error(f"Error in kinase enrichment: {e}")
             return f"Error in kinase enrichment: {str(e)}"
 
+    run_kinase_enrichment.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_kinase_enrichment.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 7: run_string_network_analysis
     # =========================================================================
@@ -1240,6 +1258,9 @@ def de_analysis_expert(
         except Exception as e:
             logger.error(f"Error in STRING network analysis: {e}")
             return f"Error in STRING network analysis: {str(e)}"
+
+    run_string_network_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    run_string_network_analysis.tags = ["ANALYZE"]
 
     # =========================================================================
     # COLLECT ALL TOOLS

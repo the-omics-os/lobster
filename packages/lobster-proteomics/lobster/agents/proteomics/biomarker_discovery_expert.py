@@ -210,6 +210,9 @@ def biomarker_discovery_expert(
             logger.error(f"Error identifying co-expression modules: {e}")
             return f"Error in module identification: {str(e)}"
 
+    identify_coexpression_modules.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    identify_coexpression_modules.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 2: Correlate modules with clinical traits
     # =========================================================================
@@ -308,6 +311,9 @@ def biomarker_discovery_expert(
         except Exception as e:
             logger.error(f"Error correlating modules with traits: {e}")
             return f"Error in module-trait correlation: {str(e)}"
+
+    correlate_modules_with_traits.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    correlate_modules_with_traits.tags = ["ANALYZE"]
 
     # =========================================================================
     # TOOL 3: Cox proportional hazards survival analysis
@@ -432,6 +438,9 @@ def biomarker_discovery_expert(
             logger.error(f"Error in Cox survival analysis: {e}")
             return f"Error in survival analysis: {str(e)}"
 
+    perform_survival_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    perform_survival_analysis.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 4: Batch Kaplan-Meier biomarker screening
     # =========================================================================
@@ -554,6 +563,9 @@ def biomarker_discovery_expert(
         except Exception as e:
             logger.error(f"Error in survival biomarker screening: {e}")
             return f"Error in biomarker screening: {str(e)}"
+
+    find_survival_biomarkers.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    find_survival_biomarkers.tags = ["ANALYZE"]
 
     # =========================================================================
     # TOOL 5: Multi-method biomarker panel selection
@@ -925,6 +937,9 @@ stability_selected = stability_freq > 0.6""",
             logger.error(f"Error in biomarker panel selection: {e}")
             return f"Error in panel selection: {str(e)}"
 
+    select_biomarker_panel.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    select_biomarker_panel.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 6: Nested cross-validation biomarker panel evaluation
     # =========================================================================
@@ -1287,6 +1302,9 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
             logger.error(f"Error in biomarker panel evaluation: {e}")
             return f"Error in panel evaluation: {str(e)}"
 
+    evaluate_biomarker_panel.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    evaluate_biomarker_panel.tags = ["ANALYZE"]
+
     # =========================================================================
     # TOOL 7: Hub protein extraction from WGCNA modules
     # =========================================================================
@@ -1509,6 +1527,9 @@ for module in target_modules:
         except Exception as e:
             logger.error(f"Error in hub protein extraction: {e}")
             return f"Error in hub extraction: {str(e)}"
+
+    extract_hub_proteins.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    extract_hub_proteins.tags = ["ANALYZE"]
 
     # =========================================================================
     # COLLECT ALL TOOLS
