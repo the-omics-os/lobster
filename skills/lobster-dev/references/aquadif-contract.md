@@ -340,7 +340,7 @@ Your agent MUST pass these tests. They are implemented in Phase 2 (`lobster/test
 3. **Category cap** — Maximum 3 categories per tool
 4. **Provenance compliance** — `provenance` boolean matches the primary category's requirement
 5. **Provenance call validation** — Tools with `provenance: True` contain a `log_tool_usage()` call with `ir=` parameter (AST-based inspection)
-6. **Minimum viable parent** — Parent agents without child agents must have at least one IMPORT tool and one QUALITY tool
+6. **Minimum viable parent** — Parent agents must have at least one IMPORT + one QUALITY + one ANALYZE or DELEGATE tool. If your agent's DELEGATE tools are injected at runtime (via `delegation_tools` parameter from `graph.py`), set `is_parent_agent = False` in the contract test to skip this check — the test cannot see runtime-injected tools.
 7. **No closure scoping drift** — For multi-category tools, ensure metadata is assigned to the correct closure variable
 8. **Metadata uniqueness** — Each tool instance has its own metadata dict (not shared references)
 
@@ -476,7 +476,60 @@ When building a new agent following this contract:
 5. **Honest gaps** — If your domain doesn't need SYNTHESIZE tools, that's fine; don't force implementations
 6. **Boundary cases** — When ambiguous, consult the decision flowchart boundary cases section
 
+## Patterns from Research Package (Reference Implementation)
+
+This section shows real categorization decisions from `lobster-research` (`research_agent` + `data_expert`). Use as reference when categorizing tools in new domain packages.
+
+### research_agent tools (11 tools)
+
+| Tool | Category | Provenance | Rationale |
+|------|----------|------------|-----------|
+| `search_literature` | UTILITY | False | Read-only database query; no data transformation |
+| `find_related_entries` | UTILITY | False | Cross-reference lookup; returns links, no transformation |
+| `fast_dataset_search` | UTILITY | False | Lightweight search wrapper; read-only |
+| `get_dataset_metadata` | QUALITY | True | Validates dataset fitness; produces quality assessment |
+| `validate_dataset_metadata` | QUALITY | True | Schema validation + download readiness check |
+| `prepare_dataset_download` | UTILITY | False | Queue management (administrative); does not load data |
+| `extract_methods` | UTILITY | False | Text extraction from publication; no data transformation |
+| `fast_abstract_search` | UTILITY | False | Abstract retrieval; read-only literature access |
+| `read_full_publication` | UTILITY | False | Full-text extraction; read-only content access |
+| `process_publication_entry` | PREPROCESS | True | Transforms raw publication record → structured metadata |
+| `process_publication_queue` | PREPROCESS | True | Batch transformation of publication records |
+
+**Note on factory-created tools:** `write_to_workspace` and `get_content_from_workspace` are created via shared factories. Tag them at the injection site in the factory function:
+```python
+write_to_workspace = create_write_to_workspace_tool(data_manager)
+write_to_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
+write_to_workspace.tags = ["UTILITY"]
+```
+
+### data_expert tools (10 tools in base_tools)
+
+| Tool | Category | Provenance | Rationale |
+|------|----------|------------|-----------|
+| `execute_download_from_queue` | IMPORT | True | Downloads + stores external dataset into workspace |
+| `load_modality` | IMPORT | True | Loads local file via adapter into workspace |
+| `validate_modality_compatibility` | QUALITY | True | Assesses multi-modal data fitness for integration |
+| `concatenate_samples` | PREPROCESS | True | Transforms separate samples → unified AnnData |
+| `create_mudata_from_modalities` | PREPROCESS | True | Combines modalities → MuData representation |
+| `list_available_modalities` | UTILITY | False | Lists workspace contents; read-only |
+| `get_modality_details` | UTILITY | False | Shape/column inspection; read-only |
+| `remove_modality` | UTILITY | False | Workspace cleanup; no scientific transformation |
+| `get_adapter_info` | UTILITY | False | Displays registry info; read-only |
+| `get_queue_status` | UTILITY | False | Download queue status; read-only |
+| `execute_custom_code` | CODE_EXEC | False | Arbitrary code execution escape hatch |
+
+**Key boundary decisions:**
+- `get_modality_details` and `remove_modality` both have `ir=ir` in their `log_tool_usage` calls, but they are UTILITY (read-only + workspace cleanup). UTILITY can still call `log_tool_usage` — but do NOT declare `provenance: True` unless the tool's primary purpose is data transformation.
+- `prepare_dataset_download` queues a download — it's administrative (UTILITY), not data loading (IMPORT). The IMPORT only happens when `execute_download_from_queue` runs.
+- `process_publication_entry` is PREPROCESS because it transforms raw publication queue entries into structured, enriched metadata records (substantial data transformation).
+
+### Parent agent configuration note
+
+Both `research_agent` and `data_expert` are parents of `metadata_assistant` at runtime, but neither has DELEGATE tools in their base tools list. DELEGATE tools are injected via `delegation_tools` parameter from `graph.py`. This means `is_parent_agent = False` in their contract tests — the MVP parent check cannot see runtime-injected delegation tools.
+
 ---
 
-**Version:** Phase 1 (2026-02-27)
-**Next:** Phase 2 will implement contract tests that validate compliance with this specification.
+**Version:** Phase 4 (2026-03-01) — Research package reference implementation added
+**Previous:** Phase 1 (2026-02-27) — Initial specification
+**Contract tests:** `packages/lobster-research/tests/agents/test_aquadif_research.py`
