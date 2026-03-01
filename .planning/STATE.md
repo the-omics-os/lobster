@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-02-28T09:26:57.030Z"
+status: in-progress
+last_updated: "2026-03-01T04:07:33Z"
 progress:
-  total_phases: 2
+  total_phases: 7
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_plans: 7
+  completed_plans: 6
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-02-28)
 
 **Core value:** Every tool in Lobster AI declares what it does (category) and whether it must produce provenance — making the system introspectable, enforceable, and teachable to coding agents.
-**Current focus:** Phase 2: Contract Test Infrastructure
+**Current focus:** Phase 3 execution (Plan 01 complete, Plan 02 pending)
 
 ## Current Position
 
-Phase: 2 of 6 (Contract Test Infrastructure)
-Plan: 2 of 2 (complete)
-Status: Active
-Last activity: 2026-02-28 — Phase 2 Plan 2 complete: AST provenance validation + parent agent tests + smoke tests (3060fd1)
+Phase: 3 of 6 (Reference Implementation) — IN PROGRESS
+Plan: 1 of 2 (complete)
+Status: Phase 3 Plan 01 complete, Plan 02 pending
+Last activity: 2026-03-01 — Phase 3 Plan 01 reference implementation (42b67c8)
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 40%
 
 ## Phase 1 Completion Summary
 
@@ -48,29 +48,54 @@ All 5 success criteria met. Key deliverables:
 
 ## Phase 2 Completion Summary
 
-**Phase 2: Contract Test Infrastructure — COMPLETE** (2026-02-28)
+**Phase 2: Contract Test Infrastructure — COMPLETE + HARDENED** (2026-02-28)
 
-All 8 test requirements (TEST-01 through TEST-08) implemented. Key deliverables:
-- `lobster/config/aquadif.py` — AquadifCategory enum + PROVENANCE_REQUIRED set
-- `lobster/testing/contract_mixins.py` — 13 test methods (6 Phase 1 + 7 Phase 2)
-- `tests/unit/agents/test_aquadif_compliance.py` — 7-test smoke suite
-- `pytest.ini` + `pyproject.toml` — contract marker registration
+All 8 test requirements (TEST-01 through TEST-08) implemented, then hardened from brutalist critique.
 
-**Critical tests implemented:**
-- TEST-08 (AST provenance validation): Catches metadata-runtime disconnect found in 100% of Phase 1 eval agents
-- TEST-06 (minimum viable parent): Ensures domain-expert parent agents maintain IMPORT + QUALITY + ANALYZE/DELEGATE
-- TEST-07 (metadata uniqueness): Prevents shared metadata dict bug
+**Core deliverables:**
+- `lobster/config/aquadif.py` — AquadifCategory enum, PROVENANCE_REQUIRED set, `has_provenance_call()` standalone AST helper
+- `lobster/testing/contract_mixins.py` — 14 test methods (6 Phase 1 + 8 Phase 2 incl. ordering bypass)
+- `tests/unit/agents/test_aquadif_compliance.py` — 11 enforcement tests (4 smoke + 7 mixin violation tests)
+- `tests/unit/config/test_aquadif.py` — 15 tests (10 enum + 5 AST helper)
+- `.github/workflows/ci-basic.yml` — `pytest -m contract` step in CI pipeline
 
-**Test coverage:** All 8 requirements from Phase 2 research complete.
+**Hardening (post-verification, from Codex + Gemini brutalist critique):**
+- Factory extraction: fail-by-default (was: silent skip → green CI for broken agents)
+- `tools_required: ClassVar[bool] = True` — empty tools = FAIL, opt-out with `False`
+- `_require_tools()` helper replaces scattered skip logic
+- Class-level `_tools_cache` — factory called once per test class (was: 7+ times)
+- Dead code removed: unreachable elif in AST validation
+- `has_provenance_call()` extracted to standalone function (reusable by `lobster validate-plugin`)
+- `test_provenance_categories_not_buried()` — catches category ordering bypass
+- Smoke tests rewritten from tautologies to enforcement tests
+- CI now runs `pytest -m contract` on every push/PR
+
+**Test totals:** 26 passing tests (15 enum + 11 contract enforcement)
+
+**Concurrent work:** `lobster scaffold` CLI being implemented separately (scaffold plan). Produces AQUADIF-compliant plugins. `lobster validate-plugin` can validate both new and existing packages.
+
+## Phase 3 Progress
+
+**Phase 3: Reference Implementation — IN PROGRESS** (2026-03-01)
+
+**Plan 01: AQUADIF metadata for transcriptomics package — COMPLETE** (2026-03-01)
+- 22 tools tagged with AQUADIF metadata (15 in transcriptomics_expert.py, 7 in shared_tools.py)
+- 14/14 contract tests passing for transcriptomics_expert
+- Contract mixin enhanced: LLM mock + PregelNode traversal for real agent factories
+- 262 existing service tests still pass (zero backward compatibility regressions)
+- Complete categorization mapping table in SUMMARY for Plan 02
+
+**Plan 02: Migration guide — PENDING**
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Phase 1 plan execution: 229s (2 automated plans)
 - Phase 1 checkpoint: multi-day eval cycle (exceeded scope — full cross-agent validation)
 - Phase 2 plan 1 execution: 181s (2 tasks, fully automated)
 - Phase 2 plan 2 execution: 332s (2 tasks, fully automated)
+- Phase 3 plan 1 execution: 541s (2 tasks, fully automated)
 
 **By Phase:**
 
@@ -78,6 +103,7 @@ All 8 test requirements (TEST-01 through TEST-08) implemented. Key deliverables:
 |-------|-------|--------|------|
 | 01 | 3/3 | ✓ Complete | 2026-02-28 |
 | 02 | 2/2 | ✓ Complete | 2026-02-28 |
+| 03 | 1/2 | In Progress | 2026-03-01 |
 
 ## Accumulated Context
 
@@ -94,6 +120,8 @@ Recent decisions affecting Phase 2:
 - **AST validation implemented (02-02):** Use ast.parse() + ast.walk() to find log_tool_usage(ir=ir) calls — only reliable way to validate provenance tracking without executing tools
 - **Smoke tests use mock tools (02-02):** Validate contract test infrastructure with @tool decorator + manual metadata, not real factories (fast, no LLM dependencies)
 - **Contract marker in both configs (02-02):** Register in pytest.ini AND pyproject.toml for compatibility regardless of which file is authoritative
+- **Post-decorator inline pattern (03-01):** .metadata and .tags assigned after each @tool closure, using string literals (no enum import in tool files)
+- **Contract mixin enhanced for real factories (03-01):** LLM mock patching via dual-site patch + PregelNode traversal unblocks Phase 4 rollout testing
 
 ### Phase 2 Requirements (from eval findings)
 
@@ -140,12 +168,14 @@ These can be applied as a quick task before or during Phase 2.
 
 ## Session Continuity
 
-Last session: 2026-02-28T09:25:53Z (Phase 2 Plan 2 execution)
-Stopped at: Completed 02-02-PLAN.md — AST provenance validation + parent agent tests + smoke tests
-Resume: Phase 2 complete — begin Phase 3 (agent package adoption) or Phase 6 (validation campaign)
+Last session: 2026-03-01 (Phase 3 Plan 01 execution)
+Stopped at: Completed 03-01-PLAN.md (commits: 7aa36bd, 42b67c8)
+Resume: Execute Phase 3 Plan 02 (migration guide) or proceed to Phase 4 rollout
 Key artifacts:
-- Phase 2 Plan 2 SUMMARY: `.planning/phases/02-contract-test-infrastructure/02-02-SUMMARY.md`
-- Contract test mixin: `lobster/testing/contract_mixins.py` (13 test methods: 6 Phase 1 + 7 Phase 2)
-- Smoke test suite: `tests/unit/agents/test_aquadif_compliance.py` (7 tests, all passing)
-- AST helper: `_has_log_tool_usage_with_ir()` validates metadata-runtime consistency
-- Contract marker: registered in pytest.ini and pyproject.toml
+- Contract test mixin: `lobster/testing/contract_mixins.py` (14 test methods, fail-by-default, cached, LLM mock + PregelNode)
+- AST helper: `lobster/config/aquadif.py` → `has_provenance_call()` (standalone, reusable)
+- Enforcement tests: `tests/unit/agents/test_aquadif_compliance.py` (11 tests)
+- CI enforcement: `.github/workflows/ci-basic.yml` → `pytest -m contract`
+- Transcriptomics reference: `packages/lobster-transcriptomics/` — 22 tools with AQUADIF metadata
+- Contract tests: `packages/lobster-transcriptomics/tests/agents/test_aquadif_transcriptomics.py` — 14/14 passing
+- Scaffold (in progress): `lobster/scaffold/` + `lobster validate-plugin` CLI
