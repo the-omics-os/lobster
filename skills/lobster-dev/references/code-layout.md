@@ -1,6 +1,6 @@
 # Code Layout
 
-Quick reference for finding files in the Lobster AI codebase.
+Quick reference for finding files in the Lobster AI codebase. For data flow and component explanations, see [architecture.md](architecture.md).
 
 ## Top-Level Structure
 
@@ -68,29 +68,32 @@ Each package follows this structure:
 lobster-{domain}/
 ├── pyproject.toml              # Package config + entry points
 ├── README.md
-└── lobster/
-    ├── agents/
+└── lobster/                    # PEP 420 — NO __init__.py
+    ├── agents/                 # PEP 420 — NO __init__.py
     │   └── {domain}/
     │       ├── __init__.py
     │       └── {agent_name}.py
-    └── services/
-        └── {domain}/
-            ├── __init__.py
-            └── {service_name}.py
+    └── services/               # PEP 420 — NO __init__.py
+        ├── analysis/
+        │   └── {domain}_analysis_service.py
+        └── quality/
+            └── {domain}_quality_service.py
 ```
 
 ### Package Contents
 
-| Package | Agents | Services |
-|---------|--------|----------|
-| `lobster-transcriptomics` | transcriptomics_expert, annotation_expert, de_analysis_expert | 8 services |
-| `lobster-research` | research_agent, data_expert_agent | 1 service |
-| `lobster-visualization` | visualization_expert | 1 service |
-| `lobster-metadata` | metadata_assistant | 8 services |
-| `lobster-structural-viz` | protein_structure_visualization_expert | 4 services |
-| `lobster-proteomics` [alpha] | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert | 11 services |
-| `lobster-genomics` [alpha] | genomics_expert | 3 services |
-| `lobster-ml` [alpha] | machine_learning_expert | 4 services |
+| Package | Agents |
+|---------|--------|
+| `lobster-transcriptomics` | transcriptomics_expert, annotation_expert, de_analysis_expert |
+| `lobster-research` | research_agent, data_expert_agent |
+| `lobster-visualization` | visualization_expert_agent |
+| `lobster-proteomics` | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert |
+| `lobster-genomics` | genomics_expert, variant_analysis_expert |
+| `lobster-metabolomics` | metabolomics_expert |
+| `lobster-ml` | machine_learning_expert, feature_selection_expert, survival_analysis_expert |
+| `lobster-drug-discovery` | drug_discovery_expert, cheminformatics_expert, clinical_dev_expert, pharmacogenomics_expert |
+| `lobster-metadata` | metadata_assistant |
+| `lobster-structural-viz` | protein_structure_visualization_expert |
 
 ## Tests (`tests/`)
 

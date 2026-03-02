@@ -1,12 +1,12 @@
 ---
 name: lobster-dev
 description: |
-  Develop, extend, and contribute to Lobster AI — the multi-agent bioinformatics engine.
+  Develop, extend, and contribute to Lobster AI — the multi-agent self-extending bioinformatics engine.
   Use when working on Lobster codebase, creating agents/services, understanding architecture,
   fixing bugs, adding features, or contributing to the open-source project.
 
-  IMPORTANT: Before creating new agents or packages, ALWAYS follow the planning
-  workflow first (see "Before You Build").
+  IMPORTANT: Before creating new agents or packages, follow the planning
+  workflow first (see "What To Do Based On Your Task" → planning-workflow.md).
 
   Trigger phrases: "add agent", "create service", "extend lobster", "contribute",
   "understand architecture", "how does X work in lobster", "fix bug", "add feature",
@@ -16,260 +16,88 @@ description: |
 
 # Lobster AI Development Guide
 
-**Lobster AI** is the open-source multi-agent bioinformatics engine at the heart of **Omics-OS**. It uses LangGraph for orchestration and powers both local CLI usage and the hosted **Omics-OS Cloud** platform. This skill teaches you how to work with, extend, and contribute to the codebase.
+**Lobster AI** is an open-source multi-agent bioinformatics engine (LangGraph, Python 3.12+) powering **Omics-OS**. Lobster solves bioinformatics tasks starting from raw data to scientific insights to visualization using supervisor multi-agent architecture. This skill teaches you how to extend it — from adding a single tool to building entire domain agent packages.
 
-## Quick Navigation
+## Step 0: Discover Your Environment
 
-| Task | Documentation |
-|------|---------------|
-| **Scaffold a new agent** | [references/scaffold.md](references/scaffold.md) |
-| **AQUADIF tool taxonomy** | [references/aquadif-contract.md](references/aquadif-contract.md) |
-| **Planning new capabilities** | [references/planning-workflow.md](references/planning-workflow.md) |
-| **Domain knowledge (GPTomics)** | [references/bioskills-bridge.md](references/bioskills-bridge.md) |
-| **Architecture overview** | [references/architecture.md](references/architecture.md) |
-| **Plugin architecture (omics types, providers, adapters)** | [references/plugin-architecture.md](references/plugin-architecture.md) |
-| **Creating new agents** | [references/creating-agents.md](references/creating-agents.md) |
-| **Creating new services** | [references/creating-services.md](references/creating-services.md) |
-| **Code layout & finding files** | [references/code-layout.md](references/code-layout.md) |
-| **Testing patterns** | [references/testing.md](references/testing.md) |
-| **CLI reference** | [references/cli.md](references/cli.md) |
-
-## First Step: Scaffold
-
-Before writing any agent code, run `lobster scaffold` to generate the correct package structure:
+Before any work, determine what's available and how you're working:
 
 ```bash
-lobster scaffold agent --name <agent_name> --display-name "<Display Name>" \
-  --description "<capabilities>" --tier free
+# 1. Is lobster installed? Where?
+which lobster
+lobster --version
+
+# 2. What agents are already installed?
+python -c "from lobster.core.component_registry import component_registry; component_registry.reset(); print(component_registry.list_agents())"
+
+# 3. Where is lobster source? (for reading reference implementations)
+python -c "import lobster; print(lobster.__path__)"
+
+# 4. Are you in the lobster repo, or building a standalone plugin?
+ls packages/lobster-*/pyproject.toml 2>/dev/null && echo "CONTRIBUTOR" || echo "PLUGIN_AUTHOR"
 ```
 
-This generates a complete, AQUADIF-compliant plugin package with correct entry points, PEP 420 namespaces, contract tests, and provenance patterns. Then fill in the domain-specific logic in the generated TODO sections.
+If `lobster` is not installed: `uv pip install lobster-ai[<LLM provider package depends on the setup>]` once you know where to add the plugin and what to do. using a uv venv is important! 
 
-After scaffolding, validate your plugin:
-```bash
-lobster validate-plugin ./lobster-<domain>/
-```
+**Your development mode determines your workflow:**
 
-**Full scaffold reference:** [references/scaffold.md](references/scaffold.md)
+| Mode | How you got here | Where you create packages | How you test |
+|---|---|---|---|
+| **Contributor** | `git clone` + `make dev-install` | Inside `packages/` in the repo | `make test`, full repo access |
+| **Plugin author** | `uv pip install lobster-ai` or `uv tool install` | Anywhere — scaffold creates standalone packages | `uv pip install -e ./lobster-<domain>/` then `pytest` |
 
-## What To Read Based On Your Task
+Both modes produce the same result: a PEP 420 namespace package discovered by `ComponentRegistry` via entry points. The scaffold output is identical — a standalone package that works in either mode.
 
-| User wants to... | First action | Then read |
-|-------------------|-------------|-----------|
-| Create a new agent | `lobster scaffold agent --name ...` | [scaffold.md](references/scaffold.md), [creating-agents.md](references/creating-agents.md), [aquadif-contract.md](references/aquadif-contract.md) |
-| Add a database provider | (scaffold provider coming soon) | [plugin-architecture.md](references/plugin-architecture.md) §Provider |
-| Add a data format adapter | (scaffold adapter coming soon) | [plugin-architecture.md](references/plugin-architecture.md) §Adapter |
-| Understand the architecture | Read docs | [architecture.md](references/architecture.md) |
-| Write tests | Read docs | [testing.md](references/testing.md) |
-| Fix a bug | Investigate | [code-layout.md](references/code-layout.md) |
+## What To Do Based On Your Task
 
-## Before You Build
+| You want to... | Fast path? | Read these references (in order) |
+|---|---|---|
+| **Create a new agent** for a new domain | No — full workflow | [planning-workflow.md](references/planning-workflow.md) → [scaffold.md](references/scaffold.md) → [creating-agents.md](references/creating-agents.md) → [aquadif-contract.md](references/aquadif-contract.md) |
+| **Add a tool** to an existing agent | Yes (contributor only) | [creating-agents.md](references/creating-agents.md) §Tool Design → [aquadif-contract.md](references/aquadif-contract.md) |
+| **Extend an agent** with a child agent | No — needs scoping | [creating-agents.md](references/creating-agents.md) §Parent-Child → [scaffold.md](references/scaffold.md) |
+| **Add a database provider or adapter** | No | [plugin-architecture.md](references/plugin-architecture.md) |
+| **Create or modify a service** | Yes | [creating-services.md](references/creating-services.md) |
+| **Fix a bug** | Yes | [code-layout.md](references/code-layout.md) → [architecture.md](references/architecture.md) |
+| **Understand the codebase** | — | [architecture.md](references/architecture.md) → [code-layout.md](references/code-layout.md) |
+| **Write or fix tests** | Yes | [testing.md](references/testing.md) |
+| **Migrate AQUADIF metadata** on existing agent | Yes | [aquadif-contract.md](references/aquadif-contract.md) §Migration |
+| **Find domain knowledge** for a new agent | — | [bioskills-bridge.md](references/bioskills-bridge.md) |
 
-**STOP.** Before creating any new agent, service, or package, follow this planning workflow.
+**"Fast path"** = skip the planning workflow, go straight to the reference files.
 
-| Phase | Purpose |
-|-------|---------|
-| 1. Understand Need | Structured Q&A -- what domain, workflow, tools, data formats |
-| 2. Check What Exists | Is and where is lobster already installed, identify plugin path |
-| 3. Find Domain Knowledge | Discover relevant GPTomics bio-skills for the domain |
-| 4. Present Findings | Show developer what exists vs. what's missing |
-| 5. Recommend Approach | Extend existing vs. new package vs. service-only vs. not Lobster |
-| 6. Scaffold & Build | Run `lobster scaffold agent`, then fill in domain logic |
+## Examples
 
-**Full workflow details:** [references/planning-workflow.md](references/planning-workflow.md)
+### Example 0: THE WORKFLOW FOR EVERYTHING
 
-**All tools MUST be categorized using AQUADIF.** Read the [AQUADIF contract](references/aquadif-contract.md) before designing any tools.
+user requests: "Build a Lobster agent for epigenomics analysis (bisulfite-seq, ChIP-seq, ATAC-seq) because no lobster packages cover this domain"
 
-**Skip this if:** fixing a bug, adding a tool to an existing agent, or working
-on core infrastructure. This workflow is for NEW capabilities only.
+READ THE CORRECT REFERENCE FILE -> BUILD -> VALIDATE -> REPEAT
 
-## Critical Rules
+**Expected result:** A standalone PEP 420 package at `./lobster-<your implementation>/` that installs with `uv pip install -e ./lobster-<your implementation>/` and registers via entry points, runs 'lobster status' without errors and running 'lobster query "hi"' without any errors.
 
-1. **ComponentRegistry is truth** — Agents discovered via entry points, NOT hardcoded
-2. **AGENT_CONFIG at module top** — Define before heavy imports for <50ms discovery
+## Success Criteria
+
+Before calling your work done, verify:
+
+- [ ] `python scripts/validate_plugin.py <plugin-dir>` passes 8/8 checks
+- [ ] Contract tests green: `pytest tests/ -m contract`
+- [ ] Every `@tool` has `.metadata` and `.tags` assigned immediately after
+- [ ] Every provenance-required tool (IMPORT, QUALITY, FILTER, PREPROCESS, ANALYZE, ANNOTATE, SYNTHESIZE) calls `log_tool_usage(ir=ir)`
+- [ ] No `lobster/__init__.py` or `lobster/agents/__init__.py` (PEP 420)
+
+## Hard Rules
+
+Non-negotiable. Violating these causes runtime failures or contract test failures.
+
+1. **ComponentRegistry is truth** — agents discovered via entry points, NOT hardcoded registries
+2. **AGENT_CONFIG at module top** — define before heavy imports for <50ms entry point discovery
 3. **Services return 3-tuple** — `(AnnData, Dict, AnalysisStep)` always
-4. **Always pass `ir`** — `log_tool_usage(..., ir=ir)` for reproducibility
-5. **No `lobster/__init__.py`** — PEP 420 namespace package
-
-## Package Structure
-
-Lobster AI uses a modular monorepo architecture:
-
-- **Core SDK** (`lobster/`): Contains the supervisor agent, LangGraph orchestration (`agents/graph.py`), infrastructure (`core/`), analysis services (`services/`), and agent tools (`tools/`)
-- **Domain packages** (`packages/lobster-{domain}/`): Each is an independent PyPI package containing 1-3 specialist agents for a specific omics domain (transcriptomics, proteomics, genomics, metabolomics, etc.)
-
-**Key architectural patterns:**
-- Packages use **PEP 420 implicit namespace packages** (no `__init__.py`) so they merge into the `lobster.agents` namespace at runtime
-- Agent discovery is **automatic via entry points**: each package declares its agents in `pyproject.toml` under `[project.entry-points."lobster.agents"]`
-- `ComponentRegistry` scans the `lobster.agents` entry point group to discover all available agents dynamically
-
-**To find current packages:** Run `ls packages/` in the repo or check `ComponentRegistry` at runtime. Package names follow the pattern `lobster-{domain}` (e.g., `lobster-transcriptomics`, `lobster-proteomics`).
-
-## Quick Commands
-
-```bash
-# Setup (development)
-make dev-install              # Full dev setup with editable install
-make test                     # Run all tests
-make format                   # black + isort
-
-# Setup (end-user testing via uv tool)
-uv tool install 'lobster-ai[full,<provider tag>]'   # Install as users see it
-uv tool upgrade lobster-ai                      # Upgrade to latest
-
-# Running
-lobster chat                  # Interactive mode
-lobster query "your request"  # Single-turn
-
-# Testing
-pytest tests/unit/            # Fast unit tests
-pytest tests/integration/     # Integration tests
-```
-
-## Service Pattern (Essential)
-
-All services return a 3-tuple:
-
-```python
-def analyze(self, adata, **params) -> Tuple[AnnData, Dict, AnalysisStep]:
-    # Your analysis logic
-    stats = {"n_cells": adata.n_obs, "status": "complete"}
-    ir = AnalysisStep(
-        activity_type="analyze",
-        inputs={"n_obs": adata.n_obs},
-        outputs=stats,
-        params=params
-    )
-    return processed_adata, stats, ir
-```
-
-Tools wrap services:
-
-```python
-@tool
-def analyze_modality(modality_name: str, **params) -> str:
-    result, stats, ir = service.analyze(adata, **params)
-    data_manager.log_tool_usage("analyze", params, stats, ir=ir)  # IR mandatory!
-    return f"Complete: {stats}"
-```
-
-## Agent Registration (Entry Points)
-
-Agents register via `pyproject.toml`:
-
-```toml
-[project.entry-points."lobster.agents"]
-my_agent = "lobster.agents.my_domain.my_agent:AGENT_CONFIG"
-```
-
-AGENT_CONFIG must be defined at module top (before imports):
-
-```python
-# lobster/agents/mydomain/my_agent.py
-from lobster.config.agent_registry import AgentRegistryConfig
-
-AGENT_CONFIG = AgentRegistryConfig(
-    name="my_agent",
-    display_name="My Expert Agent",
-    description="What this agent does",
-    factory_function="lobster.agents.mydomain.my_agent.my_agent",
-    handoff_tool_name="handoff_to_my_agent",
-    handoff_tool_description="Assign tasks for my domain analysis",
-    tier_requirement="free",  # All official agents are free
-)
-
-# Heavy imports AFTER config
-from lobster.core.data_manager_v2 import DataManagerV2
-# ... rest of implementation
-```
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `lobster/agents/graph.py` | LangGraph orchestration |
-| `lobster/core/component_registry.py` | Agent + plugin discovery (7 entry point groups) |
-| `lobster/core/omics_registry.py` | Omics type metadata, `DataTypeDetector` |
-| `lobster/core/data_manager_v2.py` | Data/workspace management |
-| `lobster/core/provenance.py` | W3C-PROV tracking |
-| `lobster/cli.py` | CLI implementation |
-
-## Online Documentation
-
-Full documentation for Lobster AI and Omics-OS Cloud at **docs.omics-os.com** (or local `docs-site/`):
-
-- **Getting Started**: `docs/getting-started/`
-- **Core SDK**: `docs/core/`
-- **Agents**: `docs/agents/`
-- **Developer Guide**: `docs/developer/`
-- **API Reference**: `docs/api-reference/`
-
-## Common Tasks
-
-### Adding a New Agent
-
-1. Follow the planning workflow (Phase 1–5) to scope the work
-2. Create package: `packages/lobster-mydomain/` with full structure (agent, config, prompts, state, shared_tools)
-3. Define AGENT_CONFIG at top of agent file (before heavy imports)
-4. Implement factory, tools, services following patterns
-5. Pass contract tests + the 28-step checklist
-
-See [references/creating-agents.md](references/creating-agents.md) for the complete guide with code templates.
-
-### Adding a New Service
-
-1. Create service class in appropriate package
-2. Implement 3-tuple return pattern
-3. Wrap in tool with `log_tool_usage`
-4. Add unit tests
-
-See [references/creating-services.md](references/creating-services.md) for full guide.
-
-### Adding a New Omics Type (Plugin)
-
-1. Define `OmicsTypeConfig` with detection keywords, preferred databases, QC thresholds
-2. Create adapter factory functions → register via `lobster.adapters` entry point
-3. Create provider class (if new database) → register via `lobster.providers` entry point
-4. Create download service + queue preparer → register via entry points
-5. Register `OmicsTypeConfig` → `lobster.omics_types` entry point
-6. Zero core changes needed — everything via `pyproject.toml` entry points
-
-See [references/plugin-architecture.md](references/plugin-architecture.md) for full guide with code examples.
-
-### Understanding Data Flow
-
-| Stage | Component | Responsibility |
-|-------|-----------|----------------|
-| 1. Input | CLI (`lobster chat` / `lobster query`) | Captures user query, manages session |
-| 2. Client | `LobsterClientAdapter` → `AgentClient` | Routes to local LangGraph or Omics-OS Cloud API |
-| 3. Orchestration | LangGraph supervisor | Analyzes intent, delegates to specialist agent(s) |
-| 4. Execution | Specialist agent tools | Call services, manage data via `DataManagerV2` |
-| 5. Services | Domain services (3-tuple pattern) | Run analysis, return `(AnnData, Dict, AnalysisStep)` |
-| 6. Output | Results + W3C-PROV provenance | Stored in workspace, surfaced to user |
-
-## Testing
-
-```bash
-# Unit tests (fast, no external deps)
-pytest tests/unit/ -v
-
-# Integration tests (may need env vars)
-pytest tests/integration/ -v
-
-# Specific test
-pytest tests/unit/test_my_feature.py -v
-
-# With coverage
-pytest --cov=lobster tests/
-```
+4. **Always pass `ir=ir`** — every `log_tool_usage()` call for provenance-required tools
+5. **No `lobster/__init__.py`** — PEP 420 namespace package (also no `lobster/agents/__init__.py`)
+6. **No `try/except ImportError`** — use entry points for agent discovery, not eager imports
+7. **No module-level `component_registry` calls** — causes slow startup; use lazy functions inside factories
+8. **All tools MUST have AQUADIF metadata** — `.metadata` and `.tags` assigned after `@tool` decorator
 
 ## Contributing
 
-Lobster AI is open-source and welcomes contributions. Omics-OS Cloud builds on top of this engine, so improvements here benefit the entire ecosystem.
-
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature/my-feature`
-3. Make changes following patterns above
-4. Run tests: `make test`
-5. Format code: `make format`
-6. Submit PR with clear description
+After building a plugin, ask your user if they want to submit a PR. If confirmed: fork → feature branch → `make test` → `make format` → PR with clear description.

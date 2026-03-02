@@ -22,7 +22,7 @@ def analyze(self, adata: AnnData, **params) -> Tuple[AnnData, Dict, AnalysisStep
 ## Basic Service Structure
 
 ```python
-# packages/lobster-mydomain/lobster/services/mydomain/my_service.py
+# packages/lobster-mydomain/lobster/services/analysis/my_service.py
 
 from typing import Tuple, Dict, Optional
 import anndata as ad
@@ -93,25 +93,30 @@ class MyService:
 
 ## Service Location
 
-Services go in the appropriate package:
+Services go in the appropriate package, organized by **function type** (not domain name):
 
 ```
 packages/lobster-mydomain/
-└── lobster/
-    └── services/
-        └── mydomain/
-            ├── __init__.py
-            └── my_service.py
+└── lobster/                              # PEP 420 — NO __init__.py
+    └── services/                         # PEP 420 — NO __init__.py
+        ├── analysis/
+        │   └── mydomain_analysis_service.py
+        └── quality/
+            └── mydomain_quality_service.py
 ```
+
+Common function-type directories: `analysis/`, `quality/`, `data_access/`, `visualization/`, `metadata/`.
 
 Or in core for shared services:
 
 ```
 lobster/
 └── services/
-    ├── __init__.py
-    └── my_core_service.py
+    └── analysis/
+        └── my_core_service.py
 ```
+
+**PEP 420 critical:** `lobster/` and `lobster/services/` must NOT have `__init__.py` in plugin packages — they are namespace boundaries shared with the core SDK.
 
 ## Wrapping Services in Tools
 
@@ -137,8 +142,8 @@ def my_expert_agent(data_manager, callback_handler=None, ...):
             param2: Another parameter
         """
         # Import service lazily (keeps agent startup fast)
-        from lobster_mydomain.services.mydomain.my_service import MyService
-        # Note: Replace 'mydomain' with actual domain (transcriptomics, proteomics, etc.)
+        # PEP 420 namespace: import path is lobster.services.{function_type}.*
+        from lobster.services.analysis.my_service import MyService
 
         # Get data from data manager
         adata = data_manager.get_modality(modality_name)
@@ -170,7 +175,7 @@ import pytest
 import anndata as ad
 import numpy as np
 
-from lobster_mydomain.services.mydomain.my_service import MyService
+from lobster.services.analysis.my_service import MyService
 
 
 @pytest.fixture

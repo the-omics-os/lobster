@@ -239,8 +239,6 @@ When categorizing a tool, find what it does in this table:
 After creating a tool with the `@tool` decorator, assign AQUADIF metadata and tags. This pattern works for both shared tools and agent-specific tools.
 
 ```python
-from lobster.config.aquadif import AquadifCategory
-
 def create_shared_tools(data_manager, quality_service, analysis_service):
     """Create domain tools with AQUADIF metadata."""
 

@@ -8,13 +8,7 @@ already exists, and gather domain knowledge before writing code.
 **Skip this workflow if:** you're fixing a bug, adding a tool to an existing agent,
 or working on core infrastructure. This is for NEW capabilities only.
 
----
-
-## Prerequisite: Internalize AQUADIF
-
-Before starting this workflow, read [references/aquadif-contract.md](aquadif-contract.md).
-
-AQUADIF is the 10-category taxonomy for Lobster AI tools. Every tool you design must declare what it does (category) and whether it produces provenance. Understanding AQUADIF before you scope a new capability ensures your tool inventory maps cleanly to the taxonomy from the start.
+**Prerequisite:** Read [aquadif-contract.md](aquadif-contract.md) before designing any tools.
 
 ---
 
@@ -33,16 +27,9 @@ Ask these 6 questions in order. Do not proceed until you have clear answers.
 
 ### Clarifying Follow-ups
 
-Use these when initial answers are ambiguous:
-
-- **Domain is broad** (e.g., "genomics") -- "Which specific assay? WGS, WES, targeted panel, amplicon?"
-- **Workflow is vague** (e.g., "analyze my data") -- "Walk me through each step from raw files to the result you want."
-- **Overlaps with existing** -- "How is this different from what lobster-transcriptomics (or lobster-X) already does?"
-- **Tools unclear** -- "Which specific tools or libraries does your lab currently use for this?"
+Your main purpose is to take of thinking load from the user when it comes to implementation. You only want to understand the input and output requirements of the user. Your job is to reason about how to implement using the skill.
 
 ### Output: Structured Need Summary
-
-After gathering answers, produce this summary:
 
 ```
 Domain:        [e.g., Shotgun metagenomics]
@@ -55,66 +42,93 @@ Example data:  [e.g., SRA accession SRR12345678 or local path]
 
 ---
 
-## Phase 2: Check What Exists in Lobster
+## Phase 2: Check What Exists
 
-**ALL DISCOVERY IS DYNAMIC.** Do not rely on memorized package lists -- scan the filesystem.
+**Goal:** Compare the user's domain against what Lobster already handles. You already discovered installed agents and your development mode in Step 0 — use those results here.
 
-### Step 2a: Scan Agent Packages
+### Step 1: Source Discovery (reading reference implementations)
 
+You need to read existing agent and service code to understand patterns. How you access source depends on your development mode.
+
+**Contributor (in repo):**
 ```bash
-# List all agent packages
+# Browse agent packages directly
 ls packages/lobster-*/pyproject.toml
+cat packages/lobster-transcriptomics/lobster/agents/transcriptomics/shared_tools.py
 
-# For each package, read description and entry points:
-# Look for [project] description = "..."
-# Look for [project.entry-points."lobster.agents"] -> agent names
+# Browse core services
+ls lobster/services/
 ```
 
-For each package found, assess: does it overlap with the developer's stated domain or workflow?
+**Plugin author (installed package only):**
 
-### Step 2b: Scan Core Services
+Agent packages are PEP 420 namespace packages — they install as separate distributions, NOT inside the core `lobster.__path__`. Use Python's import system to find them:
 
 ```bash
-# List service categories
-ls lobster/services/
+# Find a specific agent package's source (each is its own distribution)
+python -c "import lobster.agents.transcriptomics as m; print(m.__path__[0])"
+# e.g. → .venv/lib/python3.12/site-packages/lobster/agents/transcriptomics
 
-# Key directories to check:
-# analysis/      - clustering, DE, GWAS, etc.
-# data_access/   - GEO, SRA, PRIDE downloaders
-# data_management/ - modality CRUD, concatenation
-# visualization/ - plot generation
-# metadata/      - standardization, validation
-# ml/            - feature selection, survival, CV, SHAP
-# quality/       - QC and preprocessing
-# orchestration/ - publication processing
+# Browse that agent's tools (read-only — do NOT edit installed files)
+AGENT_PATH=$(python -c "import lobster.agents.transcriptomics as m; print(m.__path__[0])")
+ls "$AGENT_PATH"
+cat "$AGENT_PATH/shared_tools.py"
+
+# Core services ARE in the core SDK path
+python -c "import lobster.services as s; print(s.__path__[0])"
 ```
 
-For each service directory, assess: can any existing services be reused for the developer's workflow?
+**If installed source is insufficient** (e.g., only `.pyc` files or missing packages), clone the repo for reference:
+```bash
+git clone --depth 1 https://github.com/the-omics-os/lobster /tmp/lobster-ref
+# Use /tmp/lobster-ref/packages/ to read reference implementations
+# Do NOT develop inside this clone — scaffold your package separately
+```
 
-### Step 2c: Check Partial Overlap
+### Step 2: Ecosystem Reference
 
-Lobster commonly handles PART of a new domain's needs. Check these:
+These are ALL published Lobster AI packages. Not all may be installed locally. Check for overlap with the user's domain:
 
-| Existing Capability | Covers | Agent/Service |
-|---------------------|--------|---------------|
-| Data discovery | Searching PubMed/GEO/SRA for any domain | `research_agent` |
-| File loading | Standard formats (H5AD, CSV, 10X) | `data_expert` |
-| Visualization | Plotly charts for any tabular/matrix data | `visualization_expert` |
-| Machine learning | Feature selection, survival, CV for any features | `machine_learning_expert` |
-| Metadata | ID mapping, filtering for any domain | `metadata_assistant` |
-| Download orchestration | Queue-based download of any dataset | `tools/download_orchestrator.py` |
+| Package | PyPI | Agents | Domain Coverage |
+|---|---|---|---|
+| `lobster-ai` | Public | supervisor | Core SDK, orchestration, shared services |
+| `lobster-research` | Public | research_agent, data_expert_agent | Literature search (PubMed/GEO/SRA), dataset download, file loading |
+| `lobster-transcriptomics` | Public | transcriptomics_expert, annotation_expert, de_analysis_expert | scRNA-seq, bulk RNA-seq, QC, clustering, DE, GSEA, cell annotation |
+| `lobster-proteomics` | Public | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert | MS (MaxQuant/DIA-NN/Spectronaut), affinity (Olink/SomaScan), DE, biomarkers |
+| `lobster-genomics` | Public | genomics_expert, variant_analysis_expert | VCF/PLINK, GWAS, LD pruning, variant annotation (VEP/ClinVar) |
+| `lobster-metabolomics` | Public | metabolomics_expert | LC-MS, GC-MS, NMR, QC, normalization, PCA/PLS-DA, m/z annotation |
+| `lobster-visualization` | Public | visualization_expert_agent | Plotly-based plots for any tabular/matrix data |
+| `lobster-drug-discovery` | Public | drug_discovery_expert, cheminformatics_expert, clinical_dev_expert, pharmacogenomics_expert | Target ID, compound profiling, clinical translation, PGx |
+| `lobster-metadata` | in-development | metadata_assistant | ID mapping, validation, publication queue filtering |
+| `lobster-ml` | in-development | machine_learning_expert, feature_selection_expert, survival_analysis_expert | Feature selection, survival, cross-validation, SHAP |
+| `lobster-structural-viz` | in-development | protein_structure_visualization_expert | Protein structure rendering |
+
+### Step 3: Cross-Domain Capabilities
+
+These capabilities are domain-agnostic and available to ALL new agents via the existing ecosystem. Do NOT rebuild them if you could just create a plugin for the available packagaes:
+
+| Capability | Handled By | What It Does |
+|---|---|---|
+| Literature & dataset search | `research_agent` | PubMed, GEO, SRA, PRIDE, MetaboLights search for ANY domain |
+| File loading & download | `data_expert_agent` | Generic CSV/H5AD/10X loading, queue-based download orchestration |
+| Visualization | `visualization_expert_agent` | Plotly charts for any tabular or matrix data |
+| Machine learning | `machine_learning_expert` | Feature selection, survival analysis, CV for any feature matrix |
+| Metadata management | `metadata_assistant` | ID mapping, validation, filtering for any domain |
 
 ### Output: Overlap Assessment
 
 ```
-Existing coverage:
-- [what Lobster already handles for this domain]
+Installed agents:
+- [list from Step 0 discovery in SKILL.md]
 
-Gaps:
-- [what needs building -- specific capabilities]
+Existing coverage for this domain:
+- [what Lobster already handles — name agents/services, not file paths]
 
-Reusable:
-- [existing services/agents that can be leveraged as-is]
+Gaps (what needs building):
+- [specific capabilities not covered by any existing agent]
+
+Reusable (can leverage as-is):
+- [cross-domain agents/services that apply to this workflow]
 ```
 
 ---
@@ -123,11 +137,11 @@ Reusable:
 
 Use the GPTomics bio-skills library to discover external domain expertise.
 
-> **Load [references/bioskills-bridge.md](bioskills-bridge.md)** and follow the
-> dynamic discovery process to find relevant GPTomics skills for the domain.
+> **Load [bioskills-bridge.md](bioskills-bridge.md)** and follow the dynamic discovery
+> process to find relevant GPTomics skills for the domain.
 >
-> Use discovered skills as a **requirements specification** for Lobster
-> service design -- parameters, workflows, QC criteria, best practices.
+> Use discovered skills as a **requirements specification** for Lobster service
+> design — parameters, workflows, QC criteria, best practices.
 
 If GPTomics skills don't cover the domain, fall back to:
 1. Official documentation for the key tools/libraries
@@ -137,41 +151,35 @@ If GPTomics skills don't cover the domain, fall back to:
 
 ### Map Domain Knowledge to AQUADIF Categories
 
-After discovering domain workflows (via GPTomics bio-skills or manual research), map each workflow step to an AQUADIF category:
+After discovering domain workflows, map each workflow step to an AQUADIF category:
 
 | Domain Step | AQUADIF Category | Rationale |
-|-------------|-----------------|-----------|
+|---|---|---|
 | [workflow step] | [category] | [why this fits] |
 
-This mapping becomes your tool inventory for agent design. See [references/aquadif-contract.md](aquadif-contract.md) for category definitions and the multi-category decision flowchart.
+This mapping becomes your tool inventory for agent design. See [aquadif-contract.md](aquadif-contract.md) for category definitions and the multi-category decision flowchart.
 
 ---
 
 ## Phase 4: Present Findings
 
-Before recommending an approach, present what you found. Use this template:
+Before recommending an approach, present what you found:
 
 ```markdown
 ## Capability Assessment
 
 ### Already Handled by Lobster
-- [capability] via [agent/service] (found at packages/lobster-X/ or lobster/services/Y/)
+- [capability] via [agent_name] (installed: yes/no)
 
 ### Needs Building
-- [capability] -- requires new service in [location]
-- [capability] -- requires new agent tool
+- [capability] — requires new [service/tool/agent]
 
 ### Domain Knowledge Found
-- [source/category] -- covers [specific knowledge] (discovered via [method])
-
-### No Domain Knowledge Available
-- [what requires manual research or developer input]
+- [source] — covers [specific knowledge]
 
 ### Reusable Infrastructure
-- [existing component] can be used for [purpose]
+- [existing agent/service] can be used for [purpose]
 ```
-
-This gives the developer a clear picture before any code is written.
 
 ---
 
@@ -183,62 +191,33 @@ Based on findings, recommend **one** of these options:
 
 **When:** The domain is closely related to an existing agent's scope.
 
-**Examples:**
-- Adding methylation calling to `lobster-genomics`
-- Adding trajectory inference to `lobster-transcriptomics`
-- Adding a new plot type to `lobster-visualization`
+**Examples:** Adding methylation calling to `lobster-genomics`. Adding trajectory inference to `lobster-transcriptomics`. Adding a new plot type to `lobster-visualization`.
 
-**Action:**
-1. Add new services to the existing package
-2. Add new tools to the existing agent
-3. Update the agent's system prompt to cover new capabilities
-4. Add tests for new services
+**Next:** Read the existing agent's source code, then add services + tools. See [creating-agents.md](creating-agents.md) §Tool Design.
 
 ### Option B: New Agent Package
 
 **When:** The domain is distinct and needs its own specialist agent.
 
-**Examples:**
-- Metagenomics (taxonomy, diversity, functional profiling)
-- Spatial transcriptomics (coordinate-aware analysis)
-- Flow cytometry (gating, compensation, population analysis)
+**Examples:** Metagenomics (taxonomy, diversity, functional profiling). Spatial transcriptomics (coordinate-aware analysis). Flow cytometry (gating, compensation, population analysis).
 
-**Action:**
-1. Follow the full package structure in [creating-agents.md](creating-agents.md)
-2. Implement agent, services, tools, prompts, config, state
-3. Register entry points in `pyproject.toml`
-4. Pass all contract tests
-5. Complete the 28-step checklist
+**Next:** Run `lobster scaffold agent` then follow [creating-agents.md](creating-agents.md) for the full implementation guide and 29-step checklist.
 
 ### Option C: Service Only (No New Agent)
 
 **When:** The capability is a utility that existing agents can call.
 
-**Examples:**
-- New file format parser (e.g., BIOM table reader)
-- New QC metric applicable across domains
-- New plot type for the visualization agent
-- New statistical test usable by multiple agents
+**Examples:** New file format parser (e.g., BIOM reader). New QC metric applicable across domains. New statistical test usable by multiple agents.
 
-**Action:**
-1. Implement service per [creating-services.md](creating-services.md) (3-tuple pattern)
-2. Register in the appropriate agent package or core
-3. Wrap as a tool in the relevant agent
-4. Add unit tests
+**Next:** Implement per [creating-services.md](creating-services.md) (3-tuple pattern), wrap as a tool in the relevant agent.
 
 ### Option D: Not Appropriate for Lobster
 
-**When:** The capability is a standalone tool, not a multi-agent workflow step.
+**When:** The capability doesn't fit the multi-agent workflow model.
 
-**Examples:**
-- Snakemake/Nextflow pipeline runner
-- Raw CLI wrapper without data transformation
-- One-off file conversion utility
-- Tool that doesn't produce or consume AnnData-compatible data
+**Examples:** you have to decide
 
-**Action:**
-- Suggest using GPTomics skills directly or building a standalone package
-- If the developer disagrees, revisit -- they may see integration potential you missed
+**Next:** Suggest GPTomics skills directly or a standalone package. If the developer disagrees, revisit — they may see integration potential you missed.
 
 ### Recommendation Template
 
@@ -254,26 +233,52 @@ Domain knowledge: [what was discovered, from where]
 
 ---
 
-## Phase 6: Build and Test
+## Phase 6: Build
 
 Once the developer approves the recommendation, execute:
 
-| Approach | Implementation Steps |
-|----------|---------------------|
-| A (Extend) | Read existing agent code -> add services -> add tools -> update prompts -> test |
-| B (New package) | Follow [creating-agents.md](creating-agents.md) scaffold -> implement -> test |
-| C (Service only) | Implement per [creating-services.md](creating-services.md) -> register as tool -> test |
+| Approach | What To Read |
+|---|---|
+| A (Extend) | Existing agent source → [creating-agents.md](creating-agents.md) §Tool Design |
+| B (New package) | [scaffold.md](scaffold.md) → [creating-agents.md](creating-agents.md) → 29-step checklist |
+| C (Service only) | [creating-services.md](creating-services.md) |
 | D (Not Lobster) | Guide developer to appropriate approach outside Lobster |
 
-### Verification Checklist
+### Development Loop by Mode
 
-Before declaring the work complete:
+**Contributor (in repo):**
+```bash
+# 1. Scaffold inside the repo
+lobster scaffold agent --name <domain>_expert ... -o packages/
 
-- [ ] Contract tests pass (`AgentContractTestMixin` for new agents)
-- [ ] Service tests pass (3-tuple return validated for each method)
-- [ ] `make test` passes (no regressions)
-- [ ] Manual test with example dataset from Phase 1
-- [ ] Entry point discoverable via `ComponentRegistry`
-- [ ] AGENT_CONFIG defined at module top (before heavy imports)
-- [ ] All `log_tool_usage()` calls include `ir=ir`
-- [ ] No `lobster/__init__.py` created (PEP 420 namespace preserved)
+# 2. Install in dev mode (picks up all packages/)
+make dev-install
+
+# 3. Verify agent is discovered
+python -c "from lobster.core.component_registry import component_registry; component_registry.reset(); print(component_registry.has_agent('<domain>_expert'))"
+
+# 4. Run tests
+pytest packages/lobster-<domain>/tests/ -v
+make test  # full suite, check for regressions
+```
+
+**Plugin author (standalone):**
+```bash
+# 1. Scaffold anywhere on disk
+lobster scaffold agent --name <domain>_expert ...
+
+# 2. Install alongside lobster (editable for development)
+cd lobster-<domain>/
+uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
+
+# 3. Verify agent is discovered by the existing lobster installation
+python -c "from lobster.core.component_registry import component_registry; component_registry.reset(); print(component_registry.has_agent('<domain>_expert'))"
+
+# 4. Run tests
+pytest tests/ -v
+
+# 5. Test with lobster CLI
+lobster chat   # your agent should now appear in routing
+```
+
+Verification steps for each approach are in the respective reference files.

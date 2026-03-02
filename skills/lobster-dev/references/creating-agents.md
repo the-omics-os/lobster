@@ -18,7 +18,9 @@ Read [references/aquadif-contract.md](aquadif-contract.md) first to internalize 
 | ANALYZE | Extract patterns (PCA, clustering, statistics) | Required |
 | ANNOTATE | Add biological meaning | Required |
 | DELEGATE | Handoff to specialist child agent | Not required |
+| SYNTHESIZE | Combine results across analyses | Required |
 | UTILITY | Workspace management, status, export | Not required |
+| CODE_EXEC | Custom code execution (escape hatch) | Conditional |
 
 **Tool count target: 8–15 per agent.** <5 feels incomplete. >20 degrades LLM tool selection.
 
@@ -41,7 +43,6 @@ Read [references/aquadif-contract.md](aquadif-contract.md) first to internalize 
 **Real examples:**
 - Created `variant_analysis_expert` as child of `genomics_expert` — clinical interpretation is a distinct skill
 - Did NOT create `affinity_proteomics_expert` — affinity and MS share identical DE and biomarker tools
-- `metabolomics_expert` has no children — 10 tools, linear workflow
 
 ### Package Boundary Decision
 
@@ -136,7 +137,7 @@ license = "AGPL-3.0-or-later"
 authors = [{name = "Omics-OS", email = "info@omics-os.com"}]
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "lobster-ai~=1.0.0",
+    "lobster-ai>=1.0.13",
     # Domain-specific deps here
 ]
 
@@ -188,7 +189,6 @@ AGENT_CONFIG = AgentRegistryConfig(
     handoff_tool_name="handoff_to_domain_expert",
     handoff_tool_description="When to route here: capability A, capability B, capability C",
     supervisor_accessible=True,       # False for child agents
-    tier_requirement="free",          # All official agents are free
     child_agents=["child_expert"],    # or None
 )
 
@@ -196,6 +196,8 @@ AGENT_CONFIG = AgentRegistryConfig(
 from pathlib import Path
 from typing import Optional
 from langgraph.prebuilt import create_react_agent
+from lobster.config.llm_factory import create_llm
+from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 ```
 
@@ -206,11 +208,10 @@ from lobster.core.data_manager_v2 import DataManagerV2
 | `name` | Internal ID. Must match entry point name. |
 | `display_name` | Human-readable name for UI/logs. |
 | `description` | Capabilities summary for component registry. |
-| `factory_function` | Dotted path: `"module.path:function_name"` |
+| `factory_function` | Dotted path: `"lobster.agents.DOMAIN.domain_expert.domain_expert"` |
 | `handoff_tool_name` | `"handoff_to_{name}"` — tool the supervisor calls. |
 | `handoff_tool_description` | **Critical** — supervisor LLM reads this to decide routing. Be specific. |
 | `supervisor_accessible` | `True` = supervisor routes directly. `False` = only via parent. |
-| `tier_requirement` | `"free"` for official. `"enterprise"` for custom packages. |
 | `child_agents` | List of child names. `None` = no children. |
 
 **The `handoff_tool_description` is the single most important field for routing.**
@@ -279,9 +280,31 @@ def domain_expert(
 - Services instantiated inside factory, not at module level
 - `delegation_tools` appended, not prepended — domain tools first in LLM's tool list
 
+### Critical Import Paths
+
+**Do NOT guess these paths.** They are the only correct imports for agent infrastructure:
+
+| Symbol | Correct Import | Common Hallucination |
+|--------|---------------|----------------------|
+| `create_llm` | `from lobster.config.llm_factory import create_llm` | ~~`lobster.core.llm_factory`~~ |
+| `get_settings` | `from lobster.config.settings import get_settings` | ~~`lobster.core.settings`~~ |
+| `AgentRegistryConfig` | `from lobster.config.agent_registry import AgentRegistryConfig` | — |
+| `DataManagerV2` | `from lobster.core.data_manager_v2 import DataManagerV2` | — |
+| `create_react_agent` | `from langgraph.prebuilt import create_react_agent` | — |
+| `AgentState` | `from langgraph.prebuilt.chat_agent_executor import AgentState` | ~~`MessagesState`~~ |
+| `get_logger` | `from lobster.utils.logger import get_logger` | ~~`lobster.core.logger`~~ |
+
+The `lobster.config` package holds LLM/settings/registry. The `lobster.core` package holds data infrastructure. Do not mix them.
+
+**State base class:** Your state class MUST extend `AgentState`, NOT `MessagesState`. `AgentState` adds `remaining_steps` which `create_react_agent` requires at runtime. Using `MessagesState` will pass all structural checks but fail when the graph tries to load the agent.
+
 ---
 
 ## Tool Design (shared_tools.py)
+
+**Contributor only.** Adding tools to an existing agent requires write access to that agent's package source (e.g., `packages/lobster-visualization/`). There is no entry point mechanism to inject tools into another agent's factory from an external package. If you're a plugin author without repo access, your options are:
+1. Contribute the tool upstream (fork → PR)
+2. Create a new agent in your own package that complements the existing one
 
 Every tool follows this exact structure:
 
@@ -474,6 +497,10 @@ You report to the supervisor — never interact with end users directly.
 
 ```
 Supervisor
+├── research_agent (parent)
+│   └── metadata_assistant (child, shared)
+├── data_expert_agent (parent)
+│   └── metadata_assistant (child, shared)
 ├── transcriptomics_expert (parent)
 │   ├── annotation_expert (child)
 │   └── de_analysis_expert (child)
@@ -485,7 +512,13 @@ Supervisor
 ├── machine_learning_expert (parent)
 │   ├── feature_selection_expert (child)
 │   └── survival_analysis_expert (child)
-└── metabolomics_expert (no children)
+├── drug_discovery_expert (parent)
+│   ├── cheminformatics_expert (child)
+│   ├── clinical_dev_expert (child)
+│   └── pharmacogenomics_expert (child)
+├── metabolomics_expert (no children)
+├── visualization_expert_agent (no children)
+└── protein_structure_visualization_expert (no children)
 ```
 
 **Rules:** Supervisor → parents only. Parents → children via `delegation_tools`. No child-to-child.
@@ -499,43 +532,12 @@ The graph builder uses lazy delegation tools — children are resolved at invoca
 
 ## Testing
 
-### Contract Tests (Required)
+See [testing.md](testing.md) for full testing patterns, fixtures, and CI setup.
 
-```python
-from lobster.testing import AgentContractTestMixin
-
-class TestDomainExpertAgent(AgentContractTestMixin):
-    agent_module = "lobster.agents.DOMAIN.domain_expert"
-    factory_name = "domain_expert"
-```
-
-### Tool Unit Tests
-
-```python
-def test_assess_quality(mock_data_manager):
-    tools = create_shared_tools(mock_data_manager, quality_service)
-    result = tools[0].invoke({"modality_name": "test_dataset"})
-    assert "complete" in result.lower()
-    mock_data_manager.store_modality.assert_called_once()
-    # Verify IR was passed
-    call_kwargs = mock_data_manager.log_tool_usage.call_args
-    assert "ir" in call_kwargs.kwargs or len(call_kwargs.args) >= 4
-```
-
-### Semantic Prompt Tests
-
-```python
-def test_prompt_has_required_sections():
-    prompt = create_domain_expert_prompt()
-    for section in ["<Identity_And_Role>", "<Your_Tools>", "<Decision_Tree>", "<Important_Rules>"]:
-        assert section in prompt
-
-def test_prompt_documents_all_tools():
-    prompt = create_domain_expert_prompt()
-    tools = create_shared_tools(mock_dm)
-    for t in tools:
-        assert t.name in prompt, f"Tool '{t.name}' not documented in prompt"
-```
+**Required for every new agent:**
+- Contract tests via `AgentContractTestMixin` (validates AQUADIF compliance, factory signature, entry points)
+- Tool unit tests (mock `data_manager`, verify `ir=ir` in `log_tool_usage`)
+- Semantic prompt tests (all required XML sections present, all tools documented by name)
 
 ---
 

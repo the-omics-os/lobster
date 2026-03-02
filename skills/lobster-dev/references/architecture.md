@@ -48,7 +48,7 @@ provider = component_registry.get_provider("metabolights")
 
 ### Tool Metadata Propagation
 
-Every tool in Lobster AI carries `.metadata` (dict) and `.tags` (list) fields via LangChain's `BaseTool`. These fields propagate automatically to callback handlers during tool invocation. Tools declare their AQUADIF category (what the tool does) and provenance requirement (whether provenance tracking is mandatory) in these fields. See the [AQUADIF contract](../aquadif-contract.md) in the lobster-dev skill for category definitions.
+Every tool in Lobster AI carries `.metadata` (dict) and `.tags` (list) fields via LangChain's `BaseTool`. These fields propagate automatically to callback handlers during tool invocation. Tools declare their AQUADIF category (what the tool does) and provenance requirement (whether provenance tracking is mandatory) in these fields. See the [AQUADIF contract](aquadif-contract.md) for category definitions.
 
 ### DataManagerV2 (`lobster/core/data_manager_v2.py`)
 
@@ -146,9 +146,13 @@ Each domain has specialist agents in separate packages:
 | `lobster-transcriptomics` | transcriptomics_expert, annotation_expert, de_analysis_expert |
 | `lobster-research` | research_agent, data_expert_agent |
 | `lobster-visualization` | visualization_expert_agent |
-| `lobster-proteomics` | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert [alpha] |
-| `lobster-genomics` | genomics_expert [alpha] |
-| `lobster-ml` | machine_learning_expert [alpha] |
+| `lobster-proteomics` | proteomics_expert, proteomics_de_analysis_expert, biomarker_discovery_expert |
+| `lobster-genomics` | genomics_expert, variant_analysis_expert |
+| `lobster-metabolomics` | metabolomics_expert |
+| `lobster-ml` | machine_learning_expert, feature_selection_expert, survival_analysis_expert |
+| `lobster-drug-discovery` | drug_discovery_expert, cheminformatics_expert, clinical_dev_expert, pharmacogenomics_expert |
+| `lobster-metadata` | metadata_assistant |
+| `lobster-structural-viz` | protein_structure_visualization_expert |
 
 ## Service Architecture
 
@@ -218,6 +222,7 @@ New omics types can be added via entry points — zero core changes needed.
 
 ## For More Details
 
+- **File locations & finding things:** [code-layout.md](code-layout.md)
+- Plugin architecture: [plugin-architecture.md](plugin-architecture.md)
 - Architecture decisions: `.planning/PROJECT.md`
-- Plugin architecture: [references/plugin-architecture.md](plugin-architecture.md)
 - Online docs: [docs.omics-os.com/docs/architecture](https://docs.omics-os.com/docs/architecture/overview)

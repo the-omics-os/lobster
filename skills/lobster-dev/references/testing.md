@@ -85,7 +85,7 @@ def mock_llm():
 # tests/unit/services/test_my_service.py
 
 import pytest
-from lobster_mydomain.services.mydomain.my_service import MyService
+from lobster.services.analysis.my_service import MyService
 
 
 class TestMyService:
