@@ -21,7 +21,7 @@ AGENT_CONFIG = AgentRegistryConfig(
     factory_function="lobster.agents.proteomics.de_analysis_expert.de_analysis_expert",
     handoff_tool_name="handoff_to_proteomics_de_analysis_expert",
     handoff_tool_description="Run differential expression on proteomics data: compare protein abundance between groups, find differentially expressed proteins, time course analysis, pathway enrichment (GO/Reactome/KEGG), kinase activity (KSEA), STRING protein networks. Use when user asks to compare groups, find DE proteins, or run downstream proteomics analysis.",
-    supervisor_accessible=True,
+    supervisor_accessible=False,
     tier_requirement="free",
 )
 
