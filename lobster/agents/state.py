@@ -151,6 +151,9 @@ class OverallState(AgentState):
         current_task: Current task description for handoffs
         task_context: Additional context passed between agents
         todos: Task list managed via write_todos tool
+        store_keys: Registry of store keys from sub-agent delegations.
+            Maps store_key -> agent_name. Populated by pre_model_hook
+            from InMemoryStore so keys survive message trimming.
 
     Note:
         This is the extensible base class for modular agent packages.
@@ -169,6 +172,11 @@ class OverallState(AgentState):
     # Todo list for planning multi-step tasks (v3.5+)
     # Updated via write_todos tool using Command pattern
     todos: Annotated[List[TodoItem], _todo_reducer] = []
+
+    # Store key registry for context management (Phase 1)
+    # Populated by pre_model_hook from InMemoryStore on each iteration.
+    # Survives message trimming — LLM always has access to all store keys.
+    store_keys: Dict[str, str] = {}
 
 
 class SingleCellExpertState(AgentState):

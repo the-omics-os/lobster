@@ -1,7 +1,7 @@
 """Integration tests for context management across delegation + store + trimming."""
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.store.memory import InMemoryStore
 
 
@@ -373,3 +373,176 @@ class TestEndToEndContextFlow:
 
         assert "Comprehensive analysis:" in retrieved
         assert "research_agent" in retrieved
+
+
+class TestStoreKeysInState:
+    """Test that store_keys dict is populated by pre_model_hook and survives trimming."""
+
+    def test_hook_populates_store_keys_from_store(self):
+        """Hook reads InMemoryStore and returns store_keys in state update."""
+        from lobster.agents.context_management import create_supervisor_pre_model_hook
+
+        store = InMemoryStore()
+        store.put(
+            ("agent_results",),
+            "research_agent_a1b2",
+            {"content": "...", "agent": "research_agent"},
+        )
+        store.put(
+            ("agent_results",),
+            "transcriptomics_expert_c3d4",
+            {"content": "...", "agent": "transcriptomics_expert"},
+        )
+
+        hook = create_supervisor_pre_model_hook(max_tokens=100_000)
+        result = hook(
+            {"messages": [SystemMessage(content="sys"), HumanMessage(content="hi")]},
+            store=store,
+        )
+
+        assert "store_keys" in result
+        assert result["store_keys"] == {
+            "research_agent_a1b2": "research_agent",
+            "transcriptomics_expert_c3d4": "transcriptomics_expert",
+        }
+
+    def test_hook_returns_empty_store_keys_when_store_empty(self):
+        """Empty store produces empty store_keys dict."""
+        from lobster.agents.context_management import create_supervisor_pre_model_hook
+
+        store = InMemoryStore()
+        hook = create_supervisor_pre_model_hook(max_tokens=100_000)
+        result = hook({"messages": [HumanMessage(content="hi")]}, store=store)
+
+        assert result["store_keys"] == {}
+
+    def test_hook_returns_empty_store_keys_when_no_store(self):
+        """No store (store=None) produces empty store_keys."""
+        from lobster.agents.context_management import create_supervisor_pre_model_hook
+
+        hook = create_supervisor_pre_model_hook(max_tokens=100_000)
+        result = hook({"messages": [HumanMessage(content="hi")]})
+
+        assert result["store_keys"] == {}
+
+    def test_key_index_message_injected_into_llm_input(self):
+        """When store has keys, a SystemMessage with key index is injected."""
+        from lobster.agents.context_management import create_supervisor_pre_model_hook
+
+        store = InMemoryStore()
+        store.put(
+            ("agent_results",),
+            "de_expert_x1y2",
+            {"content": "...", "agent": "de_analysis_expert"},
+        )
+
+        hook = create_supervisor_pre_model_hook(max_tokens=100_000)
+        result = hook(
+            {
+                "messages": [
+                    SystemMessage(content="You are a supervisor."),
+                    HumanMessage(content="hi"),
+                ]
+            },
+            store=store,
+        )
+
+        trimmed = result["llm_input_messages"]
+        # Should have 3 messages: system prompt, key index, human message
+        sys_msgs = [m for m in trimmed if isinstance(m, SystemMessage)]
+        assert len(sys_msgs) == 2  # original system + key index
+        key_index = sys_msgs[1]
+        assert "de_expert_x1y2" in key_index.content
+        assert "de_analysis_expert" in key_index.content
+        assert "retrieve_agent_result" in key_index.content
+
+    def test_no_key_index_message_when_store_empty(self):
+        """No key index message injected when store has no results."""
+        from lobster.agents.context_management import create_supervisor_pre_model_hook
+
+        store = InMemoryStore()
+        hook = create_supervisor_pre_model_hook(max_tokens=100_000)
+        result = hook(
+            {"messages": [SystemMessage(content="sys"), HumanMessage(content="hi")]},
+            store=store,
+        )
+
+        trimmed = result["llm_input_messages"]
+        sys_msgs = [m for m in trimmed if isinstance(m, SystemMessage)]
+        assert len(sys_msgs) == 1  # only original system prompt
+
+    def test_store_keys_survive_message_trimming(self):
+        """store_keys dict persists even when the messages containing store_key text are trimmed."""
+        from lobster.agents.context_management import create_supervisor_pre_model_hook
+
+        store = InMemoryStore()
+        store.put(
+            ("agent_results",),
+            "old_agent_abc123",
+            {"content": "old data", "agent": "research_agent"},
+        )
+
+        hook = create_supervisor_pre_model_hook(max_tokens=100)
+        messages = [
+            SystemMessage(content="sys"),
+            HumanMessage(content="old query " * 200),  # will be trimmed
+            AIMessage(content="old reply " * 200),  # will be trimmed
+            HumanMessage(content="new query"),
+        ]
+
+        result = hook({"messages": messages}, store=store)
+        trimmed = result["llm_input_messages"]
+
+        # Messages were trimmed (old ones dropped)
+        assert len(trimmed) < len(messages)
+
+        # But store_keys still has the key
+        assert "old_agent_abc123" in result["store_keys"]
+        assert result["store_keys"]["old_agent_abc123"] == "research_agent"
+
+        # And key index message is injected so LLM can see it
+        all_content = " ".join(
+            m.content for m in trimmed if isinstance(m, SystemMessage)
+        )
+        assert "old_agent_abc123" in all_content
+
+
+class TestOrphanedToolMessageFix:
+    """Test that orphaned ToolMessages are stripped after trimming."""
+
+    def test_strips_orphaned_tool_message(self):
+        from lobster.agents.context_management import _fix_orphaned_tool_messages
+
+        messages = [
+            SystemMessage(content="sys"),
+            ToolMessage(content="orphan result", tool_call_id="tc_999"),
+            HumanMessage(content="next question"),
+        ]
+        fixed = _fix_orphaned_tool_messages(messages)
+
+        assert len(fixed) == 2  # system + human, orphan stripped
+        assert not any(isinstance(m, ToolMessage) for m in fixed)
+
+    def test_keeps_tool_message_with_matching_ai(self):
+        from lobster.agents.context_management import _fix_orphaned_tool_messages
+
+        messages = [
+            SystemMessage(content="sys"),
+            AIMessage(content="", tool_calls=[{"name": "t", "id": "tc_1", "args": {}}]),
+            ToolMessage(content="tool result", tool_call_id="tc_1"),
+            HumanMessage(content="next"),
+        ]
+        fixed = _fix_orphaned_tool_messages(messages)
+        assert len(fixed) == 4  # all kept
+
+    def test_no_change_when_no_tool_messages(self):
+        from lobster.agents.context_management import _fix_orphaned_tool_messages
+
+        messages = [SystemMessage(content="sys"), HumanMessage(content="hi")]
+        fixed = _fix_orphaned_tool_messages(messages)
+        assert len(fixed) == 2
+
+    def test_empty_messages(self):
+        from lobster.agents.context_management import _fix_orphaned_tool_messages
+
+        assert _fix_orphaned_tool_messages([]) == []

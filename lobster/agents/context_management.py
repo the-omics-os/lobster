@@ -18,7 +18,7 @@ import json
 import logging
 from typing import Any, Optional, Sequence
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import trim_messages
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ def resolve_context_budget(
     context_window: Optional[int] = None,
     tools: Optional[Sequence[Any]] = None,
 ) -> int:
-    """Resolve the usable context budget for messages.
+    """Resolve the usable context budget for messages. Creates the max_tokens var
 
     budget = context_window - output_reserve - tool_schema_tokens
 
@@ -150,12 +150,99 @@ def resolve_context_window(
     return None
 
 
+def _fix_orphaned_tool_messages(messages: list) -> list:
+    """Remove orphaned ToolMessages from the start of a trimmed message list.
+
+    When trim_messages drops an AIMessage(tool_calls) but keeps the
+    subsequent ToolMessage, the result is an invalid chat history that
+    causes LLM API rejections. This function strips leading ToolMessages
+    that have no corresponding AIMessage with matching tool_call_id.
+
+    Only processes the front of the list (after system messages) since
+    strategy="last" trims from the front.
+    """
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    if not messages:
+        return messages
+
+    # Collect tool_call_ids present in AIMessages
+    ai_tool_call_ids = set()
+    for msg in messages:
+        if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls"):
+            for tc in msg.tool_calls or []:
+                if isinstance(tc, dict) and "id" in tc:
+                    ai_tool_call_ids.add(tc["id"])
+
+    # Strip orphaned ToolMessages from the front (after system messages)
+    result = []
+    past_system = False
+    stripping = True
+    for msg in messages:
+        if not past_system and isinstance(msg, SystemMessage):
+            result.append(msg)
+            continue
+        past_system = True
+
+        if stripping and isinstance(msg, ToolMessage):
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            if tool_call_id not in ai_tool_call_ids:
+                logger.debug(
+                    f"Stripped orphaned ToolMessage (tool_call_id={tool_call_id})"
+                )
+                continue
+        stripping = False
+        result.append(msg)
+
+    return result
+
+
+def _build_store_key_index(store) -> dict[str, str]:
+    """Read all stored agent results and build a key→agent_name index.
+
+    Returns empty dict if store is None or search fails (fail-open).
+    """
+    if store is None:
+        return {}
+    try:
+        from lobster.tools.store_tools import AGENT_RESULTS_NAMESPACE
+
+        items = store.search(AGENT_RESULTS_NAMESPACE)
+        return {item.key: item.value.get("agent", "unknown") for item in items}
+    except Exception:
+        return {}
+
+
+def _build_key_index_message(store_keys: dict[str, str]) -> SystemMessage | None:
+    """Build a compact SystemMessage listing available store keys.
+
+    Returns None if no keys exist (avoids injecting empty messages).
+    """
+    if not store_keys:
+        return None
+
+    lines = [f"- {key} ({agent})" for key, agent in store_keys.items()]
+    content = (
+        "<Available Stored Results>\n"
+        "Use retrieve_agent_result(store_key) to access full data.\n"
+        + "\n".join(lines)
+        + "\n</Available Stored Results>"
+    )
+    return SystemMessage(content=content)
+
+
 def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
     """Create a pre_model_hook for the supervisor agent.
 
-    Uses trim_messages with strategy="last" and include_system=True.
-    Returns llm_input_messages (non-destructive -- full history preserved
-    in checkpointer).
+    On each ReAct iteration:
+    1. Reads InMemoryStore to build a store_keys index (survives trimming)
+    2. Trims messages with strategy="last", include_system=True, end_on="ai"
+    3. Injects a compact key index message so the LLM always knows which
+       store keys are available for retrieve_agent_result
+    4. Returns llm_input_messages (non-destructive) + store_keys state update
+
+    The store parameter is auto-injected by LangGraph's Runtime when the
+    supervisor is compiled with store=store.
 
     Args:
         max_tokens: Maximum token budget for messages.
@@ -165,11 +252,14 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
     """
     _max_tokens = max_tokens
 
-    def pre_model_hook(state: dict) -> dict:
+    def pre_model_hook(state: dict, *, store=None) -> dict:
         messages = state.get("messages", [])
 
+        # Build store key index from InMemoryStore
+        store_keys = _build_store_key_index(store)
+
         if not messages:
-            return {"llm_input_messages": messages}
+            return {"llm_input_messages": messages, "store_keys": store_keys}
 
         trimmed = trim_messages(
             messages,
@@ -180,12 +270,28 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
             allow_partial=False,
         )
 
+        # Fix orphaned ToolMessages that lost their AIMessage partner
+        trimmed = _fix_orphaned_tool_messages(trimmed)
+
         if len(trimmed) < len(messages):
             logger.debug(
                 f"pre_model_hook trimmed {len(messages)} -> {len(trimmed)} messages "
                 f"(budget: {_max_tokens} tokens)"
             )
 
-        return {"llm_input_messages": trimmed}
+        # Inject key index after system prompt so LLM always sees available keys
+        key_index_msg = _build_key_index_message(store_keys)
+        if key_index_msg is not None:
+            # Insert after the first SystemMessage (the main prompt)
+            insert_pos = 1
+            for i, msg in enumerate(trimmed):
+                if isinstance(msg, SystemMessage):
+                    insert_pos = i + 1
+                else:
+                    break
+            trimmed = list(trimmed)
+            trimmed.insert(insert_pos, key_index_msg)
+
+        return {"llm_input_messages": trimmed, "store_keys": store_keys}
 
     return pre_model_hook
