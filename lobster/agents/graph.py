@@ -140,12 +140,15 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
     return None
 
 
-def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str):
+def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str, store=None):
     """Create a tool that invokes a sub-agent (Tool Calling pattern).
 
     This follows the LangChain Tool Calling pattern where sub-agents are
     invoked as tools and return their results directly. The supervisor
     maintains centralized control - sub-agents never interact with users.
+
+    When store is provided, full results are auto-stored (dual-write pattern)
+    and a [store_key=...] reference is appended for later retrieval.
 
     See: https://docs.langchain.com/oss/langchain/multi-agent#tool-calling
 
@@ -154,7 +157,9 @@ def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str)
         agent: The compiled agent (Pregel) to invoke
         tool_name: Name for the tool (e.g., "handoff_to_research_agent")
         description: Description of when to use this tool
+        store: Optional InMemoryStore for dual-write result storage
     """
+    _store = store
 
     @tool(tool_name, description=description)
     def invoke_agent(task_description: str) -> str:
@@ -190,6 +195,14 @@ def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str)
         content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
         logger.debug(f"Agent {agent_name} completed. Response length: {len(content)}")
 
+        # Dual-write: store full result for later retrieval
+        if _store is not None:
+            from lobster.tools.store_tools import store_delegation_result
+
+            store_key = store_delegation_result(_store, agent_name, content)
+            if store_key:
+                content = f"{content}\n\n[store_key={store_key}]"
+
         return content
 
     return invoke_agent
@@ -199,6 +212,7 @@ def _create_lazy_delegation_tool(
     agent_name: str,
     agents_dict: Dict[str, Any],
     description: str,
+    store=None,
 ):
     """Create delegation tool with lazy agent resolution.
 
@@ -206,15 +220,14 @@ def _create_lazy_delegation_tool(
     the agent by name from the dict. This enables single-pass agent creation
     where children may not exist when parent is created.
 
-    This pattern eliminates the two-pass agent creation where parent agents
-    were created twice (once without delegation tools, then again with them).
-    Now all agents are created exactly once, and delegation tools resolve
-    agents at invocation time.
+    When store is provided, full results are auto-stored (dual-write pattern)
+    and a [store_key=...] reference is appended for later retrieval.
 
     Args:
         agent_name: Name of the child agent to delegate to
         agents_dict: Shared dict that will contain created agents
         description: Description for the tool
+        store: Optional InMemoryStore for dual-write result storage
 
     Returns:
         Tool function with lazy agent resolution
@@ -224,6 +237,7 @@ def _create_lazy_delegation_tool(
     _name = agent_name
     _dict = agents_dict
     _desc = description
+    _store = store
 
     @tool(f"handoff_to_{_name}", description=f"Delegate task to {_name}. {_desc}")
     def invoke_agent_lazy(task_description: str) -> str:
@@ -291,6 +305,14 @@ def _create_lazy_delegation_tool(
         logger.debug(
             f"[lazy delegation] Agent {_name} completed. Response length: {len(content)}"
         )
+
+        # Dual-write: store full result for later retrieval
+        if _store is not None:
+            from lobster.tools.store_tools import store_delegation_result
+
+            store_key = store_delegation_result(_store, _name, content)
+            if store_key:
+                content = f"{content}\n\n[store_key={store_key}]"
 
         return content
 
@@ -506,6 +528,7 @@ def create_bioinformatics_graph(
                             child_name,
                             created_agents,  # Dict reference - resolved at invocation
                             child_config.description,
+                            store=store,
                         )
                     )
                 else:
@@ -613,6 +636,7 @@ def create_bioinformatics_graph(
                 agent=created_agents[agent_name],
                 tool_name=agent_config.handoff_tool_name,
                 description=agent_config.handoff_tool_description,
+                store=store,
             )
             agent_tools.append(agent_tool)
             supervisor_accessible_names.append(agent_config.name)
