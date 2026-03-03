@@ -387,6 +387,148 @@ def _resolve_worker_agents(
     return worker_agents, filtered_out_agents, child_agent_names
 
 
+def _create_agents_single_pass(
+    worker_agents: Dict,
+    created_agents: Dict[str, Any],
+    data_manager: DataManagerV2,
+    callback_handler,
+    store,
+    subscription_tier: str,
+    provider_override: Optional[str],
+    model_override: Optional[str],
+    workspace_path: Optional[Path],
+) -> Dict:
+    """Create all agents in a single pass with lazy delegation tools.
+
+    IMPORTANT: `created_agents` is mutated in-place. Lazy delegation tools
+    capture this dict by reference and resolve agents at invocation time.
+    Do NOT replace the dict object — only add to it.
+
+    Args:
+        worker_agents: Dict of agent configs to create (from _resolve_worker_agents)
+        created_agents: Empty dict to populate with compiled agents (mutated in-place)
+        data_manager: DataManagerV2 for agent factories
+        callback_handler: Callback for streaming
+        store: Optional InMemoryStore for dual-write
+        subscription_tier: For factories that need it
+        provider_override: For factories that need it
+        model_override: For factories that need it
+        workspace_path: For factories that need it
+
+    Returns:
+        Pruned worker_agents dict (failed agents removed)
+    """
+    failed_agents = set()
+
+    for agent_name, agent_config in worker_agents.items():
+        try:
+            factory_function = import_agent_factory(agent_config.factory_function)
+        except (ImportError, ModuleNotFoundError, AttributeError, SyntaxError) as e:
+            from lobster.core.component_registry import AGENT_TO_PACKAGE
+
+            package = AGENT_TO_PACKAGE.get(agent_name)
+            if package:
+                logger.warning(
+                    f"Skipping agent '{agent_name}' (package '{package}'): {e}"
+                )
+            else:
+                logger.warning(
+                    f"Skipping agent '{agent_name}': factory import failed: {e}"
+                )
+            failed_agents.add(agent_name)
+            continue
+
+        # Create delegation tools LAZILY (reference dict, not agent instance)
+        delegation_tools = None
+        if agent_config.child_agents:
+            delegation_tools = []
+            for child_name in agent_config.child_agents:
+                if child_name in worker_agents and child_name not in failed_agents:
+                    child_config = worker_agents[child_name]
+                    delegation_tools.append(
+                        _create_lazy_delegation_tool(
+                            child_name,
+                            created_agents,  # Dict reference — resolved at invocation
+                            child_config.description,
+                            store=store,
+                        )
+                    )
+                else:
+                    logger.warning(
+                        f"Child '{child_name}' not enabled, skipping delegation tool"
+                    )
+
+        # Build kwargs for agent factory (standardized signature)
+        factory_kwargs = {
+            "data_manager": data_manager,
+            "callback_handler": callback_handler,
+            "agent_name": agent_config.name,
+        }
+
+        # Add optional parameters based on factory signature
+        sig = inspect.signature(factory_function)
+        if "delegation_tools" in sig.parameters:
+            factory_kwargs["delegation_tools"] = delegation_tools
+        if "subscription_tier" in sig.parameters:
+            factory_kwargs["subscription_tier"] = subscription_tier
+        if "provider_override" in sig.parameters:
+            factory_kwargs["provider_override"] = provider_override
+        if "model_override" in sig.parameters:
+            factory_kwargs["model_override"] = model_override
+        if "workspace_path" in sig.parameters:
+            factory_kwargs["workspace_path"] = workspace_path
+
+        try:
+            created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
+                {"recursion_limit": 50}
+            )
+        except Exception as e:
+            logger.warning(
+                f"Skipping agent '{agent_name}': factory execution failed: {e}"
+            )
+            failed_agents.add(agent_name)
+            continue
+
+        logger.debug(
+            f"Created agent: {agent_config.display_name} ({agent_name}) [single pass]"
+        )
+
+    # Remove failed agents so downstream phases are consistent
+    if failed_agents:
+        worker_agents = {
+            k: v for k, v in worker_agents.items() if k not in failed_agents
+        }
+        from lobster.core.component_registry import (
+            AGENT_TO_PACKAGE,
+            get_install_command,
+        )
+
+        missing_packages = {}
+        for agent in sorted(failed_agents):
+            pkg = AGENT_TO_PACKAGE.get(agent)
+            if pkg:
+                missing_packages.setdefault(pkg, []).append(agent)
+
+        if missing_packages:
+            install_hints = []
+            for pkg, agents in sorted(missing_packages.items()):
+                cmd = get_install_command(pkg)
+                install_hints.append(f"  {pkg} ({', '.join(agents)}): {cmd}")
+            hints_str = "\n".join(install_hints)
+            logger.warning(
+                f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}.\n"
+                f"Install missing packages:\n{hints_str}\n"
+                f"Graph continues with {len(worker_agents)} agents."
+            )
+        else:
+            logger.warning(
+                f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}. "
+                f"Graph continues with {len(worker_agents)} agents."
+            )
+
+    return worker_agents
+
+
 def create_bioinformatics_graph(
     data_manager: DataManagerV2,
     checkpointer: InMemorySaver = None,
@@ -490,136 +632,25 @@ def create_bioinformatics_graph(
         subscription_tier=subscription_tier,
     )
 
+    # Create all agents in a single pass with lazy delegation tools
     created_agents: Dict[str, Any] = {}
-    agent_tools = []  # Tools for supervisor to invoke sub-agents
+    worker_agents = _create_agents_single_pass(
+        worker_agents=worker_agents,
+        created_agents=created_agents,  # Mutated in-place (lazy tools capture by reference)
+        data_manager=data_manager,
+        callback_handler=callback_handler,
+        store=store,
+        subscription_tier=subscription_tier,
+        provider_override=provider_override,
+        model_override=model_override,
+        workspace_path=workspace_path,
+    )
 
     # ==========================================================================
-    # SINGLE PASS: Create all agents with lazy delegation tools (GRAPH-03)
-    # ==========================================================================
-    # This eliminates the two-pass pattern where parent agents were created twice
-    # (once without delegation tools, then again with them). Lazy delegation tools
-    # capture the created_agents dict by reference and resolve agents at invocation time.
-
-    failed_agents = set()
-
-    for agent_name, agent_config in worker_agents.items():
-        try:
-            factory_function = import_agent_factory(agent_config.factory_function)
-        except (ImportError, ModuleNotFoundError, AttributeError, SyntaxError) as e:
-            # Provide actionable message: distinguish broken install from missing dep
-            from lobster.core.component_registry import AGENT_TO_PACKAGE
-
-            package = AGENT_TO_PACKAGE.get(agent_name)
-            if package:
-                logger.warning(
-                    f"Skipping agent '{agent_name}' (package '{package}'): {e}"
-                )
-            else:
-                logger.warning(
-                    f"Skipping agent '{agent_name}': factory import failed: {e}"
-                )
-            failed_agents.add(agent_name)
-            continue
-
-        # Create delegation tools LAZILY (reference dict, not agent instance)
-        delegation_tools = None
-        if agent_config.child_agents:
-            delegation_tools = []
-            for child_name in agent_config.child_agents:
-                if child_name in worker_agents and child_name not in failed_agents:
-                    child_config = worker_agents[child_name]
-                    delegation_tools.append(
-                        _create_lazy_delegation_tool(
-                            child_name,
-                            created_agents,  # Dict reference - resolved at invocation
-                            child_config.description,
-                            store=store,
-                        )
-                    )
-                else:
-                    logger.warning(
-                        f"Child '{child_name}' not enabled, skipping delegation tool"
-                    )
-
-        # Build kwargs for agent factory (standardized signature)
-        factory_kwargs = {
-            "data_manager": data_manager,
-            "callback_handler": callback_handler,
-            "agent_name": agent_config.name,
-        }
-
-        # Add optional parameters based on factory signature
-        sig = inspect.signature(factory_function)
-        if "delegation_tools" in sig.parameters:
-            factory_kwargs["delegation_tools"] = delegation_tools
-        if "subscription_tier" in sig.parameters:
-            factory_kwargs["subscription_tier"] = subscription_tier
-        if "provider_override" in sig.parameters:
-            factory_kwargs["provider_override"] = provider_override
-        if "model_override" in sig.parameters:
-            factory_kwargs["model_override"] = model_override
-        if "workspace_path" in sig.parameters:
-            factory_kwargs["workspace_path"] = workspace_path
-
-        # Create agent ONCE (single pass)
-        # Apply recursion_limit to prevent sub-agents from hitting the default
-        # limit of 25. Sub-agents are invoked via agent.invoke() in tool functions,
-        # which creates a separate execution context (not a subgraph), so the
-        # parent graph's recursion_limit does NOT propagate.
-        try:
-            created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
-                {"recursion_limit": 50}
-            )
-        except Exception as e:
-            logger.warning(
-                f"Skipping agent '{agent_name}': factory execution failed: {e}"
-            )
-            failed_agents.add(agent_name)
-            continue
-
-        logger.debug(
-            f"Created agent: {agent_config.display_name} ({agent_name}) [single pass]"
-        )
-
-    # Remove failed agents from worker_agents so Phases 3-5 are consistent.
-    # This prevents KeyError in tool wiring and phantom agents in metadata.
-    if failed_agents:
-        worker_agents = {
-            k: v for k, v in worker_agents.items() if k not in failed_agents
-        }
-        # Build actionable summary of what packages to install
-        from lobster.core.component_registry import (
-            AGENT_TO_PACKAGE,
-            get_install_command,
-        )
-
-        missing_packages = {}
-        for agent in sorted(failed_agents):
-            pkg = AGENT_TO_PACKAGE.get(agent)
-            if pkg:
-                missing_packages.setdefault(pkg, []).append(agent)
-
-        if missing_packages:
-            install_hints = []
-            for pkg, agents in sorted(missing_packages.items()):
-                cmd = get_install_command(pkg)
-                install_hints.append(f"  {pkg} ({', '.join(agents)}): {cmd}")
-            hints_str = "\n".join(install_hints)
-            logger.warning(
-                f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}.\n"
-                f"Install missing packages:\n{hints_str}\n"
-                f"Graph continues with {len(worker_agents)} agents."
-            )
-        else:
-            logger.warning(
-                f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}. "
-                f"Graph continues with {len(worker_agents)} agents."
-            )
-
-    # ==========================================================================
-    # Phase 3: Create agent tools for supervisor (Tool Calling pattern)
+    # Create agent tools for supervisor (Tool Calling pattern)
     # ==========================================================================
     # Only create tools for supervisor-accessible agents (not child agents)
+    agent_tools = []
     supervisor_accessible_names = []
 
     for agent_name, agent_config in worker_agents.items():
