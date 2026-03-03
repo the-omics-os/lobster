@@ -529,6 +529,132 @@ def _create_agents_single_pass(
     return worker_agents
 
 
+def _build_supervisor_tools(
+    worker_agents: Dict,
+    created_agents: Dict[str, Any],
+    child_agent_names: set,
+    data_manager: DataManagerV2,
+    store,
+) -> Tuple[List, List[str]]:
+    """Build all supervisor tools: handoff, workspace, code execution, and todo.
+
+    Args:
+        worker_agents: Dict of agent configs (after filtering)
+        created_agents: Dict of compiled agents (for handoff tool creation)
+        child_agent_names: Set of agent names that are children (not supervisor-accessible)
+        data_manager: DataManagerV2 for workspace/code tools
+        store: Optional InMemoryStore for dual-write
+
+    Returns:
+        (all_supervisor_tools, supervisor_accessible_names):
+            - all_supervisor_tools: Full list of tools for the supervisor
+            - supervisor_accessible_names: Names of agents the supervisor can handoff to
+    """
+    agent_tools = []
+    supervisor_accessible_names = []
+
+    for agent_name, agent_config in worker_agents.items():
+        if (
+            not agent_config.handoff_tool_name
+            or not agent_config.handoff_tool_description
+        ):
+            continue
+
+        if agent_config.supervisor_accessible is None:
+            is_supervisor_accessible = agent_name not in child_agent_names
+        else:
+            is_supervisor_accessible = agent_config.supervisor_accessible
+
+        if is_supervisor_accessible:
+            agent_tool = _create_agent_tool(
+                agent_name=agent_config.name,
+                agent=created_agents[agent_name],
+                tool_name=agent_config.handoff_tool_name,
+                description=agent_config.handoff_tool_description,
+                store=store,
+            )
+            agent_tools.append(agent_tool)
+            supervisor_accessible_names.append(agent_config.name)
+            logger.debug(f"Created supervisor tool: {agent_config.handoff_tool_name}")
+
+    # Shared workspace tools
+    list_available_modalities = create_list_modalities_tool(data_manager)
+    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
+    delete_from_workspace = create_delete_from_workspace_tool(data_manager)
+
+    # Code execution fallback
+    from lobster.services.execution.custom_code_execution_service import (
+        CustomCodeExecutionService,
+    )
+
+    supervisor_code_service = CustomCodeExecutionService(data_manager)
+    execute_custom_code = create_execute_custom_code_tool(
+        data_manager=data_manager,
+        custom_code_service=supervisor_code_service,
+        agent_name="supervisor",
+        post_processor=None,
+    )
+
+    # Todo tools for planning
+    write_todos, read_todos = create_todo_tools()
+
+    all_supervisor_tools = agent_tools + [
+        list_available_modalities,
+        get_content_from_workspace,
+        delete_from_workspace,
+        write_todos,
+        read_todos,
+        execute_custom_code,
+    ]
+
+    logger.debug(f"Supervisor-accessible agents: {supervisor_accessible_names}")
+    logger.debug(
+        f"Total agents created: {len(created_agents)}, "
+        f"Supervisor tools: {len(agent_tools)}"
+    )
+
+    return all_supervisor_tools, supervisor_accessible_names
+
+
+def _build_graph_metadata(
+    worker_agents: Dict,
+    supervisor_accessible_names: List[str],
+    filtered_out_agents: List[str],
+    subscription_tier: str,
+) -> GraphMetadata:
+    """Build GraphMetadata for API exposure.
+
+    Pure function — reads from worker_agents and supervisor_accessible_names,
+    produces a serializable GraphMetadata dataclass.
+    """
+    available_agent_infos = []
+    for agent_name, agent_config in worker_agents.items():
+        agent_info = AgentInfo(
+            name=agent_config.name,
+            display_name=agent_config.display_name,
+            description=agent_config.description,
+            is_supervisor_accessible=agent_config.name in supervisor_accessible_names,
+            parent_agent=_get_parent_agent(agent_config.name, worker_agents),
+            child_agents=agent_config.child_agents,
+            handoff_tool_name=agent_config.handoff_tool_name,
+        )
+        available_agent_infos.append(agent_info)
+
+    metadata = GraphMetadata(
+        subscription_tier=subscription_tier,
+        available_agents=available_agent_infos,
+        supervisor_accessible_agents=supervisor_accessible_names,
+        filtered_out_agents=filtered_out_agents,
+    )
+
+    logger.debug(
+        f"Graph metadata: {len(available_agent_infos)} agents, "
+        f"{len(supervisor_accessible_names)} supervisor-accessible"
+    )
+
+    return metadata
+
+
 def create_bioinformatics_graph(
     data_manager: DataManagerV2,
     checkpointer: InMemorySaver = None,
@@ -646,66 +772,13 @@ def create_bioinformatics_graph(
         workspace_path=workspace_path,
     )
 
-    # ==========================================================================
-    # Create agent tools for supervisor (Tool Calling pattern)
-    # ==========================================================================
-    # Only create tools for supervisor-accessible agents (not child agents)
-    agent_tools = []
-    supervisor_accessible_names = []
-
-    for agent_name, agent_config in worker_agents.items():
-        if (
-            not agent_config.handoff_tool_name
-            or not agent_config.handoff_tool_description
-        ):
-            continue
-
-        # Determine supervisor accessibility
-        if agent_config.supervisor_accessible is None:
-            is_supervisor_accessible = agent_name not in child_agent_names
-        else:
-            is_supervisor_accessible = agent_config.supervisor_accessible
-
-        if is_supervisor_accessible:
-            agent_tool = _create_agent_tool(
-                agent_name=agent_config.name,
-                agent=created_agents[agent_name],
-                tool_name=agent_config.handoff_tool_name,
-                description=agent_config.handoff_tool_description,
-                store=store,
-            )
-            agent_tools.append(agent_tool)
-            supervisor_accessible_names.append(agent_config.name)
-            logger.debug(f"Created supervisor tool: {agent_config.handoff_tool_name}")
-
-    # ==========================================================================
-    # Phase 4: Create shared tools and supervisor
-    # ==========================================================================
-    # Create shared tools with data_manager access
-    list_available_modalities = create_list_modalities_tool(data_manager)
-    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
-    delete_from_workspace = create_delete_from_workspace_tool(data_manager)
-
-    # Create execute_custom_code tool for supervisor fallback
-    # This gives the supervisor a code execution escape hatch for tasks that
-    # no domain agent handles (e.g., cross-modal regression, reading adata.uns,
-    # loading non-h5ad formats like parquet/CSV directly)
-    from lobster.services.execution.custom_code_execution_service import (
-        CustomCodeExecutionService,
-    )
-
-    supervisor_code_service = CustomCodeExecutionService(data_manager)
-    execute_custom_code = create_execute_custom_code_tool(
+    # Assemble all supervisor tools (handoff + workspace + code + todo)
+    all_supervisor_tools, supervisor_accessible_names = _build_supervisor_tools(
+        worker_agents=worker_agents,
+        created_agents=created_agents,
+        child_agent_names=child_agent_names,
         data_manager=data_manager,
-        custom_code_service=supervisor_code_service,
-        agent_name="supervisor",
-        post_processor=None,
-    )
-
-    logger.debug(f"Supervisor-accessible agents: {supervisor_accessible_names}")
-    logger.debug(
-        f"Total agents created: {len(created_agents)}, "
-        f"Supervisor tools: {len(agent_tools)}"
+        store=store,
     )
 
     # Create supervisor prompt with active agents list
@@ -714,19 +787,6 @@ def create_bioinformatics_graph(
         config=supervisor_config,
         active_agents=supervisor_accessible_names,
     )
-
-    # Create todo tools for planning
-    write_todos, read_todos = create_todo_tools()
-
-    # Combine all tools for the supervisor
-    all_supervisor_tools = agent_tools + [  # Tools to invoke sub-agents
-        list_available_modalities,
-        get_content_from_workspace,
-        delete_from_workspace,
-        write_todos,  # Planning tools
-        read_todos,
-        execute_custom_code,  # Fallback code execution
-    ]
 
     # ==========================================================================
     # Context Management: pre_model_hook + retrieve_agent_result
@@ -792,35 +852,12 @@ def create_bioinformatics_graph(
     # Compile with checkpointer and store
     graph = workflow.compile(checkpointer=checkpointer, store=store)
 
-    # ==========================================================================
-    # Phase 5: Build metadata for API exposure
-    # ==========================================================================
-    available_agent_infos = []
-    for agent_name, agent_config in worker_agents.items():
-        agent_info = AgentInfo(
-            name=agent_config.name,
-            display_name=agent_config.display_name,
-            description=agent_config.description,
-            is_supervisor_accessible=agent_config.name in supervisor_accessible_names,
-            parent_agent=_get_parent_agent(agent_config.name, worker_agents),
-            child_agents=agent_config.child_agents,
-            handoff_tool_name=agent_config.handoff_tool_name,
-        )
-        available_agent_infos.append(agent_info)
-
-    metadata = GraphMetadata(
-        subscription_tier=subscription_tier,
-        available_agents=available_agent_infos,
-        supervisor_accessible_agents=supervisor_accessible_names,
+    # Build metadata for API exposure
+    metadata = _build_graph_metadata(
+        worker_agents=worker_agents,
+        supervisor_accessible_names=supervisor_accessible_names,
         filtered_out_agents=filtered_out_agents,
-    )
-
-    logger.debug(
-        "Bioinformatics multi-agent graph created successfully (Tool Calling pattern)"
-    )
-    logger.debug(
-        f"Graph metadata: {len(available_agent_infos)} agents, "
-        f"{len(supervisor_accessible_names)} supervisor-accessible"
+        subscription_tier=subscription_tier,
     )
 
     # ==========================================================================
