@@ -113,6 +113,35 @@ class TestGraphCompositionPhase5:
         # Verify it filtered to just the enabled agent
         assert len(agent_names) == 1, f"Expected 1 agent, got {len(agent_names)}"
 
+    def test_empty_enabled_agents_produces_zero_agents(self, mock_data_manager):
+        """Verify enabled_agents=[] results in zero agents, not all agents.
+
+        Regression test for bug where [] was treated as falsy and fell through
+        to 'all agents'. After fix: None = all agents, [] = explicitly none.
+        """
+        graph, metadata = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=[],  # Explicit empty list
+        )
+
+        assert metadata.available_agents == [], (
+            f"enabled_agents=[] should produce zero agents, "
+            f"got {[a.name for a in metadata.available_agents]}"
+        )
+        assert metadata.supervisor_accessible_agents == []
+
+    def test_enabled_agents_none_loads_all_agents(self, mock_data_manager):
+        """Verify enabled_agents=None (default) loads all available agents."""
+        graph, metadata = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=None,
+        )
+
+        # None should give us all discovered agents
+        assert len(metadata.available_agents) >= 1, (
+            "enabled_agents=None should load all available agents"
+        )
+
     def test_enabled_agents_param_overrides_config(self, mock_data_manager):
         """Verify enabled_agents param takes precedence over config.enabled_agents."""
         config = WorkspaceAgentConfig(enabled_agents=["transcriptomics_expert"])
@@ -447,6 +476,71 @@ class TestGraphCompositionPhase5:
             assert agent_required_keys.issubset(
                 set(agent_dict.keys())
             ), f"Missing agent keys: {agent_required_keys - set(agent_dict.keys())}"
+
+    # =========================================================================
+    # GRAPH-10: AQUADIF monitor maps all supervisor tools
+    # =========================================================================
+    def test_aquadif_monitor_maps_all_supervisor_tools(self, mock_data_manager):
+        """Verify AQUADIF monitor receives metadata for ALL supervisor tools.
+
+        The monitor must know about every tool the supervisor can invoke,
+        including todo tools and retrieve_agent_result, not just handoffs
+        and workspace tools.
+        """
+        from lobster.core.aquadif_monitor import AquadifMonitor
+
+        monitor = AquadifMonitor(tool_metadata_map={})
+
+        graph, metadata = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=["research_agent"],
+            aquadif_monitor=monitor,
+        )
+
+        mapped_tools = set(monitor._tool_metadata_map.keys())
+
+        # These tools must always be in the map
+        expected_tools = {
+            "list_available_modalities",
+            "get_content_from_workspace",
+            "delete_from_workspace",
+            "execute_custom_code",
+            "write_todos",
+            "read_todos",
+        }
+        missing = expected_tools - mapped_tools
+        assert not missing, (
+            f"AQUADIF monitor missing metadata for supervisor tools: {missing}. "
+            f"Mapped: {sorted(mapped_tools)}"
+        )
+
+        # Handoff tools should also be mapped
+        handoff_tools = {t for t in mapped_tools if t.startswith("handoff_to_")}
+        assert len(handoff_tools) >= 1, (
+            f"Expected at least 1 handoff tool in AQUADIF map, found: {handoff_tools}"
+        )
+
+    def test_aquadif_monitor_maps_retrieve_tool_when_store_provided(self, mock_data_manager):
+        """Verify retrieve_agent_result is mapped when store is provided."""
+        from langgraph.store.memory import InMemoryStore
+
+        from lobster.core.aquadif_monitor import AquadifMonitor
+
+        monitor = AquadifMonitor(tool_metadata_map={})
+        store = InMemoryStore()
+
+        graph, metadata = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=["research_agent"],
+            aquadif_monitor=monitor,
+            store=store,
+        )
+
+        mapped_tools = set(monitor._tool_metadata_map.keys())
+        assert "retrieve_agent_result" in mapped_tools, (
+            f"retrieve_agent_result should be in AQUADIF map when store is provided. "
+            f"Mapped: {sorted(mapped_tools)}"
+        )
 
     # =========================================================================
     # Backward compatibility

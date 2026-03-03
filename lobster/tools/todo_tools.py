@@ -168,4 +168,10 @@ def create_todo_tools():
             }
         )
 
+    # AQUADIF metadata (UTILITY — planning tools, no provenance)
+    write_todos.metadata = {"categories": ["UTILITY"], "provenance": False}
+    write_todos.tags = ["UTILITY"]
+    read_todos.metadata = {"categories": ["UTILITY"], "provenance": False}
+    read_todos.tags = ["UTILITY"]
+
     return write_todos, read_todos

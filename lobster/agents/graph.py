@@ -172,7 +172,7 @@ def _create_agent_tool(
                 including all relevant context. Should be in task format starting
                 with 'Your task is to ...'
         """
-        logger.warning(
+        logger.info(
             f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ==="
         )
 
@@ -433,7 +433,10 @@ def create_bioinformatics_graph(
     all_agents = component_registry.list_agents()
 
     # Resolve enabled agents: enabled_agents param > config.enabled_agents > all available
-    if enabled_agents:
+    # Note: `is not None` (not truthiness) so enabled_agents=[] means "zero agents"
+    # while None means "no preference, defer to config or all agents".
+    # config.enabled_agents uses truthiness because [] is its default (= no preference).
+    if enabled_agents is not None:
         enabled_set = set(enabled_agents)
         logger.debug(f"Using enabled_agents param: {enabled_set}")
     elif config and config.enabled_agents:
@@ -444,7 +447,7 @@ def create_bioinformatics_graph(
         logger.debug("No enabled_agents filter - using all available agents")
 
     # Filter to enabled agents
-    if enabled_set:
+    if enabled_set is not None:
         worker_agents = {n: c for n, c in all_agents.items() if n in enabled_set}
         # Auto-include child agents for enabled parents
         # When a parent is enabled, its children MUST also be in worker_agents
@@ -797,18 +800,10 @@ def create_bioinformatics_graph(
     if aquadif_monitor is not None:
         tool_metadata_map: Dict[str, Any] = {}
 
-        # Collect from supervisor-accessible handoff tools (DELEGATE metadata)
-        for t in agent_tools:
-            if hasattr(t, "metadata"):
-                tool_metadata_map[t.name] = t.metadata
-
-        # Collect from shared workspace tools
-        for t in [
-            list_available_modalities,
-            get_content_from_workspace,
-            delete_from_workspace,
-            execute_custom_code,
-        ]:
+        # Collect from ALL supervisor tools (single source of truth)
+        # This covers agent handoff tools, workspace tools, todo tools,
+        # retrieve_agent_result, and execute_custom_code.
+        for t in all_supervisor_tools:
             if hasattr(t, "metadata"):
                 tool_metadata_map[t.name] = t.metadata
 
