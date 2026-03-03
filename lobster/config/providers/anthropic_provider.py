@@ -242,9 +242,12 @@ class AnthropicProvider(ILLMProvider):
         try:
             from langchain_anthropic import ChatAnthropic
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("anthropic", is_extra=True)
             raise ImportError(
-                "langchain-anthropic package not installed. "
-                "Install with: pip install lobster-ai[anthropic]"
+                f"langchain-anthropic package not installed. "
+                f"Install with: {cmd}"
             )
 
         # Validate model ID

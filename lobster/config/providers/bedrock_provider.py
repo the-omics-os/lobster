@@ -228,9 +228,12 @@ class BedrockProvider(ILLMProvider):
         try:
             from langchain_aws import ChatBedrockConverse
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("bedrock", is_extra=True)
             raise ImportError(
-                "langchain-aws package not installed. "
-                "Install with: pip install lobster-ai[bedrock]"
+                f"langchain-aws package not installed. "
+                f"Install with: {cmd}"
             )
 
         # Validate model

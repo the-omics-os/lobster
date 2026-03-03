@@ -273,9 +273,12 @@ class OpenAIProvider(ILLMProvider):
         try:
             from langchain_openai import ChatOpenAI
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("openai", is_extra=True)
             raise ImportError(
-                "langchain-openai package not installed. "
-                "Install with: pip install lobster-ai[openai]"
+                f"langchain-openai package not installed. "
+                f"Install with: {cmd}"
             )
 
         # Validate model ID

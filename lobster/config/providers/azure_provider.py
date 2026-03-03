@@ -302,9 +302,12 @@ class AzureProvider(ILLMProvider):
         try:
             from langchain_azure_ai.chat_models import AzureAIChatCompletionsModel
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("azure", is_extra=True)
             raise ImportError(
-                "langchain-azure-ai package not installed. "
-                "Install with: pip install lobster-ai[azure]"
+                f"langchain-azure-ai package not installed. "
+                f"Install with: {cmd}"
             )
 
         # Get configuration (support both new and legacy env vars)

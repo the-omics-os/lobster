@@ -228,9 +228,12 @@ class GeminiProvider(ILLMProvider):
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("gemini", is_extra=True)
             raise ImportError(
-                "langchain-google-genai package not installed. "
-                "Install with: pip install lobster-ai[gemini]"
+                f"langchain-google-genai package not installed. "
+                f"Install with: {cmd}"
             )
 
         # Validate model ID
