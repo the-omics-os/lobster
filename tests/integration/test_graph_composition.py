@@ -138,9 +138,9 @@ class TestGraphCompositionPhase5:
         )
 
         # None should give us all discovered agents
-        assert len(metadata.available_agents) >= 1, (
-            "enabled_agents=None should load all available agents"
-        )
+        assert (
+            len(metadata.available_agents) >= 1
+        ), "enabled_agents=None should load all available agents"
 
     def test_enabled_agents_param_overrides_config(self, mock_data_manager):
         """Verify enabled_agents param takes precedence over config.enabled_agents."""
@@ -516,11 +516,13 @@ class TestGraphCompositionPhase5:
 
         # Handoff tools should also be mapped
         handoff_tools = {t for t in mapped_tools if t.startswith("handoff_to_")}
-        assert len(handoff_tools) >= 1, (
-            f"Expected at least 1 handoff tool in AQUADIF map, found: {handoff_tools}"
-        )
+        assert (
+            len(handoff_tools) >= 1
+        ), f"Expected at least 1 handoff tool in AQUADIF map, found: {handoff_tools}"
 
-    def test_aquadif_monitor_maps_retrieve_tool_when_store_provided(self, mock_data_manager):
+    def test_aquadif_monitor_maps_retrieve_tool_when_store_provided(
+        self, mock_data_manager
+    ):
         """Verify retrieve_agent_result is mapped when store is provided."""
         from langgraph.store.memory import InMemoryStore
 
