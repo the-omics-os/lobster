@@ -140,19 +140,58 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
     return None
 
 
+def _invoke_and_store(agent, agent_name: str, task_description: str, store) -> str:
+    """Shared invoke pipeline for all delegation tools.
+
+    Constructs config for callback attribution, invokes the agent, extracts
+    the final message, and optionally dual-writes the result to store.
+
+    Args:
+        agent: The compiled agent (Pregel) to invoke
+        agent_name: Agent name for logging and callback attribution
+        task_description: Task to send to the agent
+        store: Optional InMemoryStore for dual-write result storage
+
+    Returns:
+        Agent response content, with [store_key=...] appended if stored
+    """
+    # Config for proper callback attribution in nested LangGraph runs.
+    # metadata propagates to all sub-calls via RunnableConfig.
+    config = {
+        "run_name": agent_name,
+        "tags": [agent_name],
+        "metadata": {"agent_name": agent_name},
+    }
+
+    result = agent.invoke(
+        {"messages": [{"role": "user", "content": task_description}]}, config=config
+    )
+
+    # Extract the final message content
+    final_msg = result.get("messages", [])[-1] if result.get("messages") else None
+    if final_msg is None:
+        return f"Agent {agent_name} returned no response."
+
+    content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
+    logger.debug(f"Agent {agent_name} completed. Response length: {len(content)}")
+
+    # Dual-write: store full result for later retrieval
+    if store is not None:
+        from lobster.tools.store_tools import store_delegation_result
+
+        store_key = store_delegation_result(store, agent_name, content)
+        if store_key:
+            content = f"{content}\n\n[store_key={store_key}]"
+
+    return content
+
+
 def _create_agent_tool(
     agent_name: str, agent, tool_name: str, description: str, store=None
 ):
     """Create a tool that invokes a sub-agent (Tool Calling pattern).
 
-    This follows the LangChain Tool Calling pattern where sub-agents are
-    invoked as tools and return their results directly. The supervisor
-    maintains centralized control - sub-agents never interact with users.
-
-    When store is provided, full results are auto-stored (dual-write pattern)
-    and a [store_key=...] reference is appended for later retrieval.
-
-    See: https://docs.langchain.com/oss/langchain/multi-agent#tool-calling
+    Used for supervisor → agent handoffs where the agent is already created.
 
     Args:
         agent_name: Internal name of the agent (for logging)
@@ -175,39 +214,10 @@ def _create_agent_tool(
         logger.info(
             f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ==="
         )
+        return _invoke_and_store(agent, agent_name, task_description, _store)
 
-        # Pass explicit agent name in config for proper callback attribution.
-        # metadata propagates to all sub-calls and is passed to handle*Start
-        # callbacks (per RunnableConfig docs). This is the most reliable
-        # mechanism for agent attribution in nested LangGraph runs.
-        config = {
-            "run_name": agent_name,
-            "tags": [agent_name],
-            "metadata": {"agent_name": agent_name},
-        }
-
-        # Invoke the sub-agent with the task as a user message
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": task_description}]}, config=config
-        )
-
-        # Extract the final message content
-        final_msg = result.get("messages", [])[-1] if result.get("messages") else None
-        if final_msg is None:
-            return f"Agent {agent_name} returned no response."
-
-        content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
-        logger.debug(f"Agent {agent_name} completed. Response length: {len(content)}")
-
-        # Dual-write: store full result for later retrieval
-        if _store is not None:
-            from lobster.tools.store_tools import store_delegation_result
-
-            store_key = store_delegation_result(_store, agent_name, content)
-            if store_key:
-                content = f"{content}\n\n[store_key={store_key}]"
-
-        return content
+    invoke_agent.metadata = {"categories": ["DELEGATE"], "provenance": False}
+    invoke_agent.tags = ["DELEGATE"]
 
     return invoke_agent
 
@@ -220,12 +230,9 @@ def _create_lazy_delegation_tool(
 ):
     """Create delegation tool with lazy agent resolution.
 
-    The tool captures `agents_dict` by reference. When invoked, it looks up
-    the agent by name from the dict. This enables single-pass agent creation
-    where children may not exist when parent is created.
-
-    When store is provided, full results are auto-stored (dual-write pattern)
-    and a [store_key=...] reference is appended for later retrieval.
+    Used for parent → child handoffs where the child may not exist yet at
+    tool creation time. Captures `agents_dict` by reference and resolves
+    the agent at invocation time.
 
     Args:
         agent_name: Name of the child agent to delegate to
@@ -236,8 +243,6 @@ def _create_lazy_delegation_tool(
     Returns:
         Tool function with lazy agent resolution
     """
-    # Capture agent_name and agents_dict in closure
-    # Use a helper function to avoid Python closure variable capture issues
     _name = agent_name
     _dict = agents_dict
     _desc = description
@@ -284,41 +289,7 @@ def _create_lazy_delegation_tool(
         logger.info(
             f"=== CHILD DELEGATION TO {_name} ===\n{task_description[:500]}\n=== END CHILD DELEGATION ==="
         )
-
-        # Pass explicit agent name in config for proper callback attribution.
-        # metadata propagates to all sub-calls and is passed to handle*Start
-        # callbacks (per RunnableConfig docs). This is the most reliable
-        # mechanism for agent attribution in nested LangGraph runs.
-        config = {
-            "run_name": _name,
-            "tags": [_name],
-            "metadata": {"agent_name": _name},
-        }
-
-        # Invoke the sub-agent with the task as a user message
-        result = agent.invoke(
-            {"messages": [{"role": "user", "content": task_description}]}, config=config
-        )
-
-        # Extract the final message content
-        final_msg = result.get("messages", [])[-1] if result.get("messages") else None
-        if final_msg is None:
-            return f"Agent {_name} returned no response."
-
-        content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
-        logger.debug(
-            f"[lazy delegation] Agent {_name} completed. Response length: {len(content)}"
-        )
-
-        # Dual-write: store full result for later retrieval
-        if _store is not None:
-            from lobster.tools.store_tools import store_delegation_result
-
-            store_key = store_delegation_result(_store, _name, content)
-            if store_key:
-                content = f"{content}\n\n[store_key={store_key}]"
-
-        return content
+        return _invoke_and_store(agent, _name, task_description, _store)
 
     invoke_agent_lazy.metadata = {"categories": ["DELEGATE"], "provenance": False}
     invoke_agent_lazy.tags = ["DELEGATE"]
