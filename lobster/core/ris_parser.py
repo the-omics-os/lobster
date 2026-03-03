@@ -124,8 +124,11 @@ class RISParser:
             # Try to import rispy
             import rispy
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("rispy")
             raise RISParseError(
-                "rispy library not installed. Install with: pip install rispy"
+                f"rispy library not installed. Install with: {cmd}"
             )
 
         try:

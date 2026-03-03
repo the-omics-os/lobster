@@ -472,6 +472,11 @@ def convert_arrow_to_standard(adata):
     Returns:
         AnnData copy with all Arrow dtypes converted to standard pandas dtypes
     """
+    # Disable Arrow string inference during conversion — pandas 3.0+ defaults to
+    # ArrowStringArray for all string operations, which undoes our conversions.
+    _prev_infer_string = pd.options.future.infer_string
+    pd.options.future.infer_string = False
+
     adata_copy = adata.copy()
 
     # Convert obs.index
@@ -570,5 +575,8 @@ def convert_arrow_to_standard(adata):
 
     if hasattr(adata_copy, "uns") and adata_copy.uns:
         adata_copy.uns = {k: _convert_uns_arrow(v) for k, v in adata_copy.uns.items()}
+
+    # Restore original infer_string setting
+    pd.options.future.infer_string = _prev_infer_string
 
     return adata_copy

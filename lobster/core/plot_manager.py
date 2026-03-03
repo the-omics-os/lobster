@@ -38,9 +38,12 @@ def _ensure_plotly():
             import plotly.graph_objects as _plotly_go  # type: ignore
             import plotly.io as _plotly_io  # type: ignore
         except ImportError as exc:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("plotly")
             raise ImportError(
-                "plotly is required for PlotManager operations. "
-                "Install it with `pip install plotly`."
+                f"plotly is required for PlotManager operations. "
+                f"Install with: {cmd}"
             ) from exc
     return _plotly_go, _plotly_io
 

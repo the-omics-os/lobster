@@ -102,9 +102,12 @@ def _ensure_anndata():
         try:
             import anndata as _anndata_module  # type: ignore
         except ImportError as exc:  # pragma: no cover - optional dependency
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("anndata")
             raise ImportError(
-                "anndata is required for DataManagerV2 operations. "
-                "Install it with `pip install anndata`."
+                f"anndata is required for DataManagerV2 operations. "
+                f"Install with: {cmd}"
             ) from exc
     return _anndata_module
 
@@ -125,9 +128,12 @@ def _ensure_nbformat():
         try:
             import nbformat as _nbformat_module  # type: ignore
         except ImportError as exc:  # pragma: no cover - optional dependency
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("nbformat")
             raise ImportError(
-                "nbformat is required for notebook export features. "
-                "Install it with `pip install nbformat`."
+                f"nbformat is required for notebook export features. "
+                f"Install with: {cmd}"
             ) from exc
     return _nbformat_module
 
@@ -141,9 +147,12 @@ def _ensure_plotly():
             import plotly.graph_objects as go_module  # type: ignore
             import plotly.io as pio_module  # type: ignore
         except ImportError as exc:  # pragma: no cover - optional dependency
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("plotly")
             raise ImportError(
-                "Plotly is required for visualization features. "
-                "Install it with `pip install plotly`."
+                f"Plotly is required for visualization features. "
+                f"Install with: {cmd}"
             ) from exc
         _plotly_go = go_module
         _plotly_io = pio_module
@@ -1230,8 +1239,11 @@ class DataManagerV2:
             ValueError: If no modalities are loaded
         """
         if not MUDATA_AVAILABLE:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("mudata")
             raise ImportError(
-                "MuData is not available. Please install it with: pip install mudata"
+                f"MuData is not available. Install with: {cmd}"
             )
 
         if not self.modalities:
