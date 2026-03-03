@@ -48,6 +48,7 @@ def {{ agent_name }}(
     workspace_path: Optional[Path] = None,
     provider_override: Optional[str] = None,
     model_override: Optional[str] = None,
+    store=None,
 ):
     """
     Factory function for {{ display_name }} agent.
@@ -60,6 +61,7 @@ def {{ agent_name }}(
         workspace_path: Optional workspace path for LLM operations
         provider_override: Optional LLM provider override
         model_override: Optional model override
+        store: Optional InMemoryStore for context management (auto-passed by graph)
 
     Returns:
         Configured ReAct agent (CompiledGraph from create_react_agent)
@@ -111,4 +113,5 @@ def {{ agent_name }}(
         prompt=system_prompt,
         name=agent_name,
         state_schema={{ state_class }},
+        store=store,
     )

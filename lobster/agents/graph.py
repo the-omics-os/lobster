@@ -477,6 +477,8 @@ def _create_agents_single_pass(
             factory_kwargs["model_override"] = model_override
         if "workspace_path" in sig.parameters:
             factory_kwargs["workspace_path"] = workspace_path
+        if "store" in sig.parameters:
+            factory_kwargs["store"] = store
 
         try:
             created_agents[agent_name] = factory_function(**factory_kwargs).with_config(

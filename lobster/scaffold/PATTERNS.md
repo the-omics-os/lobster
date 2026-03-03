@@ -22,7 +22,8 @@ Date: 2026-02-28
 - AGENT_CONFIG at line 14 (after docstring + single import)
 - Only import before AGENT_CONFIG: `from lobster.config.agent_registry import AgentRegistryConfig`
 - Heavy imports after AGENT_CONFIG (lines 26+)
-- Factory returns: create_react_agent(model=, tools=, prompt=, name=, state_schema=)
+- Factory accepts `store=None` (auto-passed by graph.py when present in signature)
+- Factory returns: create_react_agent(model=, tools=, prompt=, name=, state_schema=, store=)
 - Uses `prompt=` parameter (NOT state_modifier=)
 - Lazy prompt import inside factory body
 
