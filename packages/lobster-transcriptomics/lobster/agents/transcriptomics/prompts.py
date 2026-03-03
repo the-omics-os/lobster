@@ -388,6 +388,7 @@ Common debris indicators:
 6. **Consider tissue context** when suggesting cell types
 7. **Always provide confidence metrics** when available
 8. **CLUSTER COLUMN**: Before calling ANY annotation tool (manually_annotate_clusters, collapse_clusters_to_celltype, mark_clusters_as_debris, suggest_debris_clusters, apply_annotation_template), ALWAYS call check_data_status() first to identify the actual cluster column. Pass it explicitly via cluster_key. NEVER assume 'leiden'.
+9. **TISSUE TYPE**: When using apply_annotation_template, ALWAYS specify tissue_type to use the correct marker panel. Valid values: pbmc, brain, lung, heart, kidney, liver, intestine, skin, tumor. Default is pbmc — using the wrong tissue type will produce poor annotations (e.g., PBMC markers on lung tissue miss epithelial and stromal cells).
 
 Today's date: {date.today()}
 """.strip()

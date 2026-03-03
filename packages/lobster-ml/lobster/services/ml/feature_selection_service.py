@@ -1143,7 +1143,21 @@ print(f"{'=' * 60}")
                     model.fit(X_sample, y_sample)
                     importances = model.feature_importances_
                 except ImportError:
-                    raise ImportError("XGBoost not installed. Run: pip install xgboost")
+                    logger.warning(
+                        "XGBoost not installed, falling back to Random Forest. "
+                        "To use XGBoost: pip install xgboost"
+                    )
+                    method = "random_forest"
+                    from sklearn.ensemble import RandomForestClassifier
+
+                    model = RandomForestClassifier(
+                        n_estimators=100,
+                        max_depth=10,
+                        random_state=random_state + round_idx,
+                        n_jobs=-1,
+                    )
+                    model.fit(X_sample, y_sample)
+                    importances = model.feature_importances_
 
             elif method == "random_forest":
                 from sklearn.ensemble import RandomForestClassifier
