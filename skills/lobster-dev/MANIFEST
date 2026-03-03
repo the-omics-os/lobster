@@ -1,10 +1,9 @@
 SKILL.md
+scripts/validate_plugin.py
 references/scaffold.md
 references/aquadif-contract.md
-references/aquadif-migration.md
 references/architecture.md
 references/bioskills-bridge.md
-references/cli.md
 references/code-layout.md
 references/creating-agents.md
 references/creating-services.md
