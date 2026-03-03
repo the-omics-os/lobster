@@ -250,7 +250,6 @@ class TestPromptInfrastructure:
             assert len(content) > 0, f"Shared section {section} should have content"
 
 
-
 class TestDynamicStateAggregation:
     """Test dynamic state aggregation from 06-02."""
 

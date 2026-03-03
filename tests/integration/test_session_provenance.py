@@ -84,7 +84,7 @@ def synthetic_ir() -> AnalysisStep:
                 papermill_injectable=True,
                 default_value=1e4,
                 required=True,
-                description="Target sum for normalization"
+                description="Target sum for normalization",
             )
         },
         input_entities=["raw_counts"],
@@ -193,11 +193,10 @@ class TestFullWorkflow:
         # === Phase 3: Pipeline export ===
         exporter = NotebookExporter(
             provenance=command_client.data_manager.provenance,
-            data_manager=command_client.data_manager
+            data_manager=command_client.data_manager,
         )
         notebook_path = exporter.export(
-            name="test_pipeline",
-            description="Test pipeline export"
+            name="test_pipeline", description="Test pipeline export"
         )
 
         # Verify notebook file created
@@ -218,7 +217,11 @@ class TestFullWorkflow:
         # Verify code template present in cells
         notebook_code = "\n".join(
             [
-                "".join(cell["source"]) if isinstance(cell["source"], list) else cell["source"]
+                (
+                    "".join(cell["source"])
+                    if isinstance(cell["source"], list)
+                    else cell["source"]
+                )
                 for cell in code_cells
             ]
         )
@@ -321,7 +324,9 @@ class TestSessionContinuity:
                 assert ir.exportable is True
 
             # Verify activity details
-            activity_types = [a["type"] for a in client2.data_manager.provenance.activities]
+            activity_types = [
+                a["type"] for a in client2.data_manager.provenance.activities
+            ]
             assert activity_types == ["activity_0", "activity_1", "activity_2"]
 
 
@@ -392,8 +397,7 @@ class TestCLIPipelineExport:
 
         # Export notebook via CommandClient
         notebook_path = command_client.data_manager.export_notebook(
-            name="test_cli_pipeline",
-            description="Test CLI pipeline export"
+            name="test_cli_pipeline", description="Test CLI pipeline export"
         )
 
         # === Phase 3: Verify notebook ===
@@ -413,7 +417,11 @@ class TestCLIPipelineExport:
 
         notebook_code = "\n".join(
             [
-                "".join(cell["source"]) if isinstance(cell["source"], list) else cell["source"]
+                (
+                    "".join(cell["source"])
+                    if isinstance(cell["source"], list)
+                    else cell["source"]
+                )
                 for cell in code_cells
             ]
         )

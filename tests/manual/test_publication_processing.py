@@ -66,7 +66,6 @@ from lobster.services.orchestration.publication_processing_service import (
     PublicationProcessingService,
 )
 
-
 console = Console()
 
 # Keep manual output focused on Rich status messages - suppress logs that disrupt progress bars

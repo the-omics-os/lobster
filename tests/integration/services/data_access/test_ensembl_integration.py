@@ -149,9 +149,7 @@ def test_get_xrefs_all(service):
 
 def test_get_xrefs_uniprot_filter(service):
     """Filter xrefs to UniProt/SWISSPROT only."""
-    result = service.get_xrefs(
-        "ENSG00000141510", external_db="UniProt/SWISSPROT"
-    )
+    result = service.get_xrefs("ENSG00000141510", external_db="UniProt/SWISSPROT")
 
     assert isinstance(result, list)
     assert len(result) > 0

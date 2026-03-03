@@ -59,9 +59,9 @@ class TestScaffoldE2E:
                 capture_output=True,
                 text=True,
             )
-            assert result.returncode == 0, (
-                f"Discovery failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-            )
+            assert (
+                result.returncode == 0
+            ), f"Discovery failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
             assert "PASS" in result.stdout
 
         finally:

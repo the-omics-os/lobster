@@ -58,9 +58,7 @@ class TestTargetToCompoundPipeline:
             ("properties", ir3),
         ]:
             assert ir is not None, f"{step_name} returned None IR"
-            assert isinstance(ir, AnalysisStep), (
-                f"{step_name} IR is not AnalysisStep"
-            )
+            assert isinstance(ir, AnalysisStep), f"{step_name} IR is not AnalysisStep"
             assert ir.operation, f"{step_name} IR missing operation"
             assert ir.tool_name, f"{step_name} IR missing tool_name"
             assert ir.code_template, f"{step_name} IR missing code_template"
@@ -68,9 +66,7 @@ class TestTargetToCompoundPipeline:
     def test_braf_pipeline_evidence_to_drug_indication(self, ot):
         """BRAF: evidence → score → drug indications for vemurafenib."""
         # Step 1: BRAF disease evidence
-        _, evidence, _ = ot.get_target_disease_evidence(
-            KNOWN_TARGETS["BRAF"], limit=5
-        )
+        _, evidence, _ = ot.get_target_disease_evidence(KNOWN_TARGETS["BRAF"], limit=5)
         if "error" in evidence:
             pytest.skip(f"Open Targets unavailable: {evidence['error'][:80]}")
 
@@ -118,9 +114,9 @@ class TestCompoundProfilingPipeline:
 
         mw_rdkit = desc["molecular_weight"]
         mw_pubchem = float(pub["molecular_weight"])
-        assert abs(mw_rdkit - mw_pubchem) < 1.0, (
-            f"RDKit MW ({mw_rdkit}) vs PubChem MW ({mw_pubchem}) differ by >1 Da"
-        )
+        assert (
+            abs(mw_rdkit - mw_pubchem) < 1.0
+        ), f"RDKit MW ({mw_rdkit}) vs PubChem MW ({mw_pubchem}) differ by >1 Da"
 
         # Step 4: All IR valid
         for name, ir in [("descriptors", ir1), ("lipinski", ir2), ("pubchem", ir3)]:
@@ -143,9 +139,9 @@ class TestSimilarityLeadHopping:
             [aspirin, aspirin], fingerprint="morgan"
         )
         matrix = result["similarity_matrix"]
-        assert abs(matrix[0][1] - 1.0) < 1e-10, (
-            f"Self-similarity should be 1.0, got {matrix[0][1]}"
-        )
+        assert (
+            abs(matrix[0][1] - 1.0) < 1e-10
+        ), f"Self-similarity should be 1.0, got {matrix[0][1]}"
 
     def test_egfr_inhibitors_have_high_similarity(self, mol_svc):
         """Erlotinib and gefitinib (both EGFR TKIs) should share scaffold similarity."""
@@ -155,9 +151,9 @@ class TestSimilarityLeadHopping:
             [erlotinib, gefitinib], fingerprint="morgan"
         )
         sim = result["similarity_matrix"][0][1]
-        assert sim > 0.2, (
-            f"EGFR inhibitors should share some scaffold similarity, got {sim}"
-        )
+        assert (
+            sim > 0.2
+        ), f"EGFR inhibitors should share some scaffold similarity, got {sim}"
 
     def test_unrelated_drugs_have_low_similarity(self, mol_svc):
         """Aspirin and metformin are structurally unrelated → low similarity."""
@@ -167,9 +163,7 @@ class TestSimilarityLeadHopping:
             [aspirin, metformin], fingerprint="morgan"
         )
         sim = result["similarity_matrix"][0][1]
-        assert sim < 0.3, (
-            f"Unrelated drugs should have low similarity, got {sim}"
-        )
+        assert sim < 0.3, f"Unrelated drugs should have low similarity, got {sim}"
 
     def test_similarity_matrix_is_symmetric(self, mol_svc):
         """Tanimoto matrix must be symmetric: sim(A,B) == sim(B,A)."""
@@ -183,9 +177,9 @@ class TestSimilarityLeadHopping:
         n = len(matrix)
         for i in range(n):
             for j in range(n):
-                assert abs(matrix[i][j] - matrix[j][i]) < 1e-10, (
-                    f"Matrix not symmetric at [{i}][{j}]"
-                )
+                assert (
+                    abs(matrix[i][j] - matrix[j][i]) < 1e-10
+                ), f"Matrix not symmetric at [{i}][{j}]"
 
     def test_diagonal_is_one(self, mol_svc):
         """All diagonal entries in the similarity matrix must be 1.0."""
@@ -196,6 +190,6 @@ class TestSimilarityLeadHopping:
         _, result, _ = mol_svc.fingerprint_similarity(smiles_list, fingerprint="morgan")
         matrix = result["similarity_matrix"]
         for i in range(len(matrix)):
-            assert abs(matrix[i][i] - 1.0) < 1e-10, (
-                f"Diagonal [{i}][{i}] should be 1.0, got {matrix[i][i]}"
-            )
+            assert (
+                abs(matrix[i][i] - 1.0) < 1e-10
+            ), f"Diagonal [{i}][{i}] should be 1.0, got {matrix[i][i]}"

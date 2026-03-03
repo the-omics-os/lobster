@@ -26,9 +26,9 @@ class TestChEMBLCompoundSearch:
 
         # All returned compounds should have valid ChEMBL IDs
         for c in compounds:
-            assert c["chembl_id"].startswith("CHEMBL"), (
-                f"Invalid ChEMBL ID: {c['chembl_id']}"
-            )
+            assert c["chembl_id"].startswith(
+                "CHEMBL"
+            ), f"Invalid ChEMBL ID: {c['chembl_id']}"
 
         assert isinstance(ir, AnalysisStep)
 
@@ -58,9 +58,7 @@ class TestChEMBLBioactivity:
             pytest.skip(f"ChEMBL API unavailable: {stats['error'][:60]}")
 
         activities = stats.get("activities", [])
-        assert len(activities) > 0, (
-            "Imatinib should have bioactivity records in ChEMBL"
-        )
+        assert len(activities) > 0, "Imatinib should have bioactivity records in ChEMBL"
 
     def test_imatinib_targets_include_kinase(self, chembl):
         """Imatinib targets ABL1 kinase — target names should include kinase-related terms."""
@@ -72,18 +70,16 @@ class TestChEMBLBioactivity:
         if not activities:
             pytest.skip("No activities returned for imatinib")
 
-        target_names = [
-            a.get("target_pref_name", "").lower() for a in activities
-        ]
+        target_names = [a.get("target_pref_name", "").lower() for a in activities]
         # ABL1, BCR-ABL, c-Kit, PDGFR are all imatinib targets
         has_kinase_target = any(
             any(term in t for term in ["abl", "kit", "pdgf", "kinase"])
             for t in target_names
             if t
         )
-        assert has_kinase_target, (
-            f"Imatinib should target kinases (ABL/Kit/PDGFR), got: {target_names[:5]}"
-        )
+        assert (
+            has_kinase_target
+        ), f"Imatinib should target kinases (ABL/Kit/PDGFR), got: {target_names[:5]}"
 
     def test_bioactivity_returns_valid_ir(self, chembl):
         """Bioactivity queries must produce valid AnalysisStep."""
@@ -105,9 +101,7 @@ class TestChEMBLTargetCompounds:
             pytest.skip(f"ChEMBL API unavailable: {stats['error'][:60]}")
 
         compounds = stats.get("compounds", [])
-        assert len(compounds) > 0, (
-            "EGFR should have active compounds in ChEMBL"
-        )
+        assert len(compounds) > 0, "EGFR should have active compounds in ChEMBL"
 
     def test_target_compounds_returns_valid_ir(self, chembl):
         """Target-compound queries must produce valid AnalysisStep."""

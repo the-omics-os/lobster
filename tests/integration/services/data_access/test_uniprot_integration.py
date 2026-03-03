@@ -105,7 +105,5 @@ def test_map_ids_gene_name_to_uniprot(service):
 
 def test_map_ids_empty_list(service):
     """Empty ID list should return empty results."""
-    result = service.map_ids(
-        from_db="Gene_Name", to_db="UniProtKB", ids=[]
-    )
+    result = service.map_ids(from_db="Gene_Name", to_db="UniProtKB", ids=[])
     assert result == {"results": []}

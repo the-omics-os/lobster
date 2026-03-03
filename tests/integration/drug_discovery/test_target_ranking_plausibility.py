@@ -57,27 +57,29 @@ class TestTargetRankingBiologicalPlausibility:
             pytest.skip(f"Open Targets unavailable: {tp53_stats['error'][:80]}")
 
         # Both should have non-trivial OT druggability scores
-        assert egfr_stats["druggability_score"] > 0.2, (
-            f"EGFR OT druggability should be >0.2, got {egfr_stats['druggability_score']}"
-        )
-        assert tp53_stats["druggability_score"] > 0.2, (
-            f"TP53 OT druggability should be >0.2, got {tp53_stats['druggability_score']}"
-        )
+        assert (
+            egfr_stats["druggability_score"] > 0.2
+        ), f"EGFR OT druggability should be >0.2, got {egfr_stats['druggability_score']}"
+        assert (
+            tp53_stats["druggability_score"] > 0.2
+        ), f"TP53 OT druggability should be >0.2, got {tp53_stats['druggability_score']}"
 
         # Extract evidence and rank via TargetScoringService
         egfr_evidence = _extract_evidence_from_ot_score(egfr_stats)
         tp53_evidence = _extract_evidence_from_ot_score(tp53_stats)
 
-        _, rank_stats, ir = scorer.rank_targets([
-            ("EGFR", egfr_evidence),
-            ("TP53", tp53_evidence),
-        ])
+        _, rank_stats, ir = scorer.rank_targets(
+            [
+                ("EGFR", egfr_evidence),
+                ("TP53", tp53_evidence),
+            ]
+        )
 
         targets = rank_stats["ranked_targets"]
         assert len(targets) == 2
-        assert all(t["overall_score"] > 0 for t in targets), (
-            "Both well-studied targets should have positive composite scores"
-        )
+        assert all(
+            t["overall_score"] > 0 for t in targets
+        ), "Both well-studied targets should have positive composite scores"
 
         # Ranking must be valid and deterministic
         assert targets[0]["rank"] == 1
@@ -92,9 +94,9 @@ class TestTargetRankingBiologicalPlausibility:
         if "error" in stats:
             pytest.skip(f"Open Targets unavailable: {stats['error'][:80]}")
 
-        assert stats["druggability_score"] > 0.3, (
-            f"EGFR druggability score should be >0.3, got {stats['druggability_score']}"
-        )
+        assert (
+            stats["druggability_score"] > 0.3
+        ), f"EGFR druggability score should be >0.3, got {stats['druggability_score']}"
 
     def test_braf_druggability_score_is_nontrivial(self, ot):
         """BRAF (vemurafenib, dabrafenib) should have non-trivial druggability."""
@@ -102,9 +104,9 @@ class TestTargetRankingBiologicalPlausibility:
         if "error" in stats:
             pytest.skip(f"Open Targets unavailable: {stats['error'][:80]}")
 
-        assert stats["druggability_score"] > 0.3, (
-            f"BRAF druggability score should be >0.3, got {stats['druggability_score']}"
-        )
+        assert (
+            stats["druggability_score"] > 0.3
+        ), f"BRAF druggability score should be >0.3, got {stats['druggability_score']}"
 
 
 class TestTargetScoringDeterminism:
@@ -133,14 +135,13 @@ class TestTargetScoringDeterminism:
             "literature": 0.3,
         }
         expected = sum(
-            evidence.get(k, 0.0) * w
-            for k, w in TARGET_EVIDENCE_WEIGHTS.items()
+            evidence.get(k, 0.0) * w for k, w in TARGET_EVIDENCE_WEIGHTS.items()
         )
 
         _, result, _ = scorer.score_target(evidence)
-        assert abs(result["overall_score"] - round(expected, 4)) < 1e-4, (
-            f"Score {result['overall_score']} != expected {expected}"
-        )
+        assert (
+            abs(result["overall_score"] - round(expected, 4)) < 1e-4
+        ), f"Score {result['overall_score']} != expected {expected}"
 
     def test_empty_evidence_gives_zero(self, scorer):
         """No evidence → score must be 0."""
@@ -165,7 +166,7 @@ class TestTargetScoringDeterminism:
         _, result, _ = scorer.rank_targets(targets)
 
         scores = [t["overall_score"] for t in result["ranked_targets"]]
-        assert scores == sorted(scores, reverse=True), (
-            f"Rankings not sorted by score: {scores}"
-        )
+        assert scores == sorted(
+            scores, reverse=True
+        ), f"Rankings not sorted by score: {scores}"
         assert result["ranked_targets"][0]["gene_symbol"] == "HIGH"

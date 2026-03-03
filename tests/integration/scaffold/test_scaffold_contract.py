@@ -53,9 +53,9 @@ class TestScaffoldContractCompliance:
                 text=True,
                 cwd=str(pkg_dir),
             )
-            assert result.returncode == 0, (
-                f"Contract tests failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-            )
+            assert (
+                result.returncode == 0
+            ), f"Contract tests failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
 
         finally:
             # Cleanup: uninstall

@@ -27,10 +27,12 @@ class TestAllServicesReturnValidIR:
 
     def test_target_ranking_ir(self, scorer):
         """TargetScoringService.rank_targets produces valid IR."""
-        _, stats, ir = scorer.rank_targets([
-            ("GENE_A", {"genetic_association": 0.5}),
-            ("GENE_B", {"known_drug": 0.3}),
-        ])
+        _, stats, ir = scorer.rank_targets(
+            [
+                ("GENE_A", {"genetic_association": 0.5}),
+                ("GENE_B", {"known_drug": 0.3}),
+            ]
+        )
         self._assert_valid_ir(ir, "TargetRanking")
 
     def test_bliss_synergy_ir(self, syn):
@@ -92,9 +94,9 @@ class TestAllServicesReturnValidIR:
     def _assert_valid_ir(ir, service_name: str):
         """Assert that an AnalysisStep has all required fields populated."""
         assert ir is not None, f"{service_name} returned None IR"
-        assert isinstance(ir, AnalysisStep), (
-            f"{service_name} IR is not AnalysisStep, got {type(ir)}"
-        )
+        assert isinstance(
+            ir, AnalysisStep
+        ), f"{service_name} IR is not AnalysisStep, got {type(ir)}"
         assert ir.operation, f"{service_name} IR missing operation"
         assert ir.tool_name, f"{service_name} IR missing tool_name"
         assert ir.description, f"{service_name} IR missing description"
@@ -176,10 +178,12 @@ class TestProvenanceChainCompleteness:
         irs = []
 
         # Step 1: Score a target
-        _, _, ir1 = scorer.score_target({
-            "genetic_association": 0.8,
-            "known_drug": 0.6,
-        })
+        _, _, ir1 = scorer.score_target(
+            {
+                "genetic_association": 0.8,
+                "known_drug": 0.6,
+            }
+        )
         irs.append(("score_target", ir1))
 
         # Step 2: Score a synergy combination
@@ -193,14 +197,14 @@ class TestProvenanceChainCompleteness:
         # Validate each IR in the chain
         for step_name, ir in irs:
             assert isinstance(ir, AnalysisStep), f"{step_name} IR not AnalysisStep"
-            assert ir.tool_name == step_name, (
-                f"IR tool_name should be '{step_name}', got '{ir.tool_name}'"
-            )
+            assert (
+                ir.tool_name == step_name
+            ), f"IR tool_name should be '{step_name}', got '{ir.tool_name}'"
             assert ir.operation, f"{step_name} IR missing operation"
             assert ir.code_template, f"{step_name} IR missing code_template"
 
         # All IRs should have distinct operations
         operations = [ir.operation for _, ir in irs]
-        assert len(set(operations)) == len(operations), (
-            f"Duplicate operations in chain: {operations}"
-        )
+        assert len(set(operations)) == len(
+            operations
+        ), f"Duplicate operations in chain: {operations}"

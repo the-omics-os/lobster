@@ -8,16 +8,18 @@ instantiation across test classes.
 
 import pytest
 
-from lobster.services.drug_discovery.pubchem_service import PubChemService
 from lobster.services.drug_discovery.chembl_service import ChEMBLService
 from lobster.services.drug_discovery.opentargets_service import OpenTargetsService
+from lobster.services.drug_discovery.pubchem_service import PubChemService
+from lobster.services.drug_discovery.synergy_scoring_service import (
+    SynergyScoringService,
+)
 from lobster.services.drug_discovery.target_scoring_service import TargetScoringService
-from lobster.services.drug_discovery.synergy_scoring_service import SynergyScoringService
 
 try:
     from lobster.services.drug_discovery.molecular_analysis_service import (
-        MolecularAnalysisService,
         RDKIT_AVAILABLE,
+        MolecularAnalysisService,
     )
 except ImportError:
     RDKIT_AVAILABLE = False

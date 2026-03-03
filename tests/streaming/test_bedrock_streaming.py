@@ -113,9 +113,15 @@ def test_sync_stream(model_id: str):
     print(f"\n\n--- Results ---")
     print(f"  Chunks received : {chunk_count}")
     print(f"  Total chars     : {len(total_text)}")
-    print(f"  Time to 1st tok : {first_token_time:.3f}s" if first_token_time else "  Time to 1st tok : N/A")
+    print(
+        f"  Time to 1st tok : {first_token_time:.3f}s"
+        if first_token_time
+        else "  Time to 1st tok : N/A"
+    )
     print(f"  Total time      : {elapsed:.3f}s")
-    print(f"  Streaming?      : {'YES' if chunk_count > 1 else 'NO (single chunk = buffered)'}")
+    print(
+        f"  Streaming?      : {'YES' if chunk_count > 1 else 'NO (single chunk = buffered)'}"
+    )
 
     return chunk_count > 1
 
@@ -192,9 +198,15 @@ async def test_async_stream(model_id: str):
     print(f"\n\n--- Results ---")
     print(f"  Chunks received : {chunk_count}")
     print(f"  Total chars     : {len(total_text)}")
-    print(f"  Time to 1st tok : {first_token_time:.3f}s" if first_token_time else "  Time to 1st tok : N/A")
+    print(
+        f"  Time to 1st tok : {first_token_time:.3f}s"
+        if first_token_time
+        else "  Time to 1st tok : N/A"
+    )
     print(f"  Total time      : {elapsed:.3f}s")
-    print(f"  Streaming?      : {'YES' if chunk_count > 1 else 'NO (single chunk = buffered)'}")
+    print(
+        f"  Streaming?      : {'YES' if chunk_count > 1 else 'NO (single chunk = buffered)'}"
+    )
 
     return chunk_count > 1
 
@@ -241,8 +253,8 @@ def test_langgraph_style_stream(model_id: str):
     _separator(f"LangGraph-style stream  |  {model_id}")
 
     try:
-        from langchain_core.messages import HumanMessage, AIMessageChunk
-        from langgraph.graph import StateGraph, MessagesState, START, END
+        from langchain_core.messages import AIMessageChunk, HumanMessage
+        from langgraph.graph import END, START, MessagesState, StateGraph
     except ImportError:
         print("  SKIP: langgraph not installed")
         return None
@@ -305,9 +317,15 @@ def test_langgraph_style_stream(model_id: str):
     print(f"\n\n--- Results ---")
     print(f"  Chunks received : {chunk_count}")
     print(f"  Total chars     : {len(total_text)}")
-    print(f"  Time to 1st tok : {first_token_time:.3f}s" if first_token_time else "  Time to 1st tok : N/A")
+    print(
+        f"  Time to 1st tok : {first_token_time:.3f}s"
+        if first_token_time
+        else "  Time to 1st tok : N/A"
+    )
     print(f"  Total time      : {elapsed:.3f}s")
-    print(f"  Streaming?      : {'YES' if chunk_count > 1 else 'NO (single chunk = buffered)'}")
+    print(
+        f"  Streaming?      : {'YES' if chunk_count > 1 else 'NO (single chunk = buffered)'}"
+    )
 
     return chunk_count > 1
 
@@ -316,7 +334,9 @@ def test_langgraph_style_stream(model_id: str):
 # Main
 # ---------------------------------------------------------------------------
 def main():
-    parser = argparse.ArgumentParser(description="Test Bedrock streaming with langchain-aws")
+    parser = argparse.ArgumentParser(
+        description="Test Bedrock streaming with langchain-aws"
+    )
     parser.add_argument(
         "--model",
         choices=list(MODELS.keys()),
@@ -324,9 +344,19 @@ def main():
         help=f"Model to test (default: {DEFAULT_MODEL})",
     )
     parser.add_argument("--all-models", action="store_true", help="Test all models")
-    parser.add_argument("--async", dest="run_async", action="store_true", help="Include async tests")
-    parser.add_argument("--langgraph", action="store_true", help="Include LangGraph-style streaming test")
-    parser.add_argument("--invoke-baseline", action="store_true", help="Include non-streaming invoke baseline")
+    parser.add_argument(
+        "--async", dest="run_async", action="store_true", help="Include async tests"
+    )
+    parser.add_argument(
+        "--langgraph",
+        action="store_true",
+        help="Include LangGraph-style streaming test",
+    )
+    parser.add_argument(
+        "--invoke-baseline",
+        action="store_true",
+        help="Include non-streaming invoke baseline",
+    )
     args = parser.parse_args()
 
     if not _check_credentials():

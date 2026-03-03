@@ -91,7 +91,9 @@ def test_skill_installer_manifest_files_match_actual_files():
         skill_dir = SKILLS_DIR / skill_name
         for file in manifest_files:
             file_path = skill_dir / file
-            assert file_path.exists(), f"Skill file listed in MANIFEST missing: {file_path}"
+            assert (
+                file_path.exists()
+            ), f"Skill file listed in MANIFEST missing: {file_path}"
 
 
 def test_skill_installer_handles_missing_directories():

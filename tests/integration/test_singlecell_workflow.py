@@ -320,7 +320,9 @@ class TestWorkflowEdgeCases:
 
         # Annotation without reference markers (uses defaults)
         adata_annotated, annotation_stats, _ = service.annotate_cell_types(
-            adata_markers, cluster_key="leiden", reference_markers=None  # Uses built-in markers
+            adata_markers,
+            cluster_key="leiden",
+            reference_markers=None,  # Uses built-in markers
         )
 
         # Should still complete

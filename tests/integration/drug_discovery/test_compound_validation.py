@@ -33,9 +33,9 @@ class TestPubChemKnownAnswerCompounds:
 
         mw = float(stats["molecular_weight"])
         expected = KNOWN_DRUGS["aspirin"]["mw"]
-        assert abs(mw - expected) < 0.5, (
-            f"Aspirin MW={mw}, expected ~{expected} (±0.5 Da)"
-        )
+        assert (
+            abs(mw - expected) < 0.5
+        ), f"Aspirin MW={mw}, expected ~{expected} (±0.5 Da)"
 
     def test_aspirin_hbond_counts(self, pubchem):
         """Aspirin HBD=1 (carboxylic OH), HBA=4 (all oxygens)."""
@@ -52,9 +52,9 @@ class TestPubChemKnownAnswerCompounds:
         if "error" in stats:
             pytest.skip(f"PubChem unavailable: {stats['error'][:60]}")
 
-        assert stats["lipinski"]["compliant"] is True, (
-            f"Aspirin should be Lipinski compliant, got violations={stats['lipinski']['n_violations']}"
-        )
+        assert (
+            stats["lipinski"]["compliant"] is True
+        ), f"Aspirin should be Lipinski compliant, got violations={stats['lipinski']['n_violations']}"
 
     def test_imatinib_molecular_weight(self, pubchem):
         """Imatinib MW must match PubChem value within ±1 Da."""
@@ -64,9 +64,9 @@ class TestPubChemKnownAnswerCompounds:
 
         mw = float(stats["molecular_weight"])
         expected = KNOWN_DRUGS["imatinib"]["mw"]
-        assert abs(mw - expected) < 1.0, (
-            f"Imatinib MW={mw}, expected ~{expected} (±1.0 Da)"
-        )
+        assert (
+            abs(mw - expected) < 1.0
+        ), f"Imatinib MW={mw}, expected ~{expected} (±1.0 Da)"
 
     def test_imatinib_hbond_counts(self, pubchem):
         """Imatinib HBD=2 (two NH groups), HBA=7."""
@@ -93,12 +93,12 @@ class TestPubChemKnownAnswerCompounds:
 
         mw = float(stats["molecular_weight"])
         assert mw > 1000, f"Cyclosporine MW should be >1000 Da, got {mw}"
-        assert stats["lipinski"]["compliant"] is False, (
-            "Cyclosporine MUST fail Lipinski (MW=1202, HBA=23)"
-        )
-        assert stats["lipinski"]["n_violations"] >= 2, (
-            f"Cyclosporine should have ≥2 Lipinski violations, got {stats['lipinski']['n_violations']}"
-        )
+        assert (
+            stats["lipinski"]["compliant"] is False
+        ), "Cyclosporine MUST fail Lipinski (MW=1202, HBA=23)"
+        assert (
+            stats["lipinski"]["n_violations"] >= 2
+        ), f"Cyclosporine should have ≥2 Lipinski violations, got {stats['lipinski']['n_violations']}"
 
     def test_metformin_molecular_weight(self, pubchem):
         """Metformin MW must match PubChem value within ±0.5 Da."""
@@ -108,9 +108,7 @@ class TestPubChemKnownAnswerCompounds:
 
         mw = float(stats["molecular_weight"])
         expected = KNOWN_DRUGS["metformin"]["mw"]
-        assert abs(mw - expected) < 0.5, (
-            f"Metformin MW={mw}, expected ~{expected}"
-        )
+        assert abs(mw - expected) < 0.5, f"Metformin MW={mw}, expected ~{expected}"
 
     def test_pubchem_returns_valid_ir(self, pubchem):
         """PubChem service must produce valid AnalysisStep provenance."""
@@ -177,9 +175,9 @@ class TestPubChemVsRDKitCrossValidation:
 
         mw_pubchem = float(pub_stats["molecular_weight"])
         mw_rdkit = rdkit_desc["molecular_weight"]
-        assert abs(mw_pubchem - mw_rdkit) < 1.0, (
-            f"PubChem MW ({mw_pubchem}) vs RDKit MW ({mw_rdkit}) differ by >1 Da"
-        )
+        assert (
+            abs(mw_pubchem - mw_rdkit) < 1.0
+        ), f"PubChem MW ({mw_pubchem}) vs RDKit MW ({mw_rdkit}) differ by >1 Da"
 
     def test_imatinib_mw_agreement(self, pubchem, mol_svc):
         """PubChem and RDKit molecular weights must agree for imatinib."""
@@ -191,6 +189,6 @@ class TestPubChemVsRDKitCrossValidation:
 
         mw_pubchem = float(pub_stats["molecular_weight"])
         mw_rdkit = rdkit_desc["molecular_weight"]
-        assert abs(mw_pubchem - mw_rdkit) < 1.0, (
-            f"PubChem MW ({mw_pubchem}) vs RDKit MW ({mw_rdkit}) differ by >1 Da"
-        )
+        assert (
+            abs(mw_pubchem - mw_rdkit) < 1.0
+        ), f"PubChem MW ({mw_pubchem}) vs RDKit MW ({mw_rdkit}) differ by >1 Da"

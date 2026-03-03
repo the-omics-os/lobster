@@ -30,17 +30,15 @@ class TestBlissIndependenceMathematics:
         """Bliss(A,B) == Bliss(B,A) — drug order shouldn't matter."""
         _, s1, _ = syn.bliss_independence(0.3, 0.5, 0.7)
         _, s2, _ = syn.bliss_independence(0.5, 0.3, 0.7)
-        assert abs(s1["excess"] - s2["excess"]) < 1e-10, (
-            "Bliss model must be commutative"
-        )
+        assert (
+            abs(s1["excess"] - s2["excess"]) < 1e-10
+        ), "Bliss model must be commutative"
 
     def test_no_effect_drug_is_neutral(self, syn):
         """Adding a drug with 0% effect → expected = other drug's effect."""
         _, s, _ = syn.bliss_independence(0.0, 0.5, 0.5)
         assert abs(s["effect_ab_expected"] - 0.5) < 1e-10
-        assert abs(s["excess"]) < 1e-10, (
-            "Zero-effect drug should be purely additive"
-        )
+        assert abs(s["excess"]) < 1e-10, "Zero-effect drug should be purely additive"
 
     def test_two_zero_effect_drugs(self, syn):
         """Both drugs at 0% → expected = 0, excess = 0."""
@@ -92,9 +90,9 @@ class TestLoeweAdditivityMathematics:
         """Drug combined with itself at IC50 → CI = 1.0 (definition)."""
         # d_a/IC50_a + d_b/IC50_b = 5/10 + 5/10 = 1.0
         _, s, _ = syn.loewe_additivity(5.0, 5.0, 10.0, 10.0, 0.5)
-        assert abs(s["combination_index"] - 1.0) < 0.01, (
-            f"Self-combination CI should be ~1.0, got {s['combination_index']}"
-        )
+        assert (
+            abs(s["combination_index"] - 1.0) < 0.01
+        ), f"Self-combination CI should be ~1.0, got {s['combination_index']}"
         assert s["classification"] == "additive"
 
     def test_synergistic_ci_below_one(self, syn):
@@ -232,11 +230,13 @@ class TestCombinationMatrixScoring:
 
     def test_monotherapy_rows_have_nan_scores(self, syn):
         """Rows where one drug dose=0 should have NaN synergy scores."""
-        obs = pd.DataFrame({
-            "drug_a": [0.0, 1.0, 0.0, 1.0],
-            "drug_b": [0.0, 0.0, 1.0, 1.0],
-            "effect": [0.0, 0.3, 0.2, 0.6],
-        })
+        obs = pd.DataFrame(
+            {
+                "drug_a": [0.0, 1.0, 0.0, 1.0],
+                "drug_b": [0.0, 0.0, 1.0, 1.0],
+                "effect": [0.0, 0.3, 0.2, 0.6],
+            }
+        )
         adata = AnnData(X=np.zeros((4, 1)), obs=obs)
 
         result, stats, _ = syn.score_combination_matrix(
@@ -246,17 +246,19 @@ class TestCombinationMatrixScoring:
         # Monotherapy rows (dose=0 for one drug) should be NaN
         mono_mask = (result.obs["drug_a"] == 0) | (result.obs["drug_b"] == 0)
         mono_scores = result.obs.loc[mono_mask, "synergy_score"]
-        assert mono_scores.isna().all(), (
-            "Monotherapy rows should have NaN synergy scores"
-        )
+        assert (
+            mono_scores.isna().all()
+        ), "Monotherapy rows should have NaN synergy scores"
 
     def test_hsa_model_on_matrix(self, syn):
         """HSA model should also work on combination matrix."""
-        obs = pd.DataFrame({
-            "d_a": [0.0, 1.0, 0.0, 1.0, 2.0, 0.0, 2.0],
-            "d_b": [0.0, 0.0, 1.0, 1.0, 0.0, 2.0, 2.0],
-            "resp": [0.0, 0.2, 0.3, 0.7, 0.4, 0.5, 0.9],
-        })
+        obs = pd.DataFrame(
+            {
+                "d_a": [0.0, 1.0, 0.0, 1.0, 2.0, 0.0, 2.0],
+                "d_b": [0.0, 0.0, 1.0, 1.0, 0.0, 2.0, 2.0],
+                "resp": [0.0, 0.2, 0.3, 0.7, 0.4, 0.5, 0.9],
+            }
+        )
         adata = AnnData(X=np.zeros((7, 1)), obs=obs)
 
         result, stats, _ = syn.score_combination_matrix(

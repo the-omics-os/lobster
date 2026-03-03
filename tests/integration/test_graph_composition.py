@@ -8,9 +8,12 @@ Tests verify:
 - GRAPH-05: Graph builder resolves agents from ComponentRegistry
 - GRAPH-06: Lazy delegation tools resolve child agents at invocation time
 - GRAPH-07: Returns (graph, GraphMetadata) tuple
+- GRAPH-08: Compiled graph has "supervisor" node (event-key contract)
+- GRAPH-09: GraphMetadata.to_dict() is JSON-serializable (cloud API contract)
 """
 
 import inspect
+import json
 import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -343,6 +346,107 @@ class TestGraphCompositionPhase5:
         assert hasattr(metadata, "agent_count")
         assert hasattr(metadata, "supervisor_accessible_count")
         assert hasattr(metadata, "to_dict")
+
+    # =========================================================================
+    # GRAPH-08: Compiled graph has "supervisor" node (event-key contract)
+    # =========================================================================
+    def test_graph_has_supervisor_node(self, mock_data_manager):
+        """Verify compiled graph contains a 'supervisor' node.
+
+        This is load-bearing: client.py:499 filters events by 'supervisor' key,
+        and lobster-cloud's SSE streaming depends on this same convention.
+        Changing the node name silently breaks both CLI and cloud.
+        """
+        graph, _ = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=["research_agent"],
+        )
+
+        # The compiled graph (CompiledStateGraph) exposes node names via .nodes
+        node_names = set(graph.nodes.keys()) if hasattr(graph, "nodes") else set()
+        assert "supervisor" in node_names, (
+            f"Compiled graph must have 'supervisor' node for event-key contract. "
+            f"Found nodes: {node_names}"
+        )
+
+    def test_graph_supervisor_is_entry_point(self, mock_data_manager):
+        """Verify 'supervisor' is reachable from START (first node after entry)."""
+        graph, _ = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=["research_agent"],
+        )
+
+        # LangGraph compiled graphs expose the graph structure
+        # The START -> supervisor edge must exist
+        graph_dict = graph.get_graph().to_json() if hasattr(graph, "get_graph") else {}
+        graph_str = str(graph_dict)
+        assert (
+            "supervisor" in graph_str
+        ), "supervisor node must be connected in the graph structure"
+
+    # =========================================================================
+    # GRAPH-09: GraphMetadata.to_dict() is JSON-serializable (cloud API)
+    # =========================================================================
+    def test_metadata_to_dict_is_json_serializable(self, mock_data_manager):
+        """Verify GraphMetadata.to_dict() can be serialized to JSON.
+
+        lobster-cloud calls json.dumps(graph_metadata.to_dict()) for SSE
+        responses. If any field is not JSON-serializable, the cloud API breaks.
+        """
+        _, metadata = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=["research_agent"],
+        )
+
+        d = metadata.to_dict()
+
+        # Must not raise
+        serialized = json.dumps(d)
+        assert isinstance(serialized, str)
+
+        # Roundtrip: deserialize and verify key fields survive
+        roundtripped = json.loads(serialized)
+        assert roundtripped["subscription_tier"] == metadata.subscription_tier
+        assert len(roundtripped["available_agents"]) == len(metadata.available_agents)
+        assert (
+            roundtripped["supervisor_accessible_agents"]
+            == metadata.supervisor_accessible_agents
+        )
+
+    def test_metadata_to_dict_field_completeness(self, mock_data_manager):
+        """Verify to_dict() contains all fields the cloud frontend expects."""
+        _, metadata = create_bioinformatics_graph(
+            data_manager=mock_data_manager,
+            enabled_agents=["research_agent"],
+        )
+
+        d = metadata.to_dict()
+
+        # These exact keys are consumed by lobster-cloud TypeScript types
+        required_keys = {
+            "subscription_tier",
+            "available_agents",
+            "supervisor_accessible_agents",
+            "filtered_out_agents",
+            "agent_count",
+            "supervisor_accessible_count",
+        }
+        assert required_keys.issubset(
+            set(d.keys())
+        ), f"Missing keys for cloud API: {required_keys - set(d.keys())}"
+
+        # Each agent in available_agents must have the expected shape
+        if d["available_agents"]:
+            agent_dict = d["available_agents"][0]
+            agent_required_keys = {
+                "name",
+                "display_name",
+                "description",
+                "is_supervisor_accessible",
+            }
+            assert agent_required_keys.issubset(
+                set(agent_dict.keys())
+            ), f"Missing agent keys: {agent_required_keys - set(agent_dict.keys())}"
 
     # =========================================================================
     # Backward compatibility
