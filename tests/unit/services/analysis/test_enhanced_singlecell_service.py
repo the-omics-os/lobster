@@ -608,9 +608,7 @@ def test_annotate_single_cluster(service):
     )
     adata.obs["leiden"] = "0"
 
-    result_adata, stats, _ = service.annotate_cell_types(
-        adata, cluster_key="leiden"
-    )
+    result_adata, stats, _ = service.annotate_cell_types(adata, cluster_key="leiden")
 
     assert stats["n_clusters"] == 1
     assert len(stats["cluster_to_celltype"]) == 1
@@ -632,9 +630,7 @@ def test_annotate_no_marker_overlap(service):
     )
     adata.obs["leiden"] = np.random.choice([0, 1, 2], size=n_obs).astype(str)
 
-    result_adata, stats, _ = service.annotate_cell_types(
-        adata, cluster_key="leiden"
-    )
+    result_adata, stats, _ = service.annotate_cell_types(adata, cluster_key="leiden")
 
     # Should still complete, all cells might be "Unknown"
     assert "cell_type" in result_adata.obs.columns
@@ -657,9 +653,7 @@ def test_annotate_with_non_unique_obs_names(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
 
     # Should handle gracefully
-    result_adata, stats, _ = service.annotate_cell_types(
-        adata, cluster_key="leiden"
-    )
+    result_adata, stats, _ = service.annotate_cell_types(adata, cluster_key="leiden")
     assert "cell_type" in result_adata.obs.columns
 
 
@@ -680,9 +674,7 @@ def test_annotate_with_non_unique_var_names(service):
     adata.obs["leiden"] = np.random.choice([0, 1], size=n_obs).astype(str)
 
     # Should handle gracefully
-    result_adata, stats, _ = service.annotate_cell_types(
-        adata, cluster_key="leiden"
-    )
+    result_adata, stats, _ = service.annotate_cell_types(adata, cluster_key="leiden")
     assert "cell_type" in result_adata.obs.columns
 
 

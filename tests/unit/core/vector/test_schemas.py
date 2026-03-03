@@ -51,35 +51,25 @@ class TestOntologyMatch:
 
     def test_ontology_match_score_bounds_valid(self):
         """Score of 0.0 and 1.0 should be accepted."""
-        match_zero = OntologyMatch(
-            term="test", ontology_id="TEST:0001", score=0.0
-        )
+        match_zero = OntologyMatch(term="test", ontology_id="TEST:0001", score=0.0)
         assert match_zero.score == 0.0
 
-        match_one = OntologyMatch(
-            term="test", ontology_id="TEST:0001", score=1.0
-        )
+        match_one = OntologyMatch(term="test", ontology_id="TEST:0001", score=1.0)
         assert match_one.score == 1.0
 
     def test_ontology_match_score_rejects_negative(self):
         """Score below 0 should be rejected by Pydantic ge=0.0."""
         with pytest.raises(ValidationError):
-            OntologyMatch(
-                term="test", ontology_id="TEST:0001", score=-0.1
-            )
+            OntologyMatch(term="test", ontology_id="TEST:0001", score=-0.1)
 
     def test_ontology_match_score_rejects_above_one(self):
         """Score above 1 should be rejected by Pydantic le=1.0."""
         with pytest.raises(ValidationError):
-            OntologyMatch(
-                term="test", ontology_id="TEST:0001", score=1.1
-            )
+            OntologyMatch(term="test", ontology_id="TEST:0001", score=1.1)
 
     def test_ontology_match_score_rounding(self):
         """Score should be rounded to 4 decimal places via model_post_init."""
-        match = OntologyMatch(
-            term="test", ontology_id="TEST:0001", score=0.123456789
-        )
+        match = OntologyMatch(term="test", ontology_id="TEST:0001", score=0.123456789)
         assert match.score == 0.1235
 
 

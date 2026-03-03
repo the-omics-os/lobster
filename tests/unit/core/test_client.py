@@ -1207,7 +1207,9 @@ class TestPerformanceAndConcurrency:
         end_time = time.time()
 
         assert len(stream_events) > 0
-        assert any(e["type"] == "content_delta" for e in stream_events), "No content streamed"
+        assert any(
+            e["type"] == "content_delta" for e in stream_events
+        ), "No content streamed"
         assert any(e.get("type") == "complete" for e in stream_events)
         assert (end_time - start_time) < 10.0  # Should complete within 10 seconds
 

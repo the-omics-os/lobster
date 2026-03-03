@@ -2,7 +2,6 @@ import ast
 
 from lobster.scaffold.generators.agent import _render_template
 
-
 CONTEXT = {
     "agent_name": "epigenomics_expert",
     "display_name": "Epigenomics Expert",
@@ -34,7 +33,11 @@ class TestInitTemplate:
         tree = ast.parse(content)
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler):
-                if node.type and isinstance(node.type, ast.Name) and node.type.id == "ImportError":
+                if (
+                    node.type
+                    and isinstance(node.type, ast.Name)
+                    and node.type.id == "ImportError"
+                ):
                     raise AssertionError("Template must not use try/except ImportError")
 
     def test_has_all_export(self):
@@ -112,7 +115,9 @@ class TestContractTestTemplate:
 
     def test_sets_agent_module(self):
         content = _render_template("test_contract.py.j2", CONTEXT)
-        assert 'agent_module = "lobster.agents.epigenomics.epigenomics_expert"' in content
+        assert (
+            'agent_module = "lobster.agents.epigenomics.epigenomics_expert"' in content
+        )
 
 
 class TestConftestTemplate:

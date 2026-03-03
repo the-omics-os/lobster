@@ -20,10 +20,10 @@ import pytest
 
 # Skip entire module if vector-search deps not installed
 try:
-    from lobster.services.vector.service import VectorSearchService
+    from lobster.core.schemas.search import OntologyMatch
     from lobster.services.vector.backends.base import BaseVectorBackend
     from lobster.services.vector.embeddings.base import BaseEmbedder
-    from lobster.core.schemas.search import OntologyMatch
+    from lobster.services.vector.service import VectorSearchService
 
     HAS_VECTOR_SEARCH = True
 except ImportError:
@@ -119,11 +119,24 @@ def _make_clustered_adata(n_cells=300, n_clusters=3):
     np.random.seed(42)
     # Create expression matrix with some realistic gene names
     gene_names = [
-        "CD3D", "CD3E", "CD8A", "CD4",  # T cell markers
-        "CD19", "MS4A1", "CD79A", "IGHM",  # B cell markers
-        "CD14", "FCGR3A", "LYZ", "CSF1R",  # Monocyte markers
-        "GNLY", "NKG7", "KLRD1",  # NK markers
-    ] + [f"Gene_{i}" for i in range(85)]  # padding to 100 genes
+        "CD3D",
+        "CD3E",
+        "CD8A",
+        "CD4",  # T cell markers
+        "CD19",
+        "MS4A1",
+        "CD79A",
+        "IGHM",  # B cell markers
+        "CD14",
+        "FCGR3A",
+        "LYZ",
+        "CSF1R",  # Monocyte markers
+        "GNLY",
+        "NKG7",
+        "KLRD1",  # NK markers
+    ] + [
+        f"Gene_{i}" for i in range(85)
+    ]  # padding to 100 genes
 
     X = np.random.negative_binomial(n=5, p=0.3, size=(n_cells, len(gene_names))).astype(
         np.float32
@@ -137,9 +150,7 @@ def _make_clustered_adata(n_cells=300, n_clusters=3):
     )
 
     # Add leiden clustering with n_clusters
-    cluster_labels = np.array(
-        [str(i % n_clusters) for i in range(n_cells)]
-    )
+    cluster_labels = np.array([str(i % n_clusters) for i in range(n_cells)])
     adata.obs["leiden"] = pd.Categorical(cluster_labels)
 
     return adata
@@ -209,13 +220,17 @@ def _get_semantic_tool(mock_data_manager, mock_singlecell_service, mock_vector_s
     """
     vs, _ = mock_vector_service
 
-    with patch(
-        "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
-        return_value=mock_singlecell_service,
-    ), patch(
-        "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
-    ), patch(
-        "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+    with (
+        patch(
+            "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
+            return_value=mock_singlecell_service,
+        ),
+        patch(
+            "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
+        ),
+        patch(
+            "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+        ),
     ):
         from lobster.agents.transcriptomics.annotation_expert import annotation_expert
 
@@ -250,7 +265,11 @@ class TestSemanticAnnotationBasic:
     """Basic semantic annotation functionality."""
 
     def test_semantic_annotation_basic(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Call tool with valid modality, verify annotations, storage, and IR logging."""
         from lobster.core.analysis_ir import AnalysisStep
@@ -258,16 +277,21 @@ class TestSemanticAnnotationBasic:
         vs, backend = mock_vector_service
 
         # Capture tools list by patching create_react_agent
-        with patch(
-            "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
-            return_value=mock_singlecell_service,
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
-        ) as mock_create:
+        with (
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
+                return_value=mock_singlecell_service,
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
+            ) as mock_create,
+        ):
             from lobster.agents.transcriptomics.annotation_expert import (
                 annotation_expert as ae_factory,
             )
@@ -302,10 +326,12 @@ class TestSemanticAnnotationBasic:
             "lobster.services.vector.service.VectorSearchService",
             return_value=vs,
         ):
-            result = semantic_tool.invoke({
-                "modality_name": "test_modality",
-                "cluster_key": "leiden",
-            })
+            result = semantic_tool.invoke(
+                {
+                    "modality_name": "test_modality",
+                    "cluster_key": "leiden",
+                }
+            )
 
         # Verify it annotated clusters
         assert isinstance(result, str)
@@ -341,13 +367,17 @@ class TestSemanticToolDirect:
         """Build the annotation_expert factory, extract and invoke the semantic tool."""
         vs, backend = mock_vector_service
 
-        with patch(
-            "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
-            return_value=mock_singlecell_service,
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+        with (
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
+                return_value=mock_singlecell_service,
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+            ),
         ):
             from lobster.agents.transcriptomics.annotation_expert import (
                 annotation_expert as ae_factory,
@@ -377,16 +407,21 @@ class TestSemanticToolDirect:
         captured_tools = []
 
         original_create = None
-        with patch(
-            "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
-            return_value=mock_singlecell_service,
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
-        ) as mock_create:
+        with (
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
+                return_value=mock_singlecell_service,
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
+            ) as mock_create,
+        ):
             from lobster.agents.transcriptomics.annotation_expert import (
                 annotation_expert as ae_factory2,
             )
@@ -432,7 +467,11 @@ class TestSemanticToolDirect:
         return result, mock_data_manager, captured_tools
 
     def test_semantic_annotation_returns_string(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Semantic tool returns a formatted string result."""
         result, _, _ = self._build_and_call_tool(
@@ -442,7 +481,11 @@ class TestSemanticToolDirect:
         assert "Successfully annotated" in result or "semantic" in result.lower()
 
     def test_semantic_annotation_stores_modality(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Semantic tool stores annotated modality in data_manager via store_modality()."""
         result, dm, _ = self._build_and_call_tool(
@@ -456,7 +499,11 @@ class TestSemanticToolDirect:
         assert stored_name == "test_modality_semantic_annotated"
 
     def test_ir_logged(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Verify data_manager.log_tool_usage called with ir= kwarg containing AnalysisStep."""
         from lobster.core.analysis_ir import AnalysisStep
@@ -468,7 +515,9 @@ class TestSemanticToolDirect:
         call_kwargs = dm.log_tool_usage.call_args
         # Check ir= keyword argument
         ir = call_kwargs.kwargs.get("ir") or (
-            call_kwargs[1].get("ir") if len(call_kwargs) > 1 and isinstance(call_kwargs[1], dict) else None
+            call_kwargs[1].get("ir")
+            if len(call_kwargs) > 1 and isinstance(call_kwargs[1], dict)
+            else None
         )
         assert ir is not None, "log_tool_usage must be called with ir= keyword argument"
         assert isinstance(ir, AnalysisStep)
@@ -476,7 +525,11 @@ class TestSemanticToolDirect:
         assert ir.tool_name == "annotate_cell_types_semantic"
 
     def test_stats_dict_content(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Verify stats dict has required keys: n_clusters_annotated, n_unknown, mean_confidence, cluster_annotations."""
         result, dm, _ = self._build_and_call_tool(
@@ -498,7 +551,11 @@ class TestSemanticToolDirect:
         assert isinstance(stats["cluster_annotations"], dict)
 
     def test_confidence_filtering(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Set min_confidence=0.8, mock low-score results, verify cluster gets 'Unknown'."""
         vs, backend = mock_vector_service
@@ -526,7 +583,11 @@ class TestSemanticToolDirect:
         assert stats["n_unknown"] > 0
 
     def test_modality_not_found(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Call with nonexistent modality, expect error message."""
         mock_data_manager.list_modalities.return_value = []
@@ -540,7 +601,11 @@ class TestSemanticToolDirect:
         assert "not found" in result.lower() or "error" in result.lower()
 
     def test_invalid_cluster_key(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Call with cluster_key not in obs columns, verify helpful error."""
         result, _, _ = self._build_and_call_tool(
@@ -553,7 +618,11 @@ class TestSemanticToolDirect:
         assert "Available columns" in result
 
     def test_save_result_false(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Call with save_result=False, verify modality NOT stored."""
         result, dm, _ = self._build_and_call_tool(
@@ -567,7 +636,11 @@ class TestSemanticToolDirect:
         dm.store_modality.assert_not_called()
 
     def test_marker_query_format(
-        self, mock_data_manager, mock_singlecell_service, mock_vector_service, mock_provider_config
+        self,
+        mock_data_manager,
+        mock_singlecell_service,
+        mock_vector_service,
+        mock_provider_config,
     ):
         """Verify query text format matches 'Cluster N: high GENE1, GENE2, ...' pattern."""
         vs, backend = mock_vector_service
@@ -590,30 +663,37 @@ class TestSemanticToolDirect:
         assert len(queries_seen) >= 3, f"Expected >= 3 queries, got {len(queries_seen)}"
         for q in queries_seen:
             assert q.startswith("Cluster "), f"Query should start with 'Cluster': {q}"
-            assert ": high " in q or ": unknown markers" in q, (
-                f"Query should contain ': high ' or ': unknown markers': {q}"
-            )
+            assert (
+                ": high " in q or ": unknown markers" in q
+            ), f"Query should contain ': high ' or ': unknown markers': {q}"
 
 
 class TestConditionalRegistration:
     """Test that semantic tool is conditionally registered."""
 
-    def test_conditional_registration_when_available(self, mock_data_manager, mock_provider_config):
+    def test_conditional_registration_when_available(
+        self, mock_data_manager, mock_provider_config
+    ):
         """Verify annotate_cell_types_semantic is in tools list when vector search deps are available."""
         # HAS_VECTOR_SEARCH was refactored from a module-level constant into a
         # factory-local variable (Hard Rule #10). Use the test module's own check.
         assert HAS_VECTOR_SEARCH is True
 
         # Capture tools list by patching create_react_agent
-        with patch(
-            "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
-        ), patch(
-            "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
-        ) as mock_create:
+        with (
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.EnhancedSingleCellService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.ManualAnnotationService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.AnnotationTemplateService",
+            ),
+            patch(
+                "lobster.agents.transcriptomics.annotation_expert.create_react_agent",
+            ) as mock_create,
+        ):
             from lobster.agents.transcriptomics.annotation_expert import (
                 annotation_expert as ae_factory,
             )

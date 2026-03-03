@@ -8,16 +8,19 @@ Usage:
     pytest tests/unit/agents/test_aquadif_compliance.py -x --no-cov
     pytest tests/unit/agents/ -m contract --no-cov
 """
-import pytest
-from langchain_core.tools import tool
+
 from unittest.mock import MagicMock, patch
 
-from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+import pytest
+from langchain_core.tools import tool
+
+from lobster.config.aquadif import PROVENANCE_REQUIRED, AquadifCategory
 from lobster.testing.contract_mixins import AgentContractTestMixin
 
 
 def _make_tool_with_metadata(name, categories, provenance=False):
     """Helper: create a mock tool with AQUADIF metadata."""
+
     @tool
     def dummy_tool(data: str) -> str:
         """Dummy tool for testing."""
@@ -50,6 +53,7 @@ class TestAquadifContractSmoke:
 
     def test_valid_metadata_structure(self):
         """A tool with correct metadata should pass all basic checks."""
+
         @tool
         def import_data(path: str) -> str:
             """Import data from file."""
@@ -75,14 +79,26 @@ class TestAquadifContractSmoke:
 
     def test_provenance_required_categories(self):
         """Verify all 7 provenance-required categories."""
-        expected = {"IMPORT", "QUALITY", "FILTER", "PREPROCESS", "ANALYZE", "ANNOTATE", "SYNTHESIZE"}
+        expected = {
+            "IMPORT",
+            "QUALITY",
+            "FILTER",
+            "PREPROCESS",
+            "ANALYZE",
+            "ANNOTATE",
+            "SYNTHESIZE",
+        }
         actual = {cat.value for cat in PROVENANCE_REQUIRED}
         assert actual == expected
 
     def test_non_provenance_categories(self):
         """Verify 3 non-provenance categories."""
         non_prov = {cat for cat in AquadifCategory if cat not in PROVENANCE_REQUIRED}
-        expected = {AquadifCategory.DELEGATE, AquadifCategory.UTILITY, AquadifCategory.CODE_EXEC}
+        expected = {
+            AquadifCategory.DELEGATE,
+            AquadifCategory.UTILITY,
+            AquadifCategory.CODE_EXEC,
+        }
         assert non_prov == expected
 
 
@@ -94,7 +110,9 @@ class TestMixinEnforcementCatchesViolations:
         """Mixin catches tools with more than 3 categories."""
         mixin = _MockMixin()
         mixin._mock_tools = [
-            _make_tool_with_metadata("over_categorized", ["IMPORT", "QUALITY", "FILTER", "PREPROCESS"]),
+            _make_tool_with_metadata(
+                "over_categorized", ["IMPORT", "QUALITY", "FILTER", "PREPROCESS"]
+            ),
         ]
 
         with pytest.raises(AssertionError, match="exceed 3-category limit"):
@@ -123,7 +141,9 @@ class TestMixinEnforcementCatchesViolations:
             _make_tool_with_metadata("sneaky_tool", ["UTILITY", "IMPORT"], False),
         ]
 
-        with pytest.raises(AssertionError, match="buried behind non-provenance primary"):
+        with pytest.raises(
+            AssertionError, match="buried behind non-provenance primary"
+        ):
             mixin.test_provenance_categories_not_buried()
 
     def test_missing_provenance_flag_caught(self):

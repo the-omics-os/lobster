@@ -323,9 +323,9 @@ class TestAgentHierarchy:
             (clin_config, "clinical_dev_expert"),
             (pgx_config, "pharmacogenomics_expert"),
         ]:
-            assert config.supervisor_accessible is False, (
-                f"{name} must have supervisor_accessible=False"
-            )
+            assert (
+                config.supervisor_accessible is False
+            ), f"{name} must have supervisor_accessible=False"
 
     def test_only_parent_has_handoff_tool(self):
         """Only the parent should have a handoff_tool_name set."""
@@ -367,9 +367,7 @@ class TestAgentHierarchy:
         )
 
         for config in [parent_config, chem_config, clin_config, pgx_config]:
-            assert config.tier_requirement == "free", (
-                f"{config.name} must be free tier"
-            )
+            assert config.tier_requirement == "free", f"{config.name} must be free tier"
 
     def test_child_agent_names_match_config_names(self):
         """Each child AGENT_CONFIG.name must match what the parent declares."""

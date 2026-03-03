@@ -10,6 +10,7 @@ Tests cover:
 - Fail-open error handling
 - Edge cases (empty map, unknown tools)
 """
+
 import threading
 import time
 from datetime import datetime
@@ -17,7 +18,6 @@ from datetime import datetime
 import pytest
 
 from lobster.core.aquadif_monitor import AquadifMonitor, CodeExecEntry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -50,6 +50,7 @@ def empty_monitor():
 # CodeExecEntry tests
 # ---------------------------------------------------------------------------
 
+
 class TestCodeExecEntry:
     def test_dataclass_fields(self):
         entry = CodeExecEntry(
@@ -65,6 +66,7 @@ class TestCodeExecEntry:
 # ---------------------------------------------------------------------------
 # AquadifMonitor construction
 # ---------------------------------------------------------------------------
+
 
 class TestAquadifMonitorConstruction:
     def test_constructs_with_sample_map(self):
@@ -96,6 +98,7 @@ class TestAquadifMonitorConstruction:
 # ---------------------------------------------------------------------------
 # record_tool_invocation — category counting
 # ---------------------------------------------------------------------------
+
 
 class TestRecordToolInvocationCategoryCounting:
     def test_single_category_increments_count(self, monitor):
@@ -134,7 +137,7 @@ class TestRecordToolInvocationCategoryCounting:
         monitor.record_tool_invocation("filter_cells", "transcriptomics_expert")
         dist = monitor.get_category_distribution()
         assert dist["ANALYZE"] == 2  # analyze_and_filter + analyze_cells
-        assert dist["FILTER"] == 2   # analyze_and_filter + filter_cells
+        assert dist["FILTER"] == 2  # analyze_and_filter + filter_cells
 
     def test_unknown_tool_does_not_crash(self, monitor):
         # No exception, no category count change
@@ -158,6 +161,7 @@ class TestRecordToolInvocationCategoryCounting:
 # ---------------------------------------------------------------------------
 # record_tool_invocation — provenance pre-setting
 # ---------------------------------------------------------------------------
+
 
 class TestRecordToolInvocationProvenance:
     def test_provenance_required_tool_set_to_missing(self, monitor):
@@ -199,6 +203,7 @@ class TestRecordToolInvocationProvenance:
 # ---------------------------------------------------------------------------
 # record_tool_invocation — CODE_EXEC logging
 # ---------------------------------------------------------------------------
+
 
 class TestCodeExecLogging:
     def test_code_exec_adds_log_entry(self, monitor):
@@ -273,6 +278,7 @@ class TestCodeExecLogging:
 # record_provenance_call
 # ---------------------------------------------------------------------------
 
+
 class TestRecordProvenanceCall:
     def test_real_ir_sets_status_to_real_ir(self, monitor):
         monitor.record_tool_invocation("analyze_cells", "transcriptomics_expert")
@@ -320,6 +326,7 @@ class TestRecordProvenanceCall:
 # get_category_distribution
 # ---------------------------------------------------------------------------
 
+
 class TestGetCategoryDistribution:
     def test_returns_dict_copy(self, monitor):
         """Modifying returned dict does not affect internal state."""
@@ -348,6 +355,7 @@ class TestGetCategoryDistribution:
 # get_provenance_status
 # ---------------------------------------------------------------------------
 
+
 class TestGetProvenanceStatus:
     def test_returns_three_groups(self, monitor):
         status = monitor.get_provenance_status()
@@ -369,6 +377,7 @@ class TestGetProvenanceStatus:
 # ---------------------------------------------------------------------------
 # get_session_summary
 # ---------------------------------------------------------------------------
+
 
 class TestGetSessionSummary:
     def test_returns_all_required_keys(self, monitor):
@@ -415,6 +424,7 @@ class TestGetSessionSummary:
 # Thread safety
 # ---------------------------------------------------------------------------
 
+
 class TestThreadSafety:
     def test_concurrent_record_tool_invocations_do_not_corrupt(self, monitor):
         """100 threads each increment ANALYZE 100x — final count must be 10000."""
@@ -423,7 +433,9 @@ class TestThreadSafety:
 
         def worker():
             for _ in range(invocations_per_thread):
-                monitor.record_tool_invocation("analyze_cells", "transcriptomics_expert")
+                monitor.record_tool_invocation(
+                    "analyze_cells", "transcriptomics_expert"
+                )
 
         threads = [threading.Thread(target=worker) for _ in range(n_threads)]
         for t in threads:
@@ -467,7 +479,9 @@ class TestThreadSafety:
 
         def writer():
             while not stop_event.is_set():
-                monitor.record_tool_invocation("analyze_cells", "transcriptomics_expert")
+                monitor.record_tool_invocation(
+                    "analyze_cells", "transcriptomics_expert"
+                )
                 time.sleep(0.0001)
 
         def reader():
@@ -494,6 +508,7 @@ class TestThreadSafety:
 # ---------------------------------------------------------------------------
 # Fail-open behavior
 # ---------------------------------------------------------------------------
+
 
 class TestFailOpen:
     def test_record_tool_invocation_fail_open(self, monitor):
@@ -528,6 +543,7 @@ class TestFailOpen:
 # No lobster imports
 # ---------------------------------------------------------------------------
 
+
 class TestNoLobsterImports:
     def test_module_has_no_lobster_imports(self):
         """aquadif_monitor.py must be pure stdlib — no lobster.* imports."""
@@ -536,8 +552,12 @@ class TestNoLobsterImports:
 
         module_path = os.path.join(
             os.path.dirname(__file__),  # tests/unit/core/
-            "..", "..", "..",           # → lobster/ root
-            "lobster", "core", "aquadif_monitor.py",
+            "..",
+            "..",
+            "..",  # → lobster/ root
+            "lobster",
+            "core",
+            "aquadif_monitor.py",
         )
         module_path = os.path.abspath(module_path)
 
@@ -546,9 +566,10 @@ class TestNoLobsterImports:
 
         # No 'import lobster' or 'from lobster' lines
         import re
+
         lobster_imports = re.findall(
             r"^(?:import lobster|from lobster)", source, re.MULTILINE
         )
-        assert lobster_imports == [], (
-            f"aquadif_monitor.py must have zero lobster imports. Found: {lobster_imports}"
-        )
+        assert (
+            lobster_imports == []
+        ), f"aquadif_monitor.py must have zero lobster imports. Found: {lobster_imports}"

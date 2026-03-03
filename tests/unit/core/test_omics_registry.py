@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-
 # =============================================================================
 # OmicsTypeRegistry Tests
 # =============================================================================
@@ -42,7 +41,9 @@ class TestOmicsTypeRegistry:
             assert config.display_name, f"Missing display_name for {name}"
             assert config.detection is not None, f"Missing detection config for {name}"
             assert len(config.detection.keywords) > 0, f"No keywords for {name}"
-            assert len(config.preferred_databases) > 0, f"No preferred_databases for {name}"
+            assert (
+                len(config.preferred_databases) > 0
+            ), f"No preferred_databases for {name}"
 
     def test_proteomics_has_higher_weight_than_transcriptomics(self):
         """Proteomics should have higher detection weight (more specific keywords)."""
@@ -63,10 +64,12 @@ class TestOmicsTypeRegistry:
         original_count = len(OMICS_TYPE_REGISTRY)
         # Try to re-register transcriptomics
         with warnings.catch_warnings(record=True):
-            register_omics_type(OmicsTypeConfig(
-                name="transcriptomics",
-                display_name="Duplicate",
-            ))
+            register_omics_type(
+                OmicsTypeConfig(
+                    name="transcriptomics",
+                    display_name="Duplicate",
+                )
+            )
         # Count should not change
         assert len(OMICS_TYPE_REGISTRY) == original_count
         # Original display_name preserved

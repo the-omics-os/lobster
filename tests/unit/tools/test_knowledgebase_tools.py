@@ -21,7 +21,6 @@ from lobster.tools.knowledgebase_tools import (
     create_variant_consequence_tool,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -85,9 +84,7 @@ class TestCrossDatabaseIdMappingTool:
         assert tool.name == "map_cross_database_ids"
 
     @patch("lobster.services.data_access.uniprot_service.UniProtService")
-    def test_uniprot_id_mapping_path(
-        self, MockUniProtClass, mock_data_manager
-    ):
+    def test_uniprot_id_mapping_path(self, MockUniProtClass, mock_data_manager):
         """UniProt ID mapping is used for non-Ensembl source databases."""
         mock_service = MagicMock()
         MockUniProtClass.return_value = mock_service
@@ -101,11 +98,13 @@ class TestCrossDatabaseIdMappingTool:
         }
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "TP53,BRCA1",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "TP53,BRCA1",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         # Verify service was called correctly
         mock_service.map_ids.assert_called_once_with(
@@ -128,9 +127,7 @@ class TestCrossDatabaseIdMappingTool:
         assert "2 IDs via UniProt" in call_kwargs.kwargs["description"]
 
     @patch("lobster.services.data_access.uniprot_service.UniProtService")
-    def test_uniprot_path_with_failed_ids(
-        self, MockUniProtClass, mock_data_manager
-    ):
+    def test_uniprot_path_with_failed_ids(self, MockUniProtClass, mock_data_manager):
         """UniProt path reports failed IDs when present."""
         mock_service = MagicMock()
         MockUniProtClass.return_value = mock_service
@@ -143,19 +140,19 @@ class TestCrossDatabaseIdMappingTool:
         }
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "TP53,FAKEGENEX",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "TP53,FAKEGENEX",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "P04637" in result
         assert "Failed IDs: FAKEGENEX" in result
 
     @patch("lobster.services.data_access.uniprot_service.UniProtService")
-    def test_uniprot_path_no_results(
-        self, MockUniProtClass, mock_data_manager
-    ):
+    def test_uniprot_path_no_results(self, MockUniProtClass, mock_data_manager):
         """UniProt path returns informative message when no mappings found."""
         mock_service = MagicMock()
         MockUniProtClass.return_value = mock_service
@@ -166,11 +163,13 @@ class TestCrossDatabaseIdMappingTool:
         }
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "UNKNOWNGENE",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "UNKNOWNGENE",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "No mappings found" in result
         assert "UNKNOWNGENE" in result
@@ -178,9 +177,7 @@ class TestCrossDatabaseIdMappingTool:
         mock_data_manager.log_tool_usage.assert_not_called()
 
     @patch("lobster.services.data_access.uniprot_service.UniProtService")
-    def test_uniprot_path_target_as_string(
-        self, MockUniProtClass, mock_data_manager
-    ):
+    def test_uniprot_path_target_as_string(self, MockUniProtClass, mock_data_manager):
         """UniProt path handles to-value as plain string instead of dict."""
         mock_service = MagicMock()
         MockUniProtClass.return_value = mock_service
@@ -193,19 +190,19 @@ class TestCrossDatabaseIdMappingTool:
         }
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "P04637",
-            "from_db": "UniProtKB_AC-ID",
-            "to_db": "PDB",
-        })
+        result = tool.invoke(
+            {
+                "ids": "P04637",
+                "from_db": "UniProtKB_AC-ID",
+                "to_db": "PDB",
+            }
+        )
 
         assert "P04637" in result
         assert "4HJE" in result
 
     @patch("lobster.services.data_access.uniprot_service.UniProtService")
-    def test_uniprot_path_caps_at_50_results(
-        self, MockUniProtClass, mock_data_manager
-    ):
+    def test_uniprot_path_caps_at_50_results(self, MockUniProtClass, mock_data_manager):
         """UniProt path caps output at 50 results and shows overflow message."""
         mock_service = MagicMock()
         MockUniProtClass.return_value = mock_service
@@ -218,19 +215,19 @@ class TestCrossDatabaseIdMappingTool:
         mock_service.map_ids.return_value = {"results": results, "failedIds": []}
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": ",".join(f"GENE{i}" for i in range(60)),
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": ",".join(f"GENE{i}" for i in range(60)),
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "Mapped 60 identifier(s)" in result
         assert "... and 10 more" in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_ensembl_xrefs_path(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_ensembl_xrefs_path(self, MockEnsemblClass, mock_data_manager):
         """Ensembl xrefs path is used for single Ensembl ID lookups."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -245,11 +242,13 @@ class TestCrossDatabaseIdMappingTool:
         ]
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "ENSG00000141510",
-            "from_db": "Ensembl",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "ENSG00000141510",
+                "from_db": "Ensembl",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         # Verify Ensembl service was used
         mock_service.get_xrefs.assert_called_once_with(
@@ -270,29 +269,27 @@ class TestCrossDatabaseIdMappingTool:
         assert call_kwargs.kwargs["parameters"]["backend"] == "ensembl_xrefs"
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_ensembl_xrefs_no_results(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_ensembl_xrefs_no_results(self, MockEnsemblClass, mock_data_manager):
         """Ensembl xrefs path with no cross-references found."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
         mock_service.get_xrefs.return_value = []
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "ENSG99999999999",
-            "from_db": "Ensembl",
-            "to_db": "PDB",
-        })
+        result = tool.invoke(
+            {
+                "ids": "ENSG99999999999",
+                "from_db": "Ensembl",
+                "to_db": "PDB",
+            }
+        )
 
         assert "No cross-references found" in result
         assert "ENSG99999999999" in result
         mock_data_manager.log_tool_usage.assert_not_called()
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_ensembl_xrefs_minimal_fields(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_ensembl_xrefs_minimal_fields(self, MockEnsemblClass, mock_data_manager):
         """Ensembl xrefs with only primary_id (no display, dbname, desc)."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -302,11 +299,13 @@ class TestCrossDatabaseIdMappingTool:
         ]
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "ENSG00000141510",
-            "from_db": "Ensembl",
-            "to_db": "GeneID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "ENSG00000141510",
+                "from_db": "Ensembl",
+                "to_db": "GeneID",
+            }
+        )
 
         assert "12345" in result
         assert "1 reference(s)" in result
@@ -314,11 +313,13 @@ class TestCrossDatabaseIdMappingTool:
     def test_empty_ids_error(self, mock_data_manager):
         """Empty IDs string returns error message without calling any service."""
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "Error" in result
         assert "No identifiers provided" in result
@@ -327,49 +328,51 @@ class TestCrossDatabaseIdMappingTool:
     def test_whitespace_only_ids_error(self, mock_data_manager):
         """Whitespace-only IDs string returns error message."""
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "  , ,  ",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "  , ,  ",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "No identifiers provided" in result
 
     @patch("lobster.services.data_access.uniprot_service.UniProtService")
-    def test_service_error_handling(
-        self, MockUniProtClass, mock_data_manager
-    ):
+    def test_service_error_handling(self, MockUniProtClass, mock_data_manager):
         """Service exceptions are caught and returned as error strings."""
         mock_service = MagicMock()
         MockUniProtClass.return_value = mock_service
         mock_service.map_ids.side_effect = RuntimeError("API timeout")
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "TP53",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "TP53",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "Error mapping IDs" in result
         assert "API timeout" in result
         mock_data_manager.log_tool_usage.assert_not_called()
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_ensembl_service_error_handling(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_ensembl_service_error_handling(self, MockEnsemblClass, mock_data_manager):
         """Ensembl xrefs errors are caught and returned as error strings."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
         mock_service.get_xrefs.side_effect = ConnectionError("Ensembl down")
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "ENSG00000141510",
-            "from_db": "Ensembl",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "ENSG00000141510",
+                "from_db": "Ensembl",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "Error mapping IDs" in result
         assert "Ensembl down" in result
@@ -391,11 +394,13 @@ class TestCrossDatabaseIdMappingTool:
         }
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "ENSG00000141510,ENSG00000012048",
-            "from_db": "Ensembl",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "ENSG00000141510,ENSG00000012048",
+                "from_db": "Ensembl",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         # Should use UniProt (not Ensembl xrefs) because multiple IDs
         mock_service.map_ids.assert_called_once()
@@ -418,11 +423,13 @@ class TestCrossDatabaseIdMappingTool:
         }
 
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
-        result = tool.invoke({
-            "ids": "TP53",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        result = tool.invoke(
+            {
+                "ids": "TP53",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
 
         assert "P53_HUMAN" in result
 
@@ -443,9 +450,7 @@ class TestVariantConsequenceTool:
         assert tool.name == "predict_variant_consequences"
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_normal_vep_response(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_normal_vep_response(self, MockEnsemblClass, mock_data_manager):
         """Normal VEP response with transcript consequences, SIFT, and PolyPhen."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -474,11 +479,13 @@ class TestVariantConsequenceTool:
         ]
 
         tool = create_variant_consequence_tool(mock_data_manager)
-        result = tool.invoke({
-            "notation": "9:g.22125503G>C",
-            "species": "human",
-            "notation_type": "hgvs",
-        })
+        result = tool.invoke(
+            {
+                "notation": "9:g.22125503G>C",
+                "species": "human",
+                "notation_type": "hgvs",
+            }
+        )
 
         # Verify service was called correctly
         mock_service.get_variant_consequences.assert_called_once_with(
@@ -509,9 +516,7 @@ class TestVariantConsequenceTool:
         assert "missense_variant" in call_kwargs.kwargs["description"]
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_single_result_dict(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_single_result_dict(self, MockEnsemblClass, mock_data_manager):
         """VEP response as a single dict (not a list) is handled correctly."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -531,46 +536,48 @@ class TestVariantConsequenceTool:
         }
 
         tool = create_variant_consequence_tool(mock_data_manager)
-        result = tool.invoke({
-            "notation": "rs12345",
-            "notation_type": "id",
-        })
+        result = tool.invoke(
+            {
+                "notation": "rs12345",
+                "notation_type": "id",
+            }
+        )
 
         assert "synonymous_variant" in result
         assert "EGFR" in result
         assert "LOW" in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_empty_results(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_empty_results(self, MockEnsemblClass, mock_data_manager):
         """Empty VEP results return informative message."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
         mock_service.get_variant_consequences.return_value = []
 
         tool = create_variant_consequence_tool(mock_data_manager)
-        result = tool.invoke({
-            "notation": "1:g.999999999A>T",
-        })
+        result = tool.invoke(
+            {
+                "notation": "1:g.999999999A>T",
+            }
+        )
 
         assert "No consequences predicted" in result
         assert "1:g.999999999A>T" in result
         mock_data_manager.log_tool_usage.assert_not_called()
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_none_results(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_none_results(self, MockEnsemblClass, mock_data_manager):
         """None VEP results return informative message."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
         mock_service.get_variant_consequences.return_value = None
 
         tool = create_variant_consequence_tool(mock_data_manager)
-        result = tool.invoke({
-            "notation": "invalid_notation",
-        })
+        result = tool.invoke(
+            {
+                "notation": "invalid_notation",
+            }
+        )
 
         assert "No consequences predicted" in result
 
@@ -610,9 +617,7 @@ class TestVariantConsequenceTool:
         assert "... and 5 more transcripts" in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_minimal_transcript_fields(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_minimal_transcript_fields(self, MockEnsemblClass, mock_data_manager):
         """Transcript consequences with only required fields (no optional ones)."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -641,9 +646,7 @@ class TestVariantConsequenceTool:
         assert "PolyPhen" not in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_no_transcript_consequences(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_no_transcript_consequences(self, MockEnsemblClass, mock_data_manager):
         """VEP response with no transcript_consequences key."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -664,9 +667,7 @@ class TestVariantConsequenceTool:
         assert "Transcript consequences" not in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_error_handling(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_error_handling(self, MockEnsemblClass, mock_data_manager):
         """Service exceptions are caught and returned as error strings."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -682,9 +683,7 @@ class TestVariantConsequenceTool:
         mock_data_manager.log_tool_usage.assert_not_called()
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_vep_default_parameters(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_vep_default_parameters(self, MockEnsemblClass, mock_data_manager):
         """Default species and notation_type values are passed correctly."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -716,9 +715,7 @@ class TestSequenceRetrievalTool:
         assert tool.name == "get_ensembl_sequence"
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_short_sequence_shown_fully(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_short_sequence_shown_fully(self, MockEnsemblClass, mock_data_manager):
         """Short sequences (<=500 chars) are shown in full."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -732,10 +729,12 @@ class TestSequenceRetrievalTool:
         }
 
         tool = create_sequence_retrieval_tool(mock_data_manager)
-        result = tool.invoke({
-            "ensembl_id": "ENST00000269305",
-            "seq_type": "cdna",
-        })
+        result = tool.invoke(
+            {
+                "ensembl_id": "ENST00000269305",
+                "seq_type": "cdna",
+            }
+        )
 
         # Verify service call
         mock_service.get_sequence.assert_called_once_with(
@@ -761,9 +760,7 @@ class TestSequenceRetrievalTool:
         assert "bases" in call_kwargs.kwargs["description"]
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_long_sequence_truncated(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_long_sequence_truncated(self, MockEnsemblClass, mock_data_manager):
         """Long sequences (>500 chars) are truncated with preview."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -777,10 +774,12 @@ class TestSequenceRetrievalTool:
         }
 
         tool = create_sequence_retrieval_tool(mock_data_manager)
-        result = tool.invoke({
-            "ensembl_id": "ENSG00000141510",
-            "seq_type": "genomic",
-        })
+        result = tool.invoke(
+            {
+                "ensembl_id": "ENSG00000141510",
+                "seq_type": "genomic",
+            }
+        )
 
         assert "1,000 bases" in result
         assert "Sequence preview" in result
@@ -791,9 +790,7 @@ class TestSequenceRetrievalTool:
         assert "A" * 500 + "..." in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_protein_sequence_uses_residues(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_protein_sequence_uses_residues(self, MockEnsemblClass, mock_data_manager):
         """Protein sequences show 'residues' instead of 'bases'."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -807,10 +804,12 @@ class TestSequenceRetrievalTool:
         }
 
         tool = create_sequence_retrieval_tool(mock_data_manager)
-        result = tool.invoke({
-            "ensembl_id": "ENSP00000269305",
-            "seq_type": "protein",
-        })
+        result = tool.invoke(
+            {
+                "ensembl_id": "ENSP00000269305",
+                "seq_type": "protein",
+            }
+        )
 
         assert "residues" in result
         assert "bases" not in result
@@ -822,9 +821,7 @@ class TestSequenceRetrievalTool:
         assert "residues" in call_kwargs.kwargs["description"]
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_sequence_no_description(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_sequence_no_description(self, MockEnsemblClass, mock_data_manager):
         """Sequence without description field omits Description line."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -842,9 +839,7 @@ class TestSequenceRetrievalTool:
         assert "Description" not in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_sequence_fallback_id(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_sequence_fallback_id(self, MockEnsemblClass, mock_data_manager):
         """When result has no 'id' key, falls back to the input ensembl_id."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -861,9 +856,7 @@ class TestSequenceRetrievalTool:
         assert "ENST00000269305" in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_sequence_exactly_500_chars(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_sequence_exactly_500_chars(self, MockEnsemblClass, mock_data_manager):
         """Boundary: sequence of exactly 500 chars is shown fully (not truncated)."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -882,9 +875,7 @@ class TestSequenceRetrievalTool:
         assert "preview" not in result.lower()
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_sequence_501_chars_is_truncated(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_sequence_501_chars_is_truncated(self, MockEnsemblClass, mock_data_manager):
         """Boundary: sequence of 501 chars triggers truncation."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -903,15 +894,11 @@ class TestSequenceRetrievalTool:
         assert "Full sequence" not in result
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_sequence_error_handling(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_sequence_error_handling(self, MockEnsemblClass, mock_data_manager):
         """Service exceptions are caught and returned as error strings."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
-        mock_service.get_sequence.side_effect = ValueError(
-            "Invalid Ensembl ID format"
-        )
+        mock_service.get_sequence.side_effect = ValueError("Invalid Ensembl ID format")
 
         tool = create_sequence_retrieval_tool(mock_data_manager)
         result = tool.invoke({"ensembl_id": "INVALID_ID"})
@@ -921,9 +908,7 @@ class TestSequenceRetrievalTool:
         mock_data_manager.log_tool_usage.assert_not_called()
 
     @patch("lobster.services.data_access.ensembl_service.EnsemblService")
-    def test_sequence_default_seq_type(
-        self, MockEnsemblClass, mock_data_manager
-    ):
+    def test_sequence_default_seq_type(self, MockEnsemblClass, mock_data_manager):
         """Default seq_type is 'cdna'."""
         mock_service = MagicMock()
         MockEnsemblClass.return_value = mock_service
@@ -987,16 +972,20 @@ class TestLazyServiceLoading:
         tool = create_cross_database_id_mapping_tool(mock_data_manager)
         MockUniProtClass.assert_not_called()
 
-        tool.invoke({
-            "ids": "TP53",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        tool.invoke(
+            {
+                "ids": "TP53",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
         assert MockUniProtClass.call_count == 1
 
-        tool.invoke({
-            "ids": "BRCA1",
-            "from_db": "Gene_Name",
-            "to_db": "UniProtKB_AC-ID",
-        })
+        tool.invoke(
+            {
+                "ids": "BRCA1",
+                "from_db": "Gene_Name",
+                "to_db": "UniProtKB_AC-ID",
+            }
+        )
         assert MockUniProtClass.call_count == 1

@@ -60,12 +60,10 @@ class TestScoreTarget:
         assert adata is None
 
         # Verify overall score
-        expected_score = (
-            0.8 * 0.30 + 0.6 * 0.25 + 0.5 * 0.20 + 0.3 * 0.15 + 0.7 * 0.10
-        )
-        assert abs(result["overall_score"] - expected_score) < 1e-4, (
-            f"Expected {expected_score}, got {result['overall_score']}"
-        )
+        expected_score = 0.8 * 0.30 + 0.6 * 0.25 + 0.5 * 0.20 + 0.3 * 0.15 + 0.7 * 0.10
+        assert (
+            abs(result["overall_score"] - expected_score) < 1e-4
+        ), f"Expected {expected_score}, got {result['overall_score']}"
 
         # Verify classification
         assert result["classification"] == "medium_confidence"
@@ -182,7 +180,10 @@ class TestScoreTarget:
 
         assert isinstance(ir, AnalysisStep)
         assert ir.tool_name == "score_target"
-        assert "druggability" in ir.description.lower() or "score" in ir.description.lower()
+        assert (
+            "druggability" in ir.description.lower()
+            or "score" in ir.description.lower()
+        )
 
     def test_integer_values_accepted(self, service):
         """score_target should accept integer values (0 and 1)."""
@@ -208,9 +209,9 @@ class TestScoreTarget:
     def test_weights_sum_to_one(self, service):
         """TARGET_EVIDENCE_WEIGHTS should sum to 1.0 for proper normalization."""
         total = sum(TARGET_EVIDENCE_WEIGHTS.values())
-        assert abs(total - 1.0) < 1e-10, (
-            f"TARGET_EVIDENCE_WEIGHTS sum to {total}, expected 1.0"
-        )
+        assert (
+            abs(total - 1.0) < 1e-10
+        ), f"TARGET_EVIDENCE_WEIGHTS sum to {total}, expected 1.0"
 
 
 # =============================================================================
@@ -272,19 +273,25 @@ class TestRankTargets:
         """rank_targets summary correctly counts confidence tiers."""
         targets = [
             # high_confidence: score > 0.7 requires high evidence
-            ("HIGH", {
-                "genetic_association": 1.0,
-                "known_drug": 1.0,
-                "expression_specificity": 1.0,
-                "pathogenicity": 1.0,
-                "literature": 1.0,
-            }),
+            (
+                "HIGH",
+                {
+                    "genetic_association": 1.0,
+                    "known_drug": 1.0,
+                    "expression_specificity": 1.0,
+                    "pathogenicity": 1.0,
+                    "literature": 1.0,
+                },
+            ),
             # medium_confidence: score > 0.4
-            ("MED", {
-                "genetic_association": 0.8,
-                "known_drug": 0.6,
-                "expression_specificity": 0.5,
-            }),
+            (
+                "MED",
+                {
+                    "genetic_association": 0.8,
+                    "known_drug": 0.6,
+                    "expression_specificity": 0.5,
+                },
+            ),
             # low_confidence: score <= 0.4
             ("LOW", {"literature": 0.1}),
         ]

@@ -53,9 +53,9 @@ class TestRequiredSections:
         """Every prompt must contain all 7 required XML sections."""
         prompt = prompt_fn()
         for section in REQUIRED_SECTIONS:
-            assert f"<{section}>" in prompt, (
-                f"{agent_name} prompt missing required section <{section}>"
-            )
+            assert (
+                f"<{section}>" in prompt
+            ), f"{agent_name} prompt missing required section <{section}>"
 
     @pytest.mark.parametrize(
         "prompt_fn,agent_name",
@@ -69,9 +69,9 @@ class TestRequiredSections:
     def test_has_core_mission(self, prompt_fn, agent_name):
         """Every prompt should include a Core_Mission subsection."""
         prompt = prompt_fn()
-        assert "<Core_Mission>" in prompt, (
-            f"{agent_name} prompt missing <Core_Mission> subsection"
-        )
+        assert (
+            "<Core_Mission>" in prompt
+        ), f"{agent_name} prompt missing <Core_Mission> subsection"
 
     @pytest.mark.parametrize(
         "prompt_fn,agent_name",
@@ -87,9 +87,9 @@ class TestRequiredSections:
         from datetime import date
 
         prompt = prompt_fn()
-        assert date.today().isoformat() in prompt, (
-            f"{agent_name} prompt does not contain today's date"
-        )
+        assert (
+            date.today().isoformat() in prompt
+        ), f"{agent_name} prompt does not contain today's date"
 
 
 # =============================================================================
@@ -176,9 +176,9 @@ class TestDrugDiscoveryExpertPrompt:
 
         prompt = self._get_prompt()
         for name in tool_names:
-            assert name in prompt, (
-                f"Tool '{name}' from shared_tools.py not documented in parent prompt"
-            )
+            assert (
+                name in prompt
+            ), f"Tool '{name}' from shared_tools.py not documented in parent prompt"
 
     def test_decision_tree_mentions_delegation(self):
         """Decision tree should clearly list delegation paths."""
@@ -292,9 +292,9 @@ class TestCheminformaticsExpertPrompt:
 
         prompt = self._get_prompt()
         for name in tool_names:
-            assert name in prompt, (
-                f"Tool '{name}' from cheminformatics_tools.py not documented in prompt"
-            )
+            assert (
+                name in prompt
+            ), f"Tool '{name}' from cheminformatics_tools.py not documented in prompt"
 
     def test_not_responsible_for_target_scoring(self):
         """Cheminformatics should not claim target scoring as its responsibility."""
@@ -391,9 +391,9 @@ class TestClinicalDevExpertPrompt:
 
         prompt = self._get_prompt()
         for name in tool_names:
-            assert name in prompt, (
-                f"Tool '{name}' from clinical_tools.py not documented in prompt"
-            )
+            assert (
+                name in prompt
+            ), f"Tool '{name}' from clinical_tools.py not documented in prompt"
 
     def test_synergy_classification_thresholds_documented(self):
         """Important rules should document the synergy classification thresholds."""
@@ -495,9 +495,9 @@ class TestPharmacogenomicsExpertPrompt:
 
         prompt = self._get_prompt()
         for name in tool_names:
-            assert name in prompt, (
-                f"Tool '{name}' from pharmacogenomics_tools.py not documented in prompt"
-            )
+            assert (
+                name in prompt
+            ), f"Tool '{name}' from pharmacogenomics_tools.py not documented in prompt"
 
     def test_mentions_plm_extra_requirement(self):
         """Prompt should note [plm] extra is needed for PLM tools."""
@@ -520,10 +520,7 @@ class TestPharmacogenomicsExpertPrompt:
         not_resp_end = prompt.find("</Your_Not_Responsibilities>")
         not_resp = prompt[not_resp_start:not_resp_end]
 
-        assert (
-            "molecular" in not_resp.lower()
-            or "cheminformatics" in not_resp.lower()
-        )
+        assert "molecular" in not_resp.lower() or "cheminformatics" in not_resp.lower()
 
     def test_not_responsible_for_synergy(self):
         """Pharmacogenomics should not claim drug synergy scoring."""

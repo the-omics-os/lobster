@@ -18,9 +18,8 @@ class TestValidatePlugin:
         )
         results = validate_plugin(pkg_dir)
         failures = [r for r in results if not r.passed]
-        assert not failures, (
-            "Scaffolded package should pass all checks:\n"
-            + "\n".join(f"  FAIL [{r.check}] {r.message}" for r in failures)
+        assert not failures, "Scaffolded package should pass all checks:\n" + "\n".join(
+            f"  FAIL [{r.check}] {r.message}" for r in failures
         )
 
     def test_pep420_violation_detected(self, tmp_path):
@@ -129,7 +128,8 @@ class TestValidatePlugin:
         )
         results = validate_plugin(pkg_dir)
         failures = [r for r in results if not r.passed]
-        assert not failures, (
-            "Scaffolded package with children should pass all checks:\n"
-            + "\n".join(f"  FAIL [{r.check}] {r.message}" for r in failures)
+        assert (
+            not failures
+        ), "Scaffolded package with children should pass all checks:\n" + "\n".join(
+            f"  FAIL [{r.check}] {r.message}" for r in failures
         )

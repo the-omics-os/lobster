@@ -66,9 +66,7 @@ def _mock_response(
     if json_data is not None:
         resp.json.return_value = json_data
     else:
-        resp.json.side_effect = requests.exceptions.JSONDecodeError(
-            "No JSON", "", 0
-        )
+        resp.json.side_effect = requests.exceptions.JSONDecodeError("No JSON", "", 0)
 
     if raise_for_status_effect:
         resp.raise_for_status.side_effect = raise_for_status_effect
@@ -86,9 +84,7 @@ SAMPLE_PROTEIN_P04637 = {
     "primaryAccession": "P04637",
     "uniProtkbId": "P53_HUMAN",
     "proteinDescription": {
-        "recommendedName": {
-            "fullName": {"value": "Cellular tumor antigen p53"}
-        }
+        "recommendedName": {"fullName": {"value": "Cellular tumor antigen p53"}}
     },
     "organism": {
         "scientificName": "Homo sapiens",
@@ -449,9 +445,13 @@ def test_map_ids_complete_flow_with_303_redirect(service):
     # Step 3: Results response (fetched via _request)
     results_resp = _mock_response(json_data=SAMPLE_MAPPING_RESULTS)
 
-    with patch.object(service._session, "post", return_value=submit_resp) as mock_post, \
-         patch.object(service._session, "get", return_value=poll_resp) as mock_get, \
-         patch.object(service._session, "request", return_value=results_resp) as mock_req:
+    with (
+        patch.object(service._session, "post", return_value=submit_resp) as mock_post,
+        patch.object(service._session, "get", return_value=poll_resp) as mock_get,
+        patch.object(
+            service._session, "request", return_value=results_resp
+        ) as mock_req,
+    ):
         result = service.map_ids("Gene_Name", "UniProtKB", ["TP53", "BRCA1"])
 
     assert len(result["results"]) == 2
@@ -480,9 +480,11 @@ def test_map_ids_complete_flow_with_finished_status(service):
 
     results_resp = _mock_response(json_data=SAMPLE_MAPPING_RESULTS)
 
-    with patch.object(service._session, "post", return_value=submit_resp), \
-         patch.object(service._session, "get", return_value=poll_resp), \
-         patch.object(service._session, "request", return_value=results_resp):
+    with (
+        patch.object(service._session, "post", return_value=submit_resp),
+        patch.object(service._session, "get", return_value=poll_resp),
+        patch.object(service._session, "request", return_value=results_resp),
+    ):
         result = service.map_ids("Gene_Name", "UniProtKB", ["TP53"])
 
     assert len(result["results"]) == 2
@@ -506,15 +508,20 @@ def test_map_ids_poll_running_then_finished(service):
 
     results_resp = _mock_response(json_data=SAMPLE_MAPPING_RESULTS)
 
-    with patch.object(service._session, "post", return_value=submit_resp), \
-         patch.object(
-             service._session, "get",
-             side_effect=[running_resp, running_resp, finished_resp]
-         ) as mock_get, \
-         patch.object(service._session, "request", return_value=results_resp), \
-         patch("lobster.services.data_access.uniprot_service.time.sleep") as mock_sleep:
+    with (
+        patch.object(service._session, "post", return_value=submit_resp),
+        patch.object(
+            service._session,
+            "get",
+            side_effect=[running_resp, running_resp, finished_resp],
+        ) as mock_get,
+        patch.object(service._session, "request", return_value=results_resp),
+        patch("lobster.services.data_access.uniprot_service.time.sleep") as mock_sleep,
+    ):
         result = service.map_ids(
-            "Gene_Name", "UniProtKB", ["TP53"],
+            "Gene_Name",
+            "UniProtKB",
+            ["TP53"],
             poll_interval=1.0,
         )
 
@@ -536,8 +543,10 @@ def test_map_ids_results_inline_in_status_response(service):
         json_data={"results": [{"from": "TP53", "to": {"primaryAccession": "P04637"}}]},
     )
 
-    with patch.object(service._session, "post", return_value=submit_resp), \
-         patch.object(service._session, "get", return_value=inline_resp):
+    with (
+        patch.object(service._session, "post", return_value=submit_resp),
+        patch.object(service._session, "get", return_value=inline_resp),
+    ):
         result = service.map_ids("Gene_Name", "UniProtKB", ["TP53"])
 
     assert len(result["results"]) == 1
@@ -568,9 +577,13 @@ def test_map_ids_job_failure_raises(service):
         json_data={"jobStatus": "INTERNAL_ERROR"},
     )
 
-    with patch.object(service._session, "post", return_value=submit_resp), \
-         patch.object(service._session, "get", return_value=failed_resp):
-        with pytest.raises(UniProtServiceError, match="failed with status: INTERNAL_ERROR"):
+    with (
+        patch.object(service._session, "post", return_value=submit_resp),
+        patch.object(service._session, "get", return_value=failed_resp),
+    ):
+        with pytest.raises(
+            UniProtServiceError, match="failed with status: INTERNAL_ERROR"
+        ):
             service.map_ids("Gene_Name", "UniProtKB", ["TP53"])
 
 
@@ -587,12 +600,16 @@ def test_map_ids_timeout_raises(service):
         json_data={"someUnknownField": True},
     )
 
-    with patch.object(service._session, "post", return_value=submit_resp), \
-         patch.object(service._session, "get", return_value=unknown_resp), \
-         patch("lobster.services.data_access.uniprot_service.time.sleep"):
+    with (
+        patch.object(service._session, "post", return_value=submit_resp),
+        patch.object(service._session, "get", return_value=unknown_resp),
+        patch("lobster.services.data_access.uniprot_service.time.sleep"),
+    ):
         with pytest.raises(UniProtServiceError, match="timed out"):
             service.map_ids(
-                "Gene_Name", "UniProtKB", ["TP53"],
+                "Gene_Name",
+                "UniProtKB",
+                ["TP53"],
                 poll_interval=0.01,
                 max_polls=3,
             )
@@ -612,9 +629,13 @@ def test_map_ids_303_without_location_header(service):
 
     results_resp = _mock_response(json_data=SAMPLE_MAPPING_RESULTS)
 
-    with patch.object(service._session, "post", return_value=submit_resp), \
-         patch.object(service._session, "get", return_value=redirect_resp), \
-         patch.object(service._session, "request", return_value=results_resp) as mock_req:
+    with (
+        patch.object(service._session, "post", return_value=submit_resp),
+        patch.object(service._session, "get", return_value=redirect_resp),
+        patch.object(
+            service._session, "request", return_value=results_resp
+        ) as mock_req,
+    ):
         service.map_ids("Gene_Name", "UniProtKB", ["TP53"])
 
     # Should fall back to constructing URL from job_id
@@ -647,8 +668,10 @@ def test_map_ids_joins_ids_with_comma(service):
         json_data={"results": []},
     )
 
-    with patch.object(service._session, "post", return_value=submit_resp) as mock_post, \
-         patch.object(service._session, "get", return_value=inline_resp):
+    with (
+        patch.object(service._session, "post", return_value=submit_resp) as mock_post,
+        patch.object(service._session, "get", return_value=inline_resp),
+    ):
         service.map_ids("Gene_Name", "UniProtKB", ["TP53", "BRCA1", "EGFR"])
 
     submitted_data = mock_post.call_args[1]["data"]
@@ -663,7 +686,8 @@ def test_map_ids_joins_ids_with_comma(service):
 def test_connection_error_raises_service_error(service):
     """Connection errors are wrapped in UniProtServiceError."""
     with patch.object(
-        service._session, "request",
+        service._session,
+        "request",
         side_effect=requests.exceptions.ConnectionError("DNS resolution failed"),
     ):
         with pytest.raises(UniProtServiceError, match="Connection error"):
@@ -673,7 +697,8 @@ def test_connection_error_raises_service_error(service):
 def test_timeout_error_raises_service_error(service_short_timeout):
     """Timeout errors are wrapped in UniProtServiceError."""
     with patch.object(
-        service_short_timeout._session, "request",
+        service_short_timeout._session,
+        "request",
         side_effect=requests.exceptions.Timeout("Read timed out"),
     ):
         with pytest.raises(UniProtServiceError, match="timed out"):
@@ -695,7 +720,8 @@ def test_bad_json_response_raises_service_error(service):
 def test_search_connection_error(service):
     """search_proteins wraps connection errors in UniProtServiceError."""
     with patch.object(
-        service._session, "request",
+        service._session,
+        "request",
         side_effect=requests.exceptions.ConnectionError("Network unreachable"),
     ):
         with pytest.raises(UniProtServiceError, match="Connection error"):
@@ -705,7 +731,8 @@ def test_search_connection_error(service):
 def test_search_timeout_error(service):
     """search_proteins wraps timeout errors in UniProtServiceError."""
     with patch.object(
-        service._session, "request",
+        service._session,
+        "request",
         side_effect=requests.exceptions.Timeout("Connection timed out"),
     ):
         with pytest.raises(UniProtServiceError, match="timed out"):

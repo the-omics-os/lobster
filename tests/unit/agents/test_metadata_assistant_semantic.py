@@ -9,20 +9,23 @@ Uses mock embedder, mock backend, and mock disease service to test
 without requiring real chromadb, torch, or sentence-transformers.
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 try:
-    from lobster.services.vector.service import VectorSearchService
     from lobster.core.schemas.search import OntologyMatch
+    from lobster.services.vector.service import VectorSearchService
 
     HAS_VECTOR_SEARCH = True
 except ImportError:
     HAS_VECTOR_SEARCH = False
 
 try:
-    from lobster.services.metadata.disease_ontology_service import DiseaseOntologyService
     from lobster.core.schemas.ontology import DiseaseMatch
+    from lobster.services.metadata.disease_ontology_service import (
+        DiseaseOntologyService,
+    )
 
     HAS_ONTOLOGY_SERVICE = True
 except ImportError:
@@ -105,9 +108,12 @@ def mock_disease_matches():
 
 def _build_tissue_tool(mock_data_manager, mock_vector_service_instance):
     """Build the standardize_tissue_term tool with mocked vector service."""
-    from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant as _factory
-    from lobster.core.analysis_ir import AnalysisStep
     from langchain_core.tools import tool
+
+    from lobster.agents.metadata_assistant.metadata_assistant import (
+        metadata_assistant as _factory,
+    )
+    from lobster.core.analysis_ir import AnalysisStep
 
     # We don't build the full agent -- we extract the tool by directly
     # calling the tool function with patched internals.
@@ -145,7 +151,9 @@ def _build_tissue_tool(mock_data_manager, mock_vector_service_instance):
                 library="lobster.services.vector",
                 description="Semantic tissue term standardization via Uberon ontology",
                 code_template='matches = service.match_ontology("{{ term }}", "uberon", k={{ k }})',
-                imports=["from lobster.services.vector.service import VectorSearchService"],
+                imports=[
+                    "from lobster.services.vector.service import VectorSearchService"
+                ],
                 parameters={"term": term, "k": k, "min_confidence": min_confidence},
                 parameter_schema={},
             )
@@ -155,11 +163,15 @@ def _build_tissue_tool(mock_data_manager, mock_vector_service_instance):
             )
 
             if not filtered:
-                return f"No matches found above confidence {min_confidence} for '{term}'."
+                return (
+                    f"No matches found above confidence {min_confidence} for '{term}'."
+                )
 
             lines = [f"Tissue standardization for '{term}':"]
             for i, m in enumerate(filtered, 1):
-                lines.append(f"  {i}. {m.term} ({m.ontology_id}) - score: {m.score:.4f}")
+                lines.append(
+                    f"  {i}. {m.term} ({m.ontology_id}) - score: {m.score:.4f}"
+                )
             return "\n".join(lines)
 
         except Exception as e:
@@ -170,8 +182,9 @@ def _build_tissue_tool(mock_data_manager, mock_vector_service_instance):
 
 def _build_disease_tool(mock_data_manager, mock_disease_service_instance):
     """Build the standardize_disease_term tool with mocked disease service."""
-    from lobster.core.analysis_ir import AnalysisStep
     from langchain_core.tools import tool
+
+    from lobster.core.analysis_ir import AnalysisStep
 
     dm = mock_data_manager
     _disease_svc = mock_disease_service_instance
@@ -184,7 +197,9 @@ def _build_disease_tool(mock_data_manager, mock_disease_service_instance):
     ) -> str:
         """Standardize a disease term to MONDO ontology using DiseaseOntologyService."""
         try:
-            matches = _disease_svc.match_disease(term, k=k, min_confidence=min_confidence)
+            matches = _disease_svc.match_disease(
+                term, k=k, min_confidence=min_confidence
+            )
 
             match_dicts = [
                 {
@@ -207,7 +222,9 @@ def _build_disease_tool(mock_data_manager, mock_disease_service_instance):
                 library="lobster.services.metadata.disease_ontology_service",
                 description="Disease term standardization via MONDO ontology",
                 code_template='matches = service.match_disease("{{ term }}", k={{ k }}, min_confidence={{ min_confidence }})',
-                imports=["from lobster.services.metadata.disease_ontology_service import DiseaseOntologyService"],
+                imports=[
+                    "from lobster.services.metadata.disease_ontology_service import DiseaseOntologyService"
+                ],
                 parameters={"term": term, "k": k, "min_confidence": min_confidence},
                 parameter_schema={},
             )
@@ -217,7 +234,9 @@ def _build_disease_tool(mock_data_manager, mock_disease_service_instance):
             )
 
             if not matches:
-                return f"No matches found above confidence {min_confidence} for '{term}'."
+                return (
+                    f"No matches found above confidence {min_confidence} for '{term}'."
+                )
 
             lines = [f"Disease standardization for '{term}':"]
             for i, m in enumerate(matches, 1):
@@ -257,7 +276,9 @@ class TestStandardizeTissueTerm:
         assert "UBERON:0000956" in result
         assert "0.9200" in result
 
-    def test_tissue_confidence_filtering(self, mock_data_manager, mock_ontology_matches):
+    def test_tissue_confidence_filtering(
+        self, mock_data_manager, mock_ontology_matches
+    ):
         """Set min_confidence=0.9, verify low-score results are filtered out."""
         mock_vs = MagicMock()
         mock_vs.match_ontology.return_value = mock_ontology_matches
@@ -279,7 +300,10 @@ class TestStandardizeTissueTerm:
         tissue_tool = _build_tissue_tool(mock_data_manager, mock_vs)
         result = tissue_tool.invoke({"term": "nonexistent tissue xyz"})
 
-        assert "No matches found above confidence 0.5 for 'nonexistent tissue xyz'" in result
+        assert (
+            "No matches found above confidence 0.5 for 'nonexistent tissue xyz'"
+            in result
+        )
 
     def test_tissue_ir_logged(self, mock_data_manager, mock_ontology_matches):
         """Verify log_tool_usage called with ir= kwarg containing AnalysisStep."""
@@ -332,7 +356,9 @@ class TestStandardizeTissueTerm:
 class TestStandardizeDiseaseTerm:
     """Tests for the standardize_disease_term tool."""
 
-    @pytest.mark.skipif(not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available")
+    @pytest.mark.skipif(
+        not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available"
+    )
     def test_disease_basic(self, mock_data_manager, mock_disease_matches):
         """Call with 'colon cancer', verify it calls DiseaseOntologyService.match_disease()."""
         mock_svc = MagicMock()
@@ -356,8 +382,9 @@ class TestStandardizeDiseaseTerm:
         """Patch HAS_ONTOLOGY_SERVICE=False, verify helpful error message returned."""
         # Build the tool but simulate HAS_ONTOLOGY_SERVICE=False
         # by using a simplified version that checks the flag
-        from lobster.core.analysis_ir import AnalysisStep
         from langchain_core.tools import tool
+
+        from lobster.core.analysis_ir import AnalysisStep
 
         dm = mock_data_manager
 
@@ -374,8 +401,12 @@ class TestStandardizeDiseaseTerm:
         assert "DiseaseOntologyService not available" in result
         assert "Install lobster-metadata package" in result
 
-    @pytest.mark.skipif(not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available")
-    def test_disease_confidence_threshold(self, mock_data_manager, mock_disease_matches):
+    @pytest.mark.skipif(
+        not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available"
+    )
+    def test_disease_confidence_threshold(
+        self, mock_data_manager, mock_disease_matches
+    ):
         """Verify default k=3, min_confidence=0.7 are passed through."""
         mock_svc = MagicMock()
         mock_svc.match_disease.return_value = mock_disease_matches
@@ -397,7 +428,9 @@ class TestStandardizeDiseaseTerm:
             "colon cancer", k=5, min_confidence=0.5
         )
 
-    @pytest.mark.skipif(not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available")
+    @pytest.mark.skipif(
+        not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available"
+    )
     def test_disease_ir_logged(self, mock_data_manager, mock_disease_matches):
         """Verify log_tool_usage called with ir= kwarg containing AnalysisStep."""
         from lobster.core.analysis_ir import AnalysisStep
@@ -418,7 +451,9 @@ class TestStandardizeDiseaseTerm:
         assert ir.tool_name == "standardize_disease_term"
         assert ir.library == "lobster.services.metadata.disease_ontology_service"
 
-    @pytest.mark.skipif(not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available")
+    @pytest.mark.skipif(
+        not HAS_ONTOLOGY_SERVICE, reason="DiseaseOntologyService not available"
+    )
     def test_disease_stats_content(self, mock_data_manager, mock_disease_matches):
         """Verify stats dict has keys: term, n_matches, matches, best_match."""
         mock_svc = MagicMock()
@@ -451,24 +486,32 @@ class TestConditionalRegistration:
     def test_conditional_registration(self, mock_data_manager):
         """Verify tools appear based on HAS_VECTOR_SEARCH and HAS_ONTOLOGY_SERVICE flags."""
         from lobster.agents.metadata_assistant.metadata_assistant import (
-            HAS_VECTOR_SEARCH as actual_vector,
             HAS_ONTOLOGY_SERVICE as actual_ontology,
+        )
+        from lobster.agents.metadata_assistant.metadata_assistant import (
+            HAS_VECTOR_SEARCH as actual_vector,
         )
 
         # Build the agent and check its tools
         # We need to mock out the LLM to avoid needing API keys
-        with patch(
-            "lobster.agents.metadata_assistant.metadata_assistant.create_llm"
-        ) as mock_llm, patch(
-            "lobster.agents.metadata_assistant.metadata_assistant.get_settings"
-        ) as mock_settings, patch(
-            "lobster.agents.metadata_assistant.metadata_assistant.create_react_agent"
-        ) as mock_create_agent:
+        with (
+            patch(
+                "lobster.agents.metadata_assistant.metadata_assistant.create_llm"
+            ) as mock_llm,
+            patch(
+                "lobster.agents.metadata_assistant.metadata_assistant.get_settings"
+            ) as mock_settings,
+            patch(
+                "lobster.agents.metadata_assistant.metadata_assistant.create_react_agent"
+            ) as mock_create_agent,
+        ):
             mock_settings.return_value.get_agent_llm_params.return_value = {}
             mock_llm.return_value = MagicMock()
             mock_create_agent.return_value = MagicMock()
 
-            from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
+            from lobster.agents.metadata_assistant.metadata_assistant import (
+                metadata_assistant,
+            )
 
             metadata_assistant(data_manager=mock_data_manager)
 
@@ -479,19 +522,19 @@ class TestConditionalRegistration:
             tool_names = [t.name for t in tools]
 
             if actual_vector:
-                assert "standardize_tissue_term" in tool_names, (
-                    "standardize_tissue_term should be registered when HAS_VECTOR_SEARCH=True"
-                )
+                assert (
+                    "standardize_tissue_term" in tool_names
+                ), "standardize_tissue_term should be registered when HAS_VECTOR_SEARCH=True"
             else:
-                assert "standardize_tissue_term" not in tool_names, (
-                    "standardize_tissue_term should NOT be registered when HAS_VECTOR_SEARCH=False"
-                )
+                assert (
+                    "standardize_tissue_term" not in tool_names
+                ), "standardize_tissue_term should NOT be registered when HAS_VECTOR_SEARCH=False"
 
             if actual_ontology:
-                assert "standardize_disease_term" in tool_names, (
-                    "standardize_disease_term should be registered when HAS_ONTOLOGY_SERVICE=True"
-                )
+                assert (
+                    "standardize_disease_term" in tool_names
+                ), "standardize_disease_term should be registered when HAS_ONTOLOGY_SERVICE=True"
             else:
-                assert "standardize_disease_term" not in tool_names, (
-                    "standardize_disease_term should NOT be registered when HAS_ONTOLOGY_SERVICE=False"
-                )
+                assert (
+                    "standardize_disease_term" not in tool_names
+                ), "standardize_disease_term should NOT be registered when HAS_ONTOLOGY_SERVICE=False"

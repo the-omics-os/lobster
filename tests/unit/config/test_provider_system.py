@@ -705,12 +705,16 @@ def test_llm_factory_fails_without_config(tmp_path):
 
 def test_llm_factory_with_valid_config(tmp_path):
     """Test that LLMFactory creates LLM with valid configuration."""
-    pytest.importorskip("langchain_anthropic", reason="langchain-anthropic not installed")
+    pytest.importorskip(
+        "langchain_anthropic", reason="langchain-anthropic not installed"
+    )
     from lobster.config.llm_factory import LLMFactory
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False), \
-         patch("langchain_anthropic.ChatAnthropic") as mock_chat:
+    with (
+        patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False),
+        patch("langchain_anthropic.ChatAnthropic") as mock_chat,
+    ):
         # Mock return value
         mock_chat.return_value = MagicMock()
 
@@ -760,12 +764,16 @@ def test_llm_factory_get_available_providers():
 
 def test_end_to_end_provider_selection(tmp_path):
     """Test complete workflow from config to LLM creation."""
-    pytest.importorskip("langchain_anthropic", reason="langchain-anthropic not installed")
+    pytest.importorskip(
+        "langchain_anthropic", reason="langchain-anthropic not installed"
+    )
     from lobster.config.llm_factory import create_llm
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False), \
-         patch("langchain_anthropic.ChatAnthropic") as mock_chat:
+    with (
+        patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test123"}, clear=False),
+        patch("langchain_anthropic.ChatAnthropic") as mock_chat,
+    ):
         # Mock return value
         mock_chat.return_value = MagicMock()
 
@@ -795,12 +803,16 @@ def test_end_to_end_provider_selection(tmp_path):
 
 def test_runtime_override_priority(tmp_path):
     """Test that runtime overrides beat workspace config."""
-    pytest.importorskip("langchain_anthropic", reason="langchain-anthropic not installed")
+    pytest.importorskip(
+        "langchain_anthropic", reason="langchain-anthropic not installed"
+    )
     from lobster.config.llm_factory import create_llm
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False), \
-         patch("langchain_anthropic.ChatAnthropic") as mock_chat:
+    with (
+        patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}, clear=False),
+        patch("langchain_anthropic.ChatAnthropic") as mock_chat,
+    ):
         # Mock return value
         mock_chat.return_value = MagicMock()
 

@@ -57,8 +57,6 @@ class TestBackwardCompatShims:
                 VectorSearchService as ShimService,
             )
 
-        from lobster.services.vector.service import (
-            VectorSearchService as RealService,
-        )
+        from lobster.services.vector.service import VectorSearchService as RealService
 
         assert ShimService is RealService

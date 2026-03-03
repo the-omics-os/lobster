@@ -222,7 +222,9 @@ class TestAgentAPI:
 
         # New diagnostic message from diagnose_missing_agent()
         assert "nonexistent_agent" in str(exc_info.value)
-        assert "not available" in str(exc_info.value) or "not installed" in str(exc_info.value)
+        assert "not available" in str(exc_info.value) or "not installed" in str(
+            exc_info.value
+        )
 
     def test_has_agent_returns_false_for_missing(self, fresh_registry):
         """has_agent should return False for missing agents."""

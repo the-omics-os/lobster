@@ -353,9 +353,7 @@ class TestHSAModel:
         E_ab=0.7
         excess = 0.7 - 0.5 = 0.2 (> 0.1 -> synergistic)
         """
-        adata, result, ir = service.hsa_model(
-            effect_a=0.3, effect_b=0.5, effect_ab=0.7
-        )
+        adata, result, ir = service.hsa_model(effect_a=0.3, effect_b=0.5, effect_ab=0.7)
 
         assert adata is None
         assert abs(result["hsa_reference"] - 0.5) < 1e-6
@@ -372,9 +370,7 @@ class TestHSAModel:
         E_ab=0.3
         excess = 0.3 - 0.5 = -0.2 (< -0.1 -> antagonistic)
         """
-        _, result, _ = service.hsa_model(
-            effect_a=0.5, effect_b=0.3, effect_ab=0.3
-        )
+        _, result, _ = service.hsa_model(effect_a=0.5, effect_b=0.3, effect_ab=0.3)
 
         assert abs(result["hsa_reference"] - 0.5) < 1e-6
         assert abs(result["excess"] - (-0.2)) < 1e-6
@@ -389,9 +385,7 @@ class TestHSAModel:
         E_ab=0.55
         excess = 0.55 - 0.5 = 0.05 (within +/- 0.1 -> additive)
         """
-        _, result, _ = service.hsa_model(
-            effect_a=0.5, effect_b=0.3, effect_ab=0.55
-        )
+        _, result, _ = service.hsa_model(effect_a=0.5, effect_b=0.3, effect_ab=0.55)
 
         assert abs(result["excess"] - 0.05) < 1e-6
         assert result["classification"] == "additive"
@@ -402,20 +396,20 @@ class TestHSAModel:
         Various input combinations to verify the formula.
         """
         test_cases = [
-            (0.2, 0.8, 0.9, 0.8, 0.1),   # excess = 0.9 - 0.8 = 0.1
-            (0.6, 0.4, 0.6, 0.6, 0.0),   # excess = 0.6 - 0.6 = 0.0
-            (0.0, 0.0, 0.0, 0.0, 0.0),   # excess = 0.0 - 0.0 = 0.0
-            (1.0, 1.0, 1.0, 1.0, 0.0),   # excess = 1.0 - 1.0 = 0.0
+            (0.2, 0.8, 0.9, 0.8, 0.1),  # excess = 0.9 - 0.8 = 0.1
+            (0.6, 0.4, 0.6, 0.6, 0.0),  # excess = 0.6 - 0.6 = 0.0
+            (0.0, 0.0, 0.0, 0.0, 0.0),  # excess = 0.0 - 0.0 = 0.0
+            (1.0, 1.0, 1.0, 1.0, 0.0),  # excess = 1.0 - 1.0 = 0.0
         ]
 
         for e_a, e_b, e_ab, expected_ref, expected_excess in test_cases:
             _, result, _ = service.hsa_model(e_a, e_b, e_ab)
-            assert abs(result["hsa_reference"] - expected_ref) < 1e-6, (
-                f"HSA ref failed for ({e_a}, {e_b}, {e_ab})"
-            )
-            assert abs(result["excess"] - expected_excess) < 1e-6, (
-                f"HSA excess failed for ({e_a}, {e_b}, {e_ab})"
-            )
+            assert (
+                abs(result["hsa_reference"] - expected_ref) < 1e-6
+            ), f"HSA ref failed for ({e_a}, {e_b}, {e_ab})"
+            assert (
+                abs(result["excess"] - expected_excess) < 1e-6
+            ), f"HSA excess failed for ({e_a}, {e_b}, {e_ab})"
 
     def test_best_single_agent_a(self, service):
         """HSA correctly identifies drug A when E_a >= E_b."""
@@ -475,11 +469,14 @@ class TestScoreCombinationMatrix:
         - 4 combination points: various doses, various responses
         """
         n_obs = 10
-        obs = pd.DataFrame({
-            "drug_a": [0.5, 1.0, 2.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 2.0],
-            "drug_b": [0.0, 0.0, 0.0, 0.5, 1.0, 2.0, 0.5, 1.0, 2.0, 2.0],
-            "response": [0.1, 0.2, 0.4, 0.15, 0.3, 0.5, 0.35, 0.6, 0.85, 0.95],
-        }, index=[f"well_{i}" for i in range(n_obs)])
+        obs = pd.DataFrame(
+            {
+                "drug_a": [0.5, 1.0, 2.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 2.0],
+                "drug_b": [0.0, 0.0, 0.0, 0.5, 1.0, 2.0, 0.5, 1.0, 2.0, 2.0],
+                "response": [0.1, 0.2, 0.4, 0.15, 0.3, 0.5, 0.35, 0.6, 0.85, 0.95],
+            },
+            index=[f"well_{i}" for i in range(n_obs)],
+        )
 
         X = np.zeros((n_obs, 2))
         adata = AnnData(X=X, obs=obs)
@@ -489,8 +486,11 @@ class TestScoreCombinationMatrix:
         """Score combination matrix with Bliss model."""
         adata = self._make_combination_adata()
         result_adata, stats, ir = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response", model="bliss"
+            adata,
+            drug_a_col="drug_a",
+            drug_b_col="drug_b",
+            response_col="response",
+            model="bliss",
         )
 
         # Verify result is AnnData (not None)
@@ -525,8 +525,11 @@ class TestScoreCombinationMatrix:
         """Score combination matrix with HSA model."""
         adata = self._make_combination_adata()
         result_adata, stats, ir = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response", model="hsa"
+            adata,
+            drug_a_col="drug_a",
+            drug_b_col="drug_b",
+            response_col="response",
+            model="hsa",
         )
 
         assert isinstance(result_adata, AnnData)
@@ -537,35 +540,41 @@ class TestScoreCombinationMatrix:
         """Monotherapy rows should have NaN synergy scores."""
         adata = self._make_combination_adata()
         result_adata, _, _ = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response", model="bliss"
+            adata,
+            drug_a_col="drug_a",
+            drug_b_col="drug_b",
+            response_col="response",
+            model="bliss",
         )
 
         # Monotherapy A: rows 0, 1, 2 (drug_b=0)
         for idx in [0, 1, 2]:
-            assert np.isnan(result_adata.obs["synergy_score"].iloc[idx]), (
-                f"Monotherapy A row {idx} should have NaN synergy score"
-            )
+            assert np.isnan(
+                result_adata.obs["synergy_score"].iloc[idx]
+            ), f"Monotherapy A row {idx} should have NaN synergy score"
 
         # Monotherapy B: rows 3, 4, 5 (drug_a=0)
         for idx in [3, 4, 5]:
-            assert np.isnan(result_adata.obs["synergy_score"].iloc[idx]), (
-                f"Monotherapy B row {idx} should have NaN synergy score"
-            )
+            assert np.isnan(
+                result_adata.obs["synergy_score"].iloc[idx]
+            ), f"Monotherapy B row {idx} should have NaN synergy score"
 
     def test_combination_rows_have_numeric_scores(self, service):
         """Combination rows should have non-NaN synergy scores."""
         adata = self._make_combination_adata()
         result_adata, _, _ = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response", model="bliss"
+            adata,
+            drug_a_col="drug_a",
+            drug_b_col="drug_b",
+            response_col="response",
+            model="bliss",
         )
 
         # Combination rows: 6, 7, 8, 9 (both drug_a > 0 and drug_b > 0)
         for idx in [6, 7, 8, 9]:
-            assert not np.isnan(result_adata.obs["synergy_score"].iloc[idx]), (
-                f"Combination row {idx} should have a numeric synergy score"
-            )
+            assert not np.isnan(
+                result_adata.obs["synergy_score"].iloc[idx]
+            ), f"Combination row {idx} should have a numeric synergy score"
 
     def test_does_not_modify_original(self, service):
         """score_combination_matrix should not modify the original AnnData."""
@@ -573,8 +582,7 @@ class TestScoreCombinationMatrix:
         original_cols = set(adata.obs.columns)
 
         _ = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response"
+            adata, drug_a_col="drug_a", drug_b_col="drug_b", response_col="response"
         )
 
         # Original should be unchanged
@@ -585,8 +593,10 @@ class TestScoreCombinationMatrix:
         adata = self._make_combination_adata()
         with pytest.raises(SynergyScoringError, match="not found in adata.obs"):
             service.score_combination_matrix(
-                adata, drug_a_col="nonexistent",
-                drug_b_col="drug_b", response_col="response"
+                adata,
+                drug_a_col="nonexistent",
+                drug_b_col="drug_b",
+                response_col="response",
             )
 
     def test_unsupported_model_raises_error(self, service):
@@ -594,16 +604,18 @@ class TestScoreCombinationMatrix:
         adata = self._make_combination_adata()
         with pytest.raises(SynergyScoringError, match="Unsupported synergy model"):
             service.score_combination_matrix(
-                adata, drug_a_col="drug_a", drug_b_col="drug_b",
-                response_col="response", model="invalid_model"
+                adata,
+                drug_a_col="drug_a",
+                drug_b_col="drug_b",
+                response_col="response",
+                model="invalid_model",
             )
 
     def test_returns_adata_dict_analysistep(self, service):
         """score_combination_matrix returns (AnnData, Dict, AnalysisStep) tuple."""
         adata = self._make_combination_adata()
         result_adata, result_dict, ir = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response"
+            adata, drug_a_col="drug_a", drug_b_col="drug_b", response_col="response"
         )
 
         assert isinstance(result_adata, AnnData)
@@ -615,8 +627,7 @@ class TestScoreCombinationMatrix:
         """Stats should include mean_synergy_score when combinations exist."""
         adata = self._make_combination_adata()
         _, stats, _ = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response"
+            adata, drug_a_col="drug_a", drug_b_col="drug_b", response_col="response"
         )
 
         assert stats["mean_synergy_score"] is not None
@@ -626,8 +637,7 @@ class TestScoreCombinationMatrix:
         """Stats should include max and min synergy scores."""
         adata = self._make_combination_adata()
         _, stats, _ = service.score_combination_matrix(
-            adata, drug_a_col="drug_a", drug_b_col="drug_b",
-            response_col="response"
+            adata, drug_a_col="drug_a", drug_b_col="drug_b", response_col="response"
         )
 
         assert stats["max_synergy_score"] is not None

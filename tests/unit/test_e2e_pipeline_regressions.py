@@ -16,7 +16,6 @@ import pytest
 
 from lobster.config.agent_registry import AgentRegistryConfig
 
-
 # ===============================================================================
 # Graph: child agent auto-include
 # ===============================================================================
@@ -202,27 +201,30 @@ class TestBaseAdapterKwargsFiltering:
 
     def test_internal_kwargs_frozenset_exists(self):
         from lobster.core.adapters.base import BaseAdapter
-        assert hasattr(BaseAdapter, '_LOBSTER_INTERNAL_KWARGS')
+
+        assert hasattr(BaseAdapter, "_LOBSTER_INTERNAL_KWARGS")
         assert isinstance(BaseAdapter._LOBSTER_INTERNAL_KWARGS, frozenset)
 
     def test_internal_kwargs_contains_critical_params(self):
         from lobster.core.adapters.base import BaseAdapter
-        required = {'dataset_id', 'dataset_type', 'adapter', 'validate', 'orientation'}
+
+        required = {"dataset_id", "dataset_type", "adapter", "validate", "orientation"}
         assert required.issubset(BaseAdapter._LOBSTER_INTERNAL_KWARGS)
 
     def test_csv_load_filters_internal_kwargs(self):
         """Internal kwargs must not reach pd.read_csv."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from lobster.core.adapters.base import BaseAdapter
 
         adapter = BaseAdapter(name="test")
-        with patch('lobster.core.adapters.base.pd.read_csv') as mock_csv:
-            mock_csv.return_value = pd.DataFrame({'a': [1, 2]})
+        with patch("lobster.core.adapters.base.pd.read_csv") as mock_csv:
+            mock_csv.return_value = pd.DataFrame({"a": [1, 2]})
             try:
                 adapter._load_csv_data(
-                    '/fake/path.csv',
-                    dataset_id='GSE12345',
-                    dataset_type='proteomics',
+                    "/fake/path.csv",
+                    dataset_id="GSE12345",
+                    dataset_type="proteomics",
                     validate=True,
                 )
             except Exception:
@@ -232,9 +234,9 @@ class TestBaseAdapterKwargsFiltering:
                 call_kwargs = mock_csv.call_args
                 # Internal params must not be in the call
                 all_kwargs = call_kwargs.kwargs if call_kwargs.kwargs else {}
-                assert 'dataset_id' not in all_kwargs
-                assert 'dataset_type' not in all_kwargs
-                assert 'validate' not in all_kwargs
+                assert "dataset_id" not in all_kwargs
+                assert "dataset_type" not in all_kwargs
+                assert "validate" not in all_kwargs
 
 
 class TestDataManagerVersionSort:
@@ -248,29 +250,46 @@ class TestDataManagerVersionSort:
     def test_version_cast_in_list_modalities(self):
         """list_modalities_with_lineage must return int versions."""
         from unittest.mock import MagicMock
+
         from lobster.core.data_manager_v2 import DataManagerV2
 
         dm = MagicMock(spec=DataManagerV2)
         # Simulate modalities with string versions (post h5ad)
         mock_adata1 = MagicMock()
-        mock_adata1.uns = {'lineage': {'base_name': 'test', 'version': '1', 'processing_step': 'raw'}}
+        mock_adata1.uns = {
+            "lineage": {"base_name": "test", "version": "1", "processing_step": "raw"}
+        }
         mock_adata1.n_obs = 10
         mock_adata1.n_vars = 5
         mock_adata2 = MagicMock()
-        mock_adata2.uns = {'lineage': {'base_name': 'test', 'version': '10', 'processing_step': 'filtered'}}
+        mock_adata2.uns = {
+            "lineage": {
+                "base_name": "test",
+                "version": "10",
+                "processing_step": "filtered",
+            }
+        }
         mock_adata2.n_obs = 10
         mock_adata2.n_vars = 5
         mock_adata3 = MagicMock()
-        mock_adata3.uns = {'lineage': {'base_name': 'test', 'version': '2', 'processing_step': 'normalized'}}
+        mock_adata3.uns = {
+            "lineage": {
+                "base_name": "test",
+                "version": "2",
+                "processing_step": "normalized",
+            }
+        }
         mock_adata3.n_obs = 10
         mock_adata3.n_vars = 5
 
-        dm.modalities = {'a': mock_adata1, 'b': mock_adata2, 'c': mock_adata3}
+        dm.modalities = {"a": mock_adata1, "b": mock_adata2, "c": mock_adata3}
 
         # Call the real method
         result = DataManagerV2.list_modalities_with_lineage(dm)
 
         # Versions must be ints and sorted correctly (1, 2, 10 not 1, 10, 2)
-        versions = [r['version'] for r in result]
-        assert all(isinstance(v, int) for v in versions), f"Versions not int: {versions}"
+        versions = [r["version"] for r in result]
+        assert all(
+            isinstance(v, int) for v in versions
+        ), f"Versions not int: {versions}"
         assert versions == [1, 2, 10], f"Wrong sort order: {versions}"

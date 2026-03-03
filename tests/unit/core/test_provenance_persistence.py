@@ -17,7 +17,6 @@ import pytest
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.provenance import ProvenanceTracker
 
-
 # ============================================================================
 # Fixtures
 # ============================================================================
@@ -48,7 +47,7 @@ def synthetic_ir() -> AnalysisStep:
                 papermill_injectable=True,
                 default_value=0,
                 required=True,
-                description="Test parameter"
+                description="Test parameter",
             )
         },
         input_entities=["input_data"],
@@ -74,7 +73,7 @@ class TestPersistenceMechanics:
         activity_id = tracker.create_activity(
             activity_type="test_activity",
             agent="test_agent",
-            description="Test activity"
+            description="Test activity",
         )
 
         # Verify activity in memory
@@ -96,7 +95,7 @@ class TestPersistenceMechanics:
         tracker.create_activity(
             activity_type="test_activity",
             agent="test_agent",
-            description="Test activity"
+            description="Test activity",
         )
 
         # Verify JSONL file created
@@ -121,7 +120,7 @@ class TestPersistenceMechanics:
             tracker.create_activity(
                 activity_type=f"activity_{i}",
                 agent="test_agent",
-                description=f"Activity {i}"
+                description=f"Activity {i}",
             )
 
         # Verify exactly 3 lines
@@ -144,7 +143,7 @@ class TestPersistenceMechanics:
             activity_type="ir_test",
             agent="test_agent",
             description="Activity with IR",
-            ir=synthetic_ir
+            ir=synthetic_ir,
         )
 
         # Create new tracker loading from same session_dir
@@ -176,7 +175,7 @@ class TestPersistenceMechanics:
         tracker1.create_activity(
             activity_type="no_ir_test",
             agent="test_agent",
-            description="Activity without IR"
+            description="Activity without IR",
         )
 
         # Create new tracker loading from same session_dir
@@ -195,14 +194,16 @@ class TestPersistenceMechanics:
         tracker1.create_activity(
             activity_type="valid_activity",
             agent="test_agent",
-            description="Valid activity"
+            description="Valid activity",
         )
 
         # Manually inject corrupt line
         jsonl_path = session_dir / "provenance.jsonl"
         with open(jsonl_path, "a") as f:
             f.write("{invalid json\n")
-            f.write('{"v": 1, "type": "second_valid", "agent": "test", "id": "test:2", "timestamp": "2026-01-01T00:00:00", "inputs": [], "outputs": [], "parameters": {}, "description": "Second valid", "software_versions": {}, "ir": null}\n')
+            f.write(
+                '{"v": 1, "type": "second_valid", "agent": "test", "id": "test:2", "timestamp": "2026-01-01T00:00:00", "inputs": [], "outputs": [], "parameters": {}, "description": "Second valid", "software_versions": {}, "ir": null}\n'
+            )
 
         # Load in new tracker - should skip corrupt line with warning
         with warnings.catch_warnings(record=True) as w:
@@ -211,7 +212,11 @@ class TestPersistenceMechanics:
 
             # Verify warning emitted for corrupt line
             assert len(w) >= 1
-            assert any("corrupt" in str(warning.message).lower() or "line 2" in str(warning.message) for warning in w)
+            assert any(
+                "corrupt" in str(warning.message).lower()
+                or "line 2" in str(warning.message)
+                for warning in w
+            )
 
         # Verify valid activities loaded (line 1 and line 3)
         assert len(tracker2.activities) == 2
@@ -246,10 +251,7 @@ class TestApiContracts:
         tracker = ProvenanceTracker(session_dir=session_dir)
 
         # Add activity
-        tracker.create_activity(
-            activity_type="initial_activity",
-            agent="test_agent"
-        )
+        tracker.create_activity(activity_type="initial_activity", agent="test_agent")
         assert len(tracker.activities) == 1
 
         # Store session_dir reference
@@ -276,10 +278,7 @@ class TestApiContracts:
         tracker = ProvenanceTracker(session_dir=session_dir)
 
         # Create activity to trigger metadata write
-        tracker.create_activity(
-            activity_type="test_activity",
-            agent="test_agent"
-        )
+        tracker.create_activity(activity_type="test_activity", agent="test_agent")
 
         # Verify metadata.json exists
         metadata_path = session_dir / "metadata.json"
@@ -306,10 +305,7 @@ class TestApiContracts:
 
         # Create multiple activities
         for i in range(3):
-            tracker.create_activity(
-                activity_type=f"activity_{i}",
-                agent="test_agent"
-            )
+            tracker.create_activity(activity_type=f"activity_{i}", agent="test_agent")
 
         # Read and verify all lines have version
         jsonl_path = session_dir / "provenance.jsonl"
@@ -320,7 +316,9 @@ class TestApiContracts:
             assert "v" in data, f"Line {i+1} missing version field"
             assert data["v"] == 1, f"Line {i+1} has wrong version: {data['v']}"
 
-    def test_provenance_path_returns_correct_value(self, session_dir: Path, tmp_path: Path):
+    def test_provenance_path_returns_correct_value(
+        self, session_dir: Path, tmp_path: Path
+    ):
         """TEST-10: provenance_path returns correct Path or None."""
         # With session_dir - returns Path
         tracker_with_dir = ProvenanceTracker(session_dir=session_dir)
@@ -347,10 +345,7 @@ class TestApiContracts:
         assert summary["can_export_notebook"] is False
 
         # Add activity without IR
-        tracker.create_activity(
-            activity_type="no_ir_activity",
-            agent="agent_1"
-        )
+        tracker.create_activity(activity_type="no_ir_activity", agent="agent_1")
 
         summary = tracker.get_summary()
         assert summary["activity_count"] == 1
@@ -361,9 +356,7 @@ class TestApiContracts:
 
         # Add activity with IR
         tracker.create_activity(
-            activity_type="ir_activity",
-            agent="agent_2",
-            ir=synthetic_ir
+            activity_type="ir_activity", agent="agent_2", ir=synthetic_ir
         )
 
         summary = tracker.get_summary()
@@ -378,10 +371,7 @@ class TestApiContracts:
         tracker = ProvenanceTracker(session_dir=session_dir)
 
         # Create first activity
-        tracker.create_activity(
-            activity_type="first_activity",
-            agent="test_agent"
-        )
+        tracker.create_activity(activity_type="first_activity", agent="test_agent")
 
         # Verify files exist
         jsonl_path = session_dir / "provenance.jsonl"
@@ -390,14 +380,12 @@ class TestApiContracts:
 
         # Delete session_dir (simulates external deletion or cloud restore scenario)
         import shutil
+
         shutil.rmtree(session_dir)
         assert not session_dir.exists()
 
         # Create another activity - should recreate session_dir
-        tracker.create_activity(
-            activity_type="second_activity",
-            agent="test_agent"
-        )
+        tracker.create_activity(activity_type="second_activity", agent="test_agent")
 
         # Verify session_dir and file recreated
         assert session_dir.exists()

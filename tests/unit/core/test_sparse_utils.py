@@ -13,7 +13,6 @@ from lobster.core.sparse_utils import (
     safe_toarray,
 )
 
-
 # ---------------------------------------------------------------------------
 # TestEstimateDenseMemory
 # ---------------------------------------------------------------------------
@@ -45,18 +44,24 @@ class TestEstimateDenseMemory:
 
 class TestSparseConversionError:
     def test_inherits_memory_error(self):
-        err = SparseConversionError("msg", required_gb=10.0, available_gb=2.0, shape=(1000, 500))
+        err = SparseConversionError(
+            "msg", required_gb=10.0, available_gb=2.0, shape=(1000, 500)
+        )
         assert isinstance(err, MemoryError)
         assert isinstance(err, ValueError)
 
     def test_attributes(self):
-        err = SparseConversionError("msg", required_gb=10.0, available_gb=2.0, shape=(1000, 500))
+        err = SparseConversionError(
+            "msg", required_gb=10.0, available_gb=2.0, shape=(1000, 500)
+        )
         assert err.required_gb == 10.0
         assert err.available_gb == 2.0
         assert err.shape == (1000, 500)
 
     def test_message(self):
-        err = SparseConversionError("boom", required_gb=1.0, available_gb=0.5, shape=(10, 10))
+        err = SparseConversionError(
+            "boom", required_gb=1.0, available_gb=0.5, shape=(10, 10)
+        )
         assert str(err) == "boom"
 
 

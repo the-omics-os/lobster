@@ -31,7 +31,9 @@ class TestAgentTemplate:
         langgraph_pos = content.find("from langgraph")
         assert config_pos > 0, "AGENT_CONFIG not found"
         assert langgraph_pos > 0, "langgraph import not found"
-        assert config_pos < langgraph_pos, "AGENT_CONFIG must be before langgraph import"
+        assert (
+            config_pos < langgraph_pos
+        ), "AGENT_CONFIG must be before langgraph import"
 
     def test_uses_prompt_not_state_modifier(self):
         """Factory must use prompt= parameter (not state_modifier=)."""

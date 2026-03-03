@@ -18,7 +18,10 @@ def test_registry_warns_missing_tier_requirement(caplog):
     with caplog.at_level(logging.WARNING):
         registry._check_agent_contract_compliance()
 
-    assert any("bad_agent" in r.message and "tier_requirement" in r.message for r in caplog.records)
+    assert any(
+        "bad_agent" in r.message and "tier_requirement" in r.message
+        for r in caplog.records
+    )
 
 
 def test_registry_warns_empty_name(caplog):
@@ -33,7 +36,9 @@ def test_registry_warns_empty_name(caplog):
     with caplog.at_level(logging.WARNING):
         registry._check_agent_contract_compliance()
 
-    assert any("empty_name_agent" in r.message and "empty" in r.message for r in caplog.records)
+    assert any(
+        "empty_name_agent" in r.message and "empty" in r.message for r in caplog.records
+    )
 
 
 def test_registry_no_warning_for_compliant_agent(caplog):

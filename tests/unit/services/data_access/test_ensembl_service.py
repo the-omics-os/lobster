@@ -99,9 +99,7 @@ GENE_LOOKUP_EXPANDED_RESPONSE = {
             "id": "ENST00000269305",
             "display_name": "TP53-201",
             "biotype": "protein_coding",
-            "Exon": [
-                {"id": "ENSE00001657961", "start": 7687377, "end": 7687550}
-            ],
+            "Exon": [{"id": "ENSE00001657961", "start": 7687377, "end": 7687550}],
         }
     ],
 }
@@ -405,9 +403,7 @@ def test_get_variant_consequences_id(service, mock_response):
 def test_get_variant_consequences_invalid_notation_type(service):
     """get_variant_consequences raises EnsemblServiceError for invalid notation_type."""
     with pytest.raises(EnsemblServiceError, match="Invalid notation_type: vcf"):
-        service.get_variant_consequences(
-            "9:g.22125503G>C", notation_type="vcf"
-        )
+        service.get_variant_consequences("9:g.22125503G>C", notation_type="vcf")
 
 
 def test_get_variant_consequences_strips_whitespace(service, mock_response):
@@ -742,7 +738,9 @@ def test_rate_limit_no_header_no_sleep(service, mock_response):
     resp = mock_response(json_data=GENE_LOOKUP_RESPONSE, headers={})
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_not_called()
@@ -756,7 +754,9 @@ def test_rate_limit_plenty_remaining_no_sleep(service, mock_response):
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_not_called()
@@ -773,7 +773,9 @@ def test_rate_limit_exactly_one_remaining_triggers_sleep(service, mock_response)
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_called_once_with(2.0)
@@ -790,7 +792,9 @@ def test_rate_limit_zero_remaining_triggers_sleep(service, mock_response):
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_called_once_with(5.0)
@@ -807,7 +811,9 @@ def test_rate_limit_sleep_capped_at_ten_seconds(service, mock_response):
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_called_once_with(10.0)
@@ -821,7 +827,9 @@ def test_rate_limit_missing_reset_header_defaults_to_one(service, mock_response)
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_called_once_with(1.0)
@@ -835,7 +843,9 @@ def test_rate_limit_malformed_remaining_header_ignored(service, mock_response):
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with patch("lobster.services.data_access.ensembl_service.time.sleep") as mock_sleep:
+        with patch(
+            "lobster.services.data_access.ensembl_service.time.sleep"
+        ) as mock_sleep:
             service.lookup_gene("ENSG00000141510")
 
     mock_sleep.assert_not_called()
@@ -879,7 +889,11 @@ def test_error_429_includes_retry_after(service, mock_response):
     """429 error message includes the Retry-After value."""
     resp = mock_response(
         status_code=429,
-        headers={"Retry-After": "45", "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1"},
+        headers={
+            "Retry-After": "45",
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": "1",
+        },
     )
 
     with patch.object(service._session, "request", return_value=resp):
@@ -897,7 +911,9 @@ def test_error_400_raises_service_error_with_detail(service, mock_response):
     )
 
     with patch.object(service._session, "request", return_value=resp):
-        with pytest.raises(EnsemblServiceError, match="Bad request.*Invalid HGVS notation"):
+        with pytest.raises(
+            EnsemblServiceError, match="Bad request.*Invalid HGVS notation"
+        ):
             service.get_variant_consequences("invalid_notation")
 
 
@@ -982,10 +998,16 @@ def test_cache_lookup_gene_different_args_not_cached(service, mock_response):
     """lookup_gene calls with different identifiers make separate requests."""
     resp1 = mock_response(json_data=GENE_LOOKUP_RESPONSE)
     resp2 = mock_response(
-        json_data={**GENE_LOOKUP_RESPONSE, "id": "ENSG00000012048", "display_name": "BRCA1"}
+        json_data={
+            **GENE_LOOKUP_RESPONSE,
+            "id": "ENSG00000012048",
+            "display_name": "BRCA1",
+        }
     )
 
-    with patch.object(service._session, "request", side_effect=[resp1, resp2]) as mock_req:
+    with patch.object(
+        service._session, "request", side_effect=[resp1, resp2]
+    ) as mock_req:
         result1 = service.lookup_gene("ENSG00000141510")
         result2 = service.lookup_gene("ENSG00000012048")
 
