@@ -56,7 +56,9 @@ class AgentContractTestMixin:
         None  # Defaults to agent_module if not set
     )
     expected_tier: ClassVar[Optional[str]] = None
-    is_parent_agent: ClassVar[bool] = False  # Set True for parent agents with child agents
+    is_parent_agent: ClassVar[bool] = (
+        False  # Set True for parent agents with child agents
+    )
     tools_required: ClassVar[bool] = True  # Set False for agents still being scaffolded
 
     # Standard factory parameters as defined in Phase 2 plugin contract
@@ -149,12 +151,15 @@ class AgentContractTestMixin:
             factory_module_path = (
                 self.factory_module if self.factory_module else self.agent_module
             )
-            with patch(
-                "lobster.config.llm_factory.create_llm",
-                return_value=MagicMock(),
-            ), patch(
-                f"{factory_module_path}.create_llm",
-                return_value=MagicMock(),
+            with (
+                patch(
+                    "lobster.config.llm_factory.create_llm",
+                    return_value=MagicMock(),
+                ),
+                patch(
+                    f"{factory_module_path}.create_llm",
+                    return_value=MagicMock(),
+                ),
             ):
                 # Call factory to get CompiledStateGraph
                 graph = factory(
@@ -448,7 +453,7 @@ class AgentContractTestMixin:
 
         This validates TEST-05: Provenance flag compliance.
         """
-        from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+        from lobster.config.aquadif import PROVENANCE_REQUIRED, AquadifCategory
 
         tools = self._require_tools()
 
@@ -494,7 +499,9 @@ class AgentContractTestMixin:
         """
         tools = self._require_tools()
 
-        metadata_ids = [id(tool.metadata) for tool in tools if hasattr(tool, "metadata")]
+        metadata_ids = [
+            id(tool.metadata) for tool in tools if hasattr(tool, "metadata")
+        ]
 
         # Count occurrences of each id
         from collections import Counter
@@ -522,7 +529,7 @@ class AgentContractTestMixin:
 
         This validates TEST-09: Category ordering integrity.
         """
-        from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+        from lobster.config.aquadif import PROVENANCE_REQUIRED, AquadifCategory
 
         tools = self._require_tools()
 
@@ -547,10 +554,14 @@ class AgentContractTestMixin:
                 secondary_cats = parsed[1:]
 
                 primary_requires = primary in PROVENANCE_REQUIRED
-                any_secondary_requires = any(c in PROVENANCE_REQUIRED for c in secondary_cats)
+                any_secondary_requires = any(
+                    c in PROVENANCE_REQUIRED for c in secondary_cats
+                )
 
                 if any_secondary_requires and not primary_requires:
-                    buried = [c.value for c in secondary_cats if c in PROVENANCE_REQUIRED]
+                    buried = [
+                        c.value for c in secondary_cats if c in PROVENANCE_REQUIRED
+                    ]
                     violations.append((tool_name, primary.value, buried))
 
         assert not violations, (
@@ -590,7 +601,9 @@ class AgentContractTestMixin:
         # Check for minimum viable set
         has_import = "IMPORT" in all_categories
         has_quality = "QUALITY" in all_categories
-        has_analyze_or_delegate = "ANALYZE" in all_categories or "DELEGATE" in all_categories
+        has_analyze_or_delegate = (
+            "ANALYZE" in all_categories or "DELEGATE" in all_categories
+        )
 
         missing = []
         if not has_import:
@@ -623,7 +636,7 @@ class AgentContractTestMixin:
 
         This validates TEST-08: Provenance AST validation.
         """
-        from lobster.config.aquadif import AquadifCategory, PROVENANCE_REQUIRED
+        from lobster.config.aquadif import PROVENANCE_REQUIRED, AquadifCategory
 
         tools = self._require_tools()
 
@@ -659,6 +672,7 @@ class AgentContractTestMixin:
             except (OSError, TypeError) as e:
                 # Cannot get source (built-in, dynamically generated, etc.)
                 import warnings
+
                 warnings.warn(
                     f"Cannot validate provenance for tool '{tool_name}': "
                     f"source code not available ({e.__class__.__name__})"
@@ -671,9 +685,8 @@ class AgentContractTestMixin:
                 has_ir_call = self._has_log_tool_usage_with_ir(tree)
             except SyntaxError as e:
                 import warnings
-                warnings.warn(
-                    f"Cannot parse source for tool '{tool_name}': {e}"
-                )
+
+                warnings.warn(f"Cannot parse source for tool '{tool_name}': {e}")
                 continue
 
             # Validate: if provenance is declared, the call must exist

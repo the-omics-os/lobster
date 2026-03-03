@@ -47,7 +47,9 @@ class LobsterBackend:
         else:
             return self._create_local_client(workspace, session_id)
 
-    def _create_local_client(self, workspace: Optional[Path], session_id: Optional[str]):
+    def _create_local_client(
+        self, workspace: Optional[Path], session_id: Optional[str]
+    ):
         """Create a local AgentClient."""
         from lobster.core.client import AgentClient
         from lobster.core.workspace import resolve_workspace
@@ -173,8 +175,12 @@ class LobsterBackend:
             "name": name,
             "n_obs": adata.n_obs,
             "n_vars": adata.n_vars,
-            "obs_columns": list(adata.obs.columns) if hasattr(adata.obs, "columns") else [],
-            "var_columns": list(adata.var.columns) if hasattr(adata.var, "columns") else [],
+            "obs_columns": (
+                list(adata.obs.columns) if hasattr(adata.obs, "columns") else []
+            ),
+            "var_columns": (
+                list(adata.var.columns) if hasattr(adata.var, "columns") else []
+            ),
             "obsm_keys": list(adata.obsm.keys()) if adata.obsm else [],
             "uns_keys": list(adata.uns.keys()) if adata.uns else [],
         }
@@ -228,7 +234,9 @@ class LobsterBackend:
         if subcommand == "export":
             try:
                 path = self.export_notebook()
-                output.print(f"[status.success]Pipeline exported to:[/status.success] {path}")
+                output.print(
+                    f"[status.success]Pipeline exported to:[/status.success] {path}"
+                )
             except Exception as e:
                 output.print(f"[status.error]Export failed: {e}[/status.error]")
         elif subcommand == "list":
@@ -240,16 +248,25 @@ class LobsterBackend:
             for i, step in enumerate(steps, 1):
                 output.print(f"  {i}. {step}")
         else:
-            output.print(f"[status.warning]Unknown subcommand: {subcommand}[/status.warning]")
+            output.print(
+                f"[status.warning]Unknown subcommand: {subcommand}[/status.warning]"
+            )
 
     def _handle_workspace(self, args: str, backend: Any, output: Any) -> None:
         """Handle /workspace command."""
-        output.print(f"[data.key]Workspace:[/data.key] {self.get_status().get('workspace', 'N/A')}")
+        output.print(
+            f"[data.key]Workspace:[/data.key] {self.get_status().get('workspace', 'N/A')}"
+        )
 
     def _handle_plots(self, args: str, backend: Any, output: Any) -> None:
         """Handle /plots command."""
         files = self.list_workspace_files("*.html")
-        plots = [f for f in files if "plot" in f.get("name", "").lower() or f.get("name", "").endswith(".html")]
+        plots = [
+            f
+            for f in files
+            if "plot" in f.get("name", "").lower()
+            or f.get("name", "").endswith(".html")
+        ]
         if not plots:
             output.print("[text.muted]No plots generated yet.[/text.muted]")
             return

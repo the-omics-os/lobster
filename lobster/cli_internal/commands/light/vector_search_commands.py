@@ -42,8 +42,7 @@ def vector_search_all_collections(
 
         cmd = get_install_command("vector-search", is_extra=True)
         raise ImportError(
-            f"Vector search requires the vector-search extra.\n"
-            f"Install with: {cmd}"
+            f"Vector search requires the vector-search extra.\n" f"Install with: {cmd}"
         )
 
     service = VectorSearchService()

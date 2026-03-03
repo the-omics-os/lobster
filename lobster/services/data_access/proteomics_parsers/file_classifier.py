@@ -193,7 +193,8 @@ class FileClassifier:
                     if col_idx < len(r) and r[col_idx].strip()
                 ]
                 if col_vals and all(
-                    FileClassifier._is_numeric(v) or v.upper() in ("", "NA", "NAN", "NULL", "INF", "-INF")
+                    FileClassifier._is_numeric(v)
+                    or v.upper() in ("", "NA", "NAN", "NULL", "INF", "-INF")
                     for v in col_vals
                 ):
                     numeric_cols += 1

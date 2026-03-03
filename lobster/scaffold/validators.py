@@ -105,47 +105,60 @@ def _check_entry_points(plugin_dir: Path) -> List[ValidationResult]:
     pyproject = plugin_dir / "pyproject.toml"
 
     if not pyproject.exists():
-        results.append(ValidationResult(
-            check="Entry points",
-            passed=False,
-            message="pyproject.toml not found",
-        ))
+        results.append(
+            ValidationResult(
+                check="Entry points",
+                passed=False,
+                message="pyproject.toml not found",
+            )
+        )
         return results
 
     try:
         import tomllib
+
         content = pyproject.read_text()
         parsed = tomllib.loads(content)
 
-        eps = parsed.get("project", {}).get("entry-points", {}).get("lobster.agents", {})
+        eps = (
+            parsed.get("project", {}).get("entry-points", {}).get("lobster.agents", {})
+        )
         if not eps:
-            results.append(ValidationResult(
-                check="Entry points",
-                passed=False,
-                message="No lobster.agents entry points found in pyproject.toml",
-            ))
+            results.append(
+                ValidationResult(
+                    check="Entry points",
+                    passed=False,
+                    message="No lobster.agents entry points found in pyproject.toml",
+                )
+            )
         else:
             # Check format: value should end with :AGENT_CONFIG
             for name, value in eps.items():
                 if not value.endswith(":AGENT_CONFIG"):
-                    results.append(ValidationResult(
-                        check="Entry points",
-                        passed=False,
-                        message=f"Entry point '{name}' value must end with ':AGENT_CONFIG', got '{value}'",
-                    ))
+                    results.append(
+                        ValidationResult(
+                            check="Entry points",
+                            passed=False,
+                            message=f"Entry point '{name}' value must end with ':AGENT_CONFIG', got '{value}'",
+                        )
+                    )
                 else:
-                    results.append(ValidationResult(
-                        check="Entry points",
-                        passed=True,
-                        message=f"Entry point '{name}' = '{value}'",
-                    ))
+                    results.append(
+                        ValidationResult(
+                            check="Entry points",
+                            passed=True,
+                            message=f"Entry point '{name}' = '{value}'",
+                        )
+                    )
 
     except Exception as e:
-        results.append(ValidationResult(
-            check="Entry points",
-            passed=False,
-            message=f"Failed to parse pyproject.toml: {e}",
-        ))
+        results.append(
+            ValidationResult(
+                check="Entry points",
+                passed=False,
+                message=f"Failed to parse pyproject.toml: {e}",
+            )
+        )
 
     return results
 
@@ -155,18 +168,26 @@ def _check_agent_config_position(plugin_dir: Path) -> List[ValidationResult]:
     results = []
 
     for module_path in _find_agent_modules(plugin_dir):
-        if module_path.name in ("shared_tools.py", "state.py", "config.py", "prompts.py", "conftest.py"):
+        if module_path.name in (
+            "shared_tools.py",
+            "state.py",
+            "config.py",
+            "prompts.py",
+            "conftest.py",
+        ):
             continue
 
         try:
             source = module_path.read_text()
             tree = ast.parse(source)
         except SyntaxError as e:
-            results.append(ValidationResult(
-                check="AGENT_CONFIG position",
-                passed=False,
-                message=f"{module_path.name}: syntax error: {e}",
-            ))
+            results.append(
+                ValidationResult(
+                    check="AGENT_CONFIG position",
+                    passed=False,
+                    message=f"{module_path.name}: syntax error: {e}",
+                )
+            )
             continue
 
         # Find AGENT_CONFIG assignment position
@@ -190,17 +211,21 @@ def _check_agent_config_position(plugin_dir: Path) -> List[ValidationResult]:
             continue
 
         if heavy_import_line and config_line > heavy_import_line:
-            results.append(ValidationResult(
-                check="AGENT_CONFIG position",
-                passed=False,
-                message=f"{module_path.name}: AGENT_CONFIG at line {config_line} is after heavy import at line {heavy_import_line}",
-            ))
+            results.append(
+                ValidationResult(
+                    check="AGENT_CONFIG position",
+                    passed=False,
+                    message=f"{module_path.name}: AGENT_CONFIG at line {config_line} is after heavy import at line {heavy_import_line}",
+                )
+            )
         else:
-            results.append(ValidationResult(
-                check="AGENT_CONFIG position",
-                passed=True,
-                message=f"{module_path.name}: AGENT_CONFIG at line {config_line} (before heavy imports)",
-            ))
+            results.append(
+                ValidationResult(
+                    check="AGENT_CONFIG position",
+                    passed=True,
+                    message=f"{module_path.name}: AGENT_CONFIG at line {config_line} (before heavy imports)",
+                )
+            )
 
     return results
 
@@ -208,10 +233,22 @@ def _check_agent_config_position(plugin_dir: Path) -> List[ValidationResult]:
 def _check_factory_signature(plugin_dir: Path) -> List[ValidationResult]:
     """Check 4: Factory functions have standard parameters."""
     results = []
-    required_params = {"data_manager", "callback_handler", "agent_name", "delegation_tools", "workspace_path"}
+    required_params = {
+        "data_manager",
+        "callback_handler",
+        "agent_name",
+        "delegation_tools",
+        "workspace_path",
+    }
 
     for module_path in _find_agent_modules(plugin_dir):
-        if module_path.name in ("shared_tools.py", "state.py", "config.py", "prompts.py", "conftest.py"):
+        if module_path.name in (
+            "shared_tools.py",
+            "state.py",
+            "config.py",
+            "prompts.py",
+            "conftest.py",
+        ):
             continue
 
         try:
@@ -223,7 +260,9 @@ def _check_factory_signature(plugin_dir: Path) -> List[ValidationResult]:
         # Check if this file has AGENT_CONFIG (it's an agent module)
         has_config = any(
             isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "AGENT_CONFIG" for t in node.targets)
+            and any(
+                isinstance(t, ast.Name) and t.id == "AGENT_CONFIG" for t in node.targets
+            )
             for node in ast.walk(tree)
         )
         if not has_config:
@@ -235,19 +274,23 @@ def _check_factory_signature(plugin_dir: Path) -> List[ValidationResult]:
                 params = {arg.arg for arg in node.args.args}
                 missing = required_params - params
                 if not missing:
-                    results.append(ValidationResult(
-                        check="Factory signature",
-                        passed=True,
-                        message=f"{module_path.name}:{node.name}() has all standard params",
-                    ))
+                    results.append(
+                        ValidationResult(
+                            check="Factory signature",
+                            passed=True,
+                            message=f"{module_path.name}:{node.name}() has all standard params",
+                        )
+                    )
                     break
                 elif params & required_params:
                     # Looks like a factory but missing some params
-                    results.append(ValidationResult(
-                        check="Factory signature",
-                        passed=False,
-                        message=f"{module_path.name}:{node.name}() missing params: {sorted(missing)}",
-                    ))
+                    results.append(
+                        ValidationResult(
+                            check="Factory signature",
+                            passed=False,
+                            message=f"{module_path.name}:{node.name}() missing params: {sorted(missing)}",
+                        )
+                    )
                     break
 
     return results
@@ -264,29 +307,35 @@ def _check_aquadif_metadata(plugin_dir: Path) -> List[ValidationResult]:
         source = module_path.read_text()
 
         # Count .metadata assignments
-        metadata_count = len(re.findall(r'\w+\.metadata\s*=\s*\{', source))
+        metadata_count = len(re.findall(r"\w+\.metadata\s*=\s*\{", source))
         # Count @tool decorators
         tool_count = source.count("@tool")
 
         if tool_count == 0:
-            results.append(ValidationResult(
-                check="AQUADIF metadata",
-                passed=True,
-                message=f"{module_path.name}: no tools defined (skeleton)",
-                severity="warning",
-            ))
+            results.append(
+                ValidationResult(
+                    check="AQUADIF metadata",
+                    passed=True,
+                    message=f"{module_path.name}: no tools defined (skeleton)",
+                    severity="warning",
+                )
+            )
         elif metadata_count >= tool_count:
-            results.append(ValidationResult(
-                check="AQUADIF metadata",
-                passed=True,
-                message=f"{module_path.name}: {metadata_count} metadata assignments for {tool_count} tools",
-            ))
+            results.append(
+                ValidationResult(
+                    check="AQUADIF metadata",
+                    passed=True,
+                    message=f"{module_path.name}: {metadata_count} metadata assignments for {tool_count} tools",
+                )
+            )
         else:
-            results.append(ValidationResult(
-                check="AQUADIF metadata",
-                passed=False,
-                message=f"{module_path.name}: {metadata_count} metadata assignments but {tool_count} @tool definitions",
-            ))
+            results.append(
+                ValidationResult(
+                    check="AQUADIF metadata",
+                    passed=False,
+                    message=f"{module_path.name}: {metadata_count} metadata assignments but {tool_count} @tool definitions",
+                )
+            )
 
     return results
 
@@ -306,36 +355,44 @@ def _check_provenance_calls(plugin_dir: Path) -> List[ValidationResult]:
             source = module_path.read_text()
             tree = ast.parse(source)
         except SyntaxError as e:
-            results.append(ValidationResult(
-                check="Provenance calls",
-                passed=False,
-                message=f"{module_path.name}: syntax error: {e}",
-            ))
+            results.append(
+                ValidationResult(
+                    check="Provenance calls",
+                    passed=False,
+                    message=f"{module_path.name}: syntax error: {e}",
+                )
+            )
             continue
 
         # Check if there are any provenance: True declarations
-        has_prov_true = "\"provenance\": True" in source or "'provenance': True" in source
+        has_prov_true = '"provenance": True' in source or "'provenance': True" in source
 
         if has_prov_true:
             # Use the shared has_provenance_call function (Delta 1)
             if has_provenance_call(tree):
-                results.append(ValidationResult(
+                results.append(
+                    ValidationResult(
+                        check="Provenance calls",
+                        passed=True,
+                        message=f"{module_path.name}: log_tool_usage(ir=ir) calls found",
+                    )
+                )
+            else:
+                results.append(
+                    ValidationResult(
+                        check="Provenance calls",
+                        passed=False,
+                        message=f"{module_path.name}: tools declare provenance=True but no log_tool_usage(ir=ir) found",
+                    )
+                )
+        else:
+            results.append(
+                ValidationResult(
                     check="Provenance calls",
                     passed=True,
-                    message=f"{module_path.name}: log_tool_usage(ir=ir) calls found",
-                ))
-            else:
-                results.append(ValidationResult(
-                    check="Provenance calls",
-                    passed=False,
-                    message=f"{module_path.name}: tools declare provenance=True but no log_tool_usage(ir=ir) found",
-                ))
-        else:
-            results.append(ValidationResult(
-                check="Provenance calls",
-                passed=True,
-                message=f"{module_path.name}: no provenance-requiring tools",
-            ))
+                    message=f"{module_path.name}: no provenance-requiring tools",
+                )
+            )
 
     return results
 
@@ -346,12 +403,12 @@ def _check_import_boundaries(plugin_dir: Path) -> List[ValidationResult]:
 
     # Core agent modules that plugins should NOT import from
     core_agent_pattern = re.compile(
-        r'from\s+lobster\.agents\.'
-        r'(?!__)'  # Not __init__
-        r'(\w+)'   # domain
-        r'\.'
-        r'(\w+)'   # module
-        r'\s+import'
+        r"from\s+lobster\.agents\."
+        r"(?!__)"  # Not __init__
+        r"(\w+)"  # domain
+        r"\."
+        r"(\w+)"  # module
+        r"\s+import"
     )
 
     for module_path in _find_agent_modules(plugin_dir):
@@ -368,17 +425,21 @@ def _check_import_boundaries(plugin_dir: Path) -> List[ValidationResult]:
                 violations.append(f"lobster.agents.{imported_domain}.{match.group(2)}")
 
         if violations:
-            results.append(ValidationResult(
-                check="Import boundaries",
-                passed=False,
-                message=f"{module_path.name}: imports from core agents: {', '.join(violations)}",
-            ))
+            results.append(
+                ValidationResult(
+                    check="Import boundaries",
+                    passed=False,
+                    message=f"{module_path.name}: imports from core agents: {', '.join(violations)}",
+                )
+            )
         else:
-            results.append(ValidationResult(
-                check="Import boundaries",
-                passed=True,
-                message=f"{module_path.name}: no cross-agent imports",
-            ))
+            results.append(
+                ValidationResult(
+                    check="Import boundaries",
+                    passed=True,
+                    message=f"{module_path.name}: no cross-agent imports",
+                )
+            )
 
     return results
 
@@ -416,36 +477,44 @@ def _check_no_import_error_guard(plugin_dir: Path) -> List[ValidationResult]:
                 # Match: except ImportError, except (ImportError, ...), bare except
                 if exc_type is None:
                     # Bare except — flag it
-                    results.append(ValidationResult(
-                        check="No ImportError guard",
-                        passed=False,
-                        message=f"{domain_dir.name}/__init__.py: bare except handler (line {node.lineno})",
-                    ))
+                    results.append(
+                        ValidationResult(
+                            check="No ImportError guard",
+                            passed=False,
+                            message=f"{domain_dir.name}/__init__.py: bare except handler (line {node.lineno})",
+                        )
+                    )
                     break
                 elif isinstance(exc_type, ast.Name) and exc_type.id == "ImportError":
-                    results.append(ValidationResult(
-                        check="No ImportError guard",
-                        passed=False,
-                        message=f"{domain_dir.name}/__init__.py: except ImportError at line {node.lineno} — use entry points for agent discovery",
-                    ))
+                    results.append(
+                        ValidationResult(
+                            check="No ImportError guard",
+                            passed=False,
+                            message=f"{domain_dir.name}/__init__.py: except ImportError at line {node.lineno} — use entry points for agent discovery",
+                        )
+                    )
                     break
                 elif isinstance(exc_type, ast.Tuple):
                     for elt in exc_type.elts:
                         if isinstance(elt, ast.Name) and elt.id == "ImportError":
-                            results.append(ValidationResult(
-                                check="No ImportError guard",
-                                passed=False,
-                                message=f"{domain_dir.name}/__init__.py: except (..., ImportError) at line {node.lineno} — use entry points for agent discovery",
-                            ))
+                            results.append(
+                                ValidationResult(
+                                    check="No ImportError guard",
+                                    passed=False,
+                                    message=f"{domain_dir.name}/__init__.py: except (..., ImportError) at line {node.lineno} — use entry points for agent discovery",
+                                )
+                            )
                             break
                     else:
                         continue
                     break
         else:
-            results.append(ValidationResult(
-                check="No ImportError guard",
-                passed=True,
-                message=f"{domain_dir.name}/__init__.py: clean (no ImportError guards)",
-            ))
+            results.append(
+                ValidationResult(
+                    check="No ImportError guard",
+                    passed=True,
+                    message=f"{domain_dir.name}/__init__.py: clean (no ImportError guards)",
+                )
+            )
 
     return results

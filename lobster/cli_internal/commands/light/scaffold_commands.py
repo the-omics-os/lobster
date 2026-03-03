@@ -68,6 +68,8 @@ def scaffold_agent_cmd(
         rel_path = pkg_dir
     typer.echo(f"Plugin package created at: ./{rel_path}")
     typer.echo(f"\nNext steps:")
-    typer.echo(f"  1. Fill in domain-specific tools in ./{rel_path}/lobster/agents/*/shared_tools.py")
+    typer.echo(
+        f"  1. Fill in domain-specific tools in ./{rel_path}/lobster/agents/*/shared_tools.py"
+    )
     typer.echo(f"  2. Add services and platform configs")
     typer.echo(f"  3. Validate: lobster validate-plugin ./{rel_path}")

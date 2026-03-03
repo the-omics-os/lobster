@@ -724,9 +724,7 @@ Next suggested step: Import quantification data with tximport for differential e
 
                 cmd = get_install_command("gseapy")
                 logger.error("GSEApy not installed")
-                raise BulkRNASeqError(
-                    f"GSEApy not installed. Install with: {cmd}"
-                )
+                raise BulkRNASeqError(f"GSEApy not installed. Install with: {cmd}")
 
             # Map analysis type to Enrichr gene set libraries
             library_map = {

@@ -323,9 +323,7 @@ class DoclingService:
             from lobster.core.component_registry import get_install_command
 
             cmd = get_install_command("docling")
-            raise DoclingError(
-                f"Docling not available. Install with: {cmd}"
-            )
+            raise DoclingError(f"Docling not available. Install with: {cmd}")
 
         # Import Docling types
         from docling_core.types.doc import DocItemLabel

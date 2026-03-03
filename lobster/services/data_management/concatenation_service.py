@@ -15,12 +15,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import anndata
+import anndata as ad
 import numpy as np
 import pandas as pd
 import psutil
-
-import anndata
-import anndata as ad
 
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2

@@ -92,7 +92,9 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         self.agent_stack: List[str] = []
         self.events: List[AgentEvent] = []
         self.start_times: Dict[str, datetime] = {}
-        self._minimal_agent_shown: bool = False  # Track if first agent shown in minimal mode
+        self._minimal_agent_shown: bool = (
+            False  # Track if first agent shown in minimal mode
+        )
 
         # Display components
         self.progress: Optional[Progress] = None
