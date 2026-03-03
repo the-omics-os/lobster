@@ -91,8 +91,16 @@ class ConsoleOutputAdapter(OutputAdapter):
         self.console = console
 
     def print(self, message: str, style: Optional[str] = None) -> None:
-        """Print with Rich markup."""
-        self.console.print(message)
+        """Print message, applying style if provided.
+
+        When *style* is given, markup parsing is disabled so that literal
+        square brackets in the message (e.g., ``lobster-ai[vector-search]``)
+        are not silently stripped by Rich.
+        """
+        if style:
+            self.console.print(message, style=style, markup=False)
+        else:
+            self.console.print(message)
 
     def print_table(self, table_data: Dict[str, Any]) -> None:
         """Render Rich Table."""

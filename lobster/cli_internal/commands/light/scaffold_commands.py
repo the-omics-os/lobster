@@ -24,7 +24,7 @@ def scaffold_agent_cmd(
         ..., "--description", help="Agent capabilities description"
     ),
     tier: str = typer.Option(
-        "free", "--tier", help="Subscription tier: free, premium, enterprise"
+        "free", "--tier", hidden=True, help="Deprecated — all agents are open source"
     ),
     children: Optional[str] = typer.Option(
         None, "--children", help="Comma-separated child agent names"
@@ -42,9 +42,9 @@ def scaffold_agent_cmd(
     """Generate a complete agent plugin package.
 
     Examples:
-        lobster scaffold agent --name epigenomics_expert --display-name "Epigenomics Expert" --description "Epigenomics analysis" --tier free
+        lobster scaffold agent --name <domain>_expert --display-name "<Domain> Expert" --description "<capabilities>"
 
-        lobster scaffold agent --name epigenomics_expert --display-name "Epigenomics Expert" --description "Epigenomics analysis" --children methylation_expert,chromatin_expert
+        lobster scaffold agent --name <domain>_expert --display-name "<Domain> Expert" --description "<capabilities>" --children <sub>_expert,<sub2>_expert
     """
     from lobster.scaffold import scaffold_agent
 
@@ -61,9 +61,13 @@ def scaffold_agent_cmd(
         author_email=author_email,
     )
 
-    typer.echo(f"Plugin package created at: {pkg_dir}")
+    # Show relative path to avoid confusing agents/users
+    try:
+        rel_path = pkg_dir.relative_to(Path.cwd())
+    except ValueError:
+        rel_path = pkg_dir
+    typer.echo(f"Plugin package created at: ./{rel_path}")
     typer.echo(f"\nNext steps:")
-    typer.echo(f"  cd {pkg_dir}")
-    typer.echo(f"  uv pip install -e '.[dev]'")
-    typer.echo(f"  python -m pytest tests/ -v -m contract")
-    typer.echo(f"  lobster validate-plugin .")
+    typer.echo(f"  1. Fill in domain-specific tools in ./{rel_path}/lobster/agents/*/shared_tools.py")
+    typer.echo(f"  2. Add services and platform configs")
+    typer.echo(f"  3. Validate: lobster validate-plugin ./{rel_path}")

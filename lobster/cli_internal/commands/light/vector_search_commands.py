@@ -38,9 +38,12 @@ def vector_search_all_collections(
             VectorSearchService,
         )
     except ImportError:
+        from lobster.core.component_registry import get_install_command
+
+        cmd = get_install_command("vector-search", is_extra=True)
         raise ImportError(
-            "Vector search requires the [vector-search] extra.\n"
-            "Install with: pip install 'lobster-ai[vector-search]'"
+            f"Vector search requires the vector-search extra.\n"
+            f"Install with: {cmd}"
         )
 
     service = VectorSearchService()
