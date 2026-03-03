@@ -121,9 +121,12 @@ class ProteinStructureAdapter(BaseAdapter):
         try:
             from Bio.PDB import MMCIFParser, PDBParser
         except ImportError as e:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("biopython")
             raise ImportError(
-                "BioPython is required for protein structure loading. "
-                "Install with: pip install biopython"
+                f"BioPython is required for protein structure loading. "
+                f"Install with: {cmd}"
             ) from e
 
         path = Path(path)

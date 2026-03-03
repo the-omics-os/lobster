@@ -367,6 +367,13 @@ class H5ADBackend(BaseBackend):
         #         self.logger.info(f"Created backup: {backup_path}")
 
         try:
+            # Disable Arrow string inference for the entire save path — pandas 3.0+
+            # re-creates ArrowStringArray on copy()/sanitize() even after conversion.
+            import pandas as _pd
+
+            _prev_infer = _pd.options.future.infer_string
+            _pd.options.future.infer_string = False
+
             # Extract saving parameters
             compression = kwargs.get("compression", self.compression)
             compression_opts = kwargs.get("compression_opts", self.compression_opts)
@@ -481,6 +488,8 @@ class H5ADBackend(BaseBackend):
                 except Exception:
                     pass
             raise ValueError(f"Failed to save H5AD file {resolved_path}: {e}")
+        finally:
+            _pd.options.future.infer_string = _prev_infer
 
     def supports_format(self, format_name: str) -> bool:
         """

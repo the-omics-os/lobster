@@ -108,8 +108,11 @@ class VCFAdapter(BaseAdapter):
             try:
                 import cyvcf2
             except ImportError:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("cyvcf2")
                 raise ImportError(
-                    "cyvcf2 is required for VCF loading. Install with: pip install cyvcf2"
+                    f"cyvcf2 is required for VCF loading. Install with: {cmd}"
                 )
 
             # Extract parameters

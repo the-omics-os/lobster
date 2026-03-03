@@ -84,9 +84,12 @@ class PLINKAdapter(BaseAdapter):
             try:
                 from bed_reader import open_bed
             except ImportError:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("bed-reader")
                 raise ImportError(
-                    "bed-reader package is required for PLINK support. "
-                    "Install with: pip install bed-reader"
+                    f"bed-reader package is required for PLINK support. "
+                    f"Install with: {cmd}"
                 )
 
             # Extract kwargs

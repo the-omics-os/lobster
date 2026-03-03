@@ -169,8 +169,11 @@ class BaseAdapter(IModalityAdapter):
         try:
             import pyarrow.parquet  # noqa: F401 — validate availability
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("pyarrow")
             raise ImportError(
-                "pyarrow is required to load parquet files: pip install pyarrow"
+                f"pyarrow is required to load parquet files. Install with: {cmd}"
             )
         try:
             safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}

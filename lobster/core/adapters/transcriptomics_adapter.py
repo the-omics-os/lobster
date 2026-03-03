@@ -34,9 +34,12 @@ def _ensure_scanpy():
 
             _scanpy_module = sc
         except ImportError as exc:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("lobster-transcriptomics")
             raise ImportError(
-                "scanpy is required for 10X matrix loading. "
-                "Install it with `pip install lobster-ai[transcriptomics]`."
+                f"scanpy is required for 10X matrix loading. "
+                f"Install with: {cmd}"
             ) from exc
     return _scanpy_module
 
@@ -360,10 +363,12 @@ class TranscriptomicsAdapter(BaseAdapter):
                 key = kwargs.get("key", "expression_data")
                 df = pd.read_hdf(path, key=key)
             except ImportError:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("tables")
                 raise ImportError(
-                    "This HDF5 file requires PyTables for pandas.read_hdf(). "
-                    "Install with: pip install 'lobster-ai[hdf5]' "
-                    "or: uv pip install tables"
+                    f"This HDF5 file requires PyTables for pandas.read_hdf(). "
+                    f"Install with: {cmd}"
                 )
             transpose = kwargs.get("transpose", True)
             return self._create_anndata_from_dataframe(df, transpose=transpose)
