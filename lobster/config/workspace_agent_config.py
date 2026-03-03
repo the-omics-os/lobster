@@ -306,22 +306,24 @@ class WorkspaceAgentConfig(BaseModel):
     def _suggest_package_for_agent(self, agent_name: str) -> str:
         """Generate installation suggestion for missing agent.
 
+        Uses the centralized AGENT_TO_PACKAGE mapping from component_registry
+        as single source of truth for agent→package relationships.
+
         Args:
             agent_name: Name of the missing agent
 
         Returns:
             Human-readable installation suggestion
         """
-        # Known agent-to-package mappings for helpful suggestions
-        known_packages = {
-            "metadata_assistant": "lobster-premium",
-            "proteomics_expert": "pip install lobster-ai[full] or lobster-proteomics",
-            "machine_learning_expert": "pip install lobster-ai[ml]",
-            "genomics_expert": "pip install lobster-ai[genomics] or lobster-genomics",
-        }
+        from lobster.core.component_registry import (
+            AGENT_TO_PACKAGE,
+            get_install_command,
+        )
 
-        if agent_name in known_packages:
-            return f"Install with: {known_packages[agent_name]}"
+        package = AGENT_TO_PACKAGE.get(agent_name)
+        if package:
+            cmd = get_install_command(package)
+            return f"Install with: {cmd}"
 
         # Check if it looks like a custom package agent
         if agent_name.startswith("custom_") or "_custom_" in agent_name:

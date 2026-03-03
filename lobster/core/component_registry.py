@@ -65,9 +65,158 @@ Note on factory contract:
 import importlib.metadata
 import logging
 import sys
-from typing import Any, Callable, Dict, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# KNOWN PACKAGE MAPPINGS (single source of truth for install suggestions)
+# =============================================================================
+# Maps agent entry-point names to their PyPI package.
+# Used when a user references an agent that isn't installed — the registry
+# can't discover uninstalled packages (entry points don't exist), so this
+# static mapping is the ONLY way to suggest the correct install command.
+#
+# Authoritative source: packages/*/pyproject.toml [project.entry-points."lobster.agents"]
+# Update this when adding new first-party agent packages.
+
+AGENT_TO_PACKAGE: Dict[str, str] = {
+    # lobster-research
+    "research_agent": "lobster-research",
+    "data_expert_agent": "lobster-research",
+    # lobster-transcriptomics
+    "transcriptomics_expert": "lobster-transcriptomics",
+    "annotation_expert": "lobster-transcriptomics",
+    "de_analysis_expert": "lobster-transcriptomics",
+    # lobster-visualization
+    "visualization_expert_agent": "lobster-visualization",
+    # lobster-metadata
+    "metadata_assistant": "lobster-metadata",
+    # lobster-structural-viz
+    "protein_structure_visualization_expert": "lobster-structural-viz",
+    # lobster-genomics
+    "genomics_expert": "lobster-genomics",
+    "variant_analysis_expert": "lobster-genomics",
+    # lobster-proteomics
+    "proteomics_expert": "lobster-proteomics",
+    "proteomics_de_analysis_expert": "lobster-proteomics",
+    "biomarker_discovery_expert": "lobster-proteomics",
+    # lobster-metabolomics
+    "metabolomics_expert": "lobster-metabolomics",
+    # lobster-ml
+    "machine_learning_expert": "lobster-ml",
+    "feature_selection_expert": "lobster-ml",
+    "survival_analysis_expert": "lobster-ml",
+    # lobster-drug-discovery
+    "drug_discovery_expert": "lobster-drug-discovery",
+    "cheminformatics_expert": "lobster-drug-discovery",
+    "clinical_dev_expert": "lobster-drug-discovery",
+    "pharmacogenomics_expert": "lobster-drug-discovery",
+}
+
+# Maps LLM provider names to their lobster-ai extra and the actual PyPI package.
+# Format: provider_name -> (lobster_extra, pypi_package)
+LLM_PROVIDER_PACKAGES: Dict[str, Tuple[str, str]] = {
+    "anthropic": ("anthropic", "langchain-anthropic"),
+    "bedrock": ("bedrock", "langchain-aws"),
+    "ollama": ("ollama", "langchain-ollama"),
+    "gemini": ("gemini", "langchain-google-genai"),
+    "azure": ("azure", "langchain-openai"),
+    "openai": ("openai", "langchain-openai"),
+}
+
+
+def get_install_command(package: str, *, is_extra: bool = False) -> str:
+    """Build the correct install command for the user's environment.
+
+    Detects whether the user is in a uv tool environment (installed via
+    ``uv tool install``) and returns the appropriate command.
+
+    Args:
+        package: PyPI package name (e.g., "lobster-transcriptomics") or
+            lobster-ai extra name (e.g., "anthropic") when *is_extra* is True.
+        is_extra: If True, *package* is a lobster-ai extra (e.g., "anthropic"),
+            and the command should use ``lobster-ai[extra]`` syntax.
+
+    Returns:
+        Human-readable install command string.
+    """
+    try:
+        from lobster.core.uv_tool_env import is_uv_tool_env
+    except ImportError:
+        # Fail-open: if uv_tool_env can't be imported, assume regular env
+        is_uv_tool_env = lambda: False  # noqa: E731
+
+    if is_extra:
+        specifier = f"lobster-ai[{package}]"
+    else:
+        specifier = package
+
+    if is_uv_tool_env():
+        if is_extra:
+            return f"uv tool install '{specifier}'"
+        else:
+            return f"uv tool install lobster-ai --with {specifier}"
+    else:
+        return f"uv pip install '{specifier}'"
+
+
+def get_provider_install_command(provider_name: str) -> Optional[str]:
+    """Get the install command for a missing LLM provider package.
+
+    Args:
+        provider_name: Provider name (e.g., "anthropic", "bedrock").
+
+    Returns:
+        Install command string, or None if provider is unknown.
+    """
+    info = LLM_PROVIDER_PACKAGES.get(provider_name)
+    if info is None:
+        return None
+    extra_name, _ = info
+    return get_install_command(extra_name, is_extra=True)
+
+
+def diagnose_missing_agent(agent_name: str) -> str:
+    """Produce an actionable message for a missing agent.
+
+    Distinguishes three cases:
+    1. Known agent in a known package that isn't installed.
+    2. Known agent whose entry point was discovered but failed to load
+       (package installed but broken).
+    3. Unknown agent — not in any known package.
+
+    Args:
+        agent_name: The agent name that was not found.
+
+    Returns:
+        Human-readable diagnostic message.
+    """
+    # Case 1: Known agent in an uninstalled package
+    package = AGENT_TO_PACKAGE.get(agent_name)
+    if package is not None:
+        cmd = get_install_command(package)
+        return (
+            f"Agent '{agent_name}' requires package '{package}' which is not installed.\n"
+            f"Install with: {cmd}"
+        )
+
+    # Case 2: Check if it was a failed entry point (package installed but broken)
+    failed = component_registry.get_failed_entry_points()
+    for (group, name), error in failed.items():
+        if name == agent_name and "agents" in group:
+            return (
+                f"Agent '{agent_name}' is installed but failed to load: {error}\n"
+                f"This is likely a broken dependency — check the error above."
+            )
+
+    # Case 3: Truly unknown
+    return (
+        f"Agent '{agent_name}' is not available. "
+        f"It may not be supported yet, or you may need to install a plugin package.\n"
+        f"See available agents with: lobster agents list"
+    )
 
 
 def check_plugin_compatibility(package_name: str) -> tuple[bool, str]:
@@ -137,6 +286,10 @@ class ComponentRegistry:
         self._providers: Dict[str, Union[Callable, Type[Any]]] = {}
         self._download_services: Dict[str, Union[Callable, Type[Any]]] = {}
         self._queue_preparers: Dict[str, Union[Callable, Type[Any]]] = {}
+        # Track entry points that were discovered but failed to load.
+        # Keyed by (group, name) to avoid cross-group collisions
+        # (e.g., "metabolights" exists in both providers and download_services).
+        self._failed_entries: Dict[Tuple[str, str], str] = {}
         self._loaded = False
 
     def load_components(self) -> None:
@@ -247,6 +400,7 @@ class ComponentRegistry:
                     f"Loaded {group.split('.')[-1]} '{entry.name}' from {entry.value}"
                 )
             except Exception as e:
+                self._failed_entries[(group, entry.name)] = str(e)
                 logger.warning(f"Failed to load {group} '{entry.name}': {e}")
 
     # =========================================================================
@@ -319,10 +473,7 @@ class ComponentRegistry:
         agent = self._agents.get(name)
 
         if agent is None and required:
-            raise ValueError(
-                f"Required agent '{name}' not found. "
-                f"Available agents: {list(self._agents.keys())}"
-            )
+            raise ValueError(diagnose_missing_agent(name))
 
         return agent
 
@@ -607,7 +758,23 @@ class ComponentRegistry:
                 "count": len(self._queue_preparers),
                 "names": list(self._queue_preparers.keys()),
             },
+            "failed_entries": {
+                "count": len(self._failed_entries),
+                "entries": {
+                    f"{group}:{name}": error
+                    for (group, name), error in self._failed_entries.items()
+                },
+            },
         }
+
+    def get_failed_entry_points(self) -> Dict[Tuple[str, str], str]:
+        """Get entry points that were discovered but failed to load.
+
+        Returns:
+            Dict mapping (group, name) tuples to error messages.
+            Example: {("lobster.agents", "transcriptomics_expert"): "No module named 'scipy'"}
+        """
+        return dict(self._failed_entries)
 
     def reset(self) -> None:
         """Reset the registry state (for testing)."""
@@ -618,6 +785,7 @@ class ComponentRegistry:
         self._providers.clear()
         self._download_services.clear()
         self._queue_preparers.clear()
+        self._failed_entries.clear()
         self._loaded = False
 
 
