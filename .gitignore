@@ -156,7 +156,10 @@
 .venv
 .vscode/
 .webassets-cache
-/CLAUDE.md
+CLAUDE.md
+AGENT.md
+.case_study_outputs/
+.testing/
 /FINAL_TEST_BEFORE_LAUNCH.md
 /SHOWCASE_TESTS.md
 /site
