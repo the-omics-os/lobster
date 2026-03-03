@@ -764,8 +764,8 @@ class AnalysisScreen(Screen):
             for event in self.client.query(query, stream=True):
                 event_type = event.get("type")
 
-                if event_type == "stream":
-                    content = event.get("content", "")
+                if event_type == "content_delta":
+                    content = event.get("delta", "")
                     if content:
                         # Filter out handoff/transfer messages from display
                         if self._is_handoff_message(content):

@@ -325,30 +325,60 @@ class AgentClient(BaseClient):
         """
         Stream query execution with token-by-token text streaming.
 
-        Uses LangGraph's stream_mode="messages" for true incremental streaming.
+        Uses dual stream_mode=["messages", "updates"] with subgraphs=True,
+        matching the proven cloud backend pattern (chat_stream.py). This yields
+        3-tuples of (namespace, event_type, chunk) that provide true token-level
+        streaming from the inner ReAct agent subgraph.
 
         Yields events in the following format:
-        - {"type": "content_delta", "delta": "..."} - Text content increments (token-by-token)
+        - {"type": "content_delta", "delta": "..."} - Text content increments
         - {"type": "agent_change", "agent": "...", "status": "working|complete"} - Agent transitions
         - {"type": "complete", ...} - Final completion event
         - {"type": "error", ...} - Error events
         """
-        from langchain_core.messages import AIMessageChunk
-
         try:
             start_time = datetime.now()
             last_agent = None
             accumulated_text = ""
+            seen_message_ids: set = set()
 
-            for event in self.graph.stream(graph_input, config, stream_mode="messages"):
-                # stream_mode="messages" yields tuples: (message_chunk, metadata)
-                if isinstance(event, tuple) and len(event) == 2:
-                    message_chunk, metadata = event
+            for namespace, event_type, chunk in self.graph.stream(
+                graph_input,
+                config,
+                stream_mode=["messages", "updates"],
+                subgraphs=True,
+            ):
+                # --- Handle "messages" events: text content streaming ---
+                if event_type == "messages":
+                    message_chunk, metadata = chunk
 
-                    # Get the node/agent name from metadata
+                    # Determine message type
+                    message_type = type(message_chunk).__name__
+                    is_chunk = message_type.endswith("Chunk")
+                    message_id = getattr(message_chunk, "id", None)
+
+                    # Skip tool messages entirely
+                    if message_type in ("ToolMessage", "ToolMessageChunk"):
+                        continue
+
+                    # Dedup: skip complete messages we already streamed as chunks.
+                    # When subgraphs=True, LangGraph re-emits the subgraph's final
+                    # complete message at the parent graph level. Without dedup,
+                    # the entire response appears twice.
+                    if not is_chunk and message_id and message_id in seen_message_ids:
+                        logger.debug(
+                            f"Streaming: dedup skipped complete msg {message_id}"
+                        )
+                        continue
+                    if is_chunk and message_id:
+                        seen_message_ids.add(message_id)
+
+                    # Only process AI messages (AIMessage / AIMessageChunk)
+                    if not isinstance(message_chunk, AIMessage):
+                        continue
+
+                    # Get node name from metadata for agent tracking
                     node_name = metadata.get("langgraph_node", "")
-
-                    # Skip internal nodes
                     if node_name == "__end__":
                         continue
 
@@ -365,39 +395,59 @@ class AgentClient(BaseClient):
                             }
                             last_agent = node_name
 
-                    # Extract delta from AIMessageChunk
-                    if isinstance(message_chunk, AIMessageChunk):
-                        content = message_chunk.content
-                        # Content can be string or list of content blocks
-                        if isinstance(content, str) and content:
-                            accumulated_text += content
-                            yield {
-                                "type": "content_delta",
-                                "delta": content,
-                                "timestamp": datetime.now().isoformat(),
-                            }
-                        elif isinstance(content, list):
-                            # Handle content blocks (text blocks)
-                            for block in content:
-                                if (
-                                    isinstance(block, dict)
-                                    and block.get("type") == "text"
-                                ):
-                                    text = block.get("text", "")
-                                    if text:
-                                        accumulated_text += text
-                                        yield {
-                                            "type": "content_delta",
-                                            "delta": text,
-                                            "timestamp": datetime.now().isoformat(),
-                                        }
-                                elif isinstance(block, str) and block:
-                                    accumulated_text += block
+                    # Extract text content from message
+                    content = message_chunk.content
+                    if isinstance(content, str) and content:
+                        accumulated_text += content
+                        yield {
+                            "type": "content_delta",
+                            "delta": content,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    elif isinstance(content, list):
+                        for block in content:
+                            if (
+                                isinstance(block, dict)
+                                and block.get("type") == "text"
+                            ):
+                                text = block.get("text", "")
+                                if text:
+                                    accumulated_text += text
                                     yield {
                                         "type": "content_delta",
-                                        "delta": block,
+                                        "delta": text,
                                         "timestamp": datetime.now().isoformat(),
                                     }
+                            elif isinstance(block, str) and block:
+                                accumulated_text += block
+                                yield {
+                                    "type": "content_delta",
+                                    "delta": block,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+
+                # --- Handle "updates" events: agent transitions (backup) ---
+                elif event_type == "updates":
+                    if isinstance(chunk, dict):
+                        for node_name in chunk:
+                            if node_name in ("__start__", "__end__"):
+                                continue
+                            if node_name != last_agent and node_name != "supervisor":
+                                if node_name.endswith(
+                                    "_expert"
+                                ) or node_name.endswith("_agent"):
+                                    yield {
+                                        "type": "agent_change",
+                                        "agent": node_name,
+                                        "status": "working",
+                                        "timestamp": datetime.now().isoformat(),
+                                    }
+                                    last_agent = node_name
+
+                else:
+                    logger.debug(
+                        f"Streaming: unexpected event_type={event_type}"
+                    )
 
             # Mark last agent as complete
             if last_agent:
@@ -408,6 +458,12 @@ class AgentClient(BaseClient):
                     "timestamp": datetime.now().isoformat(),
                 }
 
+            # Persist assistant response for multi-turn context (parity with _run_query).
+            # Without this, streaming chat mode loses conversation history.
+            if accumulated_text:
+                self.messages.append(AIMessage(content=accumulated_text))
+                self._save_session_json()
+
             # Final completion event with metadata
             token_cost = self.token_tracker.get_latest_cost()
             yield {
@@ -416,7 +472,7 @@ class AgentClient(BaseClient):
                 "session_id": self.session_id,
                 "token_usage": token_cost,
                 "last_agent": last_agent,
-                "response": accumulated_text,  # Include full response for consistency
+                "response": accumulated_text,
             }
 
         except Exception as e:

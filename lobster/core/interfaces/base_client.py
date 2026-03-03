@@ -7,7 +7,7 @@ ensuring consistency between local and cloud implementations.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Union
 
 
 class BaseClient(ABC):
@@ -24,7 +24,7 @@ class BaseClient(ABC):
         pass
 
     @abstractmethod
-    def query(self, user_input: str, stream: bool = False) -> Dict[str, Any]:
+    def query(self, user_input: str, stream: bool = False) -> Union[Dict[str, Any], Generator[Dict[str, Any], None, None]]:
         """
         Process a user query through the system.
 
