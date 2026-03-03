@@ -47,6 +47,7 @@ def create_supervisor_prompt(
         _build_agent_directory(active_agents, config),
         _build_orchestration_principles(),
         _build_response_behavior(config),
+        _build_agent_result_memory(),
     ]
 
     context = _build_live_context(data_manager, config)
@@ -207,6 +208,21 @@ def _build_response_behavior(config: SupervisorConfig) -> str:
         rules.append("- Be concise when delegating.")
 
     return "\n".join(rules)
+
+
+def _build_agent_result_memory() -> str:
+    """Build instructions for the store-backed agent result memory."""
+    return """<Agent Result Memory>
+When you delegate to a sub-agent, the response includes a [store_key=...] reference.
+Full analysis results are stored and retrievable via retrieve_agent_result.
+
+Rules:
+- If you need specific data points (exact p-values, gene lists, full tables),
+  use retrieve_agent_result with the store_key from the delegation response.
+- Do NOT ask the user to repeat information from a previous analysis.
+- Do NOT guess at specific values — retrieve them if needed.
+- When summarizing results to the user, mention that full data is available.
+</Agent Result Memory>"""
 
 
 def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -> str:

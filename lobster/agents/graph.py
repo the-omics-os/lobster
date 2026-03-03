@@ -693,6 +693,39 @@ def create_bioinformatics_graph(
     ]
 
     # ==========================================================================
+    # Context Management: pre_model_hook + retrieve_agent_result
+    # ==========================================================================
+    pre_model_hook = None
+    if store is not None:
+        from lobster.agents.context_management import (
+            create_supervisor_pre_model_hook,
+            resolve_context_budget,
+            resolve_context_window,
+        )
+        from lobster.tools.store_tools import create_retrieve_agent_result_tool
+
+        # Add retrieval tool to supervisor
+        retrieve_tool = create_retrieve_agent_result_tool(store)
+        all_supervisor_tools.append(retrieve_tool)
+
+        # Resolve context budget from provider config
+        context_window = resolve_context_window(
+            provider_override=provider_override,
+            model_override=model_override,
+            workspace_path=workspace_path,
+        )
+        budget = resolve_context_budget(
+            context_window=context_window,
+            tools=all_supervisor_tools,
+        )
+        pre_model_hook = create_supervisor_pre_model_hook(max_tokens=budget)
+
+        logger.info(
+            f"Context management enabled: budget={budget} tokens"
+            + (f" (window={context_window})" if context_window else " (default window)")
+        )
+
+    # ==========================================================================
     # Create supervisor using simple Tool Calling pattern
     # ==========================================================================
     # This is much simpler than the Handoffs pattern:
@@ -709,6 +742,8 @@ def create_bioinformatics_graph(
         tools=all_supervisor_tools,
         prompt=system_prompt,
         state_schema=OverallState,
+        pre_model_hook=pre_model_hook,
+        store=store,
     )
 
     # Wrap in a StateGraph with explicit "supervisor" node name
