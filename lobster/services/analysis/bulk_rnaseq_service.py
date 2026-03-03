@@ -720,9 +720,12 @@ Next suggested step: Import quantification data with tximport for differential e
             try:
                 import gseapy as gp
             except ImportError:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("gseapy")
                 logger.error("GSEApy not installed")
                 raise BulkRNASeqError(
-                    "GSEApy not installed. Install with: pip install gseapy"
+                    f"GSEApy not installed. Install with: {cmd}"
                 )
 
             # Map analysis type to Enrichr gene set libraries

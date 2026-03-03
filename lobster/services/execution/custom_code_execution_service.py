@@ -687,6 +687,7 @@ modalities = []
 # Load specified modality
 try:
     import anndata
+    anndata.settings.allow_write_nullable_strings = True
     modality_path = WORKSPACE / '{modality_name}.h5ad'
     if modality_path.exists():
         adata = anndata.read_h5ad(modality_path)

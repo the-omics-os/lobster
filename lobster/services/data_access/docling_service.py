@@ -204,9 +204,12 @@ class DoclingService:
                 "Initialized Docling converter for structure-aware PDF parsing"
             )
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("docling")
             logger.warning(
-                "Docling not installed, structure-aware extraction unavailable. "
-                "Install with: pip install docling docling-core"
+                f"Docling not installed, structure-aware extraction unavailable. "
+                f"Install with: {cmd}"
             )
             self.converter = None
             self._docling_imports = None
@@ -317,8 +320,11 @@ class DoclingService:
 
         # Check if Docling is available
         if not self.is_available():
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("docling")
             raise DoclingError(
-                "Docling not available. Install with: pip install docling docling-core"
+                f"Docling not available. Install with: {cmd}"
             )
 
         # Import Docling types
@@ -1285,9 +1291,12 @@ class DoclingService:
             PDFExtractionError: If cloudscraper not installed or download fails
         """
         if not CLOUDSCRAPER_AVAILABLE:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("cloudscraper")
             raise PDFExtractionError(
                 f"cloudscraper required for {url} but not installed. "
-                "Install with: pip install cloudscraper"
+                f"Install with: {cmd}"
             )
 
         logger.info(f"Downloading protected content with cloudscraper: {url[:80]}...")

@@ -109,8 +109,11 @@ class GEOService:
             email: Optional email for NCBI Entrez (for backward compatibility, not currently used)
         """
         if GEOparse is None:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("GEOparse")
             raise ImportError(
-                "GEOparse is required but not installed. Please install with: pip install GEOparse"
+                f"GEOparse is required but not installed. Install with: {cmd}"
             )
 
         self.data_manager = data_manager

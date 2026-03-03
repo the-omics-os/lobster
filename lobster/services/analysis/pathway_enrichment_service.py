@@ -124,8 +124,11 @@ class PathwayEnrichmentService:
 
             # Check gseapy is available
             if gp is None:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("gseapy")
                 raise PathwayEnrichmentError(
-                    "gseapy not installed. Install with: pip install gseapy\n"
+                    f"gseapy not installed. Install with: {cmd}\n"
                     "Note: gseapy >=1.1.0 requires Rust compiler. "
                     "Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
                 )
@@ -280,8 +283,11 @@ class PathwayEnrichmentService:
 
             # Check gseapy is available
             if gp is None:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("gseapy")
                 raise PathwayEnrichmentError(
-                    "gseapy not installed. Install with: pip install gseapy"
+                    f"gseapy not installed. Install with: {cmd}"
                 )
 
             # Default databases

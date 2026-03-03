@@ -1096,8 +1096,11 @@ class GEOParser:
             try:
                 import scanpy as sc
             except ImportError:
+                from lobster.core.component_registry import get_install_command
+
+                cmd = get_install_command("scanpy")
                 logger.error(
-                    "scanpy is required for parsing 10X data but not available. Install with: pip install scanpy"
+                    f"scanpy is required for parsing 10X data but not available. Install with: {cmd}"
                 )
                 return None
 

@@ -224,9 +224,12 @@ class ContentAccessService:
             self.registry.register_provider(sra_provider)
             logger.debug("SRAProvider registered successfully")
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("pysradb")
             logger.debug(
-                "pysradb not available - SRA provider disabled. "
-                "Install with: pip install pysradb"
+                f"pysradb not available - SRA provider disabled. "
+                f"Install with: {cmd}"
             )
         except Exception as e:
             logger.error(f"Failed to initialize SRAProvider: {e}")
