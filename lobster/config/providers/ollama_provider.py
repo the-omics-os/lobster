@@ -18,6 +18,7 @@ Example:
 import logging
 import os
 import re
+import threading
 from typing import Any, List, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
@@ -43,6 +44,7 @@ class OllamaProvider(ILLMProvider):
     Configuration:
         - OLLAMA_BASE_URL: Ollama server URL (default: "http://localhost:11434")
         - OLLAMA_DEFAULT_MODEL: Explicit model override (bypasses auto-selection)
+        - OLLAMA_NUM_CTX: Explicit context window override (bypasses auto-detection)
 
     Auto-Selection Priority:
         1. OLLAMA_DEFAULT_MODEL environment variable (explicit override)
@@ -285,9 +287,12 @@ class OllamaProvider(ILLMProvider):
         try:
             from langchain_ollama import ChatOllama
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("ollama", is_extra=True)
             raise ImportError(
-                "langchain-ollama package not installed. "
-                "Install with: pip install lobster-ai[ollama]"
+                f"langchain-ollama package not installed. "
+                f"Install with: {cmd}"
             )
 
         # Build parameters for ChatOllama
@@ -301,8 +306,74 @@ class OllamaProvider(ILLMProvider):
         if self._base_url != "http://localhost:11434":
             ollama_params["base_url"] = self._base_url
 
-        logger.debug(f"Creating ChatOllama with model '{model_id}'")
+        # Set keep_alive to prevent Ollama from evicting the model mid-session.
+        # Ollama's default is 5 minutes, which causes re-loads during longer
+        # conversations. Default 30m covers typical analysis sessions.
+        # Configurable via OLLAMA_KEEP_ALIVE env var.
+        keep_alive = os.environ.get("OLLAMA_KEEP_ALIVE", "30m")
+        ollama_params["keep_alive"] = keep_alive
+
+        # Set num_ctx to ensure the model sees the full supervisor prompt + tools.
+        # Priority: OLLAMA_NUM_CTX env var > /api/show model metadata > 8192 floor.
+        # Without this, Ollama's low default (2048-4096) silently truncates the
+        # prompt, causing the model to lose its instructions and tool definitions.
+        num_ctx = self._resolve_num_ctx(model_id)
+        ollama_params["num_ctx"] = num_ctx
+
+        logger.debug(
+            f"Creating ChatOllama with model '{model_id}', "
+            f"num_ctx={num_ctx}, keep_alive={keep_alive}"
+        )
         return ChatOllama(**ollama_params)
+
+    def preload_model(self, model_id: str, keep_alive: str = "30m") -> None:
+        """
+        Preload a model into Ollama's VRAM by sending an empty generate request.
+
+        Ollama loads model weights on first inference. This method triggers that
+        loading eagerly so the model is warm when the user sends their first query.
+        Intended to be called in a background daemon thread during CLI startup.
+
+        Args:
+            model_id: Ollama model identifier (e.g., "qwen3:8b")
+            keep_alive: How long to keep the model resident after loading
+                        (default: "30m"). Supports Ollama duration syntax.
+        """
+        try:
+            import requests
+
+            resp = requests.post(
+                f"{self._base_url}/api/generate",
+                json={"model": model_id, "prompt": "", "keep_alive": keep_alive},
+                timeout=120,
+            )
+            if resp.status_code == 200:
+                logger.debug(f"Preloaded model '{model_id}' (keep_alive={keep_alive})")
+            else:
+                logger.debug(
+                    f"Preload returned {resp.status_code} for '{model_id}'"
+                )
+        except Exception as e:
+            logger.debug(f"Preload failed for '{model_id}': {e}")
+
+    def preload_model_async(self, model_id: str, keep_alive: str = "30m") -> None:
+        """
+        Fire preload_model() in a background daemon thread.
+
+        Call this during CLI startup to overlap model loading with client
+        initialization. The thread is daemonic so it won't block process exit.
+
+        Args:
+            model_id: Ollama model identifier
+            keep_alive: How long to keep the model resident
+        """
+        thread = threading.Thread(
+            target=self.preload_model,
+            args=(model_id, keep_alive),
+            daemon=True,
+        )
+        thread.start()
+        logger.debug(f"Started background preload for '{model_id}'")
 
     def validate_model(self, model_id: str) -> bool:
         """
@@ -338,7 +409,8 @@ class OllamaProvider(ILLMProvider):
             "3. Pull a model: ollama pull llama3:70b-instruct\n\n"
             "Environment Variables:\n"
             "  OLLAMA_BASE_URL: Server URL (default: http://localhost:11434)\n"
-            "  OLLAMA_DEFAULT_MODEL: Model name (default: auto-select best)\n\n"
+            "  OLLAMA_DEFAULT_MODEL: Model name (default: auto-select best)\n"
+            "  OLLAMA_NUM_CTX: Context window override (default: auto-detect from model)\n\n"
             "Current Configuration:\n"
             f"  Base URL: {self._base_url}\n"
             f"  Server Available: {self.is_available()}\n"
@@ -433,9 +505,114 @@ class OllamaProvider(ILLMProvider):
         }
         return value * multipliers.get(unit, 1)
 
+    # ---- Context Window Resolution ----
+
+    _MIN_NUM_CTX = 8192
+
+    def _resolve_num_ctx(self, model_id: str) -> int:
+        """
+        Determine the optimal num_ctx for a model.
+
+        Resolution order:
+        1. OLLAMA_NUM_CTX environment variable (power-user override)
+        2. Model's native context_length from /api/show metadata
+        3. Minimum floor (8192)
+
+        This ensures the full supervisor prompt + tool schemas (~6-7K tokens)
+        always fit, while respecting each model's trained capacity. Ollama
+        handles VRAM management automatically — if the context requires more
+        VRAM than available, it offloads layers to CPU.
+
+        Args:
+            model_id: Ollama model identifier
+
+        Returns:
+            int: Context window size to pass as num_ctx
+        """
+        # 1. Explicit env var override
+        env_ctx = os.environ.get("OLLAMA_NUM_CTX")
+        if env_ctx:
+            try:
+                val = int(env_ctx)
+                logger.debug(f"Using OLLAMA_NUM_CTX={val} from environment")
+                return val
+            except ValueError:
+                logger.warning(
+                    f"Invalid OLLAMA_NUM_CTX='{env_ctx}', falling back to auto-detection"
+                )
+
+        # 2. Query model's native context length from Ollama
+        model_ctx = self._get_model_context_length(model_id)
+        if model_ctx > 0:
+            result = max(model_ctx, self._MIN_NUM_CTX)
+            logger.debug(
+                f"Model '{model_id}' native context_length={model_ctx}, "
+                f"using num_ctx={result}"
+            )
+            return result
+
+        # 3. Minimum floor fallback
+        logger.debug(
+            f"Could not detect context length for '{model_id}', "
+            f"using minimum num_ctx={self._MIN_NUM_CTX}"
+        )
+        return self._MIN_NUM_CTX
+
+    def _get_model_context_length(self, model_id: str) -> int:
+        """
+        Query Ollama's /api/show endpoint for the model's trained context length.
+
+        The response contains model_info with architecture-specific keys like
+        "qwen3.context_length" or "llama.context_length". This is the model
+        author's specification — the most reliable source of truth.
+
+        Args:
+            model_id: Ollama model identifier
+
+        Returns:
+            int: Trained context length, or 0 if detection fails
+        """
+        try:
+            import requests
+
+            resp = requests.post(
+                f"{self._base_url}/api/show",
+                json={"model": model_id},
+                timeout=5,
+            )
+            if resp.status_code != 200:
+                logger.debug(
+                    f"/api/show returned {resp.status_code} for '{model_id}'"
+                )
+                return 0
+
+            data = resp.json()
+            model_info = data.get("model_info", {})
+
+            # Find <architecture>.context_length key
+            for key, value in model_info.items():
+                if key.endswith(".context_length"):
+                    ctx_len = int(value)
+                    logger.debug(
+                        f"Detected {key}={ctx_len} for '{model_id}'"
+                    )
+                    return ctx_len
+
+            logger.debug(
+                f"No context_length key found in model_info for '{model_id}'"
+            )
+            return 0
+
+        except Exception as e:
+            logger.debug(f"Failed to query /api/show for '{model_id}': {e}")
+            return 0
+
     def _estimate_context_window(self, model_name: str) -> Optional[int]:
         """
-        Estimate context window size from model name.
+        Get context window size for a model.
+
+        Attempts live detection via /api/show first, falls back to
+        name-based heuristics for offline estimation.
 
         Args:
             model_name: Model identifier
@@ -443,17 +620,22 @@ class OllamaProvider(ILLMProvider):
         Returns:
             Optional[int]: Context window size (tokens) or None
         """
-        # Common context windows by model family
+        # Try live detection first
+        live_ctx = self._get_model_context_length(model_name)
+        if live_ctx > 0:
+            return live_ctx
+
+        # Fallback: name-based heuristics
         model_lower = model_name.lower()
 
         if "llama3" in model_lower or "llama-3" in model_lower:
-            return 8192  # Llama 3 has 8K context
+            return 8192
         elif "mixtral" in model_lower:
-            return 32768  # Mixtral has 32K context
+            return 32768
         elif "gpt-oss" in model_lower:
-            return 8192  # gpt-oss has 8K context
+            return 8192
         else:
-            return None  # Unknown
+            return None
 
     def _score_model(self, model_name: str) -> int:
         """

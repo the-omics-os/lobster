@@ -1504,24 +1504,16 @@ def _check_and_prompt_install_packages(
     for agent in missing:
         console.print(f"  [dim]- {agent}[/dim]")
 
-    # Map agents to packages (best effort)
-    packages_to_install = set()
-    agent_to_package = {
-        "transcriptomics_expert": "lobster-transcriptomics",
-        "annotation_expert": "lobster-transcriptomics",
-        "de_analysis_expert": "lobster-transcriptomics",
-        "proteomics_expert": "lobster-proteomics",
-        "genomics_expert": "lobster-genomics",
-        "visualization_expert_agent": "lobster-visualization",
-        "research_agent": "lobster-research",
-        "metadata_assistant": "lobster-metadata",
-    }
+    # Map agents to packages using centralized mapping
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
 
+    packages_to_install = set()
     for agent in missing:
-        if agent in agent_to_package:
-            packages_to_install.add(agent_to_package[agent])
+        pkg = AGENT_TO_PACKAGE.get(agent)
+        if pkg:
+            packages_to_install.add(pkg)
         else:
-            # Try guessing package name
+            # Try guessing package name for unknown agents
             packages_to_install.add(
                 f"lobster-{agent.replace('_agent', '').replace('_expert', '')}"
             )
@@ -2082,26 +2074,28 @@ def init_client(
             model_override=model_override,  # Pass model override from CLI flag
         )
     except ImportError as e:
-        # Catch missing LLM provider packages (e.g. langchain-aws not installed)
-        from lobster.core.uv_tool_env import is_uv_tool_env
+        # Catch missing LLM provider packages (e.g. langchain-aws not installed).
+        # Provider create_chat_model() methods now emit environment-aware install
+        # commands via get_install_command(), so the error message already contains
+        # the correct command for uv tool envs, venvs, etc.
+        #
+        # IMPORTANT: Use rich.markup.escape() on error_msg because it may contain
+        # literal square brackets (e.g., lobster-ai[bedrock]) which Rich would
+        # otherwise interpret as markup tags and silently strip.
+        from rich.markup import escape as rich_escape
 
         error_msg = str(e)
         console.print("\n[red bold]Missing provider package[/red bold]")
-        console.print(f"[red]  {error_msg}[/red]\n")
-        console.print("[yellow]How to fix:[/yellow]")
-        # Extract the lobster-ai extra name from "pip install lobster-ai[extra]"
-        extra_name = None
-        if "lobster-ai[" in error_msg:
-            extra_name = error_msg.split("lobster-ai[")[1].split("]")[0]
-        if extra_name and is_uv_tool_env():
-            console.print(
-                f"  [white]Run:[/white] [dim]uv tool install 'lobster-ai[{extra_name}]'[/dim]"
-            )
-        elif extra_name:
-            console.print(
-                f"  [white]Run:[/white] [dim]pip install 'lobster-ai[{extra_name}]'[/dim]"
-            )
+        console.print(f"[red]  {rich_escape(error_msg)}[/red]\n")
+
+        # The error message from providers includes "Install with: <cmd>".
+        # Extract and highlight the install command if present.
+        if "Install with:" in error_msg:
+            cmd = error_msg.split("Install with:")[-1].strip()
+            console.print("[yellow]How to fix:[/yellow]")
+            console.print(f"  [white]Run:[/white] [dim]{rich_escape(cmd)}[/dim]")
         else:
+            console.print("[yellow]How to fix:[/yellow]")
             console.print(
                 "  [white]Run:[/white] [dim]lobster init[/dim] to configure your LLM provider"
             )
@@ -2110,12 +2104,14 @@ def init_client(
     except ValueError as e:
         # Catch missing-credential errors from LLM providers and present
         # clear, actionable instructions instead of a raw traceback.
+        from rich.markup import escape as rich_escape
+
         error_msg = str(e)
         resolved_provider = provider_override or "configured provider"
         console.print(
-            f"\n[red bold]Missing credentials for provider '{resolved_provider}'[/red bold]"
+            f"\n[red bold]Missing credentials for provider '{rich_escape(resolved_provider)}'[/red bold]"
         )
-        console.print(f"[red]  {error_msg}[/red]\n")
+        console.print(f"[red]  {rich_escape(error_msg)}[/red]\n")
         console.print("[yellow]How to fix:[/yellow]")
         console.print(
             f"  1. [white]Add the key to the workspace .env file:[/white]\n"
@@ -4538,17 +4534,8 @@ def _uv_tool_env_handoff(
         except ImportError:
             extras.append("vector-search")
 
-    # Determine additional --with packages for agents
-    agent_to_package = {
-        "transcriptomics_expert": "lobster-transcriptomics",
-        "annotation_expert": "lobster-transcriptomics",
-        "de_analysis_expert": "lobster-transcriptomics",
-        "proteomics_expert": "lobster-proteomics",
-        "genomics_expert": "lobster-genomics",
-        "visualization_expert_agent": "lobster-visualization",
-        "research_agent": "lobster-research",
-        "metadata_assistant": "lobster-metadata",
-    }
+    # Determine additional --with packages for agents (centralized mapping)
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
 
     # Only include packages that are published on public PyPI
     _published_packages = {pkg for pkg, _, _, pub in AVAILABLE_AGENT_PACKAGES if pub}
@@ -4557,7 +4544,7 @@ def _uv_tool_env_handoff(
     if selected_agents:
         needed = set()
         for agent in selected_agents:
-            pkg = agent_to_package.get(agent)
+            pkg = AGENT_TO_PACKAGE.get(agent)
             if pkg:
                 needed.add(pkg)
         # Only include packages not already in the receipt AND published on PyPI
@@ -4674,11 +4661,11 @@ def _prompt_docling_install() -> None:
             console.print("  [green]✓[/green] Docling installed")
         else:
             console.print(
-                "  [yellow]⚠ Install manually: pip install 'lobster-ai[docling]'[/yellow]"
+                "  [yellow]⚠ Install manually: pip install 'lobster-ai\\[docling]'[/yellow]"
             )
     else:
         console.print(
-            "  [dim]Skipped. Install later: pip install 'lobster-ai[docling]'[/dim]"
+            "  [dim]Skipped. Install later: pip install 'lobster-ai\\[docling]'[/dim]"
         )
 
 
@@ -4784,7 +4771,7 @@ def _prompt_smart_standardization(
 
     if choice != "1":
         console.print(
-            "  [dim]Skipped. Enable later: pip install 'lobster-ai[vector-search]' && lobster init --force[/dim]"
+            "  [dim]Skipped. Enable later: pip install 'lobster-ai\\[vector-search]' && lobster init --force[/dim]"
         )
         return []
 
@@ -4824,7 +4811,7 @@ def _prompt_smart_standardization(
         console.print("  [green]✓[/green] Dependencies installed")
     else:
         console.print(
-            "  [yellow]⚠ Install manually: pip install 'lobster-ai[vector-search]'[/yellow]"
+            "  [yellow]⚠ Install manually: pip install 'lobster-ai\\[vector-search]'[/yellow]"
         )
         return env_lines  # Return env lines even if install failed — user can retry
 
@@ -5364,7 +5351,7 @@ def init(
                     console.print("[green]✓ Docling installed[/green]")
                 else:
                     console.print(
-                        "[yellow]⚠ Docling install failed. Run: pip install 'lobster-ai[docling]'[/yellow]"
+                        "[yellow]⚠ Docling install failed. Run: pip install 'lobster-ai\\[docling]'[/yellow]"
                     )
 
             # Install vector search if requested (Smart Standardization — OpenAI)
@@ -5381,7 +5368,7 @@ def init(
                     env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
                 else:
                     console.print(
-                        "[yellow]⚠ Install manually: pip install 'lobster-ai[vector-search]'[/yellow]"
+                        "[yellow]⚠ Install manually: pip install 'lobster-ai\\[vector-search]'[/yellow]"
                     )
 
             # Extended data + TUI (silent)
@@ -6397,6 +6384,19 @@ def chat(
 
     # Show DNA animation (starts instantly thanks to lazy imports)
     display_welcome()
+
+    # Eagerly preload Ollama model in background while client initializes.
+    # This overlaps model weight loading with graph creation, so the model
+    # is warm by the time the user types their first query.
+    if provider and provider.lower() == "ollama" and model:
+        try:
+            from lobster.config.providers import get_provider
+
+            _ollama = get_provider("ollama")
+            if _ollama:
+                _ollama.preload_model_async(model)
+        except Exception:
+            pass  # Non-critical — user gets normal cold-load if this fails
 
     # Initialize client (heavy imports happen here)
     try:
@@ -7577,10 +7577,14 @@ when they are started by agents or analysis workflows.
                 f"Vector search for '{query_text}': {total} matches across 3 ontologies"
             )
         except ImportError as e:
-            console.print(f"[red]{e}[/red]")
+            from rich.markup import escape as rich_escape
+
+            console.print(f"[red]{rich_escape(str(e))}[/red]")
             return None
         except Exception as e:
-            console.print(f"[red]Vector search error: {e}[/red]")
+            from rich.markup import escape as rich_escape
+
+            console.print(f"[red]Vector search error: {rich_escape(str(e))}[/red]")
             return None
 
     elif cmd == "/clear":
@@ -7654,7 +7658,7 @@ def dashboard_command(
     except ImportError:
         console.print(
             "[yellow]TUI mode requires the textual package.[/yellow]\n"
-            "Install with: [bold]pip install lobster-ai[tui][/bold]\n"
+            "Install with: [bold]pip install lobster-ai\\[tui][/bold]\n"
             "Or run: [bold]lobster init[/bold] to set up everything"
         )
         raise typer.Exit(1)
@@ -8491,10 +8495,14 @@ def vector_search_cmd(
         indent = 2 if pretty else None
         print(json.dumps(result, indent=indent))
     except ImportError as e:
-        console.print(f"[red]{e}[/red]", stderr=True)
+        from rich.markup import escape as rich_escape
+
+        console.print(f"[red]{rich_escape(str(e))}[/red]", stderr=True)
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Vector search error: {e}[/red]", stderr=True)
+        from rich.markup import escape as rich_escape
+
+        console.print(f"[red]Vector search error: {rich_escape(str(e))}[/red]", stderr=True)
         raise typer.Exit(1)
 
 
