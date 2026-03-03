@@ -297,6 +297,96 @@ def _create_lazy_delegation_tool(
     return invoke_agent_lazy
 
 
+def _resolve_worker_agents(
+    enabled_agents: Optional[List[str]],
+    config: Optional["WorkspaceAgentConfig"],
+    agent_filter: callable,
+    subscription_tier: str,
+) -> Tuple[Dict, List[str], set]:
+    """Resolve which agents to include in the graph.
+
+    Applies three filters in order:
+    1. enabled_agents param > config.enabled_agents > all discovered agents
+    2. Auto-include child agents for enabled parents
+    3. Tier-based agent_filter
+
+    Args:
+        enabled_agents: Explicit agent list (None = defer, [] = zero agents)
+        config: Optional WorkspaceAgentConfig
+        agent_filter: Callable(name, config) -> bool for tier gating
+        subscription_tier: Current tier (for logging only)
+
+    Returns:
+        (worker_agents, filtered_out_agents, child_agent_names):
+            - worker_agents: Dict of agent configs that passed all filters
+            - filtered_out_agents: Names excluded by tier filter
+            - child_agent_names: Set of names that are children (not supervisor-accessible)
+    """
+    from lobster.core.component_registry import component_registry
+
+    all_agents = component_registry.list_agents()
+
+    # Resolve enabled agents: param > config > all
+    # `is not None` (not truthiness) so enabled_agents=[] means "zero agents"
+    # config.enabled_agents uses truthiness because [] is its default (= no preference)
+    if enabled_agents is not None:
+        enabled_set = set(enabled_agents)
+        logger.debug(f"Using enabled_agents param: {enabled_set}")
+    elif config and config.enabled_agents:
+        enabled_set = set(config.enabled_agents)
+        logger.debug(f"Using config.enabled_agents: {enabled_set}")
+    else:
+        enabled_set = None  # All agents enabled
+        logger.debug("No enabled_agents filter - using all available agents")
+
+    # Filter to enabled agents
+    if enabled_set is not None:
+        worker_agents = {n: c for n, c in all_agents.items() if n in enabled_set}
+        # Auto-include child agents for enabled parents
+        child_additions = {}
+        for agent_name, agent_config in list(worker_agents.items()):
+            if agent_config.child_agents:
+                for child_name in agent_config.child_agents:
+                    if child_name not in worker_agents and child_name in all_agents:
+                        child_additions[child_name] = all_agents[child_name]
+        if child_additions:
+            worker_agents.update(child_additions)
+            logger.info(
+                f"Auto-included child agents for enabled parents: {list(child_additions.keys())}"
+            )
+        skipped = enabled_set - set(worker_agents.keys())
+        if skipped:
+            logger.debug(f"Config requested agents not available: {skipped}")
+    else:
+        worker_agents = all_agents
+
+    # Apply tier-based restrictions
+    filtered_worker_agents = {}
+    filtered_out_agents = []
+    for agent_name, agent_config in worker_agents.items():
+        if agent_filter(agent_name, agent_config):
+            filtered_worker_agents[agent_name] = agent_config
+        else:
+            filtered_out_agents.append(agent_name)
+    if filtered_out_agents:
+        logger.info(
+            f"Tier '{subscription_tier}' excludes agents: {filtered_out_agents}"
+        )
+    worker_agents = filtered_worker_agents
+
+    # Pre-compute child agents for supervisor_accessible inference
+    child_agent_names = set()
+    for agent_config in worker_agents.values():
+        if agent_config.child_agents:
+            child_agent_names.update(agent_config.child_agents)
+    if child_agent_names:
+        logger.debug(
+            f"Child agents (not supervisor-accessible by default): {child_agent_names}"
+        )
+
+    return worker_agents, filtered_out_agents, child_agent_names
+
+
 def create_bioinformatics_graph(
     data_manager: DataManagerV2,
     checkpointer: InMemorySaver = None,
@@ -392,79 +482,16 @@ def create_bioinformatics_graph(
         )
         supervisor_model = supervisor_model.with_config(callbacks=callbacks)
 
-    # ==========================================================================
-    # Agent Discovery: Use ComponentRegistry as single source of truth (GRAPH-05)
-    # ==========================================================================
-    from lobster.core.component_registry import component_registry
+    # Agent discovery, filtering, and tier gating
+    worker_agents, filtered_out_agents, child_agent_names = _resolve_worker_agents(
+        enabled_agents=enabled_agents,
+        config=config,
+        agent_filter=agent_filter,
+        subscription_tier=subscription_tier,
+    )
 
     created_agents: Dict[str, Any] = {}
     agent_tools = []  # Tools for supervisor to invoke sub-agents
-
-    # Get ALL agents from ComponentRegistry (single source of truth)
-    all_agents = component_registry.list_agents()
-
-    # Resolve enabled agents: enabled_agents param > config.enabled_agents > all available
-    # Note: `is not None` (not truthiness) so enabled_agents=[] means "zero agents"
-    # while None means "no preference, defer to config or all agents".
-    # config.enabled_agents uses truthiness because [] is its default (= no preference).
-    if enabled_agents is not None:
-        enabled_set = set(enabled_agents)
-        logger.debug(f"Using enabled_agents param: {enabled_set}")
-    elif config and config.enabled_agents:
-        enabled_set = set(config.enabled_agents)
-        logger.debug(f"Using config.enabled_agents: {enabled_set}")
-    else:
-        enabled_set = None  # All agents enabled
-        logger.debug("No enabled_agents filter - using all available agents")
-
-    # Filter to enabled agents
-    if enabled_set is not None:
-        worker_agents = {n: c for n, c in all_agents.items() if n in enabled_set}
-        # Auto-include child agents for enabled parents
-        # When a parent is enabled, its children MUST also be in worker_agents
-        # otherwise delegation tools won't be created.
-        child_additions = {}
-        for agent_name, agent_config in list(worker_agents.items()):
-            if agent_config.child_agents:
-                for child_name in agent_config.child_agents:
-                    if child_name not in worker_agents and child_name in all_agents:
-                        child_additions[child_name] = all_agents[child_name]
-        if child_additions:
-            worker_agents.update(child_additions)
-            logger.info(
-                f"Auto-included child agents for enabled parents: {list(child_additions.keys())}"
-            )
-        # Log agents requested but not available
-        skipped = enabled_set - set(worker_agents.keys())
-        if skipped:
-            logger.debug(f"Config requested agents not available: {skipped}")
-    else:
-        worker_agents = all_agents
-
-    # Apply agent filter for tier-based restrictions
-    filtered_worker_agents = {}
-    filtered_out_agents = []
-    for agent_name, agent_config in worker_agents.items():
-        if agent_filter(agent_name, agent_config):
-            filtered_worker_agents[agent_name] = agent_config
-        else:
-            filtered_out_agents.append(agent_name)
-    if filtered_out_agents:
-        logger.info(
-            f"Tier '{subscription_tier}' excludes agents: {filtered_out_agents}"
-        )
-    worker_agents = filtered_worker_agents
-
-    # Pre-compute child agents for supervisor_accessible inference
-    # Agents that appear in ANY parent's child_agents are NOT supervisor-accessible by default
-    child_agent_names = set()
-    for agent_config in worker_agents.values():
-        if agent_config.child_agents:
-            child_agent_names.update(agent_config.child_agents)
-    if child_agent_names:
-        logger.debug(
-            f"Child agents (not supervisor-accessible by default): {child_agent_names}"
-        )
 
     # ==========================================================================
     # SINGLE PASS: Create all agents with lazy delegation tools (GRAPH-03)

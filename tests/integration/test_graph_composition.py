@@ -256,12 +256,12 @@ class TestGraphCompositionPhase5:
         assert "research_agent" in registry_agents
 
     def test_graph_source_code_uses_component_registry(self):
-        """Verify graph.py imports and uses component_registry."""
+        """Verify graph.py uses component_registry for agent discovery."""
         import lobster.agents.graph as graph_module
 
-        source = inspect.getsource(graph_module.create_bioinformatics_graph)
+        # Check module-level source (helpers may be extracted from the main function)
+        source = inspect.getsource(graph_module)
 
-        # Should import from component_registry
         assert "component_registry" in source, "Should use component_registry"
         assert "list_agents" in source, "Should call list_agents()"
 
