@@ -12,21 +12,25 @@ class TestApproximateTokenCount:
 
     def test_empty_string(self):
         from lobster.agents.context_management import approximate_token_count
+
         assert approximate_token_count("") == 0
 
     def test_short_string(self):
         from lobster.agents.context_management import approximate_token_count
+
         # "hello" = 5 chars -> int(5/4 + 3) = int(4.25) = 4
         assert approximate_token_count("hello") == 4
 
     def test_long_string(self):
         from lobster.agents.context_management import approximate_token_count
+
         text = "a" * 1000
         result = approximate_token_count(text)
         assert result == int(1000 / 4.0 + 3.0)  # 253
 
     def test_none_returns_zero(self):
         from lobster.agents.context_management import approximate_token_count
+
         assert approximate_token_count(None) == 0
 
 
@@ -46,6 +50,7 @@ class TestMeasureToolSchemaTokens:
 
     def test_empty_tools(self):
         from lobster.agents.context_management import measure_tool_schema_tokens
+
         assert measure_tool_schema_tokens([]) == 0
 
     def test_multiple_tools(self):
@@ -74,11 +79,13 @@ class TestResolveContextBudget:
             DEFAULT_CONTEXT_WINDOW,
             resolve_context_budget,
         )
+
         budget = resolve_context_budget()
         assert 0 < budget < DEFAULT_CONTEXT_WINDOW
 
     def test_explicit_context_window(self):
         from lobster.agents.context_management import resolve_context_budget
+
         budget = resolve_context_budget(context_window=100_000)
         assert budget < 100_000
         assert budget > 0
@@ -97,11 +104,13 @@ class TestResolveContextBudget:
 
     def test_minimum_budget_floor(self):
         from lobster.agents.context_management import resolve_context_budget
+
         budget = resolve_context_budget(context_window=100)
         assert budget >= 4096
 
     def test_small_model_budget(self):
         from lobster.agents.context_management import resolve_context_budget
+
         budget = resolve_context_budget(context_window=40_000)
         assert budget > 4096
         assert budget < 40_000
@@ -112,11 +121,13 @@ class TestCreateSupervisorPreModelHook:
 
     def test_returns_callable(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=100_000)
         assert callable(hook)
 
     def test_empty_messages(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=100_000)
         result = hook({"messages": []})
         assert "llm_input_messages" in result
@@ -124,6 +135,7 @@ class TestCreateSupervisorPreModelHook:
 
     def test_no_trimming_when_under_budget(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=100_000)
         messages = [
             SystemMessage(content="System prompt"),
@@ -134,6 +146,7 @@ class TestCreateSupervisorPreModelHook:
 
     def test_trims_when_over_budget(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=100)
         messages = [
             SystemMessage(content="System prompt"),
@@ -149,6 +162,7 @@ class TestCreateSupervisorPreModelHook:
 
     def test_preserves_system_message(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=100)
         messages = [
             SystemMessage(content="System prompt"),
@@ -162,6 +176,7 @@ class TestCreateSupervisorPreModelHook:
 
     def test_keeps_most_recent_messages(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=200)
         messages = [
             SystemMessage(content="Sys"),
@@ -177,6 +192,7 @@ class TestCreateSupervisorPreModelHook:
     def test_returns_llm_input_messages_key(self):
         """Verify hook uses non-destructive llm_input_messages bypass."""
         from lobster.agents.context_management import create_supervisor_pre_model_hook
+
         hook = create_supervisor_pre_model_hook(max_tokens=100_000)
         result = hook({"messages": [HumanMessage(content="hi")]})
         assert "llm_input_messages" in result

@@ -136,7 +136,9 @@ class TestRetrievalRoundTrip:
         store = InMemoryStore()
 
         # Simulate delegation storing a result
-        key = store_delegation_result(store, "research_agent", "PubMed search results: 42 papers found")
+        key = store_delegation_result(
+            store, "research_agent", "PubMed search results: 42 papers found"
+        )
 
         # Create retrieval tool and invoke
         retrieve_tool = create_retrieve_agent_result_tool(store)
@@ -158,7 +160,9 @@ class TestRetrievalRoundTrip:
         # Create delegation tool
         mock_agent = MagicMock()
         mock_msg = MagicMock()
-        mock_msg.content = "Gene list: BRCA1, TP53, EGFR with p-values 0.001, 0.003, 0.01"
+        mock_msg.content = (
+            "Gene list: BRCA1, TP53, EGFR with p-values 0.001, 0.003, 0.01"
+        )
         mock_agent.invoke.return_value = {"messages": [mock_msg]}
 
         delegation_tool = _create_agent_tool(
@@ -170,7 +174,9 @@ class TestRetrievalRoundTrip:
         )
 
         # Step 1: Delegation stores result
-        delegation_result = delegation_tool.invoke({"task_description": "Run DE analysis"})
+        delegation_result = delegation_tool.invoke(
+            {"task_description": "Run DE analysis"}
+        )
 
         # Extract store_key from delegation result
         match = re.search(r"\[store_key=([^\]]+)\]", delegation_result)
@@ -335,7 +341,9 @@ class TestEndToEndContextFlow:
             store=store,
         )
 
-        delegation_result = delegation_tool.invoke({"task_description": "Search PubMed"})
+        delegation_result = delegation_tool.invoke(
+            {"task_description": "Search PubMed"}
+        )
         match = re.search(r"\[store_key=([^\]]+)\]", delegation_result)
         assert match is not None
         store_key = match.group(1)

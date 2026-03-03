@@ -140,7 +140,9 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
     return None
 
 
-def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str, store=None):
+def _create_agent_tool(
+    agent_name: str, agent, tool_name: str, description: str, store=None
+):
     """Create a tool that invokes a sub-agent (Tool Calling pattern).
 
     This follows the LangChain Tool Calling pattern where sub-agents are
@@ -170,7 +172,9 @@ def _create_agent_tool(agent_name: str, agent, tool_name: str, description: str,
                 including all relevant context. Should be in task format starting
                 with 'Your task is to ...'
         """
-        logger.warning(f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ===")
+        logger.warning(
+            f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ==="
+        )
 
         # Pass explicit agent name in config for proper callback attribution.
         # metadata propagates to all sub-calls and is passed to handle*Start
@@ -562,9 +566,9 @@ def create_bioinformatics_graph(
         # which creates a separate execution context (not a subgraph), so the
         # parent graph's recursion_limit does NOT propagate.
         try:
-            created_agents[agent_name] = factory_function(
-                **factory_kwargs
-            ).with_config({"recursion_limit": 50})
+            created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
+                {"recursion_limit": 50}
+            )
         except Exception as e:
             logger.warning(
                 f"Skipping agent '{agent_name}': factory execution failed: {e}"

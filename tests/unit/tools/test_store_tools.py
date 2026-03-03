@@ -27,10 +27,14 @@ class TestRetrieveAgentResultTool:
 
     def test_retrieves_stored_result(self):
         store = InMemoryStore()
-        store.put(("agent_results",), "test_key_123", {
-            "content": "Full analysis data here",
-            "agent": "transcriptomics_expert",
-        })
+        store.put(
+            ("agent_results",),
+            "test_key_123",
+            {
+                "content": "Full analysis data here",
+                "agent": "transcriptomics_expert",
+            },
+        )
         tool_fn, _ = self._make_tool(store)
         result = tool_fn.invoke({"store_key": "test_key_123"})
         assert "Full analysis data here" in result
@@ -44,10 +48,14 @@ class TestRetrieveAgentResultTool:
     def test_truncates_large_results(self):
         store = InMemoryStore()
         large_content = "x" * 50_000
-        store.put(("agent_results",), "big_key", {
-            "content": large_content,
-            "agent": "test_agent",
-        })
+        store.put(
+            ("agent_results",),
+            "big_key",
+            {
+                "content": large_content,
+                "agent": "test_agent",
+            },
+        )
         tool_fn, _ = self._make_tool(store)
         result = tool_fn.invoke({"store_key": "big_key"})
         assert len(result) < 50_000
