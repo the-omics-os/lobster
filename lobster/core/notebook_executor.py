@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Union
 
 import anndata
 import nbformat
-
 import papermill
 
 from lobster.core.data_manager_v2 import DataManagerV2

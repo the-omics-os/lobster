@@ -406,10 +406,7 @@ class AgentClient(BaseClient):
                         }
                     elif isinstance(content, list):
                         for block in content:
-                            if (
-                                isinstance(block, dict)
-                                and block.get("type") == "text"
-                            ):
+                            if isinstance(block, dict) and block.get("type") == "text":
                                 text = block.get("text", "")
                                 if text:
                                     accumulated_text += text
@@ -433,9 +430,9 @@ class AgentClient(BaseClient):
                             if node_name in ("__start__", "__end__"):
                                 continue
                             if node_name != last_agent and node_name != "supervisor":
-                                if node_name.endswith(
-                                    "_expert"
-                                ) or node_name.endswith("_agent"):
+                                if node_name.endswith("_expert") or node_name.endswith(
+                                    "_agent"
+                                ):
                                     yield {
                                         "type": "agent_change",
                                         "agent": node_name,
@@ -445,9 +442,7 @@ class AgentClient(BaseClient):
                                     last_agent = node_name
 
                 else:
-                    logger.debug(
-                        f"Streaming: unexpected event_type={event_type}"
-                    )
+                    logger.debug(f"Streaming: unexpected event_type={event_type}")
 
             # Mark last agent as complete
             if last_agent:

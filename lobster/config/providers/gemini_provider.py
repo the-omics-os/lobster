@@ -232,8 +232,7 @@ class GeminiProvider(ILLMProvider):
 
             cmd = get_install_command("gemini", is_extra=True)
             raise ImportError(
-                f"langchain-google-genai package not installed. "
-                f"Install with: {cmd}"
+                f"langchain-google-genai package not installed. " f"Install with: {cmd}"
             )
 
         # Validate model ID

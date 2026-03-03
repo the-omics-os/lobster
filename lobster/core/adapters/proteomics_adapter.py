@@ -204,7 +204,9 @@ class ProteomicsAdapter(BaseAdapter):
                 # Heuristic: way more rows than columns → features are likely rows
                 first_col_vals = df.index.astype(str)[:20]
                 looks_like_ids = sum(
-                    1 for v in first_col_vals if not v.replace(".", "").replace("-", "").isdigit()
+                    1
+                    for v in first_col_vals
+                    if not v.replace(".", "").replace("-", "").isdigit()
                 )
                 if looks_like_ids > len(first_col_vals) * 0.5:
                     transpose = True
@@ -711,7 +713,9 @@ class ProteomicsAdapter(BaseAdapter):
 
         if "is_reverse" in adata.var.columns:
             try:
-                metrics["reverse_hits"] = int(adata.var["is_reverse"].astype(bool).sum())
+                metrics["reverse_hits"] = int(
+                    adata.var["is_reverse"].astype(bool).sum()
+                )
             except (TypeError, ValueError):
                 metrics["reverse_hits"] = 0
 

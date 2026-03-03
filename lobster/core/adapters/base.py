@@ -31,21 +31,23 @@ class BaseAdapter(IModalityAdapter):
 
     # Lobster-internal kwargs that must NOT be passed to pandas read functions.
     # Subclasses may extend this set in their own filtering logic.
-    _LOBSTER_INTERNAL_KWARGS = frozenset({
-        "adapter",
-        "dataset_id",
-        "dataset_type",
-        "intensity_columns",
-        "missing_value_indicators",
-        "orientation",
-        "protein_id_col",
-        "sample_metadata_path",
-        "transpose",
-        "validate",
-        "metabolite_id_col",
-        "gene_id_col",
-        "modality_name",
-    })
+    _LOBSTER_INTERNAL_KWARGS = frozenset(
+        {
+            "adapter",
+            "dataset_id",
+            "dataset_type",
+            "intensity_columns",
+            "missing_value_indicators",
+            "orientation",
+            "protein_id_col",
+            "sample_metadata_path",
+            "transpose",
+            "validate",
+            "metabolite_id_col",
+            "gene_id_col",
+            "modality_name",
+        }
+    )
 
     def __init__(
         self, name: Optional[str] = None, config: Optional[Dict[str, Any]] = None
@@ -119,7 +121,11 @@ class BaseAdapter(IModalityAdapter):
                 sep = ","  # Default
 
         try:
-            safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+            safe_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k not in self._LOBSTER_INTERNAL_KWARGS
+            }
             df = pd.read_csv(path, sep=sep, index_col=index_col, **safe_kwargs)
             self.logger.info(f"Loaded CSV data from {path}: shape {df.shape}")
             return df
@@ -146,7 +152,11 @@ class BaseAdapter(IModalityAdapter):
             pd.DataFrame: Loaded data
         """
         try:
-            safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+            safe_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k not in self._LOBSTER_INTERNAL_KWARGS
+            }
             df = pd.read_excel(
                 path, sheet_name=sheet_name, index_col=index_col, **safe_kwargs
             )
@@ -176,7 +186,11 @@ class BaseAdapter(IModalityAdapter):
                 f"pyarrow is required to load parquet files. Install with: {cmd}"
             )
         try:
-            safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+            safe_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k not in self._LOBSTER_INTERNAL_KWARGS
+            }
             df = pd.read_parquet(path, **safe_kwargs)
             self.logger.info(f"Loaded parquet data from {path}: shape {df.shape}")
             return df
@@ -298,9 +312,11 @@ class BaseAdapter(IModalityAdapter):
             # Replacing NaN with 0 corrupts downstream DE and imputation.
             # Domain adapters handle NaN via appropriate imputation strategies.
             try:
-                if hasattr(adata.X, 'toarray'):
+                if hasattr(adata.X, "toarray"):
                     # Sparse matrix — NaN in sparse is unusual but check anyway
-                    nan_count = np.isnan(adata.X.data).sum() if hasattr(adata.X, 'data') else 0
+                    nan_count = (
+                        np.isnan(adata.X.data).sum() if hasattr(adata.X, "data") else 0
+                    )
                 else:
                     nan_count = int(np.isnan(adata.X).sum())
                 if nan_count > 0:
@@ -335,9 +351,13 @@ class BaseAdapter(IModalityAdapter):
         # Add basic observation metadata if missing.
         # Use domain-neutral names — subclasses can add domain-specific aliases
         # (e.g., transcriptomics adds "n_genes", proteomics adds "n_proteins").
-        if "n_features_detected" not in adata.obs.columns and "n_genes" not in adata.obs.columns:
+        if (
+            "n_features_detected" not in adata.obs.columns
+            and "n_genes" not in adata.obs.columns
+        ):
             try:
                 from scipy.sparse import issparse
+
                 if issparse(adata.X):
                     # Sparse: getnnz is O(nnz), avoids full boolean matrix
                     adata.obs["n_features_detected"] = np.array(adata.X.getnnz(axis=1))
@@ -355,9 +375,13 @@ class BaseAdapter(IModalityAdapter):
                 pass
 
         # Add basic variable metadata if missing
-        if "n_samples_detected" not in adata.var.columns and "n_cells" not in adata.var.columns:
+        if (
+            "n_samples_detected" not in adata.var.columns
+            and "n_cells" not in adata.var.columns
+        ):
             try:
                 from scipy.sparse import issparse
+
                 if issparse(adata.X):
                     adata.var["n_samples_detected"] = np.array(adata.X.getnnz(axis=0))
                 else:
@@ -548,14 +572,18 @@ class BaseAdapter(IModalityAdapter):
         self, path: Union[str, Path], index_col: int = 0, **kwargs
     ) -> pd.DataFrame:
         """Legacy alias for _load_csv_data (for backward compatibility)."""
-        safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+        safe_kwargs = {
+            k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS
+        }
         return pd.read_csv(path, index_col=index_col, **safe_kwargs)
 
     def _load_excel_file(
         self, path: Union[str, Path], index_col: int = 0, **kwargs
     ) -> pd.DataFrame:
         """Legacy alias for _load_excel_data (for backward compatibility)."""
-        safe_kwargs = {k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS}
+        safe_kwargs = {
+            k: v for k, v in kwargs.items() if k not in self._LOBSTER_INTERNAL_KWARGS
+        }
         return pd.read_excel(path, index_col=index_col, **safe_kwargs)
 
     def _load_h5ad_file(self, path: Union[str, Path]) -> anndata.AnnData:

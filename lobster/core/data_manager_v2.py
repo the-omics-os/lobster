@@ -1242,9 +1242,7 @@ class DataManagerV2:
             from lobster.core.component_registry import get_install_command
 
             cmd = get_install_command("mudata")
-            raise ImportError(
-                f"MuData is not available. Install with: {cmd}"
-            )
+            raise ImportError(f"MuData is not available. Install with: {cmd}")
 
         if not self.modalities:
             raise ValueError("No modalities loaded")
@@ -1642,13 +1640,9 @@ class DataManagerV2:
                 adata = anndata_mod.read_h5ad(h5ad_file)
                 self.modalities[modality_name] = adata
                 loaded.append(modality_name)
-                logger.debug(
-                    f"Loaded modality '{modality_name}' from {h5ad_file}"
-                )
+                logger.debug(f"Loaded modality '{modality_name}' from {h5ad_file}")
             except Exception as e:
-                logger.error(
-                    f"Failed to load modality '{modality_name}': {e}"
-                )
+                logger.error(f"Failed to load modality '{modality_name}': {e}")
                 errors.append({"modality": modality_name, "error": str(e)})
 
         logger.info(
@@ -3421,9 +3415,7 @@ https://github.com/OmicsOS/lobster
             if pattern and pattern not in ("recent", "all"):
                 # Apply glob pattern filter to loaded modalities
                 matching = [
-                    name
-                    for name in loaded_names
-                    if fnmatch.fnmatch(name, pattern)
+                    name for name in loaded_names if fnmatch.fnmatch(name, pattern)
                 ]
                 # Remove non-matching modalities
                 for name in loaded_names:

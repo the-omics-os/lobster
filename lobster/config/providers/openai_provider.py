@@ -277,8 +277,7 @@ class OpenAIProvider(ILLMProvider):
 
             cmd = get_install_command("openai", is_extra=True)
             raise ImportError(
-                f"langchain-openai package not installed. "
-                f"Install with: {cmd}"
+                f"langchain-openai package not installed. " f"Install with: {cmd}"
             )
 
         # Validate model ID

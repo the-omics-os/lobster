@@ -232,8 +232,7 @@ class BedrockProvider(ILLMProvider):
 
             cmd = get_install_command("bedrock", is_extra=True)
             raise ImportError(
-                f"langchain-aws package not installed. "
-                f"Install with: {cmd}"
+                f"langchain-aws package not installed. " f"Install with: {cmd}"
             )
 
         # Validate model

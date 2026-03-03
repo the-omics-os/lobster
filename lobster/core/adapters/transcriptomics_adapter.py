@@ -38,8 +38,7 @@ def _ensure_scanpy():
 
             cmd = get_install_command("lobster-transcriptomics")
             raise ImportError(
-                f"scanpy is required for 10X matrix loading. "
-                f"Install with: {cmd}"
+                f"scanpy is required for 10X matrix loading. " f"Install with: {cmd}"
             ) from exc
     return _scanpy_module
 

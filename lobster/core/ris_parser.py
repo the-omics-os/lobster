@@ -127,9 +127,7 @@ class RISParser:
             from lobster.core.component_registry import get_install_command
 
             cmd = get_install_command("rispy")
-            raise RISParseError(
-                f"rispy library not installed. Install with: {cmd}"
-            )
+            raise RISParseError(f"rispy library not installed. Install with: {cmd}")
 
         try:
             with open(file_path, "r", encoding=encoding) as f:

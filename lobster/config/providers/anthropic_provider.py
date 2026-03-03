@@ -246,8 +246,7 @@ class AnthropicProvider(ILLMProvider):
 
             cmd = get_install_command("anthropic", is_extra=True)
             raise ImportError(
-                f"langchain-anthropic package not installed. "
-                f"Install with: {cmd}"
+                f"langchain-anthropic package not installed. " f"Install with: {cmd}"
             )
 
         # Validate model ID

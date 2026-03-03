@@ -54,9 +54,7 @@ class MuDataBackend(BaseBackend):
             from lobster.core.component_registry import get_install_command
 
             cmd = get_install_command("mudata")
-            raise ImportError(
-                f"MuData is not available. Install with: {cmd}"
-            )
+            raise ImportError(f"MuData is not available. Install with: {cmd}")
 
         super().__init__(base_path=base_path)
         self.compression = compression

@@ -24,7 +24,9 @@ class BaseClient(ABC):
         pass
 
     @abstractmethod
-    def query(self, user_input: str, stream: bool = False) -> Union[Dict[str, Any], Generator[Dict[str, Any], None, None]]:
+    def query(
+        self, user_input: str, stream: bool = False
+    ) -> Union[Dict[str, Any], Generator[Dict[str, Any], None, None]]:
         """
         Process a user query through the system.
 

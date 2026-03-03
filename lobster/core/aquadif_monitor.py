@@ -30,6 +30,7 @@ Design:
 CRITICAL: Do NOT add any imports from lobster.* to this module.
           This prevents import cycles since callbacks.py imports AquadifMonitor.
 """
+
 from __future__ import annotations
 
 import threading
@@ -45,7 +46,7 @@ class CodeExecEntry:
 
     tool_name: str
     timestamp: str  # ISO 8601 format string
-    agent: str      # Agent name from TokenTrackingCallback.current_agent
+    agent: str  # Agent name from TokenTrackingCallback.current_agent
 
 
 class AquadifMonitor:
@@ -148,9 +149,7 @@ class AquadifMonitor:
         except Exception:
             pass  # Fail-open: monitor exception must never crash tool invocation
 
-    def record_provenance_call(
-        self, tool_name: str, has_real_ir: bool
-    ) -> None:
+    def record_provenance_call(self, tool_name: str, has_real_ir: bool) -> None:
         """
         Record a provenance observation. Called from DataManagerV2.log_tool_usage.
 

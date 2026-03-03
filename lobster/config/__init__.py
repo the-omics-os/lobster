@@ -16,8 +16,8 @@ from lobster.config.agent_presets import (
     list_presets,
 )
 from lobster.config.aquadif import (
-    AquadifCategory,
     PROVENANCE_REQUIRED,
+    AquadifCategory,
     has_provenance_call,
     requires_provenance,
 )

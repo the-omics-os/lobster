@@ -306,8 +306,7 @@ class AzureProvider(ILLMProvider):
 
             cmd = get_install_command("azure", is_extra=True)
             raise ImportError(
-                f"langchain-azure-ai package not installed. "
-                f"Install with: {cmd}"
+                f"langchain-azure-ai package not installed. " f"Install with: {cmd}"
             )
 
         # Get configuration (support both new and legacy env vars)
