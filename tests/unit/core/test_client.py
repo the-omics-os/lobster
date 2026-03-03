@@ -26,7 +26,13 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 import pytest
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 from langgraph.checkpoint.memory import InMemorySaver
 from pytest_mock import MockerFixture
 
@@ -95,33 +101,70 @@ def mock_data_manager_v2():
 
 @pytest.fixture
 def mock_langgraph_graph():
-    """Create a mock LangGraph with realistic stream behavior."""
+    """Create a mock LangGraph with realistic stream behavior.
+
+    Supports both callers:
+    - _run_query: stream_mode="updates" → yields plain dicts
+    - _stream_query: stream_mode=["messages", "updates"] → yields 3-tuples
+    """
     mock_graph = Mock()
 
     def mock_stream(*args, **kwargs):
-        """Mock streaming behavior that yields realistic events."""
-        events = [
-            {
+        stream_mode = kwargs.get("stream_mode", "updates")
+
+        if isinstance(stream_mode, list):
+            # Dual mode + subgraphs: yields (namespace, event_type, chunk)
+            yield (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="I'll help you with that analysis.", id="msg-1"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            )
+            yield (
+                ("supervisor:abc", "research_agent:def"),
+                "messages",
+                (
+                    AIMessage(content="Loading your dataset...", id="msg-2"),
+                    {"langgraph_node": "research_agent"},
+                ),
+            )
+            yield (
+                ("supervisor:abc",),
+                "updates",
+                {"research_agent": {"messages": [AIMessage(content="Done loading.")]}},
+            )
+            yield (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(
+                        content="Analysis complete. Here are the results.", id="msg-3"
+                    ),
+                    {"langgraph_node": "supervisor"},
+                ),
+            )
+        else:
+            # Single mode "updates": yields plain dicts (used by _run_query)
+            yield {
                 "supervisor": {
                     "messages": [AIMessage(content="I'll help you with that analysis.")]
                 }
-            },
-            {
+            }
+            yield {
                 "data_expert": {
                     "messages": [AIMessage(content="Loading your dataset...")]
                 }
-            },
-            {
+            }
+            yield {
                 "supervisor": {
                     "messages": [
                         AIMessage(content="Analysis complete. Here are the results.")
                     ]
                 }
-            },
-            {"__end__": {}},
-        ]
-        for event in events:
-            yield event
+            }
+            yield {"__end__": {}}
 
     mock_graph.stream.side_effect = mock_stream
     return mock_graph
@@ -359,18 +402,29 @@ class TestAgentClientQueryProcessing:
     def test_query_streaming_mode(
         self, temp_workspace, mock_create_bioinformatics_graph, mock_data_manager_v2
     ):
-        """Test query processing in streaming mode."""
+        """Test streaming yields correct event protocol."""
         client = AgentClient(
             data_manager=mock_data_manager_v2, workspace_path=temp_workspace
         )
 
-        stream_gen = client.query("Analyze my data", stream=True)
+        events = list(client.query("Analyze my data", stream=True))
 
-        assert hasattr(stream_gen, "__iter__")
-        events = list(stream_gen)
+        # Must have content_delta events with actual text
+        deltas = [e for e in events if e["type"] == "content_delta"]
+        assert len(deltas) > 0, "No content_delta events emitted"
+        for d in deltas:
+            assert "delta" in d
+            assert isinstance(d["delta"], str) and d["delta"]
 
-        assert len(events) > 0
-        assert any(event.get("type") == "complete" for event in events)
+        # Accumulated text must match mock content
+        full_text = "".join(d["delta"] for d in deltas)
+        assert "Analysis complete" in full_text
+
+        # Must end with complete event containing full response
+        complete = [e for e in events if e["type"] == "complete"]
+        assert len(complete) == 1
+        assert complete[0]["response"] == full_text
+        assert complete[0]["session_id"] == client.session_id
 
     def test_query_error_handling(
         self, temp_workspace, mock_create_bioinformatics_graph, mock_data_manager_v2
@@ -1153,8 +1207,269 @@ class TestPerformanceAndConcurrency:
         end_time = time.time()
 
         assert len(stream_events) > 0
-        assert any(event.get("type") == "complete" for event in stream_events)
+        assert any(e["type"] == "content_delta" for e in stream_events), "No content streamed"
+        assert any(e.get("type") == "complete" for e in stream_events)
         assert (end_time - start_time) < 10.0  # Should complete within 10 seconds
+
+
+# ===============================================================================
+# Streaming Protocol Tests
+# ===============================================================================
+
+
+@pytest.mark.unit
+class TestStreamingProtocol:
+    """Test the _stream_query event protocol in isolation.
+
+    Each test constructs its own mock graph to test specific streaming behaviors
+    without relying on the shared mock_langgraph_graph fixture.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, temp_workspace, mock_data_manager_v2):
+        self.temp_workspace = temp_workspace
+        self.mock_dm = mock_data_manager_v2
+
+    def _make_client(self, graph_events):
+        """Helper: create a client with a custom graph that yields given events."""
+        mock_graph = Mock()
+
+        def mock_stream(*args, **kwargs):
+            for event in graph_events:
+                yield event
+
+        mock_graph.stream.side_effect = mock_stream
+
+        mock_metadata = Mock()
+        mock_metadata.subscription_tier = "free"
+        mock_metadata.available_agents = []
+        mock_metadata.supervisor_accessible_agents = []
+        mock_metadata.filtered_out_agents = []
+        mock_metadata.to_dict.return_value = {}
+
+        with patch("lobster.core.client.create_bioinformatics_graph") as mock_create:
+            mock_create.return_value = (mock_graph, mock_metadata)
+            client = AgentClient(
+                data_manager=self.mock_dm, workspace_path=self.temp_workspace
+            )
+        return client
+
+    def test_streaming_agent_change_events(self):
+        """Agent change events are emitted for specialist agents."""
+        events = [
+            (
+                ("supervisor:abc", "research_agent:def"),
+                "messages",
+                (
+                    AIMessage(content="Searching...", id="msg-1"),
+                    {"langgraph_node": "research_agent"},
+                ),
+            ),
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Done.", id="msg-2"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        agent_changes = [e for e in result if e["type"] == "agent_change"]
+        assert len(agent_changes) >= 1
+        assert agent_changes[0]["agent"] == "research_agent"
+        assert agent_changes[0]["status"] == "working"
+
+        # Last agent_change should be "complete"
+        assert agent_changes[-1]["status"] == "complete"
+
+    def test_streaming_dedup_prevents_double_emission(self):
+        """Complete messages with same ID as already-streamed chunks are not re-emitted."""
+        events = [
+            # First: chunk with id "msg-dup"
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessageChunk(content="Hello world", id="msg-dup"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+            # Then: complete message with same id "msg-dup" (re-emitted by LangGraph)
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Hello world", id="msg-dup"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        deltas = [e for e in result if e["type"] == "content_delta"]
+        full_text = "".join(d["delta"] for d in deltas)
+        # "Hello world" should appear once, not twice
+        assert full_text == "Hello world"
+
+    def test_streaming_filters_tool_messages(self):
+        """ToolMessages never appear in content_delta events."""
+        events = [
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    ToolMessage(content="tool result", tool_call_id="tc-1"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Final answer.", id="msg-1"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        deltas = [e for e in result if e["type"] == "content_delta"]
+        full_text = "".join(d["delta"] for d in deltas)
+        assert "tool result" not in full_text
+        assert "Final answer." in full_text
+
+    def test_streaming_content_blocks_list(self):
+        """Only 'text' blocks from list content are emitted; thinking blocks are hidden."""
+        events = [
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(
+                        content=[
+                            {"type": "text", "text": "visible"},
+                            {"type": "thinking", "thinking": "hidden"},
+                        ],
+                        id="msg-1",
+                    ),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        deltas = [e for e in result if e["type"] == "content_delta"]
+        full_text = "".join(d["delta"] for d in deltas)
+        assert "visible" in full_text
+        assert "hidden" not in full_text
+
+    def test_streaming_session_persistence(self):
+        """After streaming, the accumulated text is appended to client.messages."""
+        events = [
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Persisted response.", id="msg-1"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        # Client starts with no messages
+        initial_count = len(client.messages)
+
+        result = list(client.query("test", stream=True))
+
+        # Should have added HumanMessage + AIMessage
+        assert len(client.messages) == initial_count + 2
+        assert isinstance(client.messages[-1], AIMessage)
+        assert client.messages[-1].content == "Persisted response."
+
+    def test_streaming_error_yields_error_event(self):
+        """When graph.stream raises, an error event is yielded."""
+        mock_graph = Mock()
+        mock_graph.stream.side_effect = RuntimeError("boom")
+
+        mock_metadata = Mock()
+        mock_metadata.subscription_tier = "free"
+        mock_metadata.available_agents = []
+        mock_metadata.supervisor_accessible_agents = []
+        mock_metadata.filtered_out_agents = []
+        mock_metadata.to_dict.return_value = {}
+
+        with patch("lobster.core.client.create_bioinformatics_graph") as mock_create:
+            mock_create.return_value = (mock_graph, mock_metadata)
+            client = AgentClient(
+                data_manager=self.mock_dm, workspace_path=self.temp_workspace
+            )
+
+        result = list(client.query("test", stream=True))
+
+        errors = [e for e in result if e["type"] == "error"]
+        assert len(errors) == 1
+        assert "boom" in errors[0]["error"]
+
+    def test_streaming_skips_end_node(self):
+        """Messages from __end__ node produce no content_delta."""
+        events = [
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Real content.", id="msg-1"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Should be skipped.", id="msg-end"),
+                    {"langgraph_node": "__end__"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        deltas = [e for e in result if e["type"] == "content_delta"]
+        full_text = "".join(d["delta"] for d in deltas)
+        assert "Real content." in full_text
+        assert "Should be skipped." not in full_text
+
+    def test_streaming_empty_content_skipped(self):
+        """AIMessages with empty content produce no content_delta."""
+        events = [
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="", id="msg-empty"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Has content.", id="msg-real"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        deltas = [e for e in result if e["type"] == "content_delta"]
+        assert len(deltas) == 1
+        assert deltas[0]["delta"] == "Has content."
 
 
 # ===============================================================================

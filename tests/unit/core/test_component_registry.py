@@ -214,14 +214,15 @@ class TestAgentAPI:
         assert result is None
 
     def test_get_agent_raises_when_required(self, fresh_registry):
-        """Required missing agents should raise ValueError."""
+        """Required missing agents should raise ValueError with diagnostic message."""
         fresh_registry.load_components()
 
         with pytest.raises(ValueError) as exc_info:
             fresh_registry.get_agent("nonexistent_agent", required=True)
 
-        assert "Required agent 'nonexistent_agent' not found" in str(exc_info.value)
-        assert "Available agents:" in str(exc_info.value)
+        # New diagnostic message from diagnose_missing_agent()
+        assert "nonexistent_agent" in str(exc_info.value)
+        assert "not available" in str(exc_info.value) or "not installed" in str(exc_info.value)
 
     def test_has_agent_returns_false_for_missing(self, fresh_registry):
         """has_agent should return False for missing agents."""
@@ -570,7 +571,7 @@ class TestEdgeCases:
 
     @patch("lobster.core.component_registry.ComponentRegistry._load_entry_point_group")
     def test_agent_value_error_message_format(self, mock_load_ep, fresh_registry):
-        """ValueError message should list available custom agents."""
+        """ValueError for missing agent should contain diagnostic message."""
         fresh_registry._agents["custom1"] = Mock()
         fresh_registry._loaded = True
 
@@ -578,4 +579,6 @@ class TestEdgeCases:
             fresh_registry.get_agent("missing", required=True)
 
         error_msg = str(exc_info.value)
-        assert "custom1" in error_msg
+        # diagnose_missing_agent() provides the error now — it should
+        # mention the agent name and give guidance
+        assert "missing" in error_msg

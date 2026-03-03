@@ -26,14 +26,16 @@ class TestInitTemplate:
 
     def test_state_always_importable(self):
         content = _render_template("__init__.py.j2", CONTEXT)
-        # State import should be unconditional (before try/except)
-        state_import_pos = content.find("from lobster.agents.epigenomics.state import")
-        try_pos = content.find("try:")
-        assert state_import_pos < try_pos, "State import must be before try/except"
+        assert "from lobster.agents.epigenomics.state import" in content
 
-    def test_has_availability_flag(self):
+    def test_no_try_except_import_error(self):
         content = _render_template("__init__.py.j2", CONTEXT)
-        assert "EPIGENOMICS_EXPERT_AVAILABLE" in content
+        # Check actual Python code, not comments
+        tree = ast.parse(content)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                if node.type and isinstance(node.type, ast.Name) and node.type.id == "ImportError":
+                    raise AssertionError("Template must not use try/except ImportError")
 
     def test_has_all_export(self):
         content = _render_template("__init__.py.j2", CONTEXT)

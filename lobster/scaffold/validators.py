@@ -13,6 +13,8 @@ Eight validation checks (ordered by severity):
 6. Provenance calls — tools with provenance: True call log_tool_usage(ir=ir)
 7. No core imports — plugin doesn't import from lobster.agents.* core agents
 8. No ImportError guards — domain __init__.py must not use try/except ImportError
+
+SYNC NOTE: Standalone equivalent at skills/lobster-dev/scripts/validate_plugin.py — keep checks aligned.
 """
 
 import ast
