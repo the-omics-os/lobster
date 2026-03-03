@@ -425,8 +425,8 @@ class TestStoreKeysInState:
 
         assert result["store_keys"] == {}
 
-    def test_key_index_message_injected_into_llm_input(self):
-        """When store has keys, a SystemMessage with key index is injected."""
+    def test_key_index_appended_to_system_message(self):
+        """When store has keys, key index is appended to existing SystemMessage."""
         from lobster.agents.context_management import create_supervisor_pre_model_hook
 
         store = InMemoryStore()
@@ -448,16 +448,17 @@ class TestStoreKeysInState:
         )
 
         trimmed = result["llm_input_messages"]
-        # Should have 3 messages: system prompt, key index, human message
+        # Single SystemMessage (key index appended, not separate)
         sys_msgs = [m for m in trimmed if isinstance(m, SystemMessage)]
-        assert len(sys_msgs) == 2  # original system + key index
-        key_index = sys_msgs[1]
-        assert "de_expert_x1y2" in key_index.content
-        assert "de_analysis_expert" in key_index.content
-        assert "retrieve_agent_result" in key_index.content
+        assert len(sys_msgs) == 1
+        sys_content = sys_msgs[0].content
+        assert "You are a supervisor." in sys_content
+        assert "de_expert_x1y2" in sys_content
+        assert "de_analysis_expert" in sys_content
+        assert "retrieve_agent_result" in sys_content
 
-    def test_no_key_index_message_when_store_empty(self):
-        """No key index message injected when store has no results."""
+    def test_system_message_unchanged_when_store_empty(self):
+        """System message not modified when store has no results."""
         from lobster.agents.context_management import create_supervisor_pre_model_hook
 
         store = InMemoryStore()
@@ -469,7 +470,8 @@ class TestStoreKeysInState:
 
         trimmed = result["llm_input_messages"]
         sys_msgs = [m for m in trimmed if isinstance(m, SystemMessage)]
-        assert len(sys_msgs) == 1  # only original system prompt
+        assert len(sys_msgs) == 1
+        assert sys_msgs[0].content == "sys"  # unmodified
 
     def test_store_keys_survive_message_trimming(self):
         """store_keys dict persists even when the messages containing store_key text are trimmed."""

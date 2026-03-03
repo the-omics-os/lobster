@@ -213,22 +213,23 @@ def _build_store_key_index(store) -> dict[str, str]:
         return {}
 
 
-def _build_key_index_message(store_keys: dict[str, str]) -> SystemMessage | None:
-    """Build a compact SystemMessage listing available store keys.
+def _build_key_index_text(store_keys: dict[str, str]) -> str:
+    """Build compact text listing available store keys.
 
-    Returns None if no keys exist (avoids injecting empty messages).
+    Returns empty string if no keys exist.
+    Designed to be appended to the existing SystemMessage content
+    (avoids multi-SystemMessage compatibility issues across providers).
     """
     if not store_keys:
-        return None
+        return ""
 
     lines = [f"- {key} ({agent})" for key, agent in store_keys.items()]
-    content = (
-        "<Available Stored Results>\n"
+    return (
+        "\n\n<Available Stored Results>\n"
         "Use retrieve_agent_result(store_key) to access full data.\n"
         + "\n".join(lines)
         + "\n</Available Stored Results>"
     )
-    return SystemMessage(content=content)
 
 
 def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
@@ -279,18 +280,15 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
                 f"(budget: {_max_tokens} tokens)"
             )
 
-        # Inject key index after system prompt so LLM always sees available keys
-        key_index_msg = _build_key_index_message(store_keys)
-        if key_index_msg is not None:
-            # Insert after the first SystemMessage (the main prompt)
-            insert_pos = 1
+        # Append key index to existing SystemMessage (single system message
+        # for maximum provider compatibility — Anthropic, OpenAI, Ollama, Gemini)
+        key_index_text = _build_key_index_text(store_keys)
+        if key_index_text:
+            trimmed = list(trimmed)
             for i, msg in enumerate(trimmed):
                 if isinstance(msg, SystemMessage):
-                    insert_pos = i + 1
-                else:
+                    trimmed[i] = SystemMessage(content=msg.content + key_index_text)
                     break
-            trimmed = list(trimmed)
-            trimmed.insert(insert_pos, key_index_msg)
 
         return {"llm_input_messages": trimmed, "store_keys": store_keys}
 
