@@ -56,6 +56,7 @@ import logging
 import shutil
 import time
 import warnings
+from functools import lru_cache
 from typing import Any, Dict, Iterable, List
 
 # =============================================================================
@@ -646,6 +647,7 @@ def check_for_missing_slash_command(user_input: str) -> Optional[str]:
     return None
 
 
+@lru_cache(maxsize=1)
 def extract_available_commands() -> Dict[str, str]:
     """Extract commands dynamically from _execute_command implementation."""
 
@@ -1254,7 +1256,11 @@ AVAILABLE_AGENT_PACKAGES = [
     (
         "lobster-proteomics",
         "Mass spec & affinity proteomics analysis",
-        ["proteomics_expert", "proteomics_de_analysis_expert", "biomarker_discovery_expert"],
+        [
+            "proteomics_expert",
+            "proteomics_de_analysis_expert",
+            "biomarker_discovery_expert",
+        ],
         True,
     ),
 ]
@@ -3389,9 +3395,7 @@ def _display_status_info():
     worker_agents = get_worker_agents()
     tier = entitlement.get("tier", "free")
     available = [name for name in worker_agents if is_agent_available(name, tier)]
-    restricted = [
-        name for name in worker_agents if not is_agent_available(name, tier)
-    ]
+    restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
 
     # Subscription tier section
     tier_display = entitlement.get("tier_display", "Free")
@@ -6198,8 +6202,13 @@ def _display_streaming_response(
     final_result = {"success": False, "response": ""}
 
     try:
+        # Show immediate feedback so the user knows work has started
+        initial_status = Text()
+        initial_status.append("◀ Lobster", style="dim")
+        initial_status.append("  Thinking…", style="dim italic")
+
         with Live(
-            Text(""), console=console, refresh_per_second=10, transient=True
+            initial_status, console=console, refresh_per_second=10, transient=True
         ) as live:
             for event in client.query(user_input, stream=True):
                 event_type = event.get("type")
@@ -6218,6 +6227,13 @@ def _display_streaming_response(
                     agent = event.get("agent", "")
                     if event.get("status") == "working":
                         last_agent = agent
+                        # Update status indicator before first content arrives
+                        if not accumulated_text:
+                            agent_display = agent.replace("_", " ").title()
+                            status = Text()
+                            status.append(f"◀ {agent_display}", style="dim")
+                            status.append("  Working…", style="dim italic")
+                            live.update(status)
 
                 elif event_type == "complete":
                     # Use accumulated text, or fallback to response from event
@@ -8502,7 +8518,9 @@ def vector_search_cmd(
     except Exception as e:
         from rich.markup import escape as rich_escape
 
-        console.print(f"[red]Vector search error: {rich_escape(str(e))}[/red]", stderr=True)
+        console.print(
+            f"[red]Vector search error: {rich_escape(str(e))}[/red]", stderr=True
+        )
         raise typer.Exit(1)
 
 

@@ -129,21 +129,13 @@ class OllamaProvider(ILLMProvider):
             logger.debug(f"Ollama server not accessible at {self._base_url}: {e}")
             return False
 
-    def list_models(self) -> List[ModelInfo]:
+    def _fetch_models(self) -> List[ModelInfo]:
         """
-        List all available models from Ollama instance.
+        Fetch models from Ollama without marking defaults.
 
-        Queries the /api/tags endpoint to dynamically discover installed models.
-        Models are sorted by size (largest first) for better UX.
-
-        Returns:
-            List[ModelInfo]: Available models with metadata (name, size, parameters)
-
-        Example:
-            >>> provider = OllamaProvider()
-            >>> for model in provider.list_models():
-            ...     print(f"{model.name}: {model.description}")
-            ...     # Output: "llama3:70b-instruct: 40.5GB - 70B params"
+        This is the low-level fetcher used by both ``list_models`` and
+        ``get_default_model``.  Keeping it separate breaks the mutual
+        recursion that previously existed between those two methods.
         """
         try:
             import requests
@@ -161,12 +153,10 @@ class OllamaProvider(ILLMProvider):
 
             model_infos = []
             for model in models:
-                # Extract model details
                 model_name = model.get("name", "unknown")
                 size_bytes = model.get("size", 0)
                 details = model.get("details", {})
 
-                # Convert to ModelInfo
                 model_info = ModelInfo(
                     name=model_name,
                     display_name=self._format_display_name(model_name),
@@ -177,30 +167,62 @@ class OllamaProvider(ILLMProvider):
                     ),
                     provider="ollama",
                     context_window=self._estimate_context_window(model_name),
-                    is_default=False,  # Set by get_default_model()
-                    input_cost_per_million=0.0,  # Local inference is free
+                    is_default=False,
+                    input_cost_per_million=0.0,
                     output_cost_per_million=0.0,
                 )
                 model_infos.append(model_info)
 
-            # Sort by size (largest first) for better UX
             model_infos.sort(
                 key=lambda m: self._extract_size_bytes_from_description(m.description),
                 reverse=True,
             )
-
-            # Mark default model
-            default_model_name = self.get_default_model()
-            for model in model_infos:
-                if model.name == default_model_name:
-                    model.is_default = True
-                    break
-
             return model_infos
 
         except Exception as e:
             logger.error(f"Failed to list Ollama models: {e}")
             return []
+
+    def list_models(self) -> List[ModelInfo]:
+        """
+        List all available models from Ollama instance.
+
+        Queries the /api/tags endpoint to dynamically discover installed models.
+        Models are sorted by size (largest first) for better UX.
+
+        Returns:
+            List[ModelInfo]: Available models with metadata (name, size, parameters)
+
+        Example:
+            >>> provider = OllamaProvider()
+            >>> for model in provider.list_models():
+            ...     print(f"{model.name}: {model.description}")
+            ...     # Output: "llama3:70b-instruct: 40.5GB - 70B params"
+        """
+        model_infos = self._fetch_models()
+
+        # Mark default model using the SAME list (single fetch, no divergence)
+        if model_infos:
+            default_model_name = self._pick_default(model_infos)
+            for model in model_infos:
+                if model.name == default_model_name:
+                    model.is_default = True
+                    break
+
+        return model_infos
+
+    def _pick_default(self, models: List[ModelInfo]) -> str:
+        """Select the best model from a pre-fetched list by heuristic."""
+        instruct_models = [
+            m
+            for m in models
+            if "instruct" in m.name.lower() or "chat" in m.name.lower()
+        ]
+        if not instruct_models:
+            instruct_models = models
+
+        best = max(instruct_models, key=lambda m: self._score_model(m.name))
+        return best.name
 
     def get_default_model(self) -> str:
         """
@@ -210,11 +232,6 @@ class OllamaProvider(ILLMProvider):
         1. OLLAMA_DEFAULT_MODEL environment variable (explicit override)
         2. Best available model by heuristic (70B > 8x7B > 13B > 8B)
         3. Fallback default: "gpt-oss:20b"
-
-        Heuristics:
-        - Prefers instruct/chat models (better for agent tasks)
-        - Prefers larger parameter counts (higher capability)
-        - Prefers newer model versions (e.g., llama3 > llama2)
 
         Returns:
             str: Default model identifier
@@ -230,30 +247,18 @@ class OllamaProvider(ILLMProvider):
             logger.debug(f"Using OLLAMA_DEFAULT_MODEL: {env_model}")
             return env_model
 
-        # 2. Auto-select best available model
-        models = self.list_models()
+        # 2. Auto-select best available model (single fetch)
+        models = self._fetch_models()
 
         if not models:
             logger.warning("No Ollama models detected, using default: gpt-oss:20b")
             return "gpt-oss:20b"
 
-        # Filter to instruct/chat models (better for agents)
-        instruct_models = [
-            m
-            for m in models
-            if "instruct" in m.name.lower() or "chat" in m.name.lower()
-        ]
-
-        if not instruct_models:
-            instruct_models = models  # Fallback to all models
-
-        # Score models by quality heuristic
-        best_model = max(instruct_models, key=lambda m: self._score_model(m.name))
-
+        best_name = self._pick_default(models)
         logger.info(
-            f"Auto-selected Ollama model: {best_model.name} from {len(models)} available models"
+            f"Auto-selected Ollama model: {best_name} from {len(models)} available models"
         )
-        return best_model.name
+        return best_name
 
     def create_chat_model(
         self,
@@ -291,8 +296,7 @@ class OllamaProvider(ILLMProvider):
 
             cmd = get_install_command("ollama", is_extra=True)
             raise ImportError(
-                f"langchain-ollama package not installed. "
-                f"Install with: {cmd}"
+                f"langchain-ollama package not installed. " f"Install with: {cmd}"
             )
 
         # Build parameters for ChatOllama
@@ -350,9 +354,7 @@ class OllamaProvider(ILLMProvider):
             if resp.status_code == 200:
                 logger.debug(f"Preloaded model '{model_id}' (keep_alive={keep_alive})")
             else:
-                logger.debug(
-                    f"Preload returned {resp.status_code} for '{model_id}'"
-                )
+                logger.debug(f"Preload returned {resp.status_code} for '{model_id}'")
         except Exception as e:
             logger.debug(f"Preload failed for '{model_id}': {e}")
 
@@ -581,9 +583,7 @@ class OllamaProvider(ILLMProvider):
                 timeout=5,
             )
             if resp.status_code != 200:
-                logger.debug(
-                    f"/api/show returned {resp.status_code} for '{model_id}'"
-                )
+                logger.debug(f"/api/show returned {resp.status_code} for '{model_id}'")
                 return 0
 
             data = resp.json()
@@ -593,14 +593,10 @@ class OllamaProvider(ILLMProvider):
             for key, value in model_info.items():
                 if key.endswith(".context_length"):
                     ctx_len = int(value)
-                    logger.debug(
-                        f"Detected {key}={ctx_len} for '{model_id}'"
-                    )
+                    logger.debug(f"Detected {key}={ctx_len} for '{model_id}'")
                     return ctx_len
 
-            logger.debug(
-                f"No context_length key found in model_info for '{model_id}'"
-            )
+            logger.debug(f"No context_length key found in model_info for '{model_id}'")
             return 0
 
         except Exception as e:

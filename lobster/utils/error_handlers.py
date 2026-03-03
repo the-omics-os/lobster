@@ -1136,12 +1136,52 @@ class NetworkErrorHandler(ErrorHandler):
             "timed out",
             "connection reset",
             "no route to host",
+            "max retries exceeded",
+            "failed to establish a new connection",
         ]
         error_lower = error_str.lower()
         return any(pattern in error_lower for pattern in patterns)
 
+    @staticmethod
+    def _is_ollama_error(error: Exception, error_str: str) -> bool:
+        """Detect if the network error is from a local Ollama server."""
+        # Check the full repr chain — str() on wrapped exceptions often loses
+        # inner details like the port number, but repr() preserves them.
+        full_text = f"{error_str} {repr(error)}"
+        if "11434" in full_text or "ollama" in full_text.lower():
+            return True
+        # Walk the exception chain for wrapped errors
+        cause = error.__cause__ or error.__context__
+        while cause:
+            cause_str = f"{cause} {repr(cause)}"
+            if "11434" in cause_str or "ollama" in cause_str.lower():
+                return True
+            cause = cause.__cause__ or cause.__context__
+        return False
+
     def handle(self, error: Exception, error_str: str) -> ErrorGuidance:
         """Generate network troubleshooting guidance."""
+        if self._is_ollama_error(error, error_str):
+            base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+            return ErrorGuidance(
+                error_type="network",
+                title="🦙 Ollama Not Running",
+                description=(
+                    f"Cannot connect to Ollama at {base_url}. "
+                    "The Ollama server does not appear to be running."
+                ),
+                solutions=[
+                    "Start Ollama: ollama serve",
+                    "Or launch the Ollama desktop app if installed",
+                    f"Verify it's running: curl {base_url}/api/tags",
+                    "If using a custom host: set OLLAMA_BASE_URL environment variable",
+                ],
+                severity="error",
+                can_retry=True,
+                retry_delay=5,
+                metadata={"original_error": error_str[:200]},
+            )
+
         return ErrorGuidance(
             error_type="network",
             title="🌐 Network Error",
