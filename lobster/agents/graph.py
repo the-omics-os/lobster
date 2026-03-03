@@ -238,10 +238,30 @@ def _create_lazy_delegation_tool(
         agent = _dict.get(_name)
 
         if agent is None:
-            logger.warning(
-                f"Agent '{_name}' not found in agents dict (config may have excluded it)"
+            from lobster.core.component_registry import (
+                AGENT_TO_PACKAGE,
+                get_install_command,
             )
-            return f"Agent '{_name}' is not available. It may be excluded by configuration or subscription tier."
+
+            package = AGENT_TO_PACKAGE.get(_name)
+            if package:
+                cmd = get_install_command(package)
+                logger.warning(
+                    f"Agent '{_name}' not available — package '{package}' may not be installed"
+                )
+                return (
+                    f"Agent '{_name}' is not available. "
+                    f"It requires the '{package}' package.\n"
+                    f"Install with: {cmd}"
+                )
+            else:
+                logger.warning(
+                    f"Agent '{_name}' not found in agents dict (config may have excluded it)"
+                )
+                return (
+                    f"Agent '{_name}' is not available. "
+                    f"It may be excluded by configuration or not yet supported."
+                )
 
         logger.info(
             f"=== CHILD DELEGATION TO {_name} ===\n{task_description[:500]}\n=== END CHILD DELEGATION ==="
@@ -459,9 +479,18 @@ def create_bioinformatics_graph(
         try:
             factory_function = import_agent_factory(agent_config.factory_function)
         except (ImportError, ModuleNotFoundError, AttributeError, SyntaxError) as e:
-            logger.warning(
-                f"Skipping agent '{agent_name}': factory import failed: {e}"
-            )
+            # Provide actionable message: distinguish broken install from missing dep
+            from lobster.core.component_registry import AGENT_TO_PACKAGE
+
+            package = AGENT_TO_PACKAGE.get(agent_name)
+            if package:
+                logger.warning(
+                    f"Skipping agent '{agent_name}' (package '{package}'): {e}"
+                )
+            else:
+                logger.warning(
+                    f"Skipping agent '{agent_name}': factory import failed: {e}"
+                )
             failed_agents.add(agent_name)
             continue
 
@@ -530,10 +559,34 @@ def create_bioinformatics_graph(
         worker_agents = {
             k: v for k, v in worker_agents.items() if k not in failed_agents
         }
-        logger.warning(
-            f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}. "
-            f"Graph continues with {len(worker_agents)} agents."
+        # Build actionable summary of what packages to install
+        from lobster.core.component_registry import (
+            AGENT_TO_PACKAGE,
+            get_install_command,
         )
+
+        missing_packages = {}
+        for agent in sorted(failed_agents):
+            pkg = AGENT_TO_PACKAGE.get(agent)
+            if pkg:
+                missing_packages.setdefault(pkg, []).append(agent)
+
+        if missing_packages:
+            install_hints = []
+            for pkg, agents in sorted(missing_packages.items()):
+                cmd = get_install_command(pkg)
+                install_hints.append(f"  {pkg} ({', '.join(agents)}): {cmd}")
+            hints_str = "\n".join(install_hints)
+            logger.warning(
+                f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}.\n"
+                f"Install missing packages:\n{hints_str}\n"
+                f"Graph continues with {len(worker_agents)} agents."
+            )
+        else:
+            logger.warning(
+                f"Agents failed to load ({len(failed_agents)}): {sorted(failed_agents)}. "
+                f"Graph continues with {len(worker_agents)} agents."
+            )
 
     # ==========================================================================
     # Phase 3: Create agent tools for supervisor (Tool Calling pattern)
