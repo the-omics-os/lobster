@@ -25,7 +25,7 @@ import anndata
 from lobster.core.utils.h5ad_utils import sanitize_value
 
 if TYPE_CHECKING:
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class ProvenanceTracker:
 
                     # Reconstruct AnalysisStep from IR dict if present
                     if data.get("ir") is not None:
-                        from lobster.core.analysis_ir import AnalysisStep
+                        from lobster.core.provenance.analysis_ir import AnalysisStep
 
                         data["ir"] = AnalysisStep.from_dict(data["ir"])
 
