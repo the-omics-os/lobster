@@ -39,12 +39,12 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 ### Plugin Registration
 
-- [ ] **PLUG-01**: Queue preparers discovered from `lobster.queue_preparers` entry points first-class
-- [ ] **PLUG-02**: Download services discovered from `lobster.download_services` entry points first-class
-- [ ] **PLUG-03**: Entry-point declarations added to pyproject.toml BEFORE fallback gating (A3)
-- [ ] **PLUG-04**: All 5 databases (GEO, SRA, PRIDE, MassIVE, MetaboLights) discoverable via entry points (A3)
-- [ ] **PLUG-05**: Existing tests updated for entry-point discovery assertions (A4)
-- [ ] **PLUG-06**: Hardcoded fallback gated with explicit flag
+- [x] **PLUG-01**: Queue preparers discovered from `lobster.queue_preparers` entry points first-class
+- [x] **PLUG-02**: Download services discovered from `lobster.download_services` entry points first-class
+- [x] **PLUG-03**: Entry-point declarations added to pyproject.toml BEFORE fallback gating (A3)
+- [x] **PLUG-04**: All 5 databases (GEO, SRA, PRIDE, MassIVE, MetaboLights) discoverable via entry points (A3)
+- [x] **PLUG-05**: Existing tests updated for entry-point discovery assertions (A4)
+- [x] **PLUG-06**: Hardcoded fallback gated with explicit flag
 
 ### Core Restructuring
 
@@ -128,12 +128,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GDEC-02 | Phase 4 (PR-4) | Complete |
 | GDEC-03 | Phase 4 (PR-4) | Complete |
 | GDEC-04 | Phase 4 (PR-4) | Complete |
-| PLUG-01 | Phase 5 (PR-5) | Pending |
-| PLUG-02 | Phase 5 (PR-5) | Pending |
-| PLUG-03 | Phase 5 (PR-5) | Pending |
-| PLUG-04 | Phase 5 (PR-5) | Pending |
-| PLUG-05 | Phase 5 (PR-5) | Pending |
-| PLUG-06 | Phase 5 (PR-5) | Pending |
+| PLUG-01 | Phase 5 (PR-5) | Complete |
+| PLUG-02 | Phase 5 (PR-5) | Complete |
+| PLUG-03 | Phase 5 (PR-5) | Complete |
+| PLUG-04 | Phase 5 (PR-5) | Complete |
+| PLUG-05 | Phase 5 (PR-5) | Complete |
+| PLUG-06 | Phase 5 (PR-5) | Complete |
 | CORE-01 | Phase 6 (PR-6) | Pending |
 | CORE-02 | Phase 6 (PR-6) | Pending |
 | CORE-03 | Phase 6 (PR-6) | Pending |
