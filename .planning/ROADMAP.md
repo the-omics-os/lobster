@@ -36,11 +36,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Nested tar archives containing path-traversal members (../) are rejected before extraction reaches the filesystem
   4. Concurrent download workers processing the same queue entry results in exactly one succeeding and others receiving a no-op, never duplicate processing
   5. Retry logic returns typed results that all call sites handle exhaustively -- no string sentinel comparisons remain
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Standardize metadata validation key and enforce centralized writes (GSAF-02, GSAF-03)
+- [ ] 01-02-PLAN.md — Typed retry results and GDS canonicalization (GSAF-05, GSAF-01)
+- [ ] 01-03-PLAN.md — Tar extraction security and CAS download queue transitions (GSAF-04, GSAF-06)
 
 ### Phase 2: GEO Parser & Data Integrity
 **Goal**: GEO parser reports partial results explicitly, selects the right files from archives, and cleans up after failures
@@ -166,7 +167,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. GEO Safety & Contract Hotfixes | 0/? | Not started | - |
+| 1. GEO Safety & Contract Hotfixes | 0/3 | Planning complete | - |
 | 2. GEO Parser & Data Integrity | 0/? | Not started | - |
 | 3. GEO Strategy Engine Hardening | 0/? | Not started | - |
 | 4. GEO Service Decomposition | 0/? | Not started | - |
