@@ -1952,65 +1952,6 @@ class GEOService:
             logger.error(f"Error in supplementary first pipeline: {e}")
             return GEOResult(success=False, error_message=str(e))
 
-    def _try_archive_extraction_first(
-        self, geo_id: str, metadata: Dict[str, Any]
-    ) -> GEOResult:
-        """Try extracting from archive files (TAR, ZIP) as primary approach."""
-        try:
-            logger.debug(f"Attempting archive extraction first for {geo_id}")
-
-            suppl_files = metadata.get("supplementary_file", [])
-            if not isinstance(suppl_files, list):
-                suppl_files = [suppl_files]
-
-            # Look for archive files
-            archive_files = [
-                f
-                for f in suppl_files
-                if _is_archive_url(f)
-                or any(ext in f.lower() for ext in [".zip", ".rar"])
-            ]
-
-            if not archive_files:
-                return GEOResult(success=False, error_message="No archive files found")
-
-            # Try processing archive files
-            for archive_url in archive_files:
-                if _is_archive_url(archive_url):
-                    matrix = self._process_tar_file(archive_url, geo_id)
-
-                    # Handle both DataFrame and AnnData return types
-                    if matrix is not None:
-                        is_valid = False
-                        if isinstance(matrix, pd.DataFrame):
-                            is_valid = not matrix.empty
-                        elif isinstance(matrix, anndata.AnnData):
-                            is_valid = matrix.n_obs > 0 and matrix.n_vars > 0
-
-                        if is_valid:
-                            return GEOResult(
-                                data=matrix,
-                                metadata=metadata,
-                                source=GEODataSource.TAR_ARCHIVE,
-                                processing_info={
-                                    "method": "archive_extraction_first",
-                                    "file": archive_url.split("/")[-1],
-                                    "data_type": self._determine_data_type_from_metadata(
-                                        metadata
-                                    ),
-                                },
-                                success=True,
-                            )
-
-            return GEOResult(
-                success=False,
-                error_message="Could not extract usable data from archive files",
-            )
-
-        except Exception as e:
-            logger.error(f"Error in archive extraction pipeline: {e}")
-            return GEOResult(success=False, error_message=str(e))
-
     def _try_supplementary_fallback(
         self, geo_id: str, metadata: Dict[str, Any]
     ) -> GEOResult:

@@ -197,7 +197,7 @@ class TestDualTypeValidation:
         """Test that validation accepts non-empty DataFrame."""
         df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
 
-        # This simulates the validation check in _try_archive_extraction_first
+        # This simulates the validation check in archive pipeline steps
         if isinstance(df, pd.DataFrame):
             is_valid = not df.empty
         elif isinstance(df, ad.AnnData):

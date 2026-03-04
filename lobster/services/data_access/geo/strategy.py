@@ -56,7 +56,6 @@ class PipelineType(Enum):
     SUPPLEMENTARY_FIRST = auto()  # Start with supplementary files
     SAMPLES_FIRST = auto()  # Download individual samples
     H5_FIRST = auto()  # Prioritize H5/H5AD files
-    ARCHIVE_FIRST = auto()  # Extract from archives first
     FALLBACK = auto()  # Use fallback mechanisms
 
 
@@ -381,12 +380,6 @@ class PipelineStrategyEngine:
                 geo_service_instance._try_geoparse_download,
             ],
             PipelineType.SAMPLES_FIRST: [
-                geo_service_instance._try_supplementary_first,  # Series-level 10x trio
-                geo_service_instance._try_geoparse_download,
-                geo_service_instance._try_supplementary_fallback,
-            ],
-            PipelineType.ARCHIVE_FIRST: [
-                geo_service_instance._try_archive_extraction_first,
                 geo_service_instance._try_supplementary_first,  # Series-level 10x trio
                 geo_service_instance._try_geoparse_download,
                 geo_service_instance._try_supplementary_fallback,
