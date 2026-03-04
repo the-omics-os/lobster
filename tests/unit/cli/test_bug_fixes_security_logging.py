@@ -210,7 +210,7 @@ class TestBug4HistoryLogging:
         mock_client.session_id = "test_session"
         mock_client.data_manager.workspace_path = Path(tempfile.gettempdir())
 
-        with patch("lobster.cli._backup_command_to_file", return_value=True):
+        with patch("lobster.cli_internal.commands.heavy.session_infra._backup_command_to_file", return_value=True):
             result = _add_command_to_history(mock_client, "/test", "test summary")
 
             # Bug #4 fix: Should return bool (True/False), not None
