@@ -217,11 +217,6 @@ ui/node_modules/
 Thumbs.db
 ehthumbs.db
 
-# === Negation Rules ===
-# These MUST come after the patterns they negate
-!data/exports/.gitkeep
-!skills/**/MANIFEST
-
 # === Miscellaneous ===
 .installed.cfg
 .webassets-cache
@@ -232,4 +227,9 @@ ehthumbs.db
 *.mo
 *.pot
 MANIFEST
+
+# === Negation Rules ===
+# These MUST come after the patterns they negate
+!data/exports/.gitkeep
+!skills/**/MANIFEST
 #pytorch lighning logs
