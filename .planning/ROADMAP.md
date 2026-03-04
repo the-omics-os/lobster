@@ -74,7 +74,7 @@ Plans:
 - [ ] 03-02-PLAN.md — Remove ARCHIVE_FIRST dead branch from enum, pipeline map, and geo_service (GSTR-03)
 
 ### Phase 4: GEO Service Decomposition
-**Goal**: geo_service.py (5,847 LOC) is decomposed into focused domain modules while preserving the existing API surface
+**Goal**: geo_service.py (5,954 LOC) is decomposed into focused domain modules while preserving the existing API surface
 **Depends on**: Phase 2, Phase 3
 **Requirements**: GDEC-01, GDEC-02, GDEC-03, GDEC-04
 **Success Criteria** (what must be TRUE):
@@ -82,11 +82,12 @@ Plans:
   2. GEOService class remains importable and callable with identical behavior -- existing integration tests pass unchanged
   3. SOFT-download logic exists in exactly one location (no duplication between geo_service and geo_provider)
   4. Each extracted module has its own narrow unit tests that run independently
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md — Extract shared helpers and SOFT pre-download into reusable modules (GDEC-03)
+- [ ] 04-02-PLAN.md — Extract 5 domain modules and convert geo_service.py to facade (GDEC-01, GDEC-02)
+- [ ] 04-03-PLAN.md — SOFT dedup across codebase, narrow unit tests, facade compatibility tests (GDEC-01, GDEC-02, GDEC-03, GDEC-04)
 
 ### Phase 5: Plugin-First Registration
 **Goal**: Queue preparers and download services are discovered via entry points, with hardcoded fallback available but gated
@@ -171,7 +172,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 1. GEO Safety & Contract Hotfixes | 3/3 | Complete   | 2026-03-04 |
 | 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
 | 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
-| 4. GEO Service Decomposition | 0/? | Not started | - |
+| 4. GEO Service Decomposition | 0/3 | Planned | - |
 | 5. Plugin-First Registration | 0/? | Not started | - |
 | 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
 | 7. data_manager_v2 Move | 0/? | Not started | - |
