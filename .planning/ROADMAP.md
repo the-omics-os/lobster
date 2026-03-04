@@ -23,6 +23,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7) (completed 2026-03-04)
 - [ ] **Phase 8: CLI Decomposition** - Extract command bodies from cli.py to cli_internal/commands/ (PR-8)
 - [x] **Phase 9: Repo Hygiene & Packaging Cleanup** - Normalize gitignore, expand make clean, remove stale artifacts and empty dirs (PR-9) (completed 2026-03-04)
+- [ ] **Phase 10: Fix Provenance `__getattr__` Shim** - Extend provenance __init__.py to cover analysis_ir/lineage/ir_coverage submodules, fixing DE analysis ImportError (PR-10) [GAP CLOSURE]
+- [ ] **Phase 11: Strengthen CI Deprecated-Import Guard** - Remove || true from CI check, migrate 39 deprecated imports in packages/ to canonical paths (PR-11) [GAP CLOSURE]
 
 ## Phase Details
 
@@ -165,6 +167,28 @@ Plans:
 - [ ] 09-01-PLAN.md — Normalize .gitignore sections, expand Makefile clean targets, remove stale artifacts (HYGN-01, HYGN-02, HYGN-05)
 - [ ] 09-02-PLAN.md — Remove empty placeholder dirs, update deprecated shim imports, remove shim files (HYGN-03, HYGN-04)
 
+### Phase 10: Fix Provenance `__getattr__` Shim
+**Goal**: `from lobster.core.provenance import AnalysisStep` (and all other provenance submodule exports) works via the backward-compat `__getattr__` shim — DE analysis provenance IR creation no longer breaks at runtime
+**Depends on**: Phase 6
+**Requirements**: CORE-04
+**Gap Closure:** Closes gaps from audit (CORE-04 partial, integration Phase 06→lobster-transcriptomics, flow DE Analysis Provenance IR Creation)
+**Success Criteria** (what must be TRUE):
+  1. `from lobster.core.provenance import AnalysisStep` resolves without ImportError
+  2. `from lobster.core.provenance import X` works for all public names in analysis_ir.py, lineage.py, and ir_coverage.py
+  3. All 6 call sites in de_analysis_expert.py (lines 640, 1123, 2096, 2294, 2467, 2937) execute without import failures
+  4. Existing provenance.py shim behavior is preserved (ProvenanceTracker still accessible)
+
+### Phase 11: Strengthen CI Deprecated-Import Guard
+**Goal**: CI deprecated-import check blocks PRs that introduce old-path imports — existing 39 violations in packages/ migrated to canonical paths
+**Depends on**: Phase 7
+**Requirements**: DMGR-04
+**Gap Closure:** Closes gaps from audit (integration Phase 07 CI guard → packages/)
+**Success Criteria** (what must be TRUE):
+  1. `.github/workflows/ci-basic.yml` deprecated-import grep step fails CI (no `|| true`) when old-path imports are found
+  2. All 39 pre-existing deprecated imports in `packages/` updated to canonical paths
+  3. `grep -r 'from lobster.core.data_manager_v2' packages/` returns zero matches
+  4. CI passes cleanly after migration
+
 ## Progress
 
 **Execution Order:**
@@ -181,3 +205,5 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
 | 8. CLI Decomposition | 1/2 | In Progress|  |
 | 9. Repo Hygiene & Packaging Cleanup | 2/2 | Complete   | 2026-03-04 |
+| 10. Fix Provenance __getattr__ Shim | 0/0 | Planned | - |
+| 11. Strengthen CI Deprecated-Import Guard | 0/0 | Planned | - |

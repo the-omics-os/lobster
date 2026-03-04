@@ -51,7 +51,7 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 - [x] **CORE-01**: Core subpackages created: runtime/, queues/, notebooks/, provenance/, governance/
 - [x] **CORE-02**: 13 files moved to domain subpackages with backward-compatible shims at old paths
 - [x] **CORE-03**: Shims emit DeprecationWarning with removal version
-- [x] **CORE-04**: Import-linter config updated for new subpackage paths (A5)
+- [ ] **CORE-04**: Import-linter config updated for new subpackage paths (A5)
 - [x] **CORE-05**: No import cycles introduced
 
 ### Data Manager Move
@@ -137,12 +137,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-01 | Phase 6 (PR-6) | Complete |
 | CORE-02 | Phase 6 (PR-6) | Complete |
 | CORE-03 | Phase 6 (PR-6) | Complete |
-| CORE-04 | Phase 6 (PR-6) | Complete |
+| CORE-04 | Phase 10 (PR-10) | Pending |
 | CORE-05 | Phase 6 (PR-6) | Complete |
 | DMGR-01 | Phase 7 (PR-7) | Complete |
 | DMGR-02 | Phase 7 (PR-7) | Complete |
 | DMGR-03 | Phase 7 (PR-7) | Complete |
-| DMGR-04 | Phase 7 (PR-7) | Complete |
+| DMGR-04 | Phase 7 (PR-7), Phase 11 (PR-11) | Complete |
 | CLID-01 | Phase 8 (PR-8) | Complete |
 | CLID-02 | Phase 8 (PR-8) | Complete |
 | CLID-03 | Phase 8 (PR-8) | Complete |
@@ -155,6 +155,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 **Coverage:**
 - v1 requirements: 39 total
 - Mapped to phases: 39
+- Satisfied: 38/39 (CORE-04 pending — gap closure Phase 10)
 - Unmapped: 0 ✓
 
 ---
