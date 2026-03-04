@@ -557,6 +557,7 @@ class TestNoLobsterImports:
             "..",  # → lobster/ root
             "lobster",
             "core",
+            "governance",
             "aquadif_monitor.py",
         )
         module_path = os.path.abspath(module_path)
