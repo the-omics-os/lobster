@@ -10,7 +10,7 @@ class TestDataExpertToolWiring:
     @patch("lobster.agents.data_expert.data_expert.get_settings")
     def test_filesystem_tools_included(self, mock_settings, mock_create_llm, tmp_path):
         """data_expert factory should include 6 filesystem tools."""
-        from lobster.core.data_manager_v2 import DataManagerV2
+        from lobster.core.runtime.data_manager import DataManagerV2
 
         # Setup mocks
         mock_settings.return_value = MagicMock()

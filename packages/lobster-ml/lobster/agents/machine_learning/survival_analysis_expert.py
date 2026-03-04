@@ -24,7 +24,7 @@ from lobster.agents.machine_learning.shared_tools import create_survival_analysi
 from lobster.agents.machine_learning.state import SurvivalAnalysisExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import tool
 
 from lobster.agents.transcriptomics.config import detect_data_type, get_qc_defaults
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.quality.preprocessing_service import PreprocessingService
 from lobster.services.quality.quality_service import QualityError, QualityService
 from lobster.utils.logger import get_logger

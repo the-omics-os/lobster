@@ -47,7 +47,7 @@ from lobster.agents.drug_discovery.shared_tools import create_shared_tools
 from lobster.agents.drug_discovery.state import DrugDiscoveryExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.drug_discovery.chembl_service import ChEMBLService
 from lobster.services.drug_discovery.opentargets_service import OpenTargetsService
 from lobster.services.drug_discovery.pubchem_service import PubChemService

@@ -177,3 +177,24 @@ def test_subpackages_exist(subpackage):
     """Verify subpackage directories have __init__.py and are importable."""
     mod = importlib.import_module(subpackage)
     assert mod is not None
+
+
+def test_no_deprecated_data_manager_imports_in_packages():
+    """packages/ must not import from deprecated lobster.core.data_manager_v2."""
+    import subprocess
+
+    result = subprocess.run(
+        [
+            "grep",
+            "-rn",
+            "--include=*.py",
+            "--exclude=data_manager_v2.py",
+            "from lobster.core.data_manager_v2 import",
+            "packages/",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1, (
+        f"Deprecated imports found in packages/:\n{result.stdout}"
+    )

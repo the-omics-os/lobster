@@ -24,7 +24,7 @@ from lobster.agents.machine_learning.shared_tools import create_feature_selectio
 from lobster.agents.machine_learning.state import FeatureSelectionExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 

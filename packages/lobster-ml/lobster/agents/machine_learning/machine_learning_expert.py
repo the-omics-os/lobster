@@ -24,7 +24,7 @@ from lobster.agents.machine_learning.prompts import create_ml_expert_prompt
 from lobster.agents.machine_learning.state import MachineLearningExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.ml.ml_preparation_service import MLPreparationService
 from lobster.utils.logger import get_logger
 

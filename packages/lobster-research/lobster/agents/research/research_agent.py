@@ -38,7 +38,7 @@ from lobster.config.settings import get_settings
 
 # Premium feature - graceful fallback if unavailable
 from lobster.core.component_registry import component_registry
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.core.schemas.download_queue import (
     DownloadStatus,
     ValidationStatus,

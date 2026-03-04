@@ -16,7 +16,7 @@ from typing import Callable, List
 
 from langchain_core.tools import tool
 
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

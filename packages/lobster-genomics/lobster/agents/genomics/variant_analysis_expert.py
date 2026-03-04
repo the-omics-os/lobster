@@ -38,7 +38,7 @@ from langgraph.prebuilt import create_react_agent
 
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.variant_annotation_service import (
     VariantAnnotationService,
 )

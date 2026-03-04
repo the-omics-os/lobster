@@ -49,7 +49,7 @@ from lobster.agents.transcriptomics.prompts import create_annotation_expert_prom
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.component_registry import component_registry
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.enhanced_singlecell_service import (
     EnhancedSingleCellService,
 )

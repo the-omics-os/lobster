@@ -47,7 +47,7 @@ from lobster.core import (
     InsufficientCellsError,
     PseudobulkError,
 )
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.bulk_rnaseq_service import (
     BulkRNASeqError,
     BulkRNASeqService,

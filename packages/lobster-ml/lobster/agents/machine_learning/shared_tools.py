@@ -9,7 +9,7 @@ from typing import List, Optional
 
 from langchain_core.tools import tool
 
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.pathway_enrichment_bridge_service import (
     PathwayEnrichmentBridgeService,
     PathwayEnrichmentError,

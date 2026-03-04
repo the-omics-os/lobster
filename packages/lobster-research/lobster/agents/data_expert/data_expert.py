@@ -14,19 +14,23 @@ AGENT_CONFIG = AgentRegistryConfig(
     name="data_expert_agent",
     display_name="Data Expert",
     description=(
-        "Executes queue-based downloads (ZERO online access), manages modalities with "
-        "CRUD operations, loads local files via adapter system, retry mechanism with "
-        "strategy overrides, workspace orchestration, and autonomous file-level "
-        "operations (list, read, write, search, shell execute)"
+        "Service agent for LOCAL data operations ONLY (ZERO online access): "
+        "queue-based downloads, file loading via adapters, modality CRUD, "
+        "workspace file operations (list, read, write, search, shell execute). "
+        "NOT for domain analysis — route QC, statistics, and biological interpretation "
+        "to domain experts (transcriptomics, genomics, proteomics, metabolomics)"
     ),
     factory_function="lobster.agents.data_expert.data_expert.data_expert",
     handoff_tool_name="handoff_to_data_expert_agent",
     handoff_tool_description=(
-        "Assign LOCAL data operations: execute downloads from validated queue entries, "
-        "load local files via adapters, manage modalities (list/inspect/remove/validate), "
-        "retry failed downloads, inspect and manipulate workspace files, extract archives, "
-        "debug file format issues. DO NOT delegate online operations "
-        "(metadata/URL extraction) - those go to research_agent"
+        "Assign LOCAL data operations ONLY: execute downloads from validated queue entries, "
+        "load/convert local files via adapters, manage modalities (list/inspect/remove/validate), "
+        "retry failed downloads, list/read/write workspace files, extract archives, "
+        "debug file format issues. "
+        "NEVER use for domain analysis tasks — computing QC metrics, call rates, "
+        "statistical tests, normalization, clustering, or biological interpretation "
+        "MUST go to the appropriate domain expert (transcriptomics_expert, genomics_expert, "
+        "proteomics_expert, metabolomics_expert). Data expert loads data; domain experts analyze it."
     ),
     child_agents=["metadata_assistant"],
 )
@@ -46,7 +50,7 @@ from lobster.agents.data_expert.state import DataExpertState
 # Core Lobster imports
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
 
 # Service imports

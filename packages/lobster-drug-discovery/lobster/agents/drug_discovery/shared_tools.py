@@ -19,7 +19,7 @@ from lobster.agents.drug_discovery.config import (
     OPENTARGETS_GRAPHQL,
     PUBCHEM_API_BASE,
 )
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.drug_discovery.chembl_service import ChEMBLService
 from lobster.services.drug_discovery.opentargets_service import OpenTargetsService
 from lobster.services.drug_discovery.pubchem_service import PubChemService

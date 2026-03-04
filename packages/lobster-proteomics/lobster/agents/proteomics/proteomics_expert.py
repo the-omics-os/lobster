@@ -39,7 +39,7 @@ from lobster.agents.proteomics.state import ProteomicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.proteomics_analysis_service import (
     ProteomicsAnalysisService,
 )

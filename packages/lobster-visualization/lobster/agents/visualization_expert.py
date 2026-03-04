@@ -32,7 +32,7 @@ from langgraph.prebuilt import create_react_agent
 from lobster.agents.visualization_state import VisualizationExpertState  # noqa: F401
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.visualization.visualization_service import (
     SingleCellVisualizationService,
 )

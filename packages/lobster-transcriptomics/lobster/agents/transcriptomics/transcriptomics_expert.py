@@ -16,10 +16,23 @@ from lobster.config.agent_registry import AgentRegistryConfig
 AGENT_CONFIG = AgentRegistryConfig(
     name="transcriptomics_expert",
     display_name="Transcriptomics Expert",
-    description="Unified expert for single-cell AND bulk RNA-seq analysis. Handles QC, clustering, and orchestrates annotation and DE analysis via specialized sub-agents.",
+    description=(
+        "Domain expert for single-cell AND bulk expression analysis. "
+        "Handles QC, clustering, and orchestrates annotation and DE via sub-agents. "
+        "Primary expert for all single-cell assays including RNA-seq, DNA variants, "
+        "CITE-seq/protein, and multi-modal data when specialized experts (genomics, proteomics) "
+        "are not available."
+    ),
     factory_function="lobster.agents.transcriptomics.transcriptomics_expert.transcriptomics_expert",
     handoff_tool_name="handoff_to_transcriptomics_expert",
-    handoff_tool_description="Assign ALL transcriptomics analysis tasks (single-cell OR bulk RNA-seq): QC, clustering, cell type annotation, differential expression, pseudobulk, pathway enrichment/functional analysis (GO/KEGG/Reactome gene set enrichment)",
+    handoff_tool_description=(
+        "Assign ALL single-cell and bulk expression analysis tasks: QC (cell/gene filtering, "
+        "quality metrics, call rates), normalization, clustering, cell type annotation, "
+        "differential expression, pseudobulk, trajectory, pathway enrichment/functional analysis. "
+        "Covers RNA-seq, single-cell DNA variant QC, CITE-seq/ADT protein data, and multi-modal "
+        "single-cell assays. Use this agent — not data_expert — for ANY task that requires "
+        "computing biological metrics or interpreting single-cell data."
+    ),
     child_agents=["annotation_expert", "de_analysis_expert"],
 )
 
@@ -38,7 +51,7 @@ from lobster.agents.transcriptomics.state import TranscriptomicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.analysis_ir import AnalysisStep
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.bulk_preprocessing_service import (
     BulkPreprocessingService,
 )

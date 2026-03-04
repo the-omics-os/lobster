@@ -33,7 +33,7 @@ from lobster.agents.metabolomics.shared_tools import create_shared_tools
 from lobster.agents.metabolomics.state import MetabolomicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.metabolomics_analysis_service import (
     MetabolomicsAnalysisService,
 )
