@@ -274,6 +274,30 @@ publication_processing = "lobster.services.orchestration.publication_processing_
 publication_queue = "lobster.core.publication_queue:PublicationQueue"
 
 # =============================================================================
+# Entry Points - Queue Preparers (PLUG-03, PLUG-04)
+# =============================================================================
+# All 5 supported databases discoverable via lobster.queue_preparers group.
+# Entry-point name MUST match the first value returned by supported_databases().
+[project.entry-points."lobster.queue_preparers"]
+geo          = "lobster.services.data_access.geo_queue_preparer:GEOQueuePreparer"
+sra          = "lobster.services.data_access.sra_queue_preparer:SRAQueuePreparer"
+pride        = "lobster.services.data_access.pride_queue_preparer:PRIDEQueuePreparer"
+massive      = "lobster.services.data_access.massive_queue_preparer:MassIVEQueuePreparer"
+metabolights = "lobster.services.data_access.metabolights_queue_preparer:MetaboLightsQueuePreparer"
+
+# =============================================================================
+# Entry Points - Download Services (PLUG-03, PLUG-04)
+# =============================================================================
+# All 5 supported databases discoverable via lobster.download_services group.
+# Entry-point name MUST match supported_databases()[0] for the class.
+[project.entry-points."lobster.download_services"]
+geo          = "lobster.services.data_access.geo_download_service:GEODownloadService"
+sra          = "lobster.services.data_access.sra_download_service:SRADownloadService"
+pride        = "lobster.services.data_access.pride_download_service:PRIDEDownloadService"
+massive      = "lobster.services.data_access.massive_download_service:MassIVEDownloadService"
+metabolights = "lobster.services.data_access.metabolights_download_service:MetaboLightsDownloadService"
+
+# =============================================================================
 # Agent Entry Points - Now in Separate Packages
 # =============================================================================
 # Agent entry points have been moved to their respective packages:
