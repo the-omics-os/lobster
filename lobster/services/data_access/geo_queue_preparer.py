@@ -10,9 +10,12 @@ strategy recommendation. Falls back to URL-based heuristics on failure.
 
 from __future__ import annotations
 
+import json
+import urllib.parse
+import urllib.request
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from lobster.core.interfaces.queue_preparer import IQueuePreparer
+from lobster.core.interfaces.queue_preparer import IQueuePreparer, QueuePreparationResult
 from lobster.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -253,6 +256,94 @@ class GEOQueuePreparer(IQueuePreparer):
             self._data_expert = DataExpertAssistant()
             logger.debug("Lazy-loaded DataExpertAssistant for GEOQueuePreparer")
         return self._data_expert
+
+    # ------------------------------------------------------------------
+    # GDS-to-GSE canonicalization
+    # ------------------------------------------------------------------
+
+    def prepare_queue_entry(
+        self, accession: str, priority: int = 5
+    ) -> QueuePreparationResult:
+        """Prepare queue entry with GDS-to-GSE canonicalization.
+
+        GDS accessions are resolved to their canonical GSE counterpart
+        before the standard pipeline runs.  The original GDS accession
+        is preserved in ``queue_entry.metadata["original_accession"]``.
+        """
+        canonical = accession
+        original_accession = None
+
+        if accession.upper().startswith("GDS"):
+            try:
+                resolved = self._resolve_gds_to_gse(accession)
+                if resolved:
+                    canonical = resolved
+                    original_accession = accession
+                    logger.info(f"Canonicalized {accession} -> {canonical}")
+            except Exception as e:
+                logger.warning(
+                    f"Failed to canonicalize GDS {accession}: {e}, using as-is"
+                )
+
+        # Delegate to the base-class template method with the canonical accession
+        result = super().prepare_queue_entry(canonical, priority)
+
+        # Preserve original accession in metadata for traceability
+        if original_accession and result:
+            meta = result.queue_entry.metadata
+            if isinstance(meta, dict):
+                meta["original_accession"] = original_accession
+            else:
+                result.queue_entry.metadata = {
+                    "original_accession": original_accession
+                }
+
+        return result
+
+    def _resolve_gds_to_gse(self, gds_id: str) -> Optional[str]:
+        """Resolve a GDS accession to its canonical GSE via NCBI Entrez.
+
+        Uses the same eSummary approach as ``GEOService._fetch_gds_metadata_and_convert``
+        but only extracts the linked GSE identifier (lightweight, no full metadata fetch).
+
+        Args:
+            gds_id: GDS accession (e.g. ``"GDS5826"``).
+
+        Returns:
+            The canonical GSE accession (e.g. ``"GSE67835"``), or *None* if
+            the GDS record has no linked GSE.
+        """
+        gds_number = gds_id.upper().replace("GDS", "")
+
+        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+        params = {"db": "gds", "id": gds_number, "retmode": "json"}
+        url = f"{base_url}?{urllib.parse.urlencode(params)}"
+
+        logger.debug(f"Resolving GDS {gds_id} via Entrez eSummary: {url}")
+
+        try:
+            from lobster.services.data_access.geo.ssl_utils import create_ssl_context
+
+            ssl_ctx = create_ssl_context()
+        except Exception:
+            ssl_ctx = None
+
+        response = urllib.request.urlopen(url, context=ssl_ctx, timeout=30)
+        data = json.loads(response.read().decode("utf-8"))
+
+        if "result" not in data or gds_number not in data["result"]:
+            logger.warning(f"No Entrez record found for {gds_id}")
+            return None
+
+        gse_id = data["result"][gds_number].get("gse", "")
+        if not gse_id:
+            logger.warning(f"No linked GSE found for {gds_id}")
+            return None
+
+        if not gse_id.startswith("GSE"):
+            gse_id = f"GSE{gse_id}"
+
+        return gse_id
 
     def fetch_metadata(
         self, accession: str
