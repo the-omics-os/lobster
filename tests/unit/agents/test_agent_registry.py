@@ -117,7 +117,7 @@ def mock_data_manager(mock_provider_config):
     Note: This fixture now requires mock_provider_config to ensure LLM
     creation works properly in the refactored provider system.
     """
-    with patch("lobster.core.data_manager_v2.DataManagerV2") as MockDataManager:
+    with patch("lobster.core.runtime.data_manager.DataManagerV2") as MockDataManager:
         mock_dm = MockDataManager.return_value
         mock_dm.list_modalities.return_value = ["test_modality_1", "test_modality_2"]
         mock_dm.get_modality.return_value = SingleCellDataFactory(

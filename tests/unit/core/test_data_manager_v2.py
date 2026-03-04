@@ -114,9 +114,9 @@ def mock_provenance():
 class TestDataManagerV2Initialization:
     """Test DataManagerV2 initialization and setup functionality."""
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_init_default_parameters(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -143,9 +143,9 @@ class TestDataManagerV2Initialization:
         assert isinstance(dm.current_metadata, dict)
         assert dm.adata is None
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_init_custom_parameters(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -166,9 +166,9 @@ class TestDataManagerV2Initialization:
         assert dm.console is custom_console
         assert dm.provenance is None  # Disabled
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_workspace_setup(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -185,14 +185,14 @@ class TestDataManagerV2Initialization:
         assert dm.exports_dir == temp_workspace / "exports"
         assert dm.cache_dir == temp_workspace / "cache"
 
-    @patch("lobster.core.data_manager_v2.MUDATA_BACKEND_AVAILABLE", True)
+    @patch("lobster.core.runtime.data_manager.MUDATA_BACKEND_AVAILABLE", True)
     def test_default_backends_registration(self, temp_workspace):
         """Test that default backends are registered properly."""
         with (
-            patch("lobster.core.data_manager_v2.H5ADBackend") as mock_h5ad,
-            patch("lobster.core.data_manager_v2.MuDataBackend") as mock_mudata,
-            patch("lobster.core.data_manager_v2.TranscriptomicsAdapter"),
-            patch("lobster.core.data_manager_v2.ProteomicsAdapter"),
+            patch("lobster.core.runtime.data_manager.H5ADBackend") as mock_h5ad,
+            patch("lobster.core.runtime.data_manager.MuDataBackend") as mock_mudata,
+            patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter"),
+            patch("lobster.core.runtime.data_manager.ProteomicsAdapter"),
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
 
@@ -202,13 +202,13 @@ class TestDataManagerV2Initialization:
             mock_h5ad.assert_called_once()
             mock_mudata.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.MUDATA_BACKEND_AVAILABLE", False)
+    @patch("lobster.core.runtime.data_manager.MUDATA_BACKEND_AVAILABLE", False)
     def test_default_backends_registration_without_mudata(self, temp_workspace):
         """Test backend registration when MuData is not available."""
         with (
-            patch("lobster.core.data_manager_v2.H5ADBackend") as mock_h5ad,
-            patch("lobster.core.data_manager_v2.TranscriptomicsAdapter"),
-            patch("lobster.core.data_manager_v2.ProteomicsAdapter"),
+            patch("lobster.core.runtime.data_manager.H5ADBackend") as mock_h5ad,
+            patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter"),
+            patch("lobster.core.runtime.data_manager.ProteomicsAdapter"),
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
 
@@ -220,10 +220,10 @@ class TestDataManagerV2Initialization:
         """Test that default adapters are registered properly."""
         with (
             patch(
-                "lobster.core.data_manager_v2.TranscriptomicsAdapter"
+                "lobster.core.runtime.data_manager.TranscriptomicsAdapter"
             ) as mock_transcriptomics,
-            patch("lobster.core.data_manager_v2.ProteomicsAdapter") as mock_proteomics,
-            patch("lobster.core.data_manager_v2.H5ADBackend"),
+            patch("lobster.core.runtime.data_manager.ProteomicsAdapter") as mock_proteomics,
+            patch("lobster.core.runtime.data_manager.H5ADBackend"),
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
 
@@ -242,9 +242,9 @@ class TestDataManagerV2Initialization:
             assert mock_transcriptomics.call_count == 2  # single_cell + bulk
             assert mock_proteomics.call_count == 2  # ms + affinity
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_provenance_initialization(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -272,9 +272,9 @@ class TestDataManagerV2Initialization:
 class TestBackendAdapterManagement:
     """Test backend and adapter registration and retrieval."""
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_register_backend_success(
         self,
         mock_proteomics,
@@ -293,9 +293,9 @@ class TestBackendAdapterManagement:
         assert "test_backend" in dm.backends
         assert dm.backends["test_backend"] is mock_backend
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_register_backend_duplicate_name(
         self,
         mock_proteomics,
@@ -313,9 +313,9 @@ class TestBackendAdapterManagement:
         ):
             dm.register_backend("test_backend", mock_backend)
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_register_adapter_success(
         self,
         mock_proteomics,
@@ -334,9 +334,9 @@ class TestBackendAdapterManagement:
         assert "test_adapter" in dm.adapters
         assert dm.adapters["test_adapter"] is mock_adapter
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_register_adapter_duplicate_name(
         self,
         mock_proteomics,
@@ -354,9 +354,9 @@ class TestBackendAdapterManagement:
         ):
             dm.register_adapter("test_adapter", mock_adapter)
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_get_backend_info(
         self,
         mock_proteomics,
@@ -375,9 +375,9 @@ class TestBackendAdapterManagement:
         assert "test_backend" in info
         mock_backend.get_storage_info.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_get_adapter_info(
         self,
         mock_proteomics,
@@ -631,9 +631,9 @@ class TestModalityManagement:
 class TestQualityValidation:
     """Test data quality assessment and validation functionality."""
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_get_quality_metrics_single_modality(
         self,
         mock_proteomics,
@@ -663,9 +663,9 @@ class TestQualityValidation:
         assert "n_cells" in metrics
         mock_adapter.get_quality_metrics.assert_called_once_with(test_data)
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_get_quality_metrics_all_modalities(
         self,
         mock_proteomics,
@@ -690,7 +690,7 @@ class TestQualityValidation:
         mock_adapter.get_quality_metrics.return_value = {"test": "metrics"}
 
         # Mock BaseAdapter import to avoid abstract class instantiation
-        with patch("lobster.core.data_manager_v2.BaseAdapter") as mock_base_adapter:
+        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance.get_quality_metrics.return_value = {"basic": "metrics"}
@@ -709,9 +709,9 @@ class TestQualityValidation:
         with pytest.raises(ValueError, match="Modality 'nonexistent' not found"):
             dm.get_quality_metrics("nonexistent")
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_get_quality_metrics_no_matching_adapter(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -721,7 +721,7 @@ class TestQualityValidation:
             config=SMALL_DATASET_CONFIG
         )
 
-        with patch("lobster.core.data_manager_v2.BaseAdapter") as mock_base_adapter:
+        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance.get_quality_metrics.return_value = {"basic": "metrics"}
@@ -731,9 +731,9 @@ class TestQualityValidation:
             assert metrics == {"basic": "metrics"}
             mock_base_adapter.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_validate_modalities_success(
         self,
         mock_proteomics,
@@ -757,7 +757,7 @@ class TestQualityValidation:
         mock_adapter.validate.return_value = validation_result
 
         # Mock BaseAdapter import to avoid abstract class instantiation
-        with patch("lobster.core.data_manager_v2.BaseAdapter") as mock_base_adapter:
+        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance._validate_basic_structure.return_value = Mock(
@@ -771,9 +771,9 @@ class TestQualityValidation:
             assert results["transcriptomics_single_cell_test"] is validation_result
             mock_adapter.validate.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_validate_modalities_with_base_adapter_fallback(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -783,7 +783,7 @@ class TestQualityValidation:
             config=SMALL_DATASET_CONFIG
         )
 
-        with patch("lobster.core.data_manager_v2.BaseAdapter") as mock_base_adapter:
+        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance._validate_basic_structure.return_value = Mock(
@@ -887,7 +887,7 @@ class TestWorkspaceManagement:
     ):
         """Test workspace status includes provenance information."""
         with patch(
-            "lobster.core.data_manager_v2.ProvenanceTracker",
+            "lobster.core.runtime.data_manager.ProvenanceTracker",
             return_value=mock_provenance,
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, enable_provenance=True)
@@ -912,7 +912,7 @@ class TestWorkspaceManagement:
     def test_clear_workspace_with_confirmation(self, temp_workspace, mock_provenance):
         """Test successful workspace clearing with confirmation."""
         with patch(
-            "lobster.core.data_manager_v2.ProvenanceTracker",
+            "lobster.core.runtime.data_manager.ProvenanceTracker",
             return_value=mock_provenance,
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, enable_provenance=True)
@@ -956,9 +956,9 @@ class TestWorkspaceManagement:
         dm.modalities["test_mod"] = Mock()
         assert dm.has_data() is True
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_auto_save_state(
         self,
         mock_proteomics,
@@ -994,15 +994,15 @@ class TestWorkspaceManagement:
         assert isinstance(saved_items, list)
         # May contain processing log but no modality saves
 
-    @patch("lobster.core.data_manager_v2.MUDATA_AVAILABLE", True)
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.MUDATA_AVAILABLE", True)
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_to_mudata_success(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
         """Test successful conversion to MuData object."""
-        with patch("lobster.core.data_manager_v2.mudata") as mock_mudata:
+        with patch("lobster.core.runtime.data_manager.mudata") as mock_mudata:
             mock_mdata = Mock()
             mock_mudata.MuData.return_value = mock_mdata
 
@@ -1020,7 +1020,7 @@ class TestWorkspaceManagement:
             assert result is mock_mdata
             mock_mudata.MuData.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.MUDATA_AVAILABLE", False)
+    @patch("lobster.core.runtime.data_manager.MUDATA_AVAILABLE", False)
     def test_to_mudata_not_available(self, temp_workspace):
         """Test MuData conversion when MuData not available."""
         dm = DataManagerV2(workspace_path=temp_workspace)
@@ -1031,22 +1031,22 @@ class TestWorkspaceManagement:
 
     def test_to_mudata_no_modalities(self, temp_workspace):
         """Test MuData conversion with no modalities loaded."""
-        with patch("lobster.core.data_manager_v2.MUDATA_AVAILABLE", True):
+        with patch("lobster.core.runtime.data_manager.MUDATA_AVAILABLE", True):
             dm = DataManagerV2(workspace_path=temp_workspace)
 
             with pytest.raises(ValueError, match="No modalities loaded"):
                 dm.to_mudata()
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_to_mudata_specific_modalities(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
         """Test MuData conversion with specific modalities."""
         with (
-            patch("lobster.core.data_manager_v2.MUDATA_AVAILABLE", True),
-            patch("lobster.core.data_manager_v2.mudata") as mock_mudata,
+            patch("lobster.core.runtime.data_manager.MUDATA_AVAILABLE", True),
+            patch("lobster.core.runtime.data_manager.mudata") as mock_mudata,
         ):
             mock_mdata = Mock()
             mock_mudata.MuData.return_value = mock_mdata
@@ -1067,7 +1067,7 @@ class TestWorkspaceManagement:
 
     def test_to_mudata_missing_modalities(self, temp_workspace):
         """Test MuData conversion with non-existent modalities."""
-        with patch("lobster.core.data_manager_v2.MUDATA_AVAILABLE", True):
+        with patch("lobster.core.runtime.data_manager.MUDATA_AVAILABLE", True):
             dm = DataManagerV2(workspace_path=temp_workspace)
             dm.modalities["rna"] = Mock()
 
@@ -1099,9 +1099,9 @@ class TestWorkspaceManagement:
 class TestLegacyCompatibility:
     """Test legacy compatibility features."""
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_set_data_dataframe(
         self,
         mock_proteomics,
@@ -1150,9 +1150,9 @@ class TestLegacyCompatibility:
         with pytest.raises(ValueError, match="Data must be a pandas DataFrame"):
             dm.set_data("not a dataframe")
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_set_data_different_modality_types(
         self,
         mock_proteomics,
@@ -1232,9 +1232,9 @@ class TestLegacyCompatibility:
         assert result is None
 
     @patch("lobster.utils.file_naming.BioinformaticsFileNaming")
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_save_processed_data_success(
         self,
         mock_proteomics,
@@ -1269,9 +1269,9 @@ class TestLegacyCompatibility:
             assert result is not None
             mock_save.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_get_data_summary_current_dataset(
         self,
         mock_proteomics,
@@ -1322,9 +1322,9 @@ class TestLegacyCompatibility:
 
         assert summary["status"] == "No modalities loaded"
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_safe_helper_methods(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -1435,7 +1435,7 @@ class TestExportDocumentation:
         reason="References removed plot facades - tested in test_plot_manager.py"
     )
     @patch("tempfile.TemporaryDirectory")
-    @patch("lobster.core.data_manager_v2._ensure_plotly")
+    @patch("lobster.core.runtime.data_manager._ensure_plotly")
     def test_create_data_package(
         self, mock_ensure_plotly, mock_temp_dir, mock_zipfile, temp_workspace
     ):
@@ -1482,7 +1482,7 @@ class TestExportDocumentation:
     def test_export_provenance_success(self, temp_workspace, mock_provenance):
         """Test successful provenance export."""
         with patch(
-            "lobster.core.data_manager_v2.ProvenanceTracker",
+            "lobster.core.runtime.data_manager.ProvenanceTracker",
             return_value=mock_provenance,
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, enable_provenance=True)
@@ -1597,9 +1597,9 @@ class TestErrorHandling:
     @pytest.mark.skip(
         reason="Plot facades removed - error handling tested in test_plot_manager.py"
     )
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_plot_operations_with_invalid_data(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -1616,7 +1616,7 @@ class TestErrorHandling:
         mock_adapter.get_quality_metrics.side_effect = Exception("Data corrupted")
 
         # Should handle gracefully by falling back to base adapter
-        with patch("lobster.core.data_manager_v2.BaseAdapter") as mock_base:
+        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base:
             mock_base_instance = Mock()
             mock_base.return_value = mock_base_instance
             mock_base_instance.get_quality_metrics.return_value = {"basic": "metrics"}
@@ -1626,9 +1626,9 @@ class TestErrorHandling:
             # Should fall back to base adapter
             mock_base.assert_called_once()
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_memory_handling_large_datasets(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
@@ -1702,9 +1702,9 @@ class TestErrorHandling:
             for category_files in files.values()
         )
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_resource_cleanup_on_clear_workspace(
         self,
         mock_proteomics,
@@ -1715,7 +1715,7 @@ class TestErrorHandling:
     ):
         """Test proper resource cleanup when clearing workspace."""
         with patch(
-            "lobster.core.data_manager_v2.ProvenanceTracker",
+            "lobster.core.runtime.data_manager.ProvenanceTracker",
             return_value=mock_provenance,
         ):
             dm = DataManagerV2(
@@ -2024,9 +2024,9 @@ class TestIntegrationScenarios:
     """Test integration scenarios and stress conditions."""
 
     @pytest.mark.skip(reason="References removed facades - use isolated service tests")
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_full_workflow_single_cell_analysis(
         self,
         mock_proteomics_class,
@@ -2097,7 +2097,7 @@ class TestIntegrationScenarios:
         with patch.object(dm, "_match_modality_to_adapter") as mock_match:
             mock_match.return_value = None  # Force fallback to base adapter
 
-            with patch("lobster.core.data_manager_v2.BaseAdapter") as mock_base:
+            with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base:
                 mock_base_instance = Mock()
                 mock_base.return_value = mock_base_instance
                 mock_base_instance.get_quality_metrics.return_value = {
@@ -2181,9 +2181,9 @@ class TestIntegrationScenarios:
         # tool_usage_history has been removed - provenance is tracked differently
         assert len(dm.latest_plots) == 1
 
-    @patch("lobster.core.data_manager_v2.H5ADBackend")
-    @patch("lobster.core.data_manager_v2.TranscriptomicsAdapter")
-    @patch("lobster.core.data_manager_v2.ProteomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.H5ADBackend")
+    @patch("lobster.core.runtime.data_manager.TranscriptomicsAdapter")
+    @patch("lobster.core.runtime.data_manager.ProteomicsAdapter")
     def test_memory_pressure_handling(
         self, mock_proteomics, mock_transcriptomics, mock_h5ad, temp_workspace
     ):
