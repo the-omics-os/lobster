@@ -333,10 +333,7 @@ class ConfigResolver:
             lines.append("")
             lines.append("Quickest fix \u2014 reuse an existing config:")
             closest = found_configs[0]
-            project_root = closest.parent
-            lines.append(
-                f"  export LOBSTER_WORKSPACE={project_root}/.lobster_workspace"
-            )
+            lines.append(f"  export LOBSTER_WORKSPACE={closest}")
             lines.append("  # Then re-run your command from any directory")
             lines.append("")
             lines.append("Or make it the global default (works everywhere):")
