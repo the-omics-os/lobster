@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-04T19:34:15.980Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-04T20:09:04.344Z"
 last_activity: 2026-03-04 -- Plan 08-02 complete (slash commands extracted, cli.py wiring-only)
 progress:
   total_phases: 9
   completed_phases: 8
-  total_plans: 19
-  completed_plans: 19
+  total_plans: 21
+  completed_plans: 20
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 8 complete. CLI decomposition -- cli.py reduced from 8049 to 1338 LOC, all command logic in cli_internal/.
+**Current focus:** Phase 9 in progress. Repo hygiene -- empty dirs and deprecated shims cleaned up.
 
 ## Current Position
 
-Phase: 8 of 9 (cli-decomposition)
-Plan: 2 of 2 in current phase (08-02 complete)
-Status: Phase 8 complete
-Last activity: 2026-03-04 -- Plan 08-02 complete (slash commands extracted, cli.py wiring-only)
+Phase: 9 of 9 (repo-hygiene-packaging-cleanup)
+Plan: 2 of 2 in current phase (09-02 complete)
+Status: Phase 9 in progress
+Last activity: 2026-03-04 -- Plan 09-02 complete (empty dirs and deprecated GEO shims removed)
 
-Progress: [██████████] 100%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100%
 *Updated after each plan completion*
 | Phase 05-plugin-first-registration P03 | 15 | 2 tasks | 4 files |
 | Phase 08 P02 | 21 | 2 tasks | 5 files |
+| Phase 09 P02 | 2 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,7 @@ Recent decisions affecting current work:
 - [Phase 08]: Functions delegated via import+call pattern to keep cli.py working during extraction (08-01)
 - [Phase 08]: init/chat/query _impl functions keep typer.Option annotations for standalone testing (08-01)
 - [Phase 08]: cli.py at 1338 LOC (not 300-400) because Typer parameter declarations must remain; all function bodies are thin delegation calls
+- [Phase 09]: Combined Task 1+2 commit since empty dirs not git-tracked; also removed lobster/data/ parent
 
 ### Pending Todos
 
@@ -133,6 +135,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T19:27:09.272Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-04T20:09:04.341Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None

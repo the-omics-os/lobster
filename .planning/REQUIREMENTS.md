@@ -71,8 +71,8 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 - [ ] **HYGN-01**: .gitignore sections normalized
 - [ ] **HYGN-02**: `make clean` and `make clean-all` expanded for package-local artifacts
-- [ ] **HYGN-03**: Empty placeholder dirs removed (those not populated by GEO decomposition)
-- [ ] **HYGN-04**: Deprecated shim files cleaned (geo_parser.py, geo_downloader.py) — verified unused first
+- [x] **HYGN-03**: Empty placeholder dirs removed (those not populated by GEO decomposition)
+- [x] **HYGN-04**: Deprecated shim files cleaned (geo_parser.py, geo_downloader.py) — verified unused first
 - [ ] **HYGN-05**: Stale build artifacts (dist/, *.egg-info/, .ruff_cache/, MagicMock/) removed from package dirs
 
 ## v2 Requirements
@@ -148,8 +148,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLID-03 | Phase 8 (PR-8) | Complete |
 | HYGN-01 | Phase 9 (PR-9) | Pending |
 | HYGN-02 | Phase 9 (PR-9) | Pending |
-| HYGN-03 | Phase 9 (PR-9) | Pending |
-| HYGN-04 | Phase 9 (PR-9) | Pending |
+| HYGN-03 | Phase 9 (PR-9) | Complete |
+| HYGN-04 | Phase 9 (PR-9) | Complete |
 | HYGN-05 | Phase 9 (PR-9) | Pending |
 
 **Coverage:**
