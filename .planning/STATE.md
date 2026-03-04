@@ -26,28 +26,28 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 1 of 9 (GEO Safety & Contract Hotfixes)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-03-04 -- Plan 01-01 complete (metadata key standardization + centralized writes)
+Last activity: 2026-03-04 -- Plan 01-03 complete (tar security + CAS download queue)
 
-Progress: [▓░░░░░░░░░] 3%
+Progress: [▓░░░░░░░░░] 7%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
+- Total plans completed: 2
 - Average duration: 7 min
-- Total execution time: 0.12 hours
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 1 | 7 min | 7 min |
+| 01 | 2 | 14 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min
-- Trend: -
+- Last 5 plans: 7 min, 7 min
+- Trend: Stable
 
 *Updated after each plan completion*
 
@@ -65,6 +65,8 @@ Recent decisions affecting current work:
 - MetadataEntry uses validation_result key (01-01)
 - All GEO metadata writes via _store_geo_metadata or _enrich_geo_metadata (01-01)
 - store_metadata() public method also updated for key consistency (01-01)
+- Reject-all archive policy over skip-unsafe (01-03)
+- CAS returns Optional[DownloadQueueEntry] for richer caller API (01-03)
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T02:22:37Z
-Stopped at: Completed 01-01-PLAN.md
-Resume file: .planning/phases/01-geo-safety-contract-hotfixes/01-01-SUMMARY.md
+Last session: 2026-03-04T02:23:00Z
+Stopped at: Completed 01-03-PLAN.md
+Resume file: .planning/phases/01-geo-safety-contract-hotfixes/01-03-SUMMARY.md
