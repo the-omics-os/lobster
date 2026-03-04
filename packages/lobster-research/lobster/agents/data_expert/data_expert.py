@@ -13,10 +13,21 @@ from lobster.config.agent_registry import AgentRegistryConfig
 AGENT_CONFIG = AgentRegistryConfig(
     name="data_expert_agent",
     display_name="Data Expert",
-    description="Executes queue-based downloads (ZERO online access), manages modalities with CRUD operations, loads local files via adapter system, retry mechanism with strategy overrides, and workspace orchestration",
+    description=(
+        "Executes queue-based downloads (ZERO online access), manages modalities with "
+        "CRUD operations, loads local files via adapter system, retry mechanism with "
+        "strategy overrides, workspace orchestration, and autonomous file-level "
+        "operations (list, read, write, search, shell execute)"
+    ),
     factory_function="lobster.agents.data_expert.data_expert.data_expert",
     handoff_tool_name="handoff_to_data_expert_agent",
-    handoff_tool_description="Assign LOCAL data operations: execute downloads from validated queue entries, load local files via adapters, manage modalities (list/inspect/remove/validate), retry failed downloads. DO NOT delegate online operations (metadata/URL extraction) - those go to research_agent",
+    handoff_tool_description=(
+        "Assign LOCAL data operations: execute downloads from validated queue entries, "
+        "load local files via adapters, manage modalities (list/inspect/remove/validate), "
+        "retry failed downloads, inspect and manipulate workspace files, extract archives, "
+        "debug file format issues. DO NOT delegate online operations "
+        "(metadata/URL extraction) - those go to research_agent"
+    ),
     child_agents=["metadata_assistant"],
 )
 
@@ -48,6 +59,7 @@ from lobster.services.execution.registry import (
 # Tool imports
 from lobster.tools.custom_code_tool import create_execute_custom_code_tool
 from lobster.tools.download_orchestrator import DownloadOrchestrator
+from lobster.tools.filesystem_tools import create_filesystem_tools
 from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 
@@ -589,9 +601,14 @@ You can now analyze this dataset using the appropriate analysis tools.
 
         This tool consolidates upload_data_file and load_modality_from_file functionality.
 
+        IMPORTANT: Use list_files or glob_files FIRST to verify the file exists
+        and inspect its format before calling this tool.
+
         Args:
             modality_name: Name for the new modality
-            file_path: Path to the data file
+            file_path: Path to the data file (relative to workspace or absolute).
+                       Example: "data/GSE276492_RAW/matrix.mtx" or
+                       "data/my_counts.csv"
             adapter: Adapter to use (e.g., 'transcriptomics_single_cell', 'proteomics_ms')
             dataset_type: Source type (e.g., 'custom', 'geo', 'local')
 
@@ -1086,6 +1103,10 @@ To save, run again with save_to_file=True"""
     #         logger.error(f"Unexpected error in delegate_complex_reasoning: {e}")
     #         return f"❌ Unexpected error: {str(e)}"
 
+    # Create filesystem tools for file-level operations (DeepAgent-inspired)
+    fs_workspace = workspace_path or data_manager.workspace_path
+    filesystem_tools = create_filesystem_tools(workspace_path=fs_workspace) if fs_workspace else []
+
     base_tools = [
         # CORE (3 tools)
         execute_download_from_queue,
@@ -1102,6 +1123,8 @@ To save, run again with save_to_file=True"""
         # ADVANCED (Execution & Reasoning)
         execute_custom_code,
         # delegate_complex_reasoning, #TODO needs further security validation
+        # FILESYSTEM (DeepAgent-inspired file-level tools)
+        *filesystem_tools,
     ]
     # create_mudata_from_modalities: Combine modalities into MuData for integrated analysis
 

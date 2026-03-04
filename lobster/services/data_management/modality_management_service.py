@@ -398,8 +398,12 @@ class ModalityManagementService:
             - AnalysisStep for provenance tracking
         """
         try:
-            # Validate file exists
+            # Validate file exists — resolve relative paths against workspace
             file_path_obj = Path(file_path)
+            if not file_path_obj.is_absolute():
+                file_path_obj = (
+                    self.data_manager.workspace_path / file_path_obj
+                ).resolve()
             if not file_path_obj.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
