@@ -603,7 +603,7 @@ def config_test(
     ),
 ):
     """Test API connectivity and validate configuration."""
-    from lobster.cli_internal.commands.heavy.slash_commands import config_test_impl
+    from lobster.cli_internal.commands.light.config_commands import config_test_impl
     config_test_impl(output_json=output_json)
 
 
