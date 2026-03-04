@@ -50,3 +50,31 @@ def test_global_config_roundtrip_json():
     reloaded = GlobalProviderConfig.model_validate_json(json_str)
     assert reloaded.default_provider == "openrouter"
     assert reloaded.openrouter_default_model == "deepseek/deepseek-r1"
+
+
+def test_create_openrouter_config_valid():
+    from lobster.config.provider_setup import create_openrouter_config
+    result = create_openrouter_config("sk-or-test-key-123")
+    assert result.success is True
+    assert result.provider_type == "openrouter"
+    assert result.env_vars["OPENROUTER_API_KEY"] == "sk-or-test-key-123"
+    assert result.env_vars["LOBSTER_LLM_PROVIDER"] == "openrouter"
+
+
+def test_create_openrouter_config_strips_whitespace():
+    from lobster.config.provider_setup import create_openrouter_config
+    result = create_openrouter_config("  sk-or-test  ")
+    assert result.env_vars["OPENROUTER_API_KEY"] == "sk-or-test"
+
+
+def test_create_openrouter_config_empty_key_fails():
+    from lobster.config.provider_setup import create_openrouter_config
+    result = create_openrouter_config("")
+    assert result.success is False
+    assert result.message is not None
+
+
+def test_create_openrouter_config_whitespace_only_fails():
+    from lobster.config.provider_setup import create_openrouter_config
+    result = create_openrouter_config("   ")
+    assert result.success is False

@@ -272,6 +272,37 @@ def create_openai_config(api_key: str) -> ProviderConfig:
     )
 
 
+def create_openrouter_config(api_key: str) -> ProviderConfig:
+    """
+    Create configuration for OpenRouter.
+
+    OpenRouter gives access to 600+ models via a single API key.
+    Browse models at: https://openrouter.ai/models
+
+    Args:
+        api_key: OpenRouter API key (format: sk-or-...)
+
+    Returns:
+        ProviderConfig with environment variables
+    """
+    if not api_key or not api_key.strip():
+        return ProviderConfig(
+            provider_type="openrouter",
+            env_vars={},
+            success=False,
+            message="API key cannot be empty",
+        )
+
+    return ProviderConfig(
+        provider_type="openrouter",
+        env_vars={
+            "LOBSTER_LLM_PROVIDER": "openrouter",
+            "OPENROUTER_API_KEY": api_key.strip(),
+        },
+        success=True,
+    )
+
+
 def create_azure_config(endpoint: str, credential: str) -> ProviderConfig:
     """
     Create configuration for Azure AI.
