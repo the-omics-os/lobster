@@ -75,7 +75,7 @@ def _find_existing_configs(
     home = Path(os.path.abspath(home))
 
     found = []
-    seen = set()
+    seen = set()  # guard against revisiting the same workspace (e.g. via future symlink resolution)
 
     current = start
     while True:
@@ -85,12 +85,16 @@ def _find_existing_configs(
             found.append(candidate)
             seen.add(candidate)
 
-        # Stop at or above home — use try/except for broad compatibility
+        # Stop when we've processed the home directory itself or gone above it.
+        # Use commonpath instead of relative_to — abspath (not resolve) is used
+        # throughout this project to avoid macOS /var→/private/var symlink issues,
+        # so relative_to can raise spuriously on symlinked paths.
         try:
-            current.relative_to(home)
+            is_under_home = os.path.commonpath([str(current), str(home)]) == str(home)
         except ValueError:
-            break  # current is not under home
-        if current == home:
+            # commonpath raises ValueError on Windows when paths are on different drives
+            break
+        if not is_under_home or current == home:
             break
 
         parent = current.parent

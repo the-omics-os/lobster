@@ -544,9 +544,6 @@ class TestFindExistingConfigs:
         child_dir = tmp_path / "subproject"
         child_dir.mkdir()
 
-        monkeypatch.chdir(child_dir)
-        monkeypatch.setenv("HOME", str(tmp_path))
-
         found = _find_existing_configs(start=child_dir, home=tmp_path)
         assert tmp_path / ".lobster_workspace" in found
 
@@ -560,7 +557,6 @@ class TestFindExistingConfigs:
             '{"global_provider": "ollama"}'
         )
 
-        monkeypatch.setenv("HOME", str(tmp_path.parent))
         found = _find_existing_configs(start=tmp_path, home=tmp_path.parent)
         assert workspace in found
 
@@ -597,15 +593,25 @@ class TestFindExistingConfigs:
         assert found == []
 
     def test_deduplicates_results(self, tmp_path, monkeypatch):
-        """Should not return the same path twice."""
+        """Should not return the same path twice even when both start and its parent have configs."""
         from lobster.core.config_resolver import _find_existing_configs
 
-        workspace = tmp_path / ".lobster_workspace"
-        workspace.mkdir()
-        (workspace / "provider_config.json").write_text(
+        # Config in parent
+        parent_workspace = tmp_path / ".lobster_workspace"
+        parent_workspace.mkdir()
+        (parent_workspace / "provider_config.json").write_text(
             '{"global_provider": "anthropic"}'
         )
+        # Config in child too
+        child_dir = tmp_path / "subproject"
+        child_dir.mkdir()
+        child_workspace = child_dir / ".lobster_workspace"
+        child_workspace.mkdir()
+        (child_workspace / "provider_config.json").write_text(
+            '{"global_provider": "ollama"}'
+        )
 
-        monkeypatch.setenv("HOME", str(tmp_path.parent))
-        found = _find_existing_configs(start=tmp_path, home=tmp_path.parent)
-        assert len(found) == len(set(found))
+        found = _find_existing_configs(start=child_dir, home=tmp_path.parent)
+        # Both should appear, but neither should appear twice
+        assert len(found) == len(set(found)), "Result must not contain duplicate paths"
+        assert len(found) == 2, "Expected exactly 2 distinct configs"
