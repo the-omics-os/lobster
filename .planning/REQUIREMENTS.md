@@ -10,8 +10,8 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 ### GEO Safety & Contracts
 
 - [ ] **GSAF-01**: GDS accessions canonicalized to GSE during queue preparation, with original_accession preserved (F1)
-- [ ] **GSAF-02**: Metadata validation key standardized to `validation_result` everywhere (F2)
-- [ ] **GSAF-03**: All GEO metadata_store writes use `_store_geo_metadata` helper — no malformed entries (F3)
+- [x] **GSAF-02**: Metadata validation key standardized to `validation_result` everywhere (F2)
+- [x] **GSAF-03**: All GEO metadata_store writes use `_store_geo_metadata` helper — no malformed entries (F3)
 - [ ] **GSAF-04**: Nested tar extraction applies safe-member path checks — path traversal blocked (F4)
 - [ ] **GSAF-05**: `_retry_with_backoff` returns typed result enum, not string sentinels (F5)
 - [ ] **GSAF-06**: Download orchestrator status transitions are atomic with precondition check — no duplicate workers (A1)
@@ -111,8 +111,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | GSAF-01 | Phase 1 (PR-1) | Pending |
-| GSAF-02 | Phase 1 (PR-1) | Pending |
-| GSAF-03 | Phase 1 (PR-1) | Pending |
+| GSAF-02 | Phase 1 (PR-1) | Complete |
+| GSAF-03 | Phase 1 (PR-1) | Complete |
 | GSAF-04 | Phase 1 (PR-1) | Pending |
 | GSAF-05 | Phase 1 (PR-1) | Pending |
 | GSAF-06 | Phase 1 (PR-1) | Pending |
