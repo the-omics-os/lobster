@@ -261,6 +261,11 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="Default Azure AI model (e.g., 'gpt-4o', 'deepseek-r1', 'phi-4')",
     )
 
+    openrouter_default_model: Optional[str] = Field(
+        None,
+        description="Default OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
+    )
+
     ollama_default_host: str = Field(
         "http://localhost:11434", description="Default Ollama server URL"
     )
@@ -370,6 +375,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.ollama_default_model = None
         self.gemini_default_model = None
         self.azure_default_model = None
+        self.openrouter_default_model = None
         self.ollama_default_host = "http://localhost:11434"
         logger.info("Reset global config to defaults")
 

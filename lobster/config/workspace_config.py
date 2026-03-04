@@ -77,7 +77,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
 
     global_provider: Optional[str] = Field(
         None,
-        description="Global LLM provider (bedrock | anthropic | ollama | gemini | azure | openai)",
+        description="Global LLM provider (bedrock | anthropic | ollama | gemini | azure | openai | openrouter)",
     )
 
     # Per-provider model settings
@@ -106,6 +106,11 @@ class WorkspaceProviderConfig(ProviderConfigBase):
 
     openai_model: Optional[str] = Field(
         None, description="OpenAI model (e.g., 'gpt-4o', 'o1', 'gpt-4o-mini')"
+    )
+
+    openrouter_model: Optional[str] = Field(
+        None,
+        description="OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
     )
 
     ollama_host: str = Field("http://localhost:11434", description="Ollama server URL")
@@ -234,6 +239,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         self.gemini_model = None
         self.azure_model = None
         self.openai_model = None
+        self.openrouter_model = None
         self.ollama_host = "http://localhost:11434"
         self.per_agent_providers = {}
         self.per_agent_models = {}
