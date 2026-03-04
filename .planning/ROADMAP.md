@@ -98,11 +98,12 @@ Plans:
   2. A new queue preparer or download service can be added by an external package declaring entry points -- zero changes to core routing code required
   3. Hardcoded fallback registration is gated behind an explicit flag and only activates when entry-point discovery yields nothing
   4. Existing tests validate the entry-point discovery path, not hardcoded defaults
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Write failing test scaffolds: contract tests, TestEntryPointDiscovery, TestFallbackGating (PLUG-01, PLUG-02, PLUG-03, PLUG-04, PLUG-05, PLUG-06)
+- [ ] 05-02-PLAN.md — Add queue_preparers + download_services entry-point declarations to pyproject.toml (PLUG-03, PLUG-04)
+- [ ] 05-03-PLAN.md — Gate hardcoded fallback with _ALLOW_HARDCODED_FALLBACK=False, update existing tests for 5 DBs (PLUG-01, PLUG-02, PLUG-05, PLUG-06)
 
 ### Phase 6: Core Subpackage Creation + Moves
 **Goal**: core/ is organized into domain subpackages with all old import paths preserved via deprecation shims
@@ -173,7 +174,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
 | 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
 | 4. GEO Service Decomposition | 3/3 | Complete   | 2026-03-04 |
-| 5. Plugin-First Registration | 0/? | Not started | - |
+| 5. Plugin-First Registration | 0/3 | Planned | - |
 | 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
 | 7. data_manager_v2 Move | 0/? | Not started | - |
 | 8. CLI Decomposition | 0/? | Not started | - |
