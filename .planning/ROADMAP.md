@@ -129,10 +129,11 @@ Plans:
   2. `from lobster.core.data_manager_v2 import DataManagerV2` still works via shim with DeprecationWarning -- zero breakage
   3. `lobster scaffold agent` produces code importing from the new path (no deprecation warnings in newly generated code)
   4. A CI/lint check prevents new files from importing via the old path
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
+- [ ] 07-01-PLAN.md — Move data_manager_v2.py to core/runtime/data_manager.py, create shim, update mock.patch strings (DMGR-01, DMGR-02)
+- [ ] 07-02-PLAN.md — Update scaffold templates, import-linter, CI deprecated-import check (DMGR-03, DMGR-04)
 
 ### Phase 8: CLI Decomposition
 **Goal**: cli.py (9,226 LOC) is reduced to composition/wiring with command bodies in cli_internal/commands/
@@ -142,7 +143,7 @@ Plans:
   1. Command bodies live in cli_internal/commands/ as separate modules
   2. cli.py contains only Typer app wiring and composition -- minimal control flow
   3. All CLI subcommands produce identical output and behavior (lobster --help, lobster chat, lobster query, lobster init)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 08-01: TBD
@@ -158,7 +159,7 @@ Plans:
   3. No empty placeholder directories remain that were not populated by GEO decomposition
   4. Deprecated shim files (geo_parser.py, geo_downloader.py) are removed after verification they have zero importers
   5. No stale build artifacts exist in any package directory
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 09-01: TBD
