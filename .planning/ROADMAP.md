@@ -114,11 +114,11 @@ Plans:
   2. Every old import path (e.g., `from lobster.core.download_queue import ...`) works via shim and emits a DeprecationWarning with removal version
   3. Import-linter passes with updated rules that reflect new subpackage boundaries
   4. No import cycles exist between core subpackages
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md — Test scaffold + move governance/, queues/, runtime/ (6 files, low blast radius) (CORE-01, CORE-02, CORE-03, CORE-05)
+- [ ] 06-02-PLAN.md — Move notebooks/ + provenance/ (7 files, __getattr__ collision), update import-linter (CORE-01, CORE-02, CORE-03, CORE-04, CORE-05)
 
 ### Phase 7: data_manager_v2 Move
 **Goal**: data_manager_v2.py lives at core/runtime/data_manager.py with zero breakage for its 197 importers (79 source + 118 test)
@@ -175,7 +175,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
 | 4. GEO Service Decomposition | 3/3 | Complete   | 2026-03-04 |
 | 5. Plugin-First Registration | 3/3 | Complete   | 2026-03-04 |
-| 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
+| 6. Core Subpackage Creation + Moves | 0/2 | Planned | - |
 | 7. data_manager_v2 Move | 0/? | Not started | - |
 | 8. CLI Decomposition | 0/? | Not started | - |
 | 9. Repo Hygiene & Packaging Cleanup | 0/? | Not started | - |
