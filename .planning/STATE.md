@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-04T17:30:00Z"
-last_activity: 2026-03-04 -- Plan 06-01 complete (3 core subpackages + 6 file moves with shims)
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-04T17:37:00Z"
+last_activity: 2026-03-04 -- Plan 06-02 complete (notebooks + provenance subpackages, all 5 core subpackages done)
 progress:
   total_phases: 9
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 15
-  completed_plans: 14
-  percent: 92
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 6 in progress. Core subpackage creation and moves.
+**Current focus:** Phase 6 complete. All 5 core subpackages created and populated.
 
 ## Current Position
 
-Phase: 6 of 9 (Core Subpackage Creation & Moves)
-Plan: 1 of 2 in current phase (06-01 complete)
-Status: Phase 06 in progress
-Last activity: 2026-03-04 -- Plan 06-01 complete (3 core subpackages + 6 file moves with shims)
+Phase: 6 of 9 (Core Subpackage Creation & Moves) -- COMPLETE
+Plan: 2 of 2 in current phase (06-02 complete)
+Status: Phase 06 complete
+Last activity: 2026-03-04 -- Plan 06-02 complete (notebooks + provenance subpackages, all 5 core subpackages done)
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -48,7 +48,7 @@ Progress: [█████████░] 93%
 | 03 | 2 | 19 min | 10 min |
 | 04 | 3 | 51 min | 17 min |
 | 05 | 3 | 15 min | 5 min |
-| 06 | 1 (of 2) | 5 min | 5 min |
+| 06 | 2 | 9 min | 5 min |
 
 **Recent Trend:**
 - Last 5 plans: 12 min, 7 min, 4 min, 7 min, 5 min
@@ -108,6 +108,9 @@ Recent decisions affecting current work:
 - [Phase 06]: Docstring-only __init__.py files -- no re-exports to avoid coupling (06-01)
 - [Phase 06]: Test scaffold covers all 13 shims upfront with Plan 02 tests marked xfail (06-01)
 - [Phase 06]: Internal imports in moved queue files updated to canonical paths immediately (06-01)
+- [Phase 06]: __getattr__ lazy shim in provenance/__init__.py for module/package name collision (06-02)
+- [Phase 06]: Notebook files renamed on move (notebook_executor -> executor) for cleaner naming (06-02)
+- [Phase 06]: Import-linter layers contract: notebooks > provenance > governance > queues > runtime (06-02)
 
 ### Pending Todos
 
@@ -119,6 +122,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T17:30:00Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-03-04T17:37:00Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
