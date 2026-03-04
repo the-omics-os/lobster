@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: GEO Service Decomposition** - Split geo_service.py into 5 domain modules with backward-compatible facade (PR-4) (completed 2026-03-04)
 - [x] **Phase 5: Plugin-First Registration** - Migrate queue preparers and download services to entry-point discovery, gate hardcoded fallbacks (PR-5) (completed 2026-03-04)
 - [ ] **Phase 6: Core Subpackage Creation + Moves** - Create runtime/, queues/, notebooks/, provenance/, governance/ subpackages and move 13 files with shims (PR-6)
-- [ ] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7)
+- [x] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7) (completed 2026-03-04)
 - [ ] **Phase 8: CLI Decomposition** - Extract command bodies from cli.py to cli_internal/commands/ (PR-8)
 - [ ] **Phase 9: Repo Hygiene & Packaging Cleanup** - Normalize gitignore, expand make clean, remove stale artifacts and empty dirs (PR-9)
 
@@ -177,6 +177,6 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 4. GEO Service Decomposition | 3/3 | Complete   | 2026-03-04 |
 | 5. Plugin-First Registration | 3/3 | Complete   | 2026-03-04 |
 | 6. Core Subpackage Creation + Moves | 1/2 | In Progress|  |
-| 7. data_manager_v2 Move | 1/2 | In Progress | - |
+| 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
 | 8. CLI Decomposition | 0/? | Not started | - |
 | 9. Repo Hygiene & Packaging Cleanup | 0/? | Not started | - |
