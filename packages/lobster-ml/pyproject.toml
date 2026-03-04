@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-ml"
+version = "1.0.11"
+description = "Machine learning agents for Lobster AI (feature selection, survival analysis, interpretability)"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+keywords = [
+    "bioinformatics",
+    "machine-learning",
+    "deep-learning",
+    "scVI",
+    "feature-selection",
+    "survival-analysis",
+    "SHAP",
+    "pytorch",
+    "lobster-ai",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "lobster-ai~=1.0.0",
+    "anndata>=0.9.0",
+    "h5py>=3.9.0",
+    "numpy>=1.23.0",
+    "pandas>=1.5.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+]
+
+[project.optional-dependencies]
+# XGBoost for feature selection (recommended, falls back to RandomForest)
+xgboost = [
+    "xgboost>=1.7.0",
+]
+# Multi-omics integration (MOFA)
+multiomics = [
+    "mofapy2>=0.7.0",
+]
+# Deep learning dependencies for scVI embeddings
+ml = [
+    "torch>=2.0.0",
+    "scvi-tools>=1.0.0",
+]
+# Survival analysis dependencies
+survival = [
+    "scikit-survival>=0.22.0",
+]
+# Interpretability dependencies
+interpretability = [
+    "shap>=0.44.0",
+    "interpret>=0.4.0",
+]
+# Class imbalance handling
+imbalanced = [
+    "imbalanced-learn>=0.11.0",
+]
+# Hyperparameter optimization
+tuning = [
+    "hyperopt>=0.2.7",
+]
+# All ML dependencies
+full = [
+    "lobster-ml[xgboost,multiomics,ml,survival,interpretability,imbalanced,tuning]",
+]
+
+[project.urls]
+Homepage = "https://omics-os.com"
+Documentation = "https://docs.omics-os.com"
+Repository = "https://github.com/the-omics-os/lobster"
+
+# Agent entry points - discovered by ComponentRegistry
+[project.entry-points."lobster.agents"]
+machine_learning_expert = "lobster.agents.machine_learning.machine_learning_expert:AGENT_CONFIG"
+feature_selection_expert = "lobster.agents.machine_learning.feature_selection_expert:AGENT_CONFIG"
+survival_analysis_expert = "lobster.agents.machine_learning.survival_analysis_expert:AGENT_CONFIG"
+
+# State entry points
+[project.entry-points."lobster.states"]
+MachineLearningExpertState = "lobster.agents.machine_learning.state:MachineLearningExpertState"
+FeatureSelectionExpertState = "lobster.agents.machine_learning.state:FeatureSelectionExpertState"
+SurvivalAnalysisExpertState = "lobster.agents.machine_learning.state:SurvivalAnalysisExpertState"
+
+[tool.setuptools]
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]
