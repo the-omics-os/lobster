@@ -63,7 +63,7 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 ### CLI Decomposition
 
-- [ ] **CLID-01**: Command bodies moved to cli_internal/commands/
+- [x] **CLID-01**: Command bodies moved to cli_internal/commands/
 - [ ] **CLID-02**: cli.py reduced to composition/wiring with minimal control flow
 - [ ] **CLID-03**: All CLI subcommands work identically after decomposition
 
@@ -143,7 +143,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DMGR-02 | Phase 7 (PR-7) | Complete |
 | DMGR-03 | Phase 7 (PR-7) | Complete |
 | DMGR-04 | Phase 7 (PR-7) | Complete |
-| CLID-01 | Phase 8 (PR-8) | Pending |
+| CLID-01 | Phase 8 (PR-8) | Complete |
 | CLID-02 | Phase 8 (PR-8) | Pending |
 | CLID-03 | Phase 8 (PR-8) | Pending |
 | HYGN-01 | Phase 9 (PR-9) | Pending |

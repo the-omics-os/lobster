@@ -143,7 +143,7 @@ Plans:
   1. Command bodies live in cli_internal/commands/ as separate modules
   2. cli.py contains only Typer app wiring and composition -- minimal control flow
   3. All CLI subcommands produce identical output and behavior (lobster --help, lobster chat, lobster query, lobster init)
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 08-01-PLAN.md — Extract foundation modules (session_infra, animations, display_helpers) and command bodies (init, chat, query) (CLID-01)
@@ -178,5 +178,5 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 5. Plugin-First Registration | 3/3 | Complete   | 2026-03-04 |
 | 6. Core Subpackage Creation + Moves | 1/2 | In Progress|  |
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
-| 8. CLI Decomposition | 0/2 | Not started | - |
+| 8. CLI Decomposition | 1/2 | In Progress|  |
 | 9. Repo Hygiene & Packaging Cleanup | 0/? | Not started | - |

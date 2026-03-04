@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 07-02-PLAN.md (Phase 07 complete)
-last_updated: "2026-03-04T18:24:04.581Z"
-last_activity: 2026-03-04 -- Plan 07-02 complete (scaffold + CI enforcement for canonical path)
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-04T19:00:00.000Z"
+last_activity: 2026-03-04 -- Plan 08-01 complete (CLI decomposition foundation -- 6 heavy modules extracted)
 progress:
   total_phases: 9
   completed_phases: 7
-  total_plans: 17
-  completed_plans: 17
+  total_plans: 18
+  completed_plans: 18
   percent: 100
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 7 in progress. DataManagerV2 moved to canonical path, shim + mock.patch updates done.
+**Current focus:** Phase 8 in progress. CLI decomposition -- 6 heavy command modules extracted from cli.py monolith.
 
 ## Current Position
 
-Phase: 7 of 9 (data_manager_v2 Move)
-Plan: 2 of 2 in current phase (07-02 complete -- PHASE 07 COMPLETE)
+Phase: 8 of 9 (cli-decomposition)
+Plan: 1 of 2 in current phase (08-01 complete)
 Status: In progress
-Last activity: 2026-03-04 -- Plan 07-02 complete (scaffold + CI enforcement for canonical path)
+Last activity: 2026-03-04 -- Plan 08-01 complete (CLI decomposition foundation -- 6 heavy modules extracted)
 
 Progress: [██████████] 100%
 
@@ -50,6 +50,7 @@ Progress: [██████████] 100%
 | 05 | 3 | 15 min | 5 min |
 | 06 | 2 | 9 min | 5 min |
 | 07 | 2 | 6 min | 3 min |
+| 08 | 1 | 16 min | 16 min |
 
 **Recent Trend:**
 - Last 5 plans: 7 min, 5 min, 4 min, 5 min, 1 min
@@ -116,6 +117,9 @@ Recent decisions affecting current work:
 - [Phase 07]: Test import statements left on shim path -- shim handles them transparently (07-01)
 - [Phase 07]: 2 pre-existing KeyError failures on validation key accepted as out-of-scope (07-01)
 - [Phase 07]: CI grep scope limited to lobster/scaffold/ and packages/ -- existing importers handled by shim (07-02)
+- [Phase 08]: Classes kept in cli.py during incremental extraction -- Plan 02 converts to thin wrappers (08-01)
+- [Phase 08]: Functions delegated via import+call pattern to keep cli.py working during extraction (08-01)
+- [Phase 08]: init/chat/query _impl functions keep typer.Option annotations for standalone testing (08-01)
 
 ### Pending Todos
 
@@ -127,6 +131,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T18:19:07Z
-Stopped at: Completed 07-02-PLAN.md (Phase 07 complete)
+Last session: 2026-03-04T19:00:00Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None
