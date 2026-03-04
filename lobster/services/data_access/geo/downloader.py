@@ -27,6 +27,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 
+from lobster.core.archive_utils import ArchiveExtractor
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -163,69 +164,13 @@ class GEODownloadManager:
                 logger.warning(f"Failed to download TAR file for {gse_id}")
                 return None
 
-            # Extract the TAR file
+            # Extract the TAR file using shared secure extraction
             try:
-                if not extract_dir.exists():
-                    extract_dir.mkdir(parents=True)
-
                 logger.info(f"Extracting TAR file to: {extract_dir}")
-                with tarfile.open(tar_file_path, "r") as tar:
-                    # Security check: Validate tar file members before extraction
-                    # to prevent path traversal attacks
-                    def is_safe_member(member):
-                        # Prevent absolute paths and path traversal
-                        member_path = Path(member.name)
-                        try:
-                            # Path.resolve() will fail on path traversal attempts
-                            # Check that the resolved path is within the extract_dir
-                            target_path = (extract_dir / member_path).resolve()
-                            common_path = Path(
-                                os.path.commonpath([extract_dir.resolve(), target_path])
-                            )
-                            is_safe = common_path == extract_dir.resolve()
-                            if not is_safe:
-                                logger.warning(
-                                    f"Skipping potentially unsafe member: {member.name}"
-                                )
-                            return is_safe
-                        except (ValueError, RuntimeError):
-                            # Path traversal attempt
-                            logger.warning(
-                                f"Skipping invalid path in TAR: {member.name}"
-                            )
-                            return False
-
-                    # Extract only safe members with progress tracking
-                    safe_members = [m for m in tar.getmembers() if is_safe_member(m)]
-                    logger.debug(
-                        f"Extracting {len(safe_members)} validated members from TAR"
-                    )
-
-                    # Setup progress tracking for extraction
-                    progress_columns = [
-                        BarColumn(),
-                        "•",
-                        "{task.percentage:>3.0f}%",
-                        "•",
-                        "{task.completed}/{task.total} files",
-                        "•",
-                        TimeElapsedColumn(),
-                        "•",
-                        TimeRemainingColumn(),
-                    ]
-
-                    with Progress(*progress_columns, console=self.console) as progress:
-                        extract_task = progress.add_task(
-                            f"Extracting {gse_id} files", total=len(safe_members)
-                        )
-
-                        for i, member in enumerate(safe_members):
-                            tar.extract(member, path=extract_dir)
-                            progress.update(
-                                extract_task,
-                                completed=i + 1,
-                                description=f"Extracting {Path(member.name).name[:30]}...",
-                            )
+                extractor = ArchiveExtractor()
+                extractor.extract_safely(
+                    tar_file_path, extract_dir, cleanup_on_error=True
+                )
 
                 # Clean up the tar file after extraction
                 tar_file_path.unlink()
@@ -233,6 +178,9 @@ class GEODownloadManager:
                 logger.info(f"Successfully extracted TAR file to: {extract_dir}")
                 return extract_dir
 
+            except RuntimeError as e:
+                logger.warning(f"TAR extraction failed: {e}")
+                return None
             except tarfile.ReadError:
                 logger.warning(
                     f"The downloaded file is not a valid TAR archive: {tar_file_path}"

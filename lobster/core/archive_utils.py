@@ -86,13 +86,15 @@ class ArchiveExtractor:
 
     def _is_safe_member(self, member: tarfile.TarInfo, target_dir: Path) -> bool:
         """
-        Prevent path traversal attacks during TAR extraction.
+        Prevent path traversal and symlink escape attacks during TAR extraction.
 
-        Checks that extracted file path is within target directory.
-        Protects against malicious TAR files with paths like:
-        - ../../../../etc/passwd
-        - /etc/shadow
-        - ../../../tmp/malicious.sh
+        Checks that extracted file path is within target directory and that
+        symlinks/hardlinks do not escape the extraction boundary.
+
+        Protects against:
+        - Path traversal: ../../../../etc/passwd, /etc/shadow
+        - Symlink escape: symlink -> /etc/shadow (CVE-2007-4559)
+        - Hardlink escape: hardlink -> ../../../etc/shadow
 
         Args:
             member: TAR member to check
@@ -101,6 +103,25 @@ class ArchiveExtractor:
         Returns:
             True if safe to extract, False otherwise
         """
+        # 1. Check symlinks and hardlinks
+        if member.issym() or member.islnk():
+            link_target = Path(member.linkname)
+            if link_target.is_absolute():
+                logger.warning(
+                    f"Blocked absolute symlink: {member.name} -> {member.linkname}"
+                )
+                return False
+            # Resolve relative link against member's parent directory
+            member_parent = (target_dir / Path(member.name)).parent
+            resolved_link = (member_parent / link_target).resolve()
+            if not str(resolved_link).startswith(str(target_dir.resolve())):
+                logger.warning(
+                    f"Blocked symlink escaping target: "
+                    f"{member.name} -> {member.linkname}"
+                )
+                return False
+
+        # 2. Check path traversal (existing logic, preserved)
         member_path = Path(member.name)
         try:
             target_path = (target_dir / member_path).resolve()
@@ -142,20 +163,28 @@ class ArchiveExtractor:
                 or ".tar" in archive_path.name
             ):
                 with tarfile.open(archive_path, "r:*") as tar:
-                    # Filter safe members
-                    safe_members = [
-                        m
-                        for m in tar.getmembers()
-                        if self._is_safe_member(m, target_dir)
-                    ]
+                    members = tar.getmembers()
 
-                    if not safe_members:
-                        raise RuntimeError("No safe members found in TAR archive")
+                    # Reject-all: validate ALL members before extracting ANY
+                    unsafe = [
+                        m
+                        for m in members
+                        if not self._is_safe_member(m, target_dir)
+                    ]
+                    if unsafe:
+                        unsafe_names = [m.name for m in unsafe[:10]]
+                        raise RuntimeError(
+                            f"Archive rejected: {len(unsafe)} unsafe member(s) "
+                            f"detected. Offending paths: {unsafe_names}"
+                        )
+
+                    if not members:
+                        raise RuntimeError("No members found in TAR archive")
 
                     logger.debug(
-                        f"Extracting {len(safe_members)} safe members from TAR"
+                        f"Extracting {len(members)} validated members from TAR"
                     )
-                    tar.extractall(path=target_dir, members=safe_members)
+                    tar.extractall(path=target_dir, members=members)
 
             # Handle ZIP format
             elif archive_path.suffix == ".zip":
