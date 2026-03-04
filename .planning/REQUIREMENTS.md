@@ -1,0 +1,162 @@
+# Requirements: Lobster AI Codebase Cleanup & Restructuring
+
+**Defined:** 2026-03-03
+**Core Value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
+
+## v1 Requirements
+
+Requirements for this cleanup series. Each maps to roadmap phases (PRs).
+
+### GEO Safety & Contracts
+
+- [ ] **GSAF-01**: GDS accessions canonicalized to GSE during queue preparation, with original_accession preserved (F1)
+- [ ] **GSAF-02**: Metadata validation key standardized to `validation_result` everywhere (F2)
+- [ ] **GSAF-03**: All GEO metadata_store writes use `_store_geo_metadata` helper — no malformed entries (F3)
+- [ ] **GSAF-04**: Nested tar extraction applies safe-member path checks — path traversal blocked (F4)
+- [ ] **GSAF-05**: `_retry_with_backoff` returns typed result enum, not string sentinels (F5)
+- [ ] **GSAF-06**: Download orchestrator status transitions are atomic with precondition check — no duplicate workers (A1)
+
+### GEO Parser & Data Integrity
+
+- [ ] **GPAR-01**: Chunk parser returns `is_partial`, `rows_read`, `truncation_reason` flags (F6)
+- [ ] **GPAR-02**: All call sites handle partial parse results — mark modality/metadata and surface warning (F6)
+- [ ] **GPAR-03**: Supplementary file classifier handles `.tar.gz`, `.tgz`, `.tar.bz2` (F7)
+- [ ] **GPAR-04**: File-scoring heuristic replaces brittle keyword blacklist for expression file selection (F7)
+- [ ] **GPAR-05**: Partial parser failures trigger temp file cleanup and proper failure marking (A2)
+
+### GEO Strategy Engine
+
+- [ ] **GSTR-01**: Null sanitization stores missing values as empty string/None, never truthy `"NA"` (F10)
+- [ ] **GSTR-02**: Strategy derivation uses explicit null checks and allowed file type enums (F10)
+- [ ] **GSTR-03**: `ARCHIVE_FIRST` dead branch resolved — either add triggering rule or remove (F11)
+
+### GEO Service Decomposition
+
+- [ ] **GDEC-01**: geo_service.py split into 5 domain modules (metadata_fetch, download_execution, archive_processing, matrix_parsing, concatenation)
+- [ ] **GDEC-02**: GEOService class preserved as backward-compatible facade
+- [ ] **GDEC-03**: SOFT-download logic deduplicated between geo_service and geo_provider (F13)
+- [ ] **GDEC-04**: Each extracted module has narrow unit tests
+
+### Plugin Registration
+
+- [ ] **PLUG-01**: Queue preparers discovered from `lobster.queue_preparers` entry points first-class
+- [ ] **PLUG-02**: Download services discovered from `lobster.download_services` entry points first-class
+- [ ] **PLUG-03**: Entry-point declarations added to pyproject.toml BEFORE fallback gating (A3)
+- [ ] **PLUG-04**: All 5 databases (GEO, SRA, PRIDE, MassIVE, MetaboLights) discoverable via entry points (A3)
+- [ ] **PLUG-05**: Existing tests updated for entry-point discovery assertions (A4)
+- [ ] **PLUG-06**: Hardcoded fallback gated with explicit flag
+
+### Core Restructuring
+
+- [ ] **CORE-01**: Core subpackages created: runtime/, queues/, notebooks/, provenance/, governance/
+- [ ] **CORE-02**: 13 files moved to domain subpackages with backward-compatible shims at old paths
+- [ ] **CORE-03**: Shims emit DeprecationWarning with removal version
+- [ ] **CORE-04**: Import-linter config updated for new subpackage paths (A5)
+- [ ] **CORE-05**: No import cycles introduced
+
+### Data Manager Move
+
+- [ ] **DMGR-01**: data_manager_v2.py moved to core/runtime/data_manager.py
+- [ ] **DMGR-02**: Shim at old path re-exports everything — zero breakage for 79 source + 118 test importers
+- [ ] **DMGR-03**: Scaffold templates updated to import from new path (A6)
+- [ ] **DMGR-04**: New code cannot import from old path (CI/lint check)
+
+### CLI Decomposition
+
+- [ ] **CLID-01**: Command bodies moved to cli_internal/commands/
+- [ ] **CLID-02**: cli.py reduced to composition/wiring with minimal control flow
+- [ ] **CLID-03**: All CLI subcommands work identically after decomposition
+
+### Repo Hygiene
+
+- [ ] **HYGN-01**: .gitignore sections normalized
+- [ ] **HYGN-02**: `make clean` and `make clean-all` expanded for package-local artifacts
+- [ ] **HYGN-03**: Empty placeholder dirs removed (those not populated by GEO decomposition)
+- [ ] **HYGN-04**: Deprecated shim files cleaned (geo_parser.py, geo_downloader.py) — verified unused first
+- [ ] **HYGN-05**: Stale build artifacts (dist/, *.egg-info/, .ruff_cache/, MagicMock/) removed from package dirs
+
+## v2 Requirements
+
+Deferred to future release. Tracked but not in current roadmap.
+
+### Shim Retirement
+
+- **SHIM-01**: Remove old import paths for all moved modules (after one release cycle)
+- **SHIM-02**: Enforce strict target-path imports via CI
+- **SHIM-03**: Remove core/vector/* backward-compat shims
+
+### Future Decomposition
+
+- **FDEC-01**: Provider relocation (tools/providers/ → services/data_access/providers/)
+- **FDEC-02**: data_manager_v2 internal split
+- **FDEC-03**: client.py decomposition (2,867 LOC)
+- **FDEC-04**: content_access_service.py decomposition (2,136 LOC)
+- **FDEC-05**: GEO LLM-driven planning layer (typed StrategyPlan schema)
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| PR-10 shim retirement | Deferred — must wait one release cycle for consumers to migrate |
+| Provider relocation | Clean coupling but low-urgency; reverse edge (webpage_provider → docling_service) needs resolution first |
+| data_manager_v2 internal split | Must settle after move in PR-7 |
+| client.py decomposition | High blast-radius (2,867 LOC); deferred until data_manager move is stable |
+| GEO LLM planning layer | Architectural feature, not cleanup; requires typed StrategyPlan schema design |
+| Behavior changes in extraction PRs | PR-4/6/7/8 are pure mechanical — logic fixes only in PR-1/2/3/5 |
+
+## Traceability
+
+Which phases cover which requirements. Updated during roadmap creation.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| GSAF-01 | Phase 1 (PR-1) | Pending |
+| GSAF-02 | Phase 1 (PR-1) | Pending |
+| GSAF-03 | Phase 1 (PR-1) | Pending |
+| GSAF-04 | Phase 1 (PR-1) | Pending |
+| GSAF-05 | Phase 1 (PR-1) | Pending |
+| GSAF-06 | Phase 1 (PR-1) | Pending |
+| GPAR-01 | Phase 2 (PR-2) | Pending |
+| GPAR-02 | Phase 2 (PR-2) | Pending |
+| GPAR-03 | Phase 2 (PR-2) | Pending |
+| GPAR-04 | Phase 2 (PR-2) | Pending |
+| GPAR-05 | Phase 2 (PR-2) | Pending |
+| GSTR-01 | Phase 3 (PR-3) | Pending |
+| GSTR-02 | Phase 3 (PR-3) | Pending |
+| GSTR-03 | Phase 3 (PR-3) | Pending |
+| GDEC-01 | Phase 4 (PR-4) | Pending |
+| GDEC-02 | Phase 4 (PR-4) | Pending |
+| GDEC-03 | Phase 4 (PR-4) | Pending |
+| GDEC-04 | Phase 4 (PR-4) | Pending |
+| PLUG-01 | Phase 5 (PR-5) | Pending |
+| PLUG-02 | Phase 5 (PR-5) | Pending |
+| PLUG-03 | Phase 5 (PR-5) | Pending |
+| PLUG-04 | Phase 5 (PR-5) | Pending |
+| PLUG-05 | Phase 5 (PR-5) | Pending |
+| PLUG-06 | Phase 5 (PR-5) | Pending |
+| CORE-01 | Phase 6 (PR-6) | Pending |
+| CORE-02 | Phase 6 (PR-6) | Pending |
+| CORE-03 | Phase 6 (PR-6) | Pending |
+| CORE-04 | Phase 6 (PR-6) | Pending |
+| CORE-05 | Phase 6 (PR-6) | Pending |
+| DMGR-01 | Phase 7 (PR-7) | Pending |
+| DMGR-02 | Phase 7 (PR-7) | Pending |
+| DMGR-03 | Phase 7 (PR-7) | Pending |
+| DMGR-04 | Phase 7 (PR-7) | Pending |
+| CLID-01 | Phase 8 (PR-8) | Pending |
+| CLID-02 | Phase 8 (PR-8) | Pending |
+| CLID-03 | Phase 8 (PR-8) | Pending |
+| HYGN-01 | Phase 9 (PR-9) | Pending |
+| HYGN-02 | Phase 9 (PR-9) | Pending |
+| HYGN-03 | Phase 9 (PR-9) | Pending |
+| HYGN-04 | Phase 9 (PR-9) | Pending |
+| HYGN-05 | Phase 9 (PR-9) | Pending |
+
+**Coverage:**
+- v1 requirements: 39 total
+- Mapped to phases: 39
+- Unmapped: 0 ✓
+
+---
+*Requirements defined: 2026-03-03*
+*Last updated: 2026-03-03 after initial definition*
