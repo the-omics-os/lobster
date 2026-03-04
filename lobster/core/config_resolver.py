@@ -36,6 +36,7 @@ from typing import Optional, Tuple
 
 # Environment variable for provider override
 LOBSTER_LLM_PROVIDER_ENV = "LOBSTER_LLM_PROVIDER"
+LOBSTER_WORKSPACE_ENV_VAR = "LOBSTER_WORKSPACE"
 
 from lobster.config.constants import (
     DEPRECATED_PROFILE_ALIASES,
@@ -46,6 +47,58 @@ from lobster.config.global_config import GlobalProviderConfig
 from lobster.config.workspace_config import WorkspaceProviderConfig
 
 logger = logging.getLogger(__name__)
+
+_WORKSPACE_FOLDER_NAME = ".lobster_workspace"
+
+
+def _find_existing_configs(
+    start=None,
+    home=None,
+):
+    """Scan parent directories (up to $HOME) for .lobster_workspace directories
+    that contain a provider_config.json.
+
+    Args:
+        start: Directory to begin scanning from (Path). Defaults to Path.cwd().
+        home: Home directory ceiling (Path) — stops scanning above this. Defaults to Path.home().
+
+    Returns:
+        List of .lobster_workspace paths (absolute) that contain provider_config.json,
+        ordered from closest to furthest. Empty list if nothing found.
+    """
+    if start is None:
+        start = Path.cwd()
+    if home is None:
+        home = Path.home()
+
+    start = Path(os.path.abspath(start))
+    home = Path(os.path.abspath(home))
+
+    found = []
+    seen = set()
+
+    current = start
+    while True:
+        candidate = current / _WORKSPACE_FOLDER_NAME
+        config_file = candidate / "provider_config.json"
+        if config_file.exists() and candidate not in seen:
+            found.append(candidate)
+            seen.add(candidate)
+
+        # Stop at or above home — use try/except for broad compatibility
+        try:
+            current.relative_to(home)
+        except ValueError:
+            break  # current is not under home
+        if current == home:
+            break
+
+        parent = current.parent
+        if parent == current:
+            break  # filesystem root
+        current = parent
+
+    return found
 
 
 class ConfigurationError(Exception):

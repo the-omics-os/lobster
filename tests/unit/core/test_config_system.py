@@ -522,3 +522,90 @@ class TestEdgeCases:
         finally:
             # Restore permissions
             temp_workspace.chmod(0o755)
+
+
+# =============================================================================
+# Tests for _find_existing_configs() scanner
+# =============================================================================
+
+class TestFindExistingConfigs:
+    """Tests for the config scanner that discovers configs in parent directories."""
+
+    def test_finds_config_in_parent(self, tmp_path, monkeypatch):
+        """Should find a provider_config.json in a parent directory."""
+        from lobster.core.config_resolver import _find_existing_configs
+
+        # Setup: config in parent, cwd is a child
+        parent_workspace = tmp_path / ".lobster_workspace"
+        parent_workspace.mkdir()
+        (parent_workspace / "provider_config.json").write_text(
+            '{"global_provider": "anthropic"}'
+        )
+        child_dir = tmp_path / "subproject"
+        child_dir.mkdir()
+
+        monkeypatch.chdir(child_dir)
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        found = _find_existing_configs(start=child_dir, home=tmp_path)
+        assert tmp_path / ".lobster_workspace" in found
+
+    def test_finds_config_in_cwd(self, tmp_path, monkeypatch):
+        """Should find a provider_config.json in the current directory itself."""
+        from lobster.core.config_resolver import _find_existing_configs
+
+        workspace = tmp_path / ".lobster_workspace"
+        workspace.mkdir()
+        (workspace / "provider_config.json").write_text(
+            '{"global_provider": "ollama"}'
+        )
+
+        monkeypatch.setenv("HOME", str(tmp_path.parent))
+        found = _find_existing_configs(start=tmp_path, home=tmp_path.parent)
+        assert workspace in found
+
+    def test_stops_at_home(self, tmp_path, monkeypatch):
+        """Should not scan above the home directory."""
+        from lobster.core.config_resolver import _find_existing_configs
+
+        # Config above home — should NOT be found
+        above_home = tmp_path
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        project_dir = home_dir / "project"
+        project_dir.mkdir()
+
+        above_workspace = above_home / ".lobster_workspace"
+        above_workspace.mkdir()
+        (above_workspace / "provider_config.json").write_text(
+            '{"global_provider": "anthropic"}'
+        )
+
+        monkeypatch.setenv("HOME", str(home_dir))
+        found = _find_existing_configs(start=project_dir, home=home_dir)
+        assert above_workspace not in found
+
+    def test_returns_empty_when_nothing_found(self, tmp_path, monkeypatch):
+        """Should return empty list when no configs exist anywhere up the tree."""
+        from lobster.core.config_resolver import _find_existing_configs
+
+        project_dir = tmp_path / "a" / "b" / "c"
+        project_dir.mkdir(parents=True)
+
+        monkeypatch.setenv("HOME", str(tmp_path))
+        found = _find_existing_configs(start=project_dir, home=tmp_path)
+        assert found == []
+
+    def test_deduplicates_results(self, tmp_path, monkeypatch):
+        """Should not return the same path twice."""
+        from lobster.core.config_resolver import _find_existing_configs
+
+        workspace = tmp_path / ".lobster_workspace"
+        workspace.mkdir()
+        (workspace / "provider_config.json").write_text(
+            '{"global_provider": "anthropic"}'
+        )
+
+        monkeypatch.setenv("HOME", str(tmp_path.parent))
+        found = _find_existing_configs(start=tmp_path, home=tmp_path.parent)
+        assert len(found) == len(set(found))
