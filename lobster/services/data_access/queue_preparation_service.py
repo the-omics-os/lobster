@@ -33,6 +33,11 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Module-level constant — set to True ONLY for debugging/emergency recovery.
+# When False (default), hardcoded fallback registration is skipped and all
+# queue preparers must be declared via lobster.queue_preparers entry points.
+_ALLOW_HARDCODED_FALLBACK = False
+
 
 class PreparerNotFoundError(Exception):
     """Raised when no queue preparer is registered for a database type."""
@@ -104,12 +109,16 @@ class QueuePreparationService:
         """
         Register default queue preparers for all supported databases.
 
-        Phase 1: Entry-point discovery (external/plugin queue preparers)
-        Phase 2: Hardcoded defaults (GEO, PRIDE, SRA, MassIVE)
+        Entry-point discovery (lobster.queue_preparers) is the primary path.
+        Hardcoded fallback is gated by _ALLOW_HARDCODED_FALLBACK (default False).
+
+        Phase 1: Entry-point discovery (always runs)
+        Phase 2: Hardcoded fallback (only active when _ALLOW_HARDCODED_FALLBACK=True)
 
         Uses lazy imports with try/except to handle missing dependencies.
         """
         # Phase 1: Discover queue preparers from entry points
+        discovered_names: set = set()
         try:
             from lobster.core.component_registry import component_registry
 
@@ -117,6 +126,7 @@ class QueuePreparationService:
                 try:
                     preparer = preparer_cls(self.data_manager)
                     self.register_preparer(preparer)
+                    discovered_names.add(name)
                     logger.debug(f"Registered queue preparer '{name}' from entry point")
                 except Exception as e:
                     logger.warning(
@@ -126,7 +136,16 @@ class QueuePreparationService:
         except Exception as e:
             logger.debug(f"Entry point queue preparer discovery skipped: {e}")
 
-        # Phase 2: Hardcoded fallback preparers
+        if not _ALLOW_HARDCODED_FALLBACK:
+            if not discovered_names:
+                logger.warning(
+                    "No queue preparers discovered via entry points. "
+                    "Ensure pyproject.toml declares lobster.queue_preparers entry points "
+                    "and the package is installed (`uv pip install -e .`)."
+                )
+            return  # Skip hardcoded fallback — force explicit opt-in
+
+        # Phase 2: Hardcoded fallback preparers (only active when _ALLOW_HARDCODED_FALLBACK=True)
 
         # GEO
         try:

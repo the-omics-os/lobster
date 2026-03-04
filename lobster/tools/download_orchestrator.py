@@ -51,6 +51,11 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Module-level constant — set to True ONLY for debugging/emergency recovery.
+# When False (default), hardcoded fallback registration is skipped and all
+# download services must be declared via lobster.download_services entry points.
+_ALLOW_HARDCODED_FALLBACK = False
+
 
 class ServiceNotFoundError(Exception):
     """Raised when no download service is registered for a database type."""
@@ -96,12 +101,16 @@ class DownloadOrchestrator:
         """
         Register default download services.
 
-        Phase 1: Entry-point discovery (external/plugin download services)
-        Phase 2: Hardcoded defaults (GEO, SRA, PRIDE, MassIVE)
+        Entry-point discovery (lobster.download_services) is the primary path.
+        Hardcoded fallback is gated by _ALLOW_HARDCODED_FALLBACK (default False).
+
+        Phase 1: Entry-point discovery (always runs)
+        Phase 2: Hardcoded fallback (only active when _ALLOW_HARDCODED_FALLBACK=True)
 
         Services are registered lazily to avoid import errors if dependencies missing.
         """
         # Phase 1: Discover download services from entry points
+        discovered_names: set = set()
         try:
             from lobster.core.component_registry import component_registry
 
@@ -112,6 +121,7 @@ class DownloadOrchestrator:
                 try:
                     service = service_cls(self.data_manager)
                     self.register_service(service)
+                    discovered_names.add(name)
                     logger.debug(
                         f"Registered download service '{name}' from entry point"
                     )
@@ -123,7 +133,16 @@ class DownloadOrchestrator:
         except Exception as e:
             logger.debug(f"Entry point download service discovery skipped: {e}")
 
-        # Phase 2: Hardcoded fallback services
+        if not _ALLOW_HARDCODED_FALLBACK:
+            if not discovered_names:
+                logger.warning(
+                    "No download services discovered via entry points. "
+                    "Ensure pyproject.toml declares lobster.download_services entry points "
+                    "and the package is installed (`uv pip install -e .`)."
+                )
+            return  # Skip hardcoded fallback — force explicit opt-in
+
+        # Phase 2: Hardcoded fallback services (only active when _ALLOW_HARDCODED_FALLBACK=True)
 
         # Try to register GEO service
         try:
