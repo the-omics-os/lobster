@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-03-04T05:29:28.077Z"
-last_activity: 2026-03-04 -- Plan 03-02 complete (ARCHIVE_FIRST dead branch removal)
+status: in_progress
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-04T06:18:00.000Z"
+last_activity: 2026-03-04 -- Plan 04-01 complete (shared helpers + SOFT download dedup)
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_plans: 10
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 3 complete. Ready for Phase 4.
+**Current focus:** Phase 4 in progress. Decomposing geo_service.py monolith into domain modules.
 
 ## Current Position
 
-Phase: 3 of 9 (GEO Strategy Engine Hardening) -- COMPLETE
-Plan: 2 of 2 in current phase (all plans done)
-Status: Phase 03 complete (all plans done)
-Last activity: 2026-03-04 -- Plan 03-02 complete (ARCHIVE_FIRST dead branch removal)
+Phase: 4 of 9 (GEO Service Decomposition)
+Plan: 1 of 3 in current phase (04-01 complete)
+Status: Phase 04 in progress
+Last activity: 2026-03-04 -- Plan 04-01 complete (shared helpers + SOFT download dedup)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: 11 min
-- Total execution time: 1.3 hours
+- Total execution time: 1.5 hours
 
 **By Phase:**
 
@@ -46,10 +46,11 @@ Progress: [██████████] 100%
 | 01 | 3 | 24 min | 8 min |
 | 02 | 2 | 36 min | 18 min |
 | 03 | 2 | 19 min | 10 min |
+| 04 | 1 | 13 min | 13 min |
 
 **Recent Trend:**
-- Last 5 plans: 10 min, 26 min, 10 min, 12 min, 7 min
-- Trend: Improving (TDD plans averaging 10 min/plan)
+- Last 5 plans: 26 min, 10 min, 12 min, 7 min, 13 min
+- Trend: Stable (TDD extraction plans averaging 11 min/plan)
 
 *Updated after each plan completion*
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 03]: FILETYPES frozenset constants replace inline lists in rule evaluation (03-01)
 - [Phase 03]: ARCHIVE_FIRST is dead code -- SUPPLEMENTARY_FIRST covers archive extraction (03-02)
 - [Phase 03]: Unknown pipeline type strings fall back to FALLBACK gracefully (03-02)
+- [Phase 04]: helpers.py uses lazy imports for pandas/anndata to avoid heavy deps at module level (04-01)
+- [Phase 04]: _retry_with_backoff accepts console param instead of self for standalone usage (04-01)
+- [Phase 04]: build_soft_url auto-detects GSE vs GSM from prefix, no id_type param needed (04-01)
 
 ### Pending Todos
 
@@ -95,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T05:25:00Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-04T06:17:32Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
