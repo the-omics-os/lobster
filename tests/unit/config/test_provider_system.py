@@ -43,14 +43,15 @@ def test_provider_registry_initialization():
     # Trigger initialization
     providers = ProviderRegistry.get_provider_names()
 
-    # Should have all 6 providers registered
+    # Should have all 7 providers registered
     assert "anthropic" in providers
     assert "bedrock" in providers
     assert "ollama" in providers
     assert "gemini" in providers
     assert "azure" in providers
     assert "openai" in providers
-    assert len(providers) == 6
+    assert "openrouter" in providers
+    assert len(providers) == 7
 
 
 def test_get_provider():

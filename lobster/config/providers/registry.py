@@ -179,6 +179,7 @@ class ProviderRegistry:
             ("lobster.config.providers.gemini_provider", "GeminiProvider"),
             ("lobster.config.providers.azure_provider", "AzureProvider"),
             ("lobster.config.providers.openai_provider", "OpenAIProvider"),
+            ("lobster.config.providers.openrouter_provider", "OpenRouterProvider"),
         ]
 
         import sys
