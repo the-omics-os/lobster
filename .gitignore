@@ -142,7 +142,6 @@
 .mypy_cache/
 .nox/
 .opencode/
-.planning/
 .playwright-mcp/
 .pyre/
 .pytest_cache/
