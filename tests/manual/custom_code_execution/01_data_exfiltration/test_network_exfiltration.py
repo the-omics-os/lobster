@@ -19,8 +19,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
+try:
+    from lobster.core.data_manager_v2 import DataManagerV2
+    from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
+except ImportError:
+    pytest.skip("Required modules not available", allow_module_level=True)
 
 
 class TestNetworkExfiltration:

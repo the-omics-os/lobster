@@ -8,11 +8,10 @@ all components of the Lobster AI platform during failure scenarios.
 Test coverage target: 95%+ with comprehensive error recovery scenarios.
 """
 
+import json
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
-import json
+pytestmark = [pytest.mark.system, pytest.mark.slow]
 import os
 import shutil
 import signal

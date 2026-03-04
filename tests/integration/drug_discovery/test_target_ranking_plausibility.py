@@ -9,8 +9,11 @@ Pipeline: Open Targets → TargetScoringService → rank and validate
 
 import pytest
 
-from lobster.agents.drug_discovery.config import TARGET_EVIDENCE_WEIGHTS
-from lobster.core.analysis_ir import AnalysisStep
+try:
+    from lobster.agents.drug_discovery.config import TARGET_EVIDENCE_WEIGHTS
+    from lobster.core.analysis_ir import AnalysisStep
+except ImportError:
+    pytest.skip("lobster-drug-discovery not installed", allow_module_level=True)
 
 from .conftest import KNOWN_TARGETS
 

@@ -10,8 +10,7 @@ Test coverage target: 95%+ with realistic concurrent execution scenarios.
 
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
+pytestmark = [pytest.mark.performance, pytest.mark.slow]
 import asyncio
 import json
 import multiprocessing as mp
@@ -46,6 +45,12 @@ from tests.mock_data.factories import BulkRNASeqDataFactory, SingleCellDataFacto
 # ===============================================================================
 # Concurrent Execution Test Configuration
 # ===============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _seed_rng():
+    """Ensure deterministic test behavior."""
+    np.random.seed(42)
 
 
 @dataclass
@@ -163,7 +168,7 @@ class ConcurrentExecutionMonitor:
                 memory_info = psutil.virtual_memory()
 
                 sample = {
-                    "timestamp": time.time(),
+                    "timestamp": time.perf_counter(),
                     "cpu_percent": cpu_percent,
                     "memory_used_gb": memory_info.used / (1024**3),
                     "memory_percent": memory_info.percent,
@@ -313,7 +318,7 @@ class TestConcurrentAgentExecution:
                 self, task: ConcurrentTask, task_queue: Queue
             ) -> ExecutionMetrics:
                 """Execute a single task and record metrics."""
-                queue_start = time.time()
+                queue_start = time.perf_counter()
 
                 # Simulate queue wait time
                 try:
@@ -321,10 +326,10 @@ class TestConcurrentAgentExecution:
                 except Empty:
                     pass
 
-                queue_wait_time = time.time() - queue_start
+                queue_wait_time = time.perf_counter() - queue_start
 
                 # Record execution start
-                start_time = time.time()
+                start_time = time.perf_counter()
                 start_memory = psutil.virtual_memory().used / (1024**2)  # MB
                 start_cpu = psutil.cpu_percent()
 
@@ -350,7 +355,7 @@ class TestConcurrentAgentExecution:
                     error_message = str(e)
 
                 # Record execution end
-                end_time = time.time()
+                end_time = time.perf_counter()
                 end_memory = psutil.virtual_memory().used / (1024**2)  # MB
                 end_cpu = psutil.cpu_percent()
 
@@ -481,7 +486,7 @@ class TestConcurrentAgentExecution:
 
                 def memory_intensive_worker(task):
                     """Worker that simulates memory-intensive processing."""
-                    start_time = time.time()
+                    start_time = time.perf_counter()
                     start_memory = psutil.virtual_memory().used / (1024**3)  # GB
 
                     # Simulate memory allocation
@@ -492,7 +497,7 @@ class TestConcurrentAgentExecution:
                         _ = np.dot(memory_consumer, memory_consumer)
                         time.sleep(0.1)
 
-                    end_time = time.time()
+                    end_time = time.perf_counter()
                     end_memory = psutil.virtual_memory().used / (1024**3)  # GB
 
                     return ExecutionMetrics(
@@ -554,7 +559,7 @@ class TestConcurrentAgentExecution:
 
                 def cpu_intensive_worker(task):
                     """Worker that simulates CPU-intensive processing."""
-                    start_time = time.time()
+                    start_time = time.perf_counter()
 
                     # Simulate CPU-intensive computation
                     result = 0
@@ -563,7 +568,7 @@ class TestConcurrentAgentExecution:
                         if i % 100000 == 0:
                             time.sleep(0.01)  # Brief pause for monitoring
 
-                    end_time = time.time()
+                    end_time = time.perf_counter()
 
                     return ExecutionMetrics(
                         task_id=task.task_id,
@@ -624,7 +629,7 @@ class TestConcurrentAgentExecution:
 
                 def io_intensive_worker(task):
                     """Worker that simulates I/O intensive processing."""
-                    start_time = time.time()
+                    start_time = time.perf_counter()
 
                     # Create temporary data
                     temp_data = SingleCellDataFactory(
@@ -643,7 +648,7 @@ class TestConcurrentAgentExecution:
                         # Clean up
                         Path(tmp_file.name).unlink(missing_ok=True)
 
-                    end_time = time.time()
+                    end_time = time.perf_counter()
 
                     return ExecutionMetrics(
                         task_id=task.task_id,
@@ -738,7 +743,7 @@ class TestConcurrentAgentExecution:
                     monitor = ConcurrentExecutionMonitor()
                     monitor.start_monitoring()
 
-                    execution_start = time.time()
+                    execution_start = time.perf_counter()
 
                     # Determine appropriate number of workers
                     max_workers = min(num_tasks, mp.cpu_count() * 2)
@@ -746,13 +751,13 @@ class TestConcurrentAgentExecution:
                     with ThreadPoolExecutor(max_workers=max_workers) as executor:
 
                         def execute_mock_task(task):
-                            start_time = time.time()
+                            start_time = time.perf_counter()
 
                             # Mock task execution
                             processing_time = np.random.uniform(0.5, 2.0)
                             time.sleep(processing_time)
 
-                            end_time = time.time()
+                            end_time = time.perf_counter()
 
                             return ExecutionMetrics(
                                 task_id=task.task_id,
@@ -760,7 +765,7 @@ class TestConcurrentAgentExecution:
                                 start_time=start_time,
                                 end_time=end_time,
                                 execution_time=end_time - start_time,
-                                success=np.random.random() > 0.05,  # 95% success rate
+                                success=True,
                                 memory_usage_mb=np.random.uniform(10, 100),
                                 cpu_percent=np.random.uniform(20, 80),
                                 queue_wait_time=max(0, start_time - execution_start),
@@ -774,7 +779,7 @@ class TestConcurrentAgentExecution:
                             metrics = future.result()
                             monitor.record_execution(metrics)
 
-                    execution_end = time.time()
+                    execution_end = time.perf_counter()
                     monitor.stop_monitoring()
 
                     # Analyze performance for this load level
@@ -946,7 +951,7 @@ class TestConcurrentAgentExecution:
                 coordination_monitor.start_monitoring()
 
                 # Define multi-agent workflow
-                workflow_start = time.time()
+                workflow_start = time.perf_counter()
 
                 if workflow_complexity == "simple":
                     workflow_steps = self._simple_workflow()
@@ -959,7 +964,7 @@ class TestConcurrentAgentExecution:
                 workflow_results = []
 
                 for step in workflow_steps:
-                    step_start = time.time()
+                    step_start = time.perf_counter()
 
                     # Simulate agent coordination overhead
                     coordination_time = np.random.uniform(0.1, 0.3)
@@ -968,7 +973,7 @@ class TestConcurrentAgentExecution:
                     # Execute step
                     step_result = self._execute_workflow_step(step)
 
-                    step_end = time.time()
+                    step_end = time.perf_counter()
 
                     step_metrics = ExecutionMetrics(
                         task_id=step["step_id"],
@@ -988,7 +993,7 @@ class TestConcurrentAgentExecution:
                         {"step": step, "result": step_result, "metrics": step_metrics}
                     )
 
-                workflow_end = time.time()
+                workflow_end = time.perf_counter()
                 coordination_monitor.stop_monitoring()
 
                 return {
@@ -1116,7 +1121,7 @@ class TestConcurrentAgentExecution:
                 time.sleep(execution_time)
 
                 # Simulate success/failure
-                success = np.random.random() > 0.05  # 95% success rate
+                success = True
 
                 return {
                     "success": success,

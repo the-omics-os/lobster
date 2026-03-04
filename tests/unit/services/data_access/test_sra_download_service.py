@@ -592,25 +592,3 @@ class TestSRADownloadManagerErrorHandling:
                 assert call_count[0] == 2  # Timeout then success
 
 
-@pytest.mark.integration
-class TestSRADownloadServiceIntegration:
-    """Integration tests requiring network access."""
-
-    @pytest.mark.skip(reason="Requires network access and takes time")
-    def test_download_real_small_dataset(self, sra_service, tmp_path):
-        """Test download of real (tiny) SRA dataset."""
-        # SRR000001 is a very small public dataset
-        entry = DownloadQueueEntry(
-            entry_id="integration_test",
-            dataset_id="SRR000001",
-            database="sra",
-            status=DownloadStatus.PENDING,
-        )
-
-        adata, stats, ir = sra_service.download_dataset(entry)
-
-        assert adata is not None
-        assert stats["dataset_id"] == "SRR000001"
-        assert stats["database"] == "sra"
-        assert stats["total_size_mb"] < 50  # Should be small
-        assert Path(adata.uns["fastq_files"]["paths"][0]).exists()

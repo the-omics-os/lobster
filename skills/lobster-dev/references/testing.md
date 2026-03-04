@@ -272,7 +272,7 @@ def test_full_analysis_workflow(tmp_path):
 ## Test Markers
 
 ```python
-# In pytest.ini or pyproject.toml
+# In pyproject.toml
 [tool.pytest.ini_options]
 markers = [
     "slow: marks tests as slow",

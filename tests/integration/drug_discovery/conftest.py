@@ -8,13 +8,20 @@ instantiation across test classes.
 
 import pytest
 
-from lobster.services.drug_discovery.chembl_service import ChEMBLService
-from lobster.services.drug_discovery.opentargets_service import OpenTargetsService
-from lobster.services.drug_discovery.pubchem_service import PubChemService
-from lobster.services.drug_discovery.synergy_scoring_service import (
-    SynergyScoringService,
-)
-from lobster.services.drug_discovery.target_scoring_service import TargetScoringService
+_drug_discovery_available = None
+
+
+def _check_drug_discovery():
+    global _drug_discovery_available
+    if _drug_discovery_available is None:
+        try:
+            import lobster.services.drug_discovery.chembl_service  # noqa: F401
+
+            _drug_discovery_available = True
+        except ImportError:
+            _drug_discovery_available = False
+    return _drug_discovery_available
+
 
 try:
     from lobster.services.drug_discovery.molecular_analysis_service import (
@@ -23,6 +30,7 @@ try:
     )
 except ImportError:
     RDKIT_AVAILABLE = False
+    MolecularAnalysisService = None
 
 try:
     from lobster.services.drug_discovery.admet_prediction_service import (
@@ -32,6 +40,7 @@ try:
     ADMET_AVAILABLE = True
 except ImportError:
     ADMET_AVAILABLE = False
+    ADMETPredictionService = None
 
 
 # ---------------------------------------------------------------------------
@@ -41,26 +50,46 @@ except ImportError:
 
 @pytest.fixture(scope="module")
 def pubchem():
+    if not _check_drug_discovery():
+        pytest.skip("lobster-drug-discovery not installed")
+    from lobster.services.drug_discovery.pubchem_service import PubChemService
+
     return PubChemService()
 
 
 @pytest.fixture(scope="module")
 def chembl():
+    if not _check_drug_discovery():
+        pytest.skip("lobster-drug-discovery not installed")
+    from lobster.services.drug_discovery.chembl_service import ChEMBLService
+
     return ChEMBLService()
 
 
 @pytest.fixture(scope="module")
 def ot():
+    if not _check_drug_discovery():
+        pytest.skip("lobster-drug-discovery not installed")
+    from lobster.services.drug_discovery.opentargets_service import OpenTargetsService
+
     return OpenTargetsService()
 
 
 @pytest.fixture(scope="module")
 def scorer():
+    if not _check_drug_discovery():
+        pytest.skip("lobster-drug-discovery not installed")
+    from lobster.services.drug_discovery.target_scoring_service import TargetScoringService
+
     return TargetScoringService()
 
 
 @pytest.fixture(scope="module")
 def syn():
+    if not _check_drug_discovery():
+        pytest.skip("lobster-drug-discovery not installed")
+    from lobster.services.drug_discovery.synergy_scoring_service import SynergyScoringService
+
     return SynergyScoringService()
 
 

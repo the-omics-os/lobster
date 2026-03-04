@@ -11,12 +11,15 @@ Validates that each prompt:
 
 import pytest
 
-from lobster.agents.drug_discovery.prompts import (
-    create_cheminformatics_expert_prompt,
-    create_clinical_dev_expert_prompt,
-    create_drug_discovery_expert_prompt,
-    create_pharmacogenomics_expert_prompt,
-)
+try:
+    from lobster.agents.drug_discovery.prompts import (
+        create_cheminformatics_expert_prompt,
+        create_clinical_dev_expert_prompt,
+        create_drug_discovery_expert_prompt,
+        create_pharmacogenomics_expert_prompt,
+    )
+except ImportError:
+    pytest.skip("lobster-drug-discovery not installed", allow_module_level=True)
 
 pytestmark = pytest.mark.unit
 

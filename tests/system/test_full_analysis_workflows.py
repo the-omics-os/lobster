@@ -8,11 +8,10 @@ integration including agent coordination, data management, and output generation
 Test coverage target: 95%+ with realistic end-to-end analysis scenarios.
 """
 
+import json
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
-import json
+pytestmark = [pytest.mark.system, pytest.mark.slow]
 import tempfile
 import time
 from dataclasses import asdict, dataclass
@@ -33,11 +32,16 @@ from lobster.core.client import AgentClient
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance import ProvenanceTracker
 from tests.mock_data.base import LARGE_DATASET_CONFIG, SMALL_DATASET_CONFIG
-from tests.mock_data.factories import (  # Note: SpatialDataFactory not yet implemented
+from tests.mock_data.factories import (
     BulkRNASeqDataFactory,
     ProteomicsDataFactory,
     SingleCellDataFactory,
 )
+
+try:
+    from tests.mock_data.factories import SpatialDataFactory
+except ImportError:
+    SpatialDataFactory = None
 
 # Note: Supervisor uses different pattern - imported via graph module if needed
 
@@ -197,6 +201,8 @@ class AnalysisWorkflowEngine:
                 config=data_config.get("config", SMALL_DATASET_CONFIG)
             )
         elif data_type == "spatial":
+            if SpatialDataFactory is None:
+                pytest.skip("SpatialDataFactory not available")
             adata = SpatialDataFactory(
                 config=data_config.get("config", SMALL_DATASET_CONFIG)
             )

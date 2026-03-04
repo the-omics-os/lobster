@@ -4,7 +4,7 @@ Comprehensive testing infrastructure for the Lobster AI multi-agent bioinformati
 
 ## 📖 **Complete Documentation**
 
-📚 **[View Complete Testing Guide →](../docs/testing.md)**
+📚 **[View Complete Testing Guide →](../skills/lobster-dev/references/testing.md)**
 
 The full testing documentation covers:
 - **Test Structure & Categories** - Unit, integration, system, and performance tests
@@ -15,6 +15,8 @@ The full testing documentation covers:
 - **Development Workflow** - Pre-commit hooks, debugging, and TDD practices
 - **Configuration** - Test environment settings and dataset registry
 - **Troubleshooting** - Common issues and solutions
+
+> **Pytest config:** `pyproject.toml` (`[tool.pytest.ini_options]`) is the single source of truth for all pytest configuration. `pytest.ini` has been removed.
 
 ## 🚀 **Quick Start**
 
@@ -87,7 +89,7 @@ tests/
 │   ├── agents/                # AI agent functionality
 │   ├── services/              # Existing analysis services (7 files)
 │   └── tools/                 # Analysis tools (12+ files) ✨ NEW
-├── 📁 integration/            # Integration tests (5 files)
+├── 📁 integration/            # Integration tests (56 files)
 ├── 📁 system/                 # System tests (3 files)
 ├── 📁 performance/            # Performance tests (3 files)
 ├── 📁 mock_data/              # Synthetic data generation
@@ -293,12 +295,20 @@ pytest tests/unit/tools/test_proteomics_*.py  # Proteomics suite only
 **Available Markers (from `pyproject.toml`):**
 - `unit`: Unit tests for individual components
 - `integration`: Integration tests for multi-component workflows
+- `contract`: Contract tests validating plugin API and AQUADIF taxonomy compliance
 - `system`: System tests for complete workflows
 - `performance`: Performance and benchmarking tests
 - `slow`: Tests that take more than 30 seconds
-- `requires_api`: Tests that require external API access
+- `very_slow`: Tests that take more than 5 minutes
 - `real_api`: Tests that make real API calls to external services (PubMed, GEO, etc.)
+- `requires_api`: Tests that require external API access
 - `requires_gpu`: Tests that require GPU resources
+- `flaky`: Flaky tests that may fail intermittently
+- `stress`: Stress tests
+- `ux`: User experience tests
+- `manual`: Manual tests not for CI
+- `external`: Tests requiring external services
+- `nightly`: Tests for nightly CI only
 
 ## 🔄 **CI/CD Workflows**
 
@@ -618,4 +628,4 @@ pytest tests/integration/ -m "real_api" -v --timeout=600
 
 **🦞 Ready to contribute to Lobster AI's robust testing infrastructure?**
 
-📚 **[Complete Testing Guide](../docs/testing.md)** • [Testing Guidelines](../CONTRIBUTING.md#testing) • [Code Style Guide](../CONTRIBUTING.md#style)
+📚 **[Complete Testing Guide](../skills/lobster-dev/references/testing.md)** • [Testing Guidelines](../CONTRIBUTING.md#testing) • [Code Style Guide](../CONTRIBUTING.md#style)

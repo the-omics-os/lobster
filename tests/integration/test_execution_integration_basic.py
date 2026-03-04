@@ -9,6 +9,8 @@ import anndata
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.services.execution.custom_code_execution_service import (
     CustomCodeExecutionService,

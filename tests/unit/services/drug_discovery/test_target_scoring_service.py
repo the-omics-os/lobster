@@ -12,12 +12,15 @@ Tests the target druggability scoring system with real computation:
 
 import pytest
 
-from lobster.agents.drug_discovery.config import TARGET_EVIDENCE_WEIGHTS
-from lobster.core.analysis_ir import AnalysisStep
-from lobster.services.drug_discovery.target_scoring_service import (
-    TargetScoringError,
-    TargetScoringService,
-)
+try:
+    from lobster.agents.drug_discovery.config import TARGET_EVIDENCE_WEIGHTS
+    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.services.drug_discovery.target_scoring_service import (
+        TargetScoringError,
+        TargetScoringService,
+    )
+except ImportError:
+    pytest.skip("lobster-drug-discovery not installed", allow_module_level=True)
 
 pytestmark = pytest.mark.unit
 

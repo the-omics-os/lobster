@@ -12,8 +12,15 @@ import inspect
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add lobster to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+try:
+    from lobster.agents import research_agent as _ra_module_check  # noqa: F401
+except ImportError:
+    pytest.skip("Required modules not available", allow_module_level=True)
 
 
 def test_parameter_signatures():

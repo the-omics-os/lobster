@@ -16,12 +16,15 @@ import pandas as pd
 import pytest
 from anndata import AnnData
 
-from lobster.agents.drug_discovery.config import SYNERGY_THRESHOLDS
-from lobster.core.analysis_ir import AnalysisStep
-from lobster.services.drug_discovery.synergy_scoring_service import (
-    SynergyScoringError,
-    SynergyScoringService,
-)
+try:
+    from lobster.agents.drug_discovery.config import SYNERGY_THRESHOLDS
+    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.services.drug_discovery.synergy_scoring_service import (
+        SynergyScoringError,
+        SynergyScoringService,
+    )
+except ImportError:
+    pytest.skip("lobster-drug-discovery not installed", allow_module_level=True)
 
 pytestmark = pytest.mark.unit
 

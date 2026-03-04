@@ -102,11 +102,12 @@ jobs:
           if [ -d "$PACKAGE_TEST_DIR" ]; then
             echo "Running tests from $PACKAGE_TEST_DIR"
             pytest "$PACKAGE_TEST_DIR" \
+              -m "not slow and not real_api" \
+              --import-mode=importlib \
               -v \
               --no-cov \
               --junit-xml=results-${{ matrix.package }}.xml \
-              --tb=short \
-              || echo "Tests completed (may have failures)"
+              --tb=short
           else
             echo "No tests found at $PACKAGE_TEST_DIR, creating placeholder result"
             echo '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="placeholder" tests="0" failures="0" errors="0"></testsuite></testsuites>' > results-${{ matrix.package }}.xml
@@ -184,6 +185,8 @@ jobs:
           if [ -f "$TEST_FILE" ]; then
             echo "Running tests from $TEST_FILE"
             pytest "$TEST_FILE" \
+              -m "not slow and not real_api" \
+              --import-mode=importlib \
               -v \
               --no-cov \
               --junit-xml=results-preset-${{ matrix.preset }}.xml \
@@ -235,6 +238,8 @@ jobs:
           TEST_FILE="tests/integration/test_provenance_export.py"
           if [ -f "$TEST_FILE" ]; then
             pytest "$TEST_FILE" \
+              -m "not slow and not real_api" \
+              --import-mode=importlib \
               -v \
               --no-cov \
               --junit-xml=results-integration.xml \

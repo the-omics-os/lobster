@@ -10,8 +10,7 @@ Test coverage target: 95%+ with realistic data loading scenarios.
 
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
+pytestmark = [pytest.mark.performance, pytest.mark.slow]
 import gc
 import gzip
 import hashlib
@@ -51,6 +50,12 @@ from tests.mock_data.factories import (  # Note: SpatialDataFactory not yet impl
 # ===============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _seed_rng():
+    """Ensure deterministic test behavior."""
+    np.random.seed(42)
+
+
 @dataclass
 class LoadingBenchmark:
     """Represents a data loading benchmark."""
@@ -77,7 +82,7 @@ class DataLoadingProfiler:
 
     def profile_loading_operation(self, operation_name: str, func, *args, **kwargs):
         """Profile a data loading operation."""
-        start_time = time.time()
+        start_time = time.perf_counter()
         start_memory = psutil.virtual_memory().used / (1024**2)  # MB
 
         try:
@@ -89,7 +94,7 @@ class DataLoadingProfiler:
             success = False
             error_msg = str(e)
 
-        end_time = time.time()
+        end_time = time.perf_counter()
         end_memory = psutil.virtual_memory().used / (1024**2)  # MB
 
         profile_result = {
@@ -818,10 +823,10 @@ class TestDataStreamingPerformance:
                 stream_duration = config.get("stream_duration", 5.0)  # seconds
                 samples_per_second = config.get("samples_per_second", 1000)
 
-                start_time = time.time()
+                start_time = time.perf_counter()
                 processed_samples = 0
 
-                while (time.time() - start_time) < stream_duration:
+                while (time.perf_counter() - start_time) < stream_duration:
                     # Simulate incoming data
                     n_samples = min(
                         samples_per_second // 10, 100
@@ -836,7 +841,7 @@ class TestDataStreamingPerformance:
                     processed_samples += n_samples
                     time.sleep(0.1)  # Simulate processing time
 
-                actual_duration = time.time() - start_time
+                actual_duration = time.perf_counter() - start_time
 
                 return {
                     "processed_samples": processed_samples,
@@ -978,7 +983,7 @@ class TestDataStreamingPerformance:
 
                 def load_file_worker(file_path: Path):
                     """Worker function for concurrent file loading."""
-                    start_time = time.time()
+                    start_time = time.perf_counter()
                     start_memory = psutil.virtual_memory().used / (1024**2)
 
                     try:
@@ -1007,7 +1012,7 @@ class TestDataStreamingPerformance:
                         success = False
                         error_msg = str(e)
 
-                    end_time = time.time()
+                    end_time = time.perf_counter()
                     end_memory = psutil.virtual_memory().used / (1024**2)
 
                     return {
@@ -1023,7 +1028,7 @@ class TestDataStreamingPerformance:
                     }
 
                 # Execute concurrent loading
-                concurrent_start = time.time()
+                concurrent_start = time.perf_counter()
 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_file = {
@@ -1036,7 +1041,7 @@ class TestDataStreamingPerformance:
                         result = future.result()
                         results.append(result)
 
-                concurrent_end = time.time()
+                concurrent_end = time.perf_counter()
 
                 # Analyze results
                 successful_loads = [r for r in results if r["success"]]

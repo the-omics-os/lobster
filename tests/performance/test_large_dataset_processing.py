@@ -10,11 +10,13 @@ Test coverage target: 95%+ with realistic large dataset scenarios.
 
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
+pytestmark = [pytest.mark.performance, pytest.mark.slow]
 import functools
 import gc
-import resource
+try:
+    import resource
+except ImportError:
+    resource = None
 import tempfile
 import threading
 import time
@@ -46,6 +48,12 @@ from tests.mock_data.factories import (  # Note: SpatialDataFactory not yet impl
 # ===============================================================================
 
 
+@pytest.fixture(autouse=True)
+def _seed_rng():
+    """Ensure deterministic test behavior."""
+    np.random.seed(42)
+
+
 class PerformanceMetrics:
     """Collects and analyzes performance metrics."""
 
@@ -60,7 +68,7 @@ class PerformanceMetrics:
 
     def start_monitoring(self):
         """Start performance monitoring."""
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
         self.start_memory = psutil.virtual_memory().used / (1024**3)  # GB
         self.peak_memory = self.start_memory
         self.cpu_percent = []
@@ -75,7 +83,7 @@ class PerformanceMetrics:
     def stop_monitoring(self):
         """Stop performance monitoring and return metrics."""
         self.monitoring_active = False
-        self.end_time = time.time()
+        self.end_time = time.perf_counter()
 
         if hasattr(self, "monitor_thread"):
             self.monitor_thread.join(timeout=1.0)
@@ -263,9 +271,9 @@ class TestLargeDatasetLoading:
                 file_path = self.workspace_path / f"{test_name}.h5ad"
 
                 # Measure save performance
-                save_start = time.time()
+                save_start = time.perf_counter()
                 adata.write_h5ad(file_path)
-                save_time = time.time() - save_start
+                save_time = time.perf_counter() - save_start
 
                 # Get file size
                 file_size_mb = file_path.stat().st_size / (1024**2)
@@ -275,9 +283,9 @@ class TestLargeDatasetLoading:
                 gc.collect()
 
                 # Measure load performance
-                load_start = time.time()
+                load_start = time.perf_counter()
                 loaded_adata = ad.read_h5ad(file_path)
-                load_time = time.time() - load_start
+                load_time = time.perf_counter() - load_start
 
                 return {
                     "save_time": save_time,
@@ -300,7 +308,7 @@ class TestLargeDatasetLoading:
                 gc.collect()
 
                 # Load in chunks
-                chunk_start = time.time()
+                chunk_start = time.perf_counter()
                 for start_idx in range(0, n_obs_total, chunk_size):
                     end_idx = min(start_idx + chunk_size, n_obs_total)
 
@@ -320,7 +328,7 @@ class TestLargeDatasetLoading:
                     del chunk_adata
                     gc.collect()
 
-                chunk_total_time = time.time() - chunk_start
+                chunk_total_time = time.perf_counter() - chunk_start
 
                 return {
                     "chunked_loading_successful": True,
@@ -509,7 +517,7 @@ class TestLargeDatasetLoading:
 
             def load_dataset_worker(self, file_info):
                 """Worker function for concurrent dataset loading."""
-                worker_start = time.time()
+                worker_start = time.perf_counter()
                 worker_memory_start = psutil.virtual_memory().used / (1024**3)
 
                 try:
@@ -519,7 +527,7 @@ class TestLargeDatasetLoading:
                     # Store in data manager
                     self.data_manager.modalities[file_info["name"]] = adata
 
-                    worker_end = time.time()
+                    worker_end = time.perf_counter()
                     worker_memory_end = psutil.virtual_memory().used / (1024**3)
 
                     return {
@@ -540,7 +548,7 @@ class TestLargeDatasetLoading:
 
             def test_concurrent_loading(self, prepared_files, max_workers=3):
                 """Test loading multiple datasets concurrently."""
-                concurrent_start = time.time()
+                concurrent_start = time.perf_counter()
 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     future_to_file = {
@@ -553,7 +561,7 @@ class TestLargeDatasetLoading:
                         result = future.result()
                         results.append(result)
 
-                concurrent_end = time.time()
+                concurrent_end = time.perf_counter()
 
                 return {
                     "concurrent_loading_successful": all(r["success"] for r in results),
@@ -629,7 +637,7 @@ class TestLargeScaleProcessing:
                 preprocessing_steps = []
 
                 # Step 1: Quality Control Filtering
-                qc_start = time.time()
+                qc_start = time.perf_counter()
                 qc_memory_start = psutil.virtual_memory().used / (1024**3)
 
                 # Calculate QC metrics
@@ -658,7 +666,7 @@ class TestLargeScaleProcessing:
                     adata, min_cells=processing_params.get("min_cells", 3)
                 )
 
-                qc_end = time.time()
+                qc_end = time.perf_counter()
                 qc_memory_end = psutil.virtual_memory().used / (1024**3)
 
                 preprocessing_steps.append(
@@ -676,7 +684,7 @@ class TestLargeScaleProcessing:
                 )
 
                 # Step 2: Normalization
-                norm_start = time.time()
+                norm_start = time.perf_counter()
                 norm_memory_start = psutil.virtual_memory().used / (1024**3)
 
                 # Store raw counts
@@ -690,7 +698,7 @@ class TestLargeScaleProcessing:
                 # Log transform
                 sc.pp.log1p(adata)
 
-                norm_end = time.time()
+                norm_end = time.perf_counter()
                 norm_memory_end = psutil.virtual_memory().used / (1024**3)
 
                 preprocessing_steps.append(
@@ -703,7 +711,7 @@ class TestLargeScaleProcessing:
                 )
 
                 # Step 3: Highly Variable Genes
-                hvg_start = time.time()
+                hvg_start = time.perf_counter()
                 hvg_memory_start = psutil.virtual_memory().used / (1024**3)
 
                 # Find highly variable genes
@@ -718,7 +726,7 @@ class TestLargeScaleProcessing:
                 # Keep only HVGs for downstream analysis
                 adata_hvg = adata[:, adata.var["highly_variable"]].copy()
 
-                hvg_end = time.time()
+                hvg_end = time.perf_counter()
                 hvg_memory_end = psutil.virtual_memory().used / (1024**3)
 
                 preprocessing_steps.append(
@@ -732,7 +740,7 @@ class TestLargeScaleProcessing:
                 )
 
                 # Step 4: Principal Component Analysis
-                pca_start = time.time()
+                pca_start = time.perf_counter()
                 pca_memory_start = psutil.virtual_memory().used / (1024**3)
 
                 # Scale data
@@ -741,7 +749,7 @@ class TestLargeScaleProcessing:
                 # PCA
                 sc.tl.pca(adata_hvg, n_comps=processing_params.get("n_pcs", 50))
 
-                pca_end = time.time()
+                pca_end = time.perf_counter()
                 pca_memory_end = psutil.virtual_memory().used / (1024**3)
 
                 preprocessing_steps.append(
@@ -827,7 +835,7 @@ class TestLargeScaleProcessing:
                 # Prepare data (basic preprocessing if needed)
                 if "X_pca" not in adata.obsm:
                     # Quick preprocessing for clustering
-                    prep_start = time.time()
+                    prep_start = time.perf_counter()
 
                     # Normalize and log-transform
                     sc.pp.normalize_total(adata, target_sum=1e4)
@@ -841,7 +849,7 @@ class TestLargeScaleProcessing:
 
                     adata = adata_hvg
 
-                    prep_end = time.time()
+                    prep_end = time.perf_counter()
                     clustering_steps.append(
                         {
                             "step": "preprocessing_for_clustering",
@@ -850,7 +858,7 @@ class TestLargeScaleProcessing:
                     )
 
                 # Step 1: Neighborhood Graph Construction
-                neighbors_start = time.time()
+                neighbors_start = time.perf_counter()
 
                 sc.pp.neighbors(
                     adata,
@@ -858,7 +866,7 @@ class TestLargeScaleProcessing:
                     n_pcs=clustering_params.get("n_pcs", 40),
                 )
 
-                neighbors_end = time.time()
+                neighbors_end = time.perf_counter()
                 clustering_steps.append(
                     {
                         "step": "neighbors_computation",
@@ -868,7 +876,7 @@ class TestLargeScaleProcessing:
                 )
 
                 # Step 2: Leiden Clustering
-                leiden_start = time.time()
+                leiden_start = time.perf_counter()
 
                 resolutions = clustering_params.get("resolutions", [0.3, 0.5, 0.7, 1.0])
                 clustering_results = {}
@@ -890,7 +898,7 @@ class TestLargeScaleProcessing:
                         .min(),
                     }
 
-                leiden_end = time.time()
+                leiden_end = time.perf_counter()
                 clustering_steps.append(
                     {
                         "step": "leiden_clustering",
@@ -901,11 +909,11 @@ class TestLargeScaleProcessing:
                 )
 
                 # Step 3: UMAP Embedding
-                umap_start = time.time()
+                umap_start = time.perf_counter()
 
                 sc.tl.umap(adata, n_components=2)
 
-                umap_end = time.time()
+                umap_end = time.perf_counter()
                 clustering_steps.append(
                     {
                         "step": "umap_embedding",
@@ -1028,7 +1036,7 @@ class TestLargeScaleProcessing:
                     subsample_adata = full_adata[subsample_indices, :].copy()
 
                     # Perform basic analysis on subsample
-                    analysis_start = time.time()
+                    analysis_start = time.perf_counter()
 
                     # Basic preprocessing
                     sc.pp.filter_genes(subsample_adata, min_cells=3)
@@ -1038,7 +1046,7 @@ class TestLargeScaleProcessing:
                         subsample_adata, n_top_genes=min(2000, subsample_adata.n_vars)
                     )
 
-                    analysis_end = time.time()
+                    analysis_end = time.perf_counter()
 
                     performance_data = subsample_metrics.stop_monitoring()
 

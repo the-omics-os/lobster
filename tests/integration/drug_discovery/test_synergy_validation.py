@@ -10,10 +10,13 @@ import pandas as pd
 import pytest
 from anndata import AnnData
 
-from lobster.core.analysis_ir import AnalysisStep
-from lobster.services.drug_discovery.synergy_scoring_service import (
-    SynergyScoringError,
-)
+try:
+    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.services.drug_discovery.synergy_scoring_service import (
+        SynergyScoringError,
+    )
+except ImportError:
+    pytest.skip("lobster-drug-discovery not installed", allow_module_level=True)
 
 pytestmark = [pytest.mark.integration]
 

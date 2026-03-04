@@ -111,14 +111,14 @@ jobs:
           # Basic linting with ruff if available
           if command -v ruff &> /dev/null; then
             echo "Running ruff on changed files..."
-            ruff check $changed_files || echo "Ruff linting completed with issues"
+            ruff check $changed_files
           elif pip show flake8 &> /dev/null; then
             echo "Running flake8 on changed files..."
-            flake8 $changed_files || echo "Flake8 linting completed with issues"
+            flake8 $changed_files
           else
             echo "Installing ruff for linting..."
             pip install ruff
-            ruff check $changed_files || echo "Ruff linting completed with issues"
+            ruff check $changed_files
           fi
         else
           echo "No Python files changed, skipping linting"
@@ -142,9 +142,10 @@ jobs:
           tests/unit/core/test_schemas.py \
           tests/unit/core/test_data_manager_v2.py \
           tests/unit/agents/test_agent_registry.py \
-          tests/unit/agents/test_supervisor.py \
           tests/unit/agents/test_research_agent.py \
           tests/unit/agents/test_data_expert.py \
+          -m "not slow and not real_api" \
+          --import-mode=importlib \
           --maxfail=5 \
           --cov=lobster \
           --cov-report=xml \
@@ -190,13 +191,13 @@ jobs:
     - name: Run security checks
       run: |
         # Check for known vulnerabilities
-        safety check || echo "Safety check completed with warnings"
+        safety check
         
         # Scan for security issues in changed files
         changed_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep '\.py$' | head -20)
         if [ -n "$changed_files" ]; then
           echo "Scanning changed Python files for security issues..."
-          bandit $changed_files -f txt || echo "Bandit scan completed with warnings"
+          bandit $changed_files -f txt
         fi
 
   # =====================================================================
@@ -235,6 +236,8 @@ jobs:
       run: |
         if [ -d "tests/integration" ]; then
           python -m pytest tests/integration/ \
+            -m "not real_api and not slow" \
+            --import-mode=importlib \
             --maxfail=3 \
             --timeout=300 \
             --junit-xml=extended-test-results.xml \

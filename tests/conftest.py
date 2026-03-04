@@ -88,13 +88,14 @@ pytest_plugins = [
 
 
 def pytest_configure(config):
-    """Configure pytest with custom markers and settings."""
-    config.addinivalue_line("markers", "unit: mark test as a unit test")
-    config.addinivalue_line("markers", "integration: mark test as an integration test")
-    config.addinivalue_line("markers", "system: mark test as a system test")
-    config.addinivalue_line(
-        "markers", "performance: mark test as a performance benchmark"
-    )
+    """Configure pytest with custom markers and settings.
+
+    NOTE: Most markers are defined in pyproject.toml [tool.pytest.ini_options].
+    Only dynamic/test-framework-internal markers are registered here to avoid
+    duplicate registration warnings under --strict-markers.
+    """
+    # no_auto_config is a framework-internal marker used by auto_mock_provider_config
+    # and is not part of pyproject.toml's public marker list.
     config.addinivalue_line(
         "markers", "no_auto_config: skip automatic provider configuration for this test"
     )
@@ -287,14 +288,6 @@ def mock_agent_environment(
     )
     mock_get_instance.return_value = mock_resolver_instance
 
-    # Mock agent configurator
-    mock_agent_config = mocker.patch(
-        "lobster.config.agent_config.initialize_configurator"
-    )
-    mock_agent_config.return_value.get_agent_llm_params.return_value = {
-        "temperature": 0.1,
-    }
-
     # Mock LLM creation to prevent any real API calls
     mock_llm = Mock()
     mock_llm.with_config.return_value = mock_llm
@@ -305,24 +298,20 @@ def mock_agent_environment(
         "workspace": isolated_environment,
         "settings": mock_settings_instance,
         "llm": mock_llm,
-        "agent_config": mock_agent_config.return_value,
         "config_resolver": mock_resolver_instance,
     }
 
 
-@pytest.fixture(scope="function", autouse=True)
+@pytest.fixture(scope="function", autouse=False)  # Apply explicitly or via directory-level conftest
 def auto_mock_provider_config(
     request, monkeypatch, mocker: MockerFixture
 ) -> Dict[str, Any]:
-    """AUTOUSE: Automatically mock provider configuration for ALL tests.
+    """Mock provider configuration to prevent real API calls during tests.
 
-    This fixture runs automatically for every test to ensure ConfigResolver
-    is properly mocked, preventing "No provider configured" errors.
-
-    The autouse design ensures:
-    - All tests have a valid provider configuration by default
-    - Tests that need custom behavior can override individual mocks
-    - No test can accidentally hit real API endpoints
+    This fixture patches ConfigResolver and LLMFactory so tests never hit
+    real API endpoints. It is NOT autouse globally — it is activated for all
+    unit tests via tests/unit/conftest.py, and can be applied explicitly to
+    individual tests outside that directory.
 
     Tests can opt-out using @pytest.mark.no_auto_config marker.
 
@@ -337,10 +326,6 @@ def auto_mock_provider_config(
             - model: Model name ("claude-sonnet-4")
             - config_resolver: Mocked ConfigResolver instance
             - llm: Mocked LLM instance
-
-    Note:
-        This is autouse=True, so it applies to ALL tests automatically
-        unless marked with @pytest.mark.no_auto_config.
     """
     # Skip if test is marked with no_auto_config
     if "no_auto_config" in request.keywords:
@@ -374,22 +359,11 @@ def auto_mock_provider_config(
     )
     mock_factory_create.return_value = mock_llm
 
-    # Mock agent configurator to return minimal params (no model_id)
-    mock_agent_config = mocker.patch(
-        "lobster.config.agent_config.initialize_configurator"
-    )
-    mock_agent_config_instance = Mock()
-    mock_agent_config_instance.get_agent_llm_params.return_value = {
-        "temperature": 0.1,
-    }
-    mock_agent_config.return_value = mock_agent_config_instance
-
     return {
         "provider": "anthropic",
         "model": "claude-sonnet-4",
         "config_resolver": mock_resolver_instance,
         "llm": mock_llm,
-        "agent_config": mock_agent_config_instance,
     }
 
 
