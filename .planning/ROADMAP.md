@@ -136,18 +136,18 @@ Plans:
 - [ ] 07-02-PLAN.md — Update scaffold templates, import-linter, CI deprecated-import check (DMGR-03, DMGR-04)
 
 ### Phase 8: CLI Decomposition
-**Goal**: cli.py (9,226 LOC) is reduced to composition/wiring with command bodies in cli_internal/commands/
+**Goal**: cli.py (9,323 LOC) is reduced to composition/wiring with command bodies in cli_internal/commands/
 **Depends on**: Phase 7
 **Requirements**: CLID-01, CLID-02, CLID-03
 **Success Criteria** (what must be TRUE):
   1. Command bodies live in cli_internal/commands/ as separate modules
   2. cli.py contains only Typer app wiring and composition -- minimal control flow
   3. All CLI subcommands produce identical output and behavior (lobster --help, lobster chat, lobster query, lobster init)
-**Plans**: 2 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md — Extract foundation modules (session_infra, animations, display_helpers) and command bodies (init, chat, query) (CLID-01)
+- [ ] 08-02-PLAN.md — Extract slash commands, reduce cli.py to wiring-only, update test patch paths (CLID-01, CLID-02, CLID-03)
 
 ### Phase 9: Repo Hygiene & Packaging Cleanup
 **Goal**: Repository is clean of stale artifacts, empty dirs, deprecated shims, and has comprehensive make clean targets
@@ -178,5 +178,5 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 5. Plugin-First Registration | 3/3 | Complete   | 2026-03-04 |
 | 6. Core Subpackage Creation + Moves | 1/2 | In Progress|  |
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
-| 8. CLI Decomposition | 0/? | Not started | - |
+| 8. CLI Decomposition | 0/2 | Not started | - |
 | 9. Repo Hygiene & Packaging Cleanup | 0/? | Not started | - |
