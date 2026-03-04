@@ -172,7 +172,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 1. GEO Safety & Contract Hotfixes | 3/3 | Complete   | 2026-03-04 |
 | 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
 | 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
-| 4. GEO Service Decomposition | 0/3 | Planned | - |
+| 4. GEO Service Decomposition | 2/3 | In Progress | - |
 | 5. Plugin-First Registration | 0/? | Not started | - |
 | 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
 | 7. data_manager_v2 Move | 0/? | Not started | - |
