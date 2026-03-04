@@ -2124,13 +2124,26 @@ def init_client(
             f"     [dim]{workspace}/.env[/dim]"
         )
         console.print(
-            "  2. [white]Or add to global credentials:[/white]\n"
+            "  2. [white]Or add to global credentials (works everywhere):[/white]\n"
             "     [dim]lobster init --global[/dim]"
         )
         console.print(
             f"  3. [white]Or export in your shell:[/white]\n"
             f"     [dim]{error_msg.split('Set it with: ')[-1] if 'Set it with: ' in error_msg else 'export <KEY>=<value>'}[/dim]"
         )
+        # If there's an existing config elsewhere, hint that it may have credentials
+        from lobster.core.config_resolver import _find_existing_configs
+        found_configs = _find_existing_configs()
+        if found_configs:
+            closest = found_configs[0]
+            project_root = closest.parent
+            console.print(
+                f"\n  [dim]\U0001f4a1 Found an existing workspace at "
+                f"[cyan]{rich_escape(str(closest))}[/cyan] —\n"
+                f"     it may already have credentials configured.\n"
+                f"     Try: [bold]export LOBSTER_WORKSPACE={rich_escape(str(project_root))}/.lobster_workspace[/bold]\n"
+                f"     then re-run your command.[/dim]"
+            )
         console.print()
         raise typer.Exit(code=1)
 
