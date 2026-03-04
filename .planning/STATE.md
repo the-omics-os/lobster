@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-04T20:17:23.908Z"
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-04T20:50:51.424Z"
 last_activity: 2026-03-04 -- Plan 09-01 complete (gitignore normalized, Makefile clean expanded)
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 21
-  completed_plans: 21
+  total_phases: 11
+  completed_phases: 10
+  total_plans: 22
+  completed_plans: 22
   percent: 95
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 9 in progress. Repo hygiene -- empty dirs and deprecated shims cleaned up.
+**Current focus:** Phase 10 complete. Provenance __getattr__ shim extended to all 4 submodules.
 
 ## Current Position
 
-Phase: 9 of 9 (repo-hygiene-packaging-cleanup)
-Plan: 2 of 2 in current phase (09-01 and 09-02 complete)
-Status: Phase 9 in progress
-Last activity: 2026-03-04 -- Plan 09-01 complete (gitignore normalized, Makefile clean expanded)
+Phase: 10 of 11 (fix-provenance-getattr-shim)
+Plan: 1 of 1 in current phase (10-01 complete)
+Status: Phase 10 complete
+Last activity: 2026-03-04 -- Plan 10-01 complete (multi-module provenance __getattr__ shim)
 
-Progress: [██████████] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -52,15 +52,17 @@ Progress: [██████████] 95%
 | 07 | 2 | 6 min | 3 min |
 | 08 | 1 | 16 min | 16 min |
 | 09 | 1 | 3 min | 3 min |
+| 10 | 1 | 2 min | 2 min |
 
 **Recent Trend:**
-- Last 5 plans: 5 min, 4 min, 5 min, 1 min, 3 min
+- Last 5 plans: 4 min, 5 min, 1 min, 3 min, 2 min
 - Trend: Consistent fast execution on cleanup and hygiene tasks
 
 *Updated after each plan completion*
 | Phase 05-plugin-first-registration P03 | 15 | 2 tasks | 4 files |
 | Phase 08 P02 | 21 | 2 tasks | 5 files |
 | Phase 09 P02 | 2 | 2 tasks | 5 files |
+| Phase 10 P01 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -127,6 +129,8 @@ Recent decisions affecting current work:
 - [Phase 09]: Combined Task 1+2 commit since empty dirs not git-tracked; also removed lobster/data/ parent
 - [Phase 09]: 14 gitignore sections (not 10) for better granularity -- added Linting, UI, Miscellaneous (09-01)
 - [Phase 09]: Makefile clean uses find with maxdepth to scope package-local cleanup (09-01)
+- [Phase 10]: Multi-module __getattr__ search order: provenance.py first, then analysis_ir, lineage, ir_coverage
+- [Phase 10]: Do NOT update DE analysis call sites -- shim handles transparently, migration is Phase 11 scope
 
 ### Pending Todos
 
@@ -138,6 +142,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T20:09:30Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-03-04T20:50:51.422Z
+Stopped at: Completed 10-01-PLAN.md
 Resume file: None

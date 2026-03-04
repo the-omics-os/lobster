@@ -23,7 +23,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7) (completed 2026-03-04)
 - [ ] **Phase 8: CLI Decomposition** - Extract command bodies from cli.py to cli_internal/commands/ (PR-8)
 - [x] **Phase 9: Repo Hygiene & Packaging Cleanup** - Normalize gitignore, expand make clean, remove stale artifacts and empty dirs (PR-9) (completed 2026-03-04)
-- [ ] **Phase 10: Fix Provenance `__getattr__` Shim** - Extend provenance __init__.py to cover analysis_ir/lineage/ir_coverage submodules, fixing DE analysis ImportError (PR-10) [GAP CLOSURE]
+- [x] **Phase 10: Fix Provenance `__getattr__` Shim** - Extend provenance __init__.py to cover analysis_ir/lineage/ir_coverage submodules, fixing DE analysis ImportError (PR-10) [GAP CLOSURE] (completed 2026-03-04)
 - [ ] **Phase 11: Strengthen CI Deprecated-Import Guard** - Remove || true from CI check, migrate 39 deprecated imports in packages/ to canonical paths (PR-11) [GAP CLOSURE]
 
 ## Phase Details
@@ -177,7 +177,7 @@ Plans:
   2. `from lobster.core.provenance import X` works for all public names in analysis_ir.py, lineage.py, and ir_coverage.py
   3. All 6 call sites in de_analysis_expert.py (lines 640, 1123, 2096, 2294, 2467, 2937) execute without import failures
   4. Existing provenance.py shim behavior is preserved (ProvenanceTracker still accessible)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 10-01-PLAN.md — Extend provenance __getattr__ shim to search all 4 submodules with TDD test coverage (CORE-04)
@@ -209,5 +209,5 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
 | 8. CLI Decomposition | 1/2 | In Progress|  |
 | 9. Repo Hygiene & Packaging Cleanup | 2/2 | Complete   | 2026-03-04 |
-| 10. Fix Provenance __getattr__ Shim | 0/1 | Planned | - |
+| 10. Fix Provenance __getattr__ Shim | 1/1 | Complete   | 2026-03-04 |
 | 11. Strengthen CI Deprecated-Import Guard | 0/0 | Planned | - |
