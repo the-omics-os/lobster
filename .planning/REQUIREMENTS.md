@@ -20,9 +20,9 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 - [x] **GPAR-01**: Chunk parser returns `is_partial`, `rows_read`, `truncation_reason` flags (F6)
 - [x] **GPAR-02**: All call sites handle partial parse results — mark modality/metadata and surface warning (F6)
-- [ ] **GPAR-03**: Supplementary file classifier handles `.tar.gz`, `.tgz`, `.tar.bz2` (F7)
-- [ ] **GPAR-04**: File-scoring heuristic replaces brittle keyword blacklist for expression file selection (F7)
-- [ ] **GPAR-05**: Partial parser failures trigger temp file cleanup and proper failure marking (A2)
+- [x] **GPAR-03**: Supplementary file classifier handles `.tar.gz`, `.tgz`, `.tar.bz2` (F7)
+- [x] **GPAR-04**: File-scoring heuristic replaces brittle keyword blacklist for expression file selection (F7)
+- [x] **GPAR-05**: Partial parser failures trigger temp file cleanup and proper failure marking (A2)
 
 ### GEO Strategy Engine
 
@@ -118,9 +118,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GSAF-06 | Phase 1 (PR-1) | Complete |
 | GPAR-01 | Phase 2 (PR-2) | Complete |
 | GPAR-02 | Phase 2 (PR-2) | Complete |
-| GPAR-03 | Phase 2 (PR-2) | Pending |
-| GPAR-04 | Phase 2 (PR-2) | Pending |
-| GPAR-05 | Phase 2 (PR-2) | Pending |
+| GPAR-03 | Phase 2 (PR-2) | Complete |
+| GPAR-04 | Phase 2 (PR-2) | Complete |
+| GPAR-05 | Phase 2 (PR-2) | Complete |
 | GSTR-01 | Phase 3 (PR-3) | Pending |
 | GSTR-02 | Phase 3 (PR-3) | Pending |
 | GSTR-03 | Phase 3 (PR-3) | Pending |
