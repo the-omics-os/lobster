@@ -1192,6 +1192,11 @@ def init_impl(
         "--skip-extras",
         help="Skip optional package installation (provider, TUI, extended-data)",
     ),
+    ui_mode: str = typer.Option(
+        "auto",
+        "--ui",
+        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+    ),
 ):
     """
     Initialize Lobster AI configuration.
@@ -1656,6 +1661,116 @@ def init_impl(
         raise typer.Exit(0)
 
     # Interactive mode: run wizard
+    # =========================================================================
+    # === TRY GO TUI / QUESTIONARY FIRST (ui_mode: auto | go | classic) ===
+    # The Go binary and the questionary fallback both return the same JSON dict,
+    # so a single apply_tui_init_result() call handles both paths.
+    # The classic Rich-prompt flow further below is used when neither is
+    # available (or when --ui classic is passed explicitly).
+    # =========================================================================
+    if ui_mode != "classic" and not non_interactive:
+        _tui_handled = False
+
+        # ---- Try Go TUI ----
+        if ui_mode in ("auto", "go"):
+            try:
+                from lobster.ui.bridge.binary_finder import find_tui_binary
+
+                _binary = find_tui_binary()
+                if _binary:
+                    try:
+                        from lobster.ui.bridge.go_tui_bridge import run_init_wizard
+
+                        _tui_result = run_init_wizard(_binary, theme="lobster-dark")
+                        if _tui_result.get("cancelled", False):
+                            console.print("[yellow]Setup cancelled.[/yellow]")
+                            raise typer.Exit(0)
+
+                        from lobster.ui.bridge.init_adapter import apply_tui_init_result
+
+                        _ws_path = Path.cwd() / ".lobster_workspace"
+                        _ev_path = Path.cwd() / ".env"
+                        apply_tui_init_result(
+                            _tui_result,
+                            workspace_path=_ws_path,
+                            env_path=_ev_path,
+                            global_config=global_config,
+                        )
+
+                        # Optional: install packages selected by the wizard
+                        _wizard_agents = _tui_result.get("agents") or []
+                        if _wizard_agents and not skip_extras:
+                            from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
+
+                            if not _is_uv():
+                                _check_and_prompt_install_packages(
+                                    _wizard_agents, _ws_path
+                                )
+
+                        console.print(
+                            "[bold green]Configuration saved![/bold green] "
+                            "Run [bold]lobster chat[/bold] to start analyzing."
+                        )
+                        _tui_handled = True
+                    except Exception as _go_exc:
+                        console.print(
+                            f"[dim]Go TUI unavailable ({_go_exc}), falling back.[/dim]"
+                        )
+                elif ui_mode == "go":
+                    # --ui go was explicitly requested but binary not found
+                    console.print(
+                        "[red]lobster-tui binary not found. "
+                        "Install it or use --ui classic.[/red]"
+                    )
+                    raise typer.Exit(1)
+            except ImportError as _ie:
+                console.print(f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]")
+
+        # ---- Try questionary fallback (auto mode only, when Go TUI was unavailable) ----
+        if not _tui_handled and ui_mode == "auto":
+            try:
+                from lobster.ui.bridge.questionary_fallback import run_questionary_init
+
+                _q_result = run_questionary_init()
+                if _q_result.get("cancelled", False):
+                    console.print("[yellow]Setup cancelled.[/yellow]")
+                    raise typer.Exit(0)
+
+                from lobster.ui.bridge.init_adapter import apply_tui_init_result
+
+                _ws_path = Path.cwd() / ".lobster_workspace"
+                _ev_path = Path.cwd() / ".env"
+                apply_tui_init_result(
+                    _q_result,
+                    workspace_path=_ws_path,
+                    env_path=_ev_path,
+                    global_config=global_config,
+                )
+
+                _wizard_agents = _q_result.get("agents") or []
+                if _wizard_agents and not skip_extras:
+                    from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
+
+                    if not _is_uv():
+                        _check_and_prompt_install_packages(_wizard_agents, _ws_path)
+
+                console.print(
+                    "[bold green]Configuration saved![/bold green] "
+                    "Run [bold]lobster chat[/bold] to start analyzing."
+                )
+                _tui_handled = True
+            except ImportError:
+                # questionary not installed — fall through to classic Rich prompts silently
+                pass
+            except Exception as _q_exc:
+                console.print(
+                    f"[dim]Questionary wizard failed ({_q_exc}), falling back to classic mode.[/dim]"
+                )
+
+        if _tui_handled:
+            raise typer.Exit(0)
+    # === END GO TUI / QUESTIONARY PATH ===
+
     console.print("\n")
     if global_config:
         from lobster.config.global_config import get_global_credentials_path

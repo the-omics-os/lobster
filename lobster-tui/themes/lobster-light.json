@@ -1,0 +1,24 @@
+{
+  "id": "lobster-light",
+  "name": "Lobster Light",
+  "description": "Official Lobster AI light theme",
+  "author": "Omics-OS",
+  "version": "1.0.0",
+  "colors": {
+    "primary":    "#CC2C18",
+    "secondary":  "#e45c47",
+    "background": "#FFFFFF",
+    "surface":    "#F5F5F5",
+    "overlay":    "#EBEBEB",
+    "text":       "#1a1a2e",
+    "text_muted": "#555555",
+    "text_dim":   "#999999",
+    "success":    "#1e7e34",
+    "warning":    "#856404",
+    "error":      "#721c24",
+    "info":       "#0c5460",
+    "accent1":    "#CC2C18",
+    "accent2":    "#e45c47",
+    "accent3":    "#2d6a4f"
+  }
+}

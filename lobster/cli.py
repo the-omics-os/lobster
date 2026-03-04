@@ -907,6 +907,11 @@ def init(
         "--skip-extras",
         help="Skip optional package installation (provider, TUI, extended-data)",
     ),
+    ui_mode: str = typer.Option(
+        "auto",
+        "--ui",
+        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+    ),
 ):
     """
     Initialize Lobster AI configuration.
@@ -966,6 +971,7 @@ def init(
         preset=preset, auto_agents=auto_agents, agents_description=agents_description,
         skip_docling=skip_docling, install_docling=install_docling,
         install_vector_search=install_vector_search, skip_extras=skip_extras,
+        ui_mode=ui_mode,
     )
 
 
