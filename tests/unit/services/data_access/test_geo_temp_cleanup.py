@@ -69,7 +69,7 @@ class TestTempCleanupOnFailure:
 
         # Patch tarfile.open to raise after extract_dir.mkdir runs
         # (extract_dir is created by mkdir(exist_ok=True) BEFORE tarfile.open)
-        with patch("lobster.services.data_access.geo_service.tarfile.open") as mock_tar:
+        with patch("lobster.services.data_access.geo.archive_processing.tarfile.open") as mock_tar:
             mock_tar.side_effect = OSError("Disk full during extraction")
             result = geo_service._process_tar_file(
                 f"https://ftp.ncbi.nlm.nih.gov/{gse_id}_RAW.tar", gse_id
@@ -106,7 +106,7 @@ class TestTempPreservationOnSuccess:
 
         # Patch BulkRNASeqService to raise ValueError (no quant files)
         with patch(
-            "lobster.services.data_access.geo_service.BulkRNASeqService"
+            "lobster.services.analysis.bulk_rnaseq_service.BulkRNASeqService"
         ) as mock_bulk:
             mock_bulk.return_value._detect_quantification_tool.side_effect = ValueError(
                 "No quant files"

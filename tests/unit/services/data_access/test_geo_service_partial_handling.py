@@ -18,7 +18,15 @@ from lobster.services.data_access.geo.parser import ParseResult
 
 # The lobster logger sets propagate=False and has its own StreamHandler,
 # so pytest's caplog cannot capture messages. We use a custom handler.
-_GEO_LOGGER_NAME = "lobster.services.data_access.geo_service"
+# After Phase 4 decomposition, methods live in domain modules under geo/.
+_GEO_LOGGER_NAMES = [
+    "lobster.services.data_access.geo_service",
+    "lobster.services.data_access.geo.archive_processing",
+    "lobster.services.data_access.geo.matrix_parsing",
+    "lobster.services.data_access.geo.download_execution",
+    "lobster.services.data_access.geo.metadata_fetch",
+    "lobster.services.data_access.geo.concatenation",
+]
 
 
 class _WarningCapture(logging.Handler):
@@ -34,12 +42,14 @@ class _WarningCapture(logging.Handler):
 
 @pytest.fixture
 def log_capture():
-    """Attach a capturing handler to the geo_service logger."""
-    lgr = logging.getLogger(_GEO_LOGGER_NAME)
+    """Attach a capturing handler to the geo_service and domain module loggers."""
     handler = _WarningCapture()
-    lgr.addHandler(handler)
+    loggers = [logging.getLogger(name) for name in _GEO_LOGGER_NAMES]
+    for lgr in loggers:
+        lgr.addHandler(handler)
     yield handler
-    lgr.removeHandler(handler)
+    for lgr in loggers:
+        lgr.removeHandler(handler)
 
 
 @pytest.fixture
