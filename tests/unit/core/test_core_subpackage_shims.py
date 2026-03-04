@@ -91,6 +91,73 @@ class TestShimReexportsAndWarns:
         )
 
 
+# --------------------------------------------------------------------------- #
+# Provenance multi-module __getattr__ shim tests (Phase 10)
+# --------------------------------------------------------------------------- #
+
+# Names that must be resolvable via provenance package __getattr__ shim
+PROVENANCE_SHIM_NAMES = [
+    ("AnalysisStep", "analysis_ir"),
+    ("ParameterSpec", "analysis_ir"),
+    ("LineageMetadata", "lineage"),
+    ("IRCoverageAnalyzer", "ir_coverage"),
+    ("ProvenanceTracker", "provenance"),
+]
+
+
+@pytest.mark.parametrize(
+    "attr_name, expected_submod",
+    PROVENANCE_SHIM_NAMES,
+    ids=[name for name, _ in PROVENANCE_SHIM_NAMES],
+)
+class TestProvenanceMultiModuleShim:
+    """Verify provenance __getattr__ resolves names from all 4 submodules."""
+
+    def test_resolves_with_deprecation_warning(self, attr_name, expected_submod):
+        """Accessing name via provenance package emits DeprecationWarning."""
+        sys.modules.pop("lobster.core.provenance", None)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            mod = importlib.import_module("lobster.core.provenance")
+            obj = getattr(mod, attr_name)
+
+        assert obj is not None, f"Failed to resolve '{attr_name}' from provenance shim"
+
+        dep_warnings = [
+            w for w in caught
+            if issubclass(w.category, DeprecationWarning)
+            and expected_submod in str(w.message)
+        ]
+        assert dep_warnings, (
+            f"No DeprecationWarning mentioning '{expected_submod}' for '{attr_name}'. "
+            f"Caught: {[str(w.message) for w in caught]}"
+        )
+
+    def test_identity_with_canonical_import(self, attr_name, expected_submod):
+        """Object from shim must be identical to object from canonical path."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            shim_mod = importlib.import_module("lobster.core.provenance")
+            shim_obj = getattr(shim_mod, attr_name)
+
+        canonical_mod = importlib.import_module(
+            f"lobster.core.provenance.{expected_submod}"
+        )
+        canonical_obj = getattr(canonical_mod, attr_name)
+
+        assert shim_obj is canonical_obj, (
+            f"'{attr_name}' from shim is not identical to canonical import"
+        )
+
+
+def test_provenance_shim_unknown_name_raises():
+    """Accessing nonexistent name via provenance shim raises AttributeError."""
+    mod = importlib.import_module("lobster.core.provenance")
+    with pytest.raises(AttributeError, match="nonexistent_xyz_123"):
+        getattr(mod, "nonexistent_xyz_123")
+
+
 # Subpackage existence tests
 SUBPACKAGES = [
     "lobster.core.governance",    # Plan 01
