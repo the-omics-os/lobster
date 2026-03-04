@@ -112,12 +112,13 @@ class ClusteringService:
         max_mean: float = 3.0,
         min_disp: float = 0.5,
         resolutions: Optional[list] = None,
+        algorithm: str = "leiden",
     ) -> AnalysisStep:
         """
         Create Intermediate Representation for full clustering pipeline.
 
         Args:
-            resolution: Leiden clustering resolution parameter
+            resolution: Clustering resolution parameter
             n_neighbors: Number of neighbors for graph construction
             n_pcs: Number of principal components to use
             feature_selection_method: 'deviance' or 'hvg'
@@ -125,6 +126,7 @@ class ClusteringService:
             min_mean: Minimum mean for HVG selection (for hvg method)
             max_mean: Maximum mean for HVG selection (for hvg method)
             min_disp: Minimum dispersion for HVG selection (for hvg method)
+            algorithm: Clustering algorithm - 'leiden' or 'louvain'
 
         Returns:
             AnalysisStep with full clustering pipeline code template
@@ -206,10 +208,10 @@ print(f"PCA complete (using {{ n_pcs }} components)")
 sc.pp.neighbors(adata, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})
 print("Neighborhood graph computed")
 
-# 7. Leiden clustering
-sc.tl.leiden(adata, resolution={{ resolution }}, key_added='leiden')
-n_clusters = len(adata.obs['leiden'].unique())
-print(f"Leiden clustering complete: {n_clusters} clusters (resolution={{ resolution }})")
+# 7. {{ algorithm | capitalize }} clustering
+sc.tl.{{ algorithm }}(adata, resolution={{ resolution }}, key_added='{{ algorithm }}')
+n_clusters = len(adata.obs['{{ algorithm }}'].unique())
+print(f"{{ algorithm | capitalize }} clustering complete: {n_clusters} clusters (resolution={{ resolution }})")
 
 # 8. UMAP visualization
 sc.tl.umap(adata)
@@ -223,7 +225,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "scale",
                 "pca",
                 "neighbors",
-                "leiden",
+                algorithm,
                 "umap",
             ]
             description_method = "deviance"
@@ -238,6 +240,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "n_pcs": n_pcs,
                 "n_features": n_features,
                 "feature_selection_method": feature_selection_method,
+                "algorithm": algorithm,
             }
         else:  # hvg method
             code_template = """# Single-cell clustering pipeline with HVG feature selection
@@ -275,10 +278,10 @@ print(f"PCA complete (using {{ n_pcs }} components)")
 sc.pp.neighbors(adata, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})
 print("Neighborhood graph computed")
 
-# 7. Leiden clustering
-sc.tl.leiden(adata, resolution={{ resolution }}, key_added='leiden')
-n_clusters = len(adata.obs['leiden'].unique())
-print(f"Leiden clustering complete: {n_clusters} clusters (resolution={{ resolution }})")
+# 7. {{ algorithm | capitalize }} clustering
+sc.tl.{{ algorithm }}(adata, resolution={{ resolution }}, key_added='{{ algorithm }}')
+n_clusters = len(adata.obs['{{ algorithm }}'].unique())
+print(f"{{ algorithm | capitalize }} clustering complete: {n_clusters} clusters (resolution={{ resolution }})")
 
 # 8. UMAP visualization
 sc.tl.umap(adata)
@@ -292,7 +295,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "scale",
                 "pca",
                 "neighbors",
-                "leiden",
+                algorithm,
                 "umap",
             ]
             description_method = "HVG"
@@ -305,12 +308,13 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "max_mean": max_mean,
                 "min_disp": min_disp,
                 "feature_selection_method": feature_selection_method,
+                "algorithm": algorithm,
             }
 
         return AnalysisStep(
-            operation="scanpy.tl.cluster_pipeline",
+            operation=f"scanpy.tl.{algorithm}",
             tool_name="cluster_and_visualize",
-            description=f"Full clustering pipeline: {description_method} + PCA + neighbors + Leiden (res={resolution}) + UMAP",
+            description=f"Full clustering pipeline: {description_method} + PCA + neighbors + {algorithm.capitalize()} (res={resolution}) + UMAP",
             library="scanpy",
             code_template=code_template,
             imports=imports,
@@ -320,6 +324,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
             output_entities=["adata"],
             execution_context={
                 "operation_type": "clustering",
+                "algorithm": algorithm,
                 "pipeline_steps": pipeline_steps,
                 "feature_selection_method": feature_selection_method,
                 "resolution": resolution,
@@ -760,13 +765,14 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
         skip_steps: Optional[list] = None,
         feature_selection_method: str = "deviance",
         n_features: int = 4000,
+        algorithm: str = "leiden",
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform clustering and UMAP visualization on single-cell RNA-seq data.
 
         Args:
             adata: AnnData object to cluster
-            resolution: Resolution parameter for Leiden clustering (single value)
+            resolution: Resolution parameter for clustering (single value)
             resolutions: List of resolution parameters for multi-resolution testing
             use_rep: Representation to use for clustering (e.g., 'X_scvi', 'X_pca').
                     If None, uses standard PCA workflow. If specified, uses the
@@ -780,6 +786,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                                      'deviance': Binomial deviance from multinomial null (default, recommended)
                                      'hvg': Traditional highly variable genes (Seurat method)
             n_features: Number of features to select (default: 4000)
+            algorithm: Clustering algorithm - 'leiden' (default) or 'louvain'
 
         Returns:
             Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]: Clustered AnnData, clustering stats, and IR
@@ -901,15 +908,17 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 feature_selection_method,
                 n_features,
                 resolutions,
+                algorithm,
             )
 
             # Compile clustering statistics
-            cluster_col = "leiden"
+            cluster_col = algorithm
             n_clusters = len(adata_clustered.obs[cluster_col].unique())
             cluster_counts = adata_clustered.obs[cluster_col].value_counts().to_dict()
 
             clustering_stats = {
                 "analysis_type": "clustering",
+                "algorithm": algorithm,
                 "resolution": resolution,
                 "n_clusters": n_clusters,
                 "batch_correction": batch_correction,
@@ -949,7 +958,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                     }
                     # Add explicit column name mapping for downstream tools
                     clustering_stats["resolution_columns"] = {
-                        res: f"leiden_res{res}".replace(".", "_")
+                        res: f"{algorithm}_res{res}".replace(".", "_")
                         for res in adata_clustered.uns["resolutions_tested"]
                     }
 
@@ -992,6 +1001,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 feature_selection_method=feature_selection_method,
                 n_features=n_features,
                 resolutions=resolutions,
+                algorithm=algorithm,
             )
 
             return adata_clustered, clustering_stats, ir
@@ -1055,6 +1065,42 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             )
             return adata
 
+    def _run_clustering_algorithm(
+        self,
+        adata: anndata.AnnData,
+        resolution: float,
+        key_added: str,
+        algorithm: str = "leiden",
+    ) -> None:
+        """
+        Dispatch clustering to the specified algorithm.
+
+        Args:
+            adata: AnnData object with computed neighbor graph
+            resolution: Clustering resolution parameter
+            key_added: Key name to store cluster assignments in adata.obs
+            algorithm: Clustering algorithm - 'leiden' (default) or 'louvain'
+
+        Raises:
+            ClusteringError: If algorithm is unknown or required package is missing
+        """
+        algorithm = algorithm.lower()
+        if algorithm == "louvain":
+            try:
+                sc.tl.louvain(adata, resolution=resolution, key_added=key_added)
+            except (AttributeError, ImportError) as e:
+                raise ClusteringError(
+                    "Louvain clustering requires the 'louvain' package.\n"
+                    "Install with: uv pip install louvain\n"
+                    "Or use algorithm='leiden' (recommended, generally faster with better resolution limit)."
+                ) from e
+        elif algorithm == "leiden":
+            sc.tl.leiden(adata, resolution=resolution, key_added=key_added)
+        else:
+            raise ClusteringError(
+                f"Unknown clustering algorithm '{algorithm}'. Use 'leiden' or 'louvain'."
+            )
+
     def _perform_clustering(
         self,
         adata: sc.AnnData,
@@ -1065,6 +1111,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
         feature_selection_method: str = "deviance",
         n_features: int = 4000,
         resolutions: Optional[list] = None,
+        algorithm: str = "leiden",
     ) -> sc.AnnData:
         """
         Perform clustering on the AnnData object with configurable feature selection.
@@ -1083,6 +1130,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             skip_steps: List of steps to skip (e.g., 'marker_genes')
             feature_selection_method: 'deviance' (default) or 'hvg'
             n_features: Number of features to select (default: 4000)
+            algorithm: Clustering algorithm - 'leiden' (default) or 'louvain'
 
         Returns:
             sc.AnnData: AnnData object with clustering results
@@ -1129,19 +1177,19 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
 
             self._update_progress("Neighborhood graph computed from custom embedding")
 
-            # Run Leiden clustering
-            logger.info(f"Running Leiden clustering with resolution {resolution}")
+            # Run clustering
+            logger.info(f"Running {algorithm} clustering with resolution {resolution}")
 
             with with_periodic_progress(
-                f"Running Leiden clustering (resolution={resolution})",
+                f"Running {algorithm} clustering (resolution={resolution})",
                 self._create_progress_callback(),
                 update_interval=10,
                 show_elapsed=True,
             ):
-                sc.tl.leiden(adata, resolution=resolution, key_added="leiden")
+                self._run_clustering_algorithm(adata, resolution, key_added=algorithm, algorithm=algorithm)
 
-            self._update_progress("Leiden clustering completed")
-            cluster_col = "leiden"
+            self._update_progress(f"{algorithm.capitalize()} clustering completed")
+            cluster_col = algorithm
 
             # UMAP for visualization using custom embedding
             logger.info("Computing UMAP coordinates from custom embedding")
@@ -1399,7 +1447,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
 
             self._update_progress("Neighborhood graph computed")
 
-            # Run Leiden clustering - support multi-resolution testing
+            # Run clustering - support multi-resolution testing
             # Determine which resolutions to test
             if resolutions is not None:
                 # Multi-resolution testing mode
@@ -1412,23 +1460,23 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 # Default resolution
                 resolutions_to_test = [self.default_cluster_resolution]
 
-            # Run Leiden clustering for each resolution
+            # Run clustering for each resolution
             clustering_results = {}
             for res in resolutions_to_test:
-                # Create descriptive key name: leiden_res0_25, leiden_res0_5, etc.
-                key_name = f"leiden_res{res}".replace(".", "_")
+                # Create descriptive key name: leiden_res0_25, louvain_res0_5, etc.
+                key_name = f"{algorithm}_res{res}".replace(".", "_")
 
                 logger.info(
-                    f"Running Leiden clustering at resolution {res} (key: {key_name})"
+                    f"Running {algorithm} clustering at resolution {res} (key: {key_name})"
                 )
 
                 with with_periodic_progress(
-                    f"Running Leiden clustering (resolution={res})",
+                    f"Running {algorithm} clustering (resolution={res})",
                     self._create_progress_callback(),
                     update_interval=10,
                     show_elapsed=True,
                 ):
-                    sc.tl.leiden(adata_selected, resolution=res, key_added=key_name)
+                    self._run_clustering_algorithm(adata_selected, res, key_added=key_name, algorithm=algorithm)
 
                 # Track cluster counts for this resolution
                 n_clusters = adata_selected.obs[key_name].nunique()
@@ -1443,13 +1491,13 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             adata_selected.uns["clustering_results"] = clustering_results
             adata_selected.uns["resolutions_tested"] = resolutions_to_test
 
-            # For backward compatibility, also create 'leiden' column pointing to primary resolution
+            # For backward compatibility, also create a column with the algorithm name pointing to primary resolution
             primary_resolution = resolutions_to_test[0]
-            primary_key = f"leiden_res{primary_resolution}".replace(".", "_")
-            adata_selected.obs["leiden"] = adata_selected.obs[primary_key]
-            cluster_col = "leiden"
+            primary_key = f"{algorithm}_res{primary_resolution}".replace(".", "_")
+            adata_selected.obs[algorithm] = adata_selected.obs[primary_key]
+            cluster_col = algorithm
 
-            self._update_progress("Leiden clustering completed")
+            self._update_progress(f"{algorithm.capitalize()} clustering completed")
 
             # UMAP for visualization
             logger.info("Computing UMAP coordinates")
@@ -1482,7 +1530,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             self._update_progress("UMAP coordinates computed")
 
             # Transfer clustering results and UMAP coordinates back to the original object
-            adata.obs["leiden"] = adata_selected.obs["leiden"]
+            adata.obs[algorithm] = adata_selected.obs[algorithm]
             adata.obsm["X_umap"] = adata_selected.obsm["X_umap"]
 
             # BUG-002 FIX: Preserve X_pca for downstream quality evaluation
@@ -1514,7 +1562,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 ]
                 # Transfer all resolution columns to main adata
                 for res in adata_selected.uns["resolutions_tested"]:
-                    key_name = f"leiden_res{res}".replace(".", "_")
+                    key_name = f"{algorithm}_res{res}".replace(".", "_")
                     if key_name in adata_selected.obs.columns:
                         adata.obs[key_name] = adata_selected.obs[key_name]
 
@@ -2268,6 +2316,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
         n_neighbors: int = 15,
         batch_key: Optional[str] = None,
         demo_mode: bool = False,
+        algorithm: str = "leiden",
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Re-cluster specific cell subsets for finer-grained population identification.
@@ -2386,19 +2435,19 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
                 resolutions_to_test = [0.5]  # Default
                 logger.info("Using default resolution: 0.5")
 
-            # Run Leiden clustering for each resolution
+            # Run clustering for each resolution
             subclustering_results = {}
             for res in resolutions_to_test:
                 # Create key name
                 if len(resolutions_to_test) == 1:
-                    key_name = "leiden_subcluster"
+                    key_name = f"{algorithm}_subcluster"
                 else:
-                    key_name = f"leiden_sub_res{res}".replace(".", "_")
+                    key_name = f"{algorithm}_sub_res{res}".replace(".", "_")
 
                 logger.info(
-                    f"Running Leiden sub-clustering at resolution {res} (key: {key_name})"
+                    f"Running {algorithm} sub-clustering at resolution {res} (key: {key_name})"
                 )
-                sc.tl.leiden(adata_subset, resolution=res, key_added=key_name)
+                self._run_clustering_algorithm(adata_subset, res, key_added=key_name, algorithm=algorithm)
 
                 # Convert categorical to string to allow new categories
                 adata_subset.obs[key_name] = adata_subset.obs[key_name].astype(str)
@@ -2491,6 +2540,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
                 resolutions=resolutions,
                 n_pcs=n_pcs,
                 n_neighbors=n_neighbors,
+                algorithm=algorithm,
             )
 
             return adata, stats, ir
@@ -2507,6 +2557,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
         resolutions: Optional[List[float]] = None,
         n_pcs: int = 20,
         n_neighbors: int = 15,
+        algorithm: str = "leiden",
     ) -> AnalysisStep:
         """
         Create Intermediate Representation for sub-clustering operation.
@@ -2518,6 +2569,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
             resolutions: List of resolution parameters
             n_pcs: Number of principal components to use
             n_neighbors: Number of neighbors for graph construction
+            algorithm: Clustering algorithm - 'leiden' or 'louvain'
 
         Returns:
             AnalysisStep with sub-clustering code template
@@ -2575,6 +2627,7 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
         }
 
         # Jinja2 code template
+        subcluster_key = f"{algorithm}_subcluster"
         code_template = """# Sub-clustering pipeline: Re-cluster specific cell populations
 import scanpy as sc
 import numpy as np
@@ -2585,6 +2638,7 @@ clusters_to_refine = {{ clusters_to_refine|repr }}
 resolution = {{ resolution }}
 n_pcs = {{ n_pcs }}
 n_neighbors = {{ n_neighbors }}
+algorithm = {{ algorithm|repr }}
 
 # Validate cluster key exists
 if cluster_key not in adata.obs.columns:
@@ -2608,31 +2662,32 @@ adata_subset = adata[subset_mask].copy()
 print(f"Computing neighbors (n_neighbors={n_neighbors}, n_pcs={n_pcs})")
 sc.pp.neighbors(adata_subset, n_neighbors=n_neighbors, n_pcs=n_pcs)
 
-# Run Leiden clustering
-print(f"Running Leiden sub-clustering (resolution={resolution})")
-sc.tl.leiden(adata_subset, resolution=resolution, key_added='leiden_subcluster')
+# Run clustering
+subcluster_key = f"{algorithm}_subcluster"
+print(f"Running {algorithm} sub-clustering (resolution={resolution})")
+getattr(sc.tl, algorithm)(adata_subset, resolution=resolution, key_added=subcluster_key)
 
 # Add parent cluster prefix to sub-cluster labels
 if clusters_to_refine:
     for parent_cluster in clusters_to_refine:
         parent_mask = adata_subset.obs[cluster_key].astype(str) == str(parent_cluster)
         if parent_mask.sum() > 0:
-            sub_labels = adata_subset.obs.loc[parent_mask, 'leiden_subcluster'].astype(str)
+            sub_labels = adata_subset.obs.loc[parent_mask, subcluster_key].astype(str)
             prefixed_labels = sub_labels.apply(lambda x: f"{parent_cluster}.{x}")
-            adata_subset.obs.loc[parent_mask, 'leiden_subcluster'] = prefixed_labels
+            adata_subset.obs.loc[parent_mask, subcluster_key] = prefixed_labels
 
 # Merge back to original AnnData
-adata.obs['leiden_subcluster'] = adata.obs[cluster_key].astype(str)
-adata.obs.loc[subset_mask, 'leiden_subcluster'] = adata_subset.obs['leiden_subcluster']
+adata.obs[subcluster_key] = adata.obs[cluster_key].astype(str)
+adata.obs.loc[subset_mask, subcluster_key] = adata_subset.obs[subcluster_key]
 
-n_subclusters = adata.obs['leiden_subcluster'].nunique()
+n_subclusters = adata.obs[subcluster_key].nunique()
 print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
 """
 
         return AnalysisStep(
-            operation="scanpy.tl.leiden",
+            operation=f"scanpy.tl.{algorithm}",
             tool_name="subcluster_cells",
-            description=f"Sub-cluster cells from {len(clusters_to_refine) if clusters_to_refine else 'all'} parent cluster(s) at resolution {resolution if resolution else resolutions}",
+            description=f"Sub-cluster cells from {len(clusters_to_refine) if clusters_to_refine else 'all'} parent cluster(s) at resolution {resolution if resolution else resolutions} using {algorithm}",
             library="scanpy",
             code_template=code_template,
             imports=["import scanpy as sc", "import numpy as np"],
@@ -2643,6 +2698,7 @@ print(f"Sub-clustering complete: {n_subclusters} sub-clusters identified")
                 "resolutions": resolutions if resolutions else [],
                 "n_pcs": n_pcs,
                 "n_neighbors": n_neighbors,
+                "algorithm": algorithm,
             },
             parameter_schema=parameter_schema,
             input_entities=["adata"],

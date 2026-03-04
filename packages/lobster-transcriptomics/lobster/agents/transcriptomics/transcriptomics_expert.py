@@ -151,16 +151,17 @@ def transcriptomics_expert(
         save_result: bool = True,
         feature_selection_method: str = "deviance",
         n_features: int = 4000,
+        algorithm: str = "leiden",
     ) -> str:
         """
         Perform single-cell clustering and UMAP visualization.
 
         Args:
             modality_name: Name of the single-cell modality to cluster
-            resolution: Single Leiden clustering resolution (0.1-2.0, higher = more clusters).
+            resolution: Clustering resolution (0.1-2.0, higher = more clusters).
                        Use this for single-resolution clustering. Default: 1.0 if neither resolution nor resolutions specified.
             resolutions: List of resolutions for multi-resolution testing (e.g., [0.25, 0.5, 1.0]).
-                        Creates multiple clustering results with descriptive keys (leiden_res0_25, leiden_res0_5, leiden_res1_0).
+                        Creates multiple clustering results with descriptive keys (e.g., leiden_res0_25, louvain_res0_5).
                         Use this to explore clustering granularity. If specified, overrides 'resolution' parameter.
             use_rep: Representation to use for clustering (e.g., 'X_scvi' for deep learning embeddings, 'X_pca' for PCA).
                     If None, uses standard PCA workflow. Custom embeddings like scVI often provide better results.
@@ -172,13 +173,18 @@ def transcriptomics_expert(
                                      'deviance' (default, recommended): Binomial deviance from multinomial null, works on raw counts, no normalization bias.
                                      'hvg': Traditional highly variable genes (Seurat method), works on normalized data.
             n_features: Number of features to select (default: 4000)
+            algorithm: Clustering algorithm - 'leiden' (default, recommended) or 'louvain'.
+                      Use 'louvain' when a protocol or publication specifies it.
 
         Returns:
             str: Formatted report with clustering results and cluster distribution
 
         Examples:
-            # Single resolution clustering (traditional)
+            # Single resolution clustering with Leiden (default)
             cluster_cells("geo_gse12345_filtered", resolution=0.5)
+
+            # Louvain clustering (when protocol specifies it)
+            cluster_cells("geo_gse12345_filtered", resolution=0.8, algorithm="louvain")
 
             # Multi-resolution testing (recommended for exploration)
             cluster_cells("geo_gse12345_filtered", resolutions=[0.25, 0.5, 1.0])
@@ -199,6 +205,11 @@ def transcriptomics_expert(
                 f"Clustering single-cell modality '{modality_name}': {adata.shape[0]} cells x {adata.shape[1]} genes"
             )
 
+            # Validate algorithm parameter
+            algorithm_lower = algorithm.lower()
+            if algorithm_lower not in ("leiden", "louvain"):
+                return f"Error: Unknown clustering algorithm '{algorithm}'. Use 'leiden' or 'louvain'."
+
             # Use clustering service
             adata_clustered, clustering_stats, ir = (
                 clustering_service.cluster_and_visualize(
@@ -211,6 +222,7 @@ def transcriptomics_expert(
                     demo_mode=demo_mode,
                     feature_selection_method=feature_selection_method,
                     n_features=n_features,
+                    algorithm=algorithm_lower,
                 )
             )
 
@@ -239,8 +251,9 @@ def transcriptomics_expert(
                     "demo_mode": demo_mode,
                     "feature_selection_method": feature_selection_method,
                     "n_features": n_features,
+                    "algorithm": algorithm_lower,
                 },
-                description=f"Single-cell clustered {modality_name} into {clustering_stats['n_clusters']} clusters using {feature_selection_method} feature selection",
+                description=f"Single-cell clustered {modality_name} into {clustering_stats['n_clusters']} clusters using {algorithm_lower} with {feature_selection_method} feature selection",
                 ir=ir,
             )
 
@@ -250,6 +263,7 @@ def transcriptomics_expert(
 **Single-cell Clustering Results:**"""
 
             # Check if multi-resolution testing was performed
+            algo_name = clustering_stats.get("algorithm", algorithm_lower)
             if clustering_stats.get("n_resolutions", 1) > 1:
                 response += (
                     f"\n- Resolutions tested: {clustering_stats['resolutions_tested']}"
@@ -260,15 +274,15 @@ def transcriptomics_expert(
                 for res, n_clusters in clustering_stats.get(
                     "multi_resolution_summary", {}
                 ).items():
-                    key_name = f"leiden_res{res}".replace(".", "_")
+                    key_name = f"{algo_name}_res{res}".replace(".", "_")
                     response += (
                         f"\n  - `{key_name}` (resolution={res}): {n_clusters} clusters"
                     )
             else:
                 # Single resolution mode (existing behavior)
                 response += f"\n- Number of clusters: {clustering_stats['n_clusters']}"
-                response += f"\n- Leiden resolution: {clustering_stats.get('resolution', 'N/A')}"
-                response += "\n- Cluster column name: `leiden` (use this exact name for visualization)"
+                response += f"\n- {algo_name.capitalize()} resolution: {clustering_stats.get('resolution', 'N/A')}"
+                response += f"\n- Cluster column name: `{algo_name}` (use this exact name for visualization)"
 
             # Continue with common details
             response += f"\n- UMAP coordinates: {'Yes' if clustering_stats['has_umap'] else 'No'}"
@@ -336,6 +350,7 @@ def transcriptomics_expert(
         n_pcs: int = 20,
         n_neighbors: int = 15,
         demo_mode: bool = False,
+        algorithm: str = "leiden",
     ) -> str:
         """
         Re-cluster specific cell subsets for finer-grained population identification.
@@ -366,6 +381,7 @@ def transcriptomics_expert(
             n_neighbors: Number of neighbors for KNN graph (default: 15)
                         Typical range: 10-30
             demo_mode: Use faster parameters for testing (default: False)
+            algorithm: Clustering algorithm - 'leiden' (default) or 'louvain'
 
         Returns:
             str: Summary of sub-clustering results including cluster sizes and new column names
@@ -398,6 +414,7 @@ def transcriptomics_expert(
             )
 
             # Perform sub-clustering using service
+            algorithm_lower = algorithm.lower()
             result, stats, ir = clustering_service.subcluster_cells(
                 adata,
                 cluster_key=cluster_key,
@@ -407,6 +424,7 @@ def transcriptomics_expert(
                 n_pcs=n_pcs,
                 n_neighbors=n_neighbors,
                 demo_mode=demo_mode,
+                algorithm=algorithm_lower,
             )
 
             # Compute cluster count safely (BUG-01 fix: clusters_to_refine may be None)
@@ -432,8 +450,9 @@ def transcriptomics_expert(
                     "n_pcs": n_pcs,
                     "n_neighbors": n_neighbors,
                     "demo_mode": demo_mode,
+                    "algorithm": algorithm_lower,
                 },
-                description=f"Subclustered {n_refined} clusters from {cluster_key}",
+                description=f"Subclustered {n_refined} clusters from {cluster_key} using {algorithm_lower}",
                 ir=ir,
             )
 

@@ -138,7 +138,7 @@ def test_issue7_insufficient_hvg_for_pca(clustering_service):
     # Should complete successfully with adjusted n_pcs
     assert "leiden" in adata_result.obs.columns
     assert stats["n_clusters"] >= 1
-    assert ir.operation == "scanpy.tl.cluster_pipeline"
+    assert ir.operation == "scanpy.tl.leiden"
 
 
 def test_issue7_fix_validation_before_pca(clustering_service, no_hvg_adata):
@@ -557,7 +557,7 @@ def test_clustering_ir_structure(clustering_service, small_adata):
     _, _, ir = result
 
     # IR validation
-    assert ir.operation == "scanpy.tl.cluster_pipeline"
+    assert ir.operation == "scanpy.tl.leiden"
     assert ir.tool_name == "cluster_and_visualize"
     assert ir.library == "scanpy"
     assert "resolution" in ir.parameters
@@ -750,3 +750,151 @@ def test_clustering_after_preprocessing(clustering_service):
 
     assert "leiden" in adata_result.obs.columns
     assert stats["n_clusters"] >= 1
+
+
+# ============================================
+# ALGORITHM SELECTION: LEIDEN vs LOUVAIN
+# ============================================
+
+
+def test_default_algorithm_is_leiden(clustering_service, small_adata):
+    """Test that default clustering uses Leiden (backward compatibility)."""
+    result = clustering_service.cluster_and_visualize(small_adata, resolution=0.5)
+    adata_result, stats, ir = result
+
+    assert "leiden" in adata_result.obs.columns
+    assert stats.get("algorithm") == "leiden"
+    assert stats["n_clusters"] >= 1
+
+
+def test_explicit_leiden_algorithm(clustering_service, small_adata):
+    """Test that explicit algorithm='leiden' works identically to default."""
+    result = clustering_service.cluster_and_visualize(
+        small_adata, resolution=0.5, algorithm="leiden"
+    )
+    adata_result, stats, ir = result
+
+    assert "leiden" in adata_result.obs.columns
+    assert stats["algorithm"] == "leiden"
+
+
+def test_louvain_algorithm(clustering_service, small_adata):
+    """Test Louvain clustering produces valid results."""
+    try:
+        import louvain  # noqa: F401
+    except ImportError:
+        pytest.skip("louvain package not installed")
+
+    result = clustering_service.cluster_and_visualize(
+        small_adata, resolution=0.5, algorithm="louvain"
+    )
+    adata_result, stats, ir = result
+
+    assert "louvain" in adata_result.obs.columns
+    assert stats["algorithm"] == "louvain"
+    assert stats["n_clusters"] >= 1
+
+
+def test_louvain_multi_resolution(clustering_service, small_adata):
+    """Test Louvain with multi-resolution produces correctly named columns."""
+    try:
+        import louvain  # noqa: F401
+    except ImportError:
+        pytest.skip("louvain package not installed")
+
+    result = clustering_service.cluster_and_visualize(
+        small_adata, resolutions=[0.25, 0.5], algorithm="louvain"
+    )
+    adata_result, stats, ir = result
+
+    # Column names should use louvain prefix, not leiden
+    assert "louvain" in adata_result.obs.columns
+    assert "louvain_res0_25" in adata_result.obs.columns
+    assert "louvain_res0_5" in adata_result.obs.columns
+    assert "leiden" not in adata_result.obs.columns
+
+
+def test_leiden_multi_resolution_key_names(clustering_service, small_adata):
+    """Test that Leiden multi-resolution uses leiden_ prefix (not louvain_)."""
+    result = clustering_service.cluster_and_visualize(
+        small_adata, resolutions=[0.25, 0.5], algorithm="leiden"
+    )
+    adata_result, stats, ir = result
+
+    assert "leiden_res0_25" in adata_result.obs.columns
+    assert "leiden_res0_5" in adata_result.obs.columns
+
+
+def test_unknown_algorithm_raises_error(clustering_service, small_adata):
+    """Test that an unknown algorithm raises ClusteringError."""
+    with pytest.raises(ClusteringError, match="Unknown clustering algorithm"):
+        clustering_service.cluster_and_visualize(
+            small_adata, resolution=0.5, algorithm="spectral"
+        )
+
+
+def test_louvain_missing_package_raises_error(clustering_service, small_adata, monkeypatch):
+    """Test clear error when louvain package is not installed."""
+    # Simulate missing louvain by making sc.tl.louvain raise AttributeError
+    monkeypatch.delattr(sc.tl, "louvain", raising=False)
+
+    with pytest.raises(ClusteringError, match="louvain"):
+        clustering_service.cluster_and_visualize(
+            small_adata, resolution=0.5, algorithm="louvain"
+        )
+
+
+def test_algorithm_in_ir(clustering_service, small_adata):
+    """Test that IR reflects the algorithm used."""
+    result = clustering_service.cluster_and_visualize(
+        small_adata, resolution=0.5, algorithm="leiden"
+    )
+    _, _, ir = result
+
+    assert "leiden" in ir.operation.lower()
+    assert "algorithm" in ir.parameters
+    assert ir.parameters["algorithm"] == "leiden"
+
+
+def test_subcluster_algorithm_parameter(clustering_service, small_adata):
+    """Test that subcluster_cells accepts and uses algorithm parameter."""
+    # First cluster
+    adata_clustered, _, _ = clustering_service.cluster_and_visualize(
+        small_adata, resolution=0.5
+    )
+
+    # Sub-cluster with default (leiden)
+    result, stats, ir = clustering_service.subcluster_cells(
+        adata_clustered,
+        cluster_key="leiden",
+        clusters_to_refine=["0"],
+        resolution=0.3,
+        algorithm="leiden",
+    )
+
+    assert "leiden_subcluster" in result.obs.columns
+
+
+def test_subcluster_louvain(clustering_service, small_adata):
+    """Test sub-clustering with Louvain algorithm."""
+    try:
+        import louvain  # noqa: F401
+    except ImportError:
+        pytest.skip("louvain package not installed")
+
+    # First cluster with leiden
+    adata_clustered, _, _ = clustering_service.cluster_and_visualize(
+        small_adata, resolution=0.5
+    )
+
+    # Sub-cluster with louvain
+    result, stats, ir = clustering_service.subcluster_cells(
+        adata_clustered,
+        cluster_key="leiden",
+        clusters_to_refine=["0"],
+        resolution=0.3,
+        algorithm="louvain",
+    )
+
+    assert "louvain_subcluster" in result.obs.columns
+    assert "leiden_subcluster" not in result.obs.columns

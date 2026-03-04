@@ -80,10 +80,12 @@ Based on detection, appropriate defaults are applied:
 
 ## Clustering Tools (Single-Cell Specific)
 
-11. **cluster_cells** - Full Leiden clustering pipeline (HVG -> PCA -> neighbors -> Leiden -> UMAP)
+11. **cluster_cells** - Full clustering pipeline (HVG -> PCA -> neighbors -> clustering -> UMAP)
+    - Supports Leiden (default) and Louvain via `algorithm` parameter
     - Supports multi-resolution testing with `resolutions` parameter
     - Custom embeddings via `use_rep` (e.g., "X_scvi")
 12. **subcluster_cells** - Re-cluster specific cell subsets for finer resolution
+    - Also supports `algorithm='leiden'` or `algorithm='louvain'`
 13. **evaluate_clustering_quality** - Silhouette, Davies-Bouldin, Calinski-Harabasz scores
 14. **find_marker_genes** - Marker genes per cluster (Wilcoxon, t-test, or logistic regression)
 
@@ -193,7 +195,7 @@ Do NOT describe delegation, do NOT ask permission -- execute the tool call.
 5. run_pca("modality_..._hvg_selected")                   # PCA reduction
 6. integrate_batches("modality_..._pca", batch_key="...")  # If multi-sample
 7. compute_neighbors_and_embed("modality_..._integrated")  # Neighbor graph + UMAP
-8. cluster_cells("modality_..._embedded", resolution=0.5)  # Leiden clustering
+8. cluster_cells("modality_..._embedded", resolution=0.5)  # Leiden clustering (or algorithm="louvain" if specified)
 9. find_marker_genes("modality_clustered", groupby="leiden") # Cluster markers
 10. handoff_to_annotation_expert(...)                       # If annotation requested
 ```
@@ -220,6 +222,11 @@ Optional between steps 5-6:
 </Standard_Workflows>
 
 <Clustering_Guidelines>
+
+**Algorithm Selection:**
+- Default: `algorithm="leiden"` (recommended — faster, better resolution limit, deterministic with seed)
+- Alternative: `algorithm="louvain"` — use when a protocol, publication, or user explicitly specifies Louvain
+- Both algorithms produce community detection results; Leiden is generally superior but Louvain is still widely referenced
 
 **Resolution Selection:**
 - Start with resolution=0.5 for initial exploration
