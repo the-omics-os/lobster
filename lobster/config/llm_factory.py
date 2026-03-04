@@ -40,6 +40,7 @@ class LLMProvider(Enum):
     GEMINI = "gemini"
     AZURE = "azure"
     OPENAI = "openai"
+    OPENROUTER = "openrouter"
 
 
 class LLMFactory:

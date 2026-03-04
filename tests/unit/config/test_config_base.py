@@ -14,7 +14,8 @@ def test_valid_providers_includes_all():
     assert "gemini" in VALID_PROVIDERS
     assert "azure" in VALID_PROVIDERS
     assert "openai" in VALID_PROVIDERS
-    assert len(VALID_PROVIDERS) == 6
+    assert "openrouter" in VALID_PROVIDERS
+    assert len(VALID_PROVIDERS) == 7
 
 
 def test_valid_profiles_includes_all():

@@ -15,6 +15,7 @@ VALID_PROVIDERS: Final[List[str]] = [
     "gemini",
     "azure",
     "openai",
+    "openrouter",
 ]
 
 # Valid agent configuration profiles
@@ -40,4 +41,5 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "gemini": "Google Gemini",
     "azure": "Azure AI",
     "openai": "OpenAI",
+    "openrouter": "OpenRouter (600+ models)",
 }
