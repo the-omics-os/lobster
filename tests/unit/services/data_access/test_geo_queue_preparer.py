@@ -32,9 +32,7 @@ class TestGDSCanonToGSE:
 
     def test_gds_accession_canonicalized_to_gse(self, preparer):
         """GDS accession is resolved to GSE in the queue entry dataset_id."""
-        with patch.object(
-            preparer, "_resolve_gds_to_gse", return_value="GSE67835"
-        ):
+        with patch.object(preparer, "_resolve_gds_to_gse", return_value="GSE67835"):
             # Mock the parent prepare_queue_entry to avoid real API calls
             with patch(
                 "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
@@ -55,9 +53,7 @@ class TestGDSCanonToGSE:
 
     def test_original_accession_preserved_in_metadata(self, preparer):
         """When GDS is canonicalized, original_accession is stored in metadata."""
-        with patch.object(
-            preparer, "_resolve_gds_to_gse", return_value="GSE67835"
-        ):
+        with patch.object(preparer, "_resolve_gds_to_gse", return_value="GSE67835"):
             with patch(
                 "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
             ) as mock_super:
@@ -106,9 +102,7 @@ class TestGDSCanonToGSE:
 
     def test_case_insensitive_gds_detection(self, preparer):
         """Lowercase 'gds' prefix also triggers canonicalization."""
-        with patch.object(
-            preparer, "_resolve_gds_to_gse", return_value="GSE67835"
-        ):
+        with patch.object(preparer, "_resolve_gds_to_gse", return_value="GSE67835"):
             with patch(
                 "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
             ) as mock_super:
@@ -146,9 +140,7 @@ class TestGDSCanonToGSE:
 
     def test_gds_resolution_returns_none_passes_through(self, preparer):
         """If GDS resolution returns None, the original accession is used."""
-        with patch.object(
-            preparer, "_resolve_gds_to_gse", return_value=None
-        ):
+        with patch.object(preparer, "_resolve_gds_to_gse", return_value=None):
             with patch(
                 "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
             ) as mock_super:

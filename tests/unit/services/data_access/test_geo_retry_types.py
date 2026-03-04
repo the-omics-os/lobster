@@ -19,7 +19,6 @@ from lobster.services.data_access.geo_service import (
     RetryResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # RetryOutcome enum tests
 # ---------------------------------------------------------------------------

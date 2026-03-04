@@ -297,9 +297,7 @@ class DownloadOrchestrator:
             expected_current_status=entry.status,
         )
         if claimed is None:
-            logger.info(
-                f"Entry '{entry_id}' already being processed by another worker"
-            )
+            logger.info(f"Entry '{entry_id}' already being processed by another worker")
             return "", {}
 
         logger.info(f"Updated queue entry '{entry_id}' status to IN_PROGRESS")

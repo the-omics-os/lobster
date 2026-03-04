@@ -26,16 +26,16 @@ class TestMetadataEntryTypeContract:
     def test_metadata_entry_has_validation_result_key(self):
         """MetadataEntry has 'validation_result' field, not 'validation'."""
         hints = get_type_hints(MetadataEntry)
-        assert "validation_result" in hints, (
-            "MetadataEntry must have 'validation_result' key"
-        )
+        assert (
+            "validation_result" in hints
+        ), "MetadataEntry must have 'validation_result' key"
 
     def test_metadata_entry_does_not_have_old_validation_key(self):
         """MetadataEntry must NOT have the old 'validation' field."""
         hints = get_type_hints(MetadataEntry)
-        assert "validation" not in hints, (
-            "MetadataEntry must not have old 'validation' key -- use 'validation_result'"
-        )
+        assert (
+            "validation" not in hints
+        ), "MetadataEntry must not have old 'validation' key -- use 'validation_result'"
 
 
 class TestStoreGeoMetadataKeyContract:
@@ -62,9 +62,7 @@ class TestStoreGeoMetadataKeyContract:
             validation={"valid": True},  # old kwarg name
         )
         # The old 'validation' kwarg should NOT create a 'validation' key
-        assert "validation" not in entry, (
-            "Old 'validation' kwarg should not be stored"
-        )
+        assert "validation" not in entry, "Old 'validation' kwarg should not be stored"
 
     def test_store_raises_on_none_metadata(self, dm):
         """_store_geo_metadata raises ValueError if metadata is None."""

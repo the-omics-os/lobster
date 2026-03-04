@@ -167,9 +167,7 @@ class ArchiveExtractor:
 
                     # Reject-all: validate ALL members before extracting ANY
                     unsafe = [
-                        m
-                        for m in members
-                        if not self._is_safe_member(m, target_dir)
+                        m for m in members if not self._is_safe_member(m, target_dir)
                     ]
                     if unsafe:
                         unsafe_names = [m.name for m in unsafe[:10]]
