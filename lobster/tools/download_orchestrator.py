@@ -290,10 +290,18 @@ class DownloadOrchestrator:
             f"dataset_id={entry.dataset_id}, status={status_str}"
         )
 
-        # Step 2: Update status to IN_PROGRESS
-        self.data_manager.download_queue.update_status(
-            entry_id, DownloadStatus.IN_PROGRESS
+        # Step 2: CAS claim -- only proceed if status is still what we observed
+        claimed = self.data_manager.download_queue.update_status(
+            entry_id,
+            DownloadStatus.IN_PROGRESS,
+            expected_current_status=entry.status,
         )
+        if claimed is None:
+            logger.info(
+                f"Entry '{entry_id}' already being processed by another worker"
+            )
+            return "", {}
+
         logger.info(f"Updated queue entry '{entry_id}' status to IN_PROGRESS")
 
         try:

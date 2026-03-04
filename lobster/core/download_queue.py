@@ -145,22 +145,34 @@ class DownloadQueue:
         self,
         entry_id: str,
         status: DownloadStatus,
+        expected_current_status: Optional[DownloadStatus] = None,
         modality_name: Optional[str] = None,
         error: Optional[str] = None,
         downloaded_by: Optional[str] = None,
-    ) -> DownloadQueueEntry:
+    ) -> Optional[DownloadQueueEntry]:
         """
-        Update entry status and optional fields.
+        Update entry status and optional fields with optional CAS check.
+
+        When ``expected_current_status`` is provided, the update only proceeds
+        if the entry's current status matches. If it does not match, the method
+        returns ``None`` (compare-and-swap failure) without modifying the entry.
+        This prevents duplicate workers from claiming the same queue entry.
+
+        When ``expected_current_status`` is ``None`` (default), the method
+        behaves as before -- any status transition is allowed (backward compat).
 
         Args:
             entry_id: Entry to update
             status: New status
+            expected_current_status: If provided, CAS precondition -- current
+                status must match for the update to proceed
             modality_name: Optional modality name
             error: Optional error message
             downloaded_by: Optional agent/user identifier
 
         Returns:
-            DownloadQueueEntry: Updated entry
+            Updated DownloadQueueEntry on success, or None if CAS
+            precondition failed
 
         Raises:
             EntryNotFoundError: If entry not found
@@ -176,6 +188,27 @@ class DownloadQueue:
             for entry in entries:
                 if entry.entry_id == entry_id:
                     entry_found = True
+
+                    # CAS check
+                    if expected_current_status is not None:
+                        # Handle both enum and string comparison
+                        current_val = (
+                            entry.status.value
+                            if hasattr(entry.status, "value")
+                            else entry.status
+                        )
+                        expected_val = (
+                            expected_current_status.value
+                            if hasattr(expected_current_status, "value")
+                            else expected_current_status
+                        )
+                        if current_val != expected_val:
+                            logger.info(
+                                f"CAS failed for entry '{entry_id}': "
+                                f"expected {expected_val}, actual {current_val}"
+                            )
+                            return None
+
                     entry.update_status(
                         status=status,
                         modality_name=modality_name,
