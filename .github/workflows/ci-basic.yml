@@ -46,16 +46,14 @@ jobs:
 
     - name: Check for deprecated data_manager_v2 imports
       run: |
-        # Find new code importing from deprecated path (excludes shim file and build dirs)
-        VIOLATIONS=$(grep -rn "from lobster\.core\.data_manager_v2 import" \
+        # grep exit 0 = violations found (fail CI), exit 1 = no violations (pass)
+        if grep -rn "from lobster\.core\.data_manager_v2 import" \
           --include="*.py" \
           --exclude="data_manager_v2.py" \
           --exclude-dir=".claude" --exclude-dir="build" --exclude-dir=".testing" \
           --exclude-dir="kevin_notes" --exclude-dir="skills" \
-          lobster/scaffold/ packages/ || true)
-        if [ -n "$VIOLATIONS" ]; then
+          lobster/scaffold/ packages/; then
           echo "::error::New code must import from lobster.core.runtime.data_manager, not lobster.core.data_manager_v2"
-          echo "$VIOLATIONS"
           exit 1
         fi
         echo "No deprecated data_manager_v2 imports found in scaffold/packages"
