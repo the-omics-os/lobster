@@ -536,18 +536,15 @@ class GEOService:
                     metadata=metadata,
                     stored_by="_fetch_gse_metadata (exception)",
                 )
-                # Enrich with error details
-                if gse_id in self.data_manager.metadata_store:
-                    existing_entry = self.data_manager.metadata_store[gse_id]
-                    existing_entry.update(
-                        {
-                            "validation_result": validation_result,
-                            "platform_error": str(e),
-                            "platform_details": e.details,
-                            "status": "unsupported_platform",
-                            "error_timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                # Enrich with error details via centralized helper
+                self.data_manager._enrich_geo_metadata(
+                    gse_id,
+                    validation_result=validation_result,
+                    platform_error=str(e),
+                    platform_details=e.details,
+                    status="unsupported_platform",
+                    error_timestamp=datetime.now().isoformat(),
+                )
                 logger.error(
                     f"Platform validation failed for {gse_id}: {e.details['detected_platforms']}"
                 )
@@ -847,18 +844,15 @@ class GEOService:
                     metadata=metadata,
                     stored_by="_fetch_gse_metadata_via_entrez (exception)",
                 )
-                # Enrich with error details
-                if gse_id in self.data_manager.metadata_store:
-                    existing_entry = self.data_manager.metadata_store[gse_id]
-                    existing_entry.update(
-                        {
-                            "validation_result": validation_result,
-                            "platform_error": str(e),
-                            "platform_details": e.details,
-                            "status": "unsupported_platform",
-                            "error_timestamp": datetime.now().isoformat(),
-                        }
-                    )
+                # Enrich with error details via centralized helper
+                self.data_manager._enrich_geo_metadata(
+                    gse_id,
+                    validation_result=validation_result,
+                    platform_error=str(e),
+                    platform_details=e.details,
+                    status="unsupported_platform",
+                    error_timestamp=datetime.now().isoformat(),
+                )
                 logger.error(
                     f"Platform validation failed for {gse_id}: {e.details['detected_platforms']}"
                 )
@@ -2526,15 +2520,12 @@ class GEOService:
 
             if geo_id in self.data_manager.metadata_store:
                 # Update existing entry with validation results (progressive enrichment)
-                existing_entry = self.data_manager._get_geo_metadata(geo_id)
-                if existing_entry:
-                    existing_entry["modality_detection"] = modality_detection_info
-                    existing_entry["status"] = "validated"  # Mark as fully validated
-                    existing_entry["validation_timestamp"] = datetime.now().isoformat()
-                    self.data_manager.metadata_store[geo_id] = existing_entry
-                    logger.debug(
-                        f"Enriched metadata for {geo_id} with validation results"
-                    )
+                self.data_manager._enrich_geo_metadata(
+                    geo_id,
+                    modality_detection=modality_detection_info,
+                    status="validated",
+                    validation_timestamp=datetime.now().isoformat(),
+                )
             else:
                 # Fallback: Create new entry if somehow missing (shouldn't happen with Change 1)
                 logger.warning(
@@ -2580,10 +2571,10 @@ class GEOService:
 
                 # Update metadata store with multi-modal info
                 if geo_id in self.data_manager.metadata_store:
-                    existing_entry = self.data_manager._get_geo_metadata(geo_id)
-                    if existing_entry:
-                        existing_entry["multimodal_info"] = multimodal_info
-                        self.data_manager.metadata_store[geo_id] = existing_entry
+                    self.data_manager._enrich_geo_metadata(
+                        geo_id,
+                        multimodal_info=multimodal_info,
+                    )
 
                 # Log what will be skipped
                 unsupported_summary = ", ".join(
@@ -5691,16 +5682,19 @@ The actual expression data download will be much faster now that metadata is pre
             # Update existing entry or create new one with concatenation decision
             existing_entry = self.data_manager._get_geo_metadata(modality_name)
             if existing_entry:
-                existing_entry["concatenation_decision"] = concatenation_info
-                self.data_manager.metadata_store[modality_name] = existing_entry
+                self.data_manager._enrich_geo_metadata(
+                    modality_name,
+                    concatenation_decision=concatenation_info,
+                )
             else:
                 # No existing entry - store concatenation decision in proper structure
                 # Note: This shouldn't happen if metadata was stored earlier, but handle it defensively
-                self.data_manager.metadata_store[modality_name] = {
-                    "concatenation_decision": concatenation_info,
-                    "stored_by": "_handle_multi_sample_concatenation",
-                    "fetch_timestamp": datetime.now().isoformat(),
-                }
+                self.data_manager._store_geo_metadata(
+                    geo_id=modality_name,
+                    metadata={},
+                    stored_by="_handle_multi_sample_concatenation",
+                    concatenation_decision=concatenation_info,
+                )
 
             logger.info(
                 "✓ Concatenation decision stored in metadata_store for supervisor access"

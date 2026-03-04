@@ -2605,6 +2605,31 @@ class DataManagerV2:
 
         return entry
 
+    def _enrich_geo_metadata(self, geo_id: str, **fields) -> Optional[MetadataEntry]:
+        """
+        Add or update fields on an existing metadata entry.
+
+        Use this instead of direct metadata_store assignments to maintain
+        centralized write control and consistent structure.
+
+        Args:
+            geo_id: GEO dataset identifier
+            **fields: Key-value pairs to add/update on the existing entry
+
+        Returns:
+            Optional[MetadataEntry]: Updated entry, or None if entry does not exist
+        """
+        entry = self._get_geo_metadata(geo_id)
+        if entry is None:
+            logger.warning(f"Cannot enrich metadata for {geo_id}: no existing entry")
+            return None
+        entry.update(fields)
+        self.metadata_store[geo_id] = entry  # Single controlled re-assignment point
+        logger.debug(
+            f"Enriched GEO metadata for {geo_id} with fields: {list(fields.keys())}"
+        )
+        return entry
+
     def _get_geo_metadata(self, geo_id: str) -> Optional[MetadataEntry]:
         """
         Safely retrieve GEO metadata with structure validation.
