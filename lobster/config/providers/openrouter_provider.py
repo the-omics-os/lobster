@@ -332,7 +332,8 @@ class OpenRouterProvider(ILLMProvider):
         except Exception as e:
             logger.debug(f"OpenRouter model fetch failed ({e}), using fallback catalog")
 
-        return list(_FALLBACK_MODELS)
+        OpenRouterProvider._models_cache = list(_FALLBACK_MODELS)
+        return OpenRouterProvider._models_cache
 
     def _parse_model(self, data: dict) -> ModelInfo:
         """Parse a single model entry from the OpenRouter API response."""
@@ -342,6 +343,8 @@ class OpenRouterProvider(ILLMProvider):
         try:
             prompt_price = float(pricing.get("prompt", 0))
             completion_price = float(pricing.get("completion", 0))
+            # Only set cost when > 0: free models have pricing="0" and should have
+            # input_cost_per_million=None to match the get_all_models_with_pricing() filter
             if prompt_price > 0:
                 input_cost = prompt_price * 1_000_000
             if completion_price > 0:
@@ -415,6 +418,7 @@ class OpenRouterProvider(ILLMProvider):
         )
 
     def get_configuration_help(self) -> str:
+        fallback_names = ", ".join(m.name for m in _FALLBACK_MODELS[:5])
         return (
             "Configure OpenRouter:\n\n"
             "1. Get API key from: https://openrouter.ai/keys\n"
@@ -424,7 +428,8 @@ class OpenRouterProvider(ILLMProvider):
             "   OPENROUTER_API_KEY=sk-or-...\n\n"
             f"Default model: {_DEFAULT_MODEL}\n"
             "Model format: provider/model-name (e.g., anthropic/claude-sonnet-4-5)\n"
-            "Browse 600+ models at: https://openrouter.ai/models\n"
+            f"Popular models: {fallback_names} (and 600+ more)\n"
+            "Browse all models at: https://openrouter.ai/models\n"
         )
 
 

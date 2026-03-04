@@ -121,6 +121,42 @@ class TestListModels:
 
         assert len(models) >= 10
 
+    def test_list_models_caches_fallback_on_failure(self, provider, monkeypatch):
+        """Fallback catalog is cached so subsequent calls don't re-fetch."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+        with patch("httpx.get") as mock_get:
+            mock_get.side_effect = Exception("Network error")
+            models1 = provider.list_models()
+            models2 = provider.list_models()
+
+        assert mock_get.call_count == 1  # Only attempted once, then cache used
+        assert models1 == models2
+
+    def test_list_models_parses_pricing(self, provider, monkeypatch):
+        """Parsed live catalog models include correct pricing values."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "id": "anthropic/claude-3-5-sonnet",
+                    "name": "Claude 3.5 Sonnet",
+                    "description": "Anthropic's fastest model",
+                    "context_length": 200000,
+                    "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+                }
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.get", return_value=mock_response):
+            models = provider.list_models()
+
+        assert models[0].input_cost_per_million == pytest.approx(3.0)
+        assert models[0].output_cost_per_million == pytest.approx(15.0)
+
 
 class TestValidateModel:
     def test_validate_with_cache_known_model(self, provider):
@@ -189,3 +225,15 @@ class TestCreateChatModel:
         call_kwargs = mock_cls.call_args[1]
         assert call_kwargs["temperature"] == 0.5
         assert call_kwargs["max_tokens"] == 2048
+
+
+class TestGetConfigurationHelp:
+    def test_configuration_help_contains_key_info(self, provider):
+        help_text = provider.get_configuration_help()
+        assert "OPENROUTER_API_KEY" in help_text
+        assert "openrouter.ai/keys" in help_text
+        assert "anthropic/claude-sonnet-4-5" in help_text
+
+    def test_configuration_help_lists_models(self, provider):
+        help_text = provider.get_configuration_help()
+        assert "anthropic/" in help_text  # At least one provider/model in the list
