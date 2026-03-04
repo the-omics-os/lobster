@@ -14,7 +14,7 @@ Detailed execution spec: `kevin_notes/UNIFIED_CLEANUP_PLAN.md`
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: GEO Safety & Contract Hotfixes** - Fix GDS canonicalization, metadata key consistency, tar traversal security, retry sentinels, and download race condition (PR-1)
+- [x] **Phase 1: GEO Safety & Contract Hotfixes** - Fix GDS canonicalization, metadata key consistency, tar traversal security, retry sentinels, and download race condition (PR-1) (completed 2026-03-04)
 - [ ] **Phase 2: GEO Parser & Data Integrity** - Add partial parse signaling, fix archive classifier, improve file selection heuristic, add temp cleanup (PR-2) [parallel with Phase 3]
 - [ ] **Phase 3: GEO Strategy Engine Hardening** - Fix null sanitization, tighten strategy derivation, resolve ARCHIVE_FIRST dead branch (PR-3) [parallel with Phase 2]
 - [ ] **Phase 4: GEO Service Decomposition** - Split geo_service.py into 5 domain modules with backward-compatible facade (PR-4)
@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Nested tar archives containing path-traversal members (../) are rejected before extraction reaches the filesystem
   4. Concurrent download workers processing the same queue entry results in exactly one succeeding and others receiving a no-op, never duplicate processing
   5. Retry logic returns typed results that all call sites handle exhaustively -- no string sentinel comparisons remain
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 01-01-PLAN.md — Standardize metadata validation key and enforce centralized writes (GSAF-02, GSAF-03)
@@ -167,7 +167,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. GEO Safety & Contract Hotfixes | 0/3 | Planning complete | - |
+| 1. GEO Safety & Contract Hotfixes | 3/3 | Complete   | 2026-03-04 |
 | 2. GEO Parser & Data Integrity | 0/? | Not started | - |
 | 3. GEO Strategy Engine Hardening | 0/? | Not started | - |
 | 4. GEO Service Decomposition | 0/? | Not started | - |
