@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: GEO Safety & Contract Hotfixes** - Fix GDS canonicalization, metadata key consistency, tar traversal security, retry sentinels, and download race condition (PR-1) (completed 2026-03-04)
 - [ ] **Phase 2: GEO Parser & Data Integrity** - Add partial parse signaling, fix archive classifier, improve file selection heuristic, add temp cleanup (PR-2) [parallel with Phase 3]
 - [ ] **Phase 3: GEO Strategy Engine Hardening** - Fix null sanitization, tighten strategy derivation, resolve ARCHIVE_FIRST dead branch (PR-3) [parallel with Phase 2]
-- [ ] **Phase 4: GEO Service Decomposition** - Split geo_service.py into 5 domain modules with backward-compatible facade (PR-4)
+- [x] **Phase 4: GEO Service Decomposition** - Split geo_service.py into 5 domain modules with backward-compatible facade (PR-4) (completed 2026-03-04)
 - [ ] **Phase 5: Plugin-First Registration** - Migrate queue preparers and download services to entry-point discovery, gate hardcoded fallbacks (PR-5)
 - [ ] **Phase 6: Core Subpackage Creation + Moves** - Create runtime/, queues/, notebooks/, provenance/, governance/ subpackages and move 13 files with shims (PR-6)
 - [ ] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7)
@@ -82,7 +82,7 @@ Plans:
   2. GEOService class remains importable and callable with identical behavior -- existing integration tests pass unchanged
   3. SOFT-download logic exists in exactly one location (no duplication between geo_service and geo_provider)
   4. Each extracted module has its own narrow unit tests that run independently
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 04-01-PLAN.md — Extract shared helpers and SOFT pre-download into reusable modules (GDEC-03)
@@ -172,7 +172,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 1. GEO Safety & Contract Hotfixes | 3/3 | Complete   | 2026-03-04 |
 | 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
 | 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
-| 4. GEO Service Decomposition | 2/3 | In Progress | - |
+| 4. GEO Service Decomposition | 3/3 | Complete   | 2026-03-04 |
 | 5. Plugin-First Registration | 0/? | Not started | - |
 | 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
 | 7. data_manager_v2 Move | 0/? | Not started | - |

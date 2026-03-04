@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-04T06:46:00.000Z"
-last_activity: 2026-03-04 -- Plan 04-02 complete (5 domain modules + facade decomposition)
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-04T07:04:00.000Z"
+last_activity: 2026-03-04 -- Plan 04-03 complete (SOFT dedup + domain tests + facade verification)
 progress:
   total_phases: 9
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 9
-  percent: 82
+  completed_plans: 10
+  percent: 91
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 4 in progress. Decomposing geo_service.py monolith into domain modules.
+**Current focus:** Phase 4 COMPLETE. GEO Service Decomposition finished. Ready for Phase 5.
 
 ## Current Position
 
 Phase: 4 of 9 (GEO Service Decomposition)
-Plan: 2 of 3 in current phase (04-02 complete)
-Status: Phase 04 in progress
-Last activity: 2026-03-04 -- Plan 04-02 complete (5 domain modules + facade decomposition)
+Plan: 3 of 3 in current phase (04-03 complete -- PHASE COMPLETE)
+Status: Phase 04 complete
+Last activity: 2026-03-04 -- Plan 04-03 complete (SOFT dedup + domain tests + facade verification)
 
-Progress: [████████░░] 82%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 13 min
-- Total execution time: 1.9 hours
+- Total execution time: 2.1 hours
 
 **By Phase:**
 
@@ -46,11 +46,11 @@ Progress: [████████░░] 82%
 | 01 | 3 | 24 min | 8 min |
 | 02 | 2 | 36 min | 18 min |
 | 03 | 2 | 19 min | 10 min |
-| 04 | 2 | 39 min | 20 min |
+| 04 | 3 | 51 min | 17 min |
 
 **Recent Trend:**
-- Last 5 plans: 10 min, 12 min, 7 min, 13 min, 26 min
-- Trend: Larger plan (monolith decomposition) expected to take longer
+- Last 5 plans: 12 min, 7 min, 13 min, 26 min, 12 min
+- Trend: Phase 04 complete, consistent velocity
 
 *Updated after each plan completion*
 
@@ -91,6 +91,9 @@ Recent decisions affecting current work:
 - [Phase 04]: Domain modules use self.service pattern to access parent GEOService shared state (04-02)
 - [Phase 04]: __getattr__ with __dict__.get() prevents recursion, lazy init handles mocked __init__ (04-02)
 - [Phase 04]: Test patch paths updated to domain modules (tarfile, BulkRNASeqService) (04-02)
+- [Phase 04]: pre_download_soft_file() handles GSE and GSM transparently via prefix detection (04-03)
+- [Phase 04]: Domain module tests use mock_service fixture for complete isolation (04-03)
+- [Phase 04]: Structural tests grep for PRE-DOWNLOAD SOFT as regression guard (04-03)
 
 ### Pending Todos
 
@@ -102,6 +105,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T06:46:00Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-03-04T07:04:00Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

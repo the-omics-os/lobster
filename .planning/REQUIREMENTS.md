@@ -32,10 +32,10 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 ### GEO Service Decomposition
 
-- [ ] **GDEC-01**: geo_service.py split into 5 domain modules (metadata_fetch, download_execution, archive_processing, matrix_parsing, concatenation)
-- [ ] **GDEC-02**: GEOService class preserved as backward-compatible facade
+- [x] **GDEC-01**: geo_service.py split into 5 domain modules (metadata_fetch, download_execution, archive_processing, matrix_parsing, concatenation)
+- [x] **GDEC-02**: GEOService class preserved as backward-compatible facade
 - [x] **GDEC-03**: SOFT-download logic deduplicated between geo_service and geo_provider (F13)
-- [ ] **GDEC-04**: Each extracted module has narrow unit tests
+- [x] **GDEC-04**: Each extracted module has narrow unit tests
 
 ### Plugin Registration
 
@@ -124,10 +124,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GSTR-01 | Phase 3 (PR-3) | Complete |
 | GSTR-02 | Phase 3 (PR-3) | Complete |
 | GSTR-03 | Phase 3 (PR-3) | Complete |
-| GDEC-01 | Phase 4 (PR-4) | Pending |
-| GDEC-02 | Phase 4 (PR-4) | Pending |
+| GDEC-01 | Phase 4 (PR-4) | Complete |
+| GDEC-02 | Phase 4 (PR-4) | Complete |
 | GDEC-03 | Phase 4 (PR-4) | Complete |
-| GDEC-04 | Phase 4 (PR-4) | Pending |
+| GDEC-04 | Phase 4 (PR-4) | Complete |
 | PLUG-01 | Phase 5 (PR-5) | Pending |
 | PLUG-02 | Phase 5 (PR-5) | Pending |
 | PLUG-03 | Phase 5 (PR-5) | Pending |
