@@ -615,3 +615,102 @@ class TestFindExistingConfigs:
         # Both should appear, but neither should appear twice
         assert len(found) == len(set(found)), "Result must not contain duplicate paths"
         assert len(found) == 2, "Expected exactly 2 distinct configs"
+
+
+# =============================================================================
+# Tests for enhanced _build_diagnostic_help_text()
+# =============================================================================
+
+
+class TestBuildDiagnosticHelpText:
+    """Tests for the enhanced diagnostic message that is shown on ConfigurationError."""
+
+    def _make_resolver(self, workspace_path):
+        """Helper: create a resolver with a fresh (no-config) workspace."""
+        ConfigResolver.reset_instance()
+        return ConfigResolver(workspace_path)
+
+    def test_mentions_found_config_when_one_exists_in_parent(
+        self, tmp_path, monkeypatch, temp_global_config_dir
+    ):
+        """Should mention the found config path and suggest LOBSTER_WORKSPACE."""
+        # Config exists in parent dir
+        parent = tmp_path
+        parent_ws = parent / ".lobster_workspace"
+        parent_ws.mkdir()
+        (parent_ws / "provider_config.json").write_text(
+            '{"global_provider": "anthropic"}'
+        )
+
+        # User is in a child dir with no config
+        child = parent / "subproject"
+        child.mkdir()
+        monkeypatch.chdir(child)
+
+        child_ws = child / ".lobster_workspace"
+        child_ws.mkdir()
+        resolver = self._make_resolver(child_ws)
+
+        # Call with explicit start/home so test is not dependent on real filesystem
+        text = resolver._build_diagnostic_help_text(
+            _scan_start=child, _scan_home=parent.parent
+        )
+
+        assert str(parent_ws) in text
+        assert "LOBSTER_WORKSPACE" in text
+
+    def test_global_first_suggestion_when_no_global_config(
+        self, tmp_path, monkeypatch, temp_global_config_dir
+    ):
+        """lobster init --global should be the first Quick Setup suggestion when no global config exists."""
+        ws = tmp_path / ".lobster_workspace"
+        ws.mkdir()
+        monkeypatch.chdir(tmp_path)
+        resolver = self._make_resolver(ws)
+
+        monkeypatch.delenv("LOBSTER_LLM_PROVIDER", raising=False)
+        # Call with explicit scan args to avoid finding real configs on developer's machine
+        text = resolver._build_diagnostic_help_text(
+            _scan_start=tmp_path, _scan_home=tmp_path
+        )
+
+        # --global should appear before plain `lobster init` in the Quick Setup section
+        global_pos = text.find("lobster init --global")
+        plain_pos = text.find("lobster init\n")
+        assert global_pos != -1, "Expected 'lobster init --global' in output"
+        assert plain_pos != -1, "Expected 'lobster init' in output"
+        assert global_pos < plain_pos, (
+            "Expected 'lobster init --global' to appear before 'lobster init'"
+        )
+
+    def test_no_false_positive_when_no_configs_exist(
+        self, tmp_path, monkeypatch, temp_global_config_dir
+    ):
+        """When no configs exist anywhere, should not mention found configs."""
+        ws = tmp_path / ".lobster_workspace"
+        ws.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LOBSTER_LLM_PROVIDER", raising=False)
+
+        resolver = self._make_resolver(ws)
+        text = resolver._build_diagnostic_help_text(
+            _scan_start=tmp_path, _scan_home=tmp_path
+        )
+
+        assert "Found existing config" not in text
+
+    def test_lobster_workspace_env_var_tip_always_present(
+        self, tmp_path, monkeypatch, temp_global_config_dir
+    ):
+        """The LOBSTER_WORKSPACE env var tip should always appear in the diagnostic."""
+        ws = tmp_path / ".lobster_workspace"
+        ws.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("LOBSTER_LLM_PROVIDER", raising=False)
+
+        resolver = self._make_resolver(ws)
+        text = resolver._build_diagnostic_help_text(
+            _scan_start=tmp_path, _scan_home=tmp_path
+        )
+
+        assert "LOBSTER_WORKSPACE" in text

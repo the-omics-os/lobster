@@ -280,8 +280,13 @@ class ConfigResolver:
             help_text=self._build_diagnostic_help_text(),
         )
 
-    def _build_diagnostic_help_text(self) -> str:
-        """Build diagnostic help text showing what was checked."""
+    def _build_diagnostic_help_text(self, _scan_start=None, _scan_home=None) -> str:
+        """Build diagnostic help text showing what was checked and what to do next.
+
+        Args:
+            _scan_start: Override start dir for filesystem scan (used in tests).
+            _scan_home: Override home ceiling for filesystem scan (used in tests).
+        """
         workspace_path_str = (
             str(self.workspace_path) if self.workspace_path else "(not set)"
         )
@@ -293,23 +298,80 @@ class ConfigResolver:
         global_config_exists = GlobalProviderConfig.exists()
         env_var_set = os.environ.get(LOBSTER_LLM_PROVIDER_ENV)
 
-        return (
-            "Lobster requires explicit provider configuration.\n\n"
-            "Checked (in priority order):\n"
-            f"  ✗ Runtime flag: --provider not provided\n"
-            f"  ✗ Workspace config: {workspace_path_str}/provider_config.json "
-            f"{'(no provider set)' if workspace_config_exists else '(not found)'}\n"
-            f"  ✗ Global config: ~/.config/lobster/providers.json "
-            f"{'(no default_provider set)' if global_config_exists else '(not found)'}\n"
-            f"  ✗ Environment: {LOBSTER_LLM_PROVIDER_ENV} "
-            f"{'=' + env_var_set if env_var_set else '(not set)'}\n\n"
-            "Quick Setup:\n"
-            "  lobster init              # Configure this workspace\n"
-            "  lobster init --global     # Set global defaults for all workspaces\n\n"
-            "Or set environment variable:\n"
-            f"  export {LOBSTER_LLM_PROVIDER_ENV}=anthropic\n\n"
-            "Valid providers: " + ", ".join(VALID_PROVIDERS)
+        # Scan for existing configs in parent directories
+        scan_kwargs = {}
+        if _scan_start is not None:
+            scan_kwargs["start"] = _scan_start
+        if _scan_home is not None:
+            scan_kwargs["home"] = _scan_home
+        found_configs = _find_existing_configs(**scan_kwargs)
+
+        lines = [
+            "Lobster requires explicit provider configuration.\n",
+            "Checked (in priority order):",
+            "  \u2717 Runtime flag: --provider not provided",
+            (
+                f"  \u2717 Workspace config: {workspace_path_str}/provider_config.json "
+                f"{'(no provider set)' if workspace_config_exists else '(not found)'}"
+            ),
+            (
+                "  \u2717 Global config: ~/.config/lobster/providers.json "
+                f"{'(no default_provider set)' if global_config_exists else '(not found)'}"
+            ),
+            (
+                f"  \u2717 Environment: {LOBSTER_LLM_PROVIDER_ENV} "
+                f"{'=' + env_var_set if env_var_set else '(not set)'}"
+            ),
+        ]
+
+        # Found-elsewhere hint (most actionable when present)
+        if found_configs:
+            lines.append("")
+            lines.append("Found existing config(s) in parent directories:")
+            for cfg_path in found_configs[:3]:  # cap at 3 to avoid clutter
+                lines.append(f"  \U0001f4c1 {cfg_path}")
+            lines.append("")
+            lines.append("Quickest fix \u2014 reuse an existing config:")
+            closest = found_configs[0]
+            project_root = closest.parent
+            lines.append(
+                f"  export LOBSTER_WORKSPACE={project_root}/.lobster_workspace"
+            )
+            lines.append("  # Then re-run your command from any directory")
+            lines.append("")
+            lines.append("Or make it the global default (works everywhere):")
+            lines.append("  lobster init --global        # Configure once, use anywhere")
+            lines.append("")
+            lines.append("Or configure this directory:")
+            lines.append("  lobster init                 # Configure current directory only")
+        else:
+            lines.append("")
+            # Global-first when no global config — most useful for tool-installed lobster
+            if not global_config_exists:
+                lines.append("Quick Setup (recommended \u2014 works from any directory):")
+                lines.append(
+                    "  lobster init --global        # Set global defaults for all workspaces"
+                )
+                lines.append("  lobster init")
+            else:
+                lines.append("Quick Setup:")
+                lines.append("  lobster init")
+                lines.append(
+                    "  lobster init --global        # Set global defaults for all workspaces"
+                )
+
+        lines.append("")
+        lines.append("Tip \u2014 point lobster at any existing workspace:")
+        lines.append(
+            f"  export {LOBSTER_WORKSPACE_ENV_VAR}=/path/to/project/.lobster_workspace"
         )
+        lines.append("")
+        lines.append("Or set environment variable:")
+        lines.append(f"  export {LOBSTER_LLM_PROVIDER_ENV}=anthropic")
+        lines.append("")
+        lines.append("Valid providers: " + ", ".join(VALID_PROVIDERS))
+
+        return "\n".join(lines)
 
     def resolve_model(
         self,
