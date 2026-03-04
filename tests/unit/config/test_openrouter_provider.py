@@ -237,3 +237,23 @@ class TestGetConfigurationHelp:
     def test_configuration_help_lists_models(self, provider):
         help_text = provider.get_configuration_help()
         assert "anthropic/" in help_text  # At least one provider/model in the list
+
+
+class TestRegistryIntegration:
+    def test_openrouter_in_provider_registry(self):
+        """OpenRouterProvider is discoverable via ProviderRegistry."""
+        from lobster.config.providers.registry import ProviderRegistry
+        ProviderRegistry.reset()
+        ProviderRegistry._ensure_initialized()
+        assert ProviderRegistry.is_registered("openrouter")
+
+    def test_get_provider_returns_openrouter(self):
+        from lobster.config.providers import get_provider
+        provider = get_provider("openrouter")
+        assert provider is not None
+        assert provider.name == "openrouter"
+
+    def test_openrouter_importable_from_providers_package(self):
+        """OpenRouterProvider can be imported directly from the providers package."""
+        from lobster.config.providers import OpenRouterProvider
+        assert OpenRouterProvider().name == "openrouter"
