@@ -60,7 +60,7 @@ from lobster.services.data_access.geo.downloader import (
     GEODownloadManager,
 )
 from lobster.services.data_access.geo.loaders.tenx import TenXGenomicsLoader
-from lobster.services.data_access.geo.parser import GEOParser
+from lobster.services.data_access.geo.parser import GEOParser, ParseResult
 from lobster.services.data_access.geo.strategy import (
     PipelineStrategyEngine,
     PipelineType,
@@ -275,7 +275,9 @@ class GEOService:
                         f"(total delay: {total_delay:.1f}s)"
                     )
 
-                return RetryResult(RetryOutcome.SUCCESS, value=result, retries_used=retry_count)
+                return RetryResult(
+                    RetryOutcome.SUCCESS, value=result, retries_used=retry_count
+                )
 
             except requests.exceptions.HTTPError as e:
                 # Special handling for rate limiting
@@ -305,7 +307,9 @@ class GEOService:
                         logger.error(
                             f"{operation_name} failed after {max_retries} attempts: {e}"
                         )
-                        return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
+                        return RetryResult(
+                            RetryOutcome.EXHAUSTED, retries_used=retry_count
+                        )
 
                     delay = (
                         base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
@@ -339,7 +343,9 @@ class GEOService:
                         f"{operation_name} OSError indicates missing file: {error_str[:100]}. "
                         "Skipping retries, triggering fallback mechanism."
                     )
-                    return RetryResult(RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count)
+                    return RetryResult(
+                        RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count
+                    )
                 # Other OSErrors may be transient, fall through to generic handler
                 logger.warning(
                     f"{operation_name} OSError (may retry): {error_str[:100]}"
@@ -366,7 +372,9 @@ class GEOService:
                         f"{operation_name} permanent FTP error: File not found (550). "
                         "Skipping retries, triggering fallback mechanism."
                     )
-                    return RetryResult(RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count)
+                    return RetryResult(
+                        RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count
+                    )
                 # Other FTP error codes may be transient, fall through to generic handler
                 logger.warning(f"{operation_name} FTP error: {error_str}")
                 retry_count += 1
@@ -1723,7 +1731,13 @@ class GEOService:
                         ):
                             continue
 
-                    matrix = self.geo_parser.parse_supplementary_file(local_path)
+                    parse_result = self.geo_parser.parse_supplementary_file(local_path)
+                    matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+                    if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                        logger.warning(
+                            f"Partial parse result for {geo_id}: {parse_result.truncation_reason} "
+                            f"({parse_result.rows_read:,} rows read)"
+                        )
                     if matrix is not None and not matrix.empty:
                         return GEOResult(
                             data=matrix,
@@ -3943,7 +3957,13 @@ The actual expression data download will be much faster now that metadata is pre
                 for file_path in expression_files[:3]:  # Try top 3 largest files
                     try:
                         logger.debug(f"Attempting to parse: {file_path.name}")
-                        matrix = self.geo_parser.parse_expression_file(file_path)
+                        parse_result = self.geo_parser.parse_expression_file(file_path)
+                        matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+                        if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                            logger.warning(
+                                f"Partial parse result for {gse_id}: {parse_result.truncation_reason} "
+                                f"({parse_result.rows_read:,} rows read)"
+                            )
                         if (
                             matrix is not None
                             and matrix.shape[0] > 0
@@ -3993,7 +4013,14 @@ The actual expression data download will be much faster now that metadata is pre
             else:
                 logger.debug(f"Using cached file: {local_file}")
 
-            return self.geo_parser.parse_expression_file(local_file)
+            parse_result = self.geo_parser.parse_expression_file(local_file)
+            matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+            if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                logger.warning(
+                    f"Partial parse result for {gse_id}: {parse_result.truncation_reason} "
+                    f"({parse_result.rows_read:,} rows read)"
+                )
+            return matrix
 
         except Exception as e:
             logger.error(f"Error downloading and parsing file: {e}")
@@ -4838,7 +4865,13 @@ The actual expression data download will be much faster now that metadata is pre
                 logger.info(f"Using cached H5 file: {local_path}")
 
             # Parse using geo_parser
-            matrix = self.geo_parser.parse_supplementary_file(local_path)
+            parse_result = self.geo_parser.parse_supplementary_file(local_path)
+            matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+            if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                logger.warning(
+                    f"Partial parse result for {gsm_id}: {parse_result.truncation_reason} "
+                    f"({parse_result.rows_read:,} rows read)"
+                )
             if matrix is not None and not matrix.empty:
                 # Add sample prefix to cell names
                 matrix.index = [f"{gsm_id}_{idx}" for idx in matrix.index]
@@ -4993,7 +5026,13 @@ The actual expression data download will be much faster now that metadata is pre
                 logger.info(f"Using cached expression file: {local_path}")
 
             # Parse using geo_parser for better format support
-            matrix = self.geo_parser.parse_supplementary_file(local_path)
+            parse_result = self.geo_parser.parse_supplementary_file(local_path)
+            matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+            if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                logger.warning(
+                    f"Partial parse result for {gsm_id}: {parse_result.truncation_reason} "
+                    f"({parse_result.rows_read:,} rows read)"
+                )
             if matrix is not None and not matrix.empty:
                 # Use biology-aware transpose logic instead of naive shape comparison
                 should_transpose, reason = self._determine_transpose_biologically(
