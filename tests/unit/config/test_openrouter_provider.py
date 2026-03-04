@@ -227,6 +227,129 @@ class TestCreateChatModel:
         assert call_kwargs["max_tokens"] == 2048
 
 
+class TestVerifyConnection:
+    def test_verify_connection_success_returns_credit_info(self, provider, monkeypatch):
+        """Valid key with credit balance returns True and usage/remaining info."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "data": {
+                "usage": 1.25,
+                "limit": 10.00,
+                "limit_remaining": 8.75,
+                "is_free_tier": False,
+            }
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            ok, msg = provider.verify_connection()
+
+        assert ok is True
+        assert "$1.2500 used" in msg
+        assert "$8.7500 remaining" in msg
+
+    def test_verify_connection_invalid_key_returns_false(self, provider, monkeypatch):
+        """401 response means invalid API key — returns False with actionable message."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-bad-key")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("httpx.get", return_value=mock_response):
+            ok, msg = provider.verify_connection()
+
+        assert ok is False
+        assert "Invalid API key" in msg
+        assert "openrouter.ai/keys" in msg
+
+    def test_verify_connection_zero_credits_returns_false(self, provider, monkeypatch):
+        """Exhausted credit limit returns False with credit guidance."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "data": {
+                "usage": 10.00,
+                "limit": 10.00,
+                "limit_remaining": 0,
+                "is_free_tier": False,
+            }
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            ok, msg = provider.verify_connection()
+
+        assert ok is False
+        assert "Insufficient credits" in msg
+        assert "openrouter.ai/credits" in msg
+
+    def test_verify_connection_free_tier_shows_free_tier(self, provider, monkeypatch):
+        """Free tier accounts (no limit field) display 'free tier' in the message."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json.return_value = {
+            "data": {
+                "usage": 0.0,
+                "limit": None,
+                "limit_remaining": None,
+                "is_free_tier": True,
+            }
+        }
+
+        with patch("httpx.get", return_value=mock_response):
+            ok, msg = provider.verify_connection()
+
+        assert ok is True
+        assert "free tier" in msg
+
+    def test_verify_connection_httpx_unavailable_falls_back_to_inference(
+        self, provider, monkeypatch
+    ):
+        """When httpx is not installed, falls back to inference-based verification."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
+
+        mock_llm = MagicMock()
+        mock_llm.invoke.return_value = MagicMock()
+
+        with patch.dict("sys.modules", {"httpx": None}):
+            with patch.object(provider, "create_chat_model", return_value=mock_llm):
+                ok, msg = provider.verify_connection("anthropic/claude-sonnet-4-5")
+
+        assert ok is True
+        assert "OpenRouter" in msg
+        mock_llm.invoke.assert_called_once_with("Hi")
+
+    def test_verify_connection_no_api_key_returns_false(self, provider, monkeypatch):
+        """Missing OPENROUTER_API_KEY returns False immediately without network call."""
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        with patch("httpx.get") as mock_get:
+            ok, msg = provider.verify_connection()
+
+        assert ok is False
+        assert "OPENROUTER_API_KEY" in msg
+        mock_get.assert_not_called()
+
+    def test_verify_connection_network_error_returns_false(self, provider, monkeypatch):
+        """Network/unexpected errors return False with error details."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
+
+        with patch("httpx.get", side_effect=Exception("Connection refused")):
+            ok, msg = provider.verify_connection()
+
+        assert ok is False
+        assert "OpenRouter verification failed" in msg
+
+
 class TestGetConfigurationHelp:
     def test_configuration_help_contains_key_info(self, provider):
         help_text = provider.get_configuration_help()

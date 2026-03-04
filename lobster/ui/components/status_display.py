@@ -150,10 +150,9 @@ class EnhancedStatusDisplay:
         """Create agent status panel."""
         # Get current mode/profile
         try:
-            from lobster.config.agent_config import get_agent_configurator
+            from lobster.config.agent_defaults import get_current_profile
 
-            configurator = get_agent_configurator()
-            current_mode = configurator.get_current_profile()
+            current_mode = get_current_profile()
         except Exception:
             current_mode = "unknown"
 

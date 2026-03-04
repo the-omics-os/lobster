@@ -26,7 +26,7 @@ Example:
 
 import logging
 import os
-from typing import Any, ClassVar, List, Optional
+from typing import Any, ClassVar, List, Optional, Tuple
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
 
@@ -416,6 +416,54 @@ class OpenRouterProvider(ILLMProvider):
             max_tokens=max_tokens,
             **kwargs,
         )
+
+    def verify_connection(self, model_id: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Verify using OpenRouter's /auth/key endpoint (no inference cost).
+
+        Calls GET /api/v1/auth/key to validate the key and check credit balance.
+        Falls back to inference call if httpx is unavailable.
+        """
+        api_key = os.environ.get(_ENV_VAR)
+        if not api_key:
+            return False, f"{_ENV_VAR} not set"
+
+        try:
+            import httpx
+
+            response = httpx.get(
+                f"{_BASE_URL}/auth/key",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=5.0,
+            )
+            if response.status_code == 401:
+                return False, "Invalid API key — check your OPENROUTER_API_KEY at https://openrouter.ai/keys"
+            response.raise_for_status()
+            data = response.json().get("data", {})
+
+            limit = data.get("limit")
+            limit_remaining = data.get("limit_remaining")
+
+            if limit is not None and limit_remaining is not None and limit_remaining <= 0:
+                return False, (
+                    f"Insufficient credits: ${limit_remaining:.4f} remaining of ${limit:.2f} limit. "
+                    "Add credits at https://openrouter.ai/credits"
+                )
+
+            usage = data.get("usage", 0)
+            msg = f"✓ OpenRouter key valid (${usage:.4f} used"
+            if limit is not None and limit_remaining is not None:
+                msg += f", ${limit_remaining:.4f} remaining"
+            elif data.get("is_free_tier"):
+                msg += ", free tier"
+            msg += ")"
+            return True, msg
+
+        except ImportError:
+            # httpx not available; fall back to tiny inference call
+            return super().verify_connection(model_id)
+        except Exception as e:
+            return False, f"OpenRouter verification failed: {e}"
 
     def get_configuration_help(self) -> str:
         fallback_names = ", ".join(m.name for m in _FALLBACK_MODELS[:5])

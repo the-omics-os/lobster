@@ -136,6 +136,10 @@ class PathResolver:
         """
         path_str = path_str.strip()
 
+        # Strip surrounding quotes (defense-in-depth — callers should strip first)
+        if len(path_str) >= 2 and path_str[0] == path_str[-1] and path_str[0] in ('"', "'"):
+            path_str = path_str[1:-1]
+
         # 1. Resolve based on path type
         if path_str.startswith("/"):
             # Absolute path

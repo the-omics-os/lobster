@@ -55,6 +55,7 @@ def mock_data_manager(mock_provider_config, tmp_path):
     mock_dm = Mock(spec=DataManagerV2)
     mock_dm.list_modalities.return_value = ["geo_gse12345", "custom_dataset"]
     mock_dm.workspace_path = str(tmp_path / "workspace")
+    mock_dm.cache_dir = tmp_path / "cache"
 
     # Create mock data
     mock_adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)

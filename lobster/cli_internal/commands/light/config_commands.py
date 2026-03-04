@@ -1075,47 +1075,38 @@ def config_test_impl(output_json: bool = False):
 
 
 def list_models_impl():
-    """List all available model presets (extracted from cli.py)."""
+    """List all available models from registered providers."""
     from rich import box
     from rich.table import Table
 
-    from lobster.config.agent_config import LobsterAgentConfigurator
+    from lobster.config.providers.registry import ProviderRegistry
     from lobster.ui.console_manager import get_console_manager
 
     console = get_console_manager().console
 
-    """List all available model presets."""
-    configurator = LobsterAgentConfigurator()
-    models = configurator.list_available_models()
-
-    console.print("\n[cyan]🤖 Available Model Presets[/cyan]")
-    console.print("[cyan]" + "=" * 60 + "[/cyan]")
+    console.print("\n[cyan]Available Models[/cyan]")
 
     table = Table(
         box=box.ROUNDED,
         border_style="cyan",
-        title="🤖 Available Model Presets",
+        title="Available Models (by provider)",
         title_style="bold cyan",
     )
 
-    table.add_column("Preset Name", style="bold white")
-    table.add_column("Tier", style="cyan")
-    table.add_column("Region", style="white")
-    table.add_column("Temperature", style="white")
-    table.add_column("Description", style="white")
+    table.add_column("Provider", style="bold white")
+    table.add_column("Model ID", style="yellow")
+    table.add_column("Display Name", style="white")
+    table.add_column("Input $/M", style="cyan", justify="right")
+    table.add_column("Output $/M", style="cyan", justify="right")
 
-    for name, config in models.items():
-        description = (
-            config.description[:40] + "..."
-            if len(config.description) > 40
-            else config.description
-        )
+    all_models = ProviderRegistry.get_all_models_with_pricing()
+    for model_id, info in sorted(all_models.items()):
         table.add_row(
-            name,
-            config.tier.value.title(),
-            config.region,
-            f"{config.temperature}",
-            description,
+            info.get("provider", ""),
+            model_id,
+            info.get("display_name", ""),
+            f"${info.get('input_per_million', 0):.2f}",
+            f"${info.get('output_per_million', 0):.2f}",
         )
 
     console.print(table)
@@ -1124,23 +1115,21 @@ def list_models_impl():
 
 
 def list_profiles_impl():
-    """List all available testing profiles (extracted from cli.py)."""
-    from lobster.config.agent_config import LobsterAgentConfigurator
+    """List available configuration profiles."""
+    from lobster.config.agent_defaults import get_current_profile
     from lobster.ui.console_manager import get_console_manager
 
     console = get_console_manager().console
 
-    """List all available testing profiles."""
-    configurator = LobsterAgentConfigurator()
-    profiles = configurator.list_available_profiles()
+    profiles = ["development", "production", "performance", "max"]
+    current = get_current_profile()
 
-    console.print("\n[cyan]⚙️  Available Testing Profiles[/cyan]")
-    console.print("[cyan]" + "=" * 60 + "[/cyan]")
-
-    for profile_name, config in profiles.items():
-        console.print(f"\n[yellow]📋 {profile_name.title()}[/yellow]")
-        for agent, model in config.items():
-            console.print(f"   {agent}: {model}")
+    console.print("\n[cyan]Available Profiles[/cyan]")
+    for name in profiles:
+        marker = " [green](active)[/green]" if name == current else ""
+        console.print(f"   {name}{marker}")
+    console.print()
+    console.print("[dim]Switch profile: lobster config provider --profile <name> --save[/dim]")
 
 
 
@@ -1507,144 +1496,65 @@ def test_impl(profile=None, agent=None):
             console.print(f"[red]❌ Error: {str(e)}[/red]")
             raise typer.Exit(1)
 
-    # Profile-based testing (original functionality)
+    # Profile-based testing: test agent LLM params resolution
     try:
-        configurator = initialize_configurator(profile=profile)
+        from lobster.config.agent_defaults import get_agent_params
+        from lobster.core.component_registry import component_registry
+
+        component_registry.load_components()
+        agents = component_registry.list_agents()
 
         if agent:
-            # Test specific agent
-            try:
-                config = configurator.get_agent_model_config(agent)
-                configurator.get_llm_params(agent)
-
+            if agent in agents:
+                params = get_agent_params(agent)
                 console.print(
-                    f"\n[green]✅ Agent '{agent}' configuration is valid[/green]"
+                    f"\n[green]Agent '{agent}' configuration valid[/green]"
                 )
-                console.print(f"   Model: {config.model_config.model_id}")
-                console.print(f"   Tier: {config.model_config.tier.value}")
-                console.print(f"   Region: {config.model_config.region}")
-
-            except KeyError:
+                console.print(f"   Temperature: {params.get('temperature', 1.0)}")
+            else:
                 console.print(
-                    f"\n[red]❌ Agent '{agent}' not found in profile '{profile}'[/red]"
+                    f"\n[red]Agent '{agent}' not installed[/red]"
                 )
                 return False
         else:
-            # Test all agents dynamically
-            console.print(f"\n[yellow]🧪 Testing Profile: {profile}[/yellow]")
+            console.print(f"\n[yellow]Testing {len(agents)} installed agents...[/yellow]")
             all_valid = True
 
-            # Get all agents from the configurator's DEFAULT_AGENTS
-            available_agents = configurator.DEFAULT_AGENTS
-
-            for agent_name in available_agents:
+            for agent_name in sorted(agents.keys()):
                 try:
-                    config = configurator.get_agent_model_config(agent_name)
-                    configurator.get_llm_params(agent_name)
+                    params = get_agent_params(agent_name)
                     console.print(
-                        f"   [green]✅ {agent_name}: {config.model_config.model_id}[/green]"
+                        f"   [green]{agent_name}: temp={params.get('temperature', 1.0)}[/green]"
                     )
                 except Exception as e:
-                    console.print(f"   [red]❌ {agent_name}: {str(e)}[/red]")
+                    console.print(f"   [red]{agent_name}: {str(e)}[/red]")
                     all_valid = False
 
             if all_valid:
                 console.print(
-                    f"\n[green]🎉 Profile '{profile}' is fully configured and valid![/green]"
+                    f"\n[green]All {len(agents)} agents configured correctly[/green]"
                 )
             else:
                 console.print(
-                    f"\n[yellow]⚠️  Profile '{profile}' has configuration issues[/yellow]"
+                    "\n[yellow]Some agents have configuration issues[/yellow]"
                 )
 
         return True
 
     except Exception as e:
-        console.print(f"\n[red]❌ Error testing configuration: {str(e)}[/red]")
+        console.print(f"\n[red]Error testing configuration: {str(e)}[/red]")
         return False
 
 
 
 
 def create_custom_impl():
-    """Interactive creation of custom configuration (extracted from cli.py)."""
-    import json
-    from pathlib import Path
-
-    from rich.prompt import Prompt
-
-    from lobster.config.agent_config import LobsterAgentConfigurator
+    """Interactive per-agent model configuration. Use 'lobster config models' instead."""
     from lobster.ui.console_manager import get_console_manager
 
     console = get_console_manager().console
-
-    """Interactive creation of custom configuration."""
-    console.print("\n[cyan]🛠️  Create Custom Configuration[/cyan]")
-    console.print("[cyan]" + "=" * 50 + "[/cyan]")
-
-    configurator = LobsterAgentConfigurator()
-    available_models = configurator.list_available_models()
-
-    # Show available models
-    console.print("\n[yellow]Available models:[/yellow]")
-    for i, (name, config) in enumerate(available_models.items(), 1):
-        console.print(f"{i:2}. {name} ({config.tier.value}, {config.region})")
-
-    config_data = {"profile": "custom", "agents": {}}
-
-    # Use dynamic agent list
-    agents = configurator.DEFAULT_AGENTS
-
-    for agent in agents:
-        console.print(f"\n[yellow]Configuring {agent}:[/yellow]")
-        console.print("Choose a model preset (enter number or name):")
-
-        choice = Prompt.ask(f"Model for {agent}")
-
-        # Handle numeric choice
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(available_models):
-                model_name = list(available_models.keys())[idx]
-            else:
-                console.print(
-                    "[yellow]Invalid choice, using default (claude-sonnet)[/yellow]"
-                )
-                model_name = "claude-sonnet"
-        else:
-            # Handle name choice
-            if choice in available_models:
-                model_name = choice
-            else:
-                console.print(
-                    "[yellow]Invalid choice, using default (claude-sonnet)[/yellow]"
-                )
-                model_name = "claude-sonnet"
-
-        model_config = available_models[model_name]
-        config_data["agents"][agent] = {
-            "model_config": {
-                "provider": model_config.provider.value,
-                "model_id": model_config.model_id,
-                "tier": model_config.tier.value,
-                "temperature": model_config.temperature,
-                "region": model_config.region,
-                "description": model_config.description,
-            },
-            "enabled": True,
-            "custom_params": {},
-        }
-
-        console.print(f"   [green]Selected: {model_name}[/green]")
-
-    # Save configuration
-    config_file = "config/custom_agent_config.json"
-    with open(config_file, "w") as f:
-        json.dump(config_data, f, indent=2)
-
-    console.print(f"\n[green]✅ Custom configuration saved to: {config_file}[/green]")
-    console.print("[yellow]To use this configuration, set:[/yellow]")
-    console.print(f"   export LOBSTER_CONFIG_FILE={config_file}", style="yellow")
+    console.print("\n[yellow]This command has been replaced by 'lobster config models'.[/yellow]")
+    console.print("[dim]Run: lobster config models[/dim]")
 
 
 
@@ -1728,4 +1638,122 @@ LOBSTER_CACHE_DIR=data/cache
 
     console.print("[green]✅ Environment template saved to: .env.template[/green]")
     console.print("[yellow]Copy this file to .env and configure your API keys[/yellow]")
+
+
+def config_models_impl(workspace=None):
+    """Interactive per-agent model configuration using prompt_toolkit dialogs."""
+    from pathlib import Path
+
+    from prompt_toolkit.shortcuts import radiolist_dialog
+
+    from lobster.config.providers import get_provider
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.component_registry import component_registry
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
+    from lobster.core.workspace import resolve_workspace
+    from lobster.ui.console_manager import get_console_manager
+
+    console = get_console_manager().console
+
+    # Resolve workspace
+    workspace_path = resolve_workspace(workspace, create=False)
+
+    # Load current config
+    ws_config = WorkspaceProviderConfig.load(workspace_path)
+
+    # Resolve current provider
+    try:
+        resolver = ConfigResolver.get_instance(workspace_path)
+        provider_name, _ = resolver.resolve_provider()
+        provider_obj = get_provider(provider_name)
+    except (ConfigurationError, Exception):
+        console.print("[red]No provider configured. Run 'lobster init' first.[/red]")
+        return
+
+    if not provider_obj:
+        console.print(f"[red]Provider '{provider_name}' not found.[/red]")
+        return
+
+    # Get available models for current provider
+    available_models = provider_obj.list_models()
+    if not available_models:
+        console.print(f"[yellow]No models available for provider '{provider_name}'.[/yellow]")
+        return
+
+    # Discover all installed agents
+    component_registry.load_components()
+    agents = component_registry.list_agents()
+
+    # Build agent choices with current model info
+    agent_choices = []
+    for agent_name in sorted(agents.keys()):
+        current_override = ws_config.per_agent_models.get(agent_name)
+        label = agent_name
+        if current_override:
+            label += f"  [{current_override}]"
+        else:
+            label += "  (default)"
+        agent_choices.append((agent_name, label))
+
+    if not agent_choices:
+        console.print("[yellow]No agents installed.[/yellow]")
+        return
+
+    # Step 1: Select agent
+    selected_agent = radiolist_dialog(
+        title="Lobster AI — Per-Agent Model Configuration",
+        text="Select an agent to configure (arrow keys + Enter):",
+        values=agent_choices,
+    ).run()
+
+    if selected_agent is None:
+        console.print("[dim]Cancelled.[/dim]")
+        return
+
+    # Step 2: Select model
+    model_choices = []
+    current_override = ws_config.per_agent_models.get(selected_agent, "")
+
+    # Add "use default" option first
+    default_model = provider_obj.get_default_model()
+    default_label = f"(use provider default: {default_model})"
+    model_choices.append(("__default__", default_label))
+
+    for model in available_models:
+        cost_info = ""
+        if model.input_cost_per_million and model.output_cost_per_million:
+            cost_info = f"  (${model.input_cost_per_million:.1f}/${model.output_cost_per_million:.1f} per M)"
+        marker = " *" if model.name == current_override else ""
+        label = f"{model.display_name}{cost_info}{marker}"
+        model_choices.append((model.name, label))
+
+    selected_model = radiolist_dialog(
+        title=f"Select model for {selected_agent}",
+        text=f"Current: {current_override or '(default)'}\nProvider: {provider_name}",
+        values=model_choices,
+    ).run()
+
+    if selected_model is None:
+        console.print("[dim]Cancelled.[/dim]")
+        return
+
+    # Step 3: Apply and save
+    if selected_model == "__default__":
+        # Remove override
+        if selected_agent in ws_config.per_agent_models:
+            del ws_config.per_agent_models[selected_agent]
+            ws_config.save(workspace_path)
+            console.print(
+                f"[green]Removed model override for {selected_agent} (now uses default: {default_model})[/green]"
+            )
+        else:
+            console.print(f"[dim]{selected_agent} already uses the default model.[/dim]")
+    else:
+        ws_config.per_agent_models[selected_agent] = selected_model
+        ws_config.save(workspace_path)
+        console.print(
+            f"[green]Set {selected_agent} → {selected_model}[/green]"
+        )
+
+    console.print(f"[dim]Saved to: {workspace_path / 'provider_config.json'}[/dim]")
 

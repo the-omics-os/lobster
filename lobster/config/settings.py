@@ -12,7 +12,6 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
-from lobster.config.agent_config import initialize_configurator
 from lobster.config.supervisor_config import SupervisorConfig
 
 logger = logging.getLogger(__name__)
@@ -56,10 +55,6 @@ class Settings:
         # See AWS docs for full details.
         self.MEMORY = 24576
         self.CPU = 8192
-        # Initialize agent configurator based on environment
-        profile = os.environ.get("LOBSTER_PROFILE", "production")
-        self.agent_configurator = initialize_configurator(profile=profile)
-
         # Initialize supervisor configuration
         self.supervisor_config = SupervisorConfig.from_env()
 
@@ -324,80 +319,32 @@ class Settings:
 
     def get_agent_llm_params(self, agent_name: str) -> Dict[str, Any]:
         """
-        Get LLM parameters for a specific agent using the new configuration system.
+        Get LLM parameters for a specific agent.
 
-        Resolution order:
-        1. Custom agent config (from entry points)
-        2. Profile config (FREE tier agents)
-        3. Fallback to data_expert_agent
+        Resolution order (via agent_defaults):
+        1. Environment variable overrides
+        2. Workspace config.toml agent_settings
+        3. Defaults (temperature=1.0, thinking=disabled)
+
+        Never fails for unknown agents — they get sensible defaults.
 
         Args:
-            agent_name: Name of the agent (e.g., 'supervisor', 'transcriptomics_expert', 'method_agent')
+            agent_name: Name of the agent (e.g., 'supervisor', 'transcriptomics_expert')
 
         Returns:
             Dictionary of LLM initialization parameters
 
         Note:
-            Provider information is resolved by ConfigResolver, not Settings.
+            Provider/model information is resolved by ConfigResolver, not Settings.
         """
-        try:
-            params = self.agent_configurator.get_llm_params(agent_name)
-            return params
-        except KeyError:
-            # Check if this is a premium agent without custom config
-            is_premium_agent = self._is_premium_agent(agent_name)
+        from lobster.config.agent_defaults import get_agent_params
 
-            if is_premium_agent:
-                # Premium agent without custom config - use INFO log (expected behavior)
-                logger.info(
-                    f"No custom configuration for premium agent '{agent_name}'. "
-                    f"Using default configuration (data_expert_agent). "
-                    f"To customize: Add entry point in custom package."
-                )
-            else:
-                # FREE tier agent missing from profiles - this may be a configuration issue
-                logger.warning(
-                    f"No configuration for agent '{agent_name}'. "
-                    f"Falling back to data_expert_agent. "
-                    f"To fix: Add '{agent_name}' to all profiles in agent_config.py"
-                )
-
-            try:
-                # Use data_expert as fallback
-                params = self.agent_configurator.get_llm_params("data_expert_agent")
-                return params
-            except KeyError as e:
-                # If data_expert doesn't exist either, raise error
-                raise KeyError(
-                    f"Fallback configuration failed for '{agent_name}'. "
-                    f"data_expert_agent not found: {e}"
-                )
-
-    def _is_premium_agent(self, agent_name: str) -> bool:
-        """
-        Check if an agent is a premium agent (not in FREE tier).
-
-        Args:
-            agent_name: Agent name to check
-
-        Returns:
-            True if the agent is premium-only (not in FREE tier)
-        """
-        try:
-            from lobster.config.subscription_tiers import is_agent_available
-
-            # Agent is premium if it's available in premium but not in free tier
-            is_available_premium = is_agent_available(agent_name, "premium")
-            is_available_free = is_agent_available(agent_name, "free")
-
-            return is_available_premium and not is_available_free
-        except Exception:
-            # Any error, assume not premium
-            return False
+        workspace_path = getattr(self, "_workspace_path", None)
+        return get_agent_params(agent_name, workspace_path=workspace_path)
 
     def get_assistant_llm_params(self, agent_name: str) -> Dict[str, Any]:
         """
-        Get LLM parameters for a specific assistant using the new configuration system.
+        Get LLM parameters for a specific assistant.
 
         Args:
             agent_name: Name of the assistant (e.g., 'data_expert_assistant')
@@ -405,36 +352,7 @@ class Settings:
         Returns:
             Dictionary of LLM initialization parameters
         """
-        try:
-            return self.agent_configurator.get_llm_params(agent_name)
-        except KeyError:
-            # Assistants use INFO level logging for fallback (expected behavior)
-            logger.info(
-                f"No configuration for assistant '{agent_name}'. "
-                f"Using default configuration (data_expert_agent)."
-            )
-
-            try:
-                # Use data_expert as fallback
-                return self.agent_configurator.get_llm_params("data_expert_agent")
-            except KeyError as e:
-                # If data_expert doesn't exist either, raise error
-                raise KeyError(
-                    f"Fallback configuration failed for assistant '{agent_name}'. "
-                    f"data_expert_agent not found: {e}"
-                )
-
-    def get_agent_model_config(self, agent_name: str):
-        """
-        Get model configuration for a specific agent.
-
-        Args:
-            agent_name: Name of the agent
-
-        Returns:
-            ModelConfig object for the agent
-        """
-        return self.agent_configurator.get_model_config(agent_name)
+        return self.get_agent_llm_params(agent_name)
 
     def get_supervisor_config(self) -> SupervisorConfig:
         """
@@ -444,10 +362,6 @@ class Settings:
             SupervisorConfig: Supervisor configuration instance
         """
         return self.supervisor_config
-
-    def print_agent_configuration(self):
-        """Print current agent configuration."""
-        self.agent_configurator.print_current_config()
 
 
 # Model pricing configuration (USD per million tokens)

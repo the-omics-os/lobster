@@ -113,8 +113,10 @@ class LobsterTheme:
             "panel.border": PRIMARY_ORANGE,
             "border.primary": PRIMARY_ORANGE,
             "border.secondary": "#e4a547",
-            "error": "#dc3545",
-            "success": "#28a745",
+            "error": "bold #dc3545",
+            "success": "bold #28a745",
+            "warning": "bold #ffc107",
+            "info": "bold #17a2b8",
             # Tree styles
             "tree.line": PRIMARY_ORANGE,
             "tree.guide": "#e4a547",

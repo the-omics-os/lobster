@@ -255,7 +255,7 @@ class LobsterBackend:
     def _handle_workspace(self, args: str, backend: Any, output: Any) -> None:
         """Handle /workspace command."""
         output.print(
-            f"[data.key]Workspace:[/data.key] {self.get_status().get('workspace', 'N/A')}"
+            f"[bold]Workspace:[/bold] {self.get_status().get('workspace', 'N/A')}"
         )
 
     def _handle_plots(self, args: str, backend: Any, output: Any) -> None:
@@ -268,7 +268,7 @@ class LobsterBackend:
             or f.get("name", "").endswith(".html")
         ]
         if not plots:
-            output.print("[text.muted]No plots generated yet.[/text.muted]")
+            output.print("[grey50]No plots generated yet.[/grey50]")
             return
         for p in plots:
-            output.print(f"  [accent]{p['name']}[/accent] ({p.get('size', '?')} bytes)")
+            output.print(f"  [cyan]{p['name']}[/cyan] ({p.get('size', '?')} bytes)")

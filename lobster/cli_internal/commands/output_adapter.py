@@ -87,18 +87,31 @@ class OutputAdapter(ABC):
 class ConsoleOutputAdapter(OutputAdapter):
     """OutputAdapter for Rich Console (CLI mode)."""
 
+    # Map semantic style hints to concrete Rich styles so that bare Console()
+    # instances (created without LobsterTheme.RICH_THEME) don't raise MissingStyle.
+    _SEMANTIC_STYLES: Dict[str, str] = {
+        "warning": "bold yellow",
+        "info": "bold cyan",
+        "success": "bold green",
+        "error": "bold red",
+        "dim": "dim",
+    }
+
     def __init__(self, console: Console):
         self.console = console
 
     def print(self, message: str, style: Optional[str] = None) -> None:
-        """Print message, applying style if provided.
+        """Print message with optional semantic style.
 
-        When *style* is given, markup parsing is disabled so that literal
-        square brackets in the message (e.g., ``lobster-ai[vector-search]``)
-        are not silently stripped by Rich.
+        Rich markup in the message is always parsed so inline tags like
+        ``[yellow]...[/yellow]`` render correctly.  The *style* parameter
+        is resolved from semantic hints ("warning", "info", …) to concrete
+        Rich styles and applied as the base style, composing with any
+        inline markup.
         """
         if style:
-            self.console.print(message, style=style, markup=False)
+            actual_style = self._SEMANTIC_STYLES.get(style, style)
+            self.console.print(message, style=actual_style)
         else:
             self.console.print(message)
 

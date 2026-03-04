@@ -1,5 +1,6 @@
-"""Textual UI callbacks for bridging LangChain events to the dashboard."""
+"""UI callbacks for Textual and protocol bridge surfaces."""
 
+from .protocol_callback import ProtocolCallbackHandler
 from .textual_callback import TextualCallbackHandler
 
-__all__ = ["TextualCallbackHandler"]
+__all__ = ["TextualCallbackHandler", "ProtocolCallbackHandler"]

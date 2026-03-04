@@ -17,10 +17,8 @@ from tabulate import tabulate
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from lobster.config.agent_config import (  # noqa: E402
-    LobsterAgentConfigurator,
-    initialize_configurator,
-)
+from lobster.config.agent_defaults import get_current_profile  # noqa: E402
+from lobster.config.providers.registry import ProviderRegistry  # noqa: E402
 
 
 def print_colored(text: str, color: str = "white"):
@@ -40,177 +38,133 @@ def print_colored(text: str, color: str = "white"):
 
 
 def list_available_models():
-    """List all available model presets."""
-    configurator = LobsterAgentConfigurator()
-    models = configurator.list_available_models()
-
-    print_colored("\n🤖 Available Model Presets", "cyan")
+    """List all available model presets from registered providers."""
+    print_colored("\n Available Models by Provider", "cyan")
     print_colored("=" * 60, "cyan")
 
-    table_data = []
-    for name, config in models.items():
-        table_data.append(
-            [
-                name,
-                config.tier.value.title(),
-                config.region,
-                f"{config.temperature}",
-                (
-                    config.description[:40] + "..."
-                    if len(config.description) > 40
-                    else config.description
-                ),
-            ]
-        )
+    providers = ProviderRegistry.get_all()
+    if not providers:
+        print_colored("No providers registered.", "yellow")
+        return
 
-    headers = ["Preset Name", "Tier", "Region", "Temp", "Max Tokens", "Description"]
+    table_data = []
+    for provider in providers:
+        try:
+            models = provider.list_models() if hasattr(provider, "list_models") else []
+            for model in models:
+                table_data.append(
+                    [
+                        provider.name,
+                        model.name,
+                        getattr(model, "display_name", model.name),
+                    ]
+                )
+        except Exception as e:
+            table_data.append([provider.name, f"(error: {e})", ""])
+
+    headers = ["Provider", "Model ID", "Display Name"]
     print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
 
 def list_available_profiles():
-    """List all available testing profiles."""
-    configurator = LobsterAgentConfigurator()
-    profiles = configurator.list_available_profiles()
-
-    print_colored("\n⚙️  Available Testing Profiles", "cyan")
+    """List known agent profiles."""
+    print_colored("\n Available Agent Profiles", "cyan")
     print_colored("=" * 60, "cyan")
 
-    for profile_name, config in profiles.items():
-        print_colored(f"\n📋 {profile_name.title()}", "yellow")
-        for agent, model in config.items():
-            print(f"   {agent}: {model}")
+    # Profiles are defined as named constants; list them explicitly.
+    profiles = {
+        "development": "Sonnet 4 — fastest, most affordable",
+        "production": "Sonnet 4 + Sonnet 4.5 supervisor (recommended)",
+        "performance": "Sonnet 4.5 — highest quality",
+        "max": "Opus 4.5 supervisor — most capable, most expensive",
+    }
+
+    current = get_current_profile()
+    table_data = []
+    for name, description in profiles.items():
+        marker = "*" if name == current else ""
+        table_data.append([marker, name, description])
+
+    headers = ["", "Profile", "Description"]
+    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+    print_colored(f"\nCurrent profile: {current}", "green")
 
 
 def show_current_config(profile: str = None):
     """Show current configuration."""
-    configurator = (
-        initialize_configurator(profile=profile)
-        if profile
-        else LobsterAgentConfigurator()
-    )
-    configurator.print_current_config()
+    current = profile or get_current_profile()
+    print_colored(f"\n Current Configuration (profile: {current})", "cyan")
+    print_colored("=" * 60, "cyan")
+
+    configured = ProviderRegistry.get_configured_providers()
+    if configured:
+        print_colored("\nConfigured providers:", "yellow")
+        for p in configured:
+            print(f"  {p.name}: {p.display_name if hasattr(p, 'display_name') else p.name}")
+    else:
+        print_colored("\nNo providers configured.", "yellow")
+        print("Run 'lobster init' to configure a provider.")
+
+    print_colored(f"\nActive profile: {current}", "green")
 
 
 def test_configuration(profile: str, agent: str = None):
     """Test a specific configuration."""
     try:
-        configurator = initialize_configurator(profile=profile)
+        from lobster.config.agent_defaults import get_agent_params
 
         if agent:
-            # Test specific agent
             try:
-                config = configurator.get_agent_model_config(agent)
-                configurator.get_llm_params(agent)
-
-                print_colored(f"\n✅ Agent '{agent}' configuration is valid", "green")
-                print(f"   Model: {config.model_config.model_id}")
-                print(f"   Tier: {config.model_config.tier.value}")
-                print(f"   Region: {config.model_config.region}")
-
-            except KeyError:
+                params = get_agent_params(agent)
+                print_colored(f"\n Agent '{agent}' configuration is valid", "green")
+                print(f"   Temperature: {params.get('temperature')}")
+                if "additional_model_request_fields" in params:
+                    print(
+                        f"   Thinking: {params['additional_model_request_fields']}"
+                    )
+            except Exception as exc:
                 print_colored(
-                    f"\n❌ Agent '{agent}' not found in profile '{profile}'", "red"
+                    f"\n Agent '{agent}' configuration error: {exc}", "red"
                 )
                 return False
         else:
-            # Test all agents dynamically
-            print_colored(f"\n🧪 Testing Profile: {profile}", "yellow")
-            all_valid = True
-
-            # Get all agents from the configurator's DEFAULT_AGENTS
-            available_agents = configurator.DEFAULT_AGENTS
-
-            for agent_name in available_agents:
-                try:
-                    config = configurator.get_agent_model_config(agent_name)
-                    configurator.get_llm_params(agent_name)
+            print_colored(f"\n Testing Profile: {profile}", "yellow")
+            configured = ProviderRegistry.get_configured_providers()
+            if configured:
+                for p in configured:
                     print_colored(
-                        f"   ✅ {agent_name}: {config.model_config.model_id}", "green"
+                        f"   {p.name}: available", "green"
                     )
-                except Exception as e:
-                    print_colored(f"   ❌ {agent_name}: {str(e)}", "red")
-                    all_valid = False
-
-            if all_valid:
                 print_colored(
-                    f"\n🎉 Profile '{profile}' is fully configured and valid!", "green"
+                    f"\n Profile '{profile}' uses configured providers.", "green"
                 )
             else:
                 print_colored(
-                    f"\n⚠️  Profile '{profile}' has configuration issues", "yellow"
+                    f"\n No providers configured for profile '{profile}'.", "yellow"
                 )
+                return False
 
         return True
 
     except Exception as e:
-        print_colored(f"\n❌ Error testing configuration: {str(e)}", "red")
+        print_colored(f"\n Error testing configuration: {str(e)}", "red")
         return False
 
 
 def create_custom_config():
-    """Interactive creation of custom configuration."""
-    print_colored("\n🛠️  Create Custom Configuration", "cyan")
+    """Interactive creation of custom configuration (stub)."""
+    print_colored("\n Custom configuration", "cyan")
     print_colored("=" * 50, "cyan")
-
-    configurator = LobsterAgentConfigurator()
-    available_models = configurator.list_available_models()
-
-    # Show available models
-    print_colored("\nAvailable models:", "yellow")
-    for i, (name, config) in enumerate(available_models.items(), 1):
-        print(f"{i:2}. {name} ({config.tier.value}, {config.region})")
-
-    config_data = {"profile": "custom", "agents": {}}
-
-    # Use dynamic agent list
-    agents = configurator.DEFAULT_AGENTS
-
-    for agent in agents:
-        print_colored(f"\nConfiguring {agent}:", "yellow")
-        print("Choose a model preset (enter number or name):")
-
-        choice = input(f"Model for {agent}: ").strip()
-
-        # Handle numeric choice
-        if choice.isdigit():
-            idx = int(choice) - 1
-            if 0 <= idx < len(available_models):
-                model_name = list(available_models.keys())[idx]
-            else:
-                print_colored("Invalid choice, using default (claude-sonnet)", "yellow")
-                model_name = "claude-sonnet"
-        else:
-            # Handle name choice
-            if choice in available_models:
-                model_name = choice
-            else:
-                print_colored("Invalid choice, using default (claude-sonnet)", "yellow")
-                model_name = "claude-sonnet"
-
-        model_config = available_models[model_name]
-        config_data["agents"][agent] = {
-            "model_config": {
-                "provider": model_config.provider.value,
-                "model_id": model_config.model_id,
-                "tier": model_config.tier.value,
-                "temperature": model_config.temperature,
-                "region": model_config.region,
-                "description": model_config.description,
-            },
-            "enabled": True,
-            "custom_params": {},
-        }
-
-        print_colored(f"   Selected: {model_name}", "green")
-
-    # Save configuration
-    config_file = "config/custom_agent_config.json"
-    with open(config_file, "w") as f:
-        json.dump(config_data, f, indent=2)
-
-    print_colored(f"\n✅ Custom configuration saved to: {config_file}", "green")
-    print_colored("To use this configuration, set:", "yellow")
-    print_colored(f"   export LOBSTER_CONFIG_FILE={config_file}", "yellow")
+    print_colored(
+        "Per-agent overrides are managed via:\n"
+        "  • lobster config models  (interactive)\n"
+        "  • .lobster_workspace/config.toml [agent_settings]\n"
+        "  • Environment variables (LOBSTER_{AGENT}_TEMPERATURE)",
+        "yellow",
+    )
+    print_colored(
+        "\nTo set up API credentials and provider, run: lobster init", "white"
+    )
 
 
 def generate_env_template():
@@ -242,7 +196,7 @@ NCBI_API_KEY="your-ncbi-api-key-here"
 # =============================================================================
 
 # Profile-based configuration (recommended)
-# Available profiles: development, production, ultra, godmode
+# Available profiles: development, production, performance, max
 LOBSTER_PROFILE=production
 
 # OR use custom configuration file
@@ -287,17 +241,17 @@ LOBSTER_CACHE_DIR=data/cache
 # Example 2: Production setup (Claude Sonnet 4 - balanced quality & speed)
 # LOBSTER_PROFILE=production
 
-# Example 3: Ultra setup (Claude Sonnet 4.5 - highest quality)
-# LOBSTER_PROFILE=ultra
+# Example 3: Performance setup (Claude Sonnet 4.5 - highest quality)
+# LOBSTER_PROFILE=performance
 
-# Example 4: Godmode setup (Claude Opus 4.1 - experimental, most expensive)
-# LOBSTER_PROFILE=godmode
+# Example 4: Max setup (Claude Opus 4.5 - experimental, most expensive)
+# LOBSTER_PROFILE=max
 """
 
     with open(".env.template", "w") as f:
         f.write(template)
 
-    print_colored("✅ Environment template saved to: .env.template", "green")
+    print_colored(" Environment template saved to: .env.template", "green")
     print_colored("Copy this file to .env and configure your API keys", "yellow")
 
 
@@ -314,7 +268,7 @@ Examples:
   %(prog)s show-config -p development  # Show specific profile
   %(prog)s test -p production       # Test a profile
   %(prog)s test -p production -a supervisor  # Test specific agent
-  %(prog)s create-custom           # Create custom configuration
+  %(prog)s create-custom           # Show custom config instructions
   %(prog)s generate-env            # Generate .env template
         """,
     )
@@ -340,7 +294,7 @@ Examples:
 
     # Create custom command
     subparsers.add_parser(
-        "create-custom", help="Create custom configuration interactively"
+        "create-custom", help="Show custom configuration instructions"
     )
 
     # Generate env command
@@ -367,9 +321,9 @@ Examples:
             generate_env_template()
 
     except KeyboardInterrupt:
-        print_colored("\n\n👋 Goodbye!", "yellow")
+        print_colored("\n\n Goodbye!", "yellow")
     except Exception as e:
-        print_colored(f"\n❌ Error: {str(e)}", "red")
+        print_colored(f"\n Error: {str(e)}", "red")
         sys.exit(1)
 
 

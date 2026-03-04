@@ -31,6 +31,9 @@ from rich.text import Text
 
 from lobster.ui import LobsterTheme
 from lobster.ui.console_manager import get_console_manager
+from lobster.ui.components.file_tree import create_file_tree, create_workspace_tree
+from lobster.ui.components.status_display import get_status_display
+from lobster.ui.components.multi_progress import get_multi_progress_manager
 from lobster.version import __version__
 
 if TYPE_CHECKING:
@@ -52,6 +55,48 @@ from lobster.cli_internal.commands.heavy.animations import (
 )
 from lobster.cli_internal.commands.heavy.display_helpers import (
     _display_status_info,
+)
+from lobster.cli_internal.utils.path_resolution import PathResolver
+from lobster.cli_internal.commands import (
+    ConsoleOutputAdapter,
+    QueueFileTypeNotSupported,
+    archive_queue,
+    config_model_list,
+    config_model_switch,
+    config_provider_list,
+    config_provider_switch,
+    config_show,
+    data_summary,
+    export_data,
+    file_read,
+    metadata_clear,
+    metadata_clear_all,
+    metadata_clear_exports,
+    metadata_exports,
+    metadata_list,
+    metadata_overview,
+    metadata_publications,
+    metadata_samples,
+    metadata_workspace,
+    modalities_list,
+    modality_describe,
+    pipeline_export,
+    pipeline_info,
+    pipeline_list,
+    pipeline_run,
+    plot_show,
+    plots_list,
+    queue_clear,
+    queue_export,
+    queue_import,
+    queue_list,
+    queue_load_file,
+    show_queue_status,
+    workspace_info,
+    workspace_list,
+    workspace_load,
+    workspace_remove,
+    workspace_status,
 )
 
 # Import prompt_toolkit for autocomplete functionality (optional dependency)
@@ -650,15 +695,18 @@ def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     Returns:
         Updated AgentClient instance
     """
-    from lobster.config.agent_config import initialize_configurator
     from lobster.cli_internal.commands.heavy.session_infra import init_client
 
     # Store current settings before reinitializing
     current_workspace = Path(current_client.workspace_path)
     current_reasoning = current_client.enable_reasoning
 
-    # Initialize a new configurator with the specified profile
-    initialize_configurator(profile=new_mode)
+    # Persist the new profile to workspace config
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+
+    ws_config = WorkspaceProviderConfig.load(current_workspace)
+    ws_config.profile = new_mode
+    ws_config.save(current_workspace)
 
     # Reinitialize the client with the new profile settings
     client = init_client(workspace=current_workspace, reasoning=current_reasoning)
@@ -3257,6 +3305,7 @@ def serve_impl(port: int = 8000, host: str = "0.0.0.0"):
     import typer
 
     import uvicorn
+    from lobster.cli_internal.commands.heavy.session_infra import init_client
     from fastapi import FastAPI, HTTPException
     from pydantic import BaseModel
 

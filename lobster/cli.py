@@ -142,11 +142,6 @@ from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure p
     PathResolver,
 )
 from lobster.config import provider_setup
-from lobster.config.agent_config import (
-    LobsterAgentConfigurator,
-    get_agent_configurator,
-    initialize_configurator,
-)
 
 # Import component registry (lazy - don't trigger load_components at import time)
 from lobster.core.component_registry import component_registry
@@ -511,6 +506,8 @@ def execute_shell_command(command: str) -> bool:
 
 def get_current_agent_name() -> str:
     """Get the current active agent name for display."""
+    from lobster.utils import TerminalCallbackHandler
+
     global client
     if client and hasattr(client, "callbacks") and client.callbacks:
         for callback in client.callbacks:
@@ -610,6 +607,8 @@ def config_test(
 @app.command()
 def status():
     """Display subscription tier, installed packages, and available agents."""
+    from lobster.cli_internal.commands.heavy.display_helpers import _display_status_info
+
     _display_status_info()
 
 
@@ -1324,6 +1323,19 @@ def create_custom():
     from lobster.cli_internal.commands.light.config_commands import create_custom_impl
     create_custom_impl()
 
+
+@config_app.command(name="models")
+def config_models(
+    workspace: Optional[str] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace path (default: current directory)",
+    ),
+):
+    """Interactive per-agent model configuration."""
+    from lobster.cli_internal.commands.light.config_commands import config_models_impl
+    config_models_impl(workspace=workspace)
 
 
 @config_app.command(name="generate-env")

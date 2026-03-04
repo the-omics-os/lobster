@@ -15,9 +15,6 @@ Components are advertised via entry points in pyproject.toml:
     [project.entry-points."lobster.agents"]
     metadata_assistant = "package.module:AGENT_CONFIG"
 
-    [project.entry-points."lobster.agent_configs"]
-    metadata_assistant = "package.module:CUSTOM_AGENT_CONFIG"
-
     [project.entry-points."lobster.adapters"]
     metabolomics_lc_ms = "package.module:create_lc_ms_adapter"
 
@@ -39,10 +36,6 @@ Usage:
     # Agents (ALL agents discovered via entry points)
     agent_config = component_registry.get_agent('research_agent')
     all_agents = component_registry.list_agents()  # Single source of truth
-
-    # Agent LLM Configs
-    llm_config = component_registry.get_agent_config('metadata_assistant')
-    all_configs = component_registry.list_agent_configs()
 
     # Adapters (factory callables returning configured instances)
     adapter_factory = component_registry.get_adapter('metabolomics_lc_ms')
@@ -280,7 +273,6 @@ class ComponentRegistry:
     def __init__(self):
         self._services: Dict[str, Type[Any]] = {}
         self._agents: Dict[str, Any] = {}  # ALL AgentRegistryConfig instances
-        self._custom_agent_configs: Dict[str, Any] = {}  # CustomAgentConfig instances
         # Omics plugin groups
         self._adapters: Dict[str, Union[Callable, Type[Any]]] = {}
         self._providers: Dict[str, Union[Callable, Type[Any]]] = {}
@@ -309,11 +301,6 @@ class ComponentRegistry:
         # This includes both core (lobster-ai) and custom (lobster-custom-*) agents
         self._load_entry_point_group("lobster.agents", self._agents)
 
-        # Load custom agent LLM configs from 'lobster.agent_configs' entry point
-        self._load_entry_point_group(
-            "lobster.agent_configs", self._custom_agent_configs
-        )
-
         # Omics plugin groups — adapters, providers, download services, queue preparers
         self._load_entry_point_group("lobster.adapters", self._adapters)
         self._load_entry_point_group("lobster.providers", self._providers)
@@ -331,7 +318,6 @@ class ComponentRegistry:
             f"Component discovery complete. "
             f"Services: {len(self._services)}, "
             f"Agents: {len(self._agents)}, "
-            f"Custom agent configs: {len(self._custom_agent_configs)}, "
             f"Adapters: {len(self._adapters)}, "
             f"Providers: {len(self._providers)}, "
             f"Download services: {len(self._download_services)}, "
@@ -518,54 +504,6 @@ class ComponentRegistry:
         return dict(self._agents)
 
     # =========================================================================
-    # AGENT CONFIG API
-    # =========================================================================
-
-    def get_agent_config(self, name: str, required: bool = False) -> Optional[Any]:
-        """
-        Get a custom agent LLM config by name.
-
-        Args:
-            name: Agent name (e.g., 'metadata_assistant')
-            required: If True, raise error when config not found
-
-        Returns:
-            CustomAgentConfig if found, None otherwise
-
-        Raises:
-            ValueError: If required=True and config not found
-        """
-        if not self._loaded:
-            self.load_components()
-
-        config = self._custom_agent_configs.get(name)
-
-        if config is None and required:
-            raise ValueError(
-                f"Required agent config '{name}' not found. "
-                f"Available configs: {list(self._custom_agent_configs.keys())}"
-            )
-
-        return config
-
-    def has_agent_config(self, name: str) -> bool:
-        """Check if a custom agent config is available."""
-        if not self._loaded:
-            self.load_components()
-        return name in self._custom_agent_configs
-
-    def list_agent_configs(self) -> Dict[str, Any]:
-        """
-        List all custom agent LLM configs (from entry points).
-
-        Returns:
-            Dict[str, CustomAgentConfig] - All available agent configs
-        """
-        if not self._loaded:
-            self.load_components()
-        return dict(self._custom_agent_configs)
-
-    # =========================================================================
     # ADAPTER API (factory callables returning configured instances)
     # =========================================================================
 
@@ -738,10 +676,6 @@ class ComponentRegistry:
                 "count": len(self._agents),
                 "names": list(self._agents.keys()),
             },
-            "custom_agent_configs": {
-                "count": len(self._custom_agent_configs),
-                "names": list(self._custom_agent_configs.keys()),
-            },
             "adapters": {
                 "count": len(self._adapters),
                 "names": list(self._adapters.keys()),
@@ -780,7 +714,6 @@ class ComponentRegistry:
         """Reset the registry state (for testing)."""
         self._services.clear()
         self._agents.clear()
-        self._custom_agent_configs.clear()
         self._adapters.clear()
         self._providers.clear()
         self._download_services.clear()

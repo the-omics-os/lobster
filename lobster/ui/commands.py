@@ -503,14 +503,13 @@ class LobsterCommands(Provider):
             self.app.notify("No client available", severity="error")
             return
 
-        from lobster.config.agent_config import get_agent_configurator
+        from lobster.config.agent_defaults import get_current_profile
         from lobster.config.llm_factory import LLMFactory
 
         # Get session info
         status = self.client.get_status()
         provider = LLMFactory.get_current_provider() or "unknown"
-        configurator = get_agent_configurator()
-        current_mode = configurator.get_current_profile()
+        current_mode = get_current_profile()
 
         lines = [
             "**Session Status:**\n",

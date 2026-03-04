@@ -18,11 +18,6 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from lobster.config import provider_setup
-from lobster.config.agent_config import (
-    LobsterAgentConfigurator,
-    get_agent_configurator,
-    initialize_configurator,
-)
 from lobster.ui import LobsterTheme
 from lobster.ui.console_manager import get_console_manager
 from lobster.version import __version__
@@ -52,10 +47,16 @@ def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     current_workspace = Path(current_client.workspace_path)
     current_reasoning = current_client.enable_reasoning
 
-    # Initialize a new configurator with the specified profile
-    initialize_configurator(profile=new_mode)
+    # Persist the new profile to workspace config
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+
+    ws_config = WorkspaceProviderConfig.load(current_workspace)
+    ws_config.profile = new_mode
+    ws_config.save(current_workspace)
 
     # Reinitialize the client with the new profile settings
+    from lobster.cli_internal.commands.heavy.session_infra import init_client
+
     client = init_client(workspace=current_workspace, reasoning=current_reasoning)
 
     return client

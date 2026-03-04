@@ -497,11 +497,10 @@ class AnalysisScreen(Screen):
 
         elif cmd == "/session":
             status = self.client.get_status()
-            from lobster.config.agent_config import get_agent_configurator
+            from lobster.config.agent_defaults import get_current_profile
             from lobster.config.llm_factory import LLMFactory
 
-            configurator = get_agent_configurator()
-            current_mode = configurator.get_current_profile()
+            current_mode = get_current_profile()
             provider = LLMFactory.get_current_provider() or "unknown"
 
             status_text = f"""**Session Status:**

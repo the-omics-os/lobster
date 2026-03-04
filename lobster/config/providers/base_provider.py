@@ -18,7 +18,7 @@ Example:
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +237,33 @@ class ILLMProvider(ABC):
             List[str]: Model identifiers
         """
         return [model.name for model in self.list_models()]
+
+    def verify_connection(self, model_id: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Verify the provider connection with a minimal inference call.
+
+        Makes a single token inference call to validate:
+        - API key is valid
+        - The target model is accessible
+        - Account has sufficient credits
+
+        Args:
+            model_id: Model to test (uses get_default_model() if None)
+
+        Returns:
+            (success, message) — message is user-friendly success/error text
+
+        Note:
+            This makes a real API call. Use only during setup flows, not hot paths.
+            Costs ~1 token (~$0.000003 for most models).
+        """
+        target_model = model_id or self.get_default_model()
+        try:
+            llm = self.create_chat_model(target_model, temperature=0.0, max_tokens=1)
+            llm.invoke("Hi")
+            return True, f"✓ {self.display_name} connection verified (model: {target_model})"
+        except Exception as e:
+            return False, f"{self.display_name} connection failed: {e}"
 
     def get_configuration_help(self) -> str:
         """

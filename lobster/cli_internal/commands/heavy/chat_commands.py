@@ -12,10 +12,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.panel import Panel
 from rich.prompt import Confirm
+from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
 
 from lobster.cli_internal.commands.heavy.animations import (
@@ -31,9 +35,26 @@ from lobster.cli_internal.commands.heavy.session_infra import (
     init_client_with_animation,
     should_show_progress,
 )
+from lobster.cli_internal.commands.heavy.slash_commands import (
+    _execute_command,
+    check_for_missing_slash_command,
+)
 from lobster.ui import LobsterTheme, setup_logging
 from lobster.ui.console_manager import get_console_manager
+from lobster.utils.callbacks import TerminalCallbackHandler
+from lobster.utils.system import open_path
 from lobster.version import __version__
+
+try:
+    from prompt_toolkit import prompt
+    from prompt_toolkit.completion import ThreadedCompleter
+    from prompt_toolkit.formatted_text import HTML
+    from prompt_toolkit.history import FileHistory
+    from prompt_toolkit.styles import Style
+
+    PROMPT_TOOLKIT_AVAILABLE = True
+except ImportError:
+    PROMPT_TOOLKIT_AVAILABLE = False
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
@@ -42,6 +63,10 @@ logger = logging.getLogger(__name__)
 
 console_manager = get_console_manager()
 console = console_manager.console
+
+# Global state shared across functions in this module
+current_directory = Path.cwd()
+client = None
 
 def get_user_input_with_editing(prompt_text: str, client=None) -> str:
     """
@@ -79,6 +104,10 @@ def get_user_input_with_editing(prompt_text: str, client=None) -> str:
                 clean_prompt = "❯ "
 
             # Create client-aware completer
+            from lobster.cli_internal.commands.heavy.slash_commands import (
+                LobsterContextualCompleter,
+            )
+
             main_completer = ThreadedCompleter(LobsterContextualCompleter(client))
 
             # Custom style to match Rich orange theme

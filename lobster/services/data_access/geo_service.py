@@ -122,7 +122,7 @@ class GEOService:
 
         # Initialize helper services for fallback functionality
         self.geo_downloader = GEODownloadManager(
-            cache_dir=str(self.cache_dir), console=self.console
+            cache_dir=self.cache_dir, console=self.console
         )
         self.geo_parser = GEOParser()
 

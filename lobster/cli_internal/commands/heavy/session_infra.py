@@ -501,12 +501,11 @@ def _maybe_print_timings(client: "AgentClient", context: str) -> None:
 
 def display_session(client: "AgentClient"):
     """Display current session status with enhanced orange theming."""
-    from lobster.config.agent_config import get_agent_configurator
+    from lobster.config.agent_defaults import get_current_profile
 
     status = client.get_status()
 
-    configurator = get_agent_configurator()
-    current_mode = configurator.get_current_profile()
+    current_mode = get_current_profile()
 
     status_data = {
         "session_id": status["session_id"],

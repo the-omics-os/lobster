@@ -1,23 +1,19 @@
 """
-Unit tests for thinking/reasoning configuration across providers.
+Unit tests for thinking/reasoning configuration.
 
 Tests cover:
 - ThinkingConfig class and serialization
-- Thinking parameter passing for Bedrock
-- Thinking parameter passing for Gemini
-- Thinking configuration flow through llm_factory
-- Environment variable overrides for thinking
+- THINKING_PRESETS contents
+- Thinking parameter passing through llm_factory
+- Provider-specific thinking behaviour (Bedrock, Gemini)
 """
 
 import os
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from lobster.config.agent_config import (
-    LobsterAgentConfigurator,
-    ThinkingConfig,
-)
+from lobster.config.agent_defaults import THINKING_PRESETS, ThinkingConfig
 
 # Mark all tests to skip auto_config
 pytestmark = pytest.mark.no_auto_config
@@ -82,137 +78,48 @@ class TestThinkingConfig:
 
 
 # =============================================================================
-# Agent Configurator Thinking Tests
+# THINKING_PRESETS Tests
 # =============================================================================
 
 
-class TestAgentConfiguratorThinking:
-    """Test thinking configuration in LobsterAgentConfigurator."""
+class TestThinkingPresets:
+    """Test THINKING_PRESETS module-level constant."""
 
     def test_thinking_presets_exist(self):
         """Test that THINKING_PRESETS are defined."""
-        configurator = LobsterAgentConfigurator(profile="production")
-
-        assert hasattr(configurator, "THINKING_PRESETS")
-        assert "disabled" in configurator.THINKING_PRESETS
-        assert "light" in configurator.THINKING_PRESETS
-        assert "standard" in configurator.THINKING_PRESETS
-        assert "extended" in configurator.THINKING_PRESETS
-        assert "deep" in configurator.THINKING_PRESETS
+        assert "disabled" in THINKING_PRESETS
+        assert "light" in THINKING_PRESETS
+        assert "standard" in THINKING_PRESETS
+        assert "extended" in THINKING_PRESETS
+        assert "deep" in THINKING_PRESETS
 
     def test_thinking_preset_configurations(self):
         """Test thinking preset configurations."""
-        configurator = LobsterAgentConfigurator(profile="production")
+        assert THINKING_PRESETS["disabled"].enabled is False
+        assert THINKING_PRESETS["light"].budget_tokens == 1000
+        assert THINKING_PRESETS["standard"].budget_tokens == 2000
+        assert THINKING_PRESETS["extended"].budget_tokens == 5000
+        assert THINKING_PRESETS["deep"].budget_tokens == 10000
 
-        # Check preset values
-        assert configurator.THINKING_PRESETS["disabled"].enabled is False
-        assert configurator.THINKING_PRESETS["light"].budget_tokens == 1000
-        assert configurator.THINKING_PRESETS["standard"].budget_tokens == 2000
-        assert configurator.THINKING_PRESETS["extended"].budget_tokens == 5000
-        assert configurator.THINKING_PRESETS["deep"].budget_tokens == 10000
+    def test_all_presets_are_thinking_config_instances(self):
+        """All preset values must be ThinkingConfig instances."""
+        for name, preset in THINKING_PRESETS.items():
+            assert isinstance(preset, ThinkingConfig), (
+                f"Preset '{name}' is not a ThinkingConfig instance"
+            )
 
-    def test_get_llm_params_without_thinking(self):
-        """Test get_llm_params returns no thinking config by default."""
-        configurator = LobsterAgentConfigurator(profile="production")
+    def test_disabled_preset_produces_empty_dict(self):
+        """disabled preset must produce an empty dict (no API overhead)."""
+        assert THINKING_PRESETS["disabled"].to_dict() == {}
 
-        params = configurator.get_llm_params("supervisor")
-
-        assert "temperature" in params
-        # additional_model_request_fields should not be present without thinking
-        assert (
-            "additional_model_request_fields" not in params
-            or params["additional_model_request_fields"] == {}
-        )
-
-    def test_get_llm_params_with_thinking(self):
-        """Test get_llm_params includes thinking config when enabled."""
-        configurator = LobsterAgentConfigurator(profile="production")
-
-        # Manually enable thinking for test
-        agent_name = "supervisor"
-        thinking_config = ThinkingConfig(enabled=True, budget_tokens=5000)
-        configurator._agent_configs[agent_name].thinking_config = thinking_config
-
-        params = configurator.get_llm_params(agent_name)
-
-        assert "additional_model_request_fields" in params
-        assert "thinking" in params["additional_model_request_fields"]
-        assert (
-            params["additional_model_request_fields"]["thinking"]["type"] == "enabled"
-        )
-        assert (
-            params["additional_model_request_fields"]["thinking"]["budget_tokens"]
-            == 5000
-        )
-
-    def test_thinking_only_for_supporting_models(self):
-        """Test that thinking config is only applied to models that support it."""
-        configurator = LobsterAgentConfigurator(profile="production")
-
-        # All Bedrock models support thinking
-        for agent_name in configurator._agent_configs:
-            agent_config = configurator._agent_configs[agent_name]
-            assert agent_config.model_config.supports_thinking is True
-
-
-# =============================================================================
-# Environment Variable Override Tests
-# =============================================================================
-
-
-class TestThinkingEnvironmentOverrides:
-    """Test environment variable overrides for thinking configuration."""
-
-    def test_per_agent_thinking_enabled(self):
-        """Test LOBSTER_{AGENT}_THINKING_ENABLED environment variable."""
-        env = {
-            "LOBSTER_SUPERVISOR_THINKING_ENABLED": "true",
-            "AWS_BEDROCK_ACCESS_KEY": "test",
-            "AWS_BEDROCK_SECRET_ACCESS_KEY": "test",
-        }
-
-        with patch.dict(os.environ, env, clear=True):
-            configurator = LobsterAgentConfigurator(profile="production")
-
-            agent_config = configurator._agent_configs.get("supervisor")
-            if agent_config:
-                # Check if thinking was enabled via env var
-                assert agent_config.thinking_config is not None
-                assert agent_config.thinking_config.enabled is True
-
-    def test_per_agent_thinking_budget(self):
-        """Test LOBSTER_{AGENT}_THINKING_BUDGET environment variable."""
-        env = {
-            "LOBSTER_SUPERVISOR_THINKING_ENABLED": "true",
-            "LOBSTER_SUPERVISOR_THINKING_BUDGET": "7000",
-            "AWS_BEDROCK_ACCESS_KEY": "test",
-            "AWS_BEDROCK_SECRET_ACCESS_KEY": "test",
-        }
-
-        with patch.dict(os.environ, env, clear=True):
-            configurator = LobsterAgentConfigurator(profile="production")
-
-            agent_config = configurator._agent_configs.get("supervisor")
-            if agent_config and agent_config.thinking_config:
-                assert agent_config.thinking_config.budget_tokens == 7000
-
-    def test_global_thinking_preset(self):
-        """Test LOBSTER_GLOBAL_THINKING environment variable."""
-        env = {
-            "LOBSTER_GLOBAL_THINKING": "extended",
-            "AWS_BEDROCK_ACCESS_KEY": "test",
-            "AWS_BEDROCK_SECRET_ACCESS_KEY": "test",
-        }
-
-        with patch.dict(os.environ, env, clear=True):
-            configurator = LobsterAgentConfigurator(profile="production")
-
-            # All agents with supporting models should have extended thinking
-            for agent_name, agent_config in configurator._agent_configs.items():
-                if agent_config.model_config.supports_thinking:
-                    assert agent_config.thinking_config is not None
-                    assert agent_config.thinking_config.enabled is True
-                    assert agent_config.thinking_config.budget_tokens == 5000
+    def test_enabled_presets_produce_thinking_key(self):
+        """Every enabled preset must produce a dict with a 'thinking' key."""
+        for name, preset in THINKING_PRESETS.items():
+            if preset.enabled:
+                result = preset.to_dict()
+                assert "thinking" in result, (
+                    f"Preset '{name}' did not produce 'thinking' key"
+                )
 
 
 # =============================================================================
@@ -355,16 +262,6 @@ class TestBedrockThinkingIntegration:
                 == 5000
             )
 
-    def test_bedrock_all_models_support_thinking(self):
-        """Test that all Bedrock Claude 4.x+ models are marked as supporting thinking."""
-        configurator = LobsterAgentConfigurator(profile="production")
-
-        for preset_name, model_config in configurator.MODEL_PRESETS.items():
-            if "claude-4" in preset_name or "claude-3" in preset_name:
-                assert (
-                    model_config.supports_thinking is True
-                ), f"Model {preset_name} should support thinking"
-
 
 class TestGeminiThinkingIntegration:
     """Test Gemini-specific thinking configuration."""
@@ -417,18 +314,17 @@ class TestGeminiThinkingIntegration:
 
 
 # =============================================================================
-# Integration Tests (End-to-End Flow)
+# Integration Tests (LLMFactory end-to-end)
 # =============================================================================
 
 
 class TestThinkingEndToEndFlow:
-    """Test complete thinking configuration flow from agent_config to provider."""
+    """Test complete thinking configuration flow from agent_defaults to provider."""
 
     @patch("lobster.core.config_resolver.ConfigResolver")
     @patch("lobster.config.providers.get_provider")
     def test_bedrock_thinking_flow(self, mock_get_provider, mock_config_resolver):
-        """Test thinking config flows from agent_config → llm_factory → bedrock_provider."""
-        from lobster.config.agent_config import LobsterAgentConfigurator, ThinkingConfig
+        """Test thinking config flows from agent_defaults -> llm_factory -> bedrock_provider."""
         from lobster.config.llm_factory import LLMFactory
 
         # Setup mocks
@@ -445,16 +341,12 @@ class TestThinkingEndToEndFlow:
         mock_provider.create_chat_model = Mock(return_value=Mock())
         mock_get_provider.return_value = mock_provider
 
-        # Create configurator with thinking
-        configurator = LobsterAgentConfigurator(profile="production")
-        agent_name = "supervisor"
-
-        # Enable thinking
+        # Build params the same way agent_defaults.get_agent_params() would
         thinking_config = ThinkingConfig(enabled=True, budget_tokens=5000)
-        configurator._agent_configs[agent_name].thinking_config = thinking_config
-
-        # Get params (this is what settings.py does)
-        model_params = configurator.get_llm_params(agent_name)
+        model_params = {
+            "temperature": 1.0,
+            "additional_model_request_fields": thinking_config.to_dict(),
+        }
 
         # Verify thinking config is in params
         assert "additional_model_request_fields" in model_params
@@ -464,7 +356,7 @@ class TestThinkingEndToEndFlow:
         )
 
         # Create LLM (this is what graph.py does)
-        LLMFactory.create_llm(model_config=model_params, agent_name=agent_name)
+        LLMFactory.create_llm(model_config=model_params, agent_name="supervisor")
 
         # Verify provider received thinking config
         mock_provider.create_chat_model.assert_called_once()
@@ -548,42 +440,6 @@ class TestThinkingEndToEndFlow:
 
         # Gemini provider should receive thinking config but ignore it gracefully
         # (Gemini uses include_thoughts=True instead)
-
-
-# =============================================================================
-# Settings Integration Tests
-# =============================================================================
-
-
-class TestSettingsThinkingIntegration:
-    """Test Settings.get_agent_llm_params() integration with thinking."""
-
-    def test_settings_passes_through_thinking_config(self):
-        """Test that Settings.get_agent_llm_params() preserves thinking configuration."""
-        from lobster.config.agent_config import (
-            LobsterAgentConfigurator,
-            ThinkingConfig,
-        )
-
-        # Test the configurator directly to avoid Settings() module-level side effects
-        configurator = LobsterAgentConfigurator(profile="production")
-
-        # Enable thinking for supervisor
-        agent_name = "supervisor"
-        thinking_config = ThinkingConfig(enabled=True, budget_tokens=3000)
-        agent_model_config = configurator.get_agent_model_config(agent_name)
-        agent_model_config.thinking_config = thinking_config
-
-        # Get params via the configurator's public API
-        params = configurator.get_llm_params(agent_name)
-
-        # Verify thinking config is present
-        assert "additional_model_request_fields" in params
-        assert "thinking" in params["additional_model_request_fields"]
-        assert (
-            params["additional_model_request_fields"]["thinking"]["budget_tokens"]
-            == 3000
-        )
 
 
 # =============================================================================
