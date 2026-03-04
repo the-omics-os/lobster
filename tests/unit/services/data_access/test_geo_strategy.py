@@ -446,3 +446,118 @@ class TestPipelineStepNullGuards:
         }
         result = svc._try_raw_matrix_first("GSE000", {})
         assert result.success is False
+
+
+# ---------------------------------------------------------------------------
+# TestArchiveFirstRemoved -- ARCHIVE_FIRST dead branch removal (GSTR-03)
+# ---------------------------------------------------------------------------
+
+
+class TestArchiveFirstRemoved:
+    """Tests confirming ARCHIVE_FIRST is removed from PipelineType and pipeline_map (GSTR-03)."""
+
+    def test_archive_first_not_in_pipeline_type(self):
+        """PipelineType enum must NOT contain ARCHIVE_FIRST."""
+        from lobster.services.data_access.geo.strategy import PipelineType
+
+        member_names = [m.name for m in PipelineType]
+        assert "ARCHIVE_FIRST" not in member_names, (
+            f"ARCHIVE_FIRST should be removed but found in PipelineType members: {member_names}"
+        )
+
+    def test_unknown_string_falls_back_to_fallback(self):
+        """get_pipeline_functions('ARCHIVE_FIRST', ...) must return FALLBACK pipeline, not KeyError."""
+        from lobster.services.data_access.geo.strategy import PipelineStrategyEngine
+
+        engine = PipelineStrategyEngine()
+        mock_geo_service = MagicMock()
+        # Should not raise -- should fall back gracefully
+        functions = engine.get_pipeline_functions("ARCHIVE_FIRST", mock_geo_service)
+        assert len(functions) > 0, "FALLBACK pipeline should have at least one function"
+
+    def test_other_unknown_strings_fall_back(self):
+        """get_pipeline_functions('FOOBAR', ...) must return FALLBACK pipeline."""
+        from lobster.services.data_access.geo.strategy import PipelineStrategyEngine
+
+        engine = PipelineStrategyEngine()
+        mock_geo_service = MagicMock()
+        functions = engine.get_pipeline_functions("FOOBAR", mock_geo_service)
+        assert len(functions) > 0, "FALLBACK pipeline should have at least one function"
+
+
+# ---------------------------------------------------------------------------
+# TestNoDeadBranches -- No rule returns ARCHIVE_FIRST (GSTR-03)
+# ---------------------------------------------------------------------------
+
+
+class TestNoDeadBranches:
+    """Tests confirming no rule returns ARCHIVE_FIRST and method is removed (GSTR-03)."""
+
+    def test_no_rule_returns_archive_first(self):
+        """No default rule should return ARCHIVE_FIRST for any data availability level."""
+        from lobster.services.data_access.geo.strategy import (
+            PipelineContext,
+            PipelineStrategyEngine,
+        )
+
+        engine = PipelineStrategyEngine()
+
+        # Test across all data availability levels
+        configs = [
+            # COMPLETE: has processed_matrix + cell_annotation
+            {
+                "processed_matrix_name": "matrix.txt",
+                "processed_matrix_filetype": "txt",
+                "cell_annotation_name": "anno.csv",
+                "cell_annotation_filetype": "csv",
+                "raw_UMI_like_matrix_name": "",
+                "raw_data_available": False,
+            },
+            # PARTIAL: has processed but not annotation
+            {
+                "processed_matrix_name": "matrix.txt",
+                "processed_matrix_filetype": "txt",
+                "cell_annotation_name": "",
+                "raw_UMI_like_matrix_name": "",
+                "raw_data_available": False,
+            },
+            # MINIMAL: only raw_data_available
+            {
+                "processed_matrix_name": "",
+                "raw_UMI_like_matrix_name": "",
+                "summary_file_name": "",
+                "cell_annotation_name": "",
+                "raw_data_available": True,
+            },
+            # NONE: nothing available
+            {
+                "processed_matrix_name": "",
+                "raw_UMI_like_matrix_name": "",
+                "summary_file_name": "",
+                "cell_annotation_name": "",
+                "raw_data_available": False,
+            },
+        ]
+
+        for config in configs:
+            ctx = PipelineContext(
+                geo_id="GSE000",
+                strategy_config=config,
+                metadata={},
+            )
+            pipeline_type, _ = engine.determine_pipeline(ctx)
+            assert pipeline_type.name != "ARCHIVE_FIRST", (
+                f"Rule returned ARCHIVE_FIRST for config: {config}"
+            )
+
+    def test_geo_service_no_archive_extraction_method(self):
+        """GEOService class must NOT have _try_archive_extraction_first attribute."""
+        with patch(
+            "lobster.services.data_access.geo_service.GEOService.__init__",
+            return_value=None,
+        ):
+            from lobster.services.data_access.geo_service import GEOService
+
+            assert not hasattr(GEOService, "_try_archive_extraction_first"), (
+                "GEOService should not have _try_archive_extraction_first method"
+            )
