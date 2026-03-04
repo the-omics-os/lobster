@@ -32,23 +32,6 @@ SHIM_PAIRS = [
     ("lobster.core.workspace", "lobster.core.runtime.workspace", "resolve_workspace"),
 ]
 
-# Shim pairs that depend on Plan 02 (notebooks + provenance subpackages)
-PLAN_02_OLD_PATHS = {
-    "lobster.core.notebook_executor",
-    "lobster.core.notebook_exporter",
-    "lobster.core.notebook_validator",
-    "lobster.core.analysis_ir",
-    "lobster.core.provenance",
-    "lobster.core.lineage",
-    "lobster.core.ir_coverage",
-}
-
-
-def _is_plan_02(old_path: str) -> bool:
-    """Return True if this shim pair depends on Plan 02."""
-    return old_path in PLAN_02_OLD_PATHS
-
-
 def _shim_id(pair):
     """Generate readable test ID from shim pair."""
     return pair[0].rsplit(".", 1)[-1]
@@ -56,15 +39,7 @@ def _shim_id(pair):
 
 @pytest.mark.parametrize(
     "old_path, new_path, expected_name",
-    [
-        pytest.param(
-            old, new, name,
-            marks=pytest.mark.xfail(reason="Plan 02 moves these files")
-        )
-        if _is_plan_02(old)
-        else pytest.param(old, new, name)
-        for old, new, name in SHIM_PAIRS
-    ],
+    SHIM_PAIRS,
     ids=[_shim_id(p) for p in SHIM_PAIRS],
 )
 class TestShimReexportsAndWarns:
@@ -78,9 +53,12 @@ class TestShimReexportsAndWarns:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             mod = importlib.import_module(old_path)
+            # Access the expected name inside the catch block to capture
+            # warnings from __getattr__ lazy shims (provenance/__init__.py)
+            has_name = hasattr(mod, expected_name)
 
         # The expected name must be accessible
-        assert hasattr(mod, expected_name), (
+        assert has_name, (
             f"{old_path} shim missing expected name '{expected_name}'"
         )
 
@@ -113,23 +91,20 @@ class TestShimReexportsAndWarns:
 
 # Subpackage existence tests
 SUBPACKAGES = [
-    ("lobster.core.governance", False),   # Plan 01
-    ("lobster.core.queues", False),       # Plan 01
-    ("lobster.core.runtime", False),      # Plan 01
-    ("lobster.core.notebooks", True),     # Plan 02
-    ("lobster.core.provenance", True),    # Plan 02 (note: collides with existing module)
+    "lobster.core.governance",    # Plan 01
+    "lobster.core.queues",        # Plan 01
+    "lobster.core.runtime",       # Plan 01
+    "lobster.core.notebooks",     # Plan 02
+    "lobster.core.provenance",    # Plan 02
 ]
 
 
 @pytest.mark.parametrize(
-    "subpackage, xfail",
+    "subpackage",
     SUBPACKAGES,
-    ids=[s[0].rsplit(".", 1)[-1] for s in SUBPACKAGES],
+    ids=[s.rsplit(".", 1)[-1] for s in SUBPACKAGES],
 )
-def test_subpackages_exist(subpackage, xfail):
+def test_subpackages_exist(subpackage):
     """Verify subpackage directories have __init__.py and are importable."""
-    if xfail:
-        pytest.xfail("Plan 02 creates this subpackage")
-
     mod = importlib.import_module(subpackage)
     assert mod is not None

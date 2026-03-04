@@ -49,4 +49,19 @@ type = independence
 modules =
     lobster.core.data_manager_v2
     lobster.core.component_registry
-    lobster.core.download_queue
+    lobster.core.queues.download_queue
+
+# =============================================================================
+# Layers Contract: Core subpackages respect layering
+# =============================================================================
+# Higher layers can import from lower layers, but not vice versa.
+# notebooks -> provenance -> governance -> queues -> runtime
+[importlinter:contract:core-subpackage-layers]
+name = Core subpackages respect layering
+type = layers
+layers =
+    lobster.core.notebooks
+    lobster.core.provenance
+    lobster.core.governance
+    lobster.core.queues
+    lobster.core.runtime
