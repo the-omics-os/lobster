@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-04T08:02:30.948Z"
-last_activity: 2026-03-04 -- Plan 05-02 complete (entry-point declarations -- queue_preparers + download_services GREEN)
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-04T17:30:00Z"
+last_activity: 2026-03-04 -- Plan 06-01 complete (3 core subpackages + 6 file moves with shims)
 progress:
   total_phases: 9
   completed_phases: 5
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 15
+  completed_plans: 14
   percent: 92
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 4 COMPLETE. GEO Service Decomposition finished. Ready for Phase 5.
+**Current focus:** Phase 6 in progress. Core subpackage creation and moves.
 
 ## Current Position
 
-Phase: 5 of 9 (Plugin-First Registration)
-Plan: 2 of 3 in current phase (05-02 complete)
-Status: Phase 05 in progress
-Last activity: 2026-03-04 -- Plan 05-02 complete (entry-point declarations -- queue_preparers + download_services GREEN)
+Phase: 6 of 9 (Core Subpackage Creation & Moves)
+Plan: 1 of 2 in current phase (06-01 complete)
+Status: Phase 06 in progress
+Last activity: 2026-03-04 -- Plan 06-01 complete (3 core subpackages + 6 file moves with shims)
 
-Progress: [█████████░] 92%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 13 min
-- Total execution time: 2.2 hours
+- Total plans completed: 14
+- Average duration: 12 min
+- Total execution time: 2.5 hours
 
 **By Phase:**
 
@@ -47,11 +47,12 @@ Progress: [█████████░] 92%
 | 02 | 2 | 36 min | 18 min |
 | 03 | 2 | 19 min | 10 min |
 | 04 | 3 | 51 min | 17 min |
-| 05 | 2 (of 3) | 8 min | 4 min |
+| 05 | 3 | 15 min | 5 min |
+| 06 | 1 (of 2) | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min, 13 min, 26 min, 12 min, 7 min
-- Trend: Phase 05 started, TDD RED scaffold in 7 min
+- Last 5 plans: 12 min, 7 min, 4 min, 7 min, 5 min
+- Trend: Core subpackage creation started, fast execution
 
 *Updated after each plan completion*
 | Phase 05-plugin-first-registration P03 | 15 | 2 tasks | 4 files |
@@ -104,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 05-plugin-first-registration]: [Phase 05]: _ALLOW_HARDCODED_FALLBACK gate uses early return before Phase 2 block — simple semantics, no complex conditional logic
 - [Phase 05-plugin-first-registration]: [Phase 05]: discovered_names set tracking in Phase 1 loop enables warning log when EP discovery yields zero results and fallback is disabled
 - [Phase 05-plugin-first-registration]: [Phase 05]: Phase 2 hardcoded block remains intact for emergency recovery — unreachable when flag=False, accessible when flag=True
+- [Phase 06]: Docstring-only __init__.py files -- no re-exports to avoid coupling (06-01)
+- [Phase 06]: Test scaffold covers all 13 shims upfront with Plan 02 tests marked xfail (06-01)
+- [Phase 06]: Internal imports in moved queue files updated to canonical paths immediately (06-01)
 
 ### Pending Todos
 
@@ -115,6 +119,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T07:57:42.945Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-03-04T17:30:00Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

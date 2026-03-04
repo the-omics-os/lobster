@@ -48,11 +48,11 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 ### Core Restructuring
 
-- [ ] **CORE-01**: Core subpackages created: runtime/, queues/, notebooks/, provenance/, governance/
-- [ ] **CORE-02**: 13 files moved to domain subpackages with backward-compatible shims at old paths
-- [ ] **CORE-03**: Shims emit DeprecationWarning with removal version
+- [x] **CORE-01**: Core subpackages created: runtime/, queues/, notebooks/, provenance/, governance/
+- [x] **CORE-02**: 13 files moved to domain subpackages with backward-compatible shims at old paths
+- [x] **CORE-03**: Shims emit DeprecationWarning with removal version
 - [ ] **CORE-04**: Import-linter config updated for new subpackage paths (A5)
-- [ ] **CORE-05**: No import cycles introduced
+- [x] **CORE-05**: No import cycles introduced
 
 ### Data Manager Move
 
@@ -134,11 +134,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PLUG-04 | Phase 5 (PR-5) | Complete |
 | PLUG-05 | Phase 5 (PR-5) | Complete |
 | PLUG-06 | Phase 5 (PR-5) | Complete |
-| CORE-01 | Phase 6 (PR-6) | Pending |
-| CORE-02 | Phase 6 (PR-6) | Pending |
-| CORE-03 | Phase 6 (PR-6) | Pending |
+| CORE-01 | Phase 6 (PR-6) | Complete |
+| CORE-02 | Phase 6 (PR-6) | Complete |
+| CORE-03 | Phase 6 (PR-6) | Complete |
 | CORE-04 | Phase 6 (PR-6) | Pending |
-| CORE-05 | Phase 6 (PR-6) | Pending |
+| CORE-05 | Phase 6 (PR-6) | Complete |
 | DMGR-01 | Phase 7 (PR-7) | Pending |
 | DMGR-02 | Phase 7 (PR-7) | Pending |
 | DMGR-03 | Phase 7 (PR-7) | Pending |
