@@ -53,11 +53,11 @@ Plans:
   3. Supplementary file classifier correctly identifies .tar.gz, .tgz, and .tar.bz2 archives alongside existing formats
   4. Expression file selection uses a scoring heuristic that outperforms the keyword blacklist on known edge cases (e.g., files with "gene" in the name)
   5. Parser failures leave zero temp files on disk -- cleanup runs on every early-break path
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — ParseResult dataclass and partial parse signaling with call site propagation (GPAR-01, GPAR-02)
+- [ ] 02-02-PLAN.md — Archive classifier fix, expression file scoring heuristic, and temp cleanup (GPAR-03, GPAR-04, GPAR-05)
 
 ### Phase 3: GEO Strategy Engine Hardening
 **Goal**: Strategy engine makes correct decisions on null/missing metadata and has no unreachable code paths
@@ -168,7 +168,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. GEO Safety & Contract Hotfixes | 3/3 | Complete   | 2026-03-04 |
-| 2. GEO Parser & Data Integrity | 0/? | Not started | - |
+| 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
 | 3. GEO Strategy Engine Hardening | 0/? | Not started | - |
 | 4. GEO Service Decomposition | 0/? | Not started | - |
 | 5. Plugin-First Registration | 0/? | Not started | - |
