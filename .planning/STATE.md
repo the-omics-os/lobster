@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-04T07:38:00Z"
-last_activity: 2026-03-04 -- Plan 05-01 complete (TDD RED scaffold -- plugin-first registration contract tests)
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-04T07:42:00Z"
+last_activity: 2026-03-04 -- Plan 05-02 complete (entry-point declarations -- queue_preparers + download_services GREEN)
 progress:
   total_phases: 9
   completed_phases: 4
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 5 of 9 (Plugin-First Registration)
-Plan: 1 of 3 in current phase (05-01 complete)
+Plan: 2 of 3 in current phase (05-02 complete)
 Status: Phase 05 in progress
-Last activity: 2026-03-04 -- Plan 05-01 complete (TDD RED scaffold -- plugin-first registration contract tests)
+Last activity: 2026-03-04 -- Plan 05-02 complete (entry-point declarations -- queue_preparers + download_services GREEN)
 
 Progress: [█████████░] 92%
 
@@ -47,7 +47,7 @@ Progress: [█████████░] 92%
 | 02 | 2 | 36 min | 18 min |
 | 03 | 2 | 19 min | 10 min |
 | 04 | 3 | 51 min | 17 min |
-| 05 | 1 (of 3) | 7 min | 7 min |
+| 05 | 2 (of 3) | 8 min | 4 min |
 
 **Recent Trend:**
 - Last 5 plans: 7 min, 13 min, 26 min, 12 min, 7 min
@@ -98,6 +98,8 @@ Recent decisions affecting current work:
 - [Phase 05]: Patch the singleton instance (lobster.core.component_registry.component_registry.list_X) not module.component_registry.list_X — routers import component_registry lazily inside method body (05-01)
 - [Phase 05]: test_fallback_skipped_when_flag_false uses pytest.skip when _ALLOW_HARDCODED_FALLBACK missing — primary test already covers that RED condition (05-01)
 - [Phase 05]: TestEntryPointDiscovery is GREEN (mocks substitute) while TestFallbackGating is RED (constant missing) — asymmetry is intentional per TDD wave 0 scaffold (05-01)
+- [Phase 05]: Entry-point names (geo, sra, pride, massive, metabolights) match supported_databases()[0] for each class — ComponentRegistry uses these names for runtime lookup (05-02)
+- [Phase 05]: pyproject.toml entry-point declarations are service discovery metadata, NOT dependency changes — CLAUDE.md Hard Rule #2 allows this edit (05-02)
 
 ### Pending Todos
 
@@ -109,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T07:04:00Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-03-04T07:42:00Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
