@@ -16,6 +16,7 @@ Features:
 import csv
 import gzip
 import io
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -51,6 +52,37 @@ class InsufficientMemoryError(Exception):
     """Raised when system has insufficient memory for dataset."""
 
     pass
+
+
+@dataclass
+class ParseResult:
+    """Result wrapper for GEO file parsing that carries integrity metadata.
+
+    Signals whether the returned data is complete or was truncated due to
+    memory constraints, enabling callers to make informed decisions about
+    data quality.
+
+    Attributes:
+        data: The parsed DataFrame, or None if parsing failed entirely.
+        is_partial: True when the parser stopped early (memory limit, OOM).
+        rows_read: Number of rows actually read before stopping.
+        truncation_reason: Human-readable explanation when is_partial is True.
+    """
+
+    data: Optional[pd.DataFrame] = None
+    is_partial: bool = False
+    rows_read: int = 0
+    truncation_reason: Optional[str] = None
+
+    @property
+    def is_complete(self) -> bool:
+        """True when data is present and not truncated."""
+        return self.data is not None and not self.data.empty and not self.is_partial
+
+    @property
+    def is_empty(self) -> bool:
+        """True when no usable data was produced."""
+        return self.data is None or self.data.empty
 
 
 class GEOParser:
@@ -418,7 +450,7 @@ class GEOParser:
             )
             return 10000  # Default chunk size
 
-    def parse_expression_file(self, file_path: Path) -> Optional[pd.DataFrame]:
+    def parse_expression_file(self, file_path: Path) -> ParseResult:
         """
         Parse an expression data file with optimized performance using Polars + sniffer.
 
@@ -426,7 +458,7 @@ class GEOParser:
         with pandas fallback for compatibility.
 
         PRODUCTION-GRADE MEMORY MANAGEMENT (v2.5+):
-        - Pre-flight dimension estimation (n_cells × n_genes)
+        - Pre-flight dimension estimation (n_cells x n_genes)
         - Dimension-based memory checks (more accurate than file size)
         - Timeout protection (5 min default, prevents infinite hangs)
         - Clear error messages with 3 actionable options
@@ -435,7 +467,7 @@ class GEOParser:
             file_path: Path to expression file
 
         Returns:
-            DataFrame: Expression matrix or None
+            ParseResult: Wraps the expression DataFrame with integrity metadata.
 
         Raises:
             LoadingTimeout: If loading exceeds timeout (suggests memory issues)
@@ -449,9 +481,9 @@ class GEOParser:
                 logger.warning(
                     f"File {file_path.name} is R serialized format (.rds). "
                     f"Lobster does not currently support R data formats. "
-                    f"Convert to CSV/H5AD in R first: saveRDS → write.csv / SeuratDisk::SaveH5Seurat"
+                    f"Convert to CSV/H5AD in R first: saveRDS -> write.csv / SeuratDisk::SaveH5Seurat"
                 )
-                return None
+                return ParseResult(data=None)
 
             # STEP 1: Estimate dataset dimensions (fast, no full load)
             n_cells, n_genes = self._estimate_dimensions_from_file(file_path)
@@ -484,7 +516,7 @@ class GEOParser:
                             file_path, delimiter, compression
                         )
 
-                        if result is None or result.empty:
+                        if result.is_empty:
                             raise InsufficientMemoryError(
                                 f"Cannot load dataset with {n_cells:,} cells and {n_genes:,} genes.\n"
                                 + mem_check["recommendation"]
@@ -524,7 +556,11 @@ class GEOParser:
             # Check if it's a Matrix Market format file (.mtx or .mtx.gz)
             if "matrix.mtx" in file_path.name.lower():
                 logger.info(f"Detected Matrix Market format file: {file_path.name}")
-                return self.parse_matrix_market_file_optimized(file_path)
+                mtx_df = self.parse_matrix_market_file_optimized(file_path)
+                return ParseResult(
+                    data=mtx_df,
+                    rows_read=len(mtx_df) if mtx_df is not None else 0,
+                )
 
             # Detect delimiter intelligently using sniffer
             delimiter = self.sniff_delimiter(file_path)
@@ -560,7 +596,7 @@ class GEOParser:
 
                 logger.debug(f"Successfully parsed with Polars: {df.shape}")
                 self._log_system_memory()  # Log memory after parsing
-                return df
+                return ParseResult(data=df, rows_read=len(df))
 
             except ImportError:
                 logger.debug(
@@ -586,10 +622,9 @@ class GEOParser:
                     logger.info(
                         f"Large file detected ({file_size:,} bytes), using chunked reading"
                     )
-                    result = self.parse_large_file_in_chunks(
+                    return self.parse_large_file_in_chunks(
                         file_path, delimiter, compression
                     )
-                    return result
                 else:
                     # Standard pandas parsing with optimizations
                     df = pd.read_csv(
@@ -609,7 +644,7 @@ class GEOParser:
 
                     logger.debug(f"Successfully parsed with pandas: {df.shape}")
                     self._log_system_memory()  # Log memory after parsing
-                    return df
+                    return ParseResult(data=df, rows_read=len(df))
 
             except MemoryError:
                 logger.error("Memory error with pandas, forcing chunked reading")
@@ -621,13 +656,19 @@ class GEOParser:
                 logger.warning(
                     f"Optimized pandas parsing failed: {pandas_error}, trying basic parsing"
                 )
-                return self.parse_with_basic_pandas(file_path, delimiter, compression)
+                fallback_df = self.parse_with_basic_pandas(
+                    file_path, delimiter, compression
+                )
+                return ParseResult(
+                    data=fallback_df,
+                    rows_read=len(fallback_df) if fallback_df is not None else 0,
+                )
 
         except InsufficientMemoryError:
             raise
         except Exception as e:
             logger.error(f"Error parsing expression file {file_path}: {e}")
-            return None
+            return ParseResult(data=None)
 
     def sniff_delimiter(self, file_path: Path, sample_size: int = 8192) -> str:
         """
@@ -677,7 +718,7 @@ class GEOParser:
 
     def parse_large_file_in_chunks(
         self, file_path: Path, delimiter: str, compression: Optional[str]
-    ) -> Optional[pd.DataFrame]:
+    ) -> ParseResult:
         """
         Parse very large files using chunked reading to manage memory efficiently.
 
@@ -687,8 +728,10 @@ class GEOParser:
             compression: Compression type
 
         Returns:
-            DataFrame: Parsed expression matrix or None
+            ParseResult: Wraps the parsed DataFrame with integrity metadata
+                         (is_partial, rows_read, truncation_reason).
         """
+        total_rows = 0
         try:
             logger.info(f"Using chunked reading for large file: {file_path.name}")
 
@@ -699,7 +742,8 @@ class GEOParser:
             self._log_system_memory()
 
             chunks = []
-            total_rows = 0
+            truncated = False
+            truncation_reason = None
 
             # Read file in chunks
             chunk_reader = pd.read_csv(
@@ -720,6 +764,10 @@ class GEOParser:
                     logger.warning(
                         f"Memory limit reached after {i} chunks ({total_rows:,} rows). "
                         f"Stopping early to prevent OOM."
+                    )
+                    truncated = True
+                    truncation_reason = (
+                        f"Memory limit reached after {i} chunks ({total_rows:,} rows)"
                     )
                     break
 
@@ -753,19 +801,39 @@ class GEOParser:
                 df = pd.concat(chunks, axis=0)
                 logger.debug(f"Successfully parsed large file in chunks: {df.shape}")
                 self._log_system_memory()  # Log final memory status
-                return df
+                return ParseResult(
+                    data=df,
+                    is_partial=truncated,
+                    rows_read=total_rows,
+                    truncation_reason=truncation_reason,
+                )
 
             logger.warning("No data was read from the file")
-            return None
+            return ParseResult(
+                data=None,
+                is_partial=truncated,
+                rows_read=0,
+                truncation_reason=truncation_reason,
+            )
 
         except MemoryError:
             logger.error(
                 "Memory error while parsing in chunks. File is too large for available memory."
             )
-            return None
+            return ParseResult(
+                data=None,
+                is_partial=True,
+                rows_read=total_rows,
+                truncation_reason="MemoryError: File too large for available memory",
+            )
         except Exception as e:
             logger.error(f"Error parsing large file in chunks: {e}")
-            return None
+            return ParseResult(
+                data=None,
+                is_partial=False,
+                rows_read=0,
+                truncation_reason=f"Parse error: {e}",
+            )
 
     def parse_with_basic_pandas(
         self, file_path: Path, delimiter: str, compression: Optional[str]
@@ -1350,7 +1418,7 @@ class GEOParser:
             logger.debug(traceback.format_exc())
             return None
 
-    def parse_supplementary_file(self, file_path: Path) -> Optional[pd.DataFrame]:
+    def parse_supplementary_file(self, file_path: Path) -> ParseResult:
         """
         Parse supplementary expression data file with enhanced format support.
 
@@ -1358,7 +1426,7 @@ class GEOParser:
             file_path: Path to the supplementary file
 
         Returns:
-            DataFrame: Expression data, or None if parsing failed
+            ParseResult: Wraps expression DataFrame with integrity metadata.
         """
         try:
             # Handle different file types based on extension
@@ -1373,7 +1441,11 @@ class GEOParser:
 
             # Handle specific file formats
             if inner_suffix in [".h5", ".h5ad"]:
-                return self._parse_h5ad_with_fallback(file_path)
+                h5_df = self._parse_h5ad_with_fallback(file_path)
+                return ParseResult(
+                    data=h5_df,
+                    rows_read=len(h5_df) if h5_df is not None else 0,
+                )
 
             elif inner_suffix == ".rds":
                 try:
@@ -1383,28 +1455,37 @@ class GEOParser:
                     logger.debug(f"Parsed RDS file: {file_path}")
                     # Get the first dataframe in the result
                     if result and result[list(result.keys())[0]] is not None:
-                        return result[list(result.keys())[0]]
+                        rds_df = result[list(result.keys())[0]]
+                        return ParseResult(
+                            data=rds_df,
+                            rows_read=len(rds_df) if rds_df is not None else 0,
+                        )
                 except ImportError:
                     logger.debug("pyreadr package not available, cannot parse RDS")
-                    return None
+                    return ParseResult(data=None)
                 except Exception as e:
                     logger.warning(f"Failed to parse RDS file: {e}")
-                    return None
+                    return ParseResult(data=None)
 
             elif inner_suffix in [".txt", ".tsv", ".csv"]:
                 # Use the optimized expression file parser for text formats
+                # parse_expression_file already returns ParseResult
                 return self.parse_expression_file(file_path)
 
             # Handle MTX format (common in single-cell data)
             elif inner_suffix == ".mtx" or file_path.name.lower().endswith(".mtx.gz"):
-                return self.parse_matrix_market_file_optimized(file_path)
+                mtx_df = self.parse_matrix_market_file_optimized(file_path)
+                return ParseResult(
+                    data=mtx_df,
+                    rows_read=len(mtx_df) if mtx_df is not None else 0,
+                )
 
             logger.warning(f"Unsupported file format: {file_path}")
-            return None
+            return ParseResult(data=None)
 
         except Exception as e:
             logger.error(f"Error parsing supplementary file {file_path}: {e}")
-            return None
+            return ParseResult(data=None)
 
     @staticmethod
     def parse_soft_file(
