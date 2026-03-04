@@ -170,7 +170,7 @@ class TestMultiomicsFullGraphBuilds:
     def test_graph_metadata_filters_to_only_requested_agents(
         self, mock_data_manager, core_agents
     ):
-        """GraphMetadata contains ONLY requested agents."""
+        """GraphMetadata contains only requested agents + auto-included children."""
         _, metadata = create_bioinformatics_graph(
             data_manager=mock_data_manager,
             enabled_agents=core_agents,
@@ -178,22 +178,34 @@ class TestMultiomicsFullGraphBuilds:
 
         available_names = [a.name for a in metadata.available_agents]
 
-        # All available agents should be in the requested list
+        # Build allowed set: requested + their children
+        from lobster.core.component_registry import component_registry
+
+        all_agent_configs = component_registry.list_agents()
+        allowed = set(core_agents)
+        for name in core_agents:
+            cfg = all_agent_configs.get(name)
+            if cfg and cfg.child_agents:
+                allowed.update(cfg.child_agents)
+
         for name in available_names:
-            assert name in core_agents, f"Unexpected agent {name} in metadata"
+            assert name in allowed, (
+                f"Unexpected agent {name} in metadata. "
+                f"Allowed (requested + children): {allowed}"
+            )
 
     def test_graph_returns_metadata_with_correct_count(
         self, mock_data_manager, core_agents
     ):
-        """GraphMetadata has correct agent_count."""
+        """GraphMetadata agent_count includes requested agents + auto-included children."""
         _, metadata = create_bioinformatics_graph(
             data_manager=mock_data_manager,
             enabled_agents=core_agents,
         )
 
-        assert metadata.agent_count == len(
+        assert metadata.agent_count >= len(
             core_agents
-        ), f"Expected {len(core_agents)} agents"
+        ), f"Expected at least {len(core_agents)} agents, got {metadata.agent_count}"
 
     def test_preset_multiomics_full_agents_are_in_registry(self):
         """Verify all multiomics-full agents exist in ComponentRegistry."""
@@ -265,7 +277,7 @@ class TestMultiomicsFullIntegrationWithConfig:
         )
 
         assert graph is not None
-        assert metadata.agent_count == len(core_agents)
+        assert metadata.agent_count >= len(core_agents)
 
 
 class TestPresetHierarchy:

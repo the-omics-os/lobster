@@ -77,7 +77,7 @@ class TestGraphCompositionPhase5:
     # GRAPH-02: Loads only agents specified in config
     # =========================================================================
     def test_graph_filters_agents_by_enabled_list(self, mock_data_manager, caplog):
-        """Verify graph creates only enabled agents via enabled_agents param."""
+        """Verify graph creates enabled agents + their auto-included children."""
         # Use agents that are actually registered in ComponentRegistry
         enabled = ["research_agent", "transcriptomics_expert"]
 
@@ -87,19 +87,31 @@ class TestGraphCompositionPhase5:
                 enabled_agents=enabled,
             )
 
-        # Verify only requested agents are in metadata
+        # Verify all requested agents are in metadata
         agent_names = [a.name for a in metadata.available_agents]
         for name in enabled:
             assert name in agent_names, f"Expected {name} in available agents"
 
-        # Verify excluded agents are NOT in metadata (any agent not in enabled list)
+        # Verify any extra agents are legitimate children of enabled parents
+        # (auto-inclusion is correct behavior — parents need children for delegation)
+        from lobster.core.component_registry import component_registry
+
+        all_agents = component_registry.list_agents()
+        allowed_children = set()
+        for name in enabled:
+            cfg = all_agents.get(name)
+            if cfg and cfg.child_agents:
+                allowed_children.update(cfg.child_agents)
+
+        allowed = set(enabled) | allowed_children
         for agent_info in metadata.available_agents:
-            assert (
-                agent_info.name in enabled
-            ), f"Unexpected agent {agent_info.name} in metadata"
+            assert agent_info.name in allowed, (
+                f"Unexpected agent {agent_info.name} in metadata. "
+                f"Allowed (enabled + children): {allowed}"
+            )
 
     def test_graph_filters_agents_by_config_object(self, mock_data_manager):
-        """Verify graph creates only enabled agents via config object."""
+        """Verify graph creates enabled agents + auto-included children via config."""
         config = WorkspaceAgentConfig(enabled_agents=["research_agent"])
 
         graph, metadata = create_bioinformatics_graph(
@@ -110,8 +122,17 @@ class TestGraphCompositionPhase5:
         agent_names = [a.name for a in metadata.available_agents]
         assert "research_agent" in agent_names
 
-        # Verify it filtered to just the enabled agent
-        assert len(agent_names) == 1, f"Expected 1 agent, got {len(agent_names)}"
+        # research_agent has child_agents=["metadata_assistant"], so auto-inclusion
+        # adds metadata_assistant. Count = 1 (enabled) + N (children).
+        from lobster.core.component_registry import component_registry
+
+        research_config = component_registry.list_agents().get("research_agent")
+        expected_children = set(research_config.child_agents or [])
+        expected_count = 1 + len(expected_children)
+        assert len(agent_names) == expected_count, (
+            f"Expected {expected_count} agents (1 enabled + {len(expected_children)} children), "
+            f"got {len(agent_names)}: {agent_names}"
+        )
 
     def test_empty_enabled_agents_produces_zero_agents(self, mock_data_manager):
         """Verify enabled_agents=[] results in zero agents, not all agents.

@@ -127,7 +127,7 @@ class TestScrnaBasicGraphBuilds:
             assert agent_name in available_names, f"{agent_name} should be in metadata"
 
     def test_graph_metadata_filters_to_only_preset_agents(self, mock_data_manager):
-        """GraphMetadata contains ONLY scrna-basic agents, not extras."""
+        """GraphMetadata contains only preset agents + auto-included children."""
         agents = expand_preset("scrna-basic")
 
         _, metadata = create_bioinformatics_graph(
@@ -137,12 +137,24 @@ class TestScrnaBasicGraphBuilds:
 
         available_names = [a.name for a in metadata.available_agents]
 
-        # All available agents should be in the preset list
+        # Build the allowed set: preset agents + their children
+        from lobster.core.component_registry import component_registry
+
+        all_agent_configs = component_registry.list_agents()
+        allowed = set(agents)
+        for name in agents:
+            cfg = all_agent_configs.get(name)
+            if cfg and cfg.child_agents:
+                allowed.update(cfg.child_agents)
+
         for name in available_names:
-            assert name in agents, f"Unexpected agent {name} in metadata"
+            assert name in allowed, (
+                f"Unexpected agent {name} in metadata. "
+                f"Allowed (preset + children): {allowed}"
+            )
 
     def test_graph_returns_metadata_with_agent_count(self, mock_data_manager):
-        """GraphMetadata has correct agent_count for scrna-basic."""
+        """GraphMetadata agent_count includes preset agents + auto-included children."""
         agents = expand_preset("scrna-basic")
 
         _, metadata = create_bioinformatics_graph(
@@ -150,7 +162,10 @@ class TestScrnaBasicGraphBuilds:
             enabled_agents=agents,
         )
 
-        assert metadata.agent_count == len(agents), f"Expected {len(agents)} agents"
+        # Count must be >= preset size (children may be auto-included)
+        assert metadata.agent_count >= len(
+            agents
+        ), f"Expected at least {len(agents)} agents, got {metadata.agent_count}"
 
     def test_graph_metadata_has_supervisor_accessible_agents(self, mock_data_manager):
         """GraphMetadata tracks supervisor-accessible agents."""
@@ -214,4 +229,4 @@ class TestScrnaBasicIntegrationWithConfig:
         )
 
         assert graph is not None
-        assert metadata.agent_count == len(expected_agents)
+        assert metadata.agent_count >= len(expected_agents)

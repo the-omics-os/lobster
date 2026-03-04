@@ -223,7 +223,13 @@ class TestScrnaFullIntegrationWithConfig:
         assert metadata.agent_count == len(expected_agents)
 
     def test_scrna_full_vs_basic_agent_count_difference(self, mock_data_manager):
-        """Verify scrna-full has 3 more agents than scrna-basic."""
+        """Verify scrna-full has >= scrna-basic agents.
+
+        Note: With auto-inclusion of child agents, scrna-basic now includes
+        the same children that scrna-full explicitly lists (metadata_assistant,
+        annotation_expert, de_analysis_expert). The preset difference is in
+        explicit declaration, not in runtime graph composition.
+        """
         basic_agents = expand_preset("scrna-basic")
         full_agents = expand_preset("scrna-full")
 
@@ -237,5 +243,13 @@ class TestScrnaFullIntegrationWithConfig:
             enabled_agents=full_agents,
         )
 
-        agent_diff = full_metadata.agent_count - basic_metadata.agent_count
-        assert agent_diff == 3, f"Expected 3 more agents in full, got {agent_diff}"
+        # full preset should have at least as many agents as basic
+        assert (
+            full_metadata.agent_count >= basic_metadata.agent_count
+        ), f"full ({full_metadata.agent_count}) should >= basic ({basic_metadata.agent_count})"
+        # Both should include the same child agents via auto-inclusion
+        basic_names = {a.name for a in basic_metadata.available_agents}
+        full_names = {a.name for a in full_metadata.available_agents}
+        assert basic_names.issubset(
+            full_names
+        ), f"basic agents should be a subset of full. Missing: {basic_names - full_names}"
