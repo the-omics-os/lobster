@@ -214,4 +214,4 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 8. CLI Decomposition | 1/2 | In Progress|  |
 | 9. Repo Hygiene & Packaging Cleanup | 2/2 | Complete   | 2026-03-04 |
 | 10. Fix Provenance __getattr__ Shim | 1/1 | Complete    | 2026-03-04 |
-| 11. Strengthen CI Deprecated-Import Guard | 1/1 | Complete   | 2026-03-04 |
+| 11. Strengthen CI Deprecated-Import Guard | 1/1 | Complete    | 2026-03-04 |
