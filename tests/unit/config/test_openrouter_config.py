@@ -91,13 +91,26 @@ def test_create_openrouter_config_whitespace_only_fails():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.no_auto_config
-def test_config_resolver_accepts_openrouter(monkeypatch):
-    """ConfigResolver reads LOBSTER_LLM_PROVIDER=openrouter from env and resolves correctly."""
+@pytest.fixture()
+def reset_singletons():
+    """Ensure ConfigResolver and ProviderRegistry singletons are clean before
+    and after each e2e test, even when an assertion raises mid-test."""
+    from lobster.config.providers.registry import ProviderRegistry
     from lobster.core.config_resolver import ConfigResolver
 
-    # Isolate singleton — force a fresh instance on next get_instance() call
     ConfigResolver.reset_instance()
+    ProviderRegistry.reset()
+    try:
+        yield
+    finally:
+        ConfigResolver.reset_instance()
+        ProviderRegistry.reset()
+
+
+@pytest.mark.no_auto_config
+def test_config_resolver_accepts_openrouter(monkeypatch, reset_singletons):
+    """ConfigResolver reads LOBSTER_LLM_PROVIDER=openrouter from env and resolves correctly."""
+    from lobster.core.config_resolver import ConfigResolver
 
     monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "openrouter")
     # workspace_path=None skips layers 2 (workspace config) and 3 (global config),
@@ -108,16 +121,11 @@ def test_config_resolver_accepts_openrouter(monkeypatch):
     assert provider == "openrouter"
     assert "environment" in source.lower()
 
-    # Leave singleton clean for subsequent tests
-    ConfigResolver.reset_instance()
-
 
 @pytest.mark.no_auto_config
-def test_config_resolver_rejects_invalid_provider(monkeypatch):
+def test_config_resolver_rejects_invalid_provider(monkeypatch, reset_singletons):
     """ConfigResolver raises ConfigurationError for an unrecognised provider name."""
     from lobster.core.config_resolver import ConfigResolver, ConfigurationError
-
-    ConfigResolver.reset_instance()
 
     monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "badprovider")
     resolver = ConfigResolver.get_instance(workspace_path=None)
@@ -131,21 +139,13 @@ def test_config_resolver_rejects_invalid_provider(monkeypatch):
     # The valid-providers hint must include "openrouter" so users know it is valid
     assert "openrouter" in error_message
 
-    ConfigResolver.reset_instance()
-
 
 @pytest.mark.no_auto_config
-def test_llm_factory_creates_openrouter_model(monkeypatch):
+def test_llm_factory_creates_openrouter_model(monkeypatch, reset_singletons):
     """LLMFactory creates a ChatOpenAI instance routed through OpenRouter with correct params."""
     import unittest.mock as mock
 
     from lobster.config.llm_factory import LLMFactory
-    from lobster.config.providers.registry import ProviderRegistry
-    from lobster.core.config_resolver import ConfigResolver
-
-    # Reset singletons so the env vars set below drive resolution
-    ConfigResolver.reset_instance()
-    ProviderRegistry.reset()
 
     monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "openrouter")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
@@ -164,6 +164,9 @@ def test_llm_factory_creates_openrouter_model(monkeypatch):
     assert mock_chat_openai.call_count == 1
     call_kwargs = mock_chat_openai.call_args.kwargs
 
+    # Verify the default model for the openrouter provider
+    assert call_kwargs.get("model") == "anthropic/claude-sonnet-4-5"
+
     # Verify the OpenRouter routing base URL
     assert call_kwargs.get("base_url") == "https://openrouter.ai/api/v1"
 
@@ -174,7 +177,3 @@ def test_llm_factory_creates_openrouter_model(monkeypatch):
 
     # Verify the API key is forwarded to the model
     assert call_kwargs.get("api_key") == "sk-or-test"
-
-    # Leave singletons clean for subsequent tests
-    ConfigResolver.reset_instance()
-    ProviderRegistry.reset()
