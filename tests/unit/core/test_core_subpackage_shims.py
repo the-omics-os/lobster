@@ -1,12 +1,13 @@
 """Tests for core/ subpackage backward-compatibility shims.
 
-Covers all 13 planned shim moves across Plans 01 and 02.
-Plan 01 shims (6): governance/license_manager, governance/aquadif_monitor,
+Covers all 14 shim moves across Phase 06 Plans 01/02 and Phase 07 Plan 01.
+Phase 06 Plan 01 shims (6): governance/license_manager, governance/aquadif_monitor,
     queues/download_queue, queues/publication_queue, queues/queue_storage,
     runtime/workspace
-Plan 02 shims (7): notebooks/executor, notebooks/exporter, notebooks/validator,
+Phase 06 Plan 02 shims (7): notebooks/executor, notebooks/exporter, notebooks/validator,
     provenance/analysis_ir, provenance/provenance, provenance/lineage,
     provenance/ir_coverage
+Phase 07 Plan 01 shims (1): runtime/data_manager (data_manager_v2)
 """
 
 import importlib
@@ -30,6 +31,7 @@ SHIM_PAIRS = [
     ("lobster.core.lineage", "lobster.core.provenance.lineage", "LineageMetadata"),
     ("lobster.core.ir_coverage", "lobster.core.provenance.ir_coverage", "IRCoverageAnalyzer"),
     ("lobster.core.workspace", "lobster.core.runtime.workspace", "resolve_workspace"),
+    ("lobster.core.data_manager_v2", "lobster.core.runtime.data_manager", "DataManagerV2"),
 ]
 
 def _shim_id(pair):

@@ -22,7 +22,7 @@ from unittest.mock import Mock
 import pandas as pd
 
 from lobster.core.adapters.base import BaseAdapter
-from lobster.core.analysis_ir import create_data_loading_ir, create_data_saving_ir
+from lobster.core.provenance.analysis_ir import create_data_loading_ir, create_data_saving_ir
 from lobster.core.plot_manager import PlotManager
 
 # Import TranscriptomicsAdapter conditionally (has optional scanpy dependency)
@@ -45,17 +45,17 @@ except ImportError:
 from lobster.core.interfaces.adapter import IModalityAdapter
 from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
-from lobster.core.provenance import ProvenanceTracker
-from lobster.core.queue_storage import atomic_write_json, queue_file_lock
+from lobster.core.provenance.provenance import ProvenanceTracker
+from lobster.core.queues.queue_storage import atomic_write_json, queue_file_lock
 from lobster.core.utils.h5ad_utils import validate_for_h5ad
-from lobster.core.workspace import resolve_workspace
+from lobster.core.runtime.workspace import resolve_workspace
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
     from anndata import AnnData
     from plotly.graph_objects import Figure
 
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
 else:
     AnnData = Any
     Figure = Any

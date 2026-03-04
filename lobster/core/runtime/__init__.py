@@ -1,1 +1,1 @@
-"""Runtime infrastructure: workspace resolution."""
+"""Runtime infrastructure: workspace resolution, data manager."""
