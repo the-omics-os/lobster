@@ -18,7 +18,9 @@ import time
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -74,6 +76,36 @@ logger = get_logger(__name__)
 # only appear when explicitly debugging
 geoparse_logger = logging.getLogger("GEOparse")
 geoparse_logger.setLevel(logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# Typed retry result (replaces string sentinel "SOFT_FILE_MISSING")
+# ---------------------------------------------------------------------------
+
+
+class RetryOutcome(Enum):
+    """Outcome of a retry-with-backoff attempt."""
+
+    SUCCESS = "success"
+    EXHAUSTED = "exhausted"
+    SOFT_FILE_MISSING = "soft_file_missing"
+
+
+@dataclass
+class RetryResult:
+    """Typed result from _retry_with_backoff replacing mixed str/None returns."""
+
+    outcome: RetryOutcome
+    value: Any = None
+    retries_used: int = 0
+
+    @property
+    def succeeded(self) -> bool:
+        return self.outcome == RetryOutcome.SUCCESS
+
+    @property
+    def needs_fallback(self) -> bool:
+        return self.outcome == RetryOutcome.SOFT_FILE_MISSING
 
 
 # ████████████████████████████████████████████████████████████████████████████████
@@ -188,7 +220,7 @@ class GEOService:
         max_retries: int = 5,
         base_delay: float = 1.0,
         is_ftp: bool = False,
-    ) -> Optional[Any]:
+    ) -> RetryResult:
         """
         Retry operation with exponential backoff, jitter, and progress reporting.
 
@@ -197,7 +229,7 @@ class GEOService:
         - Jitter: 0.5-1.5x random multiplier (prevents thundering herd)
         - Progress reporting: Updates console during retry delays
         - FTP optimization: Reduced retry count for fast-failing FTP
-        - Conservative return: Returns None rather than raising on final failure
+        - Typed return: Always returns RetryResult (never bare None or strings)
 
         Args:
             operation: Function to retry (must be idempotent)
@@ -207,7 +239,7 @@ class GEOService:
             is_ftp: Whether this is an FTP operation (affects retry count)
 
         Returns:
-            Result of operation or None if all retries fail
+            RetryResult with outcome, optional value, and retries_used
 
         Example:
             result = self._retry_with_backoff(
@@ -216,8 +248,11 @@ class GEOService:
                 max_retries=5,
                 is_ftp=False
             )
-            if result is None:
-                raise DownloadError(f"Failed after {max_retries} attempts")
+            if result.needs_fallback:
+                # try alternative download path
+            if not result.succeeded:
+                raise DownloadError(f"Failed after retries")
+            data = result.value
         """
         import random
 
@@ -240,7 +275,7 @@ class GEOService:
                         f"(total delay: {total_delay:.1f}s)"
                     )
 
-                return result
+                return RetryResult(RetryOutcome.SUCCESS, value=result, retries_used=retry_count)
 
             except requests.exceptions.HTTPError as e:
                 # Special handling for rate limiting
@@ -270,7 +305,7 @@ class GEOService:
                         logger.error(
                             f"{operation_name} failed after {max_retries} attempts: {e}"
                         )
-                        return None
+                        return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
 
                     delay = (
                         base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
@@ -304,7 +339,7 @@ class GEOService:
                         f"{operation_name} OSError indicates missing file: {error_str[:100]}. "
                         "Skipping retries, triggering fallback mechanism."
                     )
-                    return "SOFT_FILE_MISSING"  # Sentinel value to signal fallback
+                    return RetryResult(RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count)
                 # Other OSErrors may be transient, fall through to generic handler
                 logger.warning(
                     f"{operation_name} OSError (may retry): {error_str[:100]}"
@@ -314,7 +349,7 @@ class GEOService:
                     logger.error(
                         f"{operation_name} failed after {max_retries} attempts: {e}"
                     )
-                    return None
+                    return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
                 # Continue with exponential backoff
                 delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
                 total_delay += delay
@@ -331,7 +366,7 @@ class GEOService:
                         f"{operation_name} permanent FTP error: File not found (550). "
                         "Skipping retries, triggering fallback mechanism."
                     )
-                    return "SOFT_FILE_MISSING"  # Sentinel value to signal fallback
+                    return RetryResult(RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count)
                 # Other FTP error codes may be transient, fall through to generic handler
                 logger.warning(f"{operation_name} FTP error: {error_str}")
                 retry_count += 1
@@ -339,7 +374,7 @@ class GEOService:
                     logger.error(
                         f"{operation_name} failed after {max_retries} attempts: {e}"
                     )
-                    return None
+                    return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
                 # Continue with exponential backoff
                 delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
                 total_delay += delay
@@ -355,7 +390,7 @@ class GEOService:
                     logger.error(
                         f"{operation_name} failed after {max_retries} attempts: {e}"
                     )
-                    return None
+                    return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
 
                 # Exponential backoff with jitter
                 # Jitter range: 0.5-1.5x multiplier (standard practice)
@@ -379,7 +414,7 @@ class GEOService:
 
                 time.sleep(delay)
 
-        return None
+        return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
 
     # ████████████████████████████████████████████████████████████████████████████████
     # ██                                                                            ██
@@ -482,7 +517,7 @@ class GEOService:
 
             # Wrap GEOparse call with retry logic for transient network failures
             # Note: GEOparse will find our pre-downloaded SOFT file and skip its FTP download
-            gse = self._retry_with_backoff(
+            result = self._retry_with_backoff(
                 operation=lambda: GEOparse.get_GEO(
                     geo=gse_id, destdir=str(self.cache_dir)
                 ),
@@ -491,8 +526,8 @@ class GEOService:
                 is_ftp=False,
             )
 
-            # Check if SOFT file was missing (sentinel value from retry logic)
-            if gse == "SOFT_FILE_MISSING":
+            # Check if SOFT file was missing (typed retry result)
+            if result.needs_fallback:
                 logger.info(
                     f"SOFT file unavailable for {gse_id}, attempting Entrez fallback..."
                 )
@@ -507,12 +542,13 @@ class GEOService:
                     )
                     return (None, None)
 
-            if gse is None:
+            if not result.succeeded:
                 logger.error(
                     f"Failed to fetch metadata for {gse_id} after multiple retry attempts."
                 )
                 return (None, None)
 
+            gse = result.value
             metadata = self._extract_metadata(gse)
             logger.debug(f"Successfully extracted metadata using GEOparse for {gse_id}")
 
@@ -1759,7 +1795,7 @@ class GEOService:
 
             # Get GEO object for supplementary file processing with retry logic
             # Note: GEOparse will find our pre-downloaded SOFT file and skip its FTP download
-            gse = self._retry_with_backoff(
+            result = self._retry_with_backoff(
                 operation=lambda: GEOparse.get_GEO(
                     geo=geo_id, destdir=str(self.cache_dir)
                 ),
@@ -1768,12 +1804,13 @@ class GEOService:
                 is_ftp=True,  # Supplementary files often use FTP
             )
 
-            if gse is None:
+            if not result.succeeded:
                 return GEOResult(
                     success=False,
                     error_message=f"Failed to download {geo_id} for supplementary files after multiple retry attempts",
                 )
 
+            gse = result.value
             # Use existing supplementary file processing
             data = self._process_supplementary_files(gse, geo_id)
 
@@ -2084,7 +2121,7 @@ class GEOService:
 
             # Wrap GEOparse download with retry logic
             # Note: GEOparse will find our pre-downloaded SOFT file and skip its FTP download
-            gse = self._retry_with_backoff(
+            result = self._retry_with_backoff(
                 operation=lambda: GEOparse.get_GEO(
                     geo=geo_id, destdir=str(self.cache_dir)
                 ),
@@ -2093,12 +2130,13 @@ class GEOService:
                 is_ftp=False,
             )
 
-            if gse is None:
+            if not result.succeeded:
                 return GEOResult(
                     success=False,
                     error_message=f"Failed to download {geo_id} after multiple retry attempts",
                 )
 
+            gse = result.value
             # Determine data type from metadata
             data_type = self._determine_data_type_from_metadata(metadata)
 
