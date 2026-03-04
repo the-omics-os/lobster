@@ -67,7 +67,7 @@ Plans:
   1. Missing metadata values are stored as empty string or None -- the string "NA" never appears as a truthy value in strategy inputs
   2. Strategy derivation uses explicit null checks and allowed file type enums, producing correct strategies for datasets with missing fields
   3. The ARCHIVE_FIRST branch either has a triggering rule with test coverage or is removed entirely -- zero dead branches in strategy.py
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 03-01-PLAN.md — Null sanitization fix, _is_null_value helper, filetype constants, consumer hardening (GSTR-01, GSTR-02)
@@ -170,7 +170,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 |-------|----------------|--------|-----------|
 | 1. GEO Safety & Contract Hotfixes | 3/3 | Complete   | 2026-03-04 |
 | 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
-| 3. GEO Strategy Engine Hardening | 0/2 | Planned | - |
+| 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
 | 4. GEO Service Decomposition | 0/? | Not started | - |
 | 5. Plugin-First Registration | 0/? | Not started | - |
 | 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
