@@ -47,7 +47,7 @@ forbidden_modules =
 name = Core modules are loosely coupled
 type = independence
 modules =
-    lobster.core.data_manager_v2
+    lobster.core.runtime.data_manager
     lobster.core.component_registry
     lobster.core.queues.download_queue
 

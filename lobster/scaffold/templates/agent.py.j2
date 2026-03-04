@@ -34,7 +34,7 @@ from lobster.agents.{{ domain }}.shared_tools import create_shared_tools
 from lobster.agents.{{ domain }}.state import {{ state_class }}
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
