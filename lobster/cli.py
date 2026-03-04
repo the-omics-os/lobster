@@ -4479,6 +4479,7 @@ _PROVIDER_PACKAGES = {
     "gemini": "langchain-google-genai",
     "azure": "langchain-azure-ai",
     "openai": "langchain-openai",
+    "openrouter": "langchain-openai",
 }
 
 # Map provider choice → Python import module name
@@ -4489,6 +4490,7 @@ _PROVIDER_IMPORT_NAMES = {
     "gemini": "langchain_google_genai",
     "azure": "langchain_azure_ai",
     "openai": "langchain_openai",
+    "openrouter": "langchain_openai",
 }
 
 
@@ -5527,11 +5529,14 @@ def init(
         )
         console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
         console.print("  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models")
+        console.print(
+            "  [cyan]7[/cyan] - OpenRouter - 600+ models via one API key (Claude, GPT-4o, Llama, DeepSeek, ...)"
+        )
         console.print()
 
         provider = Prompt.ask(
             "[bold white]Choose provider[/bold white]",
-            choices=["1", "2", "3", "4", "5", "6"],
+            choices=["1", "2", "3", "4", "5", "6", "7"],
             default="1",
         )
 
@@ -5543,6 +5548,7 @@ def init(
             "4": "gemini",
             "5": "azure",
             "6": "openai",
+            "7": "openrouter",
         }
         if not skip_extras and not _in_uv_tool:
             _ensure_provider_installed(provider_map[provider])
@@ -5789,6 +5795,50 @@ def init(
                 config_dict["provider"] = "openai"
                 console.print("[green]✓ OpenAI provider configured[/green]")
 
+        elif provider == "7":
+            # OpenRouter setup
+            console.print("\n[bold white]🔀 OpenRouter Configuration[/bold white]")
+            console.print(
+                "OpenRouter gives you access to 600+ models via a single API key.\n"
+                "Browse models at: [link]https://openrouter.ai/models[/link]\n"
+            )
+            console.print(
+                "Get your API key from: [link]https://openrouter.ai/keys[/link]\n"
+            )
+
+            api_key = Prompt.ask(
+                "[bold white]Enter your OpenRouter API key[/bold white]", password=True
+            )
+
+            if not api_key.strip():
+                console.print("[red]❌ API key cannot be empty[/red]")
+                raise typer.Exit(1)
+
+            config = provider_setup.create_openrouter_config(api_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "openrouter"
+                console.print("[green]✓ OpenRouter provider configured[/green]")
+
+                # Optional: prompt for default model
+                console.print(
+                    "\n[dim]Default model: anthropic/claude-sonnet-4-5[/dim]"
+                )
+                console.print(
+                    "[dim]You can override per-workspace in provider_config.json[/dim]"
+                )
+                custom_model = Prompt.ask(
+                    "[bold white]Default model (press Enter to use default)[/bold white]",
+                    default="anthropic/claude-sonnet-4-5",
+                )
+                if custom_model.strip() and custom_model.strip() != "anthropic/claude-sonnet-4-5":
+                    config_dict["model"] = custom_model.strip()
+                    console.print(f"[green]✓ Default model set to: {custom_model.strip()}[/green]")
+            else:
+                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                raise typer.Exit(1)
+
         # Profile selection (only for Anthropic/Bedrock providers)
         profile_to_write = None
         if provider in ["1", "2"]:  # Anthropic or Bedrock
@@ -5836,7 +5886,7 @@ def init(
             config_dict["profile"] = profile_to_write
             console.print(f"[green]✓ Profile set to: {profile_to_write}[/green]")
 
-        elif provider in ["3", "4", "5", "6"]:  # Ollama, Gemini, Azure, or OpenAI
+        elif provider in ["3", "4", "5", "6", "7"]:  # Ollama, Gemini, Azure, OpenAI, or OpenRouter
             # No profile needed - these providers use their own models
             console.print(
                 "[dim]ℹ️  Note: Profile configuration not applicable for this provider[/dim]"
