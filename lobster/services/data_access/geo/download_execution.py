@@ -30,6 +30,7 @@ from lobster.services.data_access.geo.helpers import (
     _is_data_valid,
     _score_expression_file,
 )
+from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.services.data_access.geo.parser import ParseResult
 from lobster.services.data_access.geo.strategy import (
     PipelineType,
@@ -724,39 +725,8 @@ Multi-Modal Dataset Detected:
         try:
             logger.debug(f"Attempting supplementary files first for {geo_id}")
 
-            # PRE-DOWNLOAD SOFT FILE USING HTTPS TO BYPASS GEOparse's FTP DOWNLOADER
-            soft_file_path = Path(self.service.cache_dir) / f"{geo_id}_family.soft.gz"
-            if not soft_file_path.exists():
-                gse_num_str = geo_id[3:]
-                if len(gse_num_str) >= 3:
-                    series_folder = f"GSE{gse_num_str[:-3]}nnn"
-                else:
-                    series_folder = "GSEnnn"
-
-                soft_url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{series_folder}/{geo_id}/soft/{geo_id}_family.soft.gz"
-
-                logger.debug(f"Pre-downloading SOFT file using HTTPS: {soft_url}")
-                try:
-                    ssl_context = create_ssl_context()
-                    with urllib.request.urlopen(
-                        soft_url, context=ssl_context
-                    ) as response:
-                        with open(soft_file_path, "wb") as f:
-                            f.write(response.read())
-                    logger.debug(
-                        f"Successfully pre-downloaded SOFT file to {soft_file_path}"
-                    )
-                except Exception as e:
-                    error_str = str(e)
-                    if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
-                        handle_ssl_error(e, soft_url, logger)
-                        raise Exception(
-                            "SSL certificate verification failed when downloading SOFT file. "
-                            "See error message above for solutions."
-                        )
-                    logger.warning(
-                        f"Pre-download failed: {e}. GEOparse will attempt download."
-                    )
+            # Pre-download SOFT file via HTTPS (bypasses GEOparse's unreliable FTP)
+            pre_download_soft_file(geo_id, Path(self.service.cache_dir))
 
             result = self.service._retry_with_backoff(
                 operation=lambda: GEOparse.get_GEO(
@@ -814,39 +784,8 @@ Multi-Modal Dataset Detected:
         try:
             logger.debug(f"Trying supplementary fallback for {geo_id}")
 
-            # PRE-DOWNLOAD SOFT FILE
-            soft_file_path = Path(self.service.cache_dir) / f"{geo_id}_family.soft.gz"
-            if not soft_file_path.exists():
-                gse_num_str = geo_id[3:]
-                if len(gse_num_str) >= 3:
-                    series_folder = f"GSE{gse_num_str[:-3]}nnn"
-                else:
-                    series_folder = "GSEnnn"
-
-                soft_url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{series_folder}/{geo_id}/soft/{geo_id}_family.soft.gz"
-
-                logger.debug(f"Pre-downloading SOFT file using HTTPS: {soft_url}")
-                try:
-                    ssl_context = create_ssl_context()
-                    with urllib.request.urlopen(
-                        soft_url, context=ssl_context
-                    ) as response:
-                        with open(soft_file_path, "wb") as f:
-                            f.write(response.read())
-                    logger.debug(
-                        f"Successfully pre-downloaded SOFT file to {soft_file_path}"
-                    )
-                except Exception as e:
-                    error_str = str(e)
-                    if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
-                        handle_ssl_error(e, soft_url, logger)
-                        raise Exception(
-                            "SSL certificate verification failed when downloading SOFT file. "
-                            "See error message above for solutions."
-                        )
-                    logger.warning(
-                        f"Pre-download failed: {e}. GEOparse will attempt download."
-                    )
+            # Pre-download SOFT file via HTTPS (bypasses GEOparse's unreliable FTP)
+            pre_download_soft_file(geo_id, Path(self.service.cache_dir))
 
             gse = GEOparse.get_GEO(geo=geo_id, destdir=str(self.service.cache_dir))
 
@@ -882,39 +821,8 @@ Multi-Modal Dataset Detected:
                 f"Using emergency fallback for {geo_id} - all other methods failed"
             )
 
-            # PRE-DOWNLOAD SOFT FILE
-            soft_file_path = Path(self.service.cache_dir) / f"{geo_id}_family.soft.gz"
-            if not soft_file_path.exists():
-                gse_num_str = geo_id[3:]
-                if len(gse_num_str) >= 3:
-                    series_folder = f"GSE{gse_num_str[:-3]}nnn"
-                else:
-                    series_folder = "GSEnnn"
-
-                soft_url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{series_folder}/{geo_id}/soft/{geo_id}_family.soft.gz"
-
-                logger.debug(f"Pre-downloading SOFT file using HTTPS: {soft_url}")
-                try:
-                    ssl_context = create_ssl_context()
-                    with urllib.request.urlopen(
-                        soft_url, context=ssl_context
-                    ) as response:
-                        with open(soft_file_path, "wb") as f:
-                            f.write(response.read())
-                    logger.debug(
-                        f"Successfully pre-downloaded SOFT file to {soft_file_path}"
-                    )
-                except Exception as e:
-                    error_str = str(e)
-                    if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
-                        handle_ssl_error(e, soft_url, logger)
-                        raise Exception(
-                            "SSL certificate verification failed when downloading SOFT file. "
-                            "See error message above for solutions."
-                        )
-                    logger.warning(
-                        f"Pre-download failed: {e}. GEOparse will attempt download."
-                    )
+            # Pre-download SOFT file via HTTPS (bypasses GEOparse's unreliable FTP)
+            pre_download_soft_file(geo_id, Path(self.service.cache_dir))
 
             gse = GEOparse.get_GEO(geo=geo_id, destdir=str(self.service.cache_dir))
 
@@ -968,39 +876,8 @@ Multi-Modal Dataset Detected:
         try:
             logger.debug(f"Trying GEOparse download for {geo_id}")
 
-            # PRE-DOWNLOAD SOFT FILE
-            soft_file_path = Path(self.service.cache_dir) / f"{geo_id}_family.soft.gz"
-            if not soft_file_path.exists():
-                gse_num_str = geo_id[3:]
-                if len(gse_num_str) >= 3:
-                    series_folder = f"GSE{gse_num_str[:-3]}nnn"
-                else:
-                    series_folder = "GSEnnn"
-
-                soft_url = f"https://ftp.ncbi.nlm.nih.gov/geo/series/{series_folder}/{geo_id}/soft/{geo_id}_family.soft.gz"
-
-                logger.debug(f"Pre-downloading SOFT file using HTTPS: {soft_url}")
-                try:
-                    ssl_context = create_ssl_context()
-                    with urllib.request.urlopen(
-                        soft_url, context=ssl_context
-                    ) as response:
-                        with open(soft_file_path, "wb") as f:
-                            f.write(response.read())
-                    logger.debug(
-                        f"Successfully pre-downloaded SOFT file to {soft_file_path}"
-                    )
-                except Exception as e:
-                    error_str = str(e)
-                    if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
-                        handle_ssl_error(e, soft_url, logger)
-                        raise Exception(
-                            "SSL certificate verification failed when downloading SOFT file. "
-                            "See error message above for solutions."
-                        )
-                    logger.warning(
-                        f"Pre-download failed: {e}. GEOparse will attempt download."
-                    )
+            # Pre-download SOFT file via HTTPS (bypasses GEOparse's unreliable FTP)
+            pre_download_soft_file(geo_id, Path(self.service.cache_dir))
 
             result = self.service._retry_with_backoff(
                 operation=lambda: GEOparse.get_GEO(

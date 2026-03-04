@@ -24,6 +24,7 @@ except ImportError:
     GEOparse = None
 
 from lobster.services.data_access.geo.parser import ParseResult
+from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
@@ -177,39 +178,8 @@ class MatrixParser:
         """
         gsm = None
         try:
-            # PRE-DOWNLOAD SOFT FILE USING HTTPS
-            soft_file_path = Path(self.service.cache_dir) / f"{gsm_id}_family.soft.gz"
-            if not soft_file_path.exists():
-                gsm_num_str = gsm_id[3:]
-                if len(gsm_num_str) >= 3:
-                    sample_folder = f"GSM{gsm_num_str[:-3]}nnn"
-                else:
-                    sample_folder = "GSMnnn"
-
-                soft_url = f"https://ftp.ncbi.nlm.nih.gov/geo/samples/{sample_folder}/{gsm_id}/soft/{gsm_id}_family.soft.gz"
-
-                logger.debug(f"Pre-downloading SOFT file using HTTPS: {soft_url}")
-                try:
-                    ssl_context = create_ssl_context()
-                    with urllib.request.urlopen(
-                        soft_url, context=ssl_context
-                    ) as response:
-                        with open(soft_file_path, "wb") as f:
-                            f.write(response.read())
-                    logger.debug(
-                        f"Successfully pre-downloaded SOFT file to {soft_file_path}"
-                    )
-                except Exception as e:
-                    error_str = str(e)
-                    if "CERTIFICATE_VERIFY_FAILED" in error_str or "SSL" in error_str:
-                        handle_ssl_error(e, soft_url, logger)
-                        raise Exception(
-                            "SSL certificate verification failed when downloading SOFT file. "
-                            "See error message above for solutions."
-                        )
-                    logger.warning(
-                        f"Pre-download failed: {e}. GEOparse will attempt download."
-                    )
+            # Pre-download SOFT file via HTTPS (bypasses GEOparse's unreliable FTP)
+            pre_download_soft_file(gsm_id, Path(self.service.cache_dir))
 
             gsm = GEOparse.get_GEO(geo=gsm_id, destdir=str(self.service.cache_dir))
 
