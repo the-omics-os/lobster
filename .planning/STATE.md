@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-03)
 ## Current Position
 
 Phase: 9 of 9 (repo-hygiene-packaging-cleanup)
-Plan: 2 of 2 in current phase (09-02 complete)
+Plan: 2 of 2 in current phase (09-01 and 09-02 complete)
 Status: Phase 9 in progress
-Last activity: 2026-03-04 -- Plan 09-02 complete (empty dirs and deprecated GEO shims removed)
+Last activity: 2026-03-04 -- Plan 09-01 complete (gitignore normalized, Makefile clean expanded)
 
 Progress: [██████████] 95%
 
@@ -51,10 +51,11 @@ Progress: [██████████] 95%
 | 06 | 2 | 9 min | 5 min |
 | 07 | 2 | 6 min | 3 min |
 | 08 | 1 | 16 min | 16 min |
+| 09 | 1 | 3 min | 3 min |
 
 **Recent Trend:**
-- Last 5 plans: 7 min, 5 min, 4 min, 5 min, 1 min
-- Trend: Consistent fast execution on move-and-shim patterns
+- Last 5 plans: 5 min, 4 min, 5 min, 1 min, 3 min
+- Trend: Consistent fast execution on cleanup and hygiene tasks
 
 *Updated after each plan completion*
 | Phase 05-plugin-first-registration P03 | 15 | 2 tasks | 4 files |
@@ -124,6 +125,8 @@ Recent decisions affecting current work:
 - [Phase 08]: init/chat/query _impl functions keep typer.Option annotations for standalone testing (08-01)
 - [Phase 08]: cli.py at 1338 LOC (not 300-400) because Typer parameter declarations must remain; all function bodies are thin delegation calls
 - [Phase 09]: Combined Task 1+2 commit since empty dirs not git-tracked; also removed lobster/data/ parent
+- [Phase 09]: 14 gitignore sections (not 10) for better granularity -- added Linting, UI, Miscellaneous (09-01)
+- [Phase 09]: Makefile clean uses find with maxdepth to scope package-local cleanup (09-01)
 
 ### Pending Todos
 
@@ -135,6 +138,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T20:09:04.341Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-03-04T20:09:30Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None

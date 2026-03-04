@@ -22,7 +22,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 6: Core Subpackage Creation + Moves** - Create runtime/, queues/, notebooks/, provenance/, governance/ subpackages and move 13 files with shims (PR-6)
 - [x] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7) (completed 2026-03-04)
 - [ ] **Phase 8: CLI Decomposition** - Extract command bodies from cli.py to cli_internal/commands/ (PR-8)
-- [ ] **Phase 9: Repo Hygiene & Packaging Cleanup** - Normalize gitignore, expand make clean, remove stale artifacts and empty dirs (PR-9)
+- [x] **Phase 9: Repo Hygiene & Packaging Cleanup** - Normalize gitignore, expand make clean, remove stale artifacts and empty dirs (PR-9) (completed 2026-03-04)
 
 ## Phase Details
 
@@ -159,7 +159,7 @@ Plans:
   3. No empty placeholder directories remain that were not populated by GEO decomposition
   4. Deprecated shim files (geo_parser.py, geo_downloader.py) are removed after verification they have zero importers
   5. No stale build artifacts exist in any package directory
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
 - [ ] 09-01-PLAN.md — Normalize .gitignore sections, expand Makefile clean targets, remove stale artifacts (HYGN-01, HYGN-02, HYGN-05)
@@ -180,4 +180,4 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 6. Core Subpackage Creation + Moves | 1/2 | In Progress|  |
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
 | 8. CLI Decomposition | 1/2 | In Progress|  |
-| 9. Repo Hygiene & Packaging Cleanup | 0/2 | Not started | - |
+| 9. Repo Hygiene & Packaging Cleanup | 2/2 | Complete   | 2026-03-04 |
