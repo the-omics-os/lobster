@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import tarfile
 import time
 import urllib.parse
@@ -76,6 +77,96 @@ logger = get_logger(__name__)
 # only appear when explicitly debugging
 geoparse_logger = logging.getLogger("GEOparse")
 geoparse_logger.setLevel(logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# Archive extension constant and helpers
+# ---------------------------------------------------------------------------
+
+ARCHIVE_EXTENSIONS = (".tar", ".tar.gz", ".tgz", ".tar.bz2")
+
+
+def _is_archive_url(url: str) -> bool:
+    """Check if URL points to a tar archive file."""
+    lower = url.lower()
+    return any(lower.endswith(ext) for ext in ARCHIVE_EXTENSIONS)
+
+
+def _score_expression_file(filename: str) -> float:
+    """Score a supplementary file for expression data likelihood.
+
+    Positive scores indicate likely expression data files.
+    Negative scores indicate metadata, feature lists, or annotation files.
+
+    Scoring signals:
+    - Expression keywords (count, expression, matrix, tpm, fpkm, rpkm) boost score
+    - Metadata keywords (barcode, annotation, metadata, clinical, sample_info) penalize
+    - Ambiguous keywords (gene, feature) are contextual: positive with expression
+      signals, negative when alone (e.g. genes.tsv.gz is a 10X feature list)
+    - Structured formats (.h5ad, .h5, .mtx) get bonuses over plain text
+    """
+    lower = filename.lower()
+
+    # Expression signal keywords and their weights
+    EXPRESSION_SIGNALS = {
+        "count": 2.0,
+        "expression": 2.0,
+        "matrix": 1.5,
+        "tpm": 2.0,
+        "fpkm": 2.0,
+        "rpkm": 2.0,
+        "normalized": 1.5,
+        "processed": 1.0,
+    }
+
+    # Metadata signal keywords and their weights (negative)
+    METADATA_SIGNALS = {
+        "barcode": -2.0,
+        "annotation": -1.5,
+        "metadata": -2.0,
+        "sample_info": -1.5,
+        "clinical": -1.5,
+        "sample": -1.0,
+    }
+
+    # Format bonuses for structured formats
+    FORMAT_BONUS = {
+        ".h5ad": 1.0,
+        ".h5": 0.8,
+        ".mtx": 0.5,
+    }
+
+    score = 0.0
+
+    # Apply expression signals
+    has_expression_context = False
+    for keyword, weight in EXPRESSION_SIGNALS.items():
+        if keyword in lower:
+            score += weight
+            has_expression_context = True
+
+    # Apply metadata signals
+    for keyword, weight in METADATA_SIGNALS.items():
+        if keyword in lower:
+            score += weight  # weight is already negative
+
+    # Ambiguous keyword handling: "gene" and "feature"
+    # These are positive when combined with expression context,
+    # but negative when alone (e.g. genes.tsv.gz, features.tsv.gz)
+    for ambiguous in ("gene", "feature"):
+        if ambiguous in lower:
+            if has_expression_context:
+                score += 0.5  # mild boost in expression context
+            else:
+                score -= 1.5  # penalize standalone (feature list / gene list)
+
+    # Format bonuses
+    for ext, bonus in FORMAT_BONUS.items():
+        if lower.endswith(ext):
+            score += bonus
+            break
+
+    return score
 
 
 # ---------------------------------------------------------------------------
@@ -1875,7 +1966,8 @@ class GEOService:
             archive_files = [
                 f
                 for f in suppl_files
-                if any(ext in f.lower() for ext in [".tar", ".zip", ".rar"])
+                if _is_archive_url(f)
+                or any(ext in f.lower() for ext in [".zip", ".rar"])
             ]
 
             if not archive_files:
@@ -1883,7 +1975,7 @@ class GEOService:
 
             # Try processing archive files
             for archive_url in archive_files:
-                if archive_url.lower().endswith(".tar"):
+                if _is_archive_url(archive_url):
                     matrix = self._process_tar_file(archive_url, geo_id)
 
                     # Handle both DataFrame and AnnData return types
@@ -3675,49 +3767,36 @@ The actual expression data download will be much faster now that metadata is pre
                 return series_10x_result
 
             # Look for TAR files first (most common for expression data)
-            tar_files = [f for f in suppl_files if f.lower().endswith(".tar")]
+            tar_files = [f for f in suppl_files if _is_archive_url(f)]
 
             if tar_files:
                 logger.debug(f"Processing TAR file: {tar_files[0]}")
                 return self._process_tar_file(tar_files[0], gse_id)
 
-            # Look for other expression data files
-            # FIXED: Exclude metadata files and prioritize structured formats
-            # Files that are clearly metadata, not expression data
-            METADATA_KEYWORDS = [
-                "barcode",
-                "feature",
-                "gene",
-                "annotation",
-                "metadata",
-                "sample",
-            ]
-
-            expression_files = [
+            # Look for other expression data files using scoring heuristic
+            # Replaces METADATA_KEYWORDS blacklist which incorrectly excluded
+            # files containing "gene" (blocking gene_expression_matrix.txt.gz)
+            candidate_files = [
                 f
                 for f in suppl_files
                 if any(
                     ext in f.lower()
                     for ext in [".txt.gz", ".csv.gz", ".tsv.gz", ".h5", ".h5ad"]
                 )
-                and not any(keyword in f.lower() for keyword in METADATA_KEYWORDS)
             ]
 
-            # Prefer structured formats: H5AD > H5 > MTX > TXT/CSV
-            # This prevents accidental selection of metadata files
+            # Score all candidate files and sort by score descending
+            scored_files = [
+                (f, _score_expression_file(f.split("/")[-1])) for f in candidate_files
+            ]
+            expression_files = [
+                f for f, score in sorted(scored_files, key=lambda x: -x[1]) if score > 0
+            ]
+
             if expression_files:
-                expression_files.sort(
-                    key=lambda f: (
-                        0
-                        if ".h5ad" in f.lower()
-                        else (
-                            1 if ".h5" in f.lower() else 2 if ".mtx" in f.lower() else 3
-                        )
-                    )
-                )
                 logger.debug(
                     f"Processing expression file: {expression_files[0]} "
-                    f"(selected from {len(expression_files)} candidates after metadata exclusion)"
+                    f"(selected from {len(candidate_files)} candidates via scoring heuristic)"
                 )
                 return self._download_and_parse_file(expression_files[0], gse_id)
 
@@ -4424,7 +4503,7 @@ The actual expression data download will be much faster now that metadata is pre
             },
             "archive": {
                 "patterns": [
-                    re.compile(r".*\.tar(\.gz)?$", re.IGNORECASE),
+                    re.compile(r".*\.(tar(\.gz|\.bz2)?|tgz)$", re.IGNORECASE),
                     re.compile(r".*\.zip$", re.IGNORECASE),
                     re.compile(r".*\.rar$", re.IGNORECASE),
                 ],
