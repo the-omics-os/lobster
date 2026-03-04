@@ -38,7 +38,7 @@ created: 2026-03-04
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 11-01-01 | 01 | 1 | DMGR-04 | structural | `python -m pytest tests/unit/core/test_core_subpackage_shims.py::TestCoreSubpackageShims::test_no_deprecated_data_manager_imports_in_packages -v` | ❌ W0 | ⬜ pending |
+| 11-01-01 | 01 | 1 | DMGR-04 | structural | `python -m pytest tests/unit/core/test_core_subpackage_shims.py::test_no_deprecated_data_manager_imports_in_packages -v` | ❌ W0 | ⬜ pending |
 | 11-01-02 | 01 | 1 | DMGR-04 | structural | `grep -rn "from lobster.core.data_manager_v2 import" packages/ --include="*.py"; echo $?` (exit 1 = pass) | n/a (CI) | ⬜ pending |
 | 11-01-03 | 01 | 1 | DMGR-04 | manual/CI | Verify `.github/workflows/ci-basic.yml` deprecated-import step uses `if grep; then fail; fi` pattern | n/a (CI) | ⬜ pending |
 
