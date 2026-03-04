@@ -915,3 +915,93 @@ class TestEdgeCases:
         # Verify they can be parsed back
         created_at = datetime.fromisoformat(data["created_at"])
         assert isinstance(created_at, datetime)
+
+
+# =============================================================================
+# Compare-and-Swap (CAS) Status Transition Tests
+# =============================================================================
+
+
+class TestCompareAndSwapStatusTransition:
+    """Test compare-and-swap (CAS) status transitions on DownloadQueue.update_status."""
+
+    def test_cas_success_matching_expected(self, download_queue, sample_entry):
+        """update_status with matching expected_current_status transitions successfully."""
+        download_queue.add_entry(sample_entry)
+
+        result = download_queue.update_status(
+            entry_id=sample_entry.entry_id,
+            status=DownloadStatus.IN_PROGRESS,
+            expected_current_status=DownloadStatus.PENDING,
+        )
+
+        assert result is not None
+        assert result.status == DownloadStatus.IN_PROGRESS
+
+        # Verify persistence
+        retrieved = download_queue.get_entry(sample_entry.entry_id)
+        assert retrieved.status == DownloadStatus.IN_PROGRESS
+
+    def test_cas_failure_mismatching_expected(self, download_queue, sample_entry):
+        """update_status with mismatching expected_current_status returns None."""
+        download_queue.add_entry(sample_entry)
+
+        result = download_queue.update_status(
+            entry_id=sample_entry.entry_id,
+            status=DownloadStatus.IN_PROGRESS,
+            expected_current_status=DownloadStatus.COMPLETED,  # Wrong!
+        )
+
+        assert result is None
+
+        # Verify status was NOT changed
+        retrieved = download_queue.get_entry(sample_entry.entry_id)
+        assert retrieved.status == DownloadStatus.PENDING
+
+    def test_cas_backward_compat_no_expected(self, download_queue, sample_entry):
+        """update_status without expected_current_status behaves as before."""
+        download_queue.add_entry(sample_entry)
+
+        # Old-style call without CAS - should still work
+        result = download_queue.update_status(
+            entry_id=sample_entry.entry_id,
+            status=DownloadStatus.IN_PROGRESS,
+        )
+
+        assert result is not None
+        assert result.status == DownloadStatus.IN_PROGRESS
+
+    def test_cas_concurrent_only_one_succeeds(self, download_queue, sample_entry):
+        """Two concurrent CAS claims for same PENDING entry -- first succeeds, second returns None."""
+        download_queue.add_entry(sample_entry)
+
+        results = []
+        barrier = threading.Barrier(2)
+
+        def claim_entry(thread_id):
+            barrier.wait()  # Synchronize threads
+            result = download_queue.update_status(
+                entry_id=sample_entry.entry_id,
+                status=DownloadStatus.IN_PROGRESS,
+                expected_current_status=DownloadStatus.PENDING,
+                downloaded_by=f"worker_{thread_id}",
+            )
+            results.append((thread_id, result))
+
+        t1 = threading.Thread(target=claim_entry, args=(1,))
+        t2 = threading.Thread(target=claim_entry, args=(2,))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # Exactly one should succeed, one should get None
+        successes = [r for r in results if r[1] is not None]
+        failures = [r for r in results if r[1] is None]
+
+        assert len(successes) == 1, f"Expected 1 success, got {len(successes)}"
+        assert len(failures) == 1, f"Expected 1 failure, got {len(failures)}"
+
+        # Winner's status should be IN_PROGRESS
+        winner = successes[0][1]
+        assert winner.status == DownloadStatus.IN_PROGRESS
