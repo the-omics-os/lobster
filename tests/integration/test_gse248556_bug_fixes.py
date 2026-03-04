@@ -479,7 +479,7 @@ class TestIndividualBugFixes:
 
         Tests the retry mechanism without requiring full dataset download.
         """
-        from lobster.tools.geo_downloader import GEODownloadManager
+        from lobster.services.data_access.geo.downloader import GEODownloadManager
 
         manager = GEODownloadManager()
 

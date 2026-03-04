@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 
-from lobster.tools.geo_downloader import GEODownloadManager
+from lobster.services.data_access.geo.downloader import GEODownloadManager
 
 
 @pytest.fixture

@@ -733,11 +733,16 @@ publish: release
 # Cleanup targets
 clean:
 	@echo "🧹 Cleaning build artifacts..."
-	rm -rf build dist *.egg-info
-	rm -rf .pytest_cache .coverage htmlcov
+	rm -rf build dist *.egg-info lobster_ai.egg-info
+	rm -rf .pytest_cache .coverage htmlcov coverage.xml
 	rm -rf .mypy_cache .ruff_cache
+	rm -rf MagicMock test_output
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
+	# Package-local artifacts
+	find packages -maxdepth 2 -type d -name dist -exec rm -rf {} + 2>/dev/null || true
+	find packages -maxdepth 2 -type d -name '.ruff_cache' -exec rm -rf {} + 2>/dev/null || true
+	find packages -maxdepth 3 -type d -name '*.egg-info' -exec rm -rf {} + 2>/dev/null || true
 	@echo "$(GREEN)✅ Cleanup complete!$(NC)"
 
 clean-all: clean
