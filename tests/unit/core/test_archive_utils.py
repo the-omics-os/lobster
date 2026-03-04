@@ -1,5 +1,5 @@
 """
-Unit tests for ContentDetector in lobster/core/archive_utils.py.
+Unit tests for ContentDetector and ArchiveExtractor in lobster/core/archive_utils.py.
 
 Tests verify:
 1. V3 format detection (features.tsv)
@@ -8,11 +8,17 @@ Tests verify:
 4. Nested directory structures
 5. Incomplete/missing file handling
 6. Non-10X archive handling (Kallisto, Salmon, GEO RAW)
+7. Path traversal attack prevention (CVE-2007-4559)
+8. Symlink and hardlink escape detection
+9. Reject-all archive policy (no partial extraction)
 
 These tests ensure correct detection of 10X Genomics V2 (genes.tsv) vs V3 (features.tsv)
-formats, preventing regression of the zero-genes bug.
+formats, preventing regression of the zero-genes bug, and that archive extraction is
+secure against path traversal and symlink escape attacks.
 """
 
+import io
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -488,3 +494,222 @@ class TestArchiveExtractor:
         extractor.cleanup()
         assert not temp_dir.exists()
         assert len(extractor.temp_dirs) == 0
+
+
+# =============================================================================
+# Helper: create tar archives with specific members
+# =============================================================================
+
+
+def _create_tar_bytes(members):
+    """Create a tar archive in memory with specified members.
+
+    Args:
+        members: list of dicts with keys:
+            name (str), content (bytes|None), type (int), linkname (str|None)
+    Returns:
+        bytes of the tar archive
+    """
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for m in members:
+            info = tarfile.TarInfo(name=m["name"])
+            info.type = m.get("type", tarfile.REGTYPE)
+            info.linkname = m.get("linkname", "")
+            content = m.get("content", b"")
+            if content is None:
+                content = b""
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+    buf.seek(0)
+    return buf.read()
+
+
+def _write_tar_file(tmp_path, name, members):
+    """Write a tar archive to disk."""
+    data = _create_tar_bytes(members)
+    tar_path = tmp_path / name
+    tar_path.write_bytes(data)
+    return tar_path
+
+
+# =============================================================================
+# Security Tests: _is_safe_member
+# =============================================================================
+
+
+class TestIsSafeMember:
+    """Tests for ArchiveExtractor._is_safe_member path traversal and symlink detection."""
+
+    def test_rejects_path_traversal_dotdot(self, tmp_path: Path):
+        """_is_safe_member rejects members with ../ in path."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="../../../etc/passwd")
+        member.type = tarfile.REGTYPE
+        assert extractor._is_safe_member(member, tmp_path) is False
+
+    def test_rejects_absolute_path(self, tmp_path: Path):
+        """_is_safe_member rejects members with absolute paths."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="/etc/passwd")
+        member.type = tarfile.REGTYPE
+        assert extractor._is_safe_member(member, tmp_path) is False
+
+    def test_rejects_symlink_outside_target(self, tmp_path: Path):
+        """_is_safe_member rejects symlinks pointing outside target directory."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="evil_link")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "../../../etc/shadow"
+        assert extractor._is_safe_member(member, tmp_path) is False
+
+    def test_rejects_hardlink_outside_target(self, tmp_path: Path):
+        """_is_safe_member rejects hardlinks pointing outside target directory."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="evil_hardlink")
+        member.type = tarfile.LNKTYPE
+        member.linkname = "../../../etc/shadow"
+        assert extractor._is_safe_member(member, tmp_path) is False
+
+    def test_rejects_absolute_symlink_target(self, tmp_path: Path):
+        """_is_safe_member rejects symlinks with absolute targets."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="abs_link")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "/etc/passwd"
+        assert extractor._is_safe_member(member, tmp_path) is False
+
+    def test_accepts_safe_relative_symlink(self, tmp_path: Path):
+        """_is_safe_member accepts safe relative symlinks within target directory."""
+        extractor = ArchiveExtractor()
+        # Create a subdirectory so the symlink target resolves within target
+        (tmp_path / "subdir").mkdir(parents=True, exist_ok=True)
+        member = tarfile.TarInfo(name="subdir/link_to_file")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "../safe_file.txt"
+        assert extractor._is_safe_member(member, tmp_path) is True
+
+    def test_accepts_normal_file(self, tmp_path: Path):
+        """_is_safe_member accepts normal files within target directory."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="data/sample.txt")
+        member.type = tarfile.REGTYPE
+        assert extractor._is_safe_member(member, tmp_path) is True
+
+
+# =============================================================================
+# Security Tests: extract_safely reject-all policy
+# =============================================================================
+
+
+class TestExtractSafelyRejectAll:
+    """Tests for extract_safely reject-all archive policy."""
+
+    def test_rejects_archive_with_any_unsafe_member(self, tmp_path: Path):
+        """extract_safely raises RuntimeError when ANY member is unsafe (reject-all)."""
+        tar_path = _write_tar_file(
+            tmp_path,
+            "evil.tar.gz",
+            [
+                {"name": "safe_file.txt", "content": b"safe"},
+                {"name": "../../../etc/passwd", "content": b"evil"},
+            ],
+        )
+        target_dir = tmp_path / "extract"
+
+        extractor = ArchiveExtractor()
+        with pytest.raises(RuntimeError, match="Archive rejected"):
+            extractor.extract_safely(tar_path, target_dir)
+
+    def test_error_message_includes_offending_paths(self, tmp_path: Path):
+        """extract_safely error message includes offending member paths (up to 10)."""
+        tar_path = _write_tar_file(
+            tmp_path,
+            "evil.tar.gz",
+            [
+                {"name": "../escape.txt", "content": b"evil"},
+                {"name": "safe.txt", "content": b"safe"},
+            ],
+        )
+        target_dir = tmp_path / "extract"
+
+        extractor = ArchiveExtractor()
+        with pytest.raises(RuntimeError, match="escape.txt"):
+            extractor.extract_safely(tar_path, target_dir)
+
+    def test_succeeds_for_all_safe_members(self, tmp_path: Path):
+        """extract_safely succeeds for archives with all safe members."""
+        tar_path = _write_tar_file(
+            tmp_path,
+            "safe.tar.gz",
+            [
+                {"name": "data/file1.txt", "content": b"hello"},
+                {"name": "data/file2.txt", "content": b"world"},
+            ],
+        )
+        target_dir = tmp_path / "extract"
+
+        extractor = ArchiveExtractor()
+        result = extractor.extract_safely(tar_path, target_dir)
+        assert result == target_dir
+        assert (target_dir / "data" / "file1.txt").exists()
+        assert (target_dir / "data" / "file2.txt").exists()
+
+    def test_rejects_archive_with_symlink_escape(self, tmp_path: Path):
+        """extract_safely rejects archive containing symlinks that escape target."""
+        tar_path = _write_tar_file(
+            tmp_path,
+            "symlink_evil.tar.gz",
+            [
+                {"name": "safe.txt", "content": b"ok"},
+                {
+                    "name": "evil_link",
+                    "type": tarfile.SYMTYPE,
+                    "linkname": "/etc/shadow",
+                    "content": None,
+                },
+            ],
+        )
+        target_dir = tmp_path / "extract"
+
+        extractor = ArchiveExtractor()
+        with pytest.raises(RuntimeError, match="Archive rejected"):
+            extractor.extract_safely(tar_path, target_dir)
+
+    def test_cleanup_on_error(self, tmp_path: Path):
+        """extract_safely cleans up target_dir on error when cleanup_on_error=True."""
+        tar_path = _write_tar_file(
+            tmp_path,
+            "evil.tar.gz",
+            [{"name": "../escape.txt", "content": b"evil"}],
+        )
+        target_dir = tmp_path / "extract"
+
+        extractor = ArchiveExtractor()
+        with pytest.raises(RuntimeError):
+            extractor.extract_safely(tar_path, target_dir, cleanup_on_error=True)
+
+        # target_dir should be cleaned up
+        assert not target_dir.exists()
+
+
+# =============================================================================
+# Integration Tests: geo/downloader.py uses shared implementation
+# =============================================================================
+
+
+class TestGeoDownloaderUsesSharedSafeMember:
+    """Test that geo/downloader.py uses shared _is_safe_member from archive_utils."""
+
+    def test_no_inline_is_safe_member_in_downloader(self):
+        """geo/downloader.py should NOT define its own is_safe_member function."""
+        import inspect
+
+        from lobster.services.data_access.geo import downloader
+
+        source = inspect.getsource(downloader)
+        # The inline function definition should be removed
+        assert "def is_safe_member(member)" not in source, (
+            "geo/downloader.py still contains inline is_safe_member function. "
+            "It should use the shared implementation from archive_utils."
+        )
