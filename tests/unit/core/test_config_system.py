@@ -674,13 +674,20 @@ class TestBuildDiagnosticHelpText:
             _scan_start=tmp_path, _scan_home=tmp_path
         )
 
-        # --global should appear before plain `lobster init` in the Quick Setup section
-        global_pos = text.find("lobster init --global")
-        plain_pos = text.find("lobster init\n")
-        assert global_pos != -1, "Expected 'lobster init --global' in output"
-        assert plain_pos != -1, "Expected 'lobster init' in output"
-        assert global_pos < plain_pos, (
-            "Expected 'lobster init --global' to appear before 'lobster init'"
+        # --global should appear before plain `lobster init` in the Quick Setup section.
+        # Split on lines for robust comparison — avoids fragility with trailing \n.
+        text_lines = text.splitlines()
+        global_line = next(
+            (i for i, l in enumerate(text_lines) if "lobster init --global" in l), None
+        )
+        plain_line = next(
+            (i for i, l in enumerate(text_lines) if l.strip() == "lobster init"), None
+        )
+        assert global_line is not None, "Expected 'lobster init --global' line in output"
+        assert plain_line is not None, "Expected bare 'lobster init' line in output"
+        assert global_line < plain_line, (
+            f"Expected 'lobster init --global' (line {global_line}) to appear "
+            f"before 'lobster init' (line {plain_line})"
         )
 
     def test_no_false_positive_when_no_configs_exist(
