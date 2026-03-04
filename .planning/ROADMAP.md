@@ -177,6 +177,10 @@ Plans:
   2. `from lobster.core.provenance import X` works for all public names in analysis_ir.py, lineage.py, and ir_coverage.py
   3. All 6 call sites in de_analysis_expert.py (lines 640, 1123, 2096, 2294, 2467, 2937) execute without import failures
   4. Existing provenance.py shim behavior is preserved (ProvenanceTracker still accessible)
+**Plans:** 1 plan
+
+Plans:
+- [ ] 10-01-PLAN.md — Extend provenance __getattr__ shim to search all 4 submodules with TDD test coverage (CORE-04)
 
 ### Phase 11: Strengthen CI Deprecated-Import Guard
 **Goal**: CI deprecated-import check blocks PRs that introduce old-path imports — existing 39 violations in packages/ migrated to canonical paths
@@ -205,5 +209,5 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
 | 8. CLI Decomposition | 1/2 | In Progress|  |
 | 9. Repo Hygiene & Packaging Cleanup | 2/2 | Complete   | 2026-03-04 |
-| 10. Fix Provenance __getattr__ Shim | 0/0 | Planned | - |
+| 10. Fix Provenance __getattr__ Shim | 0/1 | Planned | - |
 | 11. Strengthen CI Deprecated-Import Guard | 0/0 | Planned | - |
