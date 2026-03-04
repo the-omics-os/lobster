@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: GEO Parser & Data Integrity** - Add partial parse signaling, fix archive classifier, improve file selection heuristic, add temp cleanup (PR-2) [parallel with Phase 3]
 - [ ] **Phase 3: GEO Strategy Engine Hardening** - Fix null sanitization, tighten strategy derivation, resolve ARCHIVE_FIRST dead branch (PR-3) [parallel with Phase 2]
 - [x] **Phase 4: GEO Service Decomposition** - Split geo_service.py into 5 domain modules with backward-compatible facade (PR-4) (completed 2026-03-04)
-- [ ] **Phase 5: Plugin-First Registration** - Migrate queue preparers and download services to entry-point discovery, gate hardcoded fallbacks (PR-5)
+- [x] **Phase 5: Plugin-First Registration** - Migrate queue preparers and download services to entry-point discovery, gate hardcoded fallbacks (PR-5) (completed 2026-03-04)
 - [ ] **Phase 6: Core Subpackage Creation + Moves** - Create runtime/, queues/, notebooks/, provenance/, governance/ subpackages and move 13 files with shims (PR-6)
 - [ ] **Phase 7: data_manager_v2 Move** - Move highest-blast-radius file to core/runtime/data_manager.py with full shim (PR-7)
 - [ ] **Phase 8: CLI Decomposition** - Extract command bodies from cli.py to cli_internal/commands/ (PR-8)
@@ -98,7 +98,7 @@ Plans:
   2. A new queue preparer or download service can be added by an external package declaring entry points -- zero changes to core routing code required
   3. Hardcoded fallback registration is gated behind an explicit flag and only activates when entry-point discovery yields nothing
   4. Existing tests validate the entry-point discovery path, not hardcoded defaults
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 05-01-PLAN.md — Write failing test scaffolds: contract tests, TestEntryPointDiscovery, TestFallbackGating (PLUG-01, PLUG-02, PLUG-03, PLUG-04, PLUG-05, PLUG-06)
@@ -174,7 +174,7 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 2. GEO Parser & Data Integrity | 0/2 | Planned | - |
 | 3. GEO Strategy Engine Hardening | 1/2 | In Progress|  |
 | 4. GEO Service Decomposition | 3/3 | Complete   | 2026-03-04 |
-| 5. Plugin-First Registration | 2/3 | In Progress|  |
+| 5. Plugin-First Registration | 3/3 | Complete   | 2026-03-04 |
 | 6. Core Subpackage Creation + Moves | 0/? | Not started | - |
 | 7. data_manager_v2 Move | 0/? | Not started | - |
 | 8. CLI Decomposition | 0/? | Not started | - |

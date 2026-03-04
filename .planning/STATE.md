@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-03-04T07:42:00Z"
+status: executing
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-03-04T07:57:42.947Z"
 last_activity: 2026-03-04 -- Plan 05-02 complete (entry-point declarations -- queue_preparers + download_services GREEN)
 progress:
   total_phases: 9
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  completed_phases: 5
+  total_plans: 13
+  completed_plans: 13
   percent: 92
 ---
 
@@ -54,6 +54,7 @@ Progress: [█████████░] 92%
 - Trend: Phase 05 started, TDD RED scaffold in 7 min
 
 *Updated after each plan completion*
+| Phase 05-plugin-first-registration P03 | 15 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,9 @@ Recent decisions affecting current work:
 - [Phase 05]: TestEntryPointDiscovery is GREEN (mocks substitute) while TestFallbackGating is RED (constant missing) — asymmetry is intentional per TDD wave 0 scaffold (05-01)
 - [Phase 05]: Entry-point names (geo, sra, pride, massive, metabolights) match supported_databases()[0] for each class — ComponentRegistry uses these names for runtime lookup (05-02)
 - [Phase 05]: pyproject.toml entry-point declarations are service discovery metadata, NOT dependency changes — CLAUDE.md Hard Rule #2 allows this edit (05-02)
+- [Phase 05-plugin-first-registration]: [Phase 05]: _ALLOW_HARDCODED_FALLBACK gate uses early return before Phase 2 block — simple semantics, no complex conditional logic
+- [Phase 05-plugin-first-registration]: [Phase 05]: discovered_names set tracking in Phase 1 loop enables warning log when EP discovery yields zero results and fallback is disabled
+- [Phase 05-plugin-first-registration]: [Phase 05]: Phase 2 hardcoded block remains intact for emergency recovery — unreachable when flag=False, accessible when flag=True
 
 ### Pending Todos
 
@@ -111,6 +115,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T07:42:00Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-03-04T07:57:42.945Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
