@@ -159,10 +159,11 @@ Plans:
   3. No empty placeholder directories remain that were not populated by GEO decomposition
   4. Deprecated shim files (geo_parser.py, geo_downloader.py) are removed after verification they have zero importers
   5. No stale build artifacts exist in any package directory
-**Plans**: 2 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] 09-01: TBD
+- [ ] 09-01-PLAN.md — Normalize .gitignore sections, expand Makefile clean targets, remove stale artifacts (HYGN-01, HYGN-02, HYGN-05)
+- [ ] 09-02-PLAN.md — Remove empty placeholder dirs, update deprecated shim imports, remove shim files (HYGN-03, HYGN-04)
 
 ## Progress
 
@@ -179,4 +180,4 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 6. Core Subpackage Creation + Moves | 1/2 | In Progress|  |
 | 7. data_manager_v2 Move | 2/2 | Complete   | 2026-03-04 |
 | 8. CLI Decomposition | 1/2 | In Progress|  |
-| 9. Repo Hygiene & Packaging Cleanup | 0/? | Not started | - |
+| 9. Repo Hygiene & Packaging Cleanup | 0/2 | Not started | - |
