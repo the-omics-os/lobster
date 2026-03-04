@@ -13,7 +13,7 @@ Tests cover:
 import tempfile
 from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -400,3 +400,142 @@ class TestInterfaceCompliance:
         valid, error = service.validate_strategy_params({})
         assert isinstance(valid, bool)
         assert error is None or isinstance(error, str)
+
+
+# ===========================================================================
+# Entry-Point Discovery (PLUG-02)
+# ===========================================================================
+
+
+class TestEntryPointDiscovery:
+    """
+    Validate that DownloadOrchestrator discovers services via entry points.
+
+    These tests mock component_registry.list_download_services to simulate
+    what happens after pyproject.toml entry-point declarations are in place.
+    Tests are GREEN because the mock substitutes for the missing declarations.
+    Plan 02 adds the real declarations; Plan 03 gates the hardcoded fallback.
+    """
+
+    def test_geo_discovered_via_entry_point(self, mock_data_manager):
+        """Patching list_download_services returns geo in list_supported_databases."""
+        from lobster.services.data_access.geo_download_service import GEODownloadService
+        from lobster.tools.download_orchestrator import DownloadOrchestrator
+
+        with patch(
+            "lobster.core.component_registry.component_registry.list_download_services",
+            return_value={"geo": GEODownloadService},
+        ):
+            orchestrator = DownloadOrchestrator(mock_data_manager)
+            assert "geo" in orchestrator.list_supported_databases()
+
+    def test_all_5_databases_registered_via_entry_points(self, mock_data_manager):
+        """Patching list_download_services with all 5 classes populates orchestrator."""
+        from lobster.services.data_access.geo_download_service import GEODownloadService
+        from lobster.services.data_access.massive_download_service import (
+            MassIVEDownloadService,
+        )
+        from lobster.services.data_access.metabolights_download_service import (
+            MetaboLightsDownloadService,
+        )
+        from lobster.services.data_access.pride_download_service import (
+            PRIDEDownloadService,
+        )
+        from lobster.services.data_access.sra_download_service import SRADownloadService
+        from lobster.tools.download_orchestrator import DownloadOrchestrator
+
+        all_5 = {
+            "geo": GEODownloadService,
+            "sra": SRADownloadService,
+            "pride": PRIDEDownloadService,
+            "massive": MassIVEDownloadService,
+            "metabolights": MetaboLightsDownloadService,
+        }
+
+        with patch(
+            "lobster.core.component_registry.component_registry.list_download_services",
+            return_value=all_5,
+        ):
+            orchestrator = DownloadOrchestrator(mock_data_manager)
+            supported = orchestrator.list_supported_databases()
+            for db in all_5:
+                assert db in supported, (
+                    f"Expected '{db}' in list_supported_databases() after patching "
+                    "list_download_services with all 5 classes."
+                )
+
+
+# ===========================================================================
+# Fallback Gating for DownloadOrchestrator (PLUG-06)
+# ===========================================================================
+
+
+class TestFallbackGating:
+    """
+    Validate the hardcoded fallback gate for DownloadOrchestrator.
+
+    These tests FAIL RED because _ALLOW_HARDCODED_FALLBACK does not exist yet
+    in download_orchestrator.py — Plan 03 adds it.
+
+    Requirements: PLUG-06
+    """
+
+    def test_fallback_flag_is_false_by_default(self):
+        """
+        _ALLOW_HARDCODED_FALLBACK must exist and default to False.
+
+        FAILS RED: constant not yet added to download_orchestrator module.
+        Plan 03 adds: _ALLOW_HARDCODED_FALLBACK = False at module level.
+        """
+        import lobster.tools.download_orchestrator as do_module
+
+        assert hasattr(do_module, "_ALLOW_HARDCODED_FALLBACK"), (
+            "download_orchestrator module is missing _ALLOW_HARDCODED_FALLBACK. "
+            "Plan 03 must add: _ALLOW_HARDCODED_FALLBACK = False at module level."
+        )
+        assert do_module._ALLOW_HARDCODED_FALLBACK is False, (
+            "_ALLOW_HARDCODED_FALLBACK must default to False to disable hardcoded fallback. "
+            "Set to True only for debugging/emergency recovery."
+        )
+
+    def test_fallback_skipped_when_flag_false(self, mock_data_manager):
+        """
+        When _ALLOW_HARDCODED_FALLBACK=False and entry-point discovery returns empty,
+        no hardcoded service classes are instantiated.
+
+        Verifies that the gate prevents silent fallback to hardcoded imports.
+
+        FAILS RED: _ALLOW_HARDCODED_FALLBACK does not exist yet — the import in
+        test_fallback_flag_is_false_by_default will already fail first.
+        """
+        import lobster.tools.download_orchestrator as do_module
+        from lobster.tools.download_orchestrator import DownloadOrchestrator
+
+        # Skip if flag doesn't exist yet — test_fallback_flag_is_false_by_default
+        # will already fail RED for that condition
+        if not hasattr(do_module, "_ALLOW_HARDCODED_FALLBACK"):
+            pytest.skip("_ALLOW_HARDCODED_FALLBACK not yet added (Plan 03 task)")
+
+        with (
+            patch(
+                "lobster.core.component_registry.component_registry.list_download_services",
+                return_value={},
+            ),
+            patch(
+                "lobster.tools.download_orchestrator._ALLOW_HARDCODED_FALLBACK",
+                False,
+            ),
+            patch(
+                "lobster.services.data_access.geo_download_service.GEODownloadService"
+            ) as mock_geo,
+        ):
+            orchestrator = DownloadOrchestrator(mock_data_manager)
+            # With flag=False and no entry-point discovery, no databases registered
+            supported = orchestrator.list_supported_databases()
+            # The hardcoded GEODownloadService should NOT have been instantiated
+            mock_geo.assert_not_called()
+            # And the database list should be empty (no fallback, no entry points)
+            assert len(supported) == 0, (
+                f"Expected empty database list when _ALLOW_HARDCODED_FALLBACK=False "
+                f"and no entry points discovered, got: {supported}"
+            )
