@@ -56,8 +56,8 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 ### Data Manager Move
 
-- [ ] **DMGR-01**: data_manager_v2.py moved to core/runtime/data_manager.py
-- [ ] **DMGR-02**: Shim at old path re-exports everything — zero breakage for 79 source + 118 test importers
+- [x] **DMGR-01**: data_manager_v2.py moved to core/runtime/data_manager.py
+- [x] **DMGR-02**: Shim at old path re-exports everything — zero breakage for 79 source + 118 test importers
 - [ ] **DMGR-03**: Scaffold templates updated to import from new path (A6)
 - [ ] **DMGR-04**: New code cannot import from old path (CI/lint check)
 
@@ -139,8 +139,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CORE-03 | Phase 6 (PR-6) | Complete |
 | CORE-04 | Phase 6 (PR-6) | Complete |
 | CORE-05 | Phase 6 (PR-6) | Complete |
-| DMGR-01 | Phase 7 (PR-7) | Pending |
-| DMGR-02 | Phase 7 (PR-7) | Pending |
+| DMGR-01 | Phase 7 (PR-7) | Complete |
+| DMGR-02 | Phase 7 (PR-7) | Complete |
 | DMGR-03 | Phase 7 (PR-7) | Pending |
 | DMGR-04 | Phase 7 (PR-7) | Pending |
 | CLID-01 | Phase 8 (PR-8) | Pending |

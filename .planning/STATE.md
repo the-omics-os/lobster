@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-04T17:42:44.765Z"
-last_activity: 2026-03-04 -- Plan 06-02 complete (notebooks + provenance subpackages, all 5 core subpackages done)
+status: in-progress
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-04T18:15:00Z"
+last_activity: 2026-03-04 -- Plan 07-01 complete (data_manager_v2 moved to core/runtime/data_manager.py with shim)
 progress:
   total_phases: 9
   completed_phases: 6
-  total_plans: 15
-  completed_plans: 15
+  total_plans: 16
+  completed_plans: 16
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** Preserve backward compatibility and pass all existing tests while fixing GEO bugs, decomposing monoliths, and restructuring core/
-**Current focus:** Phase 6 complete. All 5 core subpackages created and populated.
+**Current focus:** Phase 7 in progress. DataManagerV2 moved to canonical path, shim + mock.patch updates done.
 
 ## Current Position
 
-Phase: 6 of 9 (Core Subpackage Creation & Moves) -- COMPLETE
-Plan: 2 of 2 in current phase (06-02 complete)
-Status: Phase 06 complete
-Last activity: 2026-03-04 -- Plan 06-02 complete (notebooks + provenance subpackages, all 5 core subpackages done)
+Phase: 7 of 9 (data_manager_v2 Move)
+Plan: 1 of 2 in current phase (07-01 complete)
+Status: In progress
+Last activity: 2026-03-04 -- Plan 07-01 complete (data_manager_v2 moved to core/runtime/data_manager.py with shim)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 12 min
-- Total execution time: 2.5 hours
+- Total plans completed: 15
+- Average duration: 11 min
+- Total execution time: 2.6 hours
 
 **By Phase:**
 
@@ -49,10 +49,11 @@ Progress: [██████████] 100%
 | 04 | 3 | 51 min | 17 min |
 | 05 | 3 | 15 min | 5 min |
 | 06 | 2 | 9 min | 5 min |
+| 07 | 1 | 5 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 12 min, 7 min, 4 min, 7 min, 5 min
-- Trend: Core subpackage creation started, fast execution
+- Last 5 plans: 4 min, 7 min, 5 min, 4 min, 5 min
+- Trend: Consistent fast execution on move-and-shim patterns
 
 *Updated after each plan completion*
 | Phase 05-plugin-first-registration P03 | 15 | 2 tasks | 4 files |
@@ -111,6 +112,9 @@ Recent decisions affecting current work:
 - [Phase 06]: __getattr__ lazy shim in provenance/__init__.py for module/package name collision (06-02)
 - [Phase 06]: Notebook files renamed on move (notebook_executor -> executor) for cleaner naming (06-02)
 - [Phase 06]: Import-linter layers contract: notebooks > provenance > governance > queues > runtime (06-02)
+- [Phase 07]: Internal imports in moved data_manager updated to canonical paths immediately (07-01)
+- [Phase 07]: Test import statements left on shim path -- shim handles them transparently (07-01)
+- [Phase 07]: 2 pre-existing KeyError failures on validation key accepted as out-of-scope (07-01)
 
 ### Pending Todos
 
@@ -122,6 +126,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-04T17:37:00Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-03-04T18:15:00Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None
