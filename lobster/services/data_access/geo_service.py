@@ -3819,6 +3819,10 @@ The actual expression data download will be much faster now that metadata is pre
         - Quantification files (Kallisto/Salmon): Returns AnnData directly
         - Other expression files: Returns DataFrame for adapter processing
 
+        On exception, extraction directories are cleaned up to avoid leaving
+        potentially gigabytes of data on disk. On success or "no parseable files"
+        (return None without exception), directories are preserved for caching.
+
         Args:
             tar_url: URL to TAR file
             gse_id: GEO series ID
@@ -3826,6 +3830,10 @@ The actual expression data download will be much faster now that metadata is pre
         Returns:
             Union[DataFrame, AnnData]: Expression data or None if processing fails
         """
+        # Define extraction directories BEFORE try so they're visible in except
+        extract_dir = self.cache_dir / f"{gse_id}_extracted"
+        nested_extract_dir = self.cache_dir / f"{gse_id}_nested_extracted"
+
         try:
             # Download TAR file
             tar_file_path = self.cache_dir / f"{gse_id}_RAW.tar"
@@ -3846,8 +3854,7 @@ The actual expression data download will be much faster now that metadata is pre
             else:
                 logger.debug(f"Using cached TAR file: {tar_file_path}")
 
-            # Extract TAR file
-            extract_dir = self.cache_dir / f"{gse_id}_extracted"
+            # Extract TAR file (extract_dir defined before try for cleanup access)
             if not extract_dir.exists():
                 logger.info(f"Extracting TAR file to: {extract_dir}")
                 extract_dir.mkdir(exist_ok=True)
@@ -3918,7 +3925,7 @@ The actual expression data download will be much faster now that metadata is pre
                 )
 
             # STEP 2: Process nested archives and find expression data (existing logic)
-            nested_extract_dir = self.cache_dir / f"{gse_id}_nested_extracted"
+            # nested_extract_dir defined before try for cleanup access
             nested_extract_dir.mkdir(exist_ok=True)
 
             # Extract any nested TAR.GZ files
@@ -4063,6 +4070,14 @@ The actual expression data download will be much faster now that metadata is pre
 
         except Exception as e:
             logger.error(f"Error processing TAR file: {e}")
+            # Clean up extraction directories on failure to avoid leaving
+            # potentially gigabytes of data on disk
+            for cleanup_dir in [extract_dir, nested_extract_dir]:
+                if cleanup_dir.exists():
+                    shutil.rmtree(cleanup_dir, ignore_errors=True)
+                    logger.debug(
+                        f"Cleaned up failed extraction directory: {cleanup_dir}"
+                    )
             return None
 
     def _download_and_parse_file(

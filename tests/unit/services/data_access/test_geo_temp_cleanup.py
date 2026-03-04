@@ -59,30 +59,24 @@ class TestTempCleanupOnFailure:
         gse_id = "GSE12345"
         extract_dir = tmp_path / f"{gse_id}_extracted"
         nested_dir = tmp_path / f"{gse_id}_nested_extracted"
-        extract_dir.mkdir()
+        # Pre-create nested dir (but NOT extract_dir -- tarfile.open runs
+        # only when extract_dir doesn't exist, so we leave it for extraction)
         nested_dir.mkdir()
         (nested_dir / "nested_file.txt").write_text("data")
 
-        # Create a valid tar so extraction starts, then mock parser to raise
+        # Create a valid tar so the file exists on disk
         _create_valid_tar(tmp_path / f"{gse_id}_RAW.tar", "big_file.txt", "x" * 200000)
 
-        geo_service.geo_parser.parse_expression_file.side_effect = RuntimeError("Parse crash")
-
-        # Also need to mock parse_10x_data to avoid it succeeding
-        geo_service.geo_parser.parse_10x_data = MagicMock(return_value=None)
-
-        # Patch BulkRNASeqService to raise ValueError (no quant files)
-        with patch(
-            "lobster.services.data_access.geo_service.BulkRNASeqService"
-        ) as mock_bulk:
-            mock_bulk.return_value._detect_quantification_tool.side_effect = ValueError(
-                "No quant files"
-            )
+        # Patch tarfile.open to raise after extract_dir.mkdir runs
+        # (extract_dir is created by mkdir(exist_ok=True) BEFORE tarfile.open)
+        with patch("lobster.services.data_access.geo_service.tarfile.open") as mock_tar:
+            mock_tar.side_effect = OSError("Disk full during extraction")
             result = geo_service._process_tar_file(
                 f"https://ftp.ncbi.nlm.nih.gov/{gse_id}_RAW.tar", gse_id
             )
 
         assert result is None
+        # extract_dir was created by mkdir before tarfile.open raised
         assert not extract_dir.exists(), "extract_dir should be cleaned up"
         assert not nested_dir.exists(), "nested_extract_dir should be cleaned up"
 
