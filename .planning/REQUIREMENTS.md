@@ -28,7 +28,7 @@ Requirements for this cleanup series. Each maps to roadmap phases (PRs).
 
 - [x] **GSTR-01**: Null sanitization stores missing values as empty string/None, never truthy `"NA"` (F10)
 - [x] **GSTR-02**: Strategy derivation uses explicit null checks and allowed file type enums (F10)
-- [ ] **GSTR-03**: `ARCHIVE_FIRST` dead branch resolved — either add triggering rule or remove (F11)
+- [x] **GSTR-03**: `ARCHIVE_FIRST` dead branch resolved — either add triggering rule or remove (F11)
 
 ### GEO Service Decomposition
 
@@ -123,7 +123,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GPAR-05 | Phase 2 (PR-2) | Complete |
 | GSTR-01 | Phase 3 (PR-3) | Complete |
 | GSTR-02 | Phase 3 (PR-3) | Complete |
-| GSTR-03 | Phase 3 (PR-3) | Pending |
+| GSTR-03 | Phase 3 (PR-3) | Complete |
 | GDEC-01 | Phase 4 (PR-4) | Pending |
 | GDEC-02 | Phase 4 (PR-4) | Pending |
 | GDEC-03 | Phase 4 (PR-4) | Pending |
