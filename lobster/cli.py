@@ -158,11 +158,8 @@ _extraction_cache_checked = False
 
 def _get_extraction_cache_manager():
     """Lazy loader for ExtractionCacheManager (premium feature)."""
-    global _ExtractionCacheManager, _extraction_cache_checked
-    if not _extraction_cache_checked:
-        _ExtractionCacheManager = component_registry.get_service("extraction_cache")
-        _extraction_cache_checked = True
-    return _ExtractionCacheManager
+    from lobster.cli_internal.commands.heavy.session_infra import _get_extraction_cache_manager as _impl
+    return _impl()
 
 
 from lobster.core.queue_storage import queue_file_lock
@@ -238,75 +235,19 @@ class NoOpProgress:
 
 
 def should_show_progress(client_arg: Optional["AgentClient"] = None) -> bool:
-    """
-    Determine if progress indicators should be shown based on current mode.
-
-    Returns False (no progress) when:
-    - Reasoning mode is enabled
-    - Verbose mode is enabled
-    - Any callback has verbose/show_tools enabled
-
-    Returns True (show progress) otherwise.
-    """
-    global client
-
-    # Use provided client or global client
-    c = client_arg or client
-    if not c:
-        return True  # Default to showing progress if no client
-
-    # Don't show progress if reasoning mode is enabled
-    if hasattr(c, "enable_reasoning") and c.enable_reasoning:
-        return False
-
-    # Check callbacks for verbose settings
-    if hasattr(c, "callbacks") and c.callbacks:
-        for callback in c.callbacks:
-            if hasattr(callback, "verbose") and callback.verbose:
-                return False
-            if hasattr(callback, "show_tools") and callback.show_tools:
-                return False
-
-    # Check custom_callbacks for verbose settings
-    if hasattr(c, "custom_callbacks") and c.custom_callbacks:
-        for callback in c.custom_callbacks:
-            if hasattr(callback, "verbose") and callback.verbose:
-                return False
-            if hasattr(callback, "show_tools") and callback.show_tools:
-                return False
-
-    return True
+    """Determine if progress indicators should be shown based on current mode."""
+    from lobster.cli_internal.commands.heavy.session_infra import should_show_progress as _impl
+    # Pass client_arg; if None the impl will try the global
+    if client_arg is not None:
+        return _impl(client_arg)
+    # Try global client
+    return _impl(client)
 
 
 def create_progress(description: str = "", client_arg: Optional["AgentClient"] = None):
-    """
-    Create a progress indicator that respects verbose/reasoning mode.
-
-    In verbose/reasoning mode: Returns no-op progress manager
-    In normal mode: Returns actual Progress spinner
-
-    Args:
-        description: Initial progress description
-        client_arg: Optional client to check mode (uses global if not provided)
-
-    Returns:
-        Either a Progress object or NoOpProgress based on mode
-    """
-    if not should_show_progress(client_arg):
-        return NoOpProgress()
-
-    # Create actual progress spinner for normal mode
-    try:
-        progress_console = Console(stderr=True, force_terminal=True)
-    except Exception:
-        progress_console = console
-
-    return Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=progress_console,
-        transient=True,  # Always transient to clean up properly
-    )
+    """Create a progress indicator that respects verbose/reasoning mode."""
+    from lobster.cli_internal.commands.heavy.session_infra import create_progress as _impl
+    return _impl(description, client_arg)
 
 
 # ============================================================================
@@ -423,88 +364,9 @@ class CloudAwareCache:
 def _add_command_to_history(
     client: "AgentClient", command: str, summary: str, is_error: bool = False
 ) -> bool:
-    """
-    Add command execution to conversation history for AI context.
-
-    BUG FIX #4: Enhanced error handling with full logging and file backup.
-    - Returns bool to indicate success/failure
-    - Logs full error messages with stack traces (not truncated to 50 chars)
-    - Implements file backup for audit trail and recovery
-    - Provides detailed diagnostics for debugging
-
-    Args:
-        client: "AgentClient" instance
-        command: Command that was executed
-        summary: Summary of command result
-        is_error: Whether this was an error result
-
-    Returns:
-        True if successfully logged, False otherwise
-    """
-    # 1. Validate inputs
-    if not command or not summary:
-        logger.warning("Empty command or summary provided to history logger")
-        return False
-
-    # 2. Check client compatibility
-    if not hasattr(client, "messages") or not isinstance(client.messages, list):
-        logger.info(
-            f"Client type {type(client).__name__} doesn't support message history. "
-            f"Commands will not be available in AI context."
-        )
-        return False
-
-    # 3. Attempt primary logging (graph state)
-    primary_logged = False
-    try:
-        # Import required message types
-        from langchain_core.messages import AIMessage, HumanMessage
-
-        # Format messages for conversation history
-        human_message_command_usage = f"Command: {command}"
-        status_prefix = "Error" if is_error else "Result"
-        ai_message_command_response = f"Command {status_prefix}: {summary}"
-
-        # Add messages directly to client.messages (the correct API)
-        config = dict(configurable=dict(thread_id=client.session_id))
-        human_msg = HumanMessage(content=human_message_command_usage)
-        ai_msg = AIMessage(content=ai_message_command_response)
-
-        # Add to client message history
-        client.messages.append(human_msg)
-        client.messages.append(ai_msg)
-
-        # Update graph state
-        client.graph.update_state(
-            config,
-            dict(messages=[human_msg, ai_msg]),
-        )
-
-        logger.debug(f"✓ Logged command to graph state: {command[:50]}")
-        primary_logged = True
-
-    except AttributeError as e:
-        # BUG FIX #4: Full error logging with diagnostic info
-        logger.error(
-            f"Client missing required attributes for history logging: {e}. "
-            f"Client type: {type(client).__name__}, "
-            f"Has messages: {hasattr(client, 'messages')}, "
-            f"Has graph: {hasattr(client, 'graph')}"
-        )
-
-    except Exception as e:
-        # BUG FIX #4: Log FULL exception with stack trace (not truncated)
-        logger.error(
-            f"Failed to log command '{command}' to graph state: {e}",
-            exc_info=True,  # Include full traceback for debugging
-        )
-
-    # 4. Backup to file (always, for audit trail and recovery)
-    backup_logged = _backup_command_to_file(
-        client, command, summary, is_error, primary_logged
-    )
-
-    return primary_logged or backup_logged
+    """Add command execution to conversation history for AI context."""
+    from lobster.cli_internal.commands.heavy.session_infra import _add_command_to_history as _impl
+    return _impl(client, command, summary, is_error)
 
 
 def _backup_command_to_file(
@@ -514,50 +376,9 @@ def _backup_command_to_file(
     is_error: bool,
     primary_logged: bool,
 ) -> bool:
-    """
-    Write command to backup file for audit trail and recovery.
-
-    BUG FIX #4: Dual-channel logging - backup commands to file even if graph state succeeds.
-    Provides audit trail, enables session reconstruction, supports compliance requirements.
-
-    Args:
-        client: "AgentClient" instance
-        command: Command that was executed
-        summary: Summary of command result
-        is_error: Whether this was an error result
-        primary_logged: Whether primary (graph state) logging succeeded
-
-    Returns:
-        True if backup successful, False otherwise
-    """
-    try:
-        history_dir = client.data_manager.workspace_path / ".lobster"
-        history_dir.mkdir(parents=True, exist_ok=True)
-        history_file = history_dir / "command_history.jsonl"
-        lock_path = history_file.with_suffix(".lock")
-
-        from datetime import datetime
-
-        record = {
-            "timestamp": datetime.now().isoformat(),
-            "session_id": client.session_id,
-            "command": command,
-            "summary": summary,
-            "is_error": is_error,
-            "logged_to_graph": primary_logged,
-        }
-
-        with queue_file_lock(_COMMAND_HISTORY_LOCK, lock_path):
-            with open(history_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record) + "\n")
-
-        logger.debug(f"✓ Backed up command to file: {command[:50]}")
-        return True
-
-    except Exception as e:
-        # BUG FIX #4: Log backup failures with full stack trace
-        logger.error(f"Failed to write command backup: {e}", exc_info=True)
-        return False
+    """Write command to backup file for audit trail and recovery."""
+    from lobster.cli_internal.commands.heavy.session_infra import _backup_command_to_file as _impl
+    return _impl(client, command, summary, is_error, primary_logged)
 
 
 # ============================================================================
@@ -1778,55 +1599,25 @@ PROFILE_TIMINGS_ENV = "LOBSTER_PROFILE_TIMINGS"
 
 
 def _str_to_bool(value: Optional[str]) -> Optional[bool]:
-    if value is None:
-        return None
-    value = value.strip().lower()
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    return None
+    from lobster.cli_internal.commands.heavy.session_infra import _str_to_bool as _impl
+    return _impl(value)
 
 
 def _resolve_profile_timings_flag(cli_flag: Optional[bool]) -> bool:
-    if cli_flag is not None:
-        return cli_flag
-    env_value = _str_to_bool(os.environ.get(PROFILE_TIMINGS_ENV))
-    return bool(env_value)
+    from lobster.cli_internal.commands.heavy.session_infra import _resolve_profile_timings_flag as _impl
+    return _impl(cli_flag)
 
 
 def _collect_profile_timings(
     client: "AgentClient", clear: bool = True
 ) -> Dict[str, Dict[str, float]]:
-    timings: Dict[str, Dict[str, float]] = {}
-    data_manager = getattr(client, "data_manager", None)
-    if data_manager and hasattr(data_manager, "get_latest_timings"):
-        dm_timings = data_manager.get_latest_timings(clear=clear)
-        if dm_timings:
-            timings["DataManager"] = dm_timings
-    return timings
+    from lobster.cli_internal.commands.heavy.session_infra import _collect_profile_timings as _impl
+    return _impl(client, clear)
 
 
 def _maybe_print_timings(client: "AgentClient", context: str) -> None:
-    if not getattr(client, "profile_timings_enabled", False):
-        return
-
-    timing_sources = _collect_profile_timings(client, clear=True)
-    if not timing_sources:
-        return
-
-    table = Table(title=f"{context} Timings", box=box.ROUNDED)
-    table.add_column("Component", style="cyan", no_wrap=True)
-    table.add_column("Step", style="white")
-    table.add_column("Seconds", justify="right")
-
-    for component, entries in timing_sources.items():
-        for step, value in sorted(
-            entries.items(), key=lambda item: item[1], reverse=True
-        ):
-            table.add_row(component, step, f"{value:.2f}")
-
-    console.print(table)
+    from lobster.cli_internal.commands.heavy.session_infra import _maybe_print_timings as _impl
+    _impl(client, context)
 
 
 def init_client(
@@ -1840,336 +1631,16 @@ def init_client(
     session_id: Optional[str] = None,
 ) -> "AgentClient":
     """Initialize either local or cloud client based on environment."""
-    # Lazy imports for performance (saves ~5s startup time)
-    from lobster.config.settings import settings
-    from lobster.core.client import AgentClient
+    from lobster.cli_internal.commands.heavy.session_infra import init_client as _init_client_impl
 
     global client
-
-    # Check for provider configuration using ConfigResolver
-    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
-
-    # Resolve workspace (create if needed for proper config loading)
-    workspace_path = resolve_workspace(explicit_path=workspace, create=True)
-
-    # Auto-inject provider config into new workspaces that lack one.
-    # When no global LOBSTER_LLM_PROVIDER env var is set and no global config exists,
-    # a new workspace would fail to resolve a provider. Copy from the CWD default
-    # workspace if available.
-    from lobster.config.global_config import GlobalProviderConfig
-    from lobster.config.workspace_config import WorkspaceProviderConfig
-
-    if not WorkspaceProviderConfig.exists(workspace_path):
-        env_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
-        if not env_provider and not GlobalProviderConfig.exists():
-            # No workspace config, no global config, no env var — look for
-            # the CWD default workspace's provider_config.json to copy from
-            default_workspace = Path.cwd() / ".lobster_workspace"
-            if default_workspace != workspace_path and WorkspaceProviderConfig.exists(
-                default_workspace
-            ):
-                source_config = WorkspaceProviderConfig.load(default_workspace)
-                if source_config.global_provider:
-                    source_config.save(workspace_path)
-                    logger.info(
-                        f"Auto-injected provider config into {workspace_path} "
-                        f"from {default_workspace}"
-                    )
-
-    # Reload credentials for the target workspace
-    # This ensures we load from workspace/.env (if exists) or fall back to global credentials
-    settings.reload_credentials(workspace_path)
-
-    resolver = ConfigResolver.get_instance(workspace_path)
-
-    try:
-        # This will raise ConfigurationError if provider not configured
-        resolver.resolve_provider()
-    except ConfigurationError as e:
-        console.print(f"[red]❌ {str(e)}[/red]")
-        console.print(f"\n[yellow]{e.help_text}[/yellow]")
-        raise typer.Exit(code=1)
-
-    # Check for cloud API key
-    cloud_key = os.environ.get("LOBSTER_CLOUD_KEY")
-    cloud_endpoint = os.environ.get("LOBSTER_ENDPOINT")
-
-    if cloud_key:
-        # Detect cloud key but provide better user experience
-        console.print("[bold blue]🌩️  Cloud API key detected...[/bold blue]")
-
-        try:
-            from lobster.lobster_cloud.client import CloudLobsterClient
-
-            console.print("[bold blue]   Initializing Lobster Cloud...[/bold blue]")
-            if cloud_endpoint:
-                console.print(f"[dim blue]   Endpoint: {cloud_endpoint}[/dim blue]")
-
-            # Initialize cloud client with endpoint support
-            client_kwargs = {"api_key": cloud_key}
-            if cloud_endpoint:
-                client_kwargs["endpoint"] = cloud_endpoint
-
-            client = CloudLobsterClient(**client_kwargs)
-
-            # Test connection with retry logic
-            max_retries = 3
-            retry_delay = 2
-
-            for attempt in range(max_retries):
-                try:
-                    status_result = client.get_status()
-
-                    if status_result.get("success", False):
-                        console.print(
-                            "[bold green]✅ Cloud connection established[/bold green]"
-                        )
-                        console.print(
-                            f"[dim blue]   Status: {status_result.get('status', 'unknown')}[/dim blue]"
-                        )
-                        if status_result.get("version"):
-                            console.print(
-                                f"[dim blue]   Version: {status_result.get('version')}[/dim blue]"
-                            )
-                        return client
-                    else:
-                        error_msg = status_result.get("error", "Unknown error")
-                        if attempt < max_retries - 1:
-                            console.print(
-                                f"[yellow]⚠️  Connection test failed (attempt {attempt + 1}): {error_msg}[/yellow]"
-                            )
-                            console.print(
-                                f"[yellow]   Retrying in {retry_delay} seconds...[/yellow]"
-                            )
-                            import time
-
-                            time.sleep(retry_delay)
-                        else:
-                            console.print(
-                                f"[red]❌ Cloud connection failed after {max_retries} attempts: {error_msg}[/red]"
-                            )
-                            raise Exception(f"Connection test failed: {error_msg}")
-
-                except Exception as e:
-                    if "timeout" in str(e).lower():
-                        error_type = "Connection timeout"
-                        suggestion = "Check your internet connection and endpoint URL"
-                    elif "401" in str(e) or "unauthorized" in str(e).lower():
-                        error_type = "Authentication failed"
-                        suggestion = "Verify your LOBSTER_CLOUD_KEY is correct"
-                    elif "404" in str(e) or "not found" in str(e).lower():
-                        error_type = "Endpoint not found"
-                        suggestion = "Check your LOBSTER_ENDPOINT URL"
-                    else:
-                        error_type = "Connection error"
-                        suggestion = "Check network connectivity and service status"
-
-                    if attempt < max_retries - 1:
-                        console.print(
-                            f"[yellow]⚠️  {error_type} (attempt {attempt + 1}): {e}[/yellow]"
-                        )
-                        console.print(
-                            f"[yellow]   Retrying in {retry_delay} seconds...[/yellow]"
-                        )
-                        import time
-
-                        time.sleep(retry_delay)
-                    else:
-                        console.print(
-                            f"[red]❌ {error_type} after {max_retries} attempts[/red]"
-                        )
-                        console.print(f"[red]   Error: {e}[/red]")
-                        console.print(f"[yellow]   Suggestion: {suggestion}[/yellow]")
-                        raise Exception(f"{error_type}: {e}")
-
-        except ImportError:
-            # Provide better guidance for cloud users
-            console.print(
-                "[bold yellow]☁️  Lobster Cloud Not Available Locally[/bold yellow]"
-            )
-            console.print(
-                "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
-            )
-            console.print(
-                "[white]You have a [bold blue]LOBSTER_CLOUD_KEY[/bold blue] set, but this is the open-source version.[/white]"
-            )
-            console.print("")
-            console.print("[bold white]🌟 Get Lobster Cloud Access:[/bold white]")
-            console.print("   • Visit: [bold blue]https://cloud.lobster.ai[/bold blue]")
-            console.print("   • Email: [bold blue]cloud@omics-os.com[/bold blue]")
-            console.print("")
-            console.print(
-                "[bold white]💻 For now, using local mode with full functionality:[/bold white]"
-            )
-            console.print(
-                "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
-            )
-
-        except Exception as e:
-            console.print(f"[red]❌ Cloud connection error: {e}[/red]")
-            console.print("[yellow]   Falling back to local mode...[/yellow]")
-
-    # Use local client (existing code)
-    # Configure logging level based on debug flag
-    import logging
-
-    if debug:
-        setup_logging(logging.DEBUG)
-    else:
-        setup_logging(logging.WARNING)  # Suppress INFO logs
-
-    # Set workspace using centralized resolver
-    # Resolution order: explicit --workspace > LOBSTER_WORKSPACE env var > cwd/.lobster_workspace
-    workspace = resolve_workspace(explicit_path=workspace, create=True)
-
-    # Compute session directory for provenance persistence
-    # Must match AgentClient's session_id computation so provenance files land in the right place
-    from datetime import datetime
-
-    actual_session_id = (
-        session_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    client = _init_client_impl(
+        workspace, reasoning, verbose, debug, profile_timings,
+        provider_override, model_override, session_id,
     )
-    session_dir = workspace / ".lobster" / "sessions" / actual_session_id
-    session_dir.mkdir(parents=True, exist_ok=True)
-
-    # Initialize DataManagerV2 with workspace support, console, and session_dir for provenance
-    from lobster.core.data_manager_v2 import DataManagerV2
-
-    data_manager = DataManagerV2(
-        workspace_path=workspace, console=console, session_dir=session_dir
-    )
-
-    profile_timings_enabled = _resolve_profile_timings_flag(profile_timings)
-    if profile_timings_enabled and hasattr(data_manager, "enable_timing"):
-        data_manager.enable_timing(True)
-
-    # Create callback using the appropriate terminal_callback_handler
-    # Configure callbacks based on reasoning and verbose flags independently
-    from lobster.utils import SimpleTerminalCallback, TerminalCallbackHandler
-
-    callbacks = []
-
-    if reasoning or verbose:
-        # Use full TerminalCallbackHandler when either reasoning or verbose is enabled
-        callback = TerminalCallbackHandler(
-            console=console,
-            show_reasoning=reasoning,  # Only show reasoning if reasoning flag is True
-            verbose=verbose,  # Control tool/agent verbosity independently
-            show_tools=verbose,  # Only show detailed tool output if verbose is True
-        )
-        callbacks.append(callback)
-    else:
-        # Use minimal oh-my-zsh style output (◀ Agent Name) for clean default
-        simple_callback = SimpleTerminalCallback(
-            console=console,
-            show_reasoning=False,
-            minimal=True,  # Enable minimal mode for clean agent indicators
-        )
-        callbacks.append(simple_callback)
-
-    # Initialize client with proper data_manager connection
-    try:
-        client = AgentClient(
-            data_manager=data_manager,  # Pass the configured data_manager
-            workspace_path=workspace,
-            session_id=session_id,  # Pass custom session_id if provided
-            enable_reasoning=reasoning,
-            # enable_langfuse=debug,
-            custom_callbacks=callbacks,  # Pass the proper callback
-            provider_override=provider_override,  # Pass provider override from CLI flag
-            model_override=model_override,  # Pass model override from CLI flag
-        )
-    except ImportError as e:
-        # Catch missing LLM provider packages (e.g. langchain-aws not installed).
-        # Provider create_chat_model() methods now emit environment-aware install
-        # commands via get_install_command(), so the error message already contains
-        # the correct command for uv tool envs, venvs, etc.
-        #
-        # IMPORTANT: Use rich.markup.escape() on error_msg because it may contain
-        # literal square brackets (e.g., lobster-ai[bedrock]) which Rich would
-        # otherwise interpret as markup tags and silently strip.
-        from rich.markup import escape as rich_escape
-
-        error_msg = str(e)
-        console.print("\n[red bold]Missing provider package[/red bold]")
-        console.print(f"[red]  {rich_escape(error_msg)}[/red]\n")
-
-        # The error message from providers includes "Install with: <cmd>".
-        # Extract and highlight the install command if present.
-        if "Install with:" in error_msg:
-            cmd = error_msg.split("Install with:")[-1].strip()
-            console.print("[yellow]How to fix:[/yellow]")
-            console.print(f"  [white]Run:[/white] [dim]{rich_escape(cmd)}[/dim]")
-        else:
-            console.print("[yellow]How to fix:[/yellow]")
-            console.print(
-                "  [white]Run:[/white] [dim]lobster init[/dim] to configure your LLM provider"
-            )
-        console.print()
-        raise typer.Exit(code=1)
-    except ValueError as e:
-        # Catch missing-credential errors from LLM providers and present
-        # clear, actionable instructions instead of a raw traceback.
-        from rich.markup import escape as rich_escape
-
-        error_msg = str(e)
-        resolved_provider = provider_override or "configured provider"
-        console.print(
-            f"\n[red bold]Missing credentials for provider '{rich_escape(resolved_provider)}'[/red bold]"
-        )
-        console.print(f"[red]  {rich_escape(error_msg)}[/red]\n")
-        console.print("[yellow]How to fix:[/yellow]")
-        console.print(
-            f"  1. [white]Add the key to the workspace .env file:[/white]\n"
-            f"     [dim]{workspace}/.env[/dim]"
-        )
-        console.print(
-            "  2. [white]Or add to global credentials (works everywhere):[/white]\n"
-            "     [dim]lobster init --global[/dim]"
-        )
-        console.print(
-            f"  3. [white]Or export in your shell:[/white]\n"
-            f"     [dim]{error_msg.split('Set it with: ')[-1] if 'Set it with: ' in error_msg else 'export <KEY>=<value>'}[/dim]"
-        )
-        # If there's an existing config elsewhere, hint that it may have credentials
-        from lobster.core.config_resolver import _find_existing_configs
-        found_configs = _find_existing_configs()
-        if found_configs:
-            closest = found_configs[0]
-            project_root = closest.parent
-            console.print(
-                f"\n  [dim]\U0001f4a1 Found an existing workspace at "
-                f"[cyan]{rich_escape(str(closest))}[/cyan] —\n"
-                f"     it may already have credentials configured.\n"
-                f"     Try: [bold]export LOBSTER_WORKSPACE={rich_escape(str(project_root))}/.lobster_workspace[/bold]\n"
-                f"     then re-run your command.[/dim]"
-            )
-        console.print()
-        raise typer.Exit(code=1)
-
-    client.profile_timings_enabled = profile_timings_enabled
-
-    # Show graph visualization in debug mode
-    if debug:
-        try:
-            # Get the graph from the client
-            if hasattr(client, "graph") and client.graph:
-                # Generate and save mermaid PNG to workspace
-                mermaid_png = client.graph.get_graph().draw_mermaid_png()
-                graph_file = workspace / "agent_graph.png"
-
-                with open(graph_file, "wb") as f:
-                    f.write(mermaid_png)
-
-                console.print(
-                    f"[green]📊 Graph visualization saved to: {graph_file}[/green]"
-                )
-        except Exception as e:
-            console.print(
-                f"[yellow]⚠️  Could not generate graph visualization: {e}[/yellow]"
-            )
-
     return client
+
+
 
 
 def get_user_input_with_editing(prompt_text: str, client=None) -> str:
@@ -2689,447 +2160,35 @@ def get_current_agent_name() -> str:
 
 
 def _dna_helix_animation(width: int, duration: float = 0.7):
-    """
-    DNA sequence animation with colorful bases (A, T, C, G) flowing across the terminal.
-    Uses only capital DNA letters with biochemistry-inspired colors.
-    """
-    import math
-    import sys
-
-    # DNA base colors (biochemistry-inspired)
-    base_colors = {
-        "A": (0, 200, 83),  # Adenine - green (purine)
-        "T": (255, 82, 82),  # Thymine - red (pyrimidine)
-        "G": (255, 193, 7),  # Guanine - gold (purine)
-        "C": (41, 121, 255),  # Cytosine - blue (pyrimidine)
-    }
-
-    lobster_orange = (228, 92, 71)
-    white = (255, 255, 255)
-
-    num_frames = max(40, int(duration * 90))
-    frame_sleep = duration / num_frames
-
-    # Generate a random DNA sequence (only capital letters A, T, C, G)
-    sequence = "".join(random.choices(["A", "T", "G", "C"], k=width))
-
-    # Phase 1: DNA sequence assembly (flowing bases)
-    assembly_frames = int(num_frames * 0.45)
-    for frame in range(assembly_frames):
-        progress = (frame + 1) / assembly_frames
-        reveal_pos = int(width * progress)
-
-        line_parts = []
-        for i in range(width):
-            if i < reveal_pos:
-                base = sequence[i]
-                r, g, b = base_colors[base]
-                # Add glow effect for recently revealed bases
-                if i > reveal_pos - 5:
-                    glow = 1.3 - (reveal_pos - i) * 0.06
-                    r = min(255, int(r * glow))
-                    g = min(255, int(g * glow))
-                    b = min(255, int(b * glow))
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-            else:
-                line_parts.append(" ")
-
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-        time.sleep(frame_sleep * 0.5)
-
-    # Phase 2: DNA wave intensity effect (only capital letters)
-    helix_frames = int(num_frames * 0.35)
-    for frame in range(helix_frames):
-        line_parts = []
-        wave_offset = frame * 0.4
-
-        for i in range(width):
-            base = sequence[i]
-            # Sinusoidal wave for intensity variation (simulates depth)
-            wave = math.sin((i * 0.25) + wave_offset)
-            intensity = 0.5 + 0.5 * abs(wave)
-
-            r, g, b = base_colors[base]
-            r = int(r * intensity)
-            g = int(g * intensity)
-            b = int(b * intensity)
-
-            line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-        time.sleep(frame_sleep * 0.8)
-
-    # Phase 3: Orange sweep with centered "─ omics-os ─" brand text
-    sweep_frames = num_frames - assembly_frames - helix_frames
-    brand_text = "─ omics-os ─"
-    text_start = (width - len(brand_text)) // 2
-    text_end = text_start + len(brand_text)
-
-    for frame in range(sweep_frames + 1):
-        progress = frame / sweep_frames if sweep_frames > 0 else 1
-        sweep_pos = int(width * progress)
-
-        line_parts = []
-        for i in range(width):
-            if i < sweep_pos:
-                # Check if this position is part of the brand text
-                if text_start <= i < text_end:
-                    char_idx = i - text_start
-                    char = brand_text[char_idx]
-                    # White text on orange background
-                    r, g, b = lobster_orange
-                    line_parts.append(
-                        f"\033[48;2;{r};{g};{b}m\033[38;2;255;255;255;1m{char}\033[0m"
-                    )
-                else:
-                    # Gradient orange fill
-                    gradient = 1.0 - (sweep_pos - i) / max(width, 1) * 0.12
-                    r = min(255, int(lobster_orange[0] * gradient))
-                    g = min(255, int(lobster_orange[1] * gradient))
-                    b = min(255, int(lobster_orange[2] * gradient))
-                    line_parts.append(f"\033[48;2;{r};{g};{b}m \033[0m")
-            elif i == sweep_pos:
-                # Bright leading edge
-                line_parts.append(
-                    f"\033[48;2;{white[0]};{white[1]};{white[2]}m \033[0m"
-                )
-            else:
-                # Fading DNA bases behind
-                base = sequence[i]
-                fade = max(0.15, 1.0 - (i - sweep_pos) * 0.08)
-                r, g, b = base_colors[base]
-                r, g, b = int(r * fade), int(g * fade), int(b * fade)
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-        time.sleep(frame_sleep * 1.0)
-
-    # Final orange bar with centered "─ omics-os ─"
-    r, g, b = lobster_orange
-    final_parts = []
-    for i in range(width):
-        if text_start <= i < text_end:
-            char = brand_text[i - text_start]
-            final_parts.append(
-                f"\033[48;2;{r};{g};{b}m\033[38;2;255;255;255;1m{char}\033[0m"
-            )
-        else:
-            final_parts.append(f"\033[48;2;{r};{g};{b}m \033[0m")
-    sys.stdout.write("\r" + "".join(final_parts) + "\n")
-    sys.stdout.flush()
+    """DNA sequence animation with colorful bases."""
+    from lobster.cli_internal.commands.heavy.animations import _dna_helix_animation as _impl
+    _impl(width, duration)
 
 
 def display_welcome():
     """Display DNA sequence animation as bioinformatics-themed startup visualization."""
-    import sys
-
-    term_width = shutil.get_terminal_size().columns
-    sys.stdout.write("\n")
-    _dna_helix_animation(term_width, duration=random.uniform(0.6, 0.8))
-    sys.stdout.write("\n")
+    from lobster.cli_internal.commands.heavy.animations import display_welcome as _impl
+    _impl()
 
 
 def _dna_agent_loading_phase(
     width: int, agent_names: List[str], ready_queue=None, timeout: float = 10.0
 ):
-    """
-    DNA-themed agent loading animation showing real-time progress.
-
-    Displays a progress bar made of DNA bases that fills as agents load,
-    with each agent name appearing with a DNA sequencing effect.
-    """
-    import math
-    import queue as queue_module
-    import sys
-
-    # DNA base colors (biochemistry-inspired)
-    base_colors = {
-        "A": (0, 200, 83),  # Adenine - green
-        "T": (255, 82, 82),  # Thymine - red
-        "G": (255, 193, 7),  # Guanine - gold
-        "C": (41, 121, 255),  # Cytosine - blue
-    }
-    total_agents = len(agent_names)
-    loaded_count = 0
-    start_time = time.time()
-
-    # Generate DNA sequence for progress bar
-    sequence = "".join(random.choices(["A", "T", "G", "C"], k=width))
-
-    def render_progress_bar(progress: float, agent_name: str = "", wave_frame: int = 0):
-        """Render the DNA progress bar with current progress."""
-        filled_width = int(width * progress)
-
-        line_parts = []
-        for i in range(width):
-            base = sequence[i]
-            r, g, b = base_colors[base]
-
-            if i < filled_width:
-                # Filled section: bright with wave effect
-                wave = math.sin((i * 0.3) + (wave_frame * 0.3))
-                intensity = 0.8 + 0.2 * abs(wave)
-                r = min(255, int(r * intensity))
-                g = min(255, int(g * intensity))
-                b = min(255, int(b * intensity))
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-            elif i == filled_width and progress < 1.0:
-                # Leading edge: white glow
-                line_parts.append(f"\033[38;2;255;255;255;1m{base}\033[0m")
-            else:
-                # Unfilled section: dim
-                r, g, b = int(r * 0.2), int(g * 0.2), int(b * 0.2)
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-
-        # Clear line and render
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-
-        # Show agent name below progress bar (if provided)
-        if agent_name:
-            # Create compact DNA spinner
-            spinner_bases = ["A", "T", "G", "C"]
-            spinner_idx = wave_frame % len(spinner_bases)
-            spinner_base = spinner_bases[spinner_idx]
-            r, g, b = base_colors[spinner_base]
-
-            # Format agent name with DNA spinner
-            agent_text = f"  \033[38;2;{r};{g};{b};1m{spinner_base}\033[0m \033[38;2;200;200;200m{agent_name}\033[0m"
-
-            # Move cursor down, print agent name, move cursor back up
-            sys.stdout.write(f"\n{agent_text}\033[K")  # \033[K clears to end of line
-            sys.stdout.write("\033[1A")  # Move cursor up 1 line
-            sys.stdout.flush()
-
-    # Initial render: empty progress bar
-    render_progress_bar(0.0)
-    sys.stdout.write("\n\n")  # Reserve space for agent name
-    sys.stdout.write("\033[2A")  # Move cursor back to progress bar line
-    sys.stdout.flush()
-
-    # Animation loop
-    wave_frame = 0
-    last_agent_name = ""
-
-    if ready_queue:
-        # Real-time mode: wait for agent notifications
-        while loaded_count < total_agents:
-            # Check for timeout
-            if time.time() - start_time > timeout:
-                break
-
-            try:
-                # Non-blocking check for new agent
-                agent_loaded = ready_queue.get(timeout=0.05)
-                if agent_loaded == "__done__":
-                    break
-                loaded_count += 1
-                last_agent_name = agent_loaded
-
-                # Animate progress increase
-                old_progress = (loaded_count - 1) / total_agents
-                new_progress = loaded_count / total_agents
-
-                # Smooth transition over 10 frames
-                for frame in range(10):
-                    progress = old_progress + (new_progress - old_progress) * (
-                        frame / 10
-                    )
-                    render_progress_bar(progress, last_agent_name, wave_frame)
-                    wave_frame += 1
-                    time.sleep(0.03)
-
-            except queue_module.Empty:
-                # Keep animating while waiting
-                progress = loaded_count / total_agents
-                render_progress_bar(progress, last_agent_name, wave_frame)
-                wave_frame += 1
-                time.sleep(0.05)
-    else:
-        # Fallback mode: simulate loading (no real progress)
-        estimated_time_per_agent = timeout / total_agents
-
-        for agent_idx, agent_name in enumerate(agent_names):
-            agent_start = time.time()
-
-            # Animate this agent loading
-            while time.time() - agent_start < estimated_time_per_agent:
-                progress = (
-                    agent_idx + (time.time() - agent_start) / estimated_time_per_agent
-                ) / total_agents
-                progress = min(progress, 1.0)
-                render_progress_bar(progress, agent_name, wave_frame)
-                wave_frame += 1
-                time.sleep(0.05)
-
-            loaded_count += 1
-
-    # Final render: complete bar
-    render_progress_bar(1.0, "ready", wave_frame)
-
-    # Hold final state briefly
-    for _ in range(10):
-        render_progress_bar(1.0, "ready", wave_frame)
-        wave_frame += 1
-        time.sleep(0.04)
-
-    # Clear the agent name line and progress bar
-    sys.stdout.write("\r" + " " * width + "\n")  # Clear progress bar
-    sys.stdout.write(" " * width + "\n")  # Clear agent name
-    sys.stdout.write("\033[2A\r")  # Move cursor back up and to start
-    sys.stdout.flush()
+    """DNA-themed agent loading animation showing real-time progress."""
+    from lobster.cli_internal.commands.heavy.animations import _dna_agent_loading_phase as _impl
+    _impl(width, agent_names, ready_queue, timeout)
 
 
 def _dna_exit_animation(width: int, duration: float = 0.5):
-    """
-    DNA exit animation - reverse of startup animation.
-    Orange bar dissolves back into DNA bases, which then fade out.
-    The "─ omics-os ─" brand text ALWAYS stays lobster orange.
-    """
-    import math
-    import sys
-
-    # DNA base colors (biochemistry-inspired)
-    base_colors = {
-        "A": (0, 200, 83),  # Adenine - green (purine)
-        "T": (255, 82, 82),  # Thymine - red (pyrimidine)
-        "G": (255, 193, 7),  # Guanine - gold (purine)
-        "C": (41, 121, 255),  # Cytosine - blue (pyrimidine)
-    }
-
-    lobster_orange = (228, 92, 71)
-    white = (255, 255, 255)
-
-    num_frames = max(30, int(duration * 70))
-    frame_sleep = duration / num_frames
-
-    # Generate a random DNA sequence
-    sequence = "".join(random.choices(["A", "T", "G", "C"], k=width))
-
-    brand_text = "─ omics-os ─"
-    text_start = (width - len(brand_text)) // 2
-    text_end = text_start + len(brand_text)
-
-    # Phase 1: Start with full orange bar, then reverse sweep (right to left dissolve)
-    # Brand text stays full orange throughout
-    dissolve_frames = int(num_frames * 0.5)
-    for frame in range(dissolve_frames + 1):
-        progress = frame / dissolve_frames if dissolve_frames > 0 else 1
-        # Dissolve from right to left
-        dissolve_pos = width - int(width * progress)
-
-        line_parts = []
-        for i in range(width):
-            # Brand text ALWAYS stays lobster orange (no background during dissolve)
-            if text_start <= i < text_end:
-                char = brand_text[i - text_start]
-                r, g, b = lobster_orange
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{char}\033[0m")
-            elif i >= dissolve_pos:
-                # DNA bases emerge from dissolution
-                base = sequence[i]
-                r, g, b = base_colors[base]
-                # Glow effect for recently revealed bases
-                if i < dissolve_pos + 5:
-                    glow = 1.3 - (i - dissolve_pos) * 0.06
-                    r = min(255, int(r * glow))
-                    g = min(255, int(g * glow))
-                    b = min(255, int(b * glow))
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-            elif i == dissolve_pos - 1 and dissolve_pos > 0:
-                # Bright dissolving edge
-                line_parts.append(
-                    f"\033[48;2;{white[0]};{white[1]};{white[2]}m \033[0m"
-                )
-            else:
-                # Orange bar fading as it dissolves
-                fade = max(0.4, 1.0 - progress * 0.6)
-                r, g, b = lobster_orange
-                r, g, b = int(r * fade), int(g * fade), int(b * fade)
-                line_parts.append(f"\033[48;2;{r};{g};{b}m \033[0m")
-
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-        time.sleep(frame_sleep * 0.8)
-
-    # Phase 2: DNA wave effect with brand text staying orange
-    wave_frames = int(num_frames * 0.25)
-    for frame in range(wave_frames):
-        line_parts = []
-        wave_offset = frame * 0.5
-
-        for i in range(width):
-            # Brand text ALWAYS stays lobster orange
-            if text_start <= i < text_end:
-                char = brand_text[i - text_start]
-                r, g, b = lobster_orange
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{char}\033[0m")
-            else:
-                base = sequence[i]
-                wave = math.sin((i * 0.25) + wave_offset)
-                intensity = 0.5 + 0.5 * abs(wave)
-
-                r, g, b = base_colors[base]
-                r = int(r * intensity)
-                g = int(g * intensity)
-                b = int(b * intensity)
-
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-        time.sleep(frame_sleep * 0.6)
-
-    # Phase 3: Fade out DNA sequence, brand text stays orange then fades last
-    fade_frames = num_frames - dissolve_frames - wave_frames
-    for frame in range(fade_frames + 1):
-        progress = frame / fade_frames if fade_frames > 0 else 1
-        fade_intensity = 1.0 - progress
-        # Brand fades slower - only starts fading at 70% progress
-        brand_fade = max(0, 1.0 - max(0, (progress - 0.7) / 0.3))
-
-        line_parts = []
-        for i in range(width):
-            # Brand text stays orange longer, then fades last
-            if text_start <= i < text_end:
-                char = brand_text[i - text_start]
-                r, g, b = lobster_orange
-                if brand_fade > 0.05:
-                    r = int(r * brand_fade)
-                    g = int(g * brand_fade)
-                    b = int(b * brand_fade)
-                    line_parts.append(f"\033[38;2;{r};{g};{b};1m{char}\033[0m")
-                else:
-                    line_parts.append(" ")
-            elif fade_intensity > 0.05:
-                base = sequence[i]
-                r, g, b = base_colors[base]
-                r = int(r * fade_intensity)
-                g = int(g * fade_intensity)
-                b = int(b * fade_intensity)
-                line_parts.append(f"\033[38;2;{r};{g};{b};1m{base}\033[0m")
-            else:
-                line_parts.append(" ")
-
-        sys.stdout.write("\r" + "".join(line_parts))
-        sys.stdout.flush()
-        time.sleep(frame_sleep * 1.0)
-
-    # Clear the line
-    sys.stdout.write("\r" + " " * width + "\r")
-    sys.stdout.flush()
+    """DNA exit animation - reverse of startup animation."""
+    from lobster.cli_internal.commands.heavy.animations import _dna_exit_animation as _impl
+    _impl(width, duration)
 
 
 def display_goodbye():
     """Display DNA exit animation as bioinformatics-themed farewell visualization."""
-    import sys
-
-    term_width = shutil.get_terminal_size().columns
-    sys.stdout.write("\n")
-    _dna_exit_animation(term_width, duration=random.uniform(0.4, 0.6))
+    from lobster.cli_internal.commands.heavy.animations import display_goodbye as _impl
+    _impl()
 
 
 def show_default_help():
@@ -3194,357 +2253,38 @@ def show_default_help():
 
 def _format_data_preview(matrix, max_rows: int = 5, max_cols: int = 5) -> Table:
     """Format a data matrix preview as a Rich table."""
-    import numpy as np
-    import scipy.sparse as sp
-
-    # Convert sparse to dense for preview if needed
-    if sp.issparse(matrix):
-        # Get a small subset for preview
-        preview_rows = min(max_rows, matrix.shape[0])
-        preview_cols = min(max_cols, matrix.shape[1])
-        preview_data = matrix[:preview_rows, :preview_cols].toarray()
-    else:
-        preview_rows = min(max_rows, matrix.shape[0])
-        preview_cols = min(max_cols, matrix.shape[1])
-        preview_data = matrix[:preview_rows, :preview_cols]
-
-    # Create table
-    table = Table(box=box.SIMPLE)
-
-    # Add columns
-    table.add_column("", style="bold grey50")  # Row index
-    for i in range(preview_cols):
-        table.add_column(f"[{i}]", style="cyan")
-
-    # Add rows
-    for i in range(preview_rows):
-        row_values = ["[" + str(i) + "]"]
-        for j in range(preview_cols):
-            val = preview_data[i, j]
-            # Format the value
-            if isinstance(val, (int, np.integer)):
-                formatted = str(val)
-            elif isinstance(val, (float, np.floating)):
-                formatted = f"{val:.2f}"
-            else:
-                formatted = str(val)
-            row_values.append(formatted)
-        table.add_row(*row_values)
-
-    # Add ellipsis row if there are more rows
-    if matrix.shape[0] > max_rows or matrix.shape[1] > max_cols:
-        ellipsis_row = ["..."] * (min(preview_cols, matrix.shape[1]) + 1)
-        table.add_row(*ellipsis_row, style="dim")
-
-    return table
+    from lobster.cli_internal.commands.heavy.display_helpers import _format_data_preview as _impl
+    return _impl(matrix, max_rows, max_cols)
 
 
 def _format_dataframe_preview(df: "pd.DataFrame", max_rows: int = 5) -> Table:
     """Format a DataFrame preview as a Rich table."""
-    import numpy as np
-    import pandas as pd
-
-    table = Table(box=box.SIMPLE)
-
-    # Add index column
-    table.add_column("Index", style="bold grey50")
-
-    # Add data columns
-    for col in df.columns[:10]:  # Limit to first 10 columns
-        dtype_str = str(df[col].dtype)
-        style = (
-            "cyan"
-            if dtype_str.startswith("int") or dtype_str.startswith("float")
-            else "white"
-        )
-        table.add_column(str(col), style=style)
-
-    # Add rows
-    preview_rows = min(max_rows, len(df))
-    for idx in range(preview_rows):
-        row_data = [str(df.index[idx])]
-        for col in df.columns[:10]:
-            val = df.iloc[idx][col]
-            # Format based on type
-            if pd.isna(val):
-                formatted = "NaN"
-            elif isinstance(val, (int, np.integer)):
-                formatted = str(val)
-            elif isinstance(val, (float, np.floating)):
-                formatted = f"{val:.2f}"
-            else:
-                formatted = str(val)[:20]  # Truncate long strings
-            row_data.append(formatted)
-        table.add_row(*row_data)
-
-    # Add ellipsis if there are more rows
-    if len(df) > max_rows:
-        ellipsis_row = ["..."] * (min(10, len(df.columns)) + 1)
-        table.add_row(*ellipsis_row, style="dim")
-
-    # Add more columns indicator
-    if len(df.columns) > 10:
-        table.add_column(f"... +{len(df.columns) - 10} more", style="dim")
-
-    return table
+    from lobster.cli_internal.commands.heavy.display_helpers import _format_dataframe_preview as _impl
+    return _impl(df, max_rows)
 
 
 def _format_array_info(arrays_dict: Dict[str, "np.ndarray"]) -> Table:
     """Format array information (obsm/varm) as a table."""
-
-    if not arrays_dict:
-        return None
-
-    table = Table(box=box.SIMPLE)
-    table.add_column("Key", style="bold cyan")
-    table.add_column("Shape", style="white")
-    table.add_column("Dtype", style="grey70")
-
-    for key, arr in arrays_dict.items():
-        shape_str = " × ".join(str(d) for d in arr.shape)
-        dtype_str = str(arr.dtype)
-        table.add_row(key, shape_str, dtype_str)
-
-    return table
+    from lobster.cli_internal.commands.heavy.display_helpers import _format_array_info as _impl
+    return _impl(arrays_dict)
 
 
 def _get_matrix_info(matrix) -> Dict[str, Any]:
     """Get information about a matrix (sparse or dense)."""
-    import scipy.sparse as sp
-
-    info = {}
-    info["shape"] = matrix.shape
-    info["dtype"] = str(matrix.dtype)
-
-    if sp.issparse(matrix):
-        info["sparse"] = True
-        info["format"] = matrix.format.upper()
-        info["nnz"] = matrix.nnz
-        info["density"] = (matrix.nnz / (matrix.shape[0] * matrix.shape[1])) * 100
-        info["memory_mb"] = (
-            matrix.data.nbytes + matrix.indices.nbytes + matrix.indptr.nbytes
-        ) / (1024**2)
-    else:
-        info["sparse"] = False
-        info["format"] = "Dense"
-        info["memory_mb"] = matrix.nbytes / (1024**2)
-        info["density"] = 100.0
-
-    return info
+    from lobster.cli_internal.commands.heavy.display_helpers import _get_matrix_info as _impl
+    return _impl(matrix)
 
 
 def _display_status_info():
-    """
-    Display subscription tier, installed packages, and available agents.
-
-    Shared implementation for both 'lobster status' CLI command and '/status' chat command.
-    This function is client-independent and shows installation/license information.
-    """
-    from rich.table import Table
-
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold {LobsterTheme.PRIMARY_ORANGE}]🦞 Lobster Status[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-            border_style=LobsterTheme.PRIMARY_ORANGE,
-            padding=(0, 2),
-        )
-    )
-    console.print()
-
-    # Check initialization status
-    env_file = Path.cwd() / ".env"
-    is_initialized = env_file.exists()
-
-    if is_initialized:
-        console.print("[bold]Initialization:[/bold] ✅ Configured")
-        # Try to detect provider from .env
-        try:
-            from dotenv import dotenv_values
-
-            env_vars = dotenv_values(env_file)
-            provider = env_vars.get("LOBSTER_LLM_PROVIDER")
-            if provider:
-                console.print(f"[dim]Provider: {provider}[/dim]")
-            else:
-                # Auto-detect from available keys
-                if env_vars.get("ANTHROPIC_API_KEY"):
-                    console.print("[dim]Provider: anthropic (auto-detected)[/dim]")
-                elif env_vars.get("AWS_BEDROCK_ACCESS_KEY"):
-                    console.print("[dim]Provider: bedrock (auto-detected)[/dim]")
-                elif env_vars.get("OLLAMA_BASE_URL"):
-                    console.print("[dim]Provider: ollama (auto-detected)[/dim]")
-        except Exception:
-            pass  # Silently skip if dotenv not available
-        console.print(f"[dim]Config file: {env_file}[/dim]")
-    else:
-        console.print("[bold]Initialization:[/bold] ❌ Not configured")
-        console.print(
-            Panel.fit(
-                "[yellow]⚠️  Lobster is not initialized yet[/yellow]\n\n"
-                f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
-                "[dim]This will configure your LLM provider (Anthropic/Bedrock/Ollama)[/dim]",
-                border_style="yellow",
-                padding=(1, 2),
-            )
-        )
-
-    console.print()
-
-    # Get entitlement status
-    from lobster.core.license_manager import get_entitlement_status
-
-    entitlement = get_entitlement_status()
-
-    # Get installed packages
-    from lobster.core.plugin_loader import get_installed_packages
-
-    packages = get_installed_packages()
-
-    # Get available agents
-    from lobster.config.agent_registry import get_worker_agents
-    from lobster.config.subscription_tiers import is_agent_available
-
-    worker_agents = get_worker_agents()
-    tier = entitlement.get("tier", "free")
-    available = [name for name in worker_agents if is_agent_available(name, tier)]
-    restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
-
-    # Subscription tier section
-    tier_display = entitlement.get("tier_display", "Free")
-    tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
-        entitlement.get("tier", "free"), "🆓"
-    )
-
-    console.print(f"[bold]Subscription Tier:[/bold] {tier_emoji} {tier_display}")
-    console.print(f"[dim]Source: {entitlement.get('source', 'default')}[/dim]")
-
-    if entitlement.get("expires_at"):
-        days = entitlement.get("days_until_expiry")
-        if days is not None and days < 30:
-            console.print(f"[yellow]⚠️  License expires in {days} days[/yellow]")
-        else:
-            console.print(f"[dim]Expires: {entitlement.get('expires_at')}[/dim]")
-
-    if entitlement.get("warnings"):
-        for warning in entitlement["warnings"]:
-            console.print(f"[red]⚠️  {warning}[/red]")
-
-    console.print()
-
-    # Installed packages table
-    console.print("[bold]Installed Packages:[/bold]")
-    pkg_table = Table(box=box.ROUNDED, border_style="cyan", show_header=True)
-    pkg_table.add_column("Package", style="white")
-    pkg_table.add_column("Version", style="cyan")
-    pkg_table.add_column("Status", style="green")
-
-    for pkg_name, version in packages.items():
-        if version == "missing":
-            status_str = "[red]Missing[/red]"
-        elif version == "dev":
-            status_str = "[yellow]Development[/yellow]"
-        else:
-            status_str = "[green]Installed[/green]"
-        pkg_table.add_row(pkg_name, version, status_str)
-
-    console.print(pkg_table)
-    console.print()
-
-    # Optional capabilities
-    console.print("[bold]Optional Capabilities:[/bold]")
-    capabilities = []
-    try:
-        import chromadb  # noqa: F401
-
-        capabilities.append(
-            ("[green]✓[/green]", "Semantic Search", "chromadb + sentence-transformers")
-        )
-    except ImportError:
-        capabilities.append(
-            (
-                "[dim]○[/dim]",
-                "Semantic Search",
-                "pip install 'lobster-ai\\[vector-search]'",
-            )
-        )
-    try:
-        import docling  # noqa: F401
-
-        capabilities.append(("[green]✓[/green]", "Document Intelligence", "docling"))
-    except ImportError:
-        capabilities.append(
-            (
-                "[dim]○[/dim]",
-                "Document Intelligence",
-                "pip install 'lobster-ai\\[docling]'",
-            )
-        )
-
-    cap_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-    cap_table.add_column("Status", width=3)
-    cap_table.add_column("Capability", style="white")
-    cap_table.add_column("Details", style="dim")
-    for status, name, detail in capabilities:
-        cap_table.add_row(status, name, detail)
-    console.print(cap_table)
-    console.print()
-
-    # Available agents
-    if available:
-        console.print(f"[bold]Available Agents ({len(available)}):[/bold]")
-        agent_list = ", ".join(sorted(available))
-        console.print(f"[green]{agent_list}[/green]")
-        console.print()
-
-    # Restricted agents (upgrade prompt)
-    if restricted:
-        console.print(f"[bold]Premium Agents ({len(restricted)}):[/bold]")
-        restricted_list = ", ".join(sorted(restricted))
-        console.print(f"[dim]{restricted_list}[/dim]")
-        console.print()
-        console.print(
-            Panel.fit(
-                f"[yellow]⭐ Upgrade to Premium to unlock {len(restricted)} additional agents[/yellow]\n"
-                f"[dim]Visit https://omics-os.com/pricing or run 'lobster activate <code>'[/dim]",
-                border_style="yellow",
-                padding=(0, 2),
-            )
-        )
-
-    # Features
-    features = entitlement.get("features", [])
-    if features:
-        console.print()
-        console.print("[bold]Enabled Features:[/bold]")
-        console.print(f"[cyan]{', '.join(features)}[/cyan]")
+    """Display subscription tier, installed packages, and available agents."""
+    from lobster.cli_internal.commands.heavy.display_helpers import _display_status_info as _impl
+    _impl()
 
 
 def display_session(client: "AgentClient"):
     """Display current session status with enhanced orange theming."""
-    status = client.get_status()
-
-    # Get current mode/profile
-    configurator = get_agent_configurator()
-    current_mode = configurator.get_current_profile()
-
-    # Prepare status data for the themed status panel
-    status_data = {
-        "session_id": status["session_id"],
-        "mode": current_mode,
-        "messages": str(status["message_count"]),
-        "workspace": status["workspace"],
-        "data_loaded": status["has_data"],
-    }
-
-    # Add data summary if available
-    if status["has_data"] and status["data_summary"]:
-        summary = status["data_summary"]
-        status_data["data_shape"] = str(summary.get("shape", "N/A"))
-        status_data["memory_usage"] = summary.get("memory_usage", "N/A")
-
-    # Use the themed status panel
-    console_manager.print_status_panel(status_data, "Session Status")
+    from lobster.cli_internal.commands.heavy.session_infra import display_session as _impl
+    _impl(client)
 
 
 def _show_workspace_prompt(client):
@@ -3661,24 +2401,10 @@ def init_client_with_animation(
     model_override: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> "AgentClient":
-    """
-    Initialize client. Fast startup thanks to lazy imports.
-    """
-    get_console_manager()
-
-    # Initialize client - lazy imports make this fast
-    client = init_client(
-        workspace,
-        reasoning,
-        verbose,
-        debug,
-        profile_timings,
-        provider_override,
-        model_override,
-        session_id,
-    )
-
-    return client
+    """Initialize client. Fast startup thanks to lazy imports."""
+    from lobster.cli_internal.commands.heavy.session_infra import init_client_with_animation as _impl
+    return _impl(workspace, reasoning, verbose, debug, profile_timings,
+                 provider_override, model_override, session_id)
 
 
 @app.command()
@@ -6703,7 +5429,7 @@ def handle_command(command: str, client: "AgentClient"):
 
     try:
         # Execute command and capture summary for history
-        command_summary = _execute_command(cmd, client)
+        command_summary = _execute_command(cmd, client, original_command=command.strip())
 
         # Add to conversation history if summary provided
         if command_summary:
@@ -6752,13 +5478,48 @@ def handle_command(command: str, client: "AgentClient"):
 # ============================================================================
 
 
-def _execute_command(cmd: str, client: "AgentClient") -> Optional[str]:
+def _extract_argument(original_command: str, prefix: str) -> Optional[str]:
+    """Extract the argument after a command prefix, preserving case and handling quotes.
+
+    Uses the original (not lowercased) command so file paths keep their case.
+    Strips surrounding single or double quotes so quoted paths with spaces work.
+
+    Examples:
+        _extract_argument('/workspace load "My File.fcs"', '/workspace load')
+        → 'My File.fcs'
+
+        _extract_argument('/read data.h5ad', '/read')
+        → 'data.h5ad'
+    """
+    lower = original_command.lower()
+    if not lower.startswith(prefix.lower()):
+        return None
+    arg = original_command[len(prefix) :].strip()
+    if not arg:
+        return None
+    # Strip surrounding quotes (single or double)
+    if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in ('"', "'"):
+        arg = arg[1:-1]
+    return arg
+
+
+def _execute_command(
+    cmd: str, client: "AgentClient", original_command: Optional[str] = None
+) -> Optional[str]:
     """Execute individual slash commands.
+
+    Args:
+        cmd: Lowercased command string (for routing/dispatch).
+        client: AgentClient instance.
+        original_command: Original command string with preserved case.
+            Used for argument extraction so file paths keep their case.
 
     Returns:
         Optional[str]: Summary of command execution for conversation history,
                       or None if command should not be logged to history.
     """
+    if original_command is None:
+        original_command = cmd
 
     # -------------------------------------------------------------------------
     # Helper function for quantification directory detection
@@ -7318,15 +6079,15 @@ when they are started by agents or analysis workflows.
             force_refresh = "--refresh" in cmd.lower()
             return workspace_list(client, output, force_refresh)
         elif subcommand == "info":
-            selector = parts[2] if len(parts) > 2 else None
+            selector = _extract_argument(original_command, "/workspace info")
             return workspace_info(client, output, selector)
         elif subcommand == "load":
-            selector = parts[2] if len(parts) > 2 else None
+            selector = _extract_argument(original_command, "/workspace load")
             return workspace_load(
                 client, output, selector, current_directory, PathResolver
             )
         elif subcommand == "remove":
-            selector = parts[2] if len(parts) > 2 else None
+            selector = _extract_argument(original_command, "/workspace remove")
             return workspace_remove(client, output, selector)
         elif subcommand == "status":
             return workspace_status(client, output)
@@ -7349,7 +6110,7 @@ when they are started by agents or analysis workflows.
         subcommand = parts[1] if len(parts) > 1 else None
 
         if subcommand == "load":
-            filename = parts[2] if len(parts) > 2 else None
+            filename = _extract_argument(original_command, "/queue load")
             try:
                 return queue_load_file(client, filename, output, current_directory)
             except QueueFileTypeNotSupported as e:
@@ -7391,7 +6152,7 @@ when they are started by agents or analysis workflows.
             return queue_export(client, name, output)
 
         elif subcommand == "import":
-            filename = parts[2] if len(parts) > 2 else None
+            filename = _extract_argument(original_command, "/queue import")
             return queue_import(client, filename, output, current_directory)
 
         else:
@@ -7428,7 +6189,7 @@ when they are started by agents or analysis workflows.
     elif cmd.startswith("/read "):
         # Use shared command implementation (unified with dashboard)
         output = ConsoleOutputAdapter(console)
-        filename = cmd[6:].strip()
+        filename = _extract_argument(original_command, "/read")
         return file_read(client, output, filename, current_directory, PathResolver)
 
     elif cmd.startswith("/archive"):
@@ -7479,7 +6240,7 @@ when they are started by agents or analysis workflows.
 
     elif cmd.startswith("/open "):
         # Handle /open command for files and folders
-        file_or_folder = cmd[6:].strip()
+        file_or_folder = _extract_argument(original_command, "/open") or ""
 
         if not file_or_folder:
             console.print("[red]/open: missing file or folder argument[/red]")
@@ -7499,8 +6260,7 @@ when they are started by agents or analysis workflows.
     elif cmd.startswith("/describe"):
         # Use shared command implementation (unified with dashboard)
         output = ConsoleOutputAdapter(console)
-        parts = cmd.split()
-        modality_name = parts[1] if len(parts) > 1 else None
+        modality_name = _extract_argument(original_command, "/describe")
         return modality_describe(client, output, modality_name)
 
     elif cmd.startswith("/save"):
