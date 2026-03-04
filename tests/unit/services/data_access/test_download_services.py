@@ -284,10 +284,12 @@ class TestDownloadOrchestrator:
         orchestrator = DownloadOrchestrator(mock_data_manager)
         databases = orchestrator.list_supported_databases()
 
-        # Should have GEO, PRIDE, and MassIVE registered
+        # Should have all 5 databases: GEO, SRA, PRIDE, MassIVE, MetaboLights
         assert "geo" in databases
         assert "pride" in databases
         assert "massive" in databases
+        assert "sra" in databases
+        assert "metabolights" in databases
 
     def test_service_lookup_geo(self, mock_data_manager):
         """Test service lookup for GEO."""

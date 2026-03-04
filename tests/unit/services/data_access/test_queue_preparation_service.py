@@ -248,7 +248,7 @@ class TestDefaultRegistration:
     """Test that default preparers register successfully."""
 
     def test_default_preparers_register(self, mock_data_manager):
-        """All 4 default preparers should register without error."""
+        """All 5 default preparers should register without error."""
         service = QueuePreparationService(mock_data_manager)
         dbs = service.list_supported_databases()
 
@@ -256,11 +256,12 @@ class TestDefaultRegistration:
         assert "pride" in dbs
         assert "sra" in dbs
         assert "massive" in dbs
+        assert "metabolights" in dbs
 
     def test_default_preparers_count(self, mock_data_manager):
-        """Should have at least 4 databases registered."""
+        """Should have at least 5 databases registered."""
         service = QueuePreparationService(mock_data_manager)
-        assert len(service.list_supported_databases()) >= 4
+        assert len(service.list_supported_databases()) >= 5
 
 
 # ===========================================================================
