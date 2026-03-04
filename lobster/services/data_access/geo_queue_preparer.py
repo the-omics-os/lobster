@@ -15,7 +15,11 @@ import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from lobster.core.interfaces.queue_preparer import IQueuePreparer, QueuePreparationResult
+from lobster.core.interfaces.queue_preparer import (
+    IQueuePreparer,
+    QueuePreparationResult,
+)
+from lobster.services.data_access.geo.strategy import _is_null_value
 from lobster.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -294,9 +298,7 @@ class GEOQueuePreparer(IQueuePreparer):
             if isinstance(meta, dict):
                 meta["original_accession"] = original_accession
             else:
-                result.queue_entry.metadata = {
-                    "original_accession": original_accession
-                }
+                result.queue_entry.metadata = {"original_accession": original_accession}
 
         return result
 
@@ -391,9 +393,10 @@ class GEOQueuePreparer(IQueuePreparer):
         has_h5ad = bool(url_data.h5_url) or any(
             f.filename.endswith((".h5ad", ".h5")) for f in url_data.primary_files
         )
-        has_processed_matrix = bool(get("processed_matrix_name", ""))
-        has_raw_matrix = bool(get("raw_UMI_like_matrix_name", ""))
-        raw_data_available = bool(get("raw_data_available", False))
+        has_processed_matrix = not _is_null_value(get("processed_matrix_name", ""))
+        has_raw_matrix = not _is_null_value(get("raw_UMI_like_matrix_name", ""))
+        _raw_val = get("raw_data_available", False)
+        raw_data_available = bool(_raw_val) and not _is_null_value(_raw_val)
 
         return {
             "has_h5ad": has_h5ad,

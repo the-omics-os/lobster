@@ -162,7 +162,7 @@ class DataExpertAssistant:
                 if key == "raw_data_available":
                     sanitized[key] = False
                 else:
-                    sanitized[key] = "NA"
+                    sanitized[key] = ""
             elif isinstance(value, str):
                 # Check if string looks like a list representation
                 if value.strip().startswith("[") and value.strip().endswith("]"):
@@ -196,7 +196,7 @@ class DataExpertAssistant:
                         if key == "raw_data_available":
                             sanitized[key] = False
                         else:
-                            sanitized[key] = "NA"
+                            sanitized[key] = ""
                     else:
                         sanitized[key] = value.strip()
             elif isinstance(value, list):
@@ -227,7 +227,7 @@ class DataExpertAssistant:
                     if key == "raw_data_available":
                         sanitized[key] = False
                     else:
-                        sanitized[key] = "NA"
+                        sanitized[key] = ""
                 else:
                     sanitized[key] = str_value
 

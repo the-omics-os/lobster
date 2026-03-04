@@ -65,6 +65,7 @@ from lobster.services.data_access.geo.parser import GEOParser, ParseResult
 from lobster.services.data_access.geo.strategy import (
     PipelineStrategyEngine,
     PipelineType,
+    _is_null_value,
     create_pipeline_context,
 )
 from lobster.utils.logger import get_logger
@@ -1666,7 +1667,7 @@ class GEOService:
             matrix_name = strategy_config.get("processed_matrix_name", "")
             matrix_type = strategy_config.get("processed_matrix_filetype", "")
 
-            if not matrix_name or not matrix_type:
+            if _is_null_value(matrix_name) or _is_null_value(matrix_type):
                 return GEOResult(
                     success=False,
                     error_message="No processed matrix information available in strategy config",
@@ -1724,7 +1725,7 @@ class GEOService:
             matrix_name = strategy_config.get("raw_UMI_like_matrix_name", "")
             matrix_type = strategy_config.get("raw_UMI_like_matrix_filetype", "")
 
-            if not matrix_name or not matrix_type:
+            if _is_null_value(matrix_name) or _is_null_value(matrix_type):
                 return GEOResult(
                     success=False,
                     error_message="No raw matrix information available in strategy config",

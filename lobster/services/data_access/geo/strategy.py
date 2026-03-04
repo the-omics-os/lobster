@@ -14,6 +14,39 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Null-value handling helpers and file-type constants
+# ---------------------------------------------------------------------------
+
+_NULL_STRINGS = frozenset(
+    {"null", "none", "nil", "na", "n/a", "null", ""}
+)
+
+
+def _is_null_value(value: Any) -> bool:
+    """Check whether *value* is a null-like sentinel.
+
+    Returns ``True`` for ``None``, empty strings, and common string
+    representations of missing data (``"NA"``, ``"null"``, ``"None"``,
+    ``"n/a"``, etc.).  Strips surrounding whitespace before comparison.
+
+    ``False`` and ``0`` are **not** null -- they are valid domain values.
+    """
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False  # False is a valid domain value, not null
+    if isinstance(value, (int, float)):
+        return False  # 0 is a valid domain value, not null
+    if isinstance(value, str):
+        return value.strip().lower() in _NULL_STRINGS
+    return False
+
+
+MATRIX_FILETYPES: frozenset = frozenset({"txt", "csv", "tsv", "h5", "h5ad"})
+RAW_MATRIX_FILETYPES: frozenset = frozenset({"txt", "csv", "tsv", "mtx", "h5"})
+H5_FILETYPES: frozenset = frozenset({"h5", "h5ad"})
+
 
 class PipelineType(Enum):
     """Enumeration of pipeline processing strategies."""
@@ -47,13 +80,21 @@ class PipelineContext:
     data_type: str = "single_cell_rna_seq"
 
     def has_file(self, file_type: str) -> bool:
-        """Check if a specific file type is available."""
-        return bool(self.strategy_config.get(f"{file_type}_name"))
+        """Check if a specific file type is available.
+
+        Returns ``False`` for null-like values (None, "NA", "", "null", etc.).
+        """
+        return not _is_null_value(self.strategy_config.get(f"{file_type}_name"))
 
     def get_file_info(self, file_type: str) -> Tuple[str, str]:
-        """Get file name and type for a specific file category."""
+        """Get file name and type for a specific file category.
+
+        Returns ``("", "")`` when the name is a null-like value.
+        """
         name = self.strategy_config.get(f"{file_type}_name", "")
         filetype = self.strategy_config.get(f"{file_type}_filetype", "")
+        if _is_null_value(name):
+            return "", ""
         return name, filetype
 
     @property
@@ -63,7 +104,8 @@ class PipelineContext:
         has_raw = self.has_file("raw_UMI_like_matrix")
         has_summary = self.has_file("summary_file")
         has_annotations = self.has_file("cell_annotation")
-        raw_available = self.strategy_config.get("raw_data_available", False)
+        raw_val = self.strategy_config.get("raw_data_available", False)
+        raw_available = bool(raw_val) and not _is_null_value(raw_val)
 
         if has_processed and has_annotations:
             return DataAvailability.COMPLETE
@@ -99,7 +141,7 @@ class ProcessedMatrixRule(PipelineRule):
 
     def evaluate(self, context: PipelineContext) -> Optional[PipelineType]:
         name, filetype = context.get_file_info("processed_matrix")
-        if name and filetype in ["txt", "csv", "tsv", "h5", "h5ad"]:
+        if not _is_null_value(name) and filetype in MATRIX_FILETYPES:
             logger.info(f"ProcessedMatrixRule matched: {name}.{filetype}")
             return PipelineType.MATRIX_FIRST
         return None
@@ -116,7 +158,7 @@ class RawMatrixRule(PipelineRule):
 
     def evaluate(self, context: PipelineContext) -> Optional[PipelineType]:
         name, filetype = context.get_file_info("raw_UMI_like_matrix")
-        if name and filetype in ["txt", "csv", "tsv", "mtx", "h5"]:
+        if not _is_null_value(name) and filetype in RAW_MATRIX_FILETYPES:
             logger.info(f"RawMatrixRule matched: {name}.{filetype}")
             return PipelineType.RAW_FIRST
         return None
@@ -136,7 +178,7 @@ class H5FormatRule(PipelineRule):
         processed_name, processed_type = context.get_file_info("processed_matrix")
         raw_name, raw_type = context.get_file_info("raw_UMI_like_matrix")
 
-        if processed_type in ["h5", "h5ad"] or raw_type in ["h5", "h5ad"]:
+        if processed_type in H5_FILETYPES or raw_type in H5_FILETYPES:
             logger.info("H5FormatRule matched: H5/H5AD format detected")
             return PipelineType.H5_FIRST
         return None
