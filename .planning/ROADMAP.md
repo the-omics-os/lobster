@@ -24,7 +24,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 8: CLI Decomposition** - Extract command bodies from cli.py to cli_internal/commands/ (PR-8)
 - [x] **Phase 9: Repo Hygiene & Packaging Cleanup** - Normalize gitignore, expand make clean, remove stale artifacts and empty dirs (PR-9) (completed 2026-03-04)
 - [x] **Phase 10: Fix Provenance `__getattr__` Shim** - Extend provenance __init__.py to cover analysis_ir/lineage/ir_coverage submodules, fixing DE analysis ImportError (PR-10) [GAP CLOSURE] (completed 2026-03-04)
-- [ ] **Phase 11: Strengthen CI Deprecated-Import Guard** - Remove || true from CI check, migrate 39 deprecated imports in packages/ to canonical paths (PR-11) [GAP CLOSURE]
+- [x] **Phase 11: Strengthen CI Deprecated-Import Guard** - Remove || true from CI check, migrate 39 deprecated imports in packages/ to canonical paths (PR-11) [GAP CLOSURE] (completed 2026-03-04)
 
 ## Phase Details
 
@@ -192,7 +192,7 @@ Plans:
   2. All 39 pre-existing deprecated imports in `packages/` updated to canonical paths
   3. `grep -r 'from lobster.core.data_manager_v2' packages/` returns zero matches
   4. CI passes cleanly after migration
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 11-01-PLAN.md — Migrate 24 deprecated imports to canonical paths, harden CI guard (DMGR-04)
@@ -214,4 +214,4 @@ Phases execute in numeric order: 1 -> 2 + 3 (parallel) -> 4 -> 5 -> 6 -> 7 -> 8 
 | 8. CLI Decomposition | 1/2 | In Progress|  |
 | 9. Repo Hygiene & Packaging Cleanup | 2/2 | Complete   | 2026-03-04 |
 | 10. Fix Provenance __getattr__ Shim | 1/1 | Complete    | 2026-03-04 |
-| 11. Strengthen CI Deprecated-Import Guard | 0/1 | Planned | - |
+| 11. Strengthen CI Deprecated-Import Guard | 1/1 | Complete   | 2026-03-04 |
