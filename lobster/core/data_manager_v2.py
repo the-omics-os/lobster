@@ -168,7 +168,7 @@ class MetadataEntry(TypedDict, total=False):
 
     Structure:
         metadata (Dict[str, Any]): The actual GEO metadata from GEOparse
-        validation (Dict[str, Any]): Validation information (optional)
+        validation_result (Dict[str, Any]): Validation information (optional)
         fetch_timestamp (str): ISO format timestamp when metadata was fetched
         strategy_config (Dict[str, Any]): Download strategy configuration (optional)
         stored_by (str): Component that stored the metadata
@@ -177,7 +177,7 @@ class MetadataEntry(TypedDict, total=False):
     """
 
     metadata: Dict[str, Any]
-    validation: Dict[str, Any]
+    validation_result: Dict[str, Any]
     fetch_timestamp: str
     strategy_config: Dict[str, Any]
     stored_by: str
@@ -2525,7 +2525,7 @@ class DataManagerV2:
         """
         self.metadata_store[dataset_id] = {
             "metadata": metadata,
-            "validation": validation_info or {},
+            "validation_result": validation_info or {},
             "fetch_timestamp": datetime.now().isoformat(),
             "stored_by": "DataManagerV2",
         }
@@ -2542,16 +2542,19 @@ class DataManagerV2:
 
         Args:
             geo_id: GEO dataset identifier (e.g., 'GSE12345')
-            metadata: Raw GEO metadata dictionary from GEOparse
+            metadata: Raw GEO metadata dictionary from GEOparse (must not be None)
             stored_by: Component storing the metadata (for tracking)
             **kwargs: Optional additional fields:
-                - validation (Dict): Validation information
+                - validation_result (Dict): Validation information
                 - strategy_config (Dict): Download strategy configuration
                 - modality_detection (Dict): Modality detection results
                 - concatenation_decision (Dict): Concatenation strategy
 
         Returns:
             MetadataEntry: The stored metadata entry
+
+        Raises:
+            ValueError: If metadata is None
 
         Example:
             >>> entry = data_manager._store_geo_metadata(
@@ -2561,6 +2564,15 @@ class DataManagerV2:
             ...     modality_detection={"modality": "single_cell", "confidence": 0.95}
             ... )
         """
+        if metadata is None:
+            raise ValueError(
+                f"metadata dict is required for _store_geo_metadata (geo_id={geo_id})"
+            )
+
+        # Warn if validation_result is explicitly passed as None
+        if "validation_result" in kwargs and kwargs["validation_result"] is None:
+            logger.warning(f"validation_result is None for {geo_id}")
+
         # Create entry with required fields
         entry: MetadataEntry = {
             "metadata": metadata.copy(),
@@ -2571,8 +2583,8 @@ class DataManagerV2:
         }
 
         # Add optional fields if provided
-        if "validation" in kwargs:
-            entry["validation"] = kwargs["validation"]
+        if "validation_result" in kwargs:
+            entry["validation_result"] = kwargs["validation_result"]
 
         if "strategy_config" in kwargs:
             entry["strategy_config"] = kwargs["strategy_config"]
