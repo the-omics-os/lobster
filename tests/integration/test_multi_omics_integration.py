@@ -11,7 +11,7 @@ Test coverage target: 95%+ with realistic multi-omics scenarios.
 import pytest
 
 # Skip entire module due to proteomics agents still in development
-pytestmark = pytest.mark.skip(reason="Proteomics agents in development")
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
 import json
 import tempfile
 import time

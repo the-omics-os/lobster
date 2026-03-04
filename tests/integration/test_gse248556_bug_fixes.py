@@ -109,7 +109,7 @@ class TestGSE248556AllBugFixes:
             print(f"✓ Found {len(files)} supplementary files")
             print(f"✓ Large files present: {len(large_files)}")
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, RuntimeError) as e:
             pytest.skip(
                 f"GSE248556 download test skipped (network/GEO unavailable): {e}"
             )

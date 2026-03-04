@@ -1423,7 +1423,7 @@ class TestIRGeneration:
                 ir.tool_name == "BulkRNASeqService.run_differential_expression_analysis"
             )
 
-        except Exception as e:
+        except (ValueError, TypeError, ImportError) as e:
             # If the test data doesn't support DE, that's okay
             # We're mainly checking the IR infrastructure exists
             pytest.skip(f"DE analysis requires proper test data: {e}")
@@ -1455,7 +1455,7 @@ class TestIRGeneration:
             assert ir.operation == "pathway_enrichment"
             assert ir.tool_name == "BulkRNASeqService.run_pathway_enrichment"
 
-        except Exception as e:
+        except (ImportError, ConnectionError, TimeoutError, ValueError) as e:
             # If enrichment fails (no API access), that's okay
             pytest.skip(f"Enrichment requires API access: {e}")
 

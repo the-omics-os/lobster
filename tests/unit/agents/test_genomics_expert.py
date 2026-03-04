@@ -227,13 +227,13 @@ class TestGenomicsExpertConfiguration:
     """Test genomics expert configuration."""
 
     def test_agent_config_in_registry(self):
-        """Test that genomics_expert is registered in agent registry."""
-        from lobster.config.agent_registry import AGENT_REGISTRY
+        """Test that genomics_expert is registered in ComponentRegistry."""
+        from lobster.core.component_registry import component_registry
 
-        assert (
-            "genomics_expert" in AGENT_REGISTRY
-        ), "genomics_expert should be in AGENT_REGISTRY"
-        config = AGENT_REGISTRY["genomics_expert"]
+        assert component_registry.has_agent(
+            "genomics_expert"
+        ), "genomics_expert should be discoverable via ComponentRegistry"
+        config = component_registry.get_agent("genomics_expert")
 
         # Verify basic configuration
         assert config.name == "genomics_expert"

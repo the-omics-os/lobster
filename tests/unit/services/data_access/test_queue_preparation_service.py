@@ -332,24 +332,16 @@ class TestFallbackGating:
     """
     Validate the hardcoded fallback gate for QueuePreparationService.
 
-    These tests FAIL RED because _ALLOW_HARDCODED_FALLBACK does not exist yet
-    in queue_preparation_service.py — Plan 03 adds it.
-
     Requirements: PLUG-06
     """
 
     def test_fallback_flag_is_false_by_default(self):
-        """
-        _ALLOW_HARDCODED_FALLBACK must exist and default to False.
-
-        FAILS RED: constant not yet added to queue_preparation_service module.
-        Plan 03 adds: _ALLOW_HARDCODED_FALLBACK = False at module level.
-        """
+        """_ALLOW_HARDCODED_FALLBACK must exist and default to False."""
         import lobster.services.data_access.queue_preparation_service as qps_module
 
         assert hasattr(qps_module, "_ALLOW_HARDCODED_FALLBACK"), (
             "queue_preparation_service module is missing _ALLOW_HARDCODED_FALLBACK. "
-            "Plan 03 must add: _ALLOW_HARDCODED_FALLBACK = False at module level."
+            "Add: _ALLOW_HARDCODED_FALLBACK = False at module level."
         )
         assert qps_module._ALLOW_HARDCODED_FALLBACK is False, (
             "_ALLOW_HARDCODED_FALLBACK must default to False to disable hardcoded fallback. "
@@ -362,16 +354,11 @@ class TestFallbackGating:
         no hardcoded preparer classes are instantiated.
 
         Verifies that the gate prevents silent fallback to hardcoded imports.
-
-        FAILS RED: _ALLOW_HARDCODED_FALLBACK does not exist yet — the import in
-        test_fallback_flag_is_false_by_default will already fail first.
         """
         import lobster.services.data_access.queue_preparation_service as qps_module
 
-        # Skip if flag doesn't exist yet — test_fallback_flag_is_false_by_default
-        # will already fail RED for that condition
         if not hasattr(qps_module, "_ALLOW_HARDCODED_FALLBACK"):
-            pytest.skip("_ALLOW_HARDCODED_FALLBACK not yet added (Plan 03 task)")
+            pytest.skip("_ALLOW_HARDCODED_FALLBACK not yet added")
 
         with (
             patch(

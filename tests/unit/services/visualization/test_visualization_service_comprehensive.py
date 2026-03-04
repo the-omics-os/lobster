@@ -581,7 +581,7 @@ def test_save_plots_png_format(service, basic_adata):
             saved_files = service.save_all_plots(plots, tmpdir, format="png")
             if saved_files:
                 assert saved_files[0].endswith(".png")
-        except Exception:
+        except (ImportError, ValueError, OSError):
             pytest.skip("PNG export not available (kaleido not installed)")
 
 
@@ -595,7 +595,7 @@ def test_save_plots_both_formats(service, basic_adata):
             saved_files = service.save_all_plots(plots, tmpdir, format="both")
             html_files = [f for f in saved_files if f.endswith(".html")]
             assert len(html_files) >= 1
-        except Exception:
+        except (ImportError, ValueError, OSError):
             pytest.skip("PNG export not available (kaleido not installed)")
 
 
@@ -904,48 +904,3 @@ def test_dot_plot_with_raw_data(service, basic_adata):
     basic_adata.raw = basic_adata.copy()
     fig = service.create_dot_plot(basic_adata, genes=["gene_0"], use_raw=True)
     assert isinstance(fig, go.Figure)
-
-
-# ===============================================================================
-# Summary Statistics
-# ===============================================================================
-
-
-def test_suite_summary():
-    """
-    Test suite summary:
-
-    Total tests: 85
-    Coverage areas:
-    - UMAP plots: 10 tests (edge cases, sparse, sizing)
-    - PCA plots: 5 tests (edge cases, components)
-    - Elbow plots: 5 tests (variance, PCs)
-    - Violin plots: 5 tests (missing genes, multiple genes, log scale)
-    - Feature plots: 5 tests (UMAP, genes, vmin/vmax)
-    - Dot plots: 5 tests (genes, scaling, zero expression)
-    - Heatmaps: 5 tests (missing genes, scaling, edge cases)
-    - QC plots: 5 tests (basic, doublets, batch, sparse)
-    - Cluster composition: 5 tests (edge cases, normalization)
-    - Export functionality: 5 tests (HTML, PNG, multiple plots)
-    - Color palette: 5 tests (extraction, generation, annotation)
-    - Plotly structure: 5 tests (hover data, labels, encoding)
-    - Interactive features: 5 tests (hover mode, Scattergl)
-    - Performance: 5 tests (large datasets, memory)
-    - Error handling: 5 tests (initialization, extreme values)
-    - Additional coverage: 5 tests (raw data, metrics, auto-detection)
-
-    Edge cases covered:
-    - Empty datasets
-    - Single cell/point
-    - Missing values (NaN)
-    - Extreme outliers
-    - Sparse matrices
-    - Large datasets (50k cells)
-    - Zero expression
-    - Constant values
-    - Missing coordinates
-    - Invalid columns
-    - Single groups
-    - Extreme coordinate values
-    """
-    pass

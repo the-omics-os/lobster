@@ -761,11 +761,8 @@ class TestAgentRegistryThreadSafety:
     """Test agent registry operations under concurrent load."""
 
     def test_concurrent_agent_registry_access(self):
-        """Test concurrent access to agent registry."""
-        from lobster.config.agent_registry import (
-            AGENT_REGISTRY,
-            get_all_agent_names,
-        )
+        """Test concurrent access to ComponentRegistry."""
+        from lobster.core.component_registry import component_registry
 
         n_threads = 32
         n_reads_per_thread = 100
@@ -774,16 +771,14 @@ class TestAgentRegistryThreadSafety:
         def registry_reader(worker_id: int):
             try:
                 for _ in range(n_reads_per_thread):
-                    # Read agent names
-                    agent_names = get_all_agent_names()
-                    assert len(agent_names) > 0
+                    # Read all agents via ComponentRegistry
+                    all_agents = component_registry.list_agents()
+                    assert len(all_agents) > 0
 
                     # Read agent configs
-                    for agent_name in agent_names:
-                        if agent_name in AGENT_REGISTRY:
-                            config = AGENT_REGISTRY[agent_name]
-                            assert config.name is not None
-                            assert config.display_name is not None
+                    for agent_name, config in all_agents.items():
+                        assert config.name is not None
+                        assert config.display_name is not None
             except Exception as e:
                 errors.append((worker_id, str(e), traceback.format_exc()))
 

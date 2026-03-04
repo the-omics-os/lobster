@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from lobster.config.agent_registry import (
-    AGENT_REGISTRY,
     AgentRegistryConfig,
     get_agent_registry_config,
     get_all_agent_names,
@@ -96,14 +95,14 @@ def mock_agent_config():
 
 @pytest.fixture
 def temp_agent_registry():
-    """Create temporary agent registry for testing."""
+    """Create temporary agent registry for testing (backed by ComponentRegistry)."""
     from lobster.core.component_registry import component_registry
 
     # Reset and reload to get clean state
     component_registry.reset()
     component_registry.load_components()
 
-    yield AGENT_REGISTRY
+    yield component_registry.list_agents()
 
     # Restore by reloading
     component_registry.reset()

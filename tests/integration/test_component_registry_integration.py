@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 import pytest
 
-from lobster.config.agent_registry import AGENT_REGISTRY, AgentRegistryConfig
+from lobster.config.agent_registry import AgentRegistryConfig
 from lobster.core.component_registry import (
     ComponentConflictError,
     ComponentRegistry,
@@ -61,11 +61,12 @@ class TestPluginLoaderBackwardCompatibility:
         # Load components
         fresh_registry.load_components()
 
-        # list_agents() should include all core agents from AGENT_REGISTRY
+        # list_agents() should include all core agents discovered via entry points
         all_agents = fresh_registry.list_agents()
 
-        # Verify core agents are present
-        for agent_name in AGENT_REGISTRY.keys():
+        # Verify expected core agents are present
+        expected_core = ["research_agent", "data_expert_agent", "transcriptomics_expert"]
+        for agent_name in expected_core:
             assert (
                 agent_name in all_agents
             ), f"Core agent '{agent_name}' should be in list_agents()"
@@ -77,13 +78,20 @@ class TestPluginLoaderBackwardCompatibility:
                 config, dict
             ), f"Agent '{name}' should have a 'name' attribute or be a dict"
 
-    def test_list_agents_includes_agent_registry_entries(self, fresh_registry):
-        """list_agents() should include all entries from AGENT_REGISTRY."""
+    def test_list_agents_includes_core_entries(self, fresh_registry):
+        """list_agents() should include all core agents discovered via entry points."""
         fresh_registry.load_components()
         all_agents = fresh_registry.list_agents()
 
-        # Get expected agents from AGENT_REGISTRY
-        expected_core_agents = set(AGENT_REGISTRY.keys())
+        # Core agents expected from entry point discovery
+        expected_core_agents = {
+            "research_agent",
+            "data_expert_agent",
+            "transcriptomics_expert",
+            "annotation_expert",
+            "de_analysis_expert",
+            "visualization_expert_agent",
+        }
 
         # All expected agents should be present
         for agent_name in expected_core_agents:
@@ -92,7 +100,7 @@ class TestPluginLoaderBackwardCompatibility:
             ), f"Expected core agent '{agent_name}' not found in list_agents()"
 
     def test_agent_registry_config_structure_preserved(self, fresh_registry):
-        """Agent configs from AGENT_REGISTRY should preserve their structure."""
+        """Agent configs discovered via entry points should preserve their structure."""
         fresh_registry.load_components()
         all_agents = fresh_registry.list_agents()
 
@@ -158,8 +166,9 @@ class TestCustomAgentOverride:
         # Should contain custom agent
         assert "my_custom_agent" in custom_agents
 
-        # Should NOT contain core agents
-        for core_name in AGENT_REGISTRY.keys():
+        # Core agents (discovered via entry points) should NOT be in custom list
+        core_agents = ["research_agent", "data_expert_agent", "transcriptomics_expert"]
+        for core_name in core_agents:
             assert (
                 core_name not in custom_agents
             ), f"Core agent '{core_name}' should not be in list_custom_agents()"
@@ -167,6 +176,9 @@ class TestCustomAgentOverride:
     def test_custom_agent_preserves_core_agents(self, fresh_registry):
         """Adding a custom agent should not affect core agents."""
         fresh_registry.load_components()
+
+        # Snapshot core agents before adding custom
+        core_agents_before = dict(fresh_registry.list_agents())
 
         # Add a custom agent with UNIQUE name (no collision)
         custom_config = AgentRegistryConfig(
@@ -179,13 +191,13 @@ class TestCustomAgentOverride:
 
         all_agents = fresh_registry.list_agents()
 
-        # All core agents should be present and unchanged
-        for core_name in AGENT_REGISTRY.keys():
+        # All core agents should still be present and unchanged
+        for core_name, core_config in core_agents_before.items():
             assert (
                 core_name in all_agents
             ), f"Core agent '{core_name}' should be present"
             assert (
-                all_agents[core_name] is AGENT_REGISTRY[core_name]
+                all_agents[core_name] is core_config
             ), f"Core agent '{core_name}' should be unchanged"
 
         # Custom agent should also be present
@@ -273,8 +285,8 @@ class TestRegistryInfo:
 
         info = fresh_registry.get_info()
 
-        # Total should be at least the number of core agents
-        assert info["total_agents"] >= len(AGENT_REGISTRY)
+        # Total should be at least the expected number of core agents (7+)
+        assert info["total_agents"] >= 7
 
 
 # =============================================================================

@@ -476,24 +476,16 @@ class TestFallbackGating:
     """
     Validate the hardcoded fallback gate for DownloadOrchestrator.
 
-    These tests FAIL RED because _ALLOW_HARDCODED_FALLBACK does not exist yet
-    in download_orchestrator.py — Plan 03 adds it.
-
     Requirements: PLUG-06
     """
 
     def test_fallback_flag_is_false_by_default(self):
-        """
-        _ALLOW_HARDCODED_FALLBACK must exist and default to False.
-
-        FAILS RED: constant not yet added to download_orchestrator module.
-        Plan 03 adds: _ALLOW_HARDCODED_FALLBACK = False at module level.
-        """
+        """_ALLOW_HARDCODED_FALLBACK must exist and default to False."""
         import lobster.tools.download_orchestrator as do_module
 
         assert hasattr(do_module, "_ALLOW_HARDCODED_FALLBACK"), (
             "download_orchestrator module is missing _ALLOW_HARDCODED_FALLBACK. "
-            "Plan 03 must add: _ALLOW_HARDCODED_FALLBACK = False at module level."
+            "Add: _ALLOW_HARDCODED_FALLBACK = False at module level."
         )
         assert do_module._ALLOW_HARDCODED_FALLBACK is False, (
             "_ALLOW_HARDCODED_FALLBACK must default to False to disable hardcoded fallback. "
@@ -506,17 +498,12 @@ class TestFallbackGating:
         no hardcoded service classes are instantiated.
 
         Verifies that the gate prevents silent fallback to hardcoded imports.
-
-        FAILS RED: _ALLOW_HARDCODED_FALLBACK does not exist yet — the import in
-        test_fallback_flag_is_false_by_default will already fail first.
         """
         import lobster.tools.download_orchestrator as do_module
         from lobster.tools.download_orchestrator import DownloadOrchestrator
 
-        # Skip if flag doesn't exist yet — test_fallback_flag_is_false_by_default
-        # will already fail RED for that condition
         if not hasattr(do_module, "_ALLOW_HARDCODED_FALLBACK"):
-            pytest.skip("_ALLOW_HARDCODED_FALLBACK not yet added (Plan 03 task)")
+            pytest.skip("_ALLOW_HARDCODED_FALLBACK not yet added")
 
         with (
             patch(

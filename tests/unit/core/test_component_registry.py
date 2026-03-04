@@ -100,16 +100,17 @@ class TestRegistryInitialization:
         """Loading should discover both services and agents entry point groups."""
         fresh_registry.load_components()
 
-        # Verify all entry point groups were loaded
+        # Verify all entry point groups were loaded.
+        # lobster.agent_configs was removed when LobsterAgentConfigurator was deleted.
         calls = mock_load_ep.call_args_list
-        assert len(calls) == 7
-        assert calls[0][0][0] == "lobster.services"
-        assert calls[1][0][0] == "lobster.agents"
-        assert calls[2][0][0] == "lobster.agent_configs"
-        assert calls[3][0][0] == "lobster.adapters"
-        assert calls[4][0][0] == "lobster.providers"
-        assert calls[5][0][0] == "lobster.download_services"
-        assert calls[6][0][0] == "lobster.queue_preparers"
+        loaded_groups = [c[0][0] for c in calls]
+        assert "lobster.services" in loaded_groups
+        assert "lobster.agents" in loaded_groups
+        assert "lobster.adapters" in loaded_groups
+        assert "lobster.providers" in loaded_groups
+        assert "lobster.download_services" in loaded_groups
+        assert "lobster.queue_preparers" in loaded_groups
+        assert "lobster.agent_configs" not in loaded_groups
 
 
 # =============================================================================
@@ -232,12 +233,11 @@ class TestAgentAPI:
         assert fresh_registry.has_agent("nonexistent_agent") is False
 
     def test_list_agents_includes_core_agents(self, fresh_registry):
-        """list_agents should include core agents from AGENT_REGISTRY."""
+        """list_agents should include core agents discovered via entry points."""
         fresh_registry.load_components()
         all_agents = fresh_registry.list_agents()
 
-        # Core agents from AGENT_REGISTRY should be present
-        # These are defined in lobster/config/agent_registry.py
+        # Core agents discovered via entry points should be present
         assert "research_agent" in all_agents
         assert "data_expert_agent" in all_agents
 
@@ -362,7 +362,6 @@ class TestUtilityMethods:
         assert isinstance(info, dict)
         assert "services" in info
         assert "agents" in info
-        assert "custom_agent_configs" in info
 
         # Verify structure
         assert "count" in info["services"]
@@ -373,9 +372,8 @@ class TestUtilityMethods:
         assert "names" in info["agents"]
         assert isinstance(info["agents"]["names"], list)
 
-        assert isinstance(info["custom_agent_configs"], int) or "count" in info.get(
-            "custom_agent_configs", {}
-        )
+        # custom_agent_configs was removed in the agent_config refactoring
+        assert "custom_agent_configs" not in info
 
     def test_get_info_auto_loads(self, fresh_registry):
         """get_info should auto-load components if not loaded."""

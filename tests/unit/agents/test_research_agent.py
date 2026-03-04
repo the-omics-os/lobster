@@ -306,7 +306,7 @@ class TestErrorHandling:
         try:
             agent = research_agent(None)
             # If no exception is raised, the agent should still be None or handle it gracefully
-        except Exception:
+        except (TypeError, AttributeError, ValueError):
             # Exception is acceptable for None input
             pass
 
@@ -778,8 +778,6 @@ Use exact and pattern matching strategies. Return mapping report with:
 @pytest.mark.unit
 class TestFilterTypeCoercion:
     """Test filter parameter accepts both dict and JSON string formats.
-
-    Tests the bug fix for: https://github.com/the-omics-os/lobster/issues/XXX
 
     Problem: LLM agents naturally output structured data (dict) but tools expected
     JSON strings, causing Pydantic validation errors.

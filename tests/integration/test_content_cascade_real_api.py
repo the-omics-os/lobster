@@ -202,7 +202,7 @@ class TestPMCFastPath:
             # Should NOT be PMC tier for this identifier
             assert "pmc" not in tier_used.lower() or result.get("content") is None
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError, RuntimeError) as e:
             # Exception is acceptable for invalid/unavailable PMID
             logger.info(f"Expected failure for unavailable PMID: {e}")
             assert "error" in str(e).lower() or "not found" in str(e).lower()
@@ -320,7 +320,7 @@ class TestWebpageFallback:
             if result:
                 assert "error" in result or len(result.get("content", "")) == 0
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError, RuntimeError) as e:
             # Exception expected for invalid URL
             logger.info(f"Expected failure for invalid URL: {e}")
             assert (
@@ -456,7 +456,7 @@ class TestPDFFallback:
             if result:
                 assert "error" in result or len(result.get("content", "")) == 0
 
-        except Exception as e:
+        except (OSError, ConnectionError, TimeoutError, ValueError, RuntimeError) as e:
             # Exception expected for invalid PDF
             logger.info(f"Expected failure for invalid PDF: {e}")
             assert (

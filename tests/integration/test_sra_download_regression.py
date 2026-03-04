@@ -58,7 +58,8 @@ def sra_service():
 class TestSRAURLFetching:
     """Test URL fetching across diverse accession types."""
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_fetch_urls_srr_run(self, sra_provider):
         """Test SRA Run (SRR) - Most common accession type."""
         accession = "SRR11130100"  # From table: SRA Run category
@@ -82,7 +83,8 @@ class TestSRAURLFetching:
             f"\n✅ SRR test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB"
         )
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_fetch_urls_srp_project(self, sra_provider):
         """Test SRA Project (SRP) - Study-level accession."""
         accession = "SRP116709"  # From table: SRA Project category
@@ -97,7 +99,8 @@ class TestSRAURLFetching:
             f"\n✅ SRP test passed: {result.run_count} run(s), {result.get_total_size()/1e6:.1f} MB total"
         )
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_fetch_urls_err_run(self, sra_provider):
         """Test ENA Run (ERR) - European Nucleotide Archive accession."""
         accession = "ERR5396170"  # From table: ENA Run category
@@ -117,7 +120,8 @@ class TestSRAURLFetching:
             f"\n✅ ERR test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB"
         )
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_fetch_urls_srx_experiment(self, sra_provider):
         """Test SRA Experiment (SRX) - Experiment-level accession."""
         accession = "SRX5169925"  # From table: SRA Experiment category
@@ -132,7 +136,8 @@ class TestSRAURLFetching:
             f"\n✅ SRX test passed: {len(result.raw_files)} file(s), {result.get_total_size()/1e6:.1f} MB"
         )
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_fetch_urls_prjna_bioproject(self, sra_provider):
         """Test BioProject (PRJNA) - NCBI BioProject accession."""
         accession = "PRJEB10878"  # From table: BioProject category (ENA variant)
@@ -151,7 +156,8 @@ class TestSRAURLFetching:
 class TestSRADownloadRobustness:
     """Test download service robustness with real datasets."""
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_download_small_srr_single_end(self, sra_service):
         """Test small single-end SRA run download."""
         # Use a known small single-end dataset
@@ -199,7 +205,8 @@ class TestSRADownloadRobustness:
         finally:
             del os.environ["LOBSTER_SKIP_SIZE_WARNING"]
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_download_srr_paired_end(self, sra_service):
         """Test paired-end SRA run download with MD5 validation."""
         entry = DownloadQueueEntry(
@@ -233,7 +240,8 @@ class TestSRADownloadRobustness:
         finally:
             del os.environ["LOBSTER_SKIP_SIZE_WARNING"]
 
-    @pytest.mark.skip(reason="Network test - enable manually with --runreal")
+    # Network test - enable manually with --runreal
+    @pytest.mark.real_api
     def test_download_err_ena_accession(self, sra_service):
         """Test ENA accession (ERR) download."""
         entry = DownloadQueueEntry(
@@ -272,7 +280,8 @@ class TestSRAErrorHandling:
 
         assert "Invalid SRA accession format" in str(exc_info.value)
 
-    @pytest.mark.skip(reason="Network test - may fail if accession becomes available")
+    # Network test - may fail if accession becomes available
+    @pytest.mark.real_api
     def test_nonexistent_accession(self, sra_provider):
         """Test error handling for non-existent accession."""
         # Use a likely non-existent accession
@@ -316,7 +325,8 @@ class TestSRAAccessionTypesCoverage:
             ("PRJEB12449", "sra", "BioProject (ENA)"),
         ],
     )
-    @pytest.mark.skip(reason="Network test - enable manually for full regression")
+    # Network test - enable manually for full regression
+    @pytest.mark.real_api
     def test_accession_types_url_fetching(
         self, sra_provider, accession, expected_db, accession_type
     ):
@@ -342,7 +352,8 @@ class TestSRAAccessionTypesCoverage:
 class TestSRADownloadServiceResilience:
     """Test service resilience with production scenarios."""
 
-    @pytest.mark.skip(reason="Network test - slow, enable for full regression")
+    # Network test - slow, enable for full regression
+    @pytest.mark.real_api
     def test_download_with_checksum_verification(self, sra_service):
         """Test download with full MD5 checksum verification."""
         entry = DownloadQueueEntry(
@@ -380,7 +391,8 @@ class TestSRADownloadServiceResilience:
         finally:
             del os.environ["LOBSTER_SKIP_SIZE_WARNING"]
 
-    @pytest.mark.skip(reason="Network test - tests fallback, may be slow")
+    # Network test - tests fallback, may be slow
+    @pytest.mark.real_api
     def test_mirror_failover_simulation(self, sra_service):
         """Test that service can handle mirror failures gracefully."""
         # This test would need to mock mirror failures
@@ -437,7 +449,8 @@ class TestSRAProviderEdgeCases:
 class TestSRAPerformanceBaseline:
     """Establish performance baselines for SRA downloads."""
 
-    @pytest.mark.skip(reason="Performance test - long running")
+    # Performance test - long running
+    @pytest.mark.real_api
     def test_small_dataset_performance(self, sra_service):
         """Baseline: Small dataset (<100 MB) should complete in <60s."""
         import time

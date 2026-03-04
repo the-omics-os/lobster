@@ -1137,18 +1137,6 @@ class TestCachingBehavior:
             # Cache hit should be faster (if caching is implemented)
             # Note: This may not be true if caching not yet implemented
 
-    def test_ttl_expiration_mock(self, mock_content_access_service):
-        """Test TTL expiration (cache invalidation after 300s)."""
-        # This test would require time mocking or wait
-        # Placeholder for TTL testing logic
-        pass
-
-    def test_lru_eviction_mock(self, mock_content_access_service):
-        """Test LRU eviction (cache size limit, oldest evicted)."""
-        # This test would require filling cache beyond limit
-        # Placeholder for LRU testing logic
-        pass
-
     def test_cache_invalidation_mock(self, mock_content_access_service):
         """Test cache invalidation (manual clear)."""
         mock_provider = Mock()
