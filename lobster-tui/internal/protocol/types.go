@@ -92,6 +92,14 @@ const (
 
 	// TypeResume signals the TUI to resume after a suspend.
 	TypeResume = "resume"
+
+	// TypeReady signals that the Python backend has finished initialization
+	// and is ready to accept user input.
+	TypeReady = "ready"
+
+	// TypeHeartbeat is a periodic keepalive from the Python backend.
+	// Payload may contain an optional timestamp; no struct needed.
+	TypeHeartbeat = "heartbeat"
 )
 
 // ---- Go → Python message type constants -----------------------------------

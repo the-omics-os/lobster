@@ -1049,11 +1049,45 @@ def chat(
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
     Use --ui to select the UI backend: auto, go, or classic.
     """
+    # Go TUI fast path — gate BEFORE importing chat_commands (which pulls in
+    # Rich, LangChain, etc.).  The lightweight launcher uses only stdlib so
+    # the Go binary appears on-screen in <200ms.
+    if ui_mode in ("auto", "go") and not reasoning and not verbose:
+        from lobster.cli_internal.go_tui_launcher import (
+            find_tui_binary_fast,
+            launch_go_tui_chat,
+        )
+
+        binary = find_tui_binary_fast()
+        if binary:
+            try:
+                launch_go_tui_chat(
+                    binary,
+                    workspace=workspace,
+                    session_id=session_id,
+                    provider=provider,
+                    model=model,
+                    debug=debug,
+                    profile_timings=profile_timings,
+                    stream=stream,
+                )
+                return
+            except Exception:
+                if ui_mode == "go":
+                    raise
+                # auto mode: fall through to classic
+        elif ui_mode == "go":
+            import typer as _typer
+
+            _typer.echo("Error: Go TUI binary not found. Install with: pip install lobster-ai-tui", err=True)
+            raise typer.Exit(1)
+
+    # Classic Rich terminal path (heavy imports happen here).
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
     chat_impl(
         workspace=workspace, session_id=session_id, reasoning=reasoning,
         verbose=verbose, debug=debug, profile_timings=profile_timings,
-        provider=provider, model=model, stream=stream, ui_mode=ui_mode,
+        provider=provider, model=model, stream=stream,
     )
 
 

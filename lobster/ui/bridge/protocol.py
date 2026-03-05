@@ -33,6 +33,8 @@ class MessageType(str, Enum):
     TOOL_EXECUTION = "tool_execution"
     SUSPEND = "suspend"
     RESUME = "resume"
+    READY = "ready"
+    HEARTBEAT = "heartbeat"
 
     # Go -> Python
     INPUT = "input"

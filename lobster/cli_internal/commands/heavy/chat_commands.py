@@ -33,7 +33,6 @@ from lobster.cli_internal.commands.heavy.session_infra import (
     display_session,
     init_client,
     init_client_with_animation,
-    set_go_tui_active,
     should_show_progress,
 )
 from lobster.cli_internal.commands.heavy.slash_commands import (
@@ -780,165 +779,6 @@ def _display_streaming_response(
         return {"success": False, "error": str(e)}
 
 
-# ============================================================================
-# Go TUI Chat Integration
-# ============================================================================
-
-
-def _normalize_tool_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize tool_execution payload keys for the Go TUI protocol."""
-    return {
-        "tool_name": payload.get("tool", payload.get("tool_name", "")),
-        "event": {"running": "start", "complete": "finish", "error": "error"}.get(
-            payload.get("status", ""), payload.get("event", "")
-        ),
-        "summary": payload.get("summary", payload.get("status", "")),
-        "agent": payload.get("agent", ""),
-        "duration_ms": payload.get("duration_ms", 0),
-    }
-
-
-def _handle_slash_command(bridge, client, cmd: str) -> None:
-    """Handle a slash command by suspending TUI and running in raw terminal."""
-    bridge.send("suspend", {})
-    import time
-
-    time.sleep(0.1)  # Brief pause for TUI to suspend
-    try:
-        handle_command(cmd, client)
-    except Exception as e:
-        from rich.console import Console
-
-        Console().print(f"[red]Command error:[/red] {e}")
-    finally:
-        input("\nPress Enter to return to chat...")
-        bridge.send("resume", {})
-
-
-def _handle_user_query(bridge, client, text: str) -> None:
-    """Stream a user query through the Go TUI bridge."""
-    bridge.send("spinner", {"active": True})
-    try:
-        for event in client.query(text, stream=True):
-            if event["type"] == "content_delta":
-                bridge.send("text", {"content": event["delta"]})
-            elif event["type"] == "agent_change":
-                bridge.send(
-                    "agent_transition",
-                    {
-                        "agent": event.get("agent", ""),
-                        "status": event.get("status", "working"),
-                    },
-                )
-            elif event["type"] == "complete":
-                bridge.send(
-                    "done",
-                    {
-                        "duration": event.get("duration", 0),
-                        "response_length": len(event.get("response", "")),
-                    },
-                )
-                # Send status update with usage info
-                usage = getattr(client, "_last_usage", None)
-                if usage:
-                    bridge.send(
-                        "status",
-                        {
-                            "text": f"Tokens: {usage.get('total_tokens', '?')} "
-                            f"· Cost: ${usage.get('total_cost', 0):.4f}"
-                        },
-                    )
-                bridge.send("spinner", {"active": False})
-            elif event["type"] == "error":
-                bridge.send(
-                    "alert",
-                    {
-                        "level": "error",
-                        "message": str(event.get("error", "Unknown error")),
-                    },
-                )
-                bridge.send("spinner", {"active": False})
-    except KeyboardInterrupt:
-        bridge.send(
-            "alert", {"level": "warning", "message": "Query interrupted"}
-        )
-        bridge.send("spinner", {"active": False})
-    except Exception as e:
-        bridge.send("alert", {"level": "error", "message": f"Error: {e}"})
-        bridge.send("spinner", {"active": False})
-
-
-def _go_tui_event_loop(bridge, client) -> None:
-    """Main event loop: read Go TUI events and dispatch."""
-    while True:
-        event = bridge.recv_event(timeout=None)
-        if event is None:
-            break
-        if event.type == "quit":
-            break
-        elif event.type == "input":
-            _handle_user_query(bridge, client, event.payload.get("content", ""))
-        elif event.type == "slash_command":
-            _handle_slash_command(
-                bridge, client, event.payload.get("command", "")
-            )
-        elif event.type == "cancel":
-            pass  # Phase 2: cancel in-progress query
-
-
-def _run_go_tui_chat(
-    binary: str,
-    workspace: Optional[Path],
-    session_id: Optional[str],
-    provider: Optional[str],
-    model: Optional[str],
-    debug: bool,
-    profile_timings: Optional[bool],
-    stream: bool,
-) -> None:
-    """Launch the Go TUI chat interface with JSON-lines IPC."""
-    from lobster.ui.bridge import GoTUIBridge
-    from lobster.ui.callbacks.protocol_callback import ProtocolCallbackHandler
-
-    # Go TUI starts FIRST — user sees UI in <100ms.
-    # Python init happens behind it, with progress sent via protocol.
-    set_go_tui_active(True)
-    bridge = GoTUIBridge(binary, mode="chat")
-    bridge.start()
-
-    try:
-        # User sees a spinner in the Go TUI while Python builds the agent graph.
-        bridge.send("spinner", {"active": True, "label": "Initializing agents"})
-
-        client = init_client(
-            workspace=workspace,
-            reasoning=False,
-            verbose=False,
-            debug=debug,
-            profile_timings=profile_timings,
-            provider_override=provider,
-            model_override=model,
-            session_id=session_id,
-        )
-
-        proto_callback = ProtocolCallbackHandler(
-            emit_event=lambda msg_type, payload: bridge.send(
-                msg_type,
-                _normalize_tool_payload(payload)
-                if msg_type == "tool_execution"
-                else payload,
-            )
-        )
-        client.callbacks.append(proto_callback)
-
-        bridge.send("spinner", {"active": False})
-        bridge.send("status", {"text": "Ready"})
-
-        _go_tui_event_loop(bridge, client)
-    finally:
-        bridge.close()
-        set_go_tui_active(False)
-
 
 def chat_impl(
     workspace: Optional[Path] = typer.Option(
@@ -987,7 +827,6 @@ def chat_impl(
         "--stream/--no-stream",
         help="Enable real-time text streaming (default: on)",
     ),
-    ui_mode: str = "auto",
 ):
     """
     Start an interactive chat session with the multi-agent system.
@@ -999,24 +838,6 @@ def chat_impl(
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
     Use --ui to select the UI backend: auto, go, or classic.
     """
-    # Go TUI gate: try launching Go TUI before falling through to classic Rich UI
-    if ui_mode in ("auto", "go") and not reasoning and not verbose:
-        from lobster.ui.bridge import find_tui_binary
-
-        binary = find_tui_binary()
-        if binary:
-            _run_go_tui_chat(
-                binary, workspace, session_id, provider, model,
-                debug, profile_timings, stream,
-            )
-            return
-        elif ui_mode == "go":
-            console.print(
-                "[red]Error:[/red] Go TUI binary not found. "
-                "Install with: pip install lobster-ai-tui"
-            )
-            raise typer.Exit(1)
-
     # Enhanced error handling setup
     if debug:
         # Enable more detailed tracebacks in debug mode

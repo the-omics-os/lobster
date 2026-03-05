@@ -8,6 +8,7 @@ package chat
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -19,6 +20,21 @@ import (
 
 // maxToolFeed is the maximum number of tool execution lines kept in the ring buffer.
 const maxToolFeed = 5
+
+// spinnerInterval controls the animation frame rate (~12 fps).
+const spinnerInterval = 80 * time.Millisecond
+
+// spinnerFrames are braille-based animation frames for the active spinner.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinnerTick fires periodically to advance the spinner animation frame.
+type spinnerTick struct{}
+
+// heartbeatCheck fires periodically to verify the backend is still alive.
+type heartbeatCheck struct{}
+
+// protocolErr wraps an error read from the protocol handler's Errs() channel.
+type protocolErr struct{ err error }
 
 // ChatMessage represents a single message in the chat history.
 type ChatMessage struct {
@@ -45,6 +61,17 @@ type Model struct {
 	isStreaming bool
 	streamBuf   strings.Builder
 
+	// Spinner animation state.
+	spinnerActive bool
+	spinnerFrame  int
+	spinnerLabel  string
+
+	// Input gating: input is ignored until the backend sends "ready".
+	ready bool
+
+	// Heartbeat monitoring: tracks the last heartbeat from the backend.
+	lastHeartbeat time.Time
+
 	width   int
 	height  int
 	quitting bool
@@ -65,20 +92,22 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int)
 	vp.SetContent("")
 
 	ti := textinput.New()
-	ti.Placeholder = "Ask Lobster anything..."
+	ti.Placeholder = "Initializing..."
 	ti.Focus()
 	ti.CharLimit = 4096
 	ti.Width = width - 4 // leave room for prompt and padding
 
 	return Model{
-		handler:  handler,
-		viewport: vp,
-		input:    ti,
-		messages: make([]ChatMessage, 0, 64),
-		toolFeed: make([]string, 0, maxToolFeed),
-		styles:   styles,
-		width:    width,
-		height:   height,
+		handler:       handler,
+		viewport:      vp,
+		input:         ti,
+		messages:      make([]ChatMessage, 0, 64),
+		toolFeed:      make([]string, 0, maxToolFeed),
+		ready:         false,
+		lastHeartbeat: time.Now(),
+		styles:        styles,
+		width:         width,
+		height:        height,
 	}
 }
 
@@ -87,7 +116,9 @@ func (m Model) Init() tea.Cmd {
 	m.handler.StartReadLoop()
 	return tea.Batch(
 		waitForProtocolMsg(m.handler),
+		waitForProtocolErr(m.handler),
 		textinput.Blink,
+		tea.Tick(5*time.Second, func(time.Time) tea.Msg { return heartbeatCheck{} }),
 	)
 }
 
@@ -103,6 +134,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case protocolEOF:
 		m.quitting = true
 		return m, tea.Quit
+
+	case protocolErr:
+		// Log but don't crash — keep draining the error channel.
+		return m, waitForProtocolErr(m.handler)
+
+	case spinnerTick:
+		if !m.spinnerActive {
+			return m, nil
+		}
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, tea.Tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTick{} })
+
+	case heartbeatCheck:
+		if m.ready {
+			return m, nil // Stop checking once backend is ready.
+		}
+		elapsed := time.Since(m.lastHeartbeat)
+		if elapsed > 15*time.Second {
+			m.statusText = "Backend not responding..."
+		}
+		return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg { return heartbeatCheck{} })
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -166,8 +218,12 @@ func (m Model) View() string {
 	b.WriteString(m.input.View())
 	b.WriteByte('\n')
 
-	// Status bar (1 line).
-	b.WriteString(renderStatusBar(m.statusText, m.styles, m.width))
+	// Status bar (1 line). Override status text with animated spinner when active.
+	statusText := m.statusText
+	if m.spinnerActive {
+		statusText = spinnerFrames[m.spinnerFrame] + " " + m.spinnerLabel + "..."
+	}
+	b.WriteString(renderStatusBar(statusText, m.styles, m.width))
 
 	return b.String()
 }
@@ -257,15 +313,32 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.SpinnerPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			if p.Active {
-				label := p.Label
-				if label == "" {
-					label = "thinking"
+				m.spinnerActive = true
+				m.spinnerLabel = p.Label
+				if m.spinnerLabel == "" {
+					m.spinnerLabel = "thinking"
 				}
-				m.statusText = label + "..."
+				m.spinnerFrame = 0
+				// Start the spinner tick loop.
+				return m, tea.Batch(
+					waitForProtocolMsg(m.handler),
+					tea.Tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTick{} }),
+				)
 			} else {
+				m.spinnerActive = false
 				m.statusText = ""
 			}
 		}
+		return m, waitForProtocolMsg(m.handler)
+
+	case protocol.TypeReady:
+		m.ready = true
+		m.input.Placeholder = "Ask Lobster anything..."
+		m.input.Focus()
+		return m, waitForProtocolMsg(m.handler)
+
+	case protocol.TypeHeartbeat:
+		m.lastHeartbeat = time.Now()
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeSuspend:
@@ -294,6 +367,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case tea.KeyEnter:
+		if !m.ready {
+			return m, nil // Silently ignore input until backend is ready.
+		}
 		val := strings.TrimSpace(m.input.Value())
 		if val == "" {
 			return m, nil
@@ -407,5 +483,17 @@ func waitForProtocolMsg(h *protocol.Handler) tea.Cmd {
 			return protocolEOF{}
 		}
 		return protocolMsg{msg}
+	}
+}
+
+// waitForProtocolErr returns a tea.Cmd that reads the next error from the
+// protocol handler's error channel. Errors are non-fatal parse/read issues.
+func waitForProtocolErr(h *protocol.Handler) tea.Cmd {
+	return func() tea.Msg {
+		err, ok := <-h.Errs()
+		if !ok {
+			return nil
+		}
+		return protocolErr{err: err}
 	}
 }
