@@ -900,10 +900,9 @@ def _run_go_tui_chat(
     from lobster.ui.bridge import GoTUIBridge
     from lobster.ui.callbacks.protocol_callback import ProtocolCallbackHandler
 
-    set_go_tui_active(True)
-
-    # Initialize client FIRST (Rich output OK here on normal terminal)
-    client = init_client(
+    # Initialize client FIRST — Rich spinner visible on normal terminal.
+    # Do NOT set _go_tui_active yet; that suppresses Rich progress.
+    client = init_client_with_animation(
         workspace=workspace,
         reasoning=False,
         verbose=False,
@@ -914,6 +913,8 @@ def _run_go_tui_chat(
         session_id=session_id,
     )
 
+    # Now suppress Rich and hand the terminal to Go.
+    set_go_tui_active(True)
     bridge = GoTUIBridge(binary, mode="chat")
     bridge.start()
 
