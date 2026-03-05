@@ -3,99 +3,47 @@
 **Branch:** `feature/charm-ui` (worktree at `/Users/tyo/Omics-OS/lobster-charm-ui/`)
 **Started:** 2026-03-04
 **Last updated:** 2026-03-05
-
-## Environment
-
-- Workspace root: `/Users/tyo/Omics-OS/lobster-charm-ui`
-- Python environment: `.venv` at `/Users/tyo/Omics-OS/lobster-charm-ui/.venv`
-- Recommended activation: `source .venv/bin/activate`
-- Install mode for local parity testing: `uv pip install --python .venv/bin/python -e .`
-
-## Design Documents
-
-| Document | Location | Purpose |
-|----------|----------|---------|
-| Implementation spec | `kevin_notes/charm_ui_implementation.md` | Original design, architecture, phase plan (Kevin + ultrathink) |
-| Architecture reference | `.claude/docs/charm-tui-architecture.md` | Go TUI architecture, BioCharm components, theme system |
-| Protocol reference | `.claude/docs/charm-tui-protocol.md` | 28 message types, component protocol, event wiring, bridge details |
+**Snapshot basis:** current Charm UI implementation commits (`516186d`, `ac7a60e`, `642ad8d`) plus targeted test runs on 2026-03-05
 
 ## Phase Status
 
 | Phase | Name | Status | Commits | Notes |
 |-------|------|--------|---------|-------|
-| 0 | Init Wizard | **COMPLETE** | `8477338` | Go `huh` forms, Python bridge, questionary fallback |
-| 1 | Protocol Foundation & Streaming Chat | **COMPLETE** | `78f7df8`..`742c99c` | IPC bridge, streaming, agent transitions, tool feed |
-| 2 | Rich Rendering & UX Polish | **COMPLETE** | (same session) | Glamour markdown, loading tips, session ID, 6 bug fixes |
-| 3 | Protocol Handlers & Native Interactions | **COMPLETE** | uncommitted | 20 protocol handlers, forms, confirm/select, progress |
-| 4 | Native Slash Commands & Event Wiring | **COMPLETE** | uncommitted | Go-native commands + Python bridge dispatch |
-| 4.1 | Autocomplete | **COMPLETE** | uncommitted | context-aware suggestions, trailing-space handling |
-| 4.2 | Parity Hardening (bridge + command fixes) | **COMPLETE** | uncommitted | `/open`, `/restore`, `/config` direct switch, protocol-safe output paths |
-| 5 | Rich CLI Functional/Visual Parity Migration | **NEXT** | — | migrate remaining functionality, visual supports, and output polish from Rich CLI |
-| 6 | BioCharm Components | NOT STARTED | — | 6 domain components (celltype, threshold, qc, sequence, ontology, dna) |
-| 7 | Distribution & Cross-Platform | NOT STARTED | — | CI cross-compile, platform wheels, Homebrew |
-| 8 | SSH & Cloud | FUTURE | — | Charm `wish` library, `ssh app.omics-os.com` |
+| 0 | Init Wizard | **COMPLETE** | `8477338` | Go init wizard + bridge bootstrapping |
+| 1 | Protocol Foundation & Streaming Chat | **COMPLETE** | `78f7df8`..`742c99c` | IPC bridge, streaming, startup hardening |
+| 2 | Rendering & UX Polish | **COMPLETE** | `78f7df8`..`742c99c` | markdown render, loading/status polish |
+| 3 | Protocol Handlers & Native Interactions | **COMPLETE** | `516186d` | forms/select/progress/confirm plumbing captured |
+| 4 | Slash Wiring + Autocomplete Baseline | **COMPLETE** | `516186d` | Go-native slash handling + bridge dispatch |
+| 4.2 | Parity Hardening | **COMPLETE** | `ac7a60e` | `/open`, `/restore`, `/config` direct switch, protocol-safe branches |
+| 5 | Rich CLI Functional/Visual Parity Migration | **IN PROGRESS** | `ac7a60e`, `642ad8d` | history ring, completion scaffold, native `/exit` confirm flow |
+| 6 | BioCharm Components | NOT STARTED | — | deferred until Phase 5 parity baseline is stable |
+| 7 | Distribution & Cross-Platform | NOT STARTED | — | deferred |
+| 8 | SSH & Cloud | FUTURE | — | deferred |
 
 ## Current Baseline (2026-03-05)
 
-### Go TUI
-- Slash completion supports top-level, subcommand, and deep contexts including trailing-space cases.
-- Suggestions expanded to cover parity-critical commands (e.g., `/status-panel`, `/workspace-info`, `/analysis-dash`, `/progress`, `/vector-search`, `/dashboard`).
-- Input prompt duplication fixed; completion visibility improved.
-- Added local input history ring (`Up`/`Down`) with draft restore behavior.
-- Added protocol-backed completion scaffold for `/read`, `/open`, and `/workspace load` (`completion_request` / `completion_response`).
-- `/help` and `/data` now route through Python slash dispatch for parity with classic command output.
+- Go command history ring is active with draft restore behavior (`lobster-tui/internal/chat/model.go`).
+- Path completion protocol is active (`completion_request`/`completion_response`) for `/read`, `/open`, `/workspace load` (`lobster-tui/internal/chat/completions.go`, `lobster/cli_internal/go_tui_launcher.py`).
+- `/exit` in Go mode now uses native confirm prompt with explicit cancel/quit outcomes (`lobster-tui/internal/chat/model.go`, `lobster-tui/internal/chat/model_test.go`).
+- Priority slash regressions fixed in Python dispatch path: `/open`, `/restore`, `/config provider <name>`, `/config model <name>`, `/save` protocol-safe branch (`lobster/cli_internal/commands/heavy/slash_commands.py`).
+- Command matrix maintained in `.planning/charm-ui/PARITY_MATRIX.md` (current snapshot: no `blocked` command rows).
 
-### Python bridge / slash dispatch
-- Go launcher now prefers local dev `lobster-tui` binary (and supports `LOBSTER_TUI_BINARY` override).
-- Slash dispatch keeps command args end-to-end from Go → Python.
-- `_execute_command()` now supports protocol-safe output in more branches.
-- Concrete command fixes landed:
-  - `/open` now executes and returns status
-  - `/restore` now performs actual restore path
-  - `/config provider <name>` and `/config model <name>` now work without mandatory `switch`
-  - `/workspace save` wired
-  - `/pipeline` defaults to list
+## Validation Run (2026-03-05)
 
-### Validation completed
 - `cd lobster-tui && go test ./...` passed.
-- Added/ran targeted regression tests for slash-command fixes:
-  - `tests/unit/cli/test_slash_commands_go_tui_regressions.py`
-- Python syntax compile checks passed for updated launcher/dispatch files.
+- `.venv/bin/python -m pytest tests/unit/cli/test_go_tui_launcher_completions.py tests/integration/test_go_tui_protocol_smoke.py tests/unit/cli/test_slash_commands_go_tui_regressions.py -q` passed.
 
-## Remaining Work
+## Remaining Work (Phase 5)
 
-### Phase 5 (Next): Rich CLI Functional/Visual Parity Migration
+- Complete OutputAdapter migration for remaining direct Rich rendering branches.
+- Complete visual parity pass for high-frequency command outputs.
+- Expand protocol smoke to command-family parity flows.
+- Add transcript/golden checks for stable output shape and regression detection.
 
-Goal: migrate all remaining functionality, visual support surfaces, and output prettification from classic Rich CLI to Go TUI while preserving `--ui classic` fallback.
+## Known Gaps / Tech Debt
 
-High-level scope:
-- Full slash command parity (behavior + output shape)
-- Visual parity for high-value command surfaces (session/status/files/workspace/queue/metadata)
-- Prettification and consistency pass for Go-rendered tables, alerts, and summaries
-- Interaction parity where practical (history, completion depth, prompt ergonomics)
-- Golden transcript and integration coverage for regression prevention
-
-Detailed execution plan: see `.planning/charm-ui/NEXT_PHASE_PARITY_PLAN.md`.
-
-### Phase 6: BioCharm Components
-- Keep as originally planned after parity baseline is stable.
-
-### Phase 7: Distribution & Cross-Platform
-- CI cross-compile + packaging after parity and component stability.
-
-### Phase 8: SSH & Cloud (Post-Funding)
-- `wish` + remote TUI sessions.
-
-## Known Gaps & Tech Debt (Updated)
-
-1. `TypeCancel` exists but cancel path in Python event loop still placeholder.
-2. Some command branches still use direct `console.*` rendering and need full OutputAdapter parity conversion.
-3. No end-to-end automated protocol integration suite for Go TUI yet.
-4. No stress validation for long streaming outputs (10K+ token transcript scenarios).
-5. CI cross-compilation pipeline remains deferred.
-
-## WS1 Update (2026-03-05)
-
-- Added authoritative parity matrix: `.planning/charm-ui/PARITY_MATRIX.md`.
-- Matrix is sourced directly from `slash_commands.py::_execute_command` and `lobster-tui/internal/chat/model.go`.
-- Current snapshot: most phase-5 priority families are `bridged`/`native` and marked `parity` pending validation; explicit degraded surfaces are dashboard/panel commands.
+1. `cancel` protocol event is still placeholder in Python event loop (`go_tui_launcher.py`).
+2. `_execute_command()` still contains direct Rich rendering branches that are not fully OutputAdapter-converted.
+3. Current integration coverage is smoke-level, not full parity transcript coverage.
+4. Long streaming stress scenarios are not yet exercised by automated tests.
+5. Cross-platform packaging/CI remains deferred to later phase.

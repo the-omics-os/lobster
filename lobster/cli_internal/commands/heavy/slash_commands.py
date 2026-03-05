@@ -2573,6 +2573,9 @@ when they are started by agents or analysis workflows.
             return None
 
     elif cmd == "/clear":
+        if _is_protocol_output(output):
+            # Go TUI owns screen clearing; avoid direct Rich console calls.
+            return None
         console.clear()
 
     elif cmd == "/reset":
@@ -2583,6 +2586,12 @@ when they are started by agents or analysis workflows.
         return "Conversation reset"
 
     elif cmd == "/exit":
+        if _is_protocol_output(output):
+            # Non-interactive protocol mode cannot use direct Rich prompts.
+            if output.confirm("exit?"):
+                raise KeyboardInterrupt
+            return None
+
         if Confirm.ask("[dim]exit?[/dim]"):
             display_goodbye()
 

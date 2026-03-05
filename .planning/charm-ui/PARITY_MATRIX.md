@@ -3,39 +3,46 @@
 Date: 2026-03-05
 Scope: Derived from Python slash dispatch in `lobster/cli_internal/commands/heavy/slash_commands.py::_execute_command` and Go-native slash handling in `lobster-tui/internal/chat/model.go`.
 
+Snapshot:
+- Tracked commands: `30`
+- `parity`: `24`
+- `degraded-explicit`: `6`
+- `blocked`: `0`
+
 Classification legend:
 - `parity`: command path exists in Go mode and is expected to behave via Python parity path.
 - `degraded-explicit`: reduced behavior is explicit to operator (in-product guidance/warning).
-- `blocked`: parity is currently blocked by native divergence or missing explicit fallback.
+- `blocked`: parity is blocked by missing implementation or missing explicit fallback.
 
-| Command | Go handling path (native/bridged) | Classification | Evidence (file:line refs) | Next Action |
+| Command | Go handling path | Classification | Evidence (file:line refs) | Next action |
 |---|---|---|---|---|
-| `/help` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:736-747`, `lobster/cli_internal/commands/heavy/slash_commands.py:1635-1677` | Validate section/table formatting against classic transcript; needs-validation. |
-| `/data` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:736-747`, `lobster/cli_internal/commands/heavy/slash_commands.py:1679-1680` | Validate `data_summary` parity for empty/loaded states in Go transcript; needs-validation. |
-| `/session` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:1682-1704` | Run protocol transcript parity check for session table fields; needs-validation. |
-| `/status` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:1705-1731` | Validate tier/provider/model field parity in Go transcript; needs-validation. |
-| `/tokens` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:1732-1810` | Verify large token table rendering in Go transcript; needs-validation. |
-| `/reset` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2578-2583` | Add/confirm regression test for reset messaging and retained modalities; needs-validation. |
-| `/workspace *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2219-2253` | Validate `list/info/load/remove/status/save` flows in Go protocol smoke tests; needs-validation. |
-| `/files` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2131-2134`, `lobster/cli_internal/commands/heavy/slash_commands.py:2619-2661` | Confirm category table output and empty-state parity in Go transcript; needs-validation. |
-| `/tree` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2175-2181` | Keep explicit fallback message; optional enhancement is Go-native tree renderer. |
-| `/save [--force]` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2421-2429`, `lobster/cli_internal/commands/heavy/slash_commands.py:2667-2685` | Validate save summaries and force flag behavior in protocol tests; needs-validation. |
-| `/restore [pattern]` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2488-2494`, `lobster/cli_internal/commands/heavy/slash_commands.py:2688-2710` | Validate restore pattern behavior and result counts in Go transcripts; needs-validation. |
-| `/read <file/glob>` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2319-2335` | Verify quoted paths and glob behavior round-trip through protocol; needs-validation. |
-| `/open <path>` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2380-2409` | Validate OS-specific open success/error messaging in Go mode; needs-validation. |
-| `/queue *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2255-2314` | Verify `load/list/clear/export/import` branches and usage guidance in Go transcripts; needs-validation. |
-| `/metadata *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2085-2129` | Validate all subcommands (`publications/samples/workspace/exports/list/clear`) in smoke tests; needs-validation. |
-| `/config *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2501-2531` | Validate direct switch forms (`provider <name>`, `model <name>`) and `--save`; needs-validation. |
-| `/pipeline *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2343-2364` | Verify `list/export/run/info` coverage in transcript harness; needs-validation. |
-| `/export` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2366-2378` | Validate `--no-png` and `--force` flags through Go command path; needs-validation. |
-| `/plots` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2411-2412` | Confirm structured plot list rendering in Go transcript; needs-validation. |
-| `/plot` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2496-2499` | Validate plot identifier resolution and failure guidance; needs-validation. |
-| `/describe` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2417-2419` | Validate modality lookup and unknown-modality error messaging; needs-validation. |
-| `/modalities` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2414-2415` | Validate modality table parity in Go transcript; needs-validation. |
-| `/clear` | `native` | `parity` | `lobster-tui/internal/chat/model.go:670-677`, `lobster/cli_internal/commands/heavy/slash_commands.py:2575-2576` | Confirm clear semantics (screen/history expectations) against operator UX; needs-validation. |
-| `/exit` | `native` | `parity` | `lobster-tui/internal/chat/model.go:746-755`, `lobster-tui/internal/chat/model.go:979-1030`, `lobster/cli_internal/commands/heavy/slash_commands.py:2585-2604` | Validate exit confirm interaction and final session-status UX via transcript; needs-validation. |
-| `/dashboard` | `native` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:688-696`, `lobster/cli_internal/commands/heavy/slash_commands.py:1903-1914` | Keep explicit fallback; optional bridge to launch classic/Textual flow from Go wrapper. |
-| `/status-panel` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:1926-1933` | Keep explicit fallback to `/status`; optional Go-native panel implementation later. |
-| `/workspace-info` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:1961-1967` | Keep explicit fallback to `/workspace`/`/files`; optional Go-native view later. |
-| `/analysis-dash` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:1996-2002` | Keep explicit fallback to `/plots` + `/metadata`; optional Go-native dashboard later. |
-| `/progress` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:697-703`, `lobster/cli_internal/commands/heavy/slash_commands.py:2029-2035` | Keep explicit fallback; optional protocol-native progress dashboard as follow-up. |
+| `/help` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1635` | Transcript parity audit pending for help table/section layout. |
+| `/data` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1679` | Transcript parity audit pending for empty/loaded modality states. |
+| `/session` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1682` | Validate session table field parity in transcript harness. |
+| `/status` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1705` | Validate tier/provider/model field parity in transcript harness. |
+| `/tokens` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1732` | Validate large token table rendering in Go transcript flow. |
+| `/reset` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2581` | Add transcript check for reset messaging and retained modalities behavior. |
+| `/workspace *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2219` | Expand smoke coverage to `list/info/load/remove/status/save` command flows. |
+| `/files` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2131` | Validate category grouping and empty-state behavior in Go transcript. |
+| `/tree` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2175` | Keep explicit fallback to `/files`; optional Go-native tree renderer later. |
+| `/save [--force]` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2421`, `tests/unit/cli/test_slash_commands_go_tui_regressions.py:136` | Protocol safety validated; transcript parity for summary text still pending. |
+| `/restore [pattern]` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2488`, `tests/unit/cli/test_slash_commands_go_tui_regressions.py:75` | Handler wiring validated; transcript parity for counts/messages pending. |
+| `/read <file/glob>` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2319`, `tests/unit/cli/test_go_tui_launcher_completions.py:23` | Completion path validated; transcript parity for file-read output pending. |
+| `/open <path>` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2380`, `tests/unit/cli/test_slash_commands_go_tui_regressions.py:45` | Command execution regression validated; cross-platform messaging parity pending. |
+| `/queue *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2255` | Validate `load/list/clear/export/import` subcommand transcript coverage. |
+| `/metadata *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2085` | Validate all metadata subcommands in protocol transcript harness. |
+| `/config *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2501`, `tests/unit/cli/test_slash_commands_go_tui_regressions.py:98` | Direct switch forms validated; transcript parity for usage/error text pending. |
+| `/pipeline *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2343` | Validate `list/export/run/info` transcript parity coverage. |
+| `/export` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2366` | Validate `--no-png` and `--force` branch behavior in Go mode transcripts. |
+| `/plots` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2411` | Validate plot list table parity. |
+| `/plot` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2496` | Validate identifier resolution and error guidance parity. |
+| `/describe` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2417` | Validate modality lookup success/error parity. |
+| `/modalities` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2414` | Validate modality table parity in Go transcript. |
+| `/vector-search` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2533` | Validate JSON/code-block rendering and `--top-k` behavior in Go mode. |
+| `/clear` | `native` | `parity` | `lobster-tui/internal/chat/model.go:737`, `lobster/cli_internal/commands/heavy/slash_commands.py:2575`, `tests/unit/cli/test_slash_commands_go_tui_regressions.py:171` | Protocol-safe behavior validated; UX parity decision (screen vs history) pending. |
+| `/exit` | `native` | `parity` | `lobster-tui/internal/chat/model.go:744`, `lobster-tui/internal/chat/model_test.go:12`, `tests/unit/cli/test_slash_commands_go_tui_regressions.py:192` | Confirm flow regression covered; final transcript UX audit pending. |
+| `/dashboard` | `native` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:752`, `lobster/cli_internal/commands/heavy/slash_commands.py:1903` | Keep explicit fallback to classic UI; optional bridge enhancement later. |
+| `/status-panel` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1926` | Keep explicit fallback to `/status`; optional native panel later. |
+| `/workspace-info` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1961` | Keep explicit fallback to `/workspace`/`/files`; optional native view later. |
+| `/analysis-dash` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1996` | Keep explicit fallback to `/plots` + `/metadata`; optional dashboard later. |
+| `/progress` | `bridged` | `degraded-explicit` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2029` | Keep explicit fallback; optional protocol-native progress dashboard later. |

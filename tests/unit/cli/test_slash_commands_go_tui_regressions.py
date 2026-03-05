@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 import lobster.cli_internal.commands.heavy.slash_commands as slash_commands
 
 
@@ -164,3 +166,90 @@ def test_save_command_protocol_mode_avoids_direct_console_usage(tmp_path, monkey
     assert summary == "Saved 1 items, skipped 1 unchanged"
     assert ("info", "Saved: rna.h5ad") in output.messages
     assert ("info", "Skipped 1 unchanged modalities") in output.messages
+
+
+def test_clear_command_protocol_mode_avoids_direct_console_usage(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    class _FailingConsole:
+        def clear(self):
+            raise AssertionError("direct console.clear should not be used in protocol mode")
+
+    monkeypatch.setattr(slash_commands, "console", _FailingConsole())
+
+    summary = slash_commands._execute_command(
+        "/clear",
+        client,
+        original_command="/clear",
+        output=output,
+    )
+
+    assert summary is None
+    assert output.messages == []
+
+
+def test_exit_command_protocol_mode_avoids_direct_console_and_confirm(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    class _FailingConsole:
+        def print(self, *_args, **_kwargs):
+            raise AssertionError("direct console.print should not be used in protocol mode")
+
+    class _FailingConfirm:
+        @staticmethod
+        def ask(*_args, **_kwargs):
+            raise AssertionError("Confirm.ask should not be used in protocol mode")
+
+    def _failing_display_goodbye(*_args, **_kwargs):
+        raise AssertionError("display_goodbye should not be called in protocol mode")
+
+    monkeypatch.setattr(slash_commands, "console", _FailingConsole())
+    monkeypatch.setattr(slash_commands, "Confirm", _FailingConfirm)
+    monkeypatch.setattr(slash_commands, "display_goodbye", _failing_display_goodbye)
+
+    summary = slash_commands._execute_command(
+        "/exit",
+        client,
+        original_command="/exit",
+        output=output,
+    )
+
+    assert summary is None
+    assert ("confirm", "exit?") in output.messages
+
+
+def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(tmp_path, monkeypatch):
+    client = _DummyClient(tmp_path)
+    output = ProtocolOutputAdapter()
+
+    def _confirm_true(question):
+        output.messages.append(("confirm", question))
+        return True
+
+    monkeypatch.setattr(output, "confirm", _confirm_true)
+
+    class _FailingConsole:
+        def print(self, *_args, **_kwargs):
+            raise AssertionError("direct console.print should not be used in protocol mode")
+
+    class _FailingConfirm:
+        @staticmethod
+        def ask(*_args, **_kwargs):
+            raise AssertionError("Confirm.ask should not be used in protocol mode")
+
+    def _failing_display_goodbye(*_args, **_kwargs):
+        raise AssertionError("display_goodbye should not be called in protocol mode")
+
+    monkeypatch.setattr(slash_commands, "console", _FailingConsole())
+    monkeypatch.setattr(slash_commands, "Confirm", _FailingConfirm)
+    monkeypatch.setattr(slash_commands, "display_goodbye", _failing_display_goodbye)
+
+    with pytest.raises(KeyboardInterrupt):
+        slash_commands._execute_command(
+            "/exit",
+            client,
+            original_command="/exit",
+            output=output,
+        )
