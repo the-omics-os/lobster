@@ -418,7 +418,8 @@ def launch_go_tui_chat(
     proc = subprocess.Popen(
         cmd,
         pass_fds=(p2g_r, g2p_w),
-        stdout=subprocess.DEVNULL,
+        # stdout inherited — BubbleTea needs the real terminal to render.
+        # Protocol communication uses separate FDs (the pipes), not stdout.
         stderr=subprocess.PIPE if debug else subprocess.DEVNULL,
         text=False,
         preexec_fn=os.setsid,
@@ -462,7 +463,12 @@ def launch_go_tui_chat(
 
         # -----------------------------------------------------------------
         # 5. HEAVY IMPORTS (Go is already visible and showing spinner)
+        #    Suppress Python logging/stderr so it doesn't corrupt the TUI.
         # -----------------------------------------------------------------
+        _saved_stderr = sys.stderr
+        sys.stderr = open(os.devnull, "w")
+        logging.disable(logging.CRITICAL)
+
         from lobster.cli_internal.commands.heavy.session_infra import (
             init_client,
             set_go_tui_active,
@@ -499,8 +505,11 @@ def launch_go_tui_chat(
         client.callbacks.append(proto_callback)
 
         # -----------------------------------------------------------------
-        # 7. Stop heartbeat, signal ready
+        # 7. Restore stderr/logging, stop heartbeat, signal ready
         # -----------------------------------------------------------------
+        sys.stderr = _saved_stderr
+        logging.disable(logging.NOTSET)
+
         heartbeat_stop.set()
         bridge.send("spinner", {"active": False})
         bridge.send("ready", {})
@@ -512,6 +521,10 @@ def launch_go_tui_chat(
         _go_tui_event_loop(bridge, client)
 
     finally:
+        # Restore stderr/logging in case init crashed mid-suppression.
+        sys.stderr = _saved_stderr
+        logging.disable(logging.NOTSET)
+
         bridge.close()
         try:
             from lobster.cli_internal.commands.heavy.session_infra import (
