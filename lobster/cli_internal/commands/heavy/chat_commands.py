@@ -900,35 +900,40 @@ def _run_go_tui_chat(
     from lobster.ui.bridge import GoTUIBridge
     from lobster.ui.callbacks.protocol_callback import ProtocolCallbackHandler
 
-    # Initialize client FIRST — Rich spinner visible on normal terminal.
-    # Do NOT set _go_tui_active yet; that suppresses Rich progress.
-    client = init_client_with_animation(
-        workspace=workspace,
-        reasoning=False,
-        verbose=False,
-        debug=debug,
-        profile_timings=profile_timings,
-        provider_override=provider,
-        model_override=model,
-        session_id=session_id,
-    )
-
-    # Now suppress Rich and hand the terminal to Go.
+    # Go TUI starts FIRST — user sees UI in <100ms.
+    # Python init happens behind it, with progress sent via protocol.
     set_go_tui_active(True)
     bridge = GoTUIBridge(binary, mode="chat")
     bridge.start()
 
-    proto_callback = ProtocolCallbackHandler(
-        emit_event=lambda msg_type, payload: bridge.send(
-            msg_type,
-            _normalize_tool_payload(payload)
-            if msg_type == "tool_execution"
-            else payload,
-        )
-    )
-    client.callbacks.append(proto_callback)
-
     try:
+        # User sees a spinner in the Go TUI while Python builds the agent graph.
+        bridge.send("spinner", {"active": True, "label": "Initializing agents"})
+
+        client = init_client(
+            workspace=workspace,
+            reasoning=False,
+            verbose=False,
+            debug=debug,
+            profile_timings=profile_timings,
+            provider_override=provider,
+            model_override=model,
+            session_id=session_id,
+        )
+
+        proto_callback = ProtocolCallbackHandler(
+            emit_event=lambda msg_type, payload: bridge.send(
+                msg_type,
+                _normalize_tool_payload(payload)
+                if msg_type == "tool_execution"
+                else payload,
+            )
+        )
+        client.callbacks.append(proto_callback)
+
+        bridge.send("spinner", {"active": False})
+        bridge.send("status", {"text": "Ready"})
+
         _go_tui_event_loop(bridge, client)
     finally:
         bridge.close()
