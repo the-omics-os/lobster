@@ -100,6 +100,9 @@ const (
 	// TypeHeartbeat is a periodic keepalive from the Python backend.
 	// Payload may contain an optional timestamp; no struct needed.
 	TypeHeartbeat = "heartbeat"
+
+	// TypeCompletionResponse returns completion suggestions for a prior request.
+	TypeCompletionResponse = "completion_response"
 )
 
 // ---- Go → Python message type constants -----------------------------------
@@ -132,6 +135,9 @@ const (
 	// TypeHandshake is the first message sent by the TUI on connection to
 	// negotiate version and capabilities.
 	TypeHandshake = "handshake"
+
+	// TypeCompletionRequest asks Python for context-aware completion suggestions.
+	TypeCompletionRequest = "completion_request"
 )
 
 // ---- Python → Go payloads -------------------------------------------------
@@ -285,6 +291,14 @@ type ToolExecutionPayload struct {
 	Summary string `json:"summary,omitempty"`
 }
 
+// CompletionResponsePayload carries completion suggestions for an input.
+type CompletionResponsePayload struct {
+	// Suggestions are fully-formed input candidates.
+	Suggestions []string `json:"suggestions"`
+	// Error is an optional best-effort diagnostic string.
+	Error string `json:"error,omitempty"`
+}
+
 // ---- Go → Python payloads -------------------------------------------------
 
 // InputPayload carries user free text.
@@ -344,4 +358,14 @@ type HandshakePayload struct {
 	// TerminalWidth and TerminalHeight are the initial terminal dimensions.
 	TerminalWidth  int `json:"terminal_width"`
 	TerminalHeight int `json:"terminal_height"`
+}
+
+// CompletionRequestPayload asks Python for dynamic suggestions.
+type CompletionRequestPayload struct {
+	// Input is the full current input buffer.
+	Input string `json:"input"`
+	// Command is the normalized command target (e.g. "/read", "/workspace load").
+	Command string `json:"command"`
+	// Prefix is the argument fragment currently being completed.
+	Prefix string `json:"prefix,omitempty"`
 }

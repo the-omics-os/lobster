@@ -22,6 +22,9 @@ import (
 // maxToolFeed is the maximum number of tool execution lines kept in the ring buffer.
 const maxToolFeed = 5
 
+// maxInputHistory is the number of entered lines kept for Up/Down recall.
+const maxInputHistory = 200
+
 // spinnerInterval controls the animation frame rate (~12 fps).
 const spinnerInterval = 80 * time.Millisecond
 
@@ -30,6 +33,9 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 // tipInterval controls how often loading tips rotate.
 const tipInterval = 5 * time.Second
+
+// completionRequestTimeout prevents stale in-flight request tracking forever.
+const completionRequestTimeout = 700 * time.Millisecond
 
 // loadingTips are shown during init to keep users engaged.
 var loadingTips = []string{
@@ -54,6 +60,9 @@ type tipRotate struct{}
 
 // protocolErr wraps an error read from the protocol handler's Errs() channel.
 type protocolErr struct{ err error }
+
+// completionTimeout clears in-flight completion state if Python does not reply.
+type completionTimeout struct{ id string }
 
 // ChatMessage represents a single message in the chat history.
 type ChatMessage struct {
@@ -113,6 +122,18 @@ type Model struct {
 	// Input gating: input is ignored until the backend sends "ready".
 	ready bool
 
+	// Local input history ring and navigation state.
+	inputHistory      []string
+	inputHistoryIndex int
+	inputHistoryDraft string
+
+	// Dynamic completion request/response tracking.
+	completionSeq                int
+	completionPendingID          string
+	completionLastRequestedInput string
+	completionRequestInputs      map[string]string
+	completionCache              map[string][]string
+
 	// Heartbeat monitoring: tracks the last heartbeat from the backend.
 	lastHeartbeat time.Time
 
@@ -160,18 +181,22 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int)
 	ti.CompletionStyle = styles.Muted
 
 	return Model{
-		handler:       handler,
-		viewport:      vp,
-		input:         ti,
-		messages:      make([]ChatMessage, 0, 64),
-		toolFeed:      make([]ToolFeedEntry, 0, maxToolFeed),
-		modalities:    make([]ModalityInfo, 0, 8),
-		streamBuf:     &strings.Builder{},
-		ready:         false,
-		lastHeartbeat: time.Now(),
-		styles:        styles,
-		width:         width,
-		height:        height,
+		handler:                 handler,
+		viewport:                vp,
+		input:                   ti,
+		messages:                make([]ChatMessage, 0, 64),
+		toolFeed:                make([]ToolFeedEntry, 0, maxToolFeed),
+		modalities:              make([]ModalityInfo, 0, 8),
+		inputHistory:            make([]string, 0, maxInputHistory),
+		inputHistoryIndex:       -1,
+		streamBuf:               &strings.Builder{},
+		completionRequestInputs: make(map[string]string, 8),
+		completionCache:         make(map[string][]string, 16),
+		ready:                   false,
+		lastHeartbeat:           time.Now(),
+		styles:                  styles,
+		width:                   width,
+		height:                  height,
 	}
 }
 
@@ -216,6 +241,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tipIndex = (m.tipIndex + 1) % len(loadingTips)
 		return m, tea.Tick(tipInterval, func(time.Time) tea.Msg { return tipRotate{} })
+
+	case completionTimeout:
+		delete(m.completionRequestInputs, msg.id)
+		if m.completionPendingID == msg.id {
+			m.completionPendingID = ""
+		}
+		return m, nil
 
 	case heartbeatCheck:
 		if m.ready {
@@ -506,6 +538,43 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		m.lastHeartbeat = time.Now()
 		return m, waitForProtocolMsg(m.handler)
 
+	case protocol.TypeCompletionResponse:
+		var p protocol.CompletionResponsePayload
+		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
+			requestInput := ""
+			if msg.ID != "" {
+				if in, ok := m.completionRequestInputs[msg.ID]; ok {
+					requestInput = in
+					delete(m.completionRequestInputs, msg.ID)
+				} else {
+					return m, waitForProtocolMsg(m.handler)
+				}
+				if m.completionPendingID == msg.ID {
+					m.completionPendingID = ""
+				}
+			}
+
+			if requestInput != "" {
+				if p.Error == "" {
+					suggestions := sanitizeSuggestions(p.Suggestions)
+					if len(suggestions) > 0 {
+						if len(m.completionCache) >= 256 {
+							m.completionCache = make(map[string][]string, 16)
+						}
+						m.completionCache[requestInput] = suggestions
+					} else {
+						delete(m.completionCache, requestInput)
+					}
+				}
+				if requestInput == m.input.Value() {
+					if cmd := m.refreshSuggestions(); cmd != nil {
+						return m, tea.Batch(waitForProtocolMsg(m.handler), cmd)
+					}
+				}
+			}
+		}
+		return m, waitForProtocolMsg(m.handler)
+
 	case protocol.TypeSuspend:
 		return m, tea.Suspend
 
@@ -650,6 +719,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if val == "" {
 			return m, nil
 		}
+		m.pushInputHistory(val)
 
 		if strings.HasPrefix(val, "/") {
 			parts := strings.SplitN(val[1:], " ", 2)
@@ -661,39 +731,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			_ = args // suppress unused warning for Go-native cases
 
 			switch cmd {
-			case "help":
-				m.renderHelp()
-				m.input.SetValue("")
-				m.refreshSuggestions()
-				m.rebuildViewport()
-				return m, nil
 			case "clear":
 				m.messages = m.messages[:0]
 				m.streamBuf.Reset()
 				m.toolFeed = m.toolFeed[:0]
 				m.rebuildViewport()
 				m.input.SetValue("")
-				m.refreshSuggestions()
-				return m, nil
+				return m, m.refreshSuggestions()
 			case "exit", "quit":
 				_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
 				m.quitting = true
 				return m, tea.Quit
-			case "data":
-				m.renderDataSummary()
-				m.input.SetValue("")
-				m.refreshSuggestions()
-				m.rebuildViewport()
-				return m, nil
 			case "dashboard":
 				m.messages = append(m.messages, ChatMessage{
 					Role:    "system",
 					Content: "Dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard.",
 				})
 				m.input.SetValue("")
-				m.refreshSuggestions()
+				cmd := m.refreshSuggestions()
 				m.rebuildViewport()
-				return m, nil
+				return m, cmd
 			default:
 				// Forward to Python for handling.
 				_ = m.handler.SendTyped(protocol.TypeSlashCommand, protocol.SlashCommandPayload{
@@ -713,28 +770,49 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		})
 		m.isStreaming = true
 		m.input.SetValue("")
-		m.refreshSuggestions()
+		cmd := m.refreshSuggestions()
 		m.rebuildViewport()
 
-		return m, nil
+		return m, cmd
 
 	default:
+		trimmedInput := strings.TrimLeft(m.input.Value(), " \t")
+		hasSlashSuggestions := strings.HasPrefix(trimmedInput, "/") && len(m.input.MatchedSuggestions()) > 0
+
+		if msg.Type == tea.KeyUp && !hasSlashSuggestions {
+			if m.recallHistoryUp() {
+				return m, m.refreshSuggestions()
+			}
+		}
+		if msg.Type == tea.KeyDown && !hasSlashSuggestions {
+			if m.recallHistoryDown() {
+				return m, m.refreshSuggestions()
+			}
+		}
+
 		// Forward keys to text input first, then conditionally to viewport.
 		var cmds []tea.Cmd
 		var cmd tea.Cmd
+		prevVal := m.input.Value()
 
 		m.input, cmd = m.input.Update(msg)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		if m.inputHistoryIndex != -1 && m.input.Value() != prevVal {
+			m.resetHistoryNavigation()
+		}
 
 		// Refresh autocomplete suggestions after every keystroke.
-		m.refreshSuggestions()
+		cmd = m.refreshSuggestions()
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
-		// Gate viewport scrolling: when autocomplete has matches, Up/Down/Tab
-		// should navigate suggestions, not scroll the viewport.
+		// Gate viewport scrolling: when autocomplete has matches, Tab should
+		// navigate/accept suggestions rather than scrolling the viewport.
 		hasSuggestions := len(m.input.MatchedSuggestions()) > 0
-		skipViewport := hasSuggestions && (msg.Type == tea.KeyUp || msg.Type == tea.KeyDown || msg.Type == tea.KeyTab)
+		skipViewport := hasSuggestions && msg.Type == tea.KeyTab
 
 		if !skipViewport {
 			m.viewport, cmd = m.viewport.Update(msg)
@@ -836,6 +914,57 @@ func (m *Model) renderDataSummary() {
 		Role:    "assistant",
 		Content: tb.String(),
 	})
+}
+
+// pushInputHistory adds a line to local input history with ring semantics.
+func (m *Model) pushInputHistory(line string) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return
+	}
+	if n := len(m.inputHistory); n > 0 && m.inputHistory[n-1] == line {
+		m.resetHistoryNavigation()
+		return
+	}
+	if len(m.inputHistory) >= maxInputHistory {
+		m.inputHistory = m.inputHistory[1:]
+	}
+	m.inputHistory = append(m.inputHistory, line)
+	m.resetHistoryNavigation()
+}
+
+func (m *Model) resetHistoryNavigation() {
+	m.inputHistoryIndex = -1
+	m.inputHistoryDraft = ""
+}
+
+func (m *Model) recallHistoryUp() bool {
+	if len(m.inputHistory) == 0 {
+		return false
+	}
+	if m.inputHistoryIndex == -1 {
+		m.inputHistoryDraft = m.input.Value()
+		m.inputHistoryIndex = len(m.inputHistory) - 1
+	} else if m.inputHistoryIndex > 0 {
+		m.inputHistoryIndex--
+	}
+	m.input.SetValue(m.inputHistory[m.inputHistoryIndex])
+	return true
+}
+
+func (m *Model) recallHistoryDown() bool {
+	if m.inputHistoryIndex == -1 || len(m.inputHistory) == 0 {
+		return false
+	}
+	if m.inputHistoryIndex < len(m.inputHistory)-1 {
+		m.inputHistoryIndex++
+		m.input.SetValue(m.inputHistory[m.inputHistoryIndex])
+		return true
+	}
+	m.inputHistoryIndex = -1
+	m.input.SetValue(m.inputHistoryDraft)
+	m.inputHistoryDraft = ""
+	return true
 }
 
 // pushToolFeed adds an entry to the tool feed ring buffer, evicting the oldest

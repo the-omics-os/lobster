@@ -25,6 +25,10 @@ class _DummyOutput:
         self.messages.append(("code", language, code))
 
 
+class ProtocolOutputAdapter(_DummyOutput):
+    pass
+
+
 class _DummyClient:
     def __init__(self, workspace_path: Path):
         self.workspace_path = workspace_path
@@ -125,3 +129,38 @@ def test_config_model_accepts_direct_model_name(tmp_path, monkeypatch):
     )
 
     assert summary == "model:sonnet-4:save=False"
+
+
+def test_save_command_protocol_mode_avoids_direct_console_usage(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+    client.data_manager.modalities = {"rna": object(), "atac": object()}
+
+    seen = {}
+
+    def _fake_auto_save_state(force=False):
+        seen["force"] = force
+        return ["rna.h5ad", "Skipped atac.h5ad"]
+
+    client.data_manager.auto_save_state = _fake_auto_save_state
+
+    class _FailingConsole:
+        def print(self, *_args, **_kwargs):
+            raise AssertionError("direct console.print should not be used in protocol mode")
+
+        def status(self, *_args, **_kwargs):
+            raise AssertionError("direct console.status should not be used in protocol mode")
+
+    monkeypatch.setattr(slash_commands, "console", _FailingConsole())
+
+    summary = slash_commands._execute_command(
+        "/save --force",
+        client,
+        original_command="/save --force",
+        output=output,
+    )
+
+    assert seen["force"] is True
+    assert summary == "Saved 1 items, skipped 1 unchanged"
+    assert ("info", "Saved: rna.h5ad") in output.messages
+    assert ("info", "Skipped 1 unchanged modalities") in output.messages

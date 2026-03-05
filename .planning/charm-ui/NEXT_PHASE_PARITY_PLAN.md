@@ -138,10 +138,10 @@ Acceptance:
 
 ## Execution Checklist
 
-- [ ] Create parity matrix artifact (`.planning/charm-ui/PARITY_MATRIX.md`)
+- [x] Create parity matrix artifact (`.planning/charm-ui/PARITY_MATRIX.md`)
 - [ ] Complete OutputAdapter conversion for remaining direct-console branches
 - [ ] Apply visual formatting standards to top 20 slash commands
-- [ ] Implement command history ring in Go model
-- [ ] Add protocol completion request/response scaffolding
+- [x] Implement command history ring in Go model
+- [x] Add protocol completion request/response scaffolding
 - [ ] Add integration smoke test script for Go chat commands
 - [ ] Run exit audit and update `.planning/charm-ui/STATE.md`

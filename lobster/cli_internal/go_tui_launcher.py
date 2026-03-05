@@ -34,7 +34,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -160,11 +160,16 @@ class _LightBridge:
         )
         self._read_thread.start()
 
-    def send(self, msg_type: str, payload: Optional[dict] = None) -> None:
+    def send(
+        self,
+        msg_type: str,
+        payload: Optional[dict] = None,
+        msg_id: str = "",
+    ) -> None:
         """Send a message to the Go TUI.  No-op if bridge is closed."""
         if not self._running:
             return
-        line = _make_message(msg_type, payload)
+        line = _make_message(msg_type, payload, msg_id=msg_id)
         with self._write_lock:
             try:
                 self._writer.write(line + "\n")
@@ -281,6 +286,147 @@ def _format_usage(client: Any) -> str:
         return "Ready"
 
 
+def _path_completion_suggestions(prefix: str, limit: int = 50) -> List[str]:
+    """Return path-like completion candidates for the provided prefix."""
+    prefix = (prefix or "").strip()
+    expanded = os.path.expanduser(prefix) if prefix else ""
+
+    if prefix.endswith(("/", "\\")):
+        base_input = prefix
+        base_expanded = expanded or "."
+        typed = ""
+    else:
+        slash_idx = max(prefix.rfind("/"), prefix.rfind("\\"))
+        base_input = prefix[: slash_idx + 1] if slash_idx >= 0 else ""
+        base_expanded = expanded[: slash_idx + 1] if slash_idx >= 0 else "."
+        typed = prefix[slash_idx + 1 :] if slash_idx >= 0 else prefix
+
+    try:
+        base_path = Path(base_expanded or ".")
+        entries = list(base_path.iterdir())
+    except Exception:
+        return []
+
+    out: List[str] = []
+    typed_lower = typed.lower()
+    for entry in entries:
+        name = entry.name
+        if typed and not name.lower().startswith(typed_lower):
+            continue
+        candidate = f"{base_input}{name}"
+        try:
+            if entry.is_dir():
+                candidate += "/"
+        except OSError:
+            continue
+        out.append(candidate)
+
+    out = sorted(set(out), key=lambda s: s.lower())
+    return out[:limit]
+
+
+def _workspace_load_suggestions(client: Any, prefix: str, limit: int = 50) -> List[str]:
+    """Suggest workspace dataset names plus fallback filesystem paths."""
+    suggestions: List[str] = []
+    try:
+        data_manager = getattr(client, "data_manager", None)
+        available = getattr(data_manager, "available_datasets", None)
+        if isinstance(available, dict):
+            pfx = (prefix or "").lower()
+            for name in available.keys():
+                if not isinstance(name, str):
+                    continue
+                if pfx and not name.lower().startswith(pfx):
+                    continue
+                suggestions.append(name)
+    except Exception:
+        pass
+
+    suggestions.extend(_path_completion_suggestions(prefix, limit=limit))
+    deduped = sorted(set(suggestions), key=lambda s: s.lower())
+    return deduped[:limit]
+
+
+def _quote_completion_token(token: str) -> str:
+    """Quote completion token when it contains whitespace or quotes."""
+    if not token:
+        return token
+    if any(ch.isspace() for ch in token) or '"' in token:
+        escaped = token.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return token
+
+
+def _prefix_completion_suggestions(
+    command: str, items: List[str], limit: int = 50
+) -> List[str]:
+    """Format candidate tokens as full command-line completion suggestions."""
+    command = (command or "").strip()
+    if not command:
+        return []
+    formatted: List[str] = []
+    for item in items:
+        token = _quote_completion_token((item or "").strip())
+        if not token:
+            continue
+        formatted.append(f"{command} {token}")
+    deduped = sorted(set(formatted), key=lambda s: s.lower())
+    return deduped[:limit]
+
+
+def _infer_completion_from_input(text: str) -> Tuple[str, str]:
+    """Best-effort fallback parser for completion requests."""
+    text = (text or "").lstrip()
+    if text.startswith("/read "):
+        return "/read", text[len("/read ") :]
+    if text == "/read":
+        return "/read", ""
+    if text.startswith("/open "):
+        return "/open", text[len("/open ") :]
+    if text == "/open":
+        return "/open", ""
+    if text.startswith("/workspace load "):
+        return "/workspace load", text[len("/workspace load ") :]
+    if text == "/workspace load":
+        return "/workspace load", ""
+    return "", ""
+
+
+def _handle_completion_request(bridge: _LightBridge, client: Any, event: dict) -> None:
+    """Handle completion_request by returning best-effort suggestions quickly."""
+    payload = event.get("payload", {}) or {}
+    req_id = str(event.get("id", "") or "")
+    command = str(payload.get("command", "") or "").strip().lower()
+    prefix = str(payload.get("prefix", "") or "")
+    if not command:
+        command, inferred_prefix = _infer_completion_from_input(
+            str(payload.get("input", "") or "")
+        )
+        if not prefix:
+            prefix = inferred_prefix
+
+    try:
+        if command in {"/read", "/open"}:
+            raw = _path_completion_suggestions(prefix)
+            suggestions = _prefix_completion_suggestions(command, raw)
+        elif command == "/workspace load":
+            raw = _workspace_load_suggestions(client, prefix)
+            suggestions = _prefix_completion_suggestions(command, raw)
+        else:
+            suggestions = []
+        bridge.send(
+            "completion_response",
+            {"suggestions": suggestions},
+            msg_id=req_id,
+        )
+    except Exception as exc:
+        bridge.send(
+            "completion_response",
+            {"suggestions": [], "error": str(exc)},
+            msg_id=req_id,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Event loop
 # ---------------------------------------------------------------------------
@@ -303,6 +449,8 @@ def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
             command = payload.get("command", "")
             args = payload.get("args", "")
             _handle_slash_command(bridge, client, command, args)
+        elif msg_type == "completion_request":
+            _handle_completion_request(bridge, client, event)
         elif msg_type == "cancel":
             pass  # Phase 2: cancellation support
 

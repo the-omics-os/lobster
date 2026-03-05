@@ -7,8 +7,14 @@
 package chat
 
 import (
+	"fmt"
 	"sort"
 	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/the-omics-os/lobster-tui/internal/protocol"
 )
 
 // commandDef describes a slash command for autocompletion.
@@ -200,9 +206,170 @@ func (m *Model) modalityNames() []string {
 	return names
 }
 
-// refreshSuggestions updates the textinput suggestion list based on current input.
-// Call this after every input update in the key handler.
-func (m *Model) refreshSuggestions() {
-	suggestions := m.buildSuggestions(m.input.Value())
-	m.input.SetSuggestions(suggestions)
+// completionContext describes the target of a dynamic completion request.
+type completionContext struct {
+	Command string
+	Prefix  string
+}
+
+// parsePathCompletionContext extracts completion context for commands that need
+// Python-backed suggestions.
+func parsePathCompletionContext(input string) (completionContext, bool) {
+	input = strings.TrimLeft(input, " \t")
+	if input == "" || !strings.HasPrefix(input, "/") {
+		return completionContext{}, false
+	}
+
+	hasTrailingSpace := strings.HasSuffix(input, " ")
+	parts := strings.Fields(strings.TrimSpace(input))
+	if len(parts) == 0 {
+		return completionContext{}, false
+	}
+
+	cmd := strings.ToLower(parts[0])
+	switch cmd {
+	case "/read", "/open":
+		if len(parts) == 1 {
+			if hasTrailingSpace {
+				return completionContext{Command: cmd, Prefix: ""}, true
+			}
+			return completionContext{}, false
+		}
+		prefix := parts[1]
+		if hasTrailingSpace {
+			prefix = ""
+		}
+		return completionContext{Command: cmd, Prefix: prefix}, true
+
+	case "/workspace":
+		if len(parts) < 2 || strings.ToLower(parts[1]) != "load" {
+			return completionContext{}, false
+		}
+		if len(parts) == 2 {
+			if hasTrailingSpace {
+				return completionContext{Command: "/workspace load", Prefix: ""}, true
+			}
+			return completionContext{}, false
+		}
+		prefix := parts[2]
+		if hasTrailingSpace {
+			prefix = ""
+		}
+		return completionContext{Command: "/workspace load", Prefix: prefix}, true
+	}
+
+	return completionContext{}, false
+}
+
+// sanitizeSuggestions trims, de-duplicates, and drops empty suggestion strings.
+func sanitizeSuggestions(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		out = append(out, item)
+	}
+	return out
+}
+
+// mergeSuggestions combines static and dynamic suggestions while preserving order.
+func mergeSuggestions(static []string, dynamic []string) []string {
+	if len(static) == 0 && len(dynamic) == 0 {
+		return nil
+	}
+	dynamic = sanitizeSuggestions(dynamic)
+	if len(dynamic) == 0 {
+		return static
+	}
+
+	seen := make(map[string]struct{}, len(static)+len(dynamic))
+	merged := make([]string, 0, len(static)+len(dynamic))
+	for _, item := range static {
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		merged = append(merged, item)
+	}
+	for _, item := range dynamic {
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		merged = append(merged, item)
+	}
+	return merged
+}
+
+func (m *Model) dynamicSuggestionsForInput(input string) []string {
+	if len(m.completionCache) == 0 {
+		return nil
+	}
+	suggestions, ok := m.completionCache[input]
+	if !ok || len(suggestions) == 0 {
+		return nil
+	}
+	out := make([]string, len(suggestions))
+	copy(out, suggestions)
+	return out
+}
+
+// refreshSuggestions updates the textinput suggestion list and may emit a
+// protocol completion request for path-like commands.
+func (m *Model) refreshSuggestions() tea.Cmd {
+	input := m.input.Value()
+	static := m.buildSuggestions(input)
+	dynamic := m.dynamicSuggestionsForInput(input)
+	m.input.SetSuggestions(mergeSuggestions(static, dynamic))
+	return m.maybeRequestProtocolCompletions(input)
+}
+
+func (m *Model) maybeRequestProtocolCompletions(input string) tea.Cmd {
+	if m.handler == nil {
+		return nil
+	}
+	ctx, ok := parsePathCompletionContext(input)
+	if !ok {
+		return nil
+	}
+	if _, ok := m.completionCache[input]; ok {
+		return nil
+	}
+	if m.completionLastRequestedInput == input && m.completionPendingID != "" {
+		return nil
+	}
+
+	m.completionSeq++
+	reqID := fmt.Sprintf("comp-%d", m.completionSeq)
+	m.completionPendingID = reqID
+	m.completionLastRequestedInput = input
+	if m.completionRequestInputs == nil {
+		m.completionRequestInputs = make(map[string]string, 8)
+	}
+	m.completionRequestInputs[reqID] = input
+
+	payload := protocol.CompletionRequestPayload{
+		Input:   input,
+		Command: ctx.Command,
+		Prefix:  ctx.Prefix,
+	}
+
+	sendCmd := func() tea.Msg {
+		_ = m.handler.SendTyped(protocol.TypeCompletionRequest, payload, reqID)
+		return nil
+	}
+	timeoutCmd := tea.Tick(completionRequestTimeout, func(time.Time) tea.Msg {
+		return completionTimeout{id: reqID}
+	})
+	return tea.Batch(sendCmd, timeoutCmd)
 }

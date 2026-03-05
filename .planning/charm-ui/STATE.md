@@ -41,6 +41,9 @@
 - Slash completion supports top-level, subcommand, and deep contexts including trailing-space cases.
 - Suggestions expanded to cover parity-critical commands (e.g., `/status-panel`, `/workspace-info`, `/analysis-dash`, `/progress`, `/vector-search`, `/dashboard`).
 - Input prompt duplication fixed; completion visibility improved.
+- Added local input history ring (`Up`/`Down`) with draft restore behavior.
+- Added protocol-backed completion scaffold for `/read`, `/open`, and `/workspace load` (`completion_request` / `completion_response`).
+- `/help` and `/data` now route through Python slash dispatch for parity with classic command output.
 
 ### Python bridge / slash dispatch
 - Go launcher now prefers local dev `lobster-tui` binary (and supports `LOBSTER_TUI_BINARY` override).
@@ -85,10 +88,14 @@ Detailed execution plan: see `.planning/charm-ui/NEXT_PHASE_PARITY_PLAN.md`.
 
 ## Known Gaps & Tech Debt (Updated)
 
-1. Protocol-bridged autocomplete still lacks dynamic file path completion (`completion_request` / `completion_response` not wired yet).
-2. Input history recall (Up/Down history ring) not implemented in Go model.
-3. `TypeCancel` exists but cancel path in Python event loop still placeholder.
-4. Some command branches still use direct `console.*` rendering and need full OutputAdapter parity conversion.
-5. No end-to-end automated protocol integration suite for Go TUI yet.
-6. No stress validation for long streaming outputs (10K+ token transcript scenarios).
-7. CI cross-compilation pipeline remains deferred.
+1. `TypeCancel` exists but cancel path in Python event loop still placeholder.
+2. Some command branches still use direct `console.*` rendering and need full OutputAdapter parity conversion.
+3. No end-to-end automated protocol integration suite for Go TUI yet.
+4. No stress validation for long streaming outputs (10K+ token transcript scenarios).
+5. CI cross-compilation pipeline remains deferred.
+
+## WS1 Update (2026-03-05)
+
+- Added authoritative parity matrix: `.planning/charm-ui/PARITY_MATRIX.md`.
+- Matrix is sourced directly from `slash_commands.py::_execute_command` and `lobster-tui/internal/chat/model.go`.
+- Current snapshot: most phase-5 priority families are `bridged` and marked `parity` pending validation; explicit degraded surfaces are dashboard/panel commands; immediate blocked parity item is `/exit` confirmation behavior.

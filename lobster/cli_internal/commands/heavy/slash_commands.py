@@ -2423,6 +2423,10 @@ when they are started by agents or analysis workflows.
         # Support /save --force to force re-save all modalities
         force_save = "--force" in cmd
 
+        if _is_protocol_output(output):
+            # Go TUI protocol cannot rely on direct Rich console rendering.
+            return _command_save(client, output, force=force_save)
+
         modality_count = len(client.data_manager.modalities)
         if modality_count == 0:
             console.print("[grey50]Nothing to save (no data loaded)[/grey50]")
