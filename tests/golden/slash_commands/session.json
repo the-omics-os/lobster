@@ -1,0 +1,34 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Session\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Session ID",
+            "sess_123"
+          ],
+          [
+            "Workspace",
+            "/tmp/lobster_ws"
+          ],
+          [
+            "Loaded Modalities",
+            "2"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Session: sess_123"
+}

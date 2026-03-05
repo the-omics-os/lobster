@@ -1,0 +1,38 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Status\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Tier",
+            "free"
+          ],
+          [
+            "Provider",
+            "openai"
+          ],
+          [
+            "Model",
+            "gpt-4.1"
+          ],
+          [
+            "Session ID",
+            "sess_123"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": null
+}

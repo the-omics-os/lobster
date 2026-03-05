@@ -16,11 +16,11 @@ Classification legend:
 
 | Command | Go handling path | Classification | Evidence (file:line refs) | Next action |
 |---|---|---|---|---|
-| `/help` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1635` | Transcript parity audit pending for help table/section layout. |
+| `/help` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1635`, `tests/integration/test_slash_command_golden_transcripts.py:63` | Core golden transcript coverage is in place; extend to admin/help variants if added. |
 | `/data` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1679` | Transcript parity audit pending for empty/loaded modality states. |
-| `/session` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1682` | Validate session table field parity in transcript harness. |
-| `/status` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1705` | Validate tier/provider/model field parity in transcript harness. |
-| `/tokens` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1732` | Validate large token table rendering in Go transcript flow. |
+| `/session` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1682`, `tests/integration/test_slash_command_golden_transcripts.py:63` | Core golden transcript coverage is in place; expand with real workspace path variance checks. |
+| `/status` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1705`, `tests/integration/test_slash_command_golden_transcripts.py:63` | Core golden transcript coverage is in place; add tier-source variants (license/server). |
+| `/tokens` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:1732`, `tests/integration/test_slash_command_golden_transcripts.py:63` | Core golden transcript coverage is in place; add ollama/free-mode variant golden. |
 | `/reset` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2581` | Add transcript check for reset messaging and retained modalities behavior. |
 | `/workspace *` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2219` | Expand smoke coverage to `list/info/load/remove/status/save` command flows. |
 | `/files` | `bridged` | `parity` | `lobster-tui/internal/chat/model.go:763`, `lobster/cli_internal/commands/heavy/slash_commands.py:2131` | Validate category grouping and empty-state behavior in Go transcript. |

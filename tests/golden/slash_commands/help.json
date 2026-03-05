@@ -1,0 +1,143 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "## Quick Start\n\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Just ask what you want to do in natural language\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Example: \"analyze my single-cell data\" or \"find breast cancer datasets\"\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Load data: /read <file> (supports *.h5ad, *.csv, etc.)\n\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Core Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Description"
+        ],
+        "rows": [
+          [
+            "/session",
+            "Current session status"
+          ],
+          [
+            "/status",
+            "Subscription tier & agents"
+          ],
+          [
+            "/data",
+            "Current data summary"
+          ],
+          [
+            "/workspace",
+            "Workspace info"
+          ],
+          [
+            "/queue",
+            "Queue status & controls"
+          ],
+          [
+            "/metadata",
+            "Metadata overview"
+          ],
+          [
+            "/config",
+            "Provider/model settings"
+          ],
+          [
+            "/plots",
+            "List generated plots"
+          ],
+          [
+            "/read <file>",
+            "Load data file"
+          ],
+          [
+            "/pipeline export",
+            "Export as Jupyter notebook"
+          ],
+          [
+            "/tokens",
+            "Token usage & costs"
+          ],
+          [
+            "/clear",
+            "Clear screen"
+          ],
+          [
+            "/exit",
+            "Exit"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Power Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Description"
+        ],
+        "rows": [
+          [
+            "/workspace list",
+            "List available datasets"
+          ],
+          [
+            "/workspace load <name>",
+            "Load data from workspace"
+          ],
+          [
+            "/queue clear [download|all]",
+            "Clear queue(s)"
+          ],
+          [
+            "/metadata clear [exports|all]",
+            "Clear metadata"
+          ],
+          [
+            "/describe <modality>",
+            "Inspect a modality"
+          ],
+          [
+            "/save [--force]",
+            "Persist loaded modalities"
+          ],
+          [
+            "/restore [pattern]",
+            "Restore datasets from session cache"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": null
+}

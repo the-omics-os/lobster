@@ -3,7 +3,7 @@
 **Status:** In Progress
 **Owner:** Charm UI migration stream
 **Date:** 2026-03-05
-**Last verified against code/tests:** 2026-03-05 (`ac7a60e`, `642ad8d`)
+**Last verified against code/tests:** 2026-03-05 (`ac7a60e`, `642ad8d`, `fd142fb`)
 
 ## Objective
 
@@ -15,7 +15,7 @@ Migrate remaining functional and visual parity surfaces from classic Rich CLI to
 - WS4: Local command history ring (`Up`/`Down`) is implemented in Go model.
 - WS4: Protocol completion request/response scaffold is implemented for `/read`, `/open`, `/workspace load`.
 - WS5: Regression and smoke test scaffolding landed and passes in targeted slices.
-- Remaining: finish OutputAdapter migration, visual polish pass, and transcript/golden parity audit.
+- Remaining: finish OutputAdapter migration, visual polish pass, and transcript/golden parity expansion beyond core commands.
 
 ## Remaining Workstreams
 
@@ -29,7 +29,7 @@ Migrate remaining functional and visual parity surfaces from classic Rich CLI to
 
 ### WS5 — Validation + Exit Audit
 - Expand smoke coverage from protocol dispatch to multi-command parity flows.
-- Add golden transcript checks for command output shape.
+- Add golden transcript checks for additional command families beyond core.
 - Run final parity audit and publish unresolved exceptions (if any).
 
 ## Execution Checklist
