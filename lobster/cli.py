@@ -1033,6 +1033,11 @@ def chat(
         "--stream/--no-stream",
         help="Enable real-time text streaming (default: on)",
     ),
+    ui_mode: str = typer.Option(
+        "auto",
+        "--ui",
+        help="UI mode: auto (Go TUI if available), go (require Go TUI), classic (Rich terminal)",
+    ),
 ):
     """
     Start an interactive chat session with the multi-agent system.
@@ -1042,12 +1047,13 @@ def chat(
       lobster chat --session-id session_20241208_150000
 
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
+    Use --ui to select the UI backend: auto, go, or classic.
     """
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
     chat_impl(
         workspace=workspace, session_id=session_id, reasoning=reasoning,
         verbose=verbose, debug=debug, profile_timings=profile_timings,
-        provider=provider, model=model, stream=stream,
+        provider=provider, model=model, stream=stream, ui_mode=ui_mode,
     )
 
 

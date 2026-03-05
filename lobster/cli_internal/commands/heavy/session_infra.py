@@ -31,6 +31,17 @@ console = console_manager.console
 
 _COMMAND_HISTORY_LOCK = threading.Lock()
 
+# Go TUI active flag: when True, Rich progress indicators are suppressed
+# because the Go TUI handles its own spinner/progress display.
+_go_tui_active = False
+
+
+def set_go_tui_active(active: bool) -> None:
+    """Set whether the Go TUI is the active UI backend."""
+    global _go_tui_active
+    _go_tui_active = active
+
+
 # Extraction cache manager loaded lazily to avoid triggering all agent imports at startup
 _ExtractionCacheManager = None
 _extraction_cache_checked = False
@@ -79,12 +90,16 @@ def should_show_progress(client_arg: Optional["AgentClient"] = None) -> bool:
     Determine if progress indicators should be shown based on current mode.
 
     Returns False (no progress) when:
+    - Go TUI is active (it has its own spinner)
     - Reasoning mode is enabled
     - Verbose mode is enabled
     - Any callback has verbose/show_tools enabled
 
     Returns True (show progress) otherwise.
     """
+    if _go_tui_active:
+        return False
+
     # Use provided client or try to get from cli module
     c = client_arg
     if c is None:

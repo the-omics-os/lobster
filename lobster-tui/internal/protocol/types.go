@@ -86,6 +86,12 @@ const (
 
 	// TypeToolExecution reports the start or completion of a tool call.
 	TypeToolExecution = "tool_execution"
+
+	// TypeSuspend requests the TUI to suspend (return to shell).
+	TypeSuspend = "suspend"
+
+	// TypeResume signals the TUI to resume after a suspend.
+	TypeResume = "resume"
 )
 
 // ---- Go → Python message type constants -----------------------------------

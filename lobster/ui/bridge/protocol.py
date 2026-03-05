@@ -31,6 +31,8 @@ class MessageType(str, Enum):
     AGENT_TRANSITION = "agent_transition"
     MODALITY_LOADED = "modality_loaded"
     TOOL_EXECUTION = "tool_execution"
+    SUSPEND = "suspend"
+    RESUME = "resume"
 
     # Go -> Python
     INPUT = "input"

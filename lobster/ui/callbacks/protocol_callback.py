@@ -124,28 +124,27 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         if not chain_name:
             return
 
-        # Best-effort agent detection from chain names.
-        for candidate in (
-            "supervisor",
-            "research_agent",
-            "data_expert",
-            "transcriptomics_expert",
-            "de_analysis_expert",
-            "annotation_expert",
-            "visualization_expert_agent",
-            "genomics_expert",
-            "proteomics_expert",
-            "metabolomics_expert",
-            "machine_learning_expert",
-        ):
-            if candidate in chain_name and candidate != self.current_agent:
+        # Dynamic agent detection: matches supervisor and any name ending
+        # with _expert, _agent, or _assistant (covers all 21 current agents
+        # and future ones without hardcoding).
+        if chain_name == "supervisor" and self.current_agent != "supervisor":
+            self._emit(
+                "agent_transition",
+                {
+                    "from": self.current_agent or "supervisor",
+                    "to": "supervisor",
+                    "reason": "chain_start",
+                },
+            )
+            self.current_agent = "supervisor"
+        elif any(chain_name.endswith(s) for s in ("_expert", "_agent", "_assistant")):
+            if chain_name != self.current_agent:
                 self._emit(
                     "agent_transition",
                     {
                         "from": self.current_agent or "supervisor",
-                        "to": candidate,
+                        "to": chain_name,
                         "reason": "chain_start",
                     },
                 )
-                self.current_agent = candidate
-                break
+                self.current_agent = chain_name
