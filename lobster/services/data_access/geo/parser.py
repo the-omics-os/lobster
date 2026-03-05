@@ -1212,6 +1212,34 @@ class GEOParser:
             logger.debug(traceback.format_exc())
             return None
 
+    def _is_10x_h5(self, file_path: Path) -> bool:
+        """Detect 10X CellRanger H5 format (has /matrix group with CSR components)."""
+        try:
+            import h5py
+
+            with h5py.File(file_path, "r") as f:
+                if "matrix" in f and isinstance(f["matrix"], h5py.Group):
+                    return all(
+                        k in f["matrix"] for k in ("data", "indices", "indptr")
+                    )
+            return False
+        except Exception:
+            return False
+
+    def _parse_10x_h5(self, file_path: Path) -> Optional[pd.DataFrame]:
+        """Parse 10X CellRanger H5 file using scanpy."""
+        try:
+            import scanpy as sc
+
+            adata = sc.read_10x_h5(str(file_path), gex_only=True)
+            logger.info(
+                f"Parsed 10X H5: {adata.shape[0]} cells x {adata.shape[1]} genes"
+            )
+            return adata.to_df()
+        except Exception as e:
+            logger.warning(f"Failed to parse 10X H5 with scanpy: {e}")
+            return None
+
     def _parse_h5ad_with_fallback(self, file_path: Path) -> Optional[pd.DataFrame]:
         """
         Parse H5AD files with multi-strategy fallback for legacy formats and corruption.
@@ -1318,29 +1346,32 @@ class GEOParser:
 
                 # Try to read expression matrix (multiple naming conventions)
                 X = None
-                if "X" in f:
-                    X = f["X"][:]
-                elif "matrix" in f:
-                    X = f["matrix"][:]
-                else:
+                for matrix_key in ("X", "matrix"):
+                    if matrix_key not in f:
+                        continue
+                    matrix_obj = f[matrix_key]
+                    if isinstance(matrix_obj, h5py.Group):
+                        # Sparse CSR matrix format (e.g. 10X CellRanger H5)
+                        if all(k in matrix_obj for k in ("data", "indices", "indptr")):
+                            X = sp.csr_matrix(
+                                (matrix_obj["data"][:], matrix_obj["indices"][:], matrix_obj["indptr"][:])
+                            ).toarray()
+                        else:
+                            logger.error(
+                                f"Unsupported sparse matrix format in {file_path.name}"
+                            )
+                            return None
+                    else:
+                        # Dense Dataset — safe to slice
+                        X = matrix_obj[:]
+                    break
+
+                if X is None:
                     logger.error(
                         f"No expression matrix found in {file_path.name}. "
                         f"Available keys: {available_keys}"
                     )
                     return None
-
-                # Handle sparse matrices
-                if isinstance(X, h5py.Group):
-                    # Sparse CSR matrix format
-                    if all(k in X for k in ["data", "indices", "indptr"]):
-                        X = sp.csr_matrix(
-                            (X["data"][:], X["indices"][:], X["indptr"][:])
-                        ).toarray()
-                    else:
-                        logger.error(
-                            f"Unsupported sparse matrix format in {file_path.name}"
-                        )
-                        return None
 
                 # Read observation names (cells)
                 obs_names = None
@@ -1440,7 +1471,21 @@ class GEOParser:
                 inner_suffix = file_suffix
 
             # Handle specific file formats
-            if inner_suffix in [".h5", ".h5ad"]:
+            if inner_suffix in [".h5", ".hdf5"]:
+                # 10X CellRanger H5 files need scanpy, not anndata.read_h5ad
+                if self._is_10x_h5(file_path):
+                    h5_df = self._parse_10x_h5(file_path)
+                    return ParseResult(
+                        data=h5_df,
+                        rows_read=len(h5_df) if h5_df is not None else 0,
+                    )
+                h5_df = self._parse_h5ad_with_fallback(file_path)
+                return ParseResult(
+                    data=h5_df,
+                    rows_read=len(h5_df) if h5_df is not None else 0,
+                )
+
+            if inner_suffix == ".h5ad":
                 h5_df = self._parse_h5ad_with_fallback(file_path)
                 return ParseResult(
                     data=h5_df,

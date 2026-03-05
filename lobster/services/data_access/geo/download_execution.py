@@ -504,8 +504,28 @@ Multi-Modal Dataset Detected:
         Returns:
             List[Callable]: Pipeline functions to execute in order
         """
-        # Determine data type
-        data_type = self.service._determine_data_type_from_metadata(metadata)
+        # Prefer LLM modality detection (high confidence) over keyword heuristic
+        data_type = None
+        stored = self.service.data_manager._get_geo_metadata(geo_id)
+        if stored and isinstance(stored, dict):
+            modality_info = stored.get("modality_detection")
+            if isinstance(modality_info, dict) and modality_info.get("confidence", 0) >= 0.8:
+                llm_modality = modality_info["modality"]
+                modality_to_data_type = {
+                    "bulk_rna": "bulk_rna_seq",
+                    "scrna_10x": "single_cell_rna_seq",
+                    "scrna_smartseq": "single_cell_rna_seq",
+                    "cite_seq": "single_cell_rna_seq",
+                }
+                data_type = modality_to_data_type.get(llm_modality)
+                if data_type:
+                    logger.info(
+                        f"Using LLM modality signal: {llm_modality} → data_type={data_type}"
+                    )
+
+        # Fall back to heuristic if LLM signal unavailable or unmapped
+        if not data_type:
+            data_type = self.service._determine_data_type_from_metadata(metadata)
 
         # Create pipeline context
         context = create_pipeline_context(
@@ -744,7 +764,16 @@ Multi-Modal Dataset Detected:
                 )
 
             gse = result.value
-            data = self.service._process_supplementary_files(gse, geo_id)
+
+            # Retrieve multimodal context from metadata store
+            multimodal_info = None
+            stored = self.service.data_manager._get_geo_metadata(geo_id)
+            if stored:
+                multimodal_info = stored.get("multimodal_info")
+
+            data = self.service._process_supplementary_files(
+                gse, geo_id, multimodal_info=multimodal_info
+            )
 
             data_is_valid = False
             if data is not None:
@@ -789,7 +818,15 @@ Multi-Modal Dataset Detected:
 
             gse = GEOparse.get_GEO(geo=geo_id, destdir=str(self.service.cache_dir))
 
-            data = self.service._process_supplementary_files(gse, geo_id)
+            # Retrieve multimodal context from metadata store
+            multimodal_info = None
+            stored = self.service.data_manager._get_geo_metadata(geo_id)
+            if stored:
+                multimodal_info = stored.get("multimodal_info")
+
+            data = self.service._process_supplementary_files(
+                gse, geo_id, multimodal_info=multimodal_info
+            )
             if _is_data_valid(data):
                 return GEOResult(
                     data=data,

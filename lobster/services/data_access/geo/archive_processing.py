@@ -22,6 +22,7 @@ from lobster.services.data_access.geo.constants import (
 from lobster.services.data_access.geo.downloader import GEODownloadError
 from lobster.services.data_access.geo.helpers import (
     _is_archive_url,
+    _is_unsupported_modality_file,
     _score_expression_file,
 )
 from lobster.services.data_access.geo.parser import ParseResult
@@ -50,7 +51,7 @@ class ArchiveProcessor:
         self.service = service
 
     def _process_supplementary_files(
-        self, gse, gse_id: str
+        self, gse, gse_id: str, multimodal_info: Optional[Dict] = None
     ) -> Optional[Union[pd.DataFrame, anndata.AnnData]]:
         """
         Process supplementary files (TAR archives, etc.) to extract expression data.
@@ -64,6 +65,7 @@ class ArchiveProcessor:
         Args:
             gse: GEOparse GSE object
             gse_id: GEO series ID
+            multimodal_info: Optional multimodal context from metadata enrichment
 
         Returns:
             DataFrame or AnnData: Combined expression matrix from supplementary files or None
@@ -146,7 +148,9 @@ class ArchiveProcessor:
 
             if tar_files:
                 logger.debug(f"Processing TAR file: {tar_files[0]}")
-                return self._process_tar_file(tar_files[0], gse_id)
+                return self._process_tar_file(
+                    tar_files[0], gse_id, multimodal_info=multimodal_info
+                )
 
             # Look for other expression data files using scoring heuristic
             candidate_files = [
@@ -157,6 +161,17 @@ class ArchiveProcessor:
                     for ext in [".txt.gz", ".csv.gz", ".tsv.gz", ".h5", ".h5ad"]
                 )
             ]
+
+            # Filter out unsupported modality files (e.g. ATAC in multiome datasets)
+            if multimodal_info and multimodal_info.get("is_multimodal"):
+                unsupported = multimodal_info.get("unsupported_types", [])
+                if unsupported:
+                    candidate_files = [
+                        f for f in candidate_files
+                        if not _is_unsupported_modality_file(
+                            f.split("/")[-1], unsupported
+                        )
+                    ]
 
             scored_files = [
                 (f, _score_expression_file(f.split("/")[-1])) for f in candidate_files
@@ -182,7 +197,7 @@ class ArchiveProcessor:
             return None
 
     def _process_tar_file(
-        self, tar_url: str, gse_id: str
+        self, tar_url: str, gse_id: str, multimodal_info: Optional[Dict] = None
     ) -> Optional[Union[pd.DataFrame, anndata.AnnData]]:
         """
         Download and process a TAR file containing expression data.
@@ -384,6 +399,22 @@ class ArchiveProcessor:
                 ):
                     if file_path.stat().st_size > 100000:
                         expression_files.append(file_path)
+
+            # Filter out unsupported modality files (e.g. ATAC in multiome datasets)
+            if multimodal_info and multimodal_info.get("is_multimodal"):
+                unsupported = multimodal_info.get("unsupported_types", [])
+                if unsupported:
+                    before_count = len(expression_files)
+                    expression_files = [
+                        f for f in expression_files
+                        if not _is_unsupported_modality_file(f.name, unsupported)
+                    ]
+                    filtered = before_count - len(expression_files)
+                    if filtered:
+                        logger.info(
+                            f"Filtered {filtered} unsupported modality files "
+                            f"(unsupported: {unsupported})"
+                        )
 
             if expression_files:
                 logger.debug(

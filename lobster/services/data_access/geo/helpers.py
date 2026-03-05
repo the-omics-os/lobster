@@ -113,6 +113,30 @@ def _score_expression_file(filename: str) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Multi-modal file filter
+# ---------------------------------------------------------------------------
+
+# Patterns that indicate non-RNA modalities
+_MODALITY_PATTERNS = {
+    "atac": ["atac", "peaks", "fragments", "accessibility", "chromatin"],
+    "protein": ["protein", "adt", "antibody", "cite"],
+    "spatial": ["spatial", "visium", "slide"],
+}
+
+
+def _is_unsupported_modality_file(
+    filename: str, unsupported_types: list
+) -> bool:
+    """Check if filename matches an unsupported modality pattern."""
+    name_lower = filename.lower()
+    for mod_type in unsupported_types:
+        patterns = _MODALITY_PATTERNS.get(mod_type, [])
+        if any(p in name_lower for p in patterns):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # Typed retry result (replaces string sentinel "SOFT_FILE_MISSING")
 # ---------------------------------------------------------------------------
 
