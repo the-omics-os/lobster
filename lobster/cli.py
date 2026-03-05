@@ -1049,10 +1049,18 @@ def chat(
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
     Use --ui to select the UI backend: auto, go, or classic.
     """
+    # Validate --ui value early.
+    valid_ui_modes = {"auto", "go", "classic"}
+    if ui_mode not in valid_ui_modes:
+        import typer as _typer
+
+        _typer.echo(f"Error: Invalid --ui value '{ui_mode}'. Must be one of: {', '.join(sorted(valid_ui_modes))}", err=True)
+        raise typer.Exit(1)
+
     # Go TUI fast path — gate BEFORE importing chat_commands (which pulls in
     # Rich, LangChain, etc.).  The lightweight launcher uses only stdlib so
     # the Go binary appears on-screen in <200ms.
-    if ui_mode in ("auto", "go") and not reasoning and not verbose:
+    if ui_mode in ("auto", "go") and not reasoning and not verbose and os.isatty(0):
         from lobster.cli_internal.go_tui_launcher import (
             find_tui_binary_fast,
             launch_go_tui_chat,
@@ -1081,6 +1089,11 @@ def chat(
 
             _typer.echo("Error: Go TUI binary not found. Install with: pip install lobster-ai-tui", err=True)
             raise typer.Exit(1)
+    elif ui_mode == "go" and not os.isatty(0):
+        import typer as _typer
+
+        _typer.echo("Error: Go TUI requires an interactive terminal (stdin is not a TTY)", err=True)
+        raise typer.Exit(1)
 
     # Classic Rich terminal path (heavy imports happen here).
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl

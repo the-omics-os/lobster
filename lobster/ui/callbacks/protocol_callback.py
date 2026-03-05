@@ -86,12 +86,17 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
             duration_ms = (datetime.now() - self.start_times[key]).total_seconds() * 1000
             self.start_times.pop(key, None)
 
+        summary = ""
+        if duration_ms is not None:
+            summary = f"{duration_ms / 1000:.1f}s"
+
         self._emit(
             "tool_execution",
             {
                 "tool": tool_name,
                 "agent": self.current_agent or "unknown",
                 "status": "complete",
+                "summary": summary,
                 "duration_ms": duration_ms,
             },
         )
@@ -107,7 +112,45 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
                 "tool": tool_name,
                 "agent": self.current_agent or "unknown",
                 "status": "error",
-                "result": str(error)[:200],
+                "summary": str(error)[:200],
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # High-level event emitters (called from Lobster internals)
+    # ------------------------------------------------------------------
+
+    def emit_modality_loaded(
+        self,
+        name: str,
+        shape: str = "",
+        workspace: str = "",
+    ) -> None:
+        """Emit a modality_loaded event for the Go TUI data panel."""
+        self._emit(
+            "modality_loaded",
+            {
+                "name": name,
+                "shape": shape,
+                "workspace": workspace,
+            },
+        )
+
+    def emit_progress(
+        self,
+        label: str,
+        current: int,
+        total: int,
+        done: bool = False,
+    ) -> None:
+        """Emit a progress event for the Go TUI progress bar."""
+        self._emit(
+            "progress",
+            {
+                "label": label,
+                "current": current,
+                "total": total,
+                "done": done,
             },
         )
 

@@ -1,0 +1,127 @@
+from pathlib import Path
+
+import lobster.cli_internal.commands.heavy.slash_commands as slash_commands
+
+
+class _DummyOutput:
+    def __init__(self):
+        self.messages = []
+
+    def print(self, message, style=None):
+        self.messages.append((style, message))
+
+    def print_table(self, table_data):
+        self.messages.append(("table", table_data))
+
+    def confirm(self, question):
+        self.messages.append(("confirm", question))
+        return False
+
+    def prompt(self, question, default=""):
+        self.messages.append(("prompt", question))
+        return default
+
+    def print_code_block(self, code, language="python"):
+        self.messages.append(("code", language, code))
+
+
+class _DummyClient:
+    def __init__(self, workspace_path: Path):
+        self.workspace_path = workspace_path
+        self.session_id = "test_session"
+        self.data_manager = type(
+            "DM",
+            (),
+            {"workspace_path": workspace_path, "modalities": {}},
+        )()
+
+
+def test_open_command_executes_and_returns_summary(tmp_path, monkeypatch):
+    output = _DummyOutput()
+    client = _DummyClient(tmp_path)
+    target = tmp_path / "demo.txt"
+    target.write_text("hello")
+
+    monkeypatch.setattr(slash_commands, "current_directory", tmp_path)
+
+    called = {}
+
+    def _fake_open_path(path):
+        called["path"] = path
+        return True, f"Opened {path.name}"
+
+    import lobster.utils as lobster_utils
+
+    monkeypatch.setattr(lobster_utils, "open_path", _fake_open_path)
+
+    summary = slash_commands._execute_command(
+        "/open demo.txt",
+        client,
+        original_command="/open demo.txt",
+        output=output,
+    )
+
+    assert summary == "Opened demo.txt"
+    assert called["path"] == target
+    assert ("success", "Opened demo.txt") in output.messages
+
+
+def test_restore_command_delegates_to_restore_handler(tmp_path, monkeypatch):
+    output = _DummyOutput()
+    client = _DummyClient(tmp_path)
+
+    seen = {}
+
+    def _fake_restore(_client, _output, pattern="recent"):
+        seen["pattern"] = pattern
+        return f"restored:{pattern}"
+
+    monkeypatch.setattr(slash_commands, "_command_restore", _fake_restore)
+
+    summary = slash_commands._execute_command(
+        "/restore all",
+        client,
+        original_command="/restore all",
+        output=output,
+    )
+
+    assert summary == "restored:all"
+    assert seen["pattern"] == "all"
+
+
+def test_config_provider_accepts_direct_provider_name(tmp_path, monkeypatch):
+    output = _DummyOutput()
+    client = _DummyClient(tmp_path)
+
+    def _fake_provider_switch(_client, _output, provider_name, save):
+        return f"provider:{provider_name}:save={save}"
+
+    monkeypatch.setattr(slash_commands, "config_provider_switch", _fake_provider_switch)
+
+    summary = slash_commands._execute_command(
+        "/config provider openai --save",
+        client,
+        original_command="/config provider openai --save",
+        output=output,
+    )
+
+    assert summary == "provider:openai:save=True"
+
+
+def test_config_model_accepts_direct_model_name(tmp_path, monkeypatch):
+    output = _DummyOutput()
+    client = _DummyClient(tmp_path)
+
+    def _fake_model_switch(_client, _output, model_name, save):
+        return f"model:{model_name}:save={save}"
+
+    monkeypatch.setattr(slash_commands, "config_model_switch", _fake_model_switch)
+
+    summary = slash_commands._execute_command(
+        "/config model sonnet-4",
+        client,
+        original_command="/config model sonnet-4",
+        output=output,
+    )
+
+    assert summary == "model:sonnet-4:save=False"

@@ -326,3 +326,39 @@ class DashboardOutputAdapter(OutputAdapter):
 
         # Remove [style] and [/style] tags
         return re.sub(r"\[/?[^\]]+\]", "", text)
+
+
+class ProtocolOutputAdapter(OutputAdapter):
+    """OutputAdapter that emits protocol messages to the Go TUI."""
+
+    def __init__(self, send_fn):
+        self._send = send_fn
+
+    def print(self, message: str, style: Optional[str] = None) -> None:
+        clean = self._strip_markup(message)
+        if style in ("error", "warning", "success", "info"):
+            self._send("alert", {"level": style, "message": clean})
+        else:
+            self._send("text", {"content": clean + "\n"})
+
+    def print_table(self, table_data: Dict[str, Any]) -> None:
+        headers = [col["name"] for col in table_data.get("columns", [])]
+        rows = table_data.get("rows", [])
+        title = table_data.get("title")
+        if title:
+            self._send("text", {"content": self._strip_markup(title) + "\n"})
+        self._send("table", {"headers": headers, "rows": rows})
+
+    def print_code_block(self, code: str, language: str = "python") -> None:
+        self._send("code", {"content": code, "language": language})
+
+    def confirm(self, question: str) -> bool:
+        return False  # Non-interactive
+
+    def prompt(self, question: str, default: str = "") -> str:
+        return default
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        import re
+        return re.sub(r"\[/?[^\]]+\]", "", text)

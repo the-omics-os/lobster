@@ -288,6 +288,9 @@ class DataManagerV2:
         self._session_lock = threading.Lock()
         self._session_lock_path = self.session_file.with_suffix(".lock")
 
+        # Optional callback for modality loaded events: fn(name, adata)
+        self.on_modality_loaded = None
+
         # Current dataset management (for legacy compatibility)
         self.current_dataset: Optional[str] = None  # Name of current active modality
         self.current_data: Optional[pd.DataFrame] = None  # Legacy compatibility
@@ -893,6 +896,14 @@ class DataManagerV2:
         logger.info(
             f"Loaded modality '{name}': {adata.shape} using adapter '{adapter}'"
         )
+
+        # Notify listeners
+        if self.on_modality_loaded is not None:
+            try:
+                self.on_modality_loaded(name, adata)
+            except Exception:
+                pass  # Don't let callback errors break data loading
+
         return adata
 
     def store_modality(

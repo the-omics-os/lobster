@@ -38,12 +38,12 @@ type Colors struct {
 // All styles are constructed once by BuildStyles and reused at render time.
 type Styles struct {
 	// Layout
-	Header     lipgloss.Style
-	Footer     lipgloss.Style
-	StatusBar  lipgloss.Style
-	Sidebar    lipgloss.Style
-	MainPanel  lipgloss.Style
-	Divider    lipgloss.Style
+	Header    lipgloss.Style
+	Footer    lipgloss.Style
+	StatusBar lipgloss.Style
+	Sidebar   lipgloss.Style
+	MainPanel lipgloss.Style
+	Divider   lipgloss.Style
 
 	// Chat messages
 	UserMessage      lipgloss.Style
@@ -52,11 +52,11 @@ type Styles struct {
 	ToolMessage      lipgloss.Style
 
 	// Input
-	InputField     lipgloss.Style
-	InputPrompt    lipgloss.Style
-	FormContainer  lipgloss.Style
-	FormField      lipgloss.Style
-	FormLabel      lipgloss.Style
+	InputField    lipgloss.Style
+	InputPrompt   lipgloss.Style
+	FormContainer lipgloss.Style
+	FormField     lipgloss.Style
+	FormLabel     lipgloss.Style
 
 	// Feedback
 	AlertSuccess lipgloss.Style
@@ -65,12 +65,15 @@ type Styles struct {
 	AlertInfo    lipgloss.Style
 
 	// Agent / pipeline
-	AgentBadge       lipgloss.Style
-	AgentTransition  lipgloss.Style
-	ProgressBar      lipgloss.Style
-	SpinnerStyle     lipgloss.Style
-	ToolExecution    lipgloss.Style
-	ModalityLoaded   lipgloss.Style
+	AgentBadge      lipgloss.Style
+	AgentTransition lipgloss.Style
+	ProgressBar     lipgloss.Style
+	SpinnerStyle    lipgloss.Style
+	ToolExecution   lipgloss.Style
+	ToolRunning     lipgloss.Style
+	ToolSuccess     lipgloss.Style
+	ToolError       lipgloss.Style
+	ModalityLoaded  lipgloss.Style
 
 	// Code / markdown
 	CodeBlock  lipgloss.Style
@@ -100,10 +103,12 @@ func BuildStyles(c Colors) Styles {
 	return Styles{
 		// ---- Layout -------------------------------------------------------
 		Header: lipgloss.NewStyle().
-			Background(c.Surface).
 			Foreground(c.Primary).
 			Bold(true).
-			Padding(0, 1),
+			Padding(0, 1).
+			BorderBottom(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(c.Overlay),
 
 		Footer: lipgloss.NewStyle().
 			Background(c.Surface).
@@ -111,9 +116,12 @@ func BuildStyles(c Colors) Styles {
 			Padding(0, 1),
 
 		StatusBar: lipgloss.NewStyle().
-			Background(c.Overlay).
+			Background(c.Surface).
 			Foreground(c.TextMuted).
-			Padding(0, 1),
+			Padding(0, 1).
+			BorderTop(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(c.Overlay),
 
 		Sidebar: lipgloss.NewStyle().
 			Background(c.Surface).
@@ -131,21 +139,27 @@ func BuildStyles(c Colors) Styles {
 		// ---- Chat messages ------------------------------------------------
 		UserMessage: lipgloss.NewStyle().
 			Foreground(c.Text).
-			PaddingLeft(2).
-			BorderLeft(true).
+			Background(c.Surface).
+			Padding(0, 1).
+			MarginRight(1).
+			Border(lipgloss.RoundedBorder()).
 			BorderForeground(c.Primary).
-			BorderStyle(lipgloss.ThickBorder()),
+			BorderStyle(lipgloss.RoundedBorder()),
 
 		AssistantMessage: lipgloss.NewStyle().
 			Foreground(c.Text).
-			PaddingLeft(2).
-			BorderLeft(true).
+			Background(c.Overlay).
+			Padding(0, 1).
+			MarginRight(1).
+			Border(lipgloss.RoundedBorder()).
 			BorderForeground(c.Accent1).
-			BorderStyle(lipgloss.NormalBorder()),
+			BorderStyle(lipgloss.RoundedBorder()),
 
 		SystemMessage: lipgloss.NewStyle().
 			Foreground(c.TextMuted).
-			Italic(true),
+			Padding(0, 1).
+			BorderLeft(true).
+			BorderForeground(c.TextDim),
 
 		ToolMessage: lipgloss.NewStyle().
 			Foreground(c.Info).
@@ -160,7 +174,7 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.Text).
 			Padding(0, 1).
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(c.Primary),
+			BorderForeground(c.Secondary),
 
 		InputPrompt: lipgloss.NewStyle().
 			Foreground(c.Primary).
@@ -184,21 +198,29 @@ func BuildStyles(c Colors) Styles {
 		AlertSuccess: lipgloss.NewStyle().
 			Foreground(c.Success).
 			Bold(true).
-			Padding(0, 1),
+			Padding(0, 1).
+			BorderLeft(true).
+			BorderForeground(c.Success),
 
 		AlertWarning: lipgloss.NewStyle().
 			Foreground(c.Warning).
 			Bold(true).
-			Padding(0, 1),
+			Padding(0, 1).
+			BorderLeft(true).
+			BorderForeground(c.Warning),
 
 		AlertError: lipgloss.NewStyle().
 			Foreground(c.Error).
 			Bold(true).
-			Padding(0, 1),
+			Padding(0, 1).
+			BorderLeft(true).
+			BorderForeground(c.Error),
 
 		AlertInfo: lipgloss.NewStyle().
 			Foreground(c.Info).
-			Padding(0, 1),
+			Padding(0, 1).
+			BorderLeft(true).
+			BorderForeground(c.Info),
 
 		// ---- Agent / pipeline ---------------------------------------------
 		AgentBadge: lipgloss.NewStyle().
@@ -220,6 +242,15 @@ func BuildStyles(c Colors) Styles {
 		ToolExecution: lipgloss.NewStyle().
 			Foreground(c.TextMuted).
 			Italic(true),
+
+		ToolRunning: lipgloss.NewStyle().
+			Foreground(c.Warning),
+
+		ToolSuccess: lipgloss.NewStyle().
+			Foreground(c.Success),
+
+		ToolError: lipgloss.NewStyle().
+			Foreground(c.Error),
 
 		ModalityLoaded: lipgloss.NewStyle().
 			Foreground(c.Accent3).

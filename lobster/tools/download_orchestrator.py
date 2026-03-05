@@ -94,6 +94,7 @@ class DownloadOrchestrator:
         """
         self.data_manager = data_manager
         self._services: Dict[str, IDownloadService] = {}
+        self.progress_callback = None  # Optional callback: fn(label, current, total, done)
         self._register_default_services()
         logger.info("DownloadOrchestrator initialized")
 
@@ -344,7 +345,11 @@ class DownloadOrchestrator:
                     ) from e
 
             # Step 5: Execute download via service
+            if self.progress_callback:
+                self.progress_callback(entry_id, 0, 1, False)
             adata, stats, ir = service.download_dataset(entry, strategy_override)
+            if self.progress_callback:
+                self.progress_callback(entry_id, 1, 1, True)
 
             # Step 6: Store result in DataManagerV2
             modality_name = (

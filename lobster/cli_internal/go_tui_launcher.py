@@ -54,15 +54,33 @@ def find_tui_binary_fast() -> Optional[str]:
     """Locate the ``lobster-tui`` binary using only stdlib.
 
     Search order:
-    1. Platform wheel package (``lobster_ai_tui``).
-    2. User cache directory (``~/.cache/lobster/bin/lobster-tui``).
-    3. System PATH via ``shutil.which``.
-    4. Development build -- walk up from this file looking for
+    1. ``LOBSTER_TUI_BINARY`` override path (if set).
+    2. Development build -- walk up from this file looking for
        ``lobster-tui/lobster-tui``.
+    3. Platform wheel package (``lobster_ai_tui``).
+    4. User cache directory (``~/.cache/lobster/bin/lobster-tui``).
+    5. System PATH via ``shutil.which``.
 
     Returns the absolute path to the binary, or ``None`` if not found.
     """
-    # 1. Platform wheel package (tiny or absent -- safe to attempt)
+    # 1. Explicit override (useful for local dev/debugging).
+    override = os.environ.get("LOBSTER_TUI_BINARY", "").strip()
+    if override:
+        override_path = Path(override).expanduser()
+        if override_path.is_file() and os.access(override_path, os.X_OK):
+            return str(override_path.resolve())
+
+    # 2. Development build -- walk up from this file.
+    current = Path(__file__).resolve().parent
+    for _ in range(8):
+        candidate = current / "lobster-tui" / "lobster-tui"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+        if current.parent == current:
+            break
+        current = current.parent
+
+    # 3. Platform wheel package (tiny or absent -- safe to attempt)
     try:
         import lobster_ai_tui  # type: ignore[import-untyped]
 
@@ -73,25 +91,15 @@ def find_tui_binary_fast() -> Optional[str]:
     except (ImportError, AttributeError, TypeError):
         pass
 
-    # 2. User cache
+    # 4. User cache
     cache_bin = Path.home() / ".cache" / "lobster" / "bin" / "lobster-tui"
     if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
         return str(cache_bin)
 
-    # 3. System PATH
+    # 5. System PATH
     on_path = shutil.which("lobster-tui")
     if on_path:
         return on_path
-
-    # 4. Development build -- walk up from this file
-    current = Path(__file__).resolve().parent
-    for _ in range(8):
-        candidate = current / "lobster-tui" / "lobster-tui"
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-        if current.parent == current:
-            break
-        current = current.parent
 
     return None
 
@@ -249,16 +257,18 @@ def _heartbeat_loop(bridge: _LightBridge, stop_event: threading.Event) -> None:
 
 def _normalize_tool_payload(payload: dict) -> dict:
     """Normalize tool-execution event payloads to a consistent shape."""
+    event = {
+        "running": "start",
+        "complete": "finish",
+        "error": "error",
+    }.get(payload.get("status", ""), payload.get("event", ""))
+
+    summary = payload.get("summary", "")
+
     return {
         "tool_name": payload.get("tool", payload.get("tool_name", "")),
-        "event": {
-            "running": "start",
-            "complete": "finish",
-            "error": "error",
-        }.get(payload.get("status", ""), payload.get("event", "")),
-        "summary": payload.get("summary", payload.get("status", "")),
-        "agent": payload.get("agent", ""),
-        "duration_ms": payload.get("duration_ms", 0),
+        "event": event,
+        "summary": summary,
     }
 
 
@@ -289,8 +299,10 @@ def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
             content = event.get("payload", {}).get("content", "")
             _handle_user_query(bridge, client, content)
         elif msg_type == "slash_command":
-            command = event.get("payload", {}).get("command", "")
-            _handle_slash_command(bridge, client, command)
+            payload = event.get("payload", {})
+            command = payload.get("command", "")
+            args = payload.get("args", "")
+            _handle_slash_command(bridge, client, command, args)
         elif msg_type == "cancel":
             pass  # Phase 2: cancellation support
 
@@ -298,6 +310,7 @@ def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
 def _handle_user_query(bridge: _LightBridge, client: Any, text: str) -> None:
     """Forward a user query to the Lobster client and stream results back."""
     bridge.send("spinner", {"active": True})
+    query_start = time.time()
     try:
         for event in client.query(text, stream=True):
             etype = event["type"]
@@ -314,7 +327,11 @@ def _handle_user_query(bridge: _LightBridge, client: Any, text: str) -> None:
                 )
             elif etype == "complete":
                 bridge.send("done", {"summary": ""})
-                bridge.send("status", {"text": _format_usage(client)})
+                # Build rich status with tokens, cost, and duration.
+                duration = time.time() - query_start
+                status_parts = [_format_usage(client)]
+                status_parts.append(f"Duration: {duration:.1f}s")
+                bridge.send("status", {"text": " · ".join(status_parts)})
                 bridge.send("spinner", {"active": False})
             elif etype == "error":
                 bridge.send(
@@ -335,25 +352,36 @@ def _handle_user_query(bridge: _LightBridge, client: Any, text: str) -> None:
         bridge.send("spinner", {"active": False})
 
 
-def _handle_slash_command(bridge: _LightBridge, client: Any, cmd: str) -> None:
-    """Suspend the TUI, run a slash command in the terminal, then resume.
+def _handle_slash_command(
+    bridge: _LightBridge,
+    client: Any,
+    cmd: str,
+    args: str = "",
+) -> None:
+    """Execute a slash command via Python and stream results to the Go TUI.
 
-    Slash commands (``/data``, ``/pipeline export``, etc.) may produce
-    terminal output that conflicts with the TUI, so we suspend first.
+    Go handles /help, /clear, /exit, /data natively -- they never arrive here.
+    Everything else is executed through the OutputAdapter pipeline.
     """
-    bridge.send("suspend", {})
-    time.sleep(0.1)
-    try:
-        from lobster.cli_internal.commands.heavy.chat_commands import (
-            handle_command,
-        )
+    full_cmd = cmd if cmd.startswith("/") else f"/{cmd}"
+    args = (args or "").strip()
+    if args:
+        full_cmd = f"{full_cmd} {args}"
 
-        handle_command(cmd, client)
+    # Show spinner while heavy imports load (~1-2s first time).
+    bridge.send("spinner", {"active": True, "label": "running command"})
+
+    try:
+        from lobster.cli_internal.commands.output_adapter import ProtocolOutputAdapter
+        output = ProtocolOutputAdapter(bridge.send)
+
+        from lobster.cli_internal.commands.heavy.slash_commands import _execute_command
+        _execute_command(full_cmd, client, original_command=full_cmd, output=output)
     except Exception as exc:
-        print(f"Command error: {exc}", file=sys.stderr)
+        bridge.send("alert", {"level": "error", "message": str(exc)})
     finally:
-        input("\nPress Enter to return to chat...")
-        bridge.send("resume", {})
+        bridge.send("spinner", {"active": False})
+        bridge.send("done", {"summary": ""})
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +532,16 @@ def launch_go_tui_chat(
         )
         client.callbacks.append(proto_callback)
 
+        # Wire modality loaded events to the Go TUI.
+        def _on_modality_loaded(name, adata):
+            shape = ""
+            if hasattr(adata, "shape"):
+                shape = f"{adata.shape[0]} obs x {adata.shape[1]} vars"
+            bridge.send("modality_loaded", {"name": name, "shape": shape})
+
+        if hasattr(client, "data_manager") and client.data_manager is not None:
+            client.data_manager.on_modality_loaded = _on_modality_loaded
+
         # -----------------------------------------------------------------
         # 7. Restore stderr/logging, stop heartbeat, signal ready
         # -----------------------------------------------------------------
@@ -512,6 +550,15 @@ def launch_go_tui_chat(
 
         heartbeat_stop.set()
         bridge.send("spinner", {"active": False})
+
+        # Send session ID to Go TUI before ready signal.
+        try:
+            sid = getattr(client, "session_id", None)
+            if sid:
+                bridge.send("status", {"text": f"Session: {sid}"})
+        except Exception:
+            pass
+
         bridge.send("ready", {})
         bridge.send("status", {"text": "Ready"})
 

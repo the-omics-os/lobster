@@ -586,9 +586,9 @@ flow via questionary with slightly less visual polish.
 
 ---
 
-### Phase 1: Protocol Foundation & Streaming Chat
+### Phase 1: Protocol Foundation & Streaming Chat ✅ COMPLETE (2026-03-04)
 **Goal:** Prove the full IPC bridge with real-time LLM streaming.
-**Duration:** 3-4 weeks
+**Duration:** 3-4 weeks → completed in 1 session
 **Risk:** Medium (this is where the hard IPC problems live)
 **Prerequisite:** Phase 0 validated
 
@@ -608,48 +608,177 @@ flow via questionary with slightly less visual polish.
 - PID tracking for zombie process prevention
 
 **Deliverables:**
-- [ ] `lobster/ui/bridge/` — `BaseBridge`, `GoTUIBridge`, `PythonCLIBridge`
-- [ ] `lobster/ui/bridge/protocol.py` — message types, serialization
-- [ ] `lobster-tui/internal/protocol/` — Go-side handler + types
-- [ ] `lobster-tui/internal/chat/` — bubbletea chat model
-- [ ] `lobster-tui/internal/theme/` — theme system with Lobster theme
-- [ ] Adapted `TextualCallbackHandler` → `ProtocolCallbackHandler`
+- [x] `lobster/cli_internal/go_tui_launcher.py` — lightweight IPC bridge (stdlib only, <200ms startup)
+- [x] `lobster/ui/callbacks/protocol_callback.py` — `ProtocolCallbackHandler` (adapted from Textual)
+- [x] `lobster-tui/internal/protocol/` — Go-side handler + types (38 message types defined)
+- [x] `lobster-tui/internal/chat/` — bubbletea chat model (viewport + input + status + spinner)
+- [x] `lobster-tui/internal/theme/` — theme system with Lobster Dark/Light themes
+- [x] Heartbeat monitoring (3s interval, 15s timeout detection)
+- [x] Signal forwarding: Ctrl+C → process group kill, clean exit
 - [ ] Integration test: stream a mock LLM response through the full pipeline
 - [ ] Stress test: 10K token response without UI degradation
 
-**Success criteria:** `lobster chat` with Go TUI streams LLM responses smoothly, shows
+**Success criteria:** ✅ `lobster chat --ui go` streams LLM responses smoothly, shows
 active agent, handles tool calls, and Ctrl+C cleanly stops both processes.
 
+**Architecture notes:**
+- IPC uses inherited fd pairs (not stdin/stdout) — avoids C extension stdio corruption
+- Python `_LightBridge` inlined in `go_tui_launcher.py` — avoids importing Rich/LangChain at module level
+- Stderr suppressed during heavy imports, restored after init
+- `*strings.Builder` (pointer) in Model to avoid BubbleTea value-copy panic
+
 ---
 
-### Phase 2: Agent Visualization & Lobster Features
-**Goal:** Full Lobster experience in Go TUI.
-**Duration:** 3-4 weeks
+### Phase 2: Rich Rendering & UX Polish ✅ COMPLETE (2026-03-04)
+**Goal:** Polished UX — glamour markdown, metadata display, loading tips.
+**Duration:** 3-4 weeks → completed in 1 session
 **Prerequisite:** Phase 1 validated
 
-**What:**
-- Agent transition panel (show active/idle agents with handoff animations)
-- Modality data panel (loaded datasets with type/shape info)
-- Tool execution activity log (AQUADIF category badges)
-- Slash command passthrough (/data, /help, /files, /pipeline, /status)
-- Progress indicators for package install, data download, SSL test
-- Token usage display in status bar
-- Session continuity (`--session-id`)
+**What (original plan + actual deliverables merged):**
+- ~~Agent transition panel (show active/idle agents with handoff animations)~~ → deferred to Phase 3
+- ~~Modality data panel (loaded datasets with type/shape info)~~ → deferred to Phase 3
+- Tool execution activity log (ring buffer, 5 lines) ✅ (Phase 1)
+- Slash command passthrough (/data, /help, /files, /pipeline, /status) ✅
+- Token usage display in status bar ✅
+- Session continuity (`--session-id`) ✅
+- **Glamour markdown rendering** for assistant messages ✅
+- **TypeMarkdown/TypeCode protocol handlers** (forward-compatible) ✅
+- **Loading tips** during init spinner (8 tips, 5s rotation) ✅
+- **Session ID in header** (right-aligned, truncated >32 chars) ✅
+- **Rich status** after queries (tokens, cost, duration) ✅
+
+**Bug fixes (from CLI_BUG_REPORT.md, 2026-03-04):**
+- [x] Bug 1: Slash commands not recognized — Go strips `/`, Python expects it. Fixed: prepend `/` in `_handle_slash_command`
+- [x] Bug 2: Chat unusable after suspend — missing `tea.ResumeMsg` handler broke protocol loop. Fixed: added handler in Update
+- [x] Bug 3: Session ID truncated — `sid[len-20:]` cut `session_` prefix. Fixed: only truncate >32 chars with preserved prefix
+- [x] Bug 4: Non-TTY hang — no stdin check before Go TUI launch. Fixed: `os.isatty(0)` guard + error for `--ui go`
+- [x] Bug 5: Invalid `--ui` value accepted — no validation. Fixed: early validation against `{auto, go, classic}`
+- [x] Bug 6: `strings.Builder` panic — copied by value in BubbleTea Update. Fixed: changed to `*strings.Builder`
 
 **Deliverables:**
-- [ ] `lobster-tui/internal/widgets/agents_panel.go`
-- [ ] `lobster-tui/internal/widgets/modality_panel.go`
-- [ ] `lobster-tui/internal/widgets/activity_log.go`
-- [ ] `lobster-tui/internal/widgets/status_bar.go`
-- [ ] Protocol extensions: `agent_transition`, `modality_loaded`, `tool_execution`, `slash_command`
-- [ ] Full `lobster chat` parity with current Textual dashboard
+- [x] Glamour dependency (`github.com/charmbracelet/glamour v0.10.0`) with auto dark/light detection
+- [x] Cached markdown renderer (lazy init, recreated on width change)
+- [x] `renderMessage()` renders assistant content through glamour (headers, bold, code fences, lists, tables)
+- [x] `TypeMarkdown` and `TypeCode` handlers in `handleProtocol()`
+- [x] `_format_usage()` sends `"Tokens: N | Cost: $X.XXXX · Duration: Ys"` after queries
+- [x] Session ID sent from Python after `init_client()`, displayed in header
+- [x] 8 rotating loading tips during init spinner
+- [x] `--ui` validation, non-TTY detection, slash command `/` prefix fix
+- [ ] ~~`lobster-tui/internal/widgets/agents_panel.go`~~ → deferred to Phase 3
+- [ ] ~~`lobster-tui/internal/widgets/modality_panel.go`~~ → deferred to Phase 3
+
+**Charm ecosystem research (2026-03-04):**
+Explored 5 cloned Charm repos (`~/GITHUB/{glamour,bubbles,crush,gum,log}`) via sub-agents:
+- **glamour**: `NewTermRenderer(WithAutoStyle(), WithWordWrap(w))`, reuse renderer, `RenderBytes` for perf
+- **crush**: `Styles` struct pattern, `MarkdownRenderer()` helper, `anim` package, `Scrollbar()`, gradient utilities, `charmtone` palette, icon constants
+- **bubbles v2**: viewport (SoftWrap, LeftGutterFunc, StyleLineFunc), spinner (ID-tagged), textarea (chat input), table, help bar, progress
+- **gum**: glamour patterns (`WithAutoStyle()`), spinner + background command, viewport height budgeting, input auto-width
+- **log**: `Styles` struct pattern, TTY-aware renderer caching, structured key=value with multiline indent
 
 ---
 
-### Phase 3: Polish & Distribution
+### Phase 3: Protocol Handlers & Native Interactions ✅ COMPLETE (2026-03-04)
+**Goal:** Complete all 20 protocol handlers, native forms/confirm/select, progress bar.
+**Duration:** 1 session
+**Prerequisite:** Phase 2 validated
+
+**What (delivered):**
+- [x] 20 protocol handlers in `handleProtocol()` (all message types from spec)
+- [x] `TypeForm` handler — suspends TUI via `tea.Exec` with `huh` forms (`forms.go`)
+- [x] `TypeConfirm` handler — inline yes/no dialog with y/n/Enter keys
+- [x] `TypeSelect` handler — inline arrow-navigated selector with Up/Down/Enter
+- [x] `TypeProgress` handler — visual progress bar with label and percentage
+- [x] `TypeTable` handler — markdown table rendering from `headers[]` + `rows[][]`
+- [x] `TypeModalityLoaded` handler — system message with data shape info
+- [x] `TypeClear` handler — target-specific clearing (output/status/all)
+- [x] Agent transition displayed as styled system messages
+- [x] Tool execution ring buffer (5 entries) with in-place finish/error updates
+
+**Files:**
+- `lobster-tui/internal/chat/model.go` — all protocol cases
+- `lobster-tui/internal/chat/forms.go` — NEW: huh form suspension
+- `lobster-tui/internal/chat/views.go` — rendering functions for all UI elements
+
+---
+
+### Phase 4: Native Slash Commands, Event Wiring & Autocomplete ✅ COMPLETE (2026-03-04)
+**Goal:** Eliminate TUI suspension for slash commands. Go-native `/help`, `/clear`, `/exit`, `/data`.
+**Duration:** 1 session
+**Prerequisite:** Phase 3 validated
+
+**What (delivered):**
+
+**Go-native commands (zero Python):**
+- [x] `/help` — renders markdown command table via glamour
+- [x] `/clear` — clears messages, stream buffer, tool feed, modality cache
+- [x] `/exit`, `/quit` — clean shutdown with quit signal
+- [x] `/data` — renders from cached `ModalityInfo` (populated by `modality_loaded` events)
+- [x] `/dashboard` — shows "not available in Go TUI" alert
+
+**ProtocolOutputAdapter (Python → Go bridge for slash commands):**
+- [x] `ProtocolOutputAdapter` — 4th `OutputAdapter` subclass (~50 lines)
+- [x] `_handle_slash_command` rewritten — no more suspend/resume/Press Enter
+- [x] `_execute_command` accepts `output` parameter — all 13 command branches adapted
+- [x] `/help` and `/tokens` fully converted from Rich Tables to `output.print_table()`
+- [x] Spinner shown during heavy imports (~1-2s first call)
+
+**Event wiring:**
+- [x] `DataManagerV2.on_modality_loaded` callback — fires at end of `load_modality()`
+- [x] Wired in `go_tui_launcher.py` to emit `modality_loaded` protocol messages
+- [x] `DownloadOrchestrator.progress_callback` — emits before/after download
+
+**Autocomplete:**
+- [x] `completions.go` — NEW: context-aware autocomplete using `textinput.SetSuggestions()`
+- [x] 23 top-level commands, 5 subcommand groups, 3 deep subcommand levels
+- [x] Modality name completion for `/describe <name>` from `m.modalities` cache
+- [x] Provider name completion for `/config provider <name>`
+- [x] Viewport scrolling gated when suggestions active (Up/Down/Tab for suggestions)
+- [x] Completion preview styled with theme's `Dimmed` style
+
+**Files:**
+- `lobster-tui/internal/chat/model.go` — slash switch, ModalityInfo cache, autocomplete wiring
+- `lobster-tui/internal/chat/completions.go` — NEW: suggestion builder
+- `lobster/cli_internal/commands/output_adapter.py` — `ProtocolOutputAdapter`
+- `lobster/cli_internal/go_tui_launcher.py` — rewritten `_handle_slash_command`, modality wiring
+- `lobster/cli_internal/commands/heavy/slash_commands.py` — `output` param, converted commands
+- `lobster/core/runtime/data_manager.py` — `on_modality_loaded` callback
+- `lobster/tools/download_orchestrator.py` — `progress_callback`
+
+---
+
+### Phase 5: BioCharm Components
+**Goal:** Domain-specific bioinformatics TUI components invokable by LangGraph agents.
+**Duration:** 3-4 weeks
+**Prerequisite:** Phase 4 validated
+
+**Architecture:** Fully designed in `.claude/docs/charm-tui-architecture.md`. Uses generic 3-message protocol (`component_render`, `component_close`, `component_response`) — new components require Go-side changes only, no protocol modifications.
+
+**Components:**
+
+| Component | Mode | Interactive | Description |
+|-----------|------|-------------|-------------|
+| `dna_animation` | inline | No | ASCII double helix loading animation |
+| `qc_dashboard` | inline | No (streaming) | Multi-metric quality panel |
+| `cell_type_selector` | overlay | Yes | Cluster annotation with marker genes |
+| `threshold_slider` | overlay | Yes (streaming) | p-value/FC cutoff with live gene count |
+| `ontology_browser` | overlay | Yes (lazy-load) | GO/Reactome tree navigation |
+| `sequence_input` | fullscreen | Yes | DNA/RNA/protein entry with validation |
+
+**Deliverables:**
+- [ ] `internal/biocomp/registry.go` — `BioComponent` interface + factory map
+- [ ] Component rendering in `model.go` — `handleComponentRender()`, `activeComponents` map
+- [ ] Agent transition cleanup (close overlay/fullscreen on handoff)
+- [ ] Error boundaries (bad payload → error UI, not crash)
+- [ ] Python `BioComponentMixin` for `ProtocolCallbackHandler`
+- [ ] LangGraph `interrupt()` integration for interactive components
+- [ ] 6 component packages in `internal/biocomp/`
+
+---
+
+### Phase 6: Distribution & Cross-Platform
 **Goal:** Production-ready distribution and UX polish.
 **Duration:** 2-3 weeks
-**Prerequisite:** Phase 2 working
+**Prerequisite:** Phase 5 working
 
 **What:**
 - Platform-specific wheel packaging (ruff model)
@@ -657,7 +786,6 @@ active agent, handles tool calls, and Ctrl+C cleanly stops both processes.
 - Offline/HPC install path (`lobster tui download`)
 - Homebrew tap
 - Multiple themes (Lobster Dark, Lobster Light, Catppuccin, Dracula, Nord)
-- Spring physics animations for modal transitions
 - `lobster tui --list-themes` and `lobster tui --theme <name>`
 - Documentation: installation, theming, HPC deployment
 
@@ -670,7 +798,7 @@ active agent, handles tool calls, and Ctrl+C cleanly stops both processes.
 
 ---
 
-### Phase 4: SSH & Cloud (Future)
+### Phase 7: SSH & Cloud (Future)
 **Goal:** Serve the TUI over SSH for cloud users.
 **Duration:** TBD (post-funding)
 
