@@ -37,6 +37,9 @@ const tipInterval = 5 * time.Second
 // completionRequestTimeout prevents stale in-flight request tracking forever.
 const completionRequestTimeout = 700 * time.Millisecond
 
+// localExitConfirmID identifies a Go-native confirm flow for /exit.
+const localExitConfirmID = "__local_exit__"
+
 // loadingTips are shown during init to keep users engaged.
 var loadingTips = []string{
 	"Lobster AI has 22 specialist agents across 10 domains",
@@ -739,9 +742,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.input.SetValue("")
 				return m, m.refreshSuggestions()
 			case "exit", "quit":
-				_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
-				m.quitting = true
-				return m, tea.Quit
+				m.pendingConfirm = &protocol.ConfirmPayload{
+					Title:   "Confirm Exit",
+					Message: "Exit Lobster session?",
+					Default: false,
+				}
+				m.pendingConfirmID = localExitConfirmID
+				return m, nil
 			case "dashboard":
 				m.messages = append(m.messages, ChatMessage{
 					Role:    "system",
@@ -1017,44 +1024,51 @@ func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
 		// Dismiss confirm and send decline.
-		_ = m.handler.SendTyped(protocol.TypeConfirmResponse, protocol.ConfirmResponsePayload{
-			ID:      m.pendingConfirmID,
-			Confirm: false,
-		}, m.pendingConfirmID)
-		m.pendingConfirm = nil
-		m.pendingConfirmID = ""
-		return m, nil
+		return m.resolveConfirm(false)
 	case tea.KeyEnter:
 		// Enter accepts the default.
 		confirm := m.pendingConfirm.Default
+		return m.resolveConfirm(confirm)
+	case tea.KeyRunes:
+		s := msg.String()
+		if s == "y" || s == "Y" {
+			return m.resolveConfirm(true)
+		}
+		if s == "n" || s == "N" {
+			return m.resolveConfirm(false)
+		}
+	}
+	return m, nil
+}
+
+// resolveConfirm finalizes either a Python-originated or local confirm dialog.
+func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
+	if m.pendingConfirmID == localExitConfirmID {
+		m.pendingConfirm = nil
+		m.pendingConfirmID = ""
+		if confirm {
+			if m.handler != nil {
+				_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
+			}
+			m.quitting = true
+			return m, tea.Quit
+		}
+		m.messages = append(m.messages, ChatMessage{
+			Role:    "system",
+			Content: "Exit cancelled.",
+		})
+		m.rebuildViewport()
+		return m, nil
+	}
+
+	if m.handler != nil {
 		_ = m.handler.SendTyped(protocol.TypeConfirmResponse, protocol.ConfirmResponsePayload{
 			ID:      m.pendingConfirmID,
 			Confirm: confirm,
 		}, m.pendingConfirmID)
-		m.pendingConfirm = nil
-		m.pendingConfirmID = ""
-		return m, nil
-	case tea.KeyRunes:
-		s := msg.String()
-		if s == "y" || s == "Y" {
-			_ = m.handler.SendTyped(protocol.TypeConfirmResponse, protocol.ConfirmResponsePayload{
-				ID:      m.pendingConfirmID,
-				Confirm: true,
-			}, m.pendingConfirmID)
-			m.pendingConfirm = nil
-			m.pendingConfirmID = ""
-			return m, nil
-		}
-		if s == "n" || s == "N" {
-			_ = m.handler.SendTyped(protocol.TypeConfirmResponse, protocol.ConfirmResponsePayload{
-				ID:      m.pendingConfirmID,
-				Confirm: false,
-			}, m.pendingConfirmID)
-			m.pendingConfirm = nil
-			m.pendingConfirmID = ""
-			return m, nil
-		}
 	}
+	m.pendingConfirm = nil
+	m.pendingConfirmID = ""
 	return m, nil
 }
 

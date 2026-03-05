@@ -98,4 +98,4 @@ Detailed execution plan: see `.planning/charm-ui/NEXT_PHASE_PARITY_PLAN.md`.
 
 - Added authoritative parity matrix: `.planning/charm-ui/PARITY_MATRIX.md`.
 - Matrix is sourced directly from `slash_commands.py::_execute_command` and `lobster-tui/internal/chat/model.go`.
-- Current snapshot: most phase-5 priority families are `bridged` and marked `parity` pending validation; explicit degraded surfaces are dashboard/panel commands; immediate blocked parity item is `/exit` confirmation behavior.
+- Current snapshot: most phase-5 priority families are `bridged`/`native` and marked `parity` pending validation; explicit degraded surfaces are dashboard/panel commands.
