@@ -36,7 +36,7 @@ Migrate remaining functional and visual parity surfaces from classic Rich CLI to
 ## Execution Checklist
 
 - [x] Create parity matrix artifact (`.planning/charm-ui/PARITY_MATRIX.md`)
-- [ ] Complete OutputAdapter conversion for remaining direct-console branches
+- [x] Complete OutputAdapter conversion for parity-critical Go command branches
 - [ ] Apply visual formatting standards to top 20 slash commands
 - [x] Implement command history ring in Go model
 - [x] Add protocol completion request/response scaffolding

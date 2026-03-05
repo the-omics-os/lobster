@@ -47,7 +47,7 @@
 ## Known Gaps / Tech Debt
 
 1. `cancel` protocol event is still placeholder in Python event loop (`go_tui_launcher.py`).
-2. `_execute_command()` still contains direct Rich rendering branches that are not fully OutputAdapter-converted.
+2. `_execute_command()` still contains direct Rich rendering branches for classic-only surfaces; parity-critical Go command branches are protocol-safe.
 3. Transcript golden coverage currently targets core commands; broader family coverage remains pending.
 4. Long streaming stress scenarios are not yet exercised by automated tests.
 5. Cross-platform packaging/CI remains deferred to later phase.
