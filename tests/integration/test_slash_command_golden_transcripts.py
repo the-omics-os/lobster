@@ -67,7 +67,7 @@ class _DummyClient:
 )
 def test_slash_command_protocol_golden_transcripts(command: str, golden_name: str, monkeypatch):
     try:
-        import lobster.core.license_manager as license_manager
+        import lobster.core.governance.license_manager as license_manager
 
         monkeypatch.setattr(license_manager, "get_current_tier", lambda: "free")
     except Exception:

@@ -15,6 +15,7 @@ Migrate remaining functional and visual parity surfaces from classic Rich CLI to
 - WS4: Local command history ring (`Up`/`Down`) is implemented in Go model.
 - WS4: Protocol completion request/response scaffold is implemented for `/read`, `/open`, `/workspace load`.
 - WS5: Regression and smoke test scaffolding landed and passes in targeted slices.
+- WS3: Core command visual pass started (`/help`, `/session`, `/status`) with refreshed golden transcripts.
 - Remaining: finish OutputAdapter migration, visual polish pass, and transcript/golden parity expansion beyond core commands.
 
 ## Remaining Workstreams

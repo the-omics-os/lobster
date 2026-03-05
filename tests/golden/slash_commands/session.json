@@ -28,6 +28,12 @@
         ]
       },
       "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Tip: use `/workspace list` to inspect available datasets.\n"
+      },
+      "type": "text"
     }
   ],
   "summary": "Session: sess_123"

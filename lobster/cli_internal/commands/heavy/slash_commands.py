@@ -1675,6 +1675,21 @@ def _execute_command(
                 ["/restore [pattern]", "Restore datasets from session cache"],
             ],
         })
+        output.print_table({
+            "title": "Admin & UI Commands",
+            "columns": [
+                {"name": "Command"},
+                {"name": "Description"},
+            ],
+            "rows": [
+                ["/dashboard", "Classic/Textual dashboard (Go-safe fallback shown in Go mode)"],
+                ["/status-panel", "Rich status dashboard (degraded to /status in Go mode)"],
+                ["/workspace-info", "Rich workspace dashboard (degraded to /workspace in Go mode)"],
+                ["/analysis-dash", "Rich analysis dashboard (degraded to /plots + /metadata in Go mode)"],
+                ["/progress", "Rich progress monitor (degraded in Go mode)"],
+            ],
+        })
+        output.print("Next step: use `/workspace list` or `/read <file>` to begin.", style="dim")
 
     elif cmd == "/data":
         return data_summary(client, output)
@@ -1697,6 +1712,7 @@ def _execute_command(
                         ["Loaded Modalities", str(modality_count)],
                     ],
                 })
+                output.print("Tip: use `/workspace list` to inspect available datasets.", style="dim")
                 return f"Session: {getattr(client, 'session_id', 'unknown')}"
             display_session(client)
         except Exception as e:
@@ -1707,7 +1723,7 @@ def _execute_command(
             if _is_protocol_output(output):
                 tier = "unknown"
                 try:
-                    from lobster.core.license_manager import get_current_tier
+                    from lobster.core.governance.license_manager import get_current_tier
 
                     tier = get_current_tier()
                 except Exception:
@@ -1724,6 +1740,7 @@ def _execute_command(
                         ["Session ID", str(getattr(client, "session_id", "unknown"))],
                     ],
                 })
+                output.print("Tip: use `/config provider` or `/config model` to change runtime settings.", style="dim")
                 return None
             _display_status_info()
         except Exception as e:

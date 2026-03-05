@@ -137,6 +137,49 @@
         ]
       },
       "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Admin & UI Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Description"
+        ],
+        "rows": [
+          [
+            "/dashboard",
+            "Classic/Textual dashboard (Go-safe fallback shown in Go mode)"
+          ],
+          [
+            "/status-panel",
+            "Rich status dashboard (degraded to /status in Go mode)"
+          ],
+          [
+            "/workspace-info",
+            "Rich workspace dashboard (degraded to /workspace in Go mode)"
+          ],
+          [
+            "/analysis-dash",
+            "Rich analysis dashboard (degraded to /plots + /metadata in Go mode)"
+          ],
+          [
+            "/progress",
+            "Rich progress monitor (degraded in Go mode)"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Next step: use `/workspace list` or `/read <file>` to begin.\n"
+      },
+      "type": "text"
     }
   ],
   "summary": null

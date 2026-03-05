@@ -28,6 +28,7 @@
 - Priority slash regressions fixed in Python dispatch path: `/open`, `/restore`, `/config provider <name>`, `/config model <name>`, `/save` protocol-safe branch (`lobster/cli_internal/commands/heavy/slash_commands.py`).
 - Protocol safety hardening landed for `/clear` and `/exit` in Python slash dispatch when running under protocol adapter.
 - Golden transcript checks exist for core protocol command surfaces (`/help`, `/session`, `/status`, `/tokens`) via `tests/integration/test_slash_command_golden_transcripts.py` with committed fixtures in `tests/golden/slash_commands/`.
+- Core visual-prettification updates landed in slash dispatch: `/help` now includes explicit admin/UI section; `/session` and `/status` include next-step hints in protocol mode.
 - Command matrix maintained in `.planning/charm-ui/PARITY_MATRIX.md` (current snapshot: no `blocked` command rows).
 
 ## Validation Run (2026-03-05)

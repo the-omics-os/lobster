@@ -32,6 +32,12 @@
         ]
       },
       "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Tip: use `/config provider` or `/config model` to change runtime settings.\n"
+      },
+      "type": "text"
     }
   ],
   "summary": null
