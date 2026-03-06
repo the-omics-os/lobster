@@ -30,7 +30,11 @@ DEFAULT_CONTEXT_WINDOW = 128_000
 OUTPUT_RESERVE_FRACTION = 0.15
 
 # Absolute minimum budget (prevents degenerate trimming)
+# Must be large enough for system prompt + a few conversation turns
 MINIMUM_BUDGET = 4096
+
+# Warn when tool schemas + system prompt exceed this fraction of context window
+BASELINE_WARNING_THRESHOLD = 0.50
 
 
 def approximate_token_count(text: str) -> int:
@@ -90,7 +94,7 @@ def resolve_context_budget(
     context_window: Optional[int] = None,
     tools: Optional[Sequence[Any]] = None,
 ) -> int:
-    """Resolve the usable context budget for messages. Creates the max_tokens var
+    """Resolve the usable context budget for messages.
 
     budget = context_window - output_reserve - tool_schema_tokens
 
@@ -106,14 +110,34 @@ def resolve_context_budget(
 
     output_reserve = int(context_window * OUTPUT_RESERVE_FRACTION)
     tool_tokens = measure_tool_schema_tokens(tools or [])
-    budget = context_window - output_reserve - tool_tokens
+    raw_budget = context_window - output_reserve - tool_tokens
+
+    # Warn when baseline overhead (tool schemas) consumes too much of the window.
+    # This catches misconfigured small models where schemas alone exceed capacity.
+    baseline_fraction = tool_tokens / context_window if context_window > 0 else 0
+    if baseline_fraction > BASELINE_WARNING_THRESHOLD:
+        logger.warning(
+            f"Tool schemas consume {baseline_fraction:.0%} of context window "
+            f"({tool_tokens}/{context_window} tokens). "
+            f"Model may struggle with complex conversations. "
+            f"Consider reducing tool description sizes or using a larger model."
+        )
+
+    if raw_budget < MINIMUM_BUDGET:
+        logger.warning(
+            f"Context budget {raw_budget} < minimum {MINIMUM_BUDGET}. "
+            f"Clamping to {MINIMUM_BUDGET} but context overflow is likely "
+            f"(window={context_window}, schemas={tool_tokens}, reserve={output_reserve})."
+        )
+
+    budget = max(raw_budget, MINIMUM_BUDGET)
 
     logger.debug(
         f"Context budget: {budget} tokens "
         f"(window={context_window}, reserve={output_reserve}, schemas={tool_tokens})"
     )
 
-    return max(budget, MINIMUM_BUDGET)
+    return budget
 
 
 def resolve_context_window(

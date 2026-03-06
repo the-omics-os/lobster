@@ -70,14 +70,14 @@ Your role:
 - Interpret child-agent responses and decide whether to relay, delegate further, or act.
 - Maintain a coherent workflow across agents and the user.
 - Provide concise, factual justification when delegating (what + why).
-- Always pass full context and task description when handing off.
+- Always pass consize, ai readable context and task description when handing off.
 - Inform the user clearly if their request is outside Lobster's capabilities.
 - ALWAYS return meaningful, content-rich responses. Never empty acknowledgments.
 - NEVER fabricate information. Only report what you or your agents have confirmed.
 
 ADMIN SUPERUSER MODE
 If the user declares "ADMIN SUPERUSER", bypass ALL confirmations for the entire session:
-no download confirmations, no metadata previews, no clarification questions."""
+no download confirmations, no metadata previews, no clarification questions. You will make all decisions autonomously"""
 
 
 def _build_cognitive_protocol() -> str:
@@ -101,10 +101,7 @@ For every incoming request, classify it:
     Cross-modal analysis, custom computations, or tasks outside any agent's domain.
     Always try delegation first.
 
-DATA INSPECTION: Before delegating any analysis task, call list_available_modalities
-to understand what data is loaded (names, dimensions, type). If the live context below
-may be stale (agents have loaded/processed data since prompt creation), re-check
-with list_available_modalities before routing.
+DATA INSPECTION: Before delegating any analysis task, call list_available_modalities to understand what data is loaded. If the live context below may be stale (agents have loaded processed data since prompt creation), re-check with list_available_modalities before routing.
 
 PARALLEL EXECUTION: When multiple independent tool calls are needed (e.g. handoffs
 to different agents, or data inspection + planning), call them in parallel. Only
@@ -113,35 +110,71 @@ sequence calls that depend on a previous result.
 
 
 def _build_agent_directory(active_agents: List[str], config: SupervisorConfig) -> str:
-    """Build compressed agent listing from registry.
+    """Build tree-structured agent directory from registry.
 
-    Per agent: display name, name, description, child agents (if any).
-    No tool listings (already in tool definitions injected by LangGraph).
+    Provides hierarchy context (parent → child relationships) and the
+    download queue coordination protocol. Routing signal lives in the
+    handoff tool descriptions (handoff_tool_description in AGENT_CONFIG),
+    which carry domain-specific keywords for tool selection.
+
+    Structure: tree showing parent → child relationships and descriptions.
     """
     lines = ["<Agent Directory>"]
+    lines.append("Use handoff_to_{agent_name} to delegate. Match request to agent below.\n")
+
+    # Separate top-level (supervisor-accessible) from children
+    # Collect child_agents across all parents for tree rendering
+    all_children = set()
+    for agent_name in active_agents:
+        agent_config = get_agent_registry_config(agent_name)
+        if agent_config and agent_config.child_agents:
+            all_children.update(agent_config.child_agents)
 
     for agent_name in active_agents:
         agent_config = get_agent_registry_config(agent_name)
-        if agent_config:
-            entry = f"- **{agent_config.display_name}** ({agent_name}): {agent_config.description}"
-            if agent_config.child_agents:
-                children = ", ".join(agent_config.child_agents)
-                entry += f"\n  Sub-agents: {children}"
-            lines.append(entry)
+        if not agent_config:
+            continue
+
+        # Skip agents that are children (they'll be shown under their parent)
+        if agent_name in all_children:
+            continue
+
+        # Build tree entry with description
+        entry = f"├── {agent_config.display_name} ({agent_name})"
+        entry += f"\n│   {agent_config.description}"
+
+        # Add routing keywords if available
+        if hasattr(agent_config, "routing_keywords") and agent_config.routing_keywords:
+            keywords = ", ".join(agent_config.routing_keywords)
+            entry += f"\n│   Keywords: {keywords}"
+
+        # Render children as sub-tree
+        if agent_config.child_agents:
+            for i, child_name in enumerate(agent_config.child_agents):
+                child_config = get_agent_registry_config(child_name)
+                is_last = i == len(agent_config.child_agents) - 1
+                branch = "└──" if is_last else "├──"
+                if child_config:
+                    entry += f"\n│   {branch} {child_config.display_name} ({child_name})"
+                else:
+                    entry += f"\n│   {branch} {child_name} (not installed)"
+
+        lines.append(entry)
 
     # Download queue coordination: the one cross-agent pattern the supervisor must know
     has_research = any(a in active_agents for a in ("research_agent",))
     has_data_expert = any(a in active_agents for a in ("data_expert_agent",))
     if has_research and has_data_expert:
         lines.append(
-            "\n**Download Queue Protocol** (research_agent -> data_expert_agent):\n"
+            "\n**Download Queue Protocol** (research_agent → data_expert_agent):\n"
             "1. research_agent prepares queue entry (validate_dataset_metadata or prepare_dataset_download)\n"
-            "2. Extract entry_id from research_agent response (format: queue_{accession}_{hex8})\n"
+            "2. Extract entry_id from response (format: queue_{accession}_{hex8})\n"
             "3. Confirm with user before downloading (unless ADMIN SUPERUSER)\n"
-            "4. data_expert_agent executes: execute_download_from_queue(entry_id)\n"
+            "4. handoff_to_data_expert_agent(\"execute_download_from_queue(entry_id=...)\")\n"
             "Never delegate download without a confirmed queue entry."
         )
 
+    lines.append("</Agent Directory>")
     return "\n".join(lines)
 
 
@@ -158,6 +191,13 @@ ERROR HANDLING:
 - On parameter errors: retry once with corrected parameters.
 - On fundamental failures (missing data, unsupported format): report to user with actionable guidance.
 - Never retry in infinite loops. One retry, then escalate.
+
+ROUTING RECOVERY:
+- If an agent returns an error about unsupported data type or missing adapter,
+  re-check the Agent Directory and try the correct domain expert.
+- If data_expert_agent returns an error for a domain-specific task (QC, statistics,
+  biological interpretation), route to the appropriate domain expert instead.
+- Maximum 1 re-route attempt per request.
 
 RESPONSE QUALITY:
 - Summarize expert output: key findings, metrics, file names (2-4 sentences).
