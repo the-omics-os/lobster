@@ -1,5 +1,5 @@
 <div align="center">
-  <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="420">
+  <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="200">
 </div>
 
 <br/>
@@ -11,13 +11,14 @@
 <br/>
 
 <div align="center">
-  <a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a>
-  &nbsp;&nbsp;
-  <a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a>
-  &nbsp;&nbsp;
-  <a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a>
-  &nbsp;&nbsp;
-  <a href="https://discord.gg/omics-os"><img src="https://img.shields.io/badge/Discord-Join_Community-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <table border="0" cellspacing="6" cellpadding="0">
+    <tr>
+      <td><a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a></td>
+      <td><a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a></td>
+      <td><a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a></td>
+      <td><a href="https://discord.gg/omics-os"><img src="https://img.shields.io/badge/Discord-Join_Community-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a></td>
+    </tr>
+  </table>
 </div>
 
 <br/>
