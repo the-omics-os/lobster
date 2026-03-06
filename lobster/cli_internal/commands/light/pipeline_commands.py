@@ -12,9 +12,22 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    OutputBlock,
+    alert_block,
+    hint_block,
+    kv_block,
+    list_block,
+    section_block,
+    table_block,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
+    output.render_blocks(blocks)
 
 
 def pipeline_export(
@@ -36,25 +49,32 @@ def pipeline_export(
         Summary string for conversation history, or None
     """
     try:
-        # Check if data manager supports notebook export
         if not hasattr(client, "data_manager"):
-            output.print(
-                "[red]Notebook export not available for cloud client[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "Notebook export not available for cloud client",
+                        level="error",
+                    )
+                ],
             )
             return "Notebook export only available for local client"
 
         if not hasattr(client.data_manager, "export_notebook"):
-            output.print(
-                "[red]Notebook export not available - update Lobster[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "Notebook export not available - update Lobster",
+                        level="error",
+                    )
+                ],
             )
             return "Notebook export not available"
 
-        # Interactive prompts if not provided
-        output.print(
-            "[bold white]📓 Export Session as Jupyter Notebook[/bold white]\n",
-            style="info",
+        _render_blocks(
+            output, [section_block(title="Export Session as Jupyter Notebook")]
         )
 
         if name is None:
@@ -62,37 +82,38 @@ def pipeline_export(
                 "Notebook name (no extension)", default="analysis_workflow"
             )
         if not name:
-            output.print("[red]Name required[/red]", style="error")
+            _render_blocks(output, [alert_block("Name required", level="error")])
             return "Export cancelled - no name provided"
 
         if description is None:
             description = output.prompt("Description (optional)", default="")
 
-        # Export via DataManagerV2
-        output.print("\n[yellow]Exporting notebook...[/yellow]", style="info")
+        _render_blocks(output, [section_block(body="Exporting notebook...")])
         path = client.data_manager.export_notebook(name, description)
 
-        output.print(f"\n[green]✓ Notebook exported:[/green] {path}", style="success")
-        output.print("\n[bold white]Next steps:[/bold white]", style="info")
-        output.print(
-            f"  1. [yellow]Review:[/yellow]  jupyter notebook {path}", style="info"
-        )
-        output.print(
-            f"  2. [yellow]Commit:[/yellow]  git add {path} && git commit -m 'Add {name}'",
-            style="info",
-        )
-        output.print(
-            f"  3. [yellow]Run:[/yellow]     /pipeline run {path.name} <modality>",
-            style="info",
+        _render_blocks(
+            output,
+            [
+                alert_block(f"Notebook exported: {path}", level="success"),
+                list_block(
+                    [
+                        f"Review: jupyter notebook {path}",
+                        f"Commit: git add {path} && git commit -m 'Add {name}'",
+                        f"Run: /pipeline run {path.name} <modality>",
+                    ],
+                    title="Next Steps",
+                    ordered=True,
+                ),
+            ],
         )
 
         return f"Exported notebook: {path}"
 
     except ValueError as e:
-        output.print(f"[red]Export failed: {e}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"Export failed: {e}", level="error")])
         return f"Export failed: {e}"
     except Exception as e:
-        output.print(f"[red]Export error: {e}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"Export error: {e}", level="error")])
         logger.exception("Notebook export error")
         return f"Export error: {e}"
 
@@ -110,42 +131,39 @@ def pipeline_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
     """
     try:
         if not hasattr(client, "data_manager"):
-            output.print(
-                "[red]Notebook listing not available for cloud client[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "Notebook listing not available for cloud client",
+                        level="error",
+                    )
+                ],
             )
             return "Notebook listing only available for local client"
 
         notebooks = client.data_manager.list_notebooks()
 
         if not notebooks:
-            output.print(
-                "[yellow]No notebooks found in workspace notebooks directory[/yellow]",
-                style="warning",
-            )
-            output.print(
-                "Export one with: [green]/pipeline export[/green]", style="info"
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "No notebooks found in workspace notebooks directory",
+                        level="warning",
+                    ),
+                    hint_block("Export one with: /pipeline export"),
+                ],
             )
             return "No notebooks found"
 
-        # Create table data
-        table_data = {
-            "title": "📓 Available Notebooks",
-            "columns": [
-                {"name": "Name", "style": "cyan"},
-                {"name": "Steps", "justify": "right"},
-                {"name": "Created By", "style": "white"},
-                {"name": "Created", "style": "grey50"},
-                {"name": "Size", "justify": "right", "style": "grey50"},
-            ],
-            "rows": [],
-        }
+        rows = []
 
         for nb in notebooks:
             created_date = (
                 nb["created_at"].split("T")[0] if nb["created_at"] else "unknown"
             )
-            table_data["rows"].append(
+            rows.append(
                 [
                     nb["name"],
                     str(nb["n_steps"]),
@@ -155,11 +173,26 @@ def pipeline_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
                 ]
             )
 
-        output.print_table(table_data)
+        _render_blocks(
+            output,
+            [
+                table_block(
+                    title="Available Notebooks",
+                    columns=[
+                        {"name": "Name"},
+                        {"name": "Steps"},
+                        {"name": "Created By"},
+                        {"name": "Created"},
+                        {"name": "Size"},
+                    ],
+                    rows=rows,
+                )
+            ],
+        )
         return f"Found {len(notebooks)} notebooks"
 
     except Exception as e:
-        output.print(f"[red]List error: {e}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"List error: {e}", level="error")])
         logger.exception("Notebook list error")
         return f"List error: {e}"
 
@@ -184,120 +217,165 @@ def pipeline_run(
     """
     try:
         if not hasattr(client, "data_manager"):
-            output.print(
-                "[red]Notebook execution not available for cloud client[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "Notebook execution not available for cloud client",
+                        level="error",
+                    )
+                ],
             )
             return "Notebook execution only available for local client"
 
-        # Get notebook name if not provided
         if notebook_name is None:
             notebooks = client.data_manager.list_notebooks()
             if not notebooks:
-                output.print("[red]No notebooks available[/red]", style="error")
+                _render_blocks(
+                    output, [alert_block("No notebooks available", level="error")]
+                )
                 return "No notebooks available"
 
-            output.print("[bold]Available notebooks:[/bold]", style="info")
-            for i, nb in enumerate(notebooks, 1):
-                output.print(
-                    f"  {i}. [cyan]{nb['name']}[/cyan] ({nb['n_steps']} steps)",
-                    style="info",
-                )
+            _render_blocks(
+                output,
+                [
+                    list_block(
+                        [
+                            f"{nb['name']} ({nb['n_steps']} steps)"
+                            for nb in notebooks
+                        ],
+                        title="Available Notebooks",
+                        ordered=True,
+                    )
+                ],
+            )
 
             selection = output.prompt("Select notebook number", default="1")
             try:
                 idx = int(selection) - 1
                 notebook_name = notebooks[idx]["filename"]
             except (ValueError, IndexError):
-                output.print("[red]Invalid selection[/red]", style="error")
+                _render_blocks(
+                    output, [alert_block("Invalid selection", level="error")]
+                )
                 return "Invalid notebook selection"
 
-        # Get input modality if not provided
         if input_modality is None:
             modalities = client.data_manager.list_modalities()
             if not modalities:
-                output.print(
-                    "[red]No data loaded. Use /read first.[/red]", style="error"
+                _render_blocks(
+                    output,
+                    [alert_block("No data loaded. Use /read first.", level="error")],
                 )
                 return "No data loaded"
 
-            output.print("[bold]Available modalities:[/bold]", style="info")
-            for i, mod in enumerate(modalities, 1):
-                adata = client.data_manager.modalities[mod]
-                output.print(
-                    f"  {i}. [cyan]{mod}[/cyan] ({adata.n_obs} obs × {adata.n_vars} vars)",
-                    style="info",
-                )
+            _render_blocks(
+                output,
+                [
+                    list_block(
+                        [
+                            f"{mod} ({client.data_manager.modalities[mod].n_obs} obs x {client.data_manager.modalities[mod].n_vars} vars)"
+                            for mod in modalities
+                        ],
+                        title="Available Modalities",
+                        ordered=True,
+                    )
+                ],
+            )
 
             selection = output.prompt("Select modality number", default="1")
             try:
                 idx = int(selection) - 1
                 input_modality = modalities[idx]
             except (ValueError, IndexError):
-                output.print("[red]Invalid selection[/red]", style="error")
+                _render_blocks(
+                    output, [alert_block("Invalid selection", level="error")]
+                )
                 return "Invalid modality selection"
 
-        # Dry run first
-        output.print("\n[yellow]Running validation...[/yellow]", style="info")
+        _render_blocks(output, [section_block(body="Running validation...")])
         dry_result = client.data_manager.run_notebook(
             notebook_name, input_modality, dry_run=True
         )
 
-        # Show validation
         validation = dry_result.get("validation")
         if validation and hasattr(validation, "has_errors") and validation.has_errors:
-            output.print("[red]✗ Validation failed:[/red]", style="error")
-            for error in validation.errors:
-                output.print(f"  • {error}", style="error")
+            _render_blocks(
+                output,
+                [
+                    alert_block("Validation failed", level="error"),
+                    list_block(list(validation.errors), title="Errors"),
+                ],
+            )
             return "Validation failed"
 
+        blocks: list[OutputBlock] = []
         if (
             validation
             and hasattr(validation, "has_warnings")
             and validation.has_warnings
         ):
-            output.print("[yellow]⚠ Warnings:[/yellow]", style="warning")
-            for warning in validation.warnings:
-                output.print(f"  • {warning}", style="warning")
+            blocks.append(alert_block("Warnings", level="warning"))
+            blocks.append(list_block(list(validation.warnings), title="Warnings"))
 
-        output.print("\n[green]✓ Validation passed[/green]", style="success")
-        output.print(
-            f"  Steps to execute: {dry_result['steps_to_execute']}", style="info"
+        blocks.append(alert_block("Validation passed", level="success"))
+        blocks.append(
+            kv_block(
+                [
+                    ("Steps to execute", dry_result["steps_to_execute"]),
+                    (
+                        "Estimated time",
+                        f"{dry_result['estimated_duration_minutes']} min",
+                    ),
+                ],
+                title="Validation Summary",
+            )
         )
-        output.print(
-            f"  Estimated time: {dry_result['estimated_duration_minutes']} min",
-            style="info",
-        )
+        _render_blocks(output, blocks)
 
-        # Confirm execution
-        if not output.confirm("\nExecute notebook?"):
-            output.print("Cancelled", style="info")
+        if not output.confirm("Execute notebook?"):
+            _render_blocks(output, [section_block(body="Cancelled")])
             return "Execution cancelled"
 
-        # Execute
-        output.print("\n[yellow]Executing notebook...[/yellow]", style="info")
-        # Note: Progress handling is CLI-specific, skip for now
+        _render_blocks(output, [section_block(body="Executing notebook...")])
         result = client.data_manager.run_notebook(notebook_name, input_modality)
 
         if result["status"] == "success":
-            output.print("\n[green]✓ Execution complete![/green]", style="success")
-            output.print(f"  Output: {result['output_notebook']}", style="info")
-            output.print(f"  Duration: {result['execution_time']:.1f}s", style="info")
-            return f"Notebook executed successfully in {result['execution_time']:.1f}s"
-        else:
-            output.print("\n[red]✗ Execution failed[/red]", style="error")
-            output.print(f"  Error: {result.get('error', 'Unknown')}", style="error")
-            output.print(
-                f"  Partial output: {result.get('output_notebook', 'N/A')}",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block("Execution complete", level="success"),
+                    kv_block(
+                        [
+                            ("Output", result["output_notebook"]),
+                            ("Duration", f"{result['execution_time']:.1f}s"),
+                        ],
+                        title="Execution Result",
+                    ),
+                ],
             )
-            return f"Execution failed: {result.get('error', 'Unknown')}"
+            return f"Notebook executed successfully in {result['execution_time']:.1f}s"
+
+        _render_blocks(
+            output,
+            [
+                alert_block("Execution failed", level="error"),
+                kv_block(
+                    [
+                        ("Error", result.get("error", "Unknown")),
+                        ("Partial output", result.get("output_notebook", "N/A")),
+                    ],
+                    title="Execution Result",
+                ),
+            ],
+        )
+        return f"Execution failed: {result.get('error', 'Unknown')}"
 
     except FileNotFoundError as e:
-        output.print(f"[red]File not found: {e}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"File not found: {e}", level="error")])
         return f"Notebook not found: {e}"
     except Exception as e:
-        output.print(f"[red]Execution error: {e}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"Execution error: {e}", level="error")])
         logger.exception("Notebook execution error")
         return f"Execution error: {e}"
 
@@ -315,29 +393,43 @@ def pipeline_info(client: "AgentClient", output: OutputAdapter) -> Optional[str]
     """
     try:
         if not hasattr(client, "data_manager"):
-            output.print(
-                "[red]Notebook info not available for cloud client[/red]", style="error"
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "Notebook info not available for cloud client",
+                        level="error",
+                    )
+                ],
             )
             return "Notebook info only available for local client"
 
         notebooks = client.data_manager.list_notebooks()
         if not notebooks:
-            output.print("[red]No notebooks found[/red]", style="error")
+            _render_blocks(output, [alert_block("No notebooks found", level="error")])
             return "No notebooks found"
 
-        output.print("[bold]Select notebook:[/bold]", style="info")
-        for i, nb in enumerate(notebooks, 1):
-            output.print(f"  {i}. [cyan]{nb['name']}[/cyan]", style="info")
+        _render_blocks(
+            output,
+            [
+                list_block(
+                    [nb["name"] for nb in notebooks],
+                    title="Select Notebook",
+                    ordered=True,
+                )
+            ],
+        )
 
         selection = output.prompt("Selection", default="1")
         try:
             idx = int(selection) - 1
             nb = notebooks[idx]
         except (ValueError, IndexError):
-            output.print("[red]Invalid selection[/red]", style="error")
+            _render_blocks(
+                output, [alert_block("Invalid selection", level="error")]
+            )
             return "Invalid selection"
 
-        # Load full notebook
         import nbformat
 
         nb_path = Path(nb["path"])
@@ -346,26 +438,37 @@ def pipeline_info(client: "AgentClient", output: OutputAdapter) -> Optional[str]
 
         metadata = notebook.metadata.get("lobster", {})
 
-        # Display info
-        output.print(f"\n[bold cyan]{nb['name']}[/bold cyan]", style="info")
-        output.print(
-            f"Created by: {metadata.get('created_by', 'unknown')}", style="info"
-        )
-        output.print(f"Date: {metadata.get('created_at', 'unknown')}", style="info")
-        output.print(
-            f"Lobster version: {metadata.get('lobster_version', 'unknown')}",
-            style="info",
-        )
-        output.print("\nDependencies:", style="info")
-        for pkg, ver in metadata.get("dependencies", {}).items():
-            output.print(f"  {pkg}: {ver}", style="info")
-
-        output.print(f"\nSteps: {nb['n_steps']}", style="info")
-        output.print(f"Size: {nb['size_kb']:.1f} KB", style="info")
+        blocks: list[OutputBlock] = [
+            section_block(title=nb["name"]),
+            kv_block(
+                [
+                    ("Created by", metadata.get("created_by", "unknown")),
+                    ("Date", metadata.get("created_at", "unknown")),
+                    (
+                        "Lobster version",
+                        metadata.get("lobster_version", "unknown"),
+                    ),
+                    ("Steps", nb["n_steps"]),
+                    ("Size", f"{nb['size_kb']:.1f} KB"),
+                ],
+                title="Notebook Details",
+            ),
+        ]
+        dependencies = metadata.get("dependencies", {})
+        if dependencies:
+            blocks.append(
+                kv_block(
+                    list(dependencies.items()),
+                    title="Dependencies",
+                    key_label="Package",
+                    value_label="Version",
+                )
+            )
+        _render_blocks(output, blocks)
 
         return f"Notebook info: {nb['name']}"
 
     except Exception as e:
-        output.print(f"[red]Info error: {e}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"Info error: {e}", level="error")])
         logger.exception("Notebook info error")
         return f"Info error: {e}"

@@ -1089,9 +1089,12 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             try:
                 sc.tl.louvain(adata, resolution=resolution, key_added=key_added)
             except (AttributeError, ImportError) as e:
+                from lobster.core.component_registry import get_install_command
+
+                install_cmd = get_install_command("louvain")
                 raise ClusteringError(
                     "Louvain clustering requires the 'louvain' package.\n"
-                    "Install with: uv pip install louvain\n"
+                    f"Install with: {install_cmd}\n"
                     "Or use algorithm='leiden' (recommended, generally faster with better resolution limit)."
                 ) from e
         elif algorithm == "leiden":

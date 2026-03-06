@@ -338,6 +338,48 @@ class TestQueueWorkflow:
 
         logger.info("=== test_strategy_override PASSED ===")
 
+    def test_auto_strategy_override_is_treated_as_auto_detection(
+        self, data_manager, orchestrator, mock_adata
+    ):
+        """AUTO should not fail validation or become a manual GEO override."""
+        entry = create_test_queue_entry(
+            dataset_id="GSE67891",
+            strategy_name="AUTO",
+        )
+        data_manager.download_queue.add_entry(entry)
+
+        captured_strategy = {}
+        modality_name = "geo_gse67891_transcriptomics_single_cell"
+
+        def mock_download_with_strategy_capture(*args, **kwargs):
+            captured_strategy["manual_strategy_override"] = kwargs.get(
+                "manual_strategy_override"
+            )
+            captured_strategy["use_intersecting_genes_only"] = kwargs.get(
+                "use_intersecting_genes_only"
+            )
+            data_manager.modalities[modality_name] = mock_adata
+            return "Successfully downloaded with auto strategy"
+
+        with patch.object(
+            orchestrator.get_service_for_database("geo").geo_service,
+            "download_dataset",
+            side_effect=mock_download_with_strategy_capture,
+        ):
+            result_modality, stats = orchestrator.execute_download(
+                entry.entry_id,
+                strategy_override={
+                    "strategy_name": "AUTO",
+                    "strategy_params": {"use_intersecting_genes_only": True},
+                },
+            )
+
+        assert result_modality == "geo_GSE67891"
+        assert modality_name in data_manager.modalities
+        assert captured_strategy["manual_strategy_override"] is None
+        assert captured_strategy["use_intersecting_genes_only"] is True
+        assert stats["strategy_used"] == "auto"
+
     def test_execution_params(self, data_manager, orchestrator, mock_adata):
         """
         Test execution parameters are respected.
@@ -589,22 +631,24 @@ class TestErrorHandling:
         Test error handling for database without registered service.
 
         Steps:
-        1. Create queue entry with database="sra" (no service registered)
+        1. Create queue entry with a valid database type
+        2. Remove its registered service from the orchestrator
         2. Attempt execute_download
         3. Verify raises ServiceNotFoundError
         4. Verify error lists available databases
         """
         logger.info("=== Starting test_invalid_database_type ===")
 
-        # Create entry with unsupported database
+        # Create entry with supported schema value but unregister its service
         entry = DownloadQueueEntry(
             entry_id="queue_SRA_test",
-            dataset_id="SRR12345",
-            database="sra",  # No SRA service registered
+            dataset_id="SRR21960766",
+            database="sra",
             status=DownloadStatus.PENDING,
             metadata={"title": "SRA test"},
         )
         data_manager.download_queue.add_entry(entry)
+        orchestrator._services.pop("sra", None)
 
         # Should raise ServiceNotFoundError
         with pytest.raises(ServiceNotFoundError) as exc_info:

@@ -201,19 +201,19 @@ class DownloadExecutor:
                         # it's single-cell regardless of GSM sample count.
                         if n_obs > 10000:
                             adapter_name = "transcriptomics_single_cell"
-                            logger.warning(
+                            logger.debug(
                                 f"{clean_geo_id}: Cell count override - {n_obs} cells (>{10000}) indicates single-cell despite {n_samples} GSM samples"
                             )
                             enhanced_metadata["data_type"] = "single_cell_rna_seq"
                         elif n_samples < 500:
                             adapter_name = "transcriptomics_bulk"
-                            logger.warning(
+                            logger.debug(
                                 f"{clean_geo_id}: Using sample count heuristic - {n_samples} samples suggests bulk RNA-seq"
                             )
                             enhanced_metadata["data_type"] = "bulk_rna_seq"
                         else:
                             adapter_name = "transcriptomics_single_cell"
-                            logger.warning(
+                            logger.debug(
                                 f"{clean_geo_id}: Using sample count heuristic - {n_samples} samples suggests single-cell"
                             )
                             enhanced_metadata["data_type"] = "single_cell_rna_seq"
@@ -435,7 +435,7 @@ Multi-Modal Dataset Detected:
             strategy_config = stored_metadata_info.get("strategy_config", {})
 
             if not strategy_config:
-                logger.warning(
+                logger.debug(
                     f"No strategy config found for {clean_geo_id}, using defaults"
                 )
                 strategy_config = {
@@ -470,9 +470,9 @@ Multi-Modal Dataset Detected:
                         logger.debug(f"Success via {pipeline_func.__name__}")
                         return result
                     else:
-                        logger.warning(f"Step failed: {result.error_message}")
+                        logger.debug(f"Step failed: {result.error_message}")
                 except Exception as e:
-                    logger.warning(
+                    logger.debug(
                         f"Pipeline step {pipeline_func.__name__} failed: {e}"
                     )
                     continue

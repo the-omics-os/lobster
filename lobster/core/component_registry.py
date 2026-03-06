@@ -157,7 +157,9 @@ def get_install_command(package: str, *, is_extra: bool = False) -> str:
 
     if is_uv_tool_env():
         if is_extra:
-            return f"uv tool install '{specifier}'"
+            from lobster.core.uv_tool_env import build_tool_install_command
+
+            return " ".join(build_tool_install_command(extras=[package]))
         else:
             return f"uv tool install lobster-ai --with {specifier}"
     else:

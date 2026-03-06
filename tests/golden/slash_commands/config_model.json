@@ -2,7 +2,7 @@
   "events": [
     {
       "payload": {
-        "content": "\u2699\ufe0f Active Model Selection\n"
+        "content": "Active Model Selection\n"
       },
       "type": "text"
     },
@@ -61,7 +61,7 @@
     },
     {
       "payload": {
-        "content": "\ud83d\udca1 Model Commands\n"
+        "content": "Model Commands\n"
       },
       "type": "text"
     },

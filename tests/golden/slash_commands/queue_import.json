@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Importing queue from: import_queue.jsonl\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "success",
+        "message": "Imported 2 entries into queue"
+      },
+      "type": "alert"
+    }
+  ],
+  "summary": "Queue import complete: imported 2"
+}

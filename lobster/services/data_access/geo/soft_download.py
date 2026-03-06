@@ -87,5 +87,8 @@ def pre_download_soft_file(
                 "SSL certificate verification failed when downloading SOFT file. "
                 "See error message above for solutions."
             )
-        logger.warning(f"Pre-download failed: {e}. GEOparse will attempt download.")
+        logger.debug(
+            f"Pre-download failed for {geo_id} via HTTPS: {e}. "
+            "Falling back to GEOparse downloader."
+        )
         return None

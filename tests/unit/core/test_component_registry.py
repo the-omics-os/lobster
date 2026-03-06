@@ -13,12 +13,18 @@ Test coverage:
 4. Utility methods (get_info, reset)
 """
 
+from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from lobster.core.component_registry import ComponentRegistry, component_registry
+from lobster.core.component_registry import (
+    ComponentRegistry,
+    component_registry,
+    get_install_command,
+)
+from lobster.core.uv_tool_env import UvToolEnvInfo, build_tool_install_command
 
 # =============================================================================
 # Fixtures
@@ -612,3 +618,62 @@ class TestEdgeCases:
         # diagnose_missing_agent() provides the error now — it should
         # mention the agent name and give guidance
         assert "missing" in error_msg
+
+
+class TestInstallCommandHints:
+    """Test environment-aware install command generation."""
+
+    def test_get_install_command_uses_uv_tool_builder_for_extras(self, monkeypatch):
+        seen = {}
+
+        def _fake_build_tool_install_command(extras=None, with_packages=None):
+            seen["extras"] = extras
+            seen["with_packages"] = with_packages
+            return ["uv", "tool", "install", "lobster-ai[bedrock,classic-tui]"]
+
+        monkeypatch.setattr(
+            "lobster.core.uv_tool_env.is_uv_tool_env",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            "lobster.core.uv_tool_env.build_tool_install_command",
+            _fake_build_tool_install_command,
+        )
+
+        command = get_install_command("classic-tui", is_extra=True)
+
+        assert command == "uv tool install lobster-ai[bedrock,classic-tui]"
+        assert seen == {"extras": ["classic-tui"], "with_packages": None}
+
+    def test_build_tool_install_command_preserves_existing_extras_and_packages(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "lobster.core.uv_tool_env.detect_uv_tool_env",
+            lambda: UvToolEnvInfo(
+                tool_name="lobster-ai",
+                tool_extras=["bedrock"],
+                installed_packages=["lobster-ai", "lobster-research"],
+                prefix=Path("/tmp/lobster-tool"),
+            ),
+        )
+        monkeypatch.setattr(
+            "lobster.core.uv_tool_env.shutil.which",
+            lambda _name: "/usr/local/bin/uv",
+        )
+
+        command = build_tool_install_command(
+            extras=["classic-tui"],
+            with_packages=["lobster-transcriptomics"],
+        )
+
+        assert command == [
+            "/usr/local/bin/uv",
+            "tool",
+            "install",
+            "lobster-ai[bedrock,classic-tui]",
+            "--with",
+            "lobster-research",
+            "--with",
+            "lobster-transcriptomics",
+        ]

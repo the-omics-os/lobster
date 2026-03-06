@@ -24,6 +24,7 @@ from lobster.cli_internal.commands.light.config_commands import (
 )
 from lobster.cli_internal.commands.light.file_commands import (
     archive_queue,
+    build_read_usage_blocks,
     file_read,
 )
 from lobster.cli_internal.commands.light.metadata_commands import (
@@ -199,6 +200,7 @@ __all__ = [
     "data_summary",
     # File commands (light)
     "file_read",
+    "build_read_usage_blocks",
     "archive_queue",
     # Config commands (light)
     "config_show",

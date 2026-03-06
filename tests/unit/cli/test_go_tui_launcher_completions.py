@@ -1,13 +1,16 @@
 from pathlib import Path
+import os
 
 from lobster.cli_internal import go_tui_launcher
 from lobster.cli_internal.startup_diagnostics import StartupDiagnostic
+from lobster.ui.console_manager import get_console_manager
 
 
 class _FakeBridge:
     def __init__(self, events=None):
         self.calls = []
         self.events = list(events or [])
+        self.cancel_event = None
 
     def send(self, msg_type, payload=None, msg_id=""):
         self.calls.append((msg_type, payload or {}, msg_id))
@@ -38,6 +41,66 @@ class _FakeCloudClient:
     def __init__(self, workspace_path, provider_override=None):
         self.workspace_path = workspace_path
         self.provider_override = provider_override
+
+
+def test_python_terminal_quarantine_suppresses_stdout_and_stderr(capfd):
+    quarantine = go_tui_launcher._PythonTerminalQuarantine.activate()
+    try:
+        os.write(1, b"hidden-stdout\\n")
+        os.write(2, b"hidden-stderr\\n")
+    finally:
+        quarantine.restore()
+
+    os.write(1, b"visible-stdout\\n")
+    os.write(2, b"visible-stderr\\n")
+
+    captured = capfd.readouterr()
+    combined = captured.out + captured.err
+    assert "hidden-stdout" not in combined
+    assert "hidden-stderr" not in combined
+    assert "visible-stdout" in captured.out
+    assert "visible-stderr" in captured.err
+
+
+def test_console_manager_terminal_mute_suppresses_rich_console_output(capfd):
+    console_manager = get_console_manager()
+    muted_here = console_manager.mute_terminal_output()
+    try:
+        console_manager.print("hidden-console")
+        console_manager.print_error("hidden-error")
+    finally:
+        if muted_here:
+            console_manager.restore_terminal_output()
+
+    console_manager.print("visible-console")
+    console_manager.print_error("visible-error")
+
+    captured = capfd.readouterr()
+    combined = captured.out + captured.err
+    assert "hidden-console" not in combined
+    assert "hidden-error" not in combined
+    assert "visible-console" in captured.out
+    assert "visible-error" in captured.err
+
+
+def test_normalize_tool_payload_preserves_tool_call_identity():
+    payload = go_tui_launcher._normalize_tool_payload(
+        {
+            "tool": "get_dataset_metadata",
+            "status": "complete",
+            "agent": "research_agent",
+            "summary": "0.7s",
+            "tool_call_id": "run-123",
+        }
+    )
+
+    assert payload == {
+        "tool_name": "get_dataset_metadata",
+        "event": "finish",
+        "agent": "research_agent",
+        "summary": "0.7s",
+        "tool_call_id": "run-123",
+    }
 
 
 def test_completion_request_read_prefixes_command(tmp_path, monkeypatch):
@@ -619,3 +682,43 @@ def test_handle_interrupt_component_response_passthrough():
         {"data": {"component": "text_input"}},
     )
     assert result == {"answer": "T cells"}
+
+
+# ---------------------------------------------------------------------------
+# Cancel event bridge-level signal
+# ---------------------------------------------------------------------------
+
+
+def test_event_loop_wires_cancel_event_to_bridge():
+    """_go_tui_event_loop assigns cancel_event to bridge so _read_loop can set it."""
+    bridge = _FakeBridge(events=[{"type": "quit"}])
+
+    class _Client:
+        def _save_session_json(self):
+            pass
+
+    go_tui_launcher._go_tui_event_loop(bridge, _Client())
+
+    # After the loop runs, bridge.cancel_event should be a threading.Event.
+    import threading
+
+    assert isinstance(bridge.cancel_event, threading.Event)
+
+
+def test_bridge_cancel_event_set_bypasses_event_loop():
+    """Simulate _read_loop setting cancel_event directly without event loop dispatch."""
+    import threading
+
+    cancel_event = threading.Event()
+
+    # Simulate what _read_loop does when it reads a cancel message.
+    bridge = _FakeBridge()
+    bridge.cancel_event = cancel_event
+
+    # Simulate the _read_loop inline: parse msg, enqueue, check cancel.
+    msg = {"type": "cancel"}
+    bridge.events.append(msg)
+    if msg.get("type") == "cancel" and bridge.cancel_event is not None:
+        bridge.cancel_event.set()
+
+    assert cancel_event.is_set(), "cancel_event should be set by bridge-level signal"

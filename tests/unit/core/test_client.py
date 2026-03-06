@@ -1473,7 +1473,6 @@ class TestStreamingProtocol:
         assert len(deltas) == 1
         assert deltas[0]["delta"] == "Has content."
 
-
 # ===============================================================================
 # Integration-style Tests for Client Interactions
 # ===============================================================================

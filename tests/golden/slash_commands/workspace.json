@@ -1,0 +1,220 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Workspace Status\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Summary\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Workspace",
+            "/tmp/lobster_ws"
+          ],
+          [
+            "Modalities Loaded",
+            "2"
+          ],
+          [
+            "Provenance",
+            "Enabled"
+          ],
+          [
+            "MuData",
+            "Available"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Directories\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Directory",
+          "Files",
+          "Size",
+          "Path"
+        ],
+        "rows": [
+          [
+            "Data",
+            "-",
+            "-",
+            "/__lobster_test__/data (not created)"
+          ],
+          [
+            "Exports",
+            "-",
+            "-",
+            "/__lobster_test__/exports (not created)"
+          ],
+          [
+            "Metadata",
+            "-",
+            "-",
+            "/__lobster_test__/metadata (not created)"
+          ],
+          [
+            "Notebooks",
+            "-",
+            "-",
+            "/__lobster_test__/notebooks (not created)"
+          ],
+          [
+            "Queues",
+            "-",
+            "-",
+            "/__lobster_test__/queues (not created)"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Loaded Modalities\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- rna\n- atac\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "System Capabilities\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Backends",
+            "h5ad, mudata"
+          ],
+          [
+            "Adapters",
+            "transcriptomics, chromatin, multimodal, proteomics, metadata"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "... and 1 more adapters\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Modality Details\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "rna\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Property",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Shape",
+            "1,024 obs \u00d7 2,048 vars"
+          ],
+          [
+            "Obs Columns",
+            "cell_type, batch, condition"
+          ],
+          [
+            "Var Columns",
+            "gene_name, feature_type"
+          ],
+          [
+            "Layers",
+            "counts"
+          ],
+          [
+            "Obsm",
+            "X_pca, X_umap"
+          ],
+          [
+            "Uns Keys",
+            "neighbors, rank_genes_groups"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "atac\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Property",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Shape",
+            "512 obs \u00d7 1,024 vars"
+          ],
+          [
+            "Obs Columns",
+            "cluster, sample"
+          ],
+          [
+            "Var Columns",
+            "peak_id"
+          ],
+          [
+            "Obsm",
+            "X_lsi"
+          ],
+          [
+            "Uns Keys",
+            "peaks"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Displayed workspace status and information"
+}

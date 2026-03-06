@@ -2,7 +2,7 @@
   "events": [
     {
       "payload": {
-        "content": "\ud83d\udcd3 Available Notebooks\n"
+        "content": "Available Notebooks\n"
       },
       "type": "text"
     },

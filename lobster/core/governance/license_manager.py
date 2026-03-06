@@ -684,9 +684,14 @@ def activate_license(
             }
 
     except ImportError:
+        from lobster.core.component_registry import get_install_command
+
         return {
             "success": False,
-            "error": "httpx not installed - run 'pip install httpx' for license activation",
+            "error": (
+                "httpx not installed - run "
+                f"'{get_install_command('httpx')}' for license activation"
+            ),
         }
     except Exception as e:
         logger.error(f"License activation failed: {e}")

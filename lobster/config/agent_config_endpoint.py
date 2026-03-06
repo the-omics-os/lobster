@@ -85,9 +85,11 @@ def suggest_agents(description: str) -> Optional[AgentSuggestion]:
     try:
         import httpx
     except ImportError:
+        from lobster.core.component_registry import get_install_command
+
         logger.warning(
             "httpx not installed. Cannot call Omics-OS endpoint. "
-            "Install with: pip install httpx"
+            f"Install with: {get_install_command('httpx')}"
         )
         return None
 

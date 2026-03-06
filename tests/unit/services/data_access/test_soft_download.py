@@ -114,7 +114,10 @@ class TestPreDownloadSoftFile:
 
     @patch("lobster.services.data_access.geo.soft_download.urllib.request.urlopen")
     @patch("lobster.services.data_access.geo.soft_download.create_ssl_context")
-    def test_returns_none_on_non_ssl_failure(self, mock_ssl, mock_urlopen, tmp_path):
+    @patch("lobster.services.data_access.geo.soft_download.logger")
+    def test_returns_none_on_non_ssl_failure(
+        self, mock_logger, mock_ssl, mock_urlopen, tmp_path
+    ):
         """Non-SSL download failure returns None (GEOparse will retry via FTP)."""
         from lobster.services.data_access.geo.soft_download import (
             pre_download_soft_file,
@@ -125,6 +128,8 @@ class TestPreDownloadSoftFile:
 
         result = pre_download_soft_file("GSE194247", tmp_path)
         assert result is None
+        mock_logger.warning.assert_not_called()
+        mock_logger.debug.assert_called()
 
     @patch("lobster.services.data_access.geo.soft_download.urllib.request.urlopen")
     @patch("lobster.services.data_access.geo.soft_download.create_ssl_context")

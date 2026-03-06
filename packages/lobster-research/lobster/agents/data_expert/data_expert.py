@@ -70,6 +70,18 @@ from lobster.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _normalize_download_strategy_name(strategy_name: Optional[str]) -> Optional[str]:
+    """Normalize AUTO/empty strategies to no explicit override."""
+    if not strategy_name:
+        return None
+
+    normalized = strategy_name.strip().upper()
+    if not normalized or normalized == "AUTO":
+        return None
+
+    return normalized
+
+
 def data_expert(
     data_manager: DataManagerV2,
     callback_handler=None,
@@ -245,9 +257,13 @@ Dataset: {entry.dataset_id}
             ):
                 strategy_override_dict = {}
                 if entry.recommended_strategy:
-                    strategy_override_dict["strategy_name"] = (
+                    recommended_strategy_name = _normalize_download_strategy_name(
                         entry.recommended_strategy.strategy_name
                     )
+                    if recommended_strategy_name:
+                        strategy_override_dict["strategy_name"] = (
+                            recommended_strategy_name
+                        )
                 # Map concatenation_strategy to strategy_params
                 if concatenation_strategy != "auto":
                     use_intersecting = concatenation_strategy == "intersection"
@@ -256,7 +272,15 @@ Dataset: {entry.dataset_id}
                     }
                 # Explicit strategy_override takes precedence
                 if strategy_override:
-                    strategy_override_dict["strategy_name"] = strategy_override
+                    explicit_strategy_name = _normalize_download_strategy_name(
+                        strategy_override
+                    )
+                    if explicit_strategy_name:
+                        strategy_override_dict["strategy_name"] = (
+                            explicit_strategy_name
+                        )
+                if not strategy_override_dict:
+                    strategy_override_dict = None
 
             logger.debug(
                 f"Starting download for {entry.dataset_id} from queue entry {entry_id}"
@@ -343,10 +367,11 @@ Dataset: {entry.dataset_id}
                     )
 
                 # 5. RETURN SUCCESS REPORT
-                strategy_used = (
-                    entry.recommended_strategy.strategy_name
-                    if entry.recommended_strategy
-                    else "auto-detected"
+                strategy_used = stats.get("strategy_used", "auto")
+                if strategy_used == "auto":
+                    strategy_used = "auto-detected"
+                concatenation_used = stats.get(
+                    "concatenation_strategy", concatenation_strategy
                 )
 
                 response = f"""
@@ -360,7 +385,7 @@ Strategy Used: {strategy_used}
 
 Samples: {result_adata.n_obs}
 Features: {result_adata.n_vars}
-Concatenation: {concatenation_strategy}
+Concatenation: {concatenation_used}
 {type_warning}
 You can now analyze this dataset using the appropriate analysis tools.
 """

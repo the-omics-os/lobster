@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "warning",
+        "message": "/workspace-info renders Rich dashboard panels and is not available in Go TUI."
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Use /workspace or /files instead.\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

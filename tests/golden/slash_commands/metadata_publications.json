@@ -2,17 +2,15 @@
   "events": [
     {
       "payload": {
-        "level": "info",
-        "message": "\n\ud83d\udcc4 Publication Queue (3 entries)\n"
+        "content": "Publication Queue (3 entries)\n"
       },
-      "type": "alert"
+      "type": "text"
     },
     {
       "payload": {
-        "level": "info",
-        "message": "Status Breakdown"
+        "content": "Status Breakdown\n"
       },
-      "type": "alert"
+      "type": "text"
     },
     {
       "payload": {
@@ -35,69 +33,60 @@
     },
     {
       "payload": {
-        "content": "\n"
+        "content": "Identifier Coverage\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "level": "info",
-        "message": "Identifier Coverage"
+        "headers": [
+          "Type",
+          "Count",
+          "Coverage"
+        ],
+        "rows": [
+          [
+            "PMID",
+            "2/3",
+            "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591 66.7%"
+          ],
+          [
+            "DOI",
+            "1/3",
+            "\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 33.3%"
+          ]
+        ]
       },
-      "type": "alert"
+      "type": "table"
     },
     {
       "payload": {
-        "content": "  PMID: \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591 2/3 (66.7%)\n"
+        "content": "Extracted Identifiers\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "content": "  DOI: \u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 1/3 (33.3%)\n"
+        "headers": [
+          "Database",
+          "Count"
+        ],
+        "rows": [
+          [
+            "GEO",
+            "2"
+          ],
+          [
+            "SRA",
+            "1"
+          ]
+        ]
       },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "level": "info",
-        "message": "Extracted Identifiers"
-      },
-      "type": "alert"
-    },
-    {
-      "payload": {
-        "content": "  GEO: 2 datasets\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "  SRA: 1 datasets\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "\n"
-      },
-      "type": "text"
+      "type": "table"
     },
     {
       "payload": {
         "content": "Workspace Status: 1 entries with metadata files\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "\n"
       },
       "type": "text"
     },

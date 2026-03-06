@@ -304,47 +304,41 @@ def query_impl(
         raise typer.Exit(exc.diagnostic.exit_code)
 
     # Handle session loading for continuity
-    # Determine session_id before client initialization
     session_file_to_load = None
     session_id_for_client = None
 
     if session_id:
-        # Resolve workspace early to check for session files
         from lobster.core.workspace import resolve_workspace
 
+        from lobster.cli_internal.commands.heavy.session_infra import (
+            resolve_session_continuation,
+        )
+
         workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+        (
+            session_file_to_load,
+            session_id_for_client,
+            found_existing_session,
+        ) = resolve_session_continuation(workspace_path, session_id)
 
         if session_id == "latest":
-            # Find most recent session file
-            session_files = list(workspace_path.glob("session_*.json"))
-            if session_files:
-                # Sort by modification time (most recent first)
-                session_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                session_file_to_load = session_files[0]
-                if not json_output:
-                    console.print(
-                        f"[cyan]📂 Loading latest session: {session_file_to_load.name}[/cyan]"
-                    )
-            else:
-                if not json_output:
-                    console.print(
-                        "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
-                    )
+            if found_existing_session and session_id_for_client and not json_output:
+                console.print(
+                    f"[cyan]📂 Loading latest session: {session_id_for_client}[/cyan]"
+                )
+            elif not found_existing_session and not json_output:
+                console.print(
+                    "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                )
+                session_id_for_client = None
+        elif found_existing_session:
+            if session_id_for_client and not json_output:
+                console.print(
+                    f"[cyan]📂 Loading session: {session_id_for_client}[/cyan]"
+                )
         else:
-            # Explicit session ID provided
-            # Try with session_ prefix first
-            session_file_candidate = workspace_path / f"session_{session_id}.json"
-            if not session_file_candidate.exists():
-                # Try exact filename
-                session_file_candidate = workspace_path / f"{session_id}.json"
-
-            if session_file_candidate.exists():
-                session_file_to_load = session_file_candidate
-            else:
-                # Session file doesn't exist - use this session_id for new session
-                session_id_for_client = session_id
-                if not json_output:
-                    console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
+            if not json_output:
+                console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
 
     # Initialize client with custom session_id if new session
     client = init_client(

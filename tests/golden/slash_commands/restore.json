@@ -1,0 +1,23 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Restored: geo_gse12345_rna\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Restored: geo_gse67890_atac_clustered\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Skipped 1 items\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Restored 2 datasets"
+}

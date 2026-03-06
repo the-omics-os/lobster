@@ -40,6 +40,7 @@ const maxInputHistory = 200
 
 const composerMinHeight = 1
 const composerMaxHeight = 8
+const maxVisibleCompletionSuggestions = 5
 
 // spinnerInterval controls the animation frame rate (~12 fps).
 const spinnerInterval = 80 * time.Millisecond
@@ -116,6 +117,7 @@ type ChatMessage struct {
 
 // ToolFeedEntry represents a single tool execution with its lifecycle state.
 type ToolFeedEntry struct {
+	ID      string
 	Name    string
 	Event   protocol.ToolExecutionEvent // "start", "finish", "error"
 	Summary string
@@ -189,9 +191,9 @@ type Model struct {
 	completionRequestInputs      map[string]string
 	completionCache              map[string][]string
 	completionSuggestions        []string
-	completionCycleBase          string
-	completionCycleIndex         int
-	completionCycleSuggestions   []string
+	completionMenuIndex          int
+	completionMenuInput          string
+	completionDismissedInput     string
 
 	// Heartbeat monitoring: tracks the last heartbeat from the backend.
 	lastHeartbeat time.Time
@@ -210,7 +212,7 @@ type Model struct {
 	pendingSelect      *protocol.SelectPayload
 	pendingSelectID    string
 	pendingComponentID string // HITL component_render awaiting text input response
-	selectIndex     int
+	selectIndex        int
 
 	width               int
 	height              int
@@ -219,6 +221,7 @@ type Model struct {
 	inlineBannerPrinted bool
 	mouseCapture        bool
 	quitting            bool
+	isCanceling         bool // Two-phase cancel: first Ctrl+C arms, second fires.
 	styles              theme.Styles
 
 	// Inline runtime banner details.
@@ -235,6 +238,12 @@ type protocolMsg struct {
 
 // protocolEOF signals that the protocol channel was closed (Python exited).
 type protocolEOF struct{}
+
+// cancelTimerExpired resets the two-phase cancel arm after the confirmation window.
+type cancelTimerExpired struct{}
+
+// cancelConfirmDuration is how long the user has to press Ctrl+C again to confirm.
+const cancelConfirmDuration = 2 * time.Second
 
 // NewModel creates a new chat Model wired to the given handler and styles.
 func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int, inline bool, mouseCapture bool, versionFallback string) Model {
@@ -444,6 +453,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case cancelTimerExpired:
+		m.isCanceling = false
+		// Restore status only if still showing the cancel prompt.
+		if m.statusText == "Press Ctrl+C again to cancel" {
+			m.statusText = ""
+		}
+		return m, nil
+
 	case heartbeatCheck:
 		if m.ready {
 			return m, nil // Stop checking once backend is ready.
@@ -520,6 +537,7 @@ func (m Model) View() string {
 	}
 
 	var b strings.Builder
+	completionView := m.renderCompletionMenu()
 
 	if m.inline {
 		intro := renderInlineIntro(m)
@@ -588,6 +606,10 @@ func (m Model) View() string {
 				b.WriteByte('\n')
 			}
 		}
+		if completionView != "" {
+			b.WriteString(completionView)
+			b.WriteByte('\n')
+		}
 		b.WriteString(m.renderComposer())
 		b.WriteByte('\n')
 	}
@@ -617,7 +639,9 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
 			m.streamBuf.WriteString(p.Content)
-			m.rebuildViewport()
+			if m.shouldRenderStreamingTranscript() {
+				m.rebuildViewport()
+			}
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -627,7 +651,9 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
 			m.streamBuf.WriteString(p.Content)
-			m.rebuildViewport()
+			if m.shouldRenderStreamingTranscript() {
+				m.rebuildViewport()
+			}
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -641,7 +667,9 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			m.streamBuf.WriteByte('\n')
 			m.streamBuf.WriteString(p.Content)
 			m.streamBuf.WriteString("\n```\n")
-			m.rebuildViewport()
+			if m.shouldRenderStreamingTranscript() {
+				m.rebuildViewport()
+			}
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -666,25 +694,13 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.ToolExecutionPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			entry := ToolFeedEntry{
+				ID:      strings.TrimSpace(p.ToolCallID),
 				Name:    p.ToolName,
 				Event:   p.Event,
 				Summary: p.Summary,
 				Agent:   p.Agent,
 			}
-			// In-place update: find the most recent entry with same name in "start" state.
-			updated := false
-			if p.Event == protocol.ToolExecutionFinish || p.Event == protocol.ToolExecutionError {
-				for i := len(m.toolFeed) - 1; i >= 0; i-- {
-					if m.toolFeed[i].Name == p.ToolName && m.toolFeed[i].Event == protocol.ToolExecutionStart {
-						m.toolFeed[i] = entry
-						updated = true
-						break
-					}
-				}
-			}
-			if !updated {
-				m.pushToolFeed(entry)
-			}
+			m.applyToolFeedEntry(entry)
 			m.recalculateViewportHeight()
 			m.rebuildViewport()
 		}
@@ -706,6 +722,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			m.pendingHandoffs = m.pendingHandoffs[:0]
 		}
 		m.isStreaming = false
+		m.isCanceling = false
 		printCmd := m.appendMessages(toAppend, true)
 		if len(toAppend) == 0 {
 			m.rebuildViewportWithMode(true)
@@ -888,7 +905,9 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			tb := renderProtocolTable(p.Headers, p.Rows, protocolTableRenderWidth(m.width))
 			m.isStreaming = true
 			appendProtocolCodeBlock(m.streamBuf, tb)
-			m.rebuildViewport()
+			if m.shouldRenderStreamingTranscript() {
+				m.rebuildViewport()
+			}
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -951,11 +970,46 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleSelectKey(msg)
 	}
 
+	if m.completionMenuVisible() {
+		switch msg.Type {
+		case tea.KeyEsc:
+			m.dismissCompletionMenu()
+			return m, nil
+		case tea.KeyTab:
+			if m.applySelectedCompletionSuggestion() {
+				m.recalculateViewportHeight()
+				return m, m.refreshSuggestions()
+			}
+			return m, nil
+		}
+
+		switch key := strings.ToLower(strings.TrimSpace(msg.String())); key {
+		case "ctrl+n":
+			if m.moveCompletionSelection(1) {
+				return m, nil
+			}
+		case "ctrl+p":
+			if m.moveCompletionSelection(-1) {
+				return m, nil
+			}
+		}
+	}
+
 	switch msg.Type {
 
 	case tea.KeyCtrlC:
 		if m.isStreaming || m.spinnerActive {
-			// Cancel running query — stay in TUI.
+			if !m.isCanceling {
+				// First press: arm the cancel and start confirmation timer.
+				m.isCanceling = true
+				m.statusText = "Press Ctrl+C again to cancel"
+				return m, tea.Tick(cancelConfirmDuration, func(time.Time) tea.Msg {
+					return cancelTimerExpired{}
+				})
+			}
+			// Second press: actually cancel.
+			m.isCanceling = false
+			m.statusText = "Cancelling…"
 			if m.handler != nil {
 				_ = m.handler.SendTyped(protocol.TypeCancel, protocol.CancelPayload{}, "")
 			}
@@ -1058,7 +1112,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmd, printCmd)
 
 	case tea.KeyTab:
-		if m.applyNextCompletionSuggestion() {
+		if m.applySelectedCompletionSuggestion() {
 			m.recalculateViewportHeight()
 			return m, m.refreshSuggestions()
 		}
@@ -1121,31 +1175,23 @@ func isComposerInsertNewlineKey(msg tea.KeyMsg) bool {
 	return key == "shift+enter" || key == "alt+enter"
 }
 
-func (m *Model) applyNextCompletionSuggestion() bool {
-	suggestions := m.completionSuggestions
-	if len(suggestions) == 0 {
+func (m *Model) applySelectedCompletionSuggestion() bool {
+	if !m.completionMenuVisible() {
 		return false
 	}
 
+	limit := m.visibleCompletionSuggestionCount()
+	if limit == 0 {
+		return false
+	}
+	selected := clampIndex(m.completionMenuIndex, limit)
 	input := m.input.Value()
-	needsReset := !suggestionSlicesEqual(m.completionCycleSuggestions, suggestions)
-	if needsReset || (input != m.completionCycleBase && !containsSuggestion(suggestions, input)) {
-		m.completionCycleBase = input
-		m.completionCycleIndex = 0
-		m.completionCycleSuggestions = append([]string(nil), suggestions...)
-	} else {
-		if idx := suggestionIndex(m.completionCycleSuggestions, input); idx >= 0 {
-			m.completionCycleIndex = (idx + 1) % len(m.completionCycleSuggestions)
-		} else {
-			m.completionCycleIndex = 0
-		}
+	value := m.completionSuggestions[selected]
+	if shouldAppendCompletionSpace(input, value) {
+		value += " "
 	}
 
-	if len(m.completionCycleSuggestions) == 0 {
-		return false
-	}
-
-	m.input.SetValue(m.completionCycleSuggestions[m.completionCycleIndex])
+	m.input.SetValue(value)
 	m.input.CursorEnd()
 	return true
 }
@@ -1163,16 +1209,97 @@ func suggestionIndex(items []string, target string) int {
 	return -1
 }
 
-func suggestionSlicesEqual(a, b []string) bool {
-	if len(a) != len(b) {
+func shouldAppendCompletionSpace(input string, selected string) bool {
+	if strings.HasSuffix(selected, " ") || strings.HasSuffix(input, " ") {
 		return false
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
+	if _, ok := parsePathCompletionContext(input); ok {
+		return false
 	}
+	return len(strings.Fields(strings.TrimSpace(selected))) > 1
+}
+
+func (m *Model) syncCompletionMenuState(input string) {
+	limit := m.visibleCompletionSuggestionCount()
+	if limit == 0 {
+		m.completionMenuIndex = 0
+		m.completionMenuInput = ""
+		return
+	}
+
+	if m.completionMenuInput != input {
+		if idx := suggestionIndex(m.completionSuggestions[:limit], input); idx >= 0 {
+			m.completionMenuIndex = idx
+		} else {
+			m.completionMenuIndex = 0
+		}
+		m.completionMenuInput = input
+		return
+	}
+
+	m.completionMenuIndex = clampIndex(m.completionMenuIndex, limit)
+}
+
+func (m Model) visibleCompletionSuggestionCount() int {
+	count := len(m.completionSuggestions)
+	if count > maxVisibleCompletionSuggestions {
+		count = maxVisibleCompletionSuggestions
+	}
+	return count
+}
+
+func (m Model) completionMenuVisible() bool {
+	if !m.inline || m.pendingConfirm != nil || m.pendingSelect != nil {
+		return false
+	}
+	if len(m.completionSuggestions) == 0 {
+		return false
+	}
+
+	input := m.input.Value()
+	if input == "" || strings.ContainsAny(input, "\r\n") {
+		return false
+	}
+	if m.completionDismissedInput != "" && input == m.completionDismissedInput {
+		return false
+	}
+	if !strings.HasPrefix(strings.TrimLeft(input, " \t"), "/") {
+		return false
+	}
+
+	lineInfo := m.input.LineInfo()
+	return lineInfo.StartColumn+lineInfo.ColumnOffset == len(input)
+}
+
+func (m *Model) dismissCompletionMenu() {
+	if !m.completionMenuVisible() {
+		return
+	}
+	m.completionDismissedInput = m.input.Value()
+}
+
+func (m *Model) moveCompletionSelection(delta int) bool {
+	limit := m.visibleCompletionSuggestionCount()
+	if !m.completionMenuVisible() || limit == 0 {
+		return false
+	}
+
+	next := (m.completionMenuIndex + delta) % limit
+	if next < 0 {
+		next += limit
+	}
+	m.completionMenuIndex = next
 	return true
+}
+
+func completionMenuAnchorIndex(input string) int {
+	if input == "" {
+		return 0
+	}
+	if idx := strings.LastIndexAny(input, " \t"); idx >= 0 {
+		return idx + 1
+	}
+	return 0
 }
 
 // --------------------------------------------------------------------------
@@ -1482,11 +1609,43 @@ func (m *Model) pushToolFeed(entry ToolFeedEntry) {
 	m.toolFeed = append(m.toolFeed, entry)
 }
 
+func (m *Model) applyToolFeedEntry(entry ToolFeedEntry) {
+	if idx := m.toolFeedIndex(entry); idx >= 0 {
+		m.toolFeed[idx] = entry
+		return
+	}
+	m.pushToolFeed(entry)
+}
+
+func (m Model) toolFeedIndex(entry ToolFeedEntry) int {
+	if entry.ID != "" {
+		for i := len(m.toolFeed) - 1; i >= 0; i-- {
+			if m.toolFeed[i].ID == entry.ID {
+				return i
+			}
+		}
+	}
+
+	if entry.Event == protocol.ToolExecutionFinish || entry.Event == protocol.ToolExecutionError {
+		for i := len(m.toolFeed) - 1; i >= 0; i-- {
+			if m.toolFeed[i].Name == entry.Name && m.toolFeed[i].Event == protocol.ToolExecutionStart {
+				return i
+			}
+		}
+	}
+
+	return -1
+}
+
 func lineCount(text string) int {
 	if text == "" {
 		return 0
 	}
 	return strings.Count(text, "\n") + 1
+}
+
+func (m Model) shouldRenderStreamingTranscript() bool {
+	return !m.inlineFlowMode()
 }
 
 func (m Model) currentStatusLine() string {
@@ -1504,6 +1663,9 @@ func (m Model) currentStatusLine() string {
 	workerStatus := m.activeWorkerIndicator()
 	if !m.ready {
 		return joinStatusParts(statusText, workerStatus)
+	}
+	if m.completionMenuVisible() {
+		return joinStatusParts(statusText, workerStatus, "Tab accept", "Ctrl+N/Ctrl+P move", "Esc dismiss")
 	}
 
 	if m.inlineFlowMode() {
@@ -1619,7 +1781,9 @@ func (m *Model) recordHandoff(task string, agent string) tea.Cmd {
 
 	if m.streamBuf.Len() > 0 {
 		m.pendingHandoffs = append(m.pendingHandoffs, msg)
-		m.rebuildViewport()
+		if m.shouldRenderStreamingTranscript() {
+			m.rebuildViewport()
+		}
 		return nil
 	}
 
@@ -1674,6 +1838,9 @@ func (m Model) layoutReservedRows() int {
 	} else {
 		if m.inline {
 			rows += 1 // reserve optional prompt spacer in inline mode
+		}
+		if completionView := m.renderCompletionMenu(); completionView != "" {
+			rows += lineCount(completionView)
 		}
 		rows += lineCount(m.renderComposer())
 	}
@@ -1847,6 +2014,56 @@ func (m Model) renderComposer() string {
 		b.WriteString(line)
 	}
 	return b.String()
+}
+
+func (m Model) renderCompletionMenu() string {
+	if !m.completionMenuVisible() {
+		return ""
+	}
+
+	limit := m.visibleCompletionSuggestionCount()
+	selected := clampIndex(m.completionMenuIndex, limit)
+	promptWidth := lipgloss.Width(m.styles.InputPrompt.Render(m.inputPromptText()))
+	lineInfo := m.input.LineInfo()
+	anchorColumn := completionMenuAnchorIndex(m.input.Value()) - lineInfo.StartColumn
+	if anchorColumn < 0 {
+		anchorColumn = 0
+	}
+
+	indentWidth := promptWidth + anchorColumn
+	menuWidth := m.width - indentWidth
+	if menuWidth < 18 {
+		indentWidth -= 18 - menuWidth
+		if indentWidth < promptWidth {
+			indentWidth = promptWidth
+		}
+		menuWidth = m.width - indentWidth
+	}
+	if menuWidth < 12 {
+		menuWidth = 12
+	}
+
+	indent := strings.Repeat(" ", indentWidth)
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(m.styles.InputPrompt.GetForeground()).
+		Bold(true)
+
+	lines := make([]string, 0, limit+1)
+	if extra := len(m.completionSuggestions) - limit; extra > 0 {
+		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf("+%d more", extra)))
+	}
+	for i := limit - 1; i >= 0; i-- {
+		label := truncateMiddle(m.completionSuggestions[i], menuWidth-2)
+		line := "  " + label
+		style := m.styles.Muted
+		if i == selected {
+			line = "› " + label
+			style = selectedStyle
+		}
+		lines = append(lines, indent+style.Render(line))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) inputPromptText() string {

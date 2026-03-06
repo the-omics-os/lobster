@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "error",
+        "message": "/open: 'missing.txt': No such file or folder"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Path: /private/tmp/lobster_ws/missing.txt\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

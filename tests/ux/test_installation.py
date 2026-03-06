@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import time
+import tomllib
 from pathlib import Path
 from typing import Any, Dict, List
 from unittest.mock import MagicMock, Mock, patch
@@ -252,6 +253,18 @@ def test_package_pyproject_has_entry_points_section():
         '[project.entry-points."lobster.services"]' in content
         or 'project.entry-points."lobster.services"' in content
     )
+
+
+def test_package_full_extra_avoids_unpublished_metadata_dependency():
+    """Verify public full install path doesn't require lobster-metadata."""
+    data = tomllib.loads(PYPROJECT_PATH.read_text())
+    extras = data["project"]["optional-dependencies"]
+
+    full_reqs = extras.get("full", [])
+    vector_reqs = extras.get("vector-search", [])
+
+    assert all("vector-search" not in req for req in full_reqs)
+    assert all("lobster-metadata" not in req for req in vector_reqs)
 
 
 def test_package_cli_entry_point_exists():

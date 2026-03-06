@@ -1,0 +1,44 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "About to Clear\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Memory (metadata_store)",
+            "1 entries"
+          ],
+          [
+            "Memory (current_metadata)",
+            "3 entries"
+          ],
+          [
+            "Disk (workspace/metadata/)",
+            "1 files"
+          ],
+          [
+            "Total",
+            "5 items"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Operation cancelled\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

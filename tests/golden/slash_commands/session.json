@@ -2,7 +2,7 @@
   "events": [
     {
       "payload": {
-        "content": "Session\n"
+        "content": "Session Status\n"
       },
       "type": "text"
     },
@@ -18,12 +18,28 @@
             "sess_123"
           ],
           [
+            "Mode",
+            "semantic"
+          ],
+          [
+            "Messages",
+            "7"
+          ],
+          [
             "Workspace",
             "/tmp/lobster_ws"
           ],
           [
-            "Loaded Modalities",
-            "2"
+            "Data Loaded",
+            "True"
+          ],
+          [
+            "Data Shape",
+            "2 modalities"
+          ],
+          [
+            "Memory Usage",
+            "20 MB"
           ]
         ]
       },
@@ -31,7 +47,7 @@
     },
     {
       "payload": {
-        "content": "Tip: use `/workspace list` to inspect available datasets.\n"
+        "content": "Use `/workspace list` to inspect available datasets.\n"
       },
       "type": "text"
     }

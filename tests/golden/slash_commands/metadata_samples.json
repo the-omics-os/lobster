@@ -1,0 +1,92 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Sample Statistics\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Total Samples",
+            "1,200"
+          ],
+          [
+            "BioProjects",
+            "4"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Aggregated Statistics\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Filtered Samples",
+            "900"
+          ],
+          [
+            "Retention",
+            "75.0%"
+          ],
+          [
+            "Disease Coverage",
+            "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 62.5%"
+          ],
+          [
+            "Filter Criteria",
+            "disease != control"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Filter Breakdown\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Filter",
+          "Retained",
+          "Coverage"
+        ],
+        "rows": [
+          [
+            "disease_filter",
+            "900/1200",
+            "\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591 75.0%"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Aggregated metadata available. Use /metadata exports to see export files.\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Sample stats: 1,200 samples, 4 BioProjects"
+}

@@ -12,7 +12,16 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    OutputBlock,
+    alert_block,
+    hint_block,
+    kv_block,
+    list_block,
+    section_block,
+    table_block,
+)
 
 # Import status display configurations (single source of truth)
 from lobster.core.schemas.download_queue import DOWNLOAD_STATUS_DISPLAY
@@ -23,6 +32,52 @@ class QueueFileTypeNotSupported(Exception):
     """Raised when unsupported file type is provided to queue load."""
 
     pass
+
+
+def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
+    output.render_blocks(blocks)
+
+
+def _status_label(status_name: str, display_config: Dict[str, tuple]) -> str:
+    icon, _style = display_config.get(status_name, ("?", "dim"))
+    display_name = status_name.replace("_", " ").title()
+    return f"{icon} {display_name}"
+
+
+def _resolve_queue_file_path(
+    client: "AgentClient", filename: str, current_directory: Optional[Path]
+) -> tuple[Optional[Path], Optional[list[OutputBlock]]]:
+    if current_directory:
+        from lobster.cli_internal.utils.path_resolution import PathResolver
+
+        resolver = PathResolver(
+            current_directory=current_directory,
+            workspace_path=(
+                client.data_manager.workspace_path
+                if hasattr(client, "data_manager")
+                else None
+            ),
+        )
+        resolved = resolver.resolve(filename, search_workspace=True, must_exist=True)
+
+        if not resolved.is_safe:
+            return None, [
+                alert_block(f"Security error: {resolved.error}", level="error")
+            ]
+
+        if not resolved.exists:
+            return None, [alert_block(f"File not found: {filename}", level="error")]
+
+        return resolved.path, None
+
+    file_path = Path(filename)
+    if not file_path.is_absolute():
+        file_path = client.data_manager.workspace_path / filename
+
+    if not file_path.exists():
+        return None, [alert_block(f"File not found: {filename}", level="error")]
+
+    return file_path, None
 
 
 def _get_download_queue_stats(client: "AgentClient") -> Tuple[Dict, int]:
@@ -67,7 +122,7 @@ def _build_status_table(
     by_status: Dict[str, int],
     display_config: Dict[str, tuple],
     total: int,
-) -> Dict:
+) -> OutputBlock:
     """
     Build table data for queue status display.
 
@@ -77,30 +132,22 @@ def _build_status_table(
         total: Total entry count
 
     Returns:
-        Table data dict for OutputAdapter.print_table()
+        Structured table block.
     """
-    table_data = {
-        "title": None,
-        "columns": [
-            {"name": "", "style": "white", "width": 3},
+    rows = []
+    for status_name, count in by_status.items():
+        rows.append([_status_label(status_name, display_config), str(count)])
+
+    # Add total row
+    rows.append(["Total", str(total)])
+
+    return table_block(
+        columns=[
             {"name": "Status", "style": "cyan"},
             {"name": "Count", "style": "white", "justify": "right"},
         ],
-        "rows": [],
-    }
-
-    rows = []
-    for status_name, count in by_status.items():
-        # Get display icon from config
-        icon, style = display_config.get(status_name, ("?", "dim"))
-        display_name = status_name.replace("_", " ").title()
-        rows.append([f"[{style}]{icon}[/{style}]", display_name, str(count)])
-
-    # Add total row
-    rows.append(["", "[bold]Total[/bold]", f"[bold]{total}[/bold]"])
-    table_data["rows"] = rows
-
-    return table_data
+        rows=rows,
+    )
 
 
 def show_queue_status(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
@@ -123,67 +170,74 @@ def show_queue_status(client: "AgentClient", output: OutputAdapter) -> Optional[
     has_publication_queue = bool(pub_stats)
 
     if not has_download_queue and not has_publication_queue:
-        output.print("[yellow]No queues initialized[/yellow]", style="warning")
+        _render_blocks(output, [alert_block("No queues initialized", level="warning")])
         return None
+    blocks: list[OutputBlock] = [section_block(title="Queue Status")]
 
-    output.print("\n[bold cyan]📋 Queue Status[/bold cyan]", style="info")
-
-    # === Download Queue Section ===
-    output.print("\n[bold white]⬇️  Download Queue[/bold white]", style="info")
-
+    blocks.append(section_block(title="Download Queue"))
     if has_download_queue:
-        dl_by_status = dl_stats.get("by_status", {})
-        dl_table = _build_status_table(dl_by_status, DOWNLOAD_STATUS_DISPLAY, dl_total)
-        output.print_table(dl_table)
-
-        # Show database breakdown if available
+        dl_rows = [
+            [_status_label(status_name, DOWNLOAD_STATUS_DISPLAY), str(count)]
+            for status_name, count in dl_stats.get("by_status", {}).items()
+        ]
+        dl_rows.append(["Total", str(dl_total)])
+        blocks.append(
+            table_block(
+                title="Status Breakdown",
+                columns=[{"name": "Status"}, {"name": "Count"}],
+                rows=dl_rows,
+            )
+        )
         by_database = dl_stats.get("by_database", {})
         if by_database:
             db_items = [f"{db}: {cnt}" for db, cnt in by_database.items() if cnt > 0]
             if db_items:
-                output.print(f"  [dim]Databases: {', '.join(db_items)}[/dim]")
+                blocks.append(hint_block(f"Databases: {', '.join(db_items)}"))
     else:
-        output.print("  [dim]Not initialized[/dim]")
+        blocks.append(hint_block("Not initialized"))
 
-    # === Publication Queue Section ===
-    output.print("\n[bold white]📚 Publication Queue[/bold white]", style="info")
-
+    blocks.append(section_block(title="Publication Queue"))
     if has_publication_queue:
-        pub_by_status = pub_stats.get("by_status", {})
-        pub_table = _build_status_table(
-            pub_by_status, PUBLICATION_STATUS_DISPLAY, pub_total
+        pub_rows = [
+            [_status_label(status_name, PUBLICATION_STATUS_DISPLAY), str(count)]
+            for status_name, count in pub_stats.get("by_status", {}).items()
+        ]
+        pub_rows.append(["Total", str(pub_total)])
+        blocks.append(
+            table_block(
+                title="Status Breakdown",
+                columns=[{"name": "Status"}, {"name": "Count"}],
+                rows=pub_rows,
+            )
         )
-        output.print_table(pub_table)
-
-        # Show extraction level breakdown if available
         by_level = pub_stats.get("by_extraction_level", {})
         if by_level:
             level_items = [f"{lvl}: {cnt}" for lvl, cnt in by_level.items() if cnt > 0]
             if level_items:
-                output.print(
-                    f"  [dim]Extraction levels: {', '.join(level_items)}[/dim]"
-                )
-
-        # Show identifiers extracted count
+                blocks.append(hint_block(f"Extraction levels: {', '.join(level_items)}"))
         ids_extracted = pub_stats.get("identifiers_extracted", 0)
         if ids_extracted > 0:
-            output.print(f"  [dim]Identifiers extracted: {ids_extracted}[/dim]")
+            blocks.append(hint_block(f"Identifiers extracted: {ids_extracted}"))
     else:
-        output.print("  [dim]Not initialized[/dim]")
+        blocks.append(hint_block("Not initialized"))
 
-    # === Commands Help ===
-    output.print("\n[cyan]💡 Commands:[/cyan]", style="info")
-    output.print(
-        "  • [white]/queue load <file>[/white] - Load .ris file into publication queue"
+    blocks.extend(
+        [
+            list_block(
+                [
+                    "/queue load <file> - Load .ris file into publication queue",
+                    "/queue list - List publication queue items",
+                    "/queue list download - List download queue items",
+                    "/queue clear - Clear publication queue",
+                    "/queue clear download - Clear download queue",
+                    "/queue clear all - Clear all queues",
+                    "/queue export - Export publication queue to workspace",
+                ],
+                title="Commands",
+            )
+        ]
     )
-    output.print("  • [white]/queue list[/white] - List publication queue items")
-    output.print("  • [white]/queue list download[/white] - List download queue items")
-    output.print("  • [white]/queue clear[/white] - Clear publication queue")
-    output.print("  • [white]/queue clear download[/white] - Clear download queue")
-    output.print("  • [white]/queue clear all[/white] - Clear all queues")
-    output.print(
-        "  • [white]/queue export[/white] - Export publication queue to workspace"
-    )
+    _render_blocks(output, blocks)
 
     # Build summary
     grand_total = dl_total + pub_total
@@ -212,7 +266,7 @@ def queue_load_file(
         QueueFileTypeNotSupported: For unsupported file types
     """
     if not filename:
-        output.print("[yellow]Usage: /queue load <file>[/yellow]", style="warning")
+        _render_blocks(output, [alert_block("Usage: /queue load <file>", level="warning")])
         return None
 
     # Resolve file path
@@ -231,13 +285,13 @@ def queue_load_file(
         resolved = resolver.resolve(filename, search_workspace=True, must_exist=True)
 
         if not resolved.is_safe:
-            output.print(
-                f"[red]❌ Security error: {resolved.error}[/red]", style="error"
+            _render_blocks(
+                output, [alert_block(f"Security error: {resolved.error}", level="error")]
             )
             return None
 
         if not resolved.exists:
-            output.print(f"[red]❌ File not found: {filename}[/red]", style="error")
+            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
             return None
 
         file_path = resolved.path
@@ -248,16 +302,14 @@ def queue_load_file(
             file_path = client.data_manager.workspace_path / filename
 
         if not file_path.exists():
-            output.print(f"[red]❌ File not found: {filename}[/red]", style="error")
+            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
             return None
 
     ext = file_path.suffix.lower()
 
     # Supported: .ris files
     if ext in [".ris", ".txt"]:
-        output.print(
-            f"[cyan]📚 Loading into queue: {file_path.name}[/cyan]\n", style="info"
-        )
+        _render_blocks(output, [section_block(title=f"Loading into queue: {file_path.name}")])
 
         try:
             result = client.load_publication_list(
@@ -274,10 +326,9 @@ def queue_load_file(
             malformed = result.get("skipped_count", 0)
 
             if added > 0:
-                output.print(
-                    f"[green]✅ Loaded {added} items into queue[/green]\n",
-                    style="success",
-                )
+                blocks: list[OutputBlock] = [
+                    section_block(body=f"Loaded {added} items into queue")
+                ]
 
                 # Show deduplication info (informational, not warning)
                 if duplicates > 0:
@@ -286,49 +337,56 @@ def queue_load_file(
                         dup_details.append(f"{file_dups} duplicates in file")
                     if queue_dups > 0:
                         dup_details.append(f"{queue_dups} already in queue")
-                    output.print(
-                        f"[dim]ℹ️  Deduplicated: {', '.join(dup_details)}[/dim]"
-                    )
+                    blocks.append(hint_block(f"Deduplicated: {', '.join(dup_details)}"))
 
                 if malformed > 0:
-                    output.print(
-                        f"[yellow]⚠️  Skipped {malformed} malformed entries[/yellow]",
-                        style="warning",
+                    blocks.append(
+                        alert_block(
+                            f"Skipped {malformed} malformed entries",
+                            level="warning",
+                        )
                     )
 
-                output.print(
-                    "\n[bold cyan]What would you like to do with these publications?[/bold cyan]"
+                blocks.append(
+                    list_block(
+                        [
+                            "Extract methods and parameters",
+                            "Search for related datasets (GEO)",
+                            "Build citation network",
+                            "Custom analysis (describe your intent)",
+                        ],
+                        title="Next Steps",
+                    )
                 )
-                output.print("  • Extract methods and parameters")
-                output.print("  • Search for related datasets (GEO)")
-                output.print("  • Build citation network")
-                output.print("  • Custom analysis (describe your intent)\n")
+                _render_blocks(output, blocks)
 
                 return f"Loaded {added} publications into queue from {file_path.name}. Awaiting user intent."
 
             elif duplicates > 0:
                 # All entries were duplicates - not an error, just informational
-                output.print(
-                    f"[cyan]ℹ️  No new items added - all {duplicates} entries already in queue or duplicated[/cyan]",
-                    style="info",
-                )
-                if queue_dups > 0:
-                    output.print(
-                        f"[dim]   ({queue_dups} already in queue, {file_dups} duplicates in file)[/dim]"
+                blocks = [
+                    section_block(
+                        body=f"No new items added - all {duplicates} entries already in queue or duplicated"
                     )
+                ]
+                if queue_dups > 0:
+                    blocks.append(
+                        hint_block(
+                            f"{queue_dups} already in queue, {file_dups} duplicates in file"
+                        )
+                    )
+                _render_blocks(output, blocks)
                 return f"No new publications added from {file_path.name} - all entries were duplicates."
 
             else:
-                output.print(
-                    "[red]❌ No items could be loaded from file[/red]", style="error"
-                )
+                blocks = [alert_block("No items could be loaded from file", level="error")]
                 if result.get("errors"):
-                    for error in result["errors"][:3]:
-                        output.print(f"  • {error}")
+                    blocks.append(list_block([str(error) for error in result["errors"][:3]], title="Errors"))
+                _render_blocks(output, blocks)
                 return None
 
         except Exception as e:
-            output.print(f"[red]❌ Failed to load file: {str(e)}[/red]", style="error")
+            _render_blocks(output, [alert_block(f"Failed to load file: {str(e)}", level="error")])
             return None
 
     # Placeholder: .bib files (BibTeX)
@@ -393,42 +451,22 @@ def _queue_list_publication(
         Summary string for conversation history, or None
     """
     if client.publication_queue is None:
-        output.print(
-            "[yellow]Publication queue not initialized[/yellow]", style="warning"
+        _render_blocks(
+            output, [alert_block("Publication queue not initialized", level="warning")]
         )
         return None
 
     entries = client.publication_queue.list_entries()
 
     if not entries:
-        output.print("[yellow]📚 Publication queue is empty[/yellow]", style="warning")
+        _render_blocks(output, [alert_block("Publication queue is empty", level="warning")])
         return "Publication queue is empty"
 
     # Limit display to first 20 entries
     display_entries = entries[:20]
     total_count = len(entries)
 
-    output.print(
-        f"\n[bold cyan]📚 Publication Queue ({len(display_entries)} of {total_count} shown)[/bold cyan]\n",
-        style="info",
-    )
-
-    table_data = {
-        "title": None,
-        "columns": [
-            {"name": "#", "style": "dim", "width": 4},
-            {
-                "name": "Title",
-                "style": "white",
-                "max_width": 50,
-                "overflow": "ellipsis",
-            },
-            {"name": "Year", "style": "cyan", "width": 6},
-            {"name": "Status", "style": "yellow", "width": 12},
-            {"name": "PMID/DOI", "style": "dim", "width": 20},
-        ],
-        "rows": [],
-    }
+    rows = []
 
     for i, entry in enumerate(display_entries, 1):
         title = (
@@ -441,16 +479,27 @@ def _queue_list_publication(
             entry.status.value if hasattr(entry.status, "value") else str(entry.status)
         )
         # Get icon for status
-        icon, style = PUBLICATION_STATUS_DISPLAY.get(status, ("?", "dim"))
-        status_display = f"[{style}]{icon}[/{style}] {status}"
+        icon, _style = PUBLICATION_STATUS_DISPLAY.get(status, ("?", "dim"))
+        status_display = f"{icon} {status}"
         identifier = entry.pmid or entry.doi or "N/A"
+        rows.append([str(i), title, year, status_display, identifier])
 
-        table_data["rows"].append([str(i), title, year, status_display, identifier])
-
-    output.print_table(table_data)
-
+    blocks: list[OutputBlock] = [
+        section_block(title=f"Publication Queue ({len(display_entries)} of {total_count} shown)"),
+        table_block(
+            columns=[
+                {"name": "#", "width": 4},
+                {"name": "Title"},
+                {"name": "Year", "width": 6},
+                {"name": "Status"},
+                {"name": "PMID/DOI"},
+            ],
+            rows=rows,
+        ),
+    ]
     if total_count > 20:
-        output.print(f"\n[dim]... and {total_count - 20} more items[/dim]")
+        blocks.append(hint_block(f"... and {total_count - 20} more items"))
+    _render_blocks(output, blocks)
 
     return f"Listed {len(display_entries)} of {total_count} publication queue items"
 
@@ -467,41 +516,25 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
         Summary string for conversation history, or None
     """
     if not hasattr(client, "data_manager") or client.data_manager is None:
-        output.print("[yellow]Data manager not initialized[/yellow]", style="warning")
+        _render_blocks(output, [alert_block("Data manager not initialized", level="warning")])
         return None
 
     download_queue = client.data_manager.download_queue
     if download_queue is None:
-        output.print("[yellow]Download queue not initialized[/yellow]", style="warning")
+        _render_blocks(output, [alert_block("Download queue not initialized", level="warning")])
         return None
 
     entries = download_queue.list_entries()
 
     if not entries:
-        output.print("[yellow]⬇️  Download queue is empty[/yellow]", style="warning")
+        _render_blocks(output, [alert_block("Download queue is empty", level="warning")])
         return "Download queue is empty"
 
     # Limit display to first 20 entries
     display_entries = entries[:20]
     total_count = len(entries)
 
-    output.print(
-        f"\n[bold cyan]⬇️  Download Queue ({len(display_entries)} of {total_count} shown)[/bold cyan]\n",
-        style="info",
-    )
-
-    table_data = {
-        "title": None,
-        "columns": [
-            {"name": "#", "style": "dim", "width": 4},
-            {"name": "Accession", "style": "cyan", "width": 14},
-            {"name": "Database", "style": "white", "width": 10},
-            {"name": "Status", "style": "yellow", "width": 14},
-            {"name": "Strategy", "style": "dim", "width": 15},
-            {"name": "Priority", "style": "dim", "width": 8},
-        ],
-        "rows": [],
-    }
+    rows = []
 
     for i, entry in enumerate(display_entries, 1):
         accession = entry.dataset_id or "N/A"
@@ -510,8 +543,8 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
             entry.status.value if hasattr(entry.status, "value") else str(entry.status)
         )
         # Get icon for status
-        icon, style = DOWNLOAD_STATUS_DISPLAY.get(status, ("?", "dim"))
-        status_display = f"[{style}]{icon}[/{style}] {status}"
+        icon, _style = DOWNLOAD_STATUS_DISPLAY.get(status, ("?", "dim"))
+        status_display = f"{icon} {status}"
 
         # Get strategy info
         strategy = "N/A"
@@ -520,14 +553,7 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
 
         priority = str(entry.priority) if entry.priority else "5"
 
-        table_data["rows"].append(
-            [str(i), accession, database, status_display, strategy, priority]
-        )
-
-    output.print_table(table_data)
-
-    if total_count > 20:
-        output.print(f"\n[dim]... and {total_count - 20} more items[/dim]")
+        rows.append([str(i), accession, database, status_display, strategy, priority])
 
     # Show summary by status
     stats = download_queue.get_statistics()
@@ -535,11 +561,28 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
     status_summary = []
     for status_name, count in by_status.items():
         if count > 0:
-            icon, style = DOWNLOAD_STATUS_DISPLAY.get(status_name, ("?", "dim"))
-            status_summary.append(f"[{style}]{icon}[/{style}] {status_name}: {count}")
+            icon, _style = DOWNLOAD_STATUS_DISPLAY.get(status_name, ("?", "dim"))
+            status_summary.append(f"{icon} {status_name}: {count}")
 
+    blocks = [
+        section_block(title=f"Download Queue ({len(display_entries)} of {total_count} shown)"),
+        table_block(
+            columns=[
+                {"name": "#", "width": 4},
+                {"name": "Accession"},
+                {"name": "Database"},
+                {"name": "Status"},
+                {"name": "Strategy"},
+                {"name": "Priority"},
+            ],
+            rows=rows,
+        ),
+    ]
+    if total_count > 20:
+        blocks.append(hint_block(f"... and {total_count - 20} more items"))
     if status_summary:
-        output.print(f"\n[dim]Summary: {' | '.join(status_summary)}[/dim]")
+        blocks.append(hint_block(f"Summary: {' | '.join(status_summary)}"))
+    _render_blocks(output, blocks)
 
     return f"Listed {len(display_entries)} of {total_count} download queue items"
 
@@ -576,19 +619,26 @@ def queue_clear(
         grand_total = pub_total + dl_total
 
         if grand_total == 0:
-            output.print(
-                "[yellow]All queues are already empty[/yellow]", style="warning"
+            _render_blocks(
+                output, [alert_block("All queues are already empty", level="warning")]
             )
             return "All queues were already empty"
 
         # Confirm with user
-        output.print("[yellow]About to clear:[/yellow]", style="warning")
-        output.print(f"  • Publication queue: {pub_total} items")
-        output.print(f"  • Download queue: {dl_total} items")
-        output.print(f"  • Total: {grand_total} items\n")
-        confirm = output.confirm(
-            f"[yellow]Clear all {grand_total} items from both queues?[/yellow]"
+        _render_blocks(
+            output,
+            [
+                kv_block(
+                    [
+                        ("Publication queue", f"{pub_total} items"),
+                        ("Download queue", f"{dl_total} items"),
+                        ("Total", f"{grand_total} items"),
+                    ],
+                    title="About to Clear",
+                )
+            ],
         )
+        confirm = output.confirm(f"Clear all {grand_total} items from both queues?")
 
         if confirm:
             cleared = []
@@ -599,20 +649,25 @@ def queue_clear(
                 client.data_manager.download_queue.clear_queue()
                 cleared.append(f"download ({dl_total})")
 
-            output.print(
-                f"[green]✅ Cleared {grand_total} items from {', '.join(cleared)} queues[/green]",
-                style="success",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"Cleared {grand_total} items from {', '.join(cleared)} queues",
+                        level="success",
+                    )
+                ],
             )
             return f"Cleared {grand_total} items from all queues"
         else:
-            output.print("[cyan]Operation cancelled[/cyan]", style="info")
+            _render_blocks(output, [section_block(body="Operation cancelled")])
             return None
 
     elif queue_type == "download":
         # Clear download queue
         if not hasattr(client, "data_manager") or not client.data_manager:
-            output.print(
-                "[yellow]Data manager not initialized[/yellow]", style="warning"
+            _render_blocks(
+                output, [alert_block("Data manager not initialized", level="warning")]
             )
             return None
 
@@ -621,31 +676,35 @@ def queue_clear(
         total = stats.get("total_entries", 0)
 
         if total == 0:
-            output.print(
-                "[yellow]Download queue is already empty[/yellow]", style="warning"
+            _render_blocks(
+                output, [alert_block("Download queue is already empty", level="warning")]
             )
             return "Download queue was already empty"
 
         # Confirm with user
-        confirm = output.confirm(
-            f"[yellow]Clear all {total} items from download queue?[/yellow]"
-        )
+        confirm = output.confirm(f"Clear all {total} items from download queue?")
 
         if confirm:
             download_queue.clear_queue()
-            output.print(
-                f"[green]✅ Cleared {total} items from download queue[/green]",
-                style="success",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"Cleared {total} items from download queue",
+                        level="success",
+                    )
+                ],
             )
             return f"Cleared {total} items from download queue"
         else:
-            output.print("[cyan]Operation cancelled[/cyan]", style="info")
+            _render_blocks(output, [section_block(body="Operation cancelled")])
             return None
 
     else:  # publication (default)
         if client.publication_queue is None:
-            output.print(
-                "[yellow]Publication queue not initialized[/yellow]", style="warning"
+            _render_blocks(
+                output,
+                [alert_block("Publication queue not initialized", level="warning")],
             )
             return None
 
@@ -654,25 +713,29 @@ def queue_clear(
         total = stats.get("total_entries", 0)
 
         if total == 0:
-            output.print(
-                "[yellow]Publication queue is already empty[/yellow]", style="warning"
+            _render_blocks(
+                output,
+                [alert_block("Publication queue is already empty", level="warning")],
             )
             return "Publication queue was already empty"
 
         # Confirm with user
-        confirm = output.confirm(
-            f"[yellow]Clear all {total} items from publication queue?[/yellow]"
-        )
+        confirm = output.confirm(f"Clear all {total} items from publication queue?")
 
         if confirm:
             client.publication_queue.clear_queue()
-            output.print(
-                f"[green]✅ Cleared {total} items from publication queue[/green]",
-                style="success",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"Cleared {total} items from publication queue",
+                        level="success",
+                    )
+                ],
             )
             return f"Cleared {total} items from publication queue"
         else:
-            output.print("[cyan]Operation cancelled[/cyan]", style="info")
+            _render_blocks(output, [section_block(body="Operation cancelled")])
             return None
 
 
@@ -691,15 +754,15 @@ def queue_export(
         Summary string for conversation history, or None
     """
     if client.publication_queue is None:
-        output.print(
-            "[yellow]Publication queue not initialized[/yellow]", style="warning"
+        _render_blocks(
+            output, [alert_block("Publication queue not initialized", level="warning")]
         )
         return None
 
     stats = client.publication_queue.get_statistics()
     if stats.get("total_entries", 0) == 0:
-        output.print(
-            "[yellow]Queue is empty, nothing to export[/yellow]", style="warning"
+        _render_blocks(
+            output, [alert_block("Queue is empty, nothing to export", level="warning")]
         )
         return None
 
@@ -709,8 +772,8 @@ def queue_export(
 
         name = f"queue_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-    output.print(
-        f"[cyan]📦 Exporting queue to workspace as '{name}'...[/cyan]", style="info"
+    _render_blocks(
+        output, [section_block(body=f"Exporting queue to workspace as '{name}'...")]
     )
 
     try:
@@ -721,13 +784,18 @@ def queue_export(
         # Copy the queue file
         shutil.copy2(source_path, export_path)
 
-        output.print(
-            f"[green]✅ Exported {stats.get('total_entries', 0)} items to: {export_path}[/green]",
-            style="success",
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    f"Exported {stats.get('total_entries', 0)} items to: {export_path}",
+                    level="success",
+                )
+            ],
         )
         return f"Exported {stats.get('total_entries', 0)} queue items to workspace as '{name}'"
     except Exception as e:
-        output.print(f"[red]❌ Export failed: {str(e)}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"Export failed: {str(e)}", level="error")])
         return None
 
 
@@ -781,9 +849,7 @@ def queue_import(
     from lobster.core.schemas.publication_queue import PublicationQueueEntry
 
     if not filename:
-        output.print(
-            "[yellow]Usage: /queue import <file.jsonl>[/yellow]", style="warning"
-        )
+        _render_blocks(output, [alert_block("Usage: /queue import <file.jsonl>", level="warning")])
         return None
 
     # Resolve file path
@@ -802,13 +868,13 @@ def queue_import(
         resolved = resolver.resolve(filename, search_workspace=True, must_exist=True)
 
         if not resolved.is_safe:
-            output.print(
-                f"[red]❌ Security error: {resolved.error}[/red]", style="error"
+            _render_blocks(
+                output, [alert_block(f"Security error: {resolved.error}", level="error")]
             )
             return None
 
         if not resolved.exists:
-            output.print(f"[red]❌ File not found: {filename}[/red]", style="error")
+            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
             return None
 
         file_path = resolved.path
@@ -819,34 +885,37 @@ def queue_import(
             file_path = client.data_manager.workspace_path / filename
 
         if not file_path.exists():
-            output.print(f"[red]❌ File not found: {filename}[/red]", style="error")
+            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
             return None
 
     ext = file_path.suffix.lower()
 
     # Only support .jsonl files for import
     if ext != ".jsonl":
-        output.print(
-            f"[red]❌ Unsupported file type: {ext}[/red]\n"
-            "[yellow]The /queue import command only accepts .jsonl files "
-            "(exported via /queue export).[/yellow]\n"
-            "[dim]To load .ris files, use: /queue load <file.ris>[/dim]",
-            style="error",
+        _render_blocks(
+            output,
+            [
+                alert_block(f"Unsupported file type: {ext}", level="error"),
+                section_block(
+                    body="The /queue import command only accepts .jsonl files (exported via /queue export)."
+                ),
+                hint_block("To load .ris files, use: /queue load <file.ris>"),
+            ],
         )
         return None
 
     if client.publication_queue is None:
-        output.print("[red]❌ Publication queue not initialized[/red]", style="error")
+        _render_blocks(
+            output, [alert_block("Publication queue not initialized", level="error")]
+        )
         return None
 
-    output.print(
-        f"[cyan]📥 Importing queue from: {file_path.name}[/cyan]\n", style="info"
-    )
+    _render_blocks(output, [section_block(body=f"Importing queue from: {file_path.name}")])
 
     # Parse JSONL file
     entries = []
+    parse_blocks: list[OutputBlock] = []
     parse_errors = 0
-    line_count = 0
 
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -855,28 +924,32 @@ def queue_import(
                 if not line:
                     continue
 
-                line_count += 1
                 try:
                     data = json.loads(line)
                     entry = PublicationQueueEntry.from_dict(data)
                     entries.append(entry)
                 except json.JSONDecodeError as e:
                     parse_errors += 1
-                    output.print(
-                        f"[yellow]⚠️  Line {line_num}: Invalid JSON - {e}[/yellow]",
-                        style="warning",
+                    parse_blocks.append(
+                        alert_block(
+                            f"Line {line_num}: Invalid JSON - {e}",
+                            level="warning",
+                        )
                     )
                 except Exception as e:
                     parse_errors += 1
-                    output.print(
-                        f"[yellow]⚠️  Line {line_num}: Invalid entry - {e}[/yellow]",
-                        style="warning",
+                    parse_blocks.append(
+                        alert_block(
+                            f"Line {line_num}: Invalid entry - {e}",
+                            level="warning",
+                        )
                     )
 
+        if parse_blocks:
+            _render_blocks(output, parse_blocks)
+
         if not entries:
-            output.print(
-                "[yellow]No valid entries found in file[/yellow]", style="warning"
-            )
+            _render_blocks(output, [alert_block("No valid entries found in file", level="warning")])
             return None
 
         # Import entries to queue
@@ -887,23 +960,27 @@ def queue_import(
         errors = result.get("errors", 0)
 
         # Display results
+        result_blocks: list[OutputBlock] = []
         if imported > 0:
-            output.print(
-                f"[green]✅ Imported {imported} entries into queue[/green]",
-                style="success",
+            result_blocks.append(
+                alert_block(f"Imported {imported} entries into queue", level="success")
             )
 
         if skipped > 0:
-            output.print(
-                f"[yellow]⏭️  Skipped {skipped} duplicate entries (already in queue)[/yellow]",
-                style="warning",
+            result_blocks.append(
+                alert_block(
+                    f"Skipped {skipped} duplicate entries (already in queue)",
+                    level="warning",
+                )
             )
 
         if errors > 0 or parse_errors > 0:
             total_errors = errors + parse_errors
-            output.print(
-                f"[red]❌ {total_errors} entries failed to import[/red]",
-                style="error",
+            result_blocks.append(
+                alert_block(
+                    f"{total_errors} entries failed to import",
+                    level="error",
+                )
             )
 
         # Check for missing metadata files
@@ -914,20 +991,28 @@ def queue_import(
             )
 
             if missing_count > 0:
-                output.print(
-                    f"\n[yellow]⚠️  {missing_count} referenced metadata files not found in workspace[/yellow]",
-                    style="warning",
+                result_blocks.append(
+                    alert_block(
+                        f"{missing_count} referenced metadata files not found in workspace",
+                        level="warning",
+                    )
                 )
                 # Show first few missing files
                 preview = missing_files[:5]
-                for f in preview:
-                    output.print(f"   • {f}", style="dim")
+                result_blocks.append(list_block(preview, title="Missing Metadata Files"))
                 if missing_count > 5:
-                    output.print(f"   ... and {missing_count - 5} more", style="dim")
+                    result_blocks.append(
+                        hint_block(f"... and {missing_count - 5} more")
+                    )
 
-                output.print(
-                    "\n[dim]Tip: Re-run processing for affected entries to regenerate metadata.[/dim]"
+                result_blocks.append(
+                    hint_block(
+                        "Tip: Re-run processing for affected entries to regenerate metadata."
+                    )
                 )
+
+        if result_blocks:
+            _render_blocks(output, result_blocks)
 
         # Build summary
         summary_parts = []
@@ -941,5 +1026,5 @@ def queue_import(
         return f"Queue import complete: {', '.join(summary_parts)}"
 
     except Exception as e:
-        output.print(f"[red]❌ Import failed: {str(e)}[/red]", style="error")
+        _render_blocks(output, [alert_block(f"Import failed: {str(e)}", level="error")])
         return None

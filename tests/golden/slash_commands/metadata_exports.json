@@ -1,0 +1,93 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Export Files (2 files)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "File Categories\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Category",
+          "Count"
+        ],
+        "rows": [
+          [
+            "analysis_results",
+            "1"
+          ],
+          [
+            "sample_data",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Recent Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "File",
+          "Size",
+          "Modified"
+        ],
+        "rows": [
+          [
+            "analysis_summary.csv",
+            "3.0 KB",
+            "2026-03-02 10:00"
+          ],
+          [
+            "sample_table.tsv",
+            "1.2 KB",
+            "2026-03-01 09:30"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Usage Tips\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Action",
+          "Command"
+        ],
+        "rows": [
+          [
+            "List exports",
+            "/files"
+          ],
+          [
+            "Access in code",
+            "workspace/exports/analysis_summary.csv"
+          ],
+          [
+            "CLI command",
+            "/metadata exports"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Export files: 2 files"
+}

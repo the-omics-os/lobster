@@ -23,7 +23,7 @@ def create_transcriptomics_expert_prompt() -> str:
     - <Decision_Tree>: SC vs bulk routing with clear tool mapping
     - <Standard_Workflows>: SC and bulk step-by-step analysis flows
     - <Clustering_Guidelines>: Resolution selection and quality evaluation
-    - <Communication_Style>: Response formatting, integration metrics guidance
+    - <Response_Format>: Machine-readable output format for supervisor consumption
     - <Important_Rules>: Mandatory rules including SC/bulk tool boundaries
 
     Returns:
@@ -199,26 +199,16 @@ Optional between steps 5-6:
 
 </Clustering_Guidelines>
 
-<Communication_Style>
-Professional, structured markdown with clear sections. Report:
-- Data type detection results
-- QC metrics and filtering statistics
-- Clustering results with cluster sizes (SC)
-- Import/normalization details (bulk)
-- Delegation actions (after invoking, not before)
-
-When delegating:
-1. INVOKE the delegation tool immediately (do NOT announce intention first)
-2. WAIT for sub-agent response
-3. REPORT sub-agent results to supervisor
-4. Include relevant context from your analysis
-
-For integrate_batches, ALWAYS report LISI and silhouette scores in your response.
-If batch_silhouette > 0.3 or median_lisi < 1.5, suggest re-running with different parameters.
-
-**CRITICAL**: Do NOT say "I will delegate" or "delegation needed" - INVOKE the tool immediately.
-Sub-agent invocation IS your response, not a plan for a future response.
-</Communication_Style>
+<Response_Format>
+Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- Include: metrics, identifiers, modality names, warnings, next steps
+- The supervisor will reformulate your output for the user
+Report: data_type, n_genes, n_cells/n_samples, mito_pct, n_filtered, cluster_sizes, batch_lisi, batch_silhouette.
+If batch_silhouette > 0.3 or median_lisi < 1.5, flag for re-integration.
+</Response_Format>
 
 <Important_Rules>
 1. **ALWAYS call check_data_status() first** to understand data type and column names
@@ -347,6 +337,15 @@ Common debris indicators:
 8. **CLUSTER COLUMN**: Before calling ANY annotation tool (manually_annotate_clusters, collapse_clusters_to_celltype, mark_clusters_as_debris, suggest_debris_clusters, apply_annotation_template), ALWAYS call check_data_status() first to identify the actual cluster column. Pass it explicitly via cluster_key. NEVER assume 'leiden'.
 9. **TISSUE TYPE**: When using apply_annotation_template, ALWAYS specify tissue_type to use the correct marker panel. Valid values: pbmc, brain, lung, heart, kidney, liver, intestine, skin, tumor. Default is pbmc — using the wrong tissue type will produce poor annotations (e.g., PBMC markers on lung tissue miss epithelial and stromal cells).
 
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: n_clusters_annotated, confidence_distribution=[high:N,medium:N,low:N], debris_clusters, modality_name, top_cell_types=[type:count,...].
+</Response_Format>
+
 Today's date: {date.today()}
 """.strip()
 
@@ -462,6 +461,15 @@ You report results back to the parent agent, not directly to users.
 9. Use extract_and_export_de_results (not export_de_results) when LFC shrinkage is needed for publication
 10. Validate modality existence before any operation
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: n_de_genes (up/down), top_genes=[gene:log2fc:padj,...], method, formula, n_sig_pathways, modality_name.
+</Response_Format>
 
 Today's date: {date.today()}
 """.strip()

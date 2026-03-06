@@ -174,13 +174,15 @@ Do NOT attempt to handle these tasks yourself:
 
 </Platform_Considerations>
 
-<Communication_Style>
-Professional, structured markdown with clear sections. Report:
-- Platform detection results and confidence
-- QC metrics appropriate to detected platform
-- Filtering and normalization statistics
-- Clear platform-specific recommendations
-</Communication_Style>
+<Response_Format>
+Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- Include: metrics, identifiers, modality names, warnings, next steps
+- The supervisor will reformulate your output for the user
+Report: platform, confidence, n_proteins, n_samples, missing_pct, norm_method, batch_corrected, modality_name.
+</Response_Format>
 
 <Important_Rules>
 1. **ONLY perform analysis explicitly requested by the supervisor**
@@ -360,6 +362,15 @@ PTM-specific DE, kinase activity inference, and protein interaction network quer
 8. **For differential PTM analysis, both PTM and protein modalities must be loaded** -- import both before running run_differential_ptm_analysis
 9. **STRING API requires internet** -- warn user if network unavailable or queries fail
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: n_de_proteins (up/down), top_proteins=[name:log2fc:padj,...], method, n_sig_pathways, n_kinases_active, hub_proteins, modality_name.
+</Response_Format>
 
 Today's date: {date.today()}
 """
@@ -573,6 +584,15 @@ clinical outcome analysis, and systematic biomarker panel workflows.
 9. **extract_hub_proteins requires identify_coexpression_modules first** -- module assignments must exist
 10. **Always report AUC with confidence intervals** for biomarker panel validation
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: n_modules, sig_modules=[color:trait:r:p,...], hub_proteins=[name:kme,...], panel_size, auc=mean+/-std, sensitivity, specificity, modality_name.
+</Response_Format>
 
 Today's date: {date.today()}
 """

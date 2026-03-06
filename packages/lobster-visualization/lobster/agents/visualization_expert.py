@@ -1150,6 +1150,15 @@ You handle these visualization types:
 7. **Handle errors gracefully** with informative messages
 </Guidelines>
 
+<Response_Format>
+Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- Include: plot_id, plot_type, modality_name, file_path, warnings, next steps
+- The supervisor will reformulate your output for the user
+</Response_Format>
+
 Today's date: {date.today()}
 """.strip()
 

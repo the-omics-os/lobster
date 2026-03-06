@@ -74,6 +74,104 @@ def test_check_and_prompt_install_packages_returns_only_successful_package_agent
     assert selected_agents == ["research_agent", "data_expert_agent"]
 
 
+def test_check_and_prompt_install_packages_skips_confirm_in_noninteractive_mode(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(init_commands, "_get_installed_agents", lambda: {})
+    monkeypatch.setattr(
+        "lobster.core.uv_tool_env.is_uv_tool_env",
+        lambda: False,
+    )
+
+    def _unexpected_confirm(*args, **kwargs):
+        raise AssertionError("Confirm.ask should not run in non-interactive mode")
+
+    def _unexpected_install(*args, **kwargs):
+        raise AssertionError("Installer should not run without auto-install")
+
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.init_commands.Confirm.ask",
+        _unexpected_confirm,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.light.agent_commands._uv_pip_install",
+        _unexpected_install,
+    )
+
+    selected_agents = init_commands._check_and_prompt_install_packages(
+        ["lobster-research"],
+        tmp_path / ".lobster_workspace",
+        prompt_for_install=False,
+        auto_install_missing=False,
+    )
+
+    assert selected_agents == []
+
+
+def test_noninteractive_preset_selection_filters_unpublished_agents(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        "lobster.config.agent_presets.is_valid_preset",
+        lambda preset_name: preset_name == "scrna-full",
+    )
+    monkeypatch.setattr(
+        "lobster.config.agent_presets.expand_preset",
+        lambda preset_name: [
+            "research_agent",
+            "metadata_assistant",
+            "annotation_expert",
+        ],
+    )
+    monkeypatch.setattr(
+        init_commands,
+        "AVAILABLE_AGENT_PACKAGES",
+        [
+            ("lobster-research", "Research", ["research_agent"], True),
+            ("lobster-metadata", "Metadata", ["metadata_assistant"], False),
+            (
+                "lobster-transcriptomics",
+                "Transcriptomics",
+                ["annotation_expert"],
+                True,
+            ),
+        ],
+    )
+
+    selected_agents, preset_name = init_commands._perform_agent_selection_non_interactive(
+        agents_flag="",
+        preset_flag="scrna-full",
+        auto_agents_flag=False,
+        agents_description_flag="",
+        workspace_path=tmp_path / ".lobster_workspace",
+    )
+
+    assert selected_agents == ["research_agent", "annotation_expert"]
+    assert preset_name == "scrna-full"
+
+
+def test_prompt_smart_standardization_skips_when_backend_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        init_commands,
+        "_is_vector_search_backend_available",
+        lambda: False,
+    )
+
+    def _unexpected_prompt(*args, **kwargs):
+        raise AssertionError("Prompt.ask should not run when backend is unavailable")
+
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.init_commands.Prompt.ask",
+        _unexpected_prompt,
+    )
+
+    env_lines = init_commands._prompt_smart_standardization(
+        selected_agents=["annotation_expert"]
+    )
+
+    assert env_lines == []
+
+
 def test_postprocess_tui_init_result_normalizes_agents_before_apply(monkeypatch, tmp_path):
     captured = {}
 

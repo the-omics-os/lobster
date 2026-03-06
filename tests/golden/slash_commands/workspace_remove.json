@@ -1,0 +1,17 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Removed: rna\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Shape: 1024 obs \u00d7 2048 vars\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Removed modality: rna"
+}

@@ -159,6 +159,9 @@ class TestCreateSupervisorPreModelHook:
         result = hook({"messages": messages})
         trimmed = result["llm_input_messages"]
         assert len(trimmed) < len(messages)
+        assert result["context_compaction"]["before_count"] == len(messages)
+        assert result["context_compaction"]["after_count"] == len(trimmed)
+        assert result["context_compaction"]["budget_tokens"] == 100
 
     def test_preserves_system_message(self):
         from lobster.agents.context_management import create_supervisor_pre_model_hook
@@ -197,6 +200,7 @@ class TestCreateSupervisorPreModelHook:
         result = hook({"messages": [HumanMessage(content="hi")]})
         assert "llm_input_messages" in result
         assert "messages" not in result
+        assert "context_compaction" not in result
 
 
 class TestResolveContextWindow:

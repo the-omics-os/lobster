@@ -312,7 +312,13 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
         # Fix orphaned ToolMessages that lost their AIMessage partner
         trimmed = _fix_orphaned_tool_messages(trimmed)
 
+        compaction_metadata: dict[str, int] | None = None
         if len(trimmed) < len(messages):
+            compaction_metadata = {
+                "before_count": len(messages),
+                "after_count": len(trimmed),
+                "budget_tokens": _max_tokens,
+            }
             logger.debug(
                 f"pre_model_hook trimmed {len(messages)} -> {len(trimmed)} messages "
                 f"(budget: {_max_tokens} tokens)"
@@ -328,6 +334,9 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
                     trimmed[i] = SystemMessage(content=msg.content + key_index_text)
                     break
 
-        return {"llm_input_messages": trimmed, "store_keys": store_keys}
+        result = {"llm_input_messages": trimmed, "store_keys": store_keys}
+        if compaction_metadata is not None:
+            result["context_compaction"] = compaction_metadata
+        return result
 
     return pre_model_hook

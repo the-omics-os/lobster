@@ -1,0 +1,35 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Loading into queue: publications.ris\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Loaded 2 items into queue\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Deduplicated: 1 duplicates in file\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Next Steps\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- Extract methods and parameters\n- Search for related datasets (GEO)\n- Build citation network\n- Custom analysis (describe your intent)\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Loaded 2 publications into queue from publications.ris. Awaiting user intent."
+}

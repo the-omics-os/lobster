@@ -60,6 +60,10 @@ lobster query "Download GSE109564 and cluster the cells"
 # Or run interactively: lobster chat
 ```
 
+<div align="center">
+  <img alt="Installation and Init" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/recordings/installation_and_init.gif" width="720">
+</div>
+
 <br/>
 
 # 🤖 For AI Coding Agents

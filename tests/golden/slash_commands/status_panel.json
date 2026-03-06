@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "warning",
+        "message": "/status-panel renders Rich dashboard panels and is not available in Go TUI."
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Use /status instead.\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

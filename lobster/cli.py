@@ -900,7 +900,7 @@ def init(
     install_vector_search: bool = typer.Option(
         False,
         "--install-vector-search",
-        help="Install semantic vector search deps (non-interactive mode)",
+        help="Install Smart Standardization dependencies (backend requires lobster-metadata dev package)",
     ),
     skip_extras: bool = typer.Option(
         False,
@@ -1008,12 +1008,15 @@ def _should_try_go_chat_ui(ui_mode: str, reasoning: bool, verbose: bool) -> bool
 
 def _resolve_go_chat_binary(ui_mode: str) -> Optional[str]:
     """Return Go TUI binary path, or raise for explicit `--ui go`."""
+    from lobster.core.component_registry import get_install_command
     from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
 
     binary = find_tui_binary_fast()
     if binary or ui_mode != "go":
         return binary
-    _raise_cli_error("Error: Go TUI binary not found. Install with: pip install lobster-ai-tui")
+    _raise_cli_error(
+        f"Error: Go TUI binary not found. Install with: {get_install_command('lobster-ai-tui')}"
+    )
     return None
 
 
@@ -1069,9 +1072,11 @@ def _maybe_launch_go_chat_ui(
     if not binary:
         if ui_mode == "auto":
             import sys
+            from lobster.core.component_registry import get_install_command
+
             print(
                 "\033[33mNote:\033[0m Go TUI not found, using classic mode. "
-                "Install with: pip install lobster-ai-tui",
+                f"Install with: {get_install_command('lobster-ai-tui')}",
                 file=sys.stderr,
             )
         return False
@@ -1207,9 +1212,11 @@ def dashboard_command(
         from lobster.ui.os_app import run_lobster_os
         run_lobster_os(workspace)
     except ImportError:
+        from lobster.core.component_registry import get_install_command
+
         console.print(
             "[yellow]TUI mode requires the textual package.[/yellow]\n"
-            "Install with: [bold]pip install lobster-ai\\[tui][/bold]"
+            f"Install with: [bold]{get_install_command('classic-tui', is_extra=True)}[/bold]"
         )
         raise typer.Exit(1)
     except Exception as e:
@@ -1364,6 +1371,9 @@ def vector_search_cmd(
 
     Queries MONDO (diseases), UBERON (tissues), and Cell Ontology (cell types)
     and returns top N results per collection in JSON.
+
+    Requires vector dependencies and currently a lobster-metadata development install
+    for backend modules.
 
     \b
     Examples:

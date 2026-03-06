@@ -2,7 +2,7 @@
   "events": [
     {
       "payload": {
-        "content": "\ud83d\udd0c LLM Providers\n"
+        "content": "LLM Providers\n"
       },
       "type": "text"
     },
@@ -16,17 +16,17 @@
         "rows": [
           [
             "OpenAI",
-            "\u2713 Configured",
+            "Configured",
             "\u25cf"
           ],
           [
             "Ollama",
-            "\u2713 Configured",
+            "Configured",
             ""
           ],
           [
             "Anthropic",
-            "\u2717 Not configured",
+            "Not configured",
             ""
           ]
         ]
@@ -35,31 +35,25 @@
     },
     {
       "payload": {
-        "content": "\n\ud83d\udca1 Usage:\n"
+        "content": "Usage\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "content": "  \u2022 /config provider <name> - Switch to specified provider (runtime)\n"
+        "content": "- /config provider <name> - Switch to specified provider (runtime)\n- /config provider <name> --save - Switch and persist to workspace\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "content": "  \u2022 /config provider <name> --save - Switch and persist to workspace\n"
+        "content": "Available providers: openai, ollama, anthropic\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "content": "\nAvailable providers: openai, ollama, anthropic\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "\n\u2713 Current provider: openai\n"
+        "content": "Current provider: openai\n"
       },
       "type": "text"
     }

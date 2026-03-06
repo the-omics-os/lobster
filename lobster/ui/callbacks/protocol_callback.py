@@ -19,7 +19,7 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         self.emit_event = emit_event
         self.current_agent: Optional[str] = None
         self.current_tool: Optional[str] = None
-        self.start_times: Dict[str, datetime] = {}
+        self.active_tool_runs: Dict[str, Dict[str, Any]] = {}
 
     def _emit(self, msg_type: str, payload: Dict[str, Any]) -> None:
         try:
@@ -37,19 +37,25 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
                 return str(next(iter(inputs.values()), ""))
         return input_str or ""
 
+    def _run_key(self, run_id: Any) -> str:
+        if run_id is None:
+            return ""
+        return str(run_id)
+
     def on_tool_start(
         self,
         serialized: Dict[str, Any],
         input_str: str,
         *,
+        run_id: Any = None,
         inputs: Dict[str, Any] | None = None,
         **kwargs,
     ) -> None:
         tool_name = (serialized or {}).get("name", "unknown_tool")
         if tool_name == "unknown_tool":
             return
+        run_key = self._run_key(run_id)
         self.current_tool = tool_name
-        self.start_times[f"tool_{tool_name}"] = datetime.now()
 
         if tool_name.startswith("handoff_to_"):
             target = tool_name.replace("handoff_to_", "")
@@ -58,7 +64,12 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
             self.current_agent = target
             self._emit(
                 "agent_transition",
-                {"from": from_agent, "to": target, "reason": task},
+                {
+                    "from": from_agent,
+                    "to": target,
+                    "reason": task,
+                    "kind": "task",
+                },
             )
             return
 
@@ -67,29 +78,56 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
             self.current_agent = "supervisor"
             self._emit(
                 "agent_transition",
-                {"from": from_agent, "to": "supervisor", "reason": "return"},
+                {
+                    "from": from_agent,
+                    "to": from_agent,
+                    "reason": "return",
+                    "kind": "activity",
+                    "status": "complete",
+                },
             )
             return
+
+        agent = self.current_agent or "unknown"
+        if run_key:
+            self.active_tool_runs[run_key] = {
+                "tool": tool_name,
+                "agent": agent,
+                "started_at": datetime.now(),
+            }
 
         self._emit(
             "tool_execution",
             {
                 "tool": tool_name,
-                "agent": self.current_agent or "unknown",
+                "agent": agent,
                 "status": "running",
+                "tool_call_id": run_key,
             },
         )
 
-    def on_tool_end(self, output: Any, **kwargs) -> None:
-        tool_name = self.current_tool or "unknown_tool"
+    def on_tool_end(self, output: Any, *, run_id: Any = None, **kwargs) -> None:
+        run_key = self._run_key(run_id)
+        run_state = self.active_tool_runs.pop(run_key, None) if run_key else None
+
+        tool_name = (
+            str(run_state.get("tool"))
+            if run_state is not None
+            else self.current_tool or "unknown_tool"
+        )
         if tool_name == "unknown_tool":
             self.current_tool = None
             return
+
+        agent = (
+            str(run_state.get("agent"))
+            if run_state is not None
+            else self.current_agent or "unknown"
+        )
         duration_ms = None
-        key = f"tool_{tool_name}"
-        if key in self.start_times:
-            duration_ms = (datetime.now() - self.start_times[key]).total_seconds() * 1000
-            self.start_times.pop(key, None)
+        started_at = run_state.get("started_at") if run_state is not None else None
+        if isinstance(started_at, datetime):
+            duration_ms = (datetime.now() - started_at).total_seconds() * 1000
 
         summary = ""
         if duration_ms is not None:
@@ -99,18 +137,29 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
             "tool_execution",
             {
                 "tool": tool_name,
-                "agent": self.current_agent or "unknown",
+                "agent": agent,
                 "status": "complete",
                 "summary": summary,
                 "duration_ms": duration_ms,
+                "tool_call_id": run_key,
             },
         )
         self.current_tool = None
 
     def on_tool_error(
-        self, error: Union[Exception, KeyboardInterrupt], **kwargs
+        self,
+        error: Union[Exception, KeyboardInterrupt],
+        *,
+        run_id: Any = None,
+        **kwargs,
     ) -> None:
-        tool_name = self.current_tool or kwargs.get("name", "unknown_tool")
+        run_key = self._run_key(run_id)
+        run_state = self.active_tool_runs.pop(run_key, None) if run_key else None
+        tool_name = (
+            str(run_state.get("tool"))
+            if run_state is not None
+            else self.current_tool or kwargs.get("name", "unknown_tool")
+        )
         if tool_name == "unknown_tool":
             self.current_tool = None
             return
@@ -118,9 +167,14 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
             "tool_execution",
             {
                 "tool": tool_name,
-                "agent": self.current_agent or "unknown",
+                "agent": (
+                    str(run_state.get("agent"))
+                    if run_state is not None
+                    else self.current_agent or "unknown"
+                ),
                 "status": "error",
                 "summary": str(error)[:200],
+                "tool_call_id": run_key,
             },
         )
 
@@ -178,24 +232,7 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         # Dynamic agent detection: matches supervisor and any name ending
         # with _expert, _agent, or _assistant (covers all 21 current agents
         # and future ones without hardcoding).
-        if chain_name == "supervisor" and self.current_agent != "supervisor":
-            self._emit(
-                "agent_transition",
-                {
-                    "from": self.current_agent or "supervisor",
-                    "to": "supervisor",
-                    "reason": "chain_start",
-                },
-            )
+        if chain_name == "supervisor":
             self.current_agent = "supervisor"
         elif any(chain_name.endswith(s) for s in ("_expert", "_agent", "_assistant")):
-            if chain_name != self.current_agent:
-                self._emit(
-                    "agent_transition",
-                    {
-                        "from": self.current_agent or "supervisor",
-                        "to": chain_name,
-                        "reason": "chain_start",
-                    },
-                )
-                self.current_agent = chain_name
+            self.current_agent = chain_name

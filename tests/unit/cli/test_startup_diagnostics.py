@@ -202,6 +202,51 @@ def test_init_client_renders_startup_diagnostic_and_exits(monkeypatch):
     assert "How to fix:" in output
 
 
+def test_init_client_go_tui_mode_skips_terminal_callbacks(tmp_path, monkeypatch):
+    seen = {}
+
+    class _FakeDataManager:
+        def __init__(self, workspace_path, console, session_dir):
+            seen["workspace_path"] = workspace_path
+            seen["console"] = console
+            seen["session_dir"] = session_dir
+
+    def _fake_create_local_agent_client(**kwargs):
+        seen["callbacks"] = kwargs["callbacks"]
+        return SimpleNamespace(profile_timings_enabled=None)
+
+    monkeypatch.setattr(
+        session_infra,
+        "validate_startup_or_raise_startup_diagnostic",
+        lambda workspace=None, provider_override=None: tmp_path,
+    )
+    monkeypatch.setattr("lobster.ui.setup_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "lobster.core.data_manager_v2.DataManagerV2",
+        _FakeDataManager,
+    )
+    monkeypatch.setattr(
+        session_infra,
+        "_resolve_profile_timings_flag",
+        lambda profile_timings: False,
+    )
+    monkeypatch.setattr(
+        session_infra,
+        "_create_local_agent_client",
+        _fake_create_local_agent_client,
+    )
+
+    session_infra.set_go_tui_active(True)
+    try:
+        client = session_infra.init_client_or_raise_startup_diagnostic(workspace=tmp_path)
+    finally:
+        session_infra.set_go_tui_active(False)
+
+    assert client.profile_timings_enabled is False
+    assert seen["workspace_path"] == tmp_path
+    assert seen["callbacks"] == []
+
+
 def test_query_impl_json_reports_structured_startup_error(monkeypatch, capsys):
     diagnostic = StartupDiagnostic(
         code="invalid_provider",

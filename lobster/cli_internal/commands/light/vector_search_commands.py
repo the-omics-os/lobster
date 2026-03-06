@@ -30,20 +30,22 @@ def vector_search_all_collections(
         dict with keys: query, results (per-collection), top_k, backend, embedding_provider.
 
     Raises:
-        ImportError: If chromadb is not installed (vector-search extra).
+        ImportError: If vector backend modules are unavailable in this install.
     """
     try:
         from lobster.services.vector.service import (
             ONTOLOGY_COLLECTIONS,
             VectorSearchService,
         )
-    except ImportError:
+    except ImportError as exc:
         from lobster.core.component_registry import get_install_command
 
         cmd = get_install_command("vector-search", is_extra=True)
         raise ImportError(
-            f"Vector search requires the vector-search extra.\n" f"Install with: {cmd}"
-        )
+            "Vector search backend is not available in this install.\n"
+            f"Install vector dependencies with: {cmd}\n"
+            "Then install the lobster-metadata development package for the backend modules."
+        ) from exc
 
     service = VectorSearchService()
     effective_top_k = top_k if top_k is not None else 5

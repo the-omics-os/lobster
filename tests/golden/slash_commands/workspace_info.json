@@ -1,0 +1,50 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Dataset: geo_gse12345_rna\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Property",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Name",
+            "geo_gse12345_rna"
+          ],
+          [
+            "Status",
+            "Not Loaded"
+          ],
+          [
+            "Path",
+            "/tmp/lobster_ws/data/geo_gse12345_rna.h5ad"
+          ],
+          [
+            "Size",
+            "12.50 MB"
+          ],
+          [
+            "Shape",
+            "1,024 observations \u00d7 2,048 variables"
+          ],
+          [
+            "Type",
+            "h5ad"
+          ],
+          [
+            "Modified",
+            "2026-03-01T10:00:00"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Displayed details for 1 dataset(s)"
+}

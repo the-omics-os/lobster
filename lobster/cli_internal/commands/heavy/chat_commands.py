@@ -677,9 +677,9 @@ def _show_workspace_prompt(client):
         except Exception:
             disk_free_gb = "?"
 
-        # Check semantic search availability
+        # Check semantic search backend availability
         try:
-            import chromadb  # noqa: F401
+            from lobster.services.vector.service import VectorSearchService  # noqa: F401
 
             has_semantic = True
         except ImportError:
@@ -881,42 +881,33 @@ def chat_impl(
     session_id_for_client = None
 
     if session_id:
-        # Resolve workspace early to check for session files
         from lobster.core.workspace import resolve_workspace
 
+        from lobster.cli_internal.commands.heavy.session_infra import (
+            resolve_session_continuation,
+        )
+
         workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+        (
+            session_file_to_load,
+            session_id_for_client,
+            found_existing_session,
+        ) = resolve_session_continuation(workspace_path, session_id)
 
         if session_id == "latest":
-            # Find most recent session file
-            session_files = list(workspace_path.glob("session_*.json"))
-            if session_files:
-                # Sort by modification time (most recent first)
-                session_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                session_file_to_load = session_files[0]
+            if found_existing_session and session_id_for_client:
                 console.print(
-                    f"[cyan]📂 Loading session: {session_file_to_load.name}[/cyan]"
+                    f"[cyan]📂 Loading latest session: {session_id_for_client}[/cyan]"
                 )
             else:
                 console.print(
                     "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
                 )
+                session_id_for_client = None
+        elif found_existing_session and session_id_for_client:
+            console.print(f"[cyan]📂 Loading session: {session_id_for_client}[/cyan]")
         else:
-            # Explicit session ID provided
-            # Try with session_ prefix first
-            session_file_candidate = workspace_path / f"session_{session_id}.json"
-            if not session_file_candidate.exists():
-                # Try exact filename
-                session_file_candidate = workspace_path / f"{session_id}.json"
-
-            if session_file_candidate.exists():
-                session_file_to_load = session_file_candidate
-                console.print(
-                    f"[cyan]📂 Loading session: {session_file_candidate.name}[/cyan]"
-                )
-            else:
-                # Session file doesn't exist - use this session_id for new session
-                session_id_for_client = session_id
-                console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
+            console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
 
     # Show DNA animation (starts instantly thanks to lazy imports)
     display_welcome()
@@ -1093,6 +1084,11 @@ def chat_impl(
 
         except KeyboardInterrupt:
             if Confirm.ask("\n[dim]exit?[/dim]"):
+                if hasattr(client, "_save_session_json"):
+                    try:
+                        client._save_session_json()
+                    except Exception:
+                        pass
                 display_goodbye()
 
                 # Display session ID for continuity
@@ -1208,5 +1204,3 @@ def handle_command(command: str, client: "AgentClient"):
 # Import these from lobster.cli_internal.commands instead of defining them here.
 # This ensures CLI and Dashboard use the same implementation (Single Source of Truth).
 # ============================================================================
-
-

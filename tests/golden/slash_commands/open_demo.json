@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "success",
+        "message": "Opened demo.txt"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Path: /private/tmp/lobster_ws/demo.txt\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Opened demo.txt"
+}

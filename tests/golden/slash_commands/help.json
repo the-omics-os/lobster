@@ -2,7 +2,7 @@
   "events": [
     {
       "payload": {
-        "content": "## Quick Start\n\n"
+        "content": "Quick Start\n"
       },
       "type": "text"
     },
@@ -20,7 +20,7 @@
     },
     {
       "payload": {
-        "content": "Load data: /read <file> (supports *.h5ad, *.csv, etc.)\n\n"
+        "content": "Load data: /read <file> (supports *.h5ad, *.csv, etc.)\n"
       },
       "type": "text"
     },

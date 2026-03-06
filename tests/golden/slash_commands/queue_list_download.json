@@ -1,0 +1,56 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Download Queue (3 of 3 shown)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "#",
+          "Accession",
+          "Database",
+          "Status",
+          "Strategy",
+          "Priority"
+        ],
+        "rows": [
+          [
+            "1",
+            "GSE12345",
+            "geo",
+            "\u25cb pending",
+            "fastq",
+            "3"
+          ],
+          [
+            "2",
+            "SRP000001",
+            "sra",
+            "\u2713 completed",
+            "sra",
+            "1"
+          ],
+          [
+            "3",
+            "GSE77777",
+            "geo",
+            "\u25cb pending",
+            "N/A",
+            "5"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Summary: \u25cb pending: 2 | \u2713 completed: 1\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Listed 3 of 3 download queue items"
+}

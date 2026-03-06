@@ -1,0 +1,133 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Metadata Overview\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Publication Queue\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Status",
+          "Count"
+        ],
+        "rows": [
+          [
+            "\u23f3 pending",
+            "2"
+          ],
+          [
+            "\ud83d\udcc4 metadata_extracted",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Total: 3 | Workspace-ready: 1 | Extracted datasets: 2\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Sample Statistics\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Total Samples",
+            "1,200"
+          ],
+          [
+            "BioProjects",
+            "4"
+          ],
+          [
+            "Filtered Samples",
+            "900"
+          ],
+          [
+            "Retention",
+            "75.0%"
+          ],
+          [
+            "Disease Coverage",
+            "\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591 62.5%"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Workspace Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Metadata Files",
+            "3 (4.5 MB)"
+          ],
+          [
+            "Export Files",
+            "2"
+          ],
+          [
+            "In-memory Entries",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Next Steps\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- /metadata publications\n- /metadata workspace\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "warning",
+        "message": "Found files in deprecated metadata/exports/ location. Use /metadata workspace for details."
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Commands: /metadata publications | samples | workspace | exports | clear\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Metadata overview: 3 publications, 1200 samples"
+}

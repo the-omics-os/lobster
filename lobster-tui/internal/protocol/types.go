@@ -301,6 +301,8 @@ type ToolExecutionPayload struct {
 	ToolName string             `json:"tool_name"`
 	Event    ToolExecutionEvent `json:"event"`
 	Agent    string             `json:"agent,omitempty"`
+	// ToolCallID is the stable execution identity for this tool lifecycle.
+	ToolCallID string `json:"tool_call_id,omitempty"`
 	// Summary is an optional one-line description shown to the user.
 	Summary string `json:"summary,omitempty"`
 }

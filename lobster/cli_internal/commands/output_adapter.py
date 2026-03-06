@@ -1,94 +1,192 @@
 """
-Output adapter for command results - abstracts CLI vs Dashboard rendering.
+Output adapters for command results.
 
-Design: Commands return structured data + rendering hints. OutputAdapter
-handles the actual formatting for Rich Console (CLI) or ResultsDisplay (Dashboard).
+Commands can emit a small structured block contract and let adapters render it
+for Rich console, dashboard, JSON, or the Go TUI protocol.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+import re
+from typing import Any, Dict, Iterable, Optional, Sequence
 
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
 
+_RICH_TAG_RE = re.compile(r"\[/?[^\]]+\]")
+_ALERT_STYLES = {"error", "warning", "success", "info"}
+
+
+def _strip_markup(text: str) -> str:
+    return _RICH_TAG_RE.sub("", text)
+
+
+@dataclass(frozen=True)
+class OutputBlock:
+    kind: str
+    data: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"kind": self.kind, **self.data}
+
+
+def section_block(
+    *,
+    title: Optional[str] = None,
+    body: Optional[str] = None,
+    style: Optional[str] = None,
+) -> OutputBlock:
+    data: Dict[str, Any] = {}
+    if title is not None:
+        data["title"] = title
+    if body is not None:
+        data["body"] = body
+    if style is not None:
+        data["style"] = style
+    return OutputBlock(kind="section", data=data)
+
+
+def kv_block(
+    rows: Iterable[tuple[str, Any]],
+    *,
+    title: Optional[str] = None,
+    key_label: str = "Field",
+    value_label: str = "Value",
+) -> OutputBlock:
+    return OutputBlock(
+        kind="kv",
+        data={
+            "title": title,
+            "rows": [[str(key), str(value)] for key, value in rows],
+            "key_label": key_label,
+            "value_label": value_label,
+        },
+    )
+
+
+def table_block(
+    columns: Sequence[Dict[str, Any]],
+    rows: Sequence[Sequence[Any]],
+    *,
+    title: Optional[str] = None,
+    width: Optional[int] = None,
+) -> OutputBlock:
+    return OutputBlock(
+        kind="table",
+        data={
+            "title": title,
+            "columns": [dict(col) for col in columns],
+            "rows": [[str(cell) for cell in row] for row in rows],
+            "width": width,
+        },
+    )
+
+
+def list_block(
+    items: Sequence[str],
+    *,
+    title: Optional[str] = None,
+    ordered: bool = False,
+) -> OutputBlock:
+    return OutputBlock(
+        kind="list",
+        data={
+            "title": title,
+            "items": list(items),
+            "ordered": ordered,
+        },
+    )
+
+
+def code_block(
+    code: str,
+    *,
+    language: str = "python",
+    title: Optional[str] = None,
+) -> OutputBlock:
+    return OutputBlock(
+        kind="code",
+        data={
+            "title": title,
+            "code": code,
+            "language": language,
+        },
+    )
+
+
+def alert_block(
+    message: str,
+    *,
+    level: str = "info",
+    title: Optional[str] = None,
+) -> OutputBlock:
+    return OutputBlock(
+        kind="alert",
+        data={
+            "title": title,
+            "message": message,
+            "level": level,
+        },
+    )
+
+
+def hint_block(message: str, *, title: Optional[str] = None) -> OutputBlock:
+    return OutputBlock(
+        kind="hint",
+        data={
+            "title": title,
+            "message": message,
+        },
+    )
+
+
+def _legacy_table_to_block(table_data: Dict[str, Any]) -> OutputBlock:
+    return table_block(
+        columns=table_data.get("columns", []),
+        rows=table_data.get("rows", []),
+        title=table_data.get("title"),
+        width=table_data.get("width"),
+    )
+
+
 class OutputAdapter(ABC):
-    """
-    Abstract interface for command output.
-
-    Allows commands to be UI-agnostic by providing a common API for
-    displaying text, tables, and confirmations.
-    """
+    """Abstract interface for command output."""
 
     @abstractmethod
-    def print(self, message: str, style: Optional[str] = None) -> None:
-        """
-        Print a message with optional style.
-
-        Args:
-            message: Message text (supports Rich markup for CLI, plain for Dashboard)
-            style: Style hint - "info", "success", "warning", "error"
-        """
-        pass
-
-    @abstractmethod
-    def print_table(self, table_data: Dict[str, Any]) -> None:
-        """
-        Render a table from structured data.
-
-        Args:
-            table_data: Dict with keys:
-                - columns: List[Dict] with "name", "style", "width" keys
-                - rows: List[List[str]] - table data
-                - title: Optional[str] - table title
-        """
-        pass
+    def render_blocks(self, blocks: Sequence[OutputBlock]) -> None:
+        """Render structured output blocks."""
 
     @abstractmethod
     def confirm(self, question: str) -> bool:
-        """
-        Ask user for confirmation.
-
-        Args:
-            question: Question to ask
-
-        Returns:
-            bool: True if confirmed, False otherwise
-        """
-        pass
+        """Ask user for confirmation."""
 
     @abstractmethod
     def prompt(self, question: str, default: str = "") -> str:
-        """
-        Prompt user for text input.
+        """Prompt user for text input."""
 
-        Args:
-            question: Prompt text
-            default: Default value if user presses Enter
+    def print(self, message: str, style: Optional[str] = None) -> None:
+        if style in _ALERT_STYLES:
+            self.render_blocks([alert_block(message, level=style)])
+            return
+        if style == "dim":
+            self.render_blocks([hint_block(message)])
+            return
+        self.render_blocks([section_block(body=message, style=style)])
 
-        Returns:
-            str: User input or default
-        """
-        pass
+    def print_table(self, table_data: Dict[str, Any]) -> None:
+        self.render_blocks([_legacy_table_to_block(table_data)])
 
-    @abstractmethod
     def print_code_block(self, code: str, language: str = "python") -> None:
-        """
-        Print formatted code block.
-
-        Args:
-            code: Code content
-            language: Syntax highlighting language hint
-        """
-        pass
+        self.render_blocks([code_block(code, language=language)])
 
 
 class ConsoleOutputAdapter(OutputAdapter):
     """OutputAdapter for Rich Console (CLI mode)."""
 
-    # Map semantic style hints to concrete Rich styles so that bare Console()
-    # instances (created without LobsterTheme.RICH_THEME) don't raise MissingStyle.
     _SEMANTIC_STYLES: Dict[str, str] = {
         "warning": "bold yellow",
         "info": "bold cyan",
@@ -100,33 +198,90 @@ class ConsoleOutputAdapter(OutputAdapter):
     def __init__(self, console: Console):
         self.console = console
 
-    def print(self, message: str, style: Optional[str] = None) -> None:
-        """Print message with optional semantic style.
+    def render_blocks(self, blocks: Sequence[OutputBlock]) -> None:
+        for block in blocks:
+            self._render_block(block)
 
-        Rich markup in the message is always parsed so inline tags like
-        ``[yellow]...[/yellow]`` render correctly.  The *style* parameter
-        is resolved from semantic hints ("warning", "info", …) to concrete
-        Rich styles and applied as the base style, composing with any
-        inline markup.
-        """
-        if style:
-            actual_style = self._SEMANTIC_STYLES.get(style, style)
-            self.console.print(message, style=actual_style)
-        else:
-            self.console.print(message)
+    def _render_block(self, block: OutputBlock) -> None:
+        data = block.data
+        if block.kind == "section":
+            title = data.get("title")
+            body = data.get("body")
+            style = self._resolve_style(data.get("style"))
+            if title:
+                self.console.print(title, style=style)
+            if body:
+                self.console.print(body, style=style)
+            return
 
-    def print_table(self, table_data: Dict[str, Any]) -> None:
-        """Render Rich Table."""
+        if block.kind == "kv":
+            rows = data.get("rows", [])
+            self._print_table_data(
+                {
+                    "title": data.get("title"),
+                    "columns": [
+                        {"name": data.get("key_label", "Field")},
+                        {"name": data.get("value_label", "Value")},
+                    ],
+                    "rows": rows,
+                }
+            )
+            return
+
+        if block.kind == "table":
+            self._print_table_data(
+                {
+                    "title": data.get("title"),
+                    "columns": data.get("columns", []),
+                    "rows": data.get("rows", []),
+                    "width": data.get("width"),
+                }
+            )
+            return
+
+        if block.kind == "list":
+            title = data.get("title")
+            if title:
+                self.console.print(title)
+            ordered = bool(data.get("ordered"))
+            for index, item in enumerate(data.get("items", []), start=1):
+                prefix = f"{index}." if ordered else "-"
+                self.console.print(f"{prefix} {item}")
+            return
+
+        if block.kind == "code":
+            title = data.get("title")
+            if title:
+                self.console.print(title)
+            self._print_code(data.get("code", ""), data.get("language", "python"))
+            return
+
+        if block.kind == "alert":
+            title = data.get("title")
+            message = data.get("message", "")
+            text = f"{title}\n{message}" if title else message
+            self.console.print(text, style=self._resolve_style(data.get("level")))
+            return
+
+        if block.kind == "hint":
+            title = data.get("title")
+            message = data.get("message", "")
+            text = f"{title}\n{message}" if title else message
+            self.console.print(text, style=self._resolve_style("dim"))
+            return
+
+        raise ValueError(f"Unsupported output block kind: {block.kind}")
+
+    def _print_table_data(self, table_data: Dict[str, Any]) -> None:
         table = Table(
             box=box.ROUNDED,
             title=table_data.get("title"),
-            width=table_data.get("width"),  # Optional fixed table width
+            width=table_data.get("width"),
         )
 
-        # Add columns
         for col in table_data.get("columns", []):
             table.add_column(
-                col["name"],
+                str(col.get("name", "")),
                 style=col.get("style", "white"),
                 width=col.get("width"),
                 max_width=col.get("max_width"),
@@ -134,210 +289,272 @@ class ConsoleOutputAdapter(OutputAdapter):
                 justify=col.get("justify", "left"),
             )
 
-        # Add rows
         for row in table_data.get("rows", []):
-            table.add_row(*row)
+            table.add_row(*[str(cell) for cell in row])
 
         self.console.print(table)
 
     def prompt(self, question: str, default: str = "") -> str:
-        """Prompt user for text input using Rich Prompt."""
         from rich.prompt import Prompt
 
         return Prompt.ask(question, default=default, console=self.console)
 
     def confirm(self, question: str) -> bool:
-        """Ask for confirmation using Rich Confirm."""
         from rich.prompt import Confirm
 
         return Confirm.ask(question)
 
-    def print_code_block(self, code: str, language: str = "python") -> None:
-        """Print syntax-highlighted code."""
+    def _print_code(self, code: str, language: str = "python") -> None:
         from rich.syntax import Syntax
 
         syntax = Syntax(code, language, theme="monokai")
         self.console.print(syntax)
+
+    def _resolve_style(self, style: Optional[str]) -> Optional[str]:
+        if not style:
+            return None
+        return self._SEMANTIC_STYLES.get(style, style)
 
 
 class JsonOutputAdapter(OutputAdapter):
     """OutputAdapter that collects structured data for JSON serialization."""
 
     def __init__(self):
-        self.messages: list[dict] = []
-        self.tables: list[dict] = []
-        self._code_blocks: list[dict] = []
+        self.blocks: list[dict] = []
 
-    def print(self, message: str, style: Optional[str] = None) -> None:
-        """Collect message text, stripping Rich markup."""
-        clean = self._strip_markup(message)
-        entry = {"text": clean}
-        if style:
-            entry["style"] = style
-        self.messages.append(entry)
-
-    def print_table(self, table_data: Dict[str, Any]) -> None:
-        """Extract columns and rows into a serializable dict."""
-        columns = [
-            self._strip_markup(str(col.get("name", "")))
-            for col in table_data.get("columns", [])
-        ]
-        rows = [
-            [self._strip_markup(str(cell)) for cell in row]
-            for row in table_data.get("rows", [])
-        ]
-        entry: Dict[str, Any] = {"columns": columns, "rows": rows}
-        title = table_data.get("title")
-        if title:
-            entry["title"] = self._strip_markup(title)
-        self.tables.append(entry)
+    def render_blocks(self, blocks: Sequence[OutputBlock]) -> None:
+        for block in blocks:
+            self.blocks.append(self._sanitize_block(block))
 
     def prompt(self, question: str, default: str = "") -> str:
-        """Non-interactive: return default value."""
-        self.messages.append(
-            {
-                "text": f"Prompt skipped (non-interactive): {self._strip_markup(question)} -> {default!r}",
-                "style": "warning",
-            }
+        self.render_blocks(
+            [
+                alert_block(
+                    f"Prompt skipped (non-interactive): {_strip_markup(question)} -> {default!r}",
+                    level="warning",
+                )
+            ]
         )
         return default
 
     def confirm(self, question: str) -> bool:
-        """Non-interactive: always returns False."""
-        self.messages.append(
-            {
-                "text": f"Confirmation skipped (non-interactive): {self._strip_markup(question)}",
-                "style": "warning",
-            }
+        self.render_blocks(
+            [
+                alert_block(
+                    f"Confirmation skipped (non-interactive): {_strip_markup(question)}",
+                    level="warning",
+                )
+            ]
         )
         return False
 
-    def print_code_block(self, code: str, language: str = "python") -> None:
-        """Collect code blocks."""
-        self._code_blocks.append({"code": code, "language": language})
-
     def to_dict(self) -> Dict[str, Any]:
-        """Return collected data, omitting empty keys."""
         result: Dict[str, Any] = {}
-        if self.tables:
-            result["tables"] = self.tables
-        if self.messages:
-            result["messages"] = self.messages
-        if self._code_blocks:
-            result["code_blocks"] = self._code_blocks
+        if self.blocks:
+            result["blocks"] = self.blocks
+
+        messages = []
+        tables = []
+        code_blocks = []
+        for block in self.blocks:
+            kind = block["kind"]
+            if kind in {"section", "alert", "hint"}:
+                body = block.get("body")
+                if kind == "alert":
+                    body = block.get("message")
+                if kind == "hint":
+                    body = block.get("message")
+                if body:
+                    entry = {"text": body}
+                    if kind == "alert":
+                        entry["style"] = block.get("level")
+                    elif kind == "hint":
+                        entry["style"] = "dim"
+                    elif block.get("style"):
+                        entry["style"] = block.get("style")
+                    messages.append(entry)
+            elif kind == "table":
+                tables.append(
+                    {
+                        "title": block.get("title"),
+                        "columns": [
+                            _strip_markup(str(col.get("name", "")))
+                            for col in block.get("columns", [])
+                        ],
+                        "rows": [
+                            [_strip_markup(str(cell)) for cell in row]
+                            for row in block.get("rows", [])
+                        ],
+                    }
+                )
+            elif kind == "kv":
+                tables.append(
+                    {
+                        "title": block.get("title"),
+                        "columns": [
+                            block.get("key_label", "Field"),
+                            block.get("value_label", "Value"),
+                        ],
+                        "rows": [
+                            [_strip_markup(str(cell)) for cell in row]
+                            for row in block.get("rows", [])
+                        ],
+                    }
+                )
+            elif kind == "code":
+                code_blocks.append(
+                    {
+                        "code": block.get("code", ""),
+                        "language": block.get("language", "python"),
+                    }
+                )
+
+        if messages:
+            result["messages"] = messages
+        if tables:
+            result["tables"] = tables
+        if code_blocks:
+            result["code_blocks"] = code_blocks
         return result
 
-    @staticmethod
-    def _strip_markup(text: str) -> str:
-        """Strip Rich markup tags from text."""
-        import re
+    def _sanitize_block(self, block: OutputBlock) -> Dict[str, Any]:
+        data = block.to_dict()
+        sanitized: Dict[str, Any] = {"kind": data["kind"]}
+        for key, value in data.items():
+            if key == "kind":
+                continue
+            sanitized[key] = self._sanitize_value(value)
+        return sanitized
 
-        return re.sub(r"\[/?[^\]]+\]", "", text)
+    def _sanitize_value(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return _strip_markup(value)
+        if isinstance(value, list):
+            return [self._sanitize_value(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._sanitize_value(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): self._sanitize_value(item) for key, item in value.items()}
+        return value
 
 
 class DashboardOutputAdapter(OutputAdapter):
     """OutputAdapter for Textual ResultsDisplay (Dashboard mode)."""
 
     def __init__(self, results_display):
-        """
-        Initialize with ResultsDisplay widget.
-
-        Args:
-            results_display: ResultsDisplay widget instance
-        """
         self.results_display = results_display
 
-    def print(self, message: str, style: Optional[str] = None) -> None:
-        """
-        Print to ResultsDisplay as system message.
+    def render_blocks(self, blocks: Sequence[OutputBlock]) -> None:
+        for block in blocks:
+            self._render_block(block)
 
-        Strips Rich markup for cleaner dashboard display.
-        """
-        # Strip Rich markup for dashboard
-        clean_message = self._strip_markup(message)
-        self.results_display.append_system_message(clean_message)
-
-    def print_table(self, table_data: Dict[str, Any]) -> None:
-        """
-        Render table as formatted markdown in dashboard.
-
-        Uses GitHub-flavored markdown table syntax.
-        """
-        # Build markdown table
-        columns = table_data.get("columns", [])
-        rows = table_data.get("rows", [])
-
-        if not columns or not rows:
+    def _render_block(self, block: OutputBlock) -> None:
+        data = block.data
+        if block.kind == "section":
+            parts = []
+            if data.get("title"):
+                parts.append(f"**{_strip_markup(data['title'])}**")
+            if data.get("body"):
+                parts.append(_strip_markup(data["body"]))
+            if parts:
+                self.results_display.append_system_message("\n\n".join(parts))
             return
 
-        # Header
-        header = "| " + " | ".join(
-            self._strip_markup(str(col.get("name", ""))) for col in columns
-        ) + " |"
-        separator = "|" + "|".join("---" for _ in columns) + "|"
-
-        # Rows
-        table_rows = []
-        for row in rows:
-            table_rows.append(
-                "| "
-                + " | ".join(self._strip_markup(str(cell)) for cell in row)
-                + " |"
+        if block.kind == "kv":
+            self._render_block(
+                table_block(
+                    columns=[
+                        {"name": data.get("key_label", "Field")},
+                        {"name": data.get("value_label", "Value")},
+                    ],
+                    rows=data.get("rows", []),
+                    title=data.get("title"),
+                )
             )
+            return
 
-        # Combine
-        title = table_data.get("title", "")
-        markdown = f"**{title}**\n\n" if title else ""
-        markdown += header + "\n" + separator + "\n" + "\n".join(table_rows)
+        if block.kind == "table":
+            columns = block.data.get("columns", [])
+            rows = block.data.get("rows", [])
+            if not columns or not rows:
+                return
 
-        self.results_display.append_system_message(markdown)
+            header = "| " + " | ".join(
+                _strip_markup(str(col.get("name", ""))) for col in columns
+            ) + " |"
+            separator = "|" + "|".join("---" for _ in columns) + "|"
+            table_rows = [
+                "| "
+                + " | ".join(_strip_markup(str(cell)) for cell in row)
+                + " |"
+                for row in rows
+            ]
+            title = data.get("title")
+            markdown = f"**{_strip_markup(title)}**\n\n" if title else ""
+            markdown += header + "\n" + separator + "\n" + "\n".join(table_rows)
+            self.results_display.append_system_message(markdown)
+            return
+
+        if block.kind == "list":
+            items = data.get("items", [])
+            if not items:
+                return
+            lines = []
+            if data.get("title"):
+                lines.append(f"**{_strip_markup(data['title'])}**")
+                lines.append("")
+            ordered = bool(data.get("ordered"))
+            for index, item in enumerate(items, start=1):
+                prefix = f"{index}." if ordered else "-"
+                lines.append(f"{prefix} {_strip_markup(item)}")
+            self.results_display.append_system_message("\n".join(lines))
+            return
+
+        if block.kind == "code":
+            lines = []
+            if data.get("title"):
+                lines.append(f"**{_strip_markup(data['title'])}**")
+                lines.append("")
+            lines.append(
+                f"```{data.get('language', 'python')}\n{data.get('code', '')}\n```"
+            )
+            self.results_display.append_system_message("\n".join(lines))
+            return
+
+        if block.kind == "alert":
+            title = data.get("title")
+            message = _strip_markup(data.get("message", ""))
+            parts = []
+            if title:
+                parts.append(f"**{_strip_markup(title)}**")
+            parts.append(message)
+            self.results_display.append_system_message("\n".join(parts))
+            return
+
+        if block.kind == "hint":
+            title = data.get("title")
+            message = _strip_markup(data.get("message", ""))
+            text = f"**{_strip_markup(title)}**\n{message}" if title else message
+            self.results_display.append_system_message(text)
+            return
+
+        raise ValueError(f"Unsupported output block kind: {block.kind}")
 
     def prompt(self, question: str, default: str = "") -> str:
-        """
-        Dashboard doesn't support interactive prompts.
-
-        Returns default value and notifies user.
-        """
-        clean_question = self._strip_markup(question)
+        clean_question = _strip_markup(question)
         self.results_display.append_system_message(
             f"ℹ️ Using default for '{clean_question}': {default!r}"
         )
         return default
 
     def confirm(self, question: str) -> bool:
-        """
-        Dashboard doesn't support interactive confirmations.
-
-        Returns False (safe default - no destructive operations).
-        Display message to user instead.
-        """
-        clean_question = self._strip_markup(question)
+        clean_question = _strip_markup(question)
         self.results_display.append_system_message(
             f"⚠️ Confirmation required: {clean_question}\n"
             "Interactive confirmations not supported in dashboard. "
             "Use CLI mode for destructive operations."
         )
         return False
-
-    def print_code_block(self, code: str, language: str = "python") -> None:
-        """Print code as markdown code block."""
-        markdown = f"```{language}\n{code}\n```"
-        self.results_display.append_system_message(markdown)
-
-    def _strip_markup(self, text: str) -> str:
-        """
-        Strip Rich markup tags from text.
-
-        Args:
-            text: Text with Rich markup (e.g., "[cyan]text[/cyan]")
-
-        Returns:
-            Plain text without markup
-        """
-        import re
-
-        # Remove [style] and [/style] tags
-        return re.sub(r"\[/?[^\]]+\]", "", text)
 
 
 class ProtocolOutputAdapter(OutputAdapter):
@@ -346,37 +563,102 @@ class ProtocolOutputAdapter(OutputAdapter):
     def __init__(self, send_fn):
         self._send = send_fn
 
-    def print(self, message: str, style: Optional[str] = None) -> None:
-        clean = self._strip_markup(message)
-        if style in ("error", "warning", "success", "info"):
-            self._send("alert", {"level": style, "message": clean})
-        else:
-            self._send("text", {"content": clean + "\n"})
+    def render_blocks(self, blocks: Sequence[OutputBlock]) -> None:
+        for block in blocks:
+            self._render_block(block)
 
-    def print_table(self, table_data: Dict[str, Any]) -> None:
-        headers = [
-            self._strip_markup(str(col.get("name", "")))
-            for col in table_data.get("columns", [])
-        ]
-        rows = [
-            [self._strip_markup(str(cell)) for cell in row]
-            for row in table_data.get("rows", [])
-        ]
-        title = table_data.get("title")
-        if title:
-            self._send("text", {"content": self._strip_markup(title) + "\n"})
-        self._send("table", {"headers": headers, "rows": rows})
+    def _render_block(self, block: OutputBlock) -> None:
+        data = block.data
+        if block.kind == "section":
+            title = data.get("title")
+            body = data.get("body")
+            if title:
+                self._send("text", {"content": _strip_markup(title) + "\n"})
+            if body:
+                self._send("text", {"content": _strip_markup(body) + "\n"})
+            return
 
-    def print_code_block(self, code: str, language: str = "python") -> None:
-        self._send("code", {"content": code, "language": language})
+        if block.kind == "kv":
+            title = data.get("title")
+            if title:
+                self._send("text", {"content": _strip_markup(title) + "\n"})
+            self._send(
+                "table",
+                {
+                    "headers": [
+                        _strip_markup(data.get("key_label", "Field")),
+                        _strip_markup(data.get("value_label", "Value")),
+                    ],
+                    "rows": [
+                        [_strip_markup(str(cell)) for cell in row]
+                        for row in data.get("rows", [])
+                    ],
+                },
+            )
+            return
+
+        if block.kind == "table":
+            headers = [
+                _strip_markup(str(col.get("name", "")))
+                for col in data.get("columns", [])
+            ]
+            rows = [
+                [_strip_markup(str(cell)) for cell in row]
+                for row in data.get("rows", [])
+            ]
+            title = data.get("title")
+            if title:
+                self._send("text", {"content": _strip_markup(title) + "\n"})
+            self._send("table", {"headers": headers, "rows": rows})
+            return
+
+        if block.kind == "list":
+            title = data.get("title")
+            if title:
+                self._send("text", {"content": _strip_markup(title) + "\n"})
+            ordered = bool(data.get("ordered"))
+            lines = []
+            for index, item in enumerate(data.get("items", []), start=1):
+                prefix = f"{index}." if ordered else "-"
+                lines.append(f"{prefix} {_strip_markup(item)}")
+            if lines:
+                self._send("text", {"content": "\n".join(lines) + "\n"})
+            return
+
+        if block.kind == "code":
+            title = data.get("title")
+            if title:
+                self._send("text", {"content": _strip_markup(title) + "\n"})
+            self._send(
+                "code",
+                {
+                    "content": data.get("code", ""),
+                    "language": data.get("language", "python"),
+                },
+            )
+            return
+
+        if block.kind == "alert":
+            self._send(
+                "alert",
+                {
+                    "level": data.get("level", "info"),
+                    "message": _strip_markup(data.get("message", "")),
+                },
+            )
+            return
+
+        if block.kind == "hint":
+            title = data.get("title")
+            message = data.get("message", "")
+            text = f"{_strip_markup(title)}\n{_strip_markup(message)}" if title else _strip_markup(message)
+            self._send("text", {"content": text + "\n"})
+            return
+
+        raise ValueError(f"Unsupported output block kind: {block.kind}")
 
     def confirm(self, question: str) -> bool:
-        return False  # Non-interactive
+        return False
 
     def prompt(self, question: str, default: str = "") -> str:
         return default
-
-    @staticmethod
-    def _strip_markup(text: str) -> str:
-        import re
-        return re.sub(r"\[/?[^\]]+\]", "", text)

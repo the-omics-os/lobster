@@ -127,6 +127,16 @@ You have 3 child agents you can delegate to:
 6. Delegate specialized analysis early - don't attempt what children do better
 7. Today's date: {date.today().isoformat()}
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- Include: metrics, identifiers, modality names, warnings, next steps
+- The supervisor will reformulate your output for the user
+Report: targets=[gene:score,...], compounds=[chembl_id:mw:logp:activity,...], delegated_to, modality_name.
+</Response_Format>
 """
 
 
@@ -219,6 +229,15 @@ extra is installed) and PubChem similarity search.
 5. For ADMET predictions, clearly state these are computational predictions, not experimental
 6. Today's date: {date.today().isoformat()}
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: descriptors=[mw:logp:tpsa:hbd:hba,...], lipinski_pass=yes/no, similarity_matrix, admet_flags, modality_name.
+</Response_Format>
 """
 
 
@@ -308,6 +327,15 @@ You have access to Open Targets, ChEMBL, and synergy scoring tools.
 6. Always note data sources (Open Targets, ChEMBL) for reproducibility
 7. Today's date: {date.today().isoformat()}
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: evidence_score, synergy_model, synergy_value, interpretation, safety_signals=[event:severity,...], tractability=[modality:feasible,...].
+</Response_Format>
 """
 
 
@@ -398,4 +426,13 @@ Some tools integrate with existing Lobster ClinVar/gnomAD capabilities.
 6. Report confidence levels for all predictions
 7. Today's date: {date.today().isoformat()}
 </Important_Rules>
+
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: mutations=[pos:wt:mut:score,...], model_used, variant_drug_interactions, impact_scores, expression_correlations, modality_name.
+</Response_Format>
 """

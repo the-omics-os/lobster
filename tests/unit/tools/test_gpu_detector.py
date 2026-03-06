@@ -110,6 +110,24 @@ class TestGPUDetector:
             assert recommendation["device"] == "cpu"
             assert "No GPU detected" in recommendation["info"]
 
+    def test_get_hardware_recommendation_uses_dynamic_install_hint(self):
+        """Install command should come from component registry helper."""
+        with (
+            patch.object(GPUDetector, "check_nvidia_gpu", return_value=(False, None)),
+            patch.object(GPUDetector, "check_apple_silicon", return_value=False),
+            patch(
+                "lobster.core.component_registry.get_install_command",
+                return_value="uv tool install lobster-ai --with 'lobster-ai[ml]'",
+            ) as mock_install_cmd,
+        ):
+            recommendation = GPUDetector.get_hardware_recommendation()
+
+        assert (
+            recommendation["command"]
+            == "uv tool install lobster-ai --with 'lobster-ai[ml]'"
+        )
+        mock_install_cmd.assert_called_once_with("ml", is_extra=True)
+
     def test_check_scvi_availability_ready(self):
         """Test scVI availability check when dependencies are installed."""
         with (

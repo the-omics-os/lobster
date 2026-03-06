@@ -1,0 +1,40 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "About to Clear\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Publication queue",
+            "2 items"
+          ],
+          [
+            "Download queue",
+            "3 items"
+          ],
+          [
+            "Total",
+            "5 items"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Operation cancelled\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

@@ -1,0 +1,55 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "warning",
+        "message": "This cannot be undone."
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "About to Clear All Metadata\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Memory (metadata_store)",
+            "1 entries"
+          ],
+          [
+            "Memory (current_metadata)",
+            "3 entries"
+          ],
+          [
+            "Disk (workspace/metadata/)",
+            "1 files"
+          ],
+          [
+            "Disk (workspace/exports/)",
+            "1 files"
+          ],
+          [
+            "Total",
+            "6 items"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Operation cancelled\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

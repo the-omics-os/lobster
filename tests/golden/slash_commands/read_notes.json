@@ -1,0 +1,47 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "File\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Name",
+            "notes.txt"
+          ],
+          [
+            "Path",
+            "/private/tmp/lobster_ws/notes.txt"
+          ],
+          [
+            "Type",
+            "Text file"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Contents: notes.txt\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "alpha\nbeta\n",
+        "language": "text"
+      },
+      "type": "code"
+    }
+  ],
+  "summary": "Displayed text file 'notes.txt' (Text file, 2 lines)"
+}

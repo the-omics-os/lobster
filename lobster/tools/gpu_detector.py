@@ -98,6 +98,9 @@ class GPUDetector:
         Returns:
             Dictionary with installation profile and device recommendation
         """
+        from lobster.core.component_registry import get_install_command
+
+        install_cmd = get_install_command("ml", is_extra=True)
         nvidia_available, gpu_info = GPUDetector.check_nvidia_gpu()
         apple_silicon = GPUDetector.check_apple_silicon()
 
@@ -106,21 +109,21 @@ class GPUDetector:
                 "profile": "ml-gpu",
                 "device": "cuda",
                 "info": f"NVIDIA GPU detected: {gpu_info}",
-                "command": "pip install lobster-ai[ml]",
+                "command": install_cmd,
             }
         elif apple_silicon:
             return {
                 "profile": "ml-mps",
                 "device": "mps",
                 "info": "Apple Silicon Mac detected - MPS acceleration available",
-                "command": "pip install lobster-ai[ml]",
+                "command": install_cmd,
             }
         else:
             return {
                 "profile": "ml-cpu",
                 "device": "cpu",
                 "info": "No GPU detected - CPU-only mode",
-                "command": "pip install lobster-ai[ml]",
+                "command": install_cmd,
             }
 
     @staticmethod

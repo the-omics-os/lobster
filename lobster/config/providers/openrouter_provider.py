@@ -395,9 +395,11 @@ class OpenRouterProvider(ILLMProvider):
         try:
             from langchain_openai import ChatOpenAI
         except ImportError:
+            from lobster.core.component_registry import get_install_command
+
             raise ImportError(
                 "langchain-openai package not installed. "
-                "Install with: uv pip install langchain-openai"
+                f"Install with: {get_install_command('langchain-openai')}"
             )
 
         api_key = kwargs.pop("api_key", None) or os.environ.get(_ENV_VAR)

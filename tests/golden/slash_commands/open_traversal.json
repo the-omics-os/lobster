@@ -1,0 +1,12 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "error",
+        "message": "/open security error: Path traversal detected: '../outside.txt' escapes allowed directories"
+      },
+      "type": "alert"
+    }
+  ],
+  "summary": null
+}

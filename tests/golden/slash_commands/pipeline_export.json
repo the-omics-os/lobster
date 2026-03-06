@@ -1,0 +1,36 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Export Session as Jupyter Notebook\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Exporting notebook...\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "success",
+        "message": "Notebook exported: /tmp/lobster_ws/notebooks/analysis_workflow.ipynb"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Next Steps\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "1. Review: jupyter notebook /tmp/lobster_ws/notebooks/analysis_workflow.ipynb\n2. Commit: git add /tmp/lobster_ws/notebooks/analysis_workflow.ipynb && git commit -m 'Add analysis_workflow'\n3. Run: /pipeline run analysis_workflow.ipynb <modality>\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Exported notebook: /tmp/lobster_ws/notebooks/analysis_workflow.ipynb"
+}

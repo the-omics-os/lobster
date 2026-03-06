@@ -19,6 +19,12 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from lobster.cli_internal.commands.output_adapter import (
+    ConsoleOutputAdapter,
+    OutputBlock,
+    hint_block,
+    kv_block,
+)
 from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
     render_startup_diagnostic_rich,
@@ -52,6 +58,71 @@ def _startup_console_print(*args, **kwargs) -> None:
     if _go_tui_active:
         return
     console.print(*args, **kwargs)
+
+
+def get_latest_session_id(workspace_path: Path) -> Optional[str]:
+    """Return the most recent persisted session id for the workspace.
+
+    Prefers real session directories under ``.lobster/sessions`` because those
+    exist even when a chat session has not yet exported a JSON transcript.
+    Falls back to legacy ``session_*.json`` files in the workspace root.
+    """
+    sessions_dir = workspace_path / ".lobster" / "sessions"
+    if sessions_dir.exists():
+        session_dirs = [path for path in sessions_dir.iterdir() if path.is_dir()]
+        if session_dirs:
+            session_dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+            return session_dirs[0].name
+
+    session_files = list(workspace_path.glob("session_*.json"))
+    if session_files:
+        session_files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        stem = session_files[0].stem
+        if stem.startswith("session_"):
+            return stem.removeprefix("session_")
+
+    return None
+
+
+def resolve_session_continuation(
+    workspace_path: Path, requested_session_id: Optional[str]
+) -> tuple[Optional[Path], Optional[str], bool]:
+    """Resolve transcript loading and runtime continuation for a session id.
+
+    Returns:
+        ``(session_file_to_load, session_id_for_client, found_existing_session)``
+
+    Notes:
+    - ``session_id_for_client`` is set for both loaded and newly created
+      sessions so the checkpointer/session directory uses the intended id.
+    - ``session_file_to_load`` is optional because some chat sessions persist
+      only a session directory until a transcript JSON is exported.
+    """
+    if not requested_session_id:
+        return None, None, False
+
+    if requested_session_id == "latest":
+        resolved_session_id = get_latest_session_id(workspace_path)
+        if not resolved_session_id:
+            return None, None, False
+    else:
+        resolved_session_id = requested_session_id
+
+    session_file = workspace_path / f"session_{resolved_session_id}.json"
+    if not session_file.exists():
+        exact_session_file = workspace_path / f"{resolved_session_id}.json"
+        if exact_session_file.exists():
+            session_file = exact_session_file
+        else:
+            session_file = None
+
+    session_dir = workspace_path / ".lobster" / "sessions" / resolved_session_id
+    found_existing = session_dir.exists() or session_file is not None
+
+    if not found_existing and requested_session_id != "latest":
+        return None, resolved_session_id, False
+
+    return session_file, resolved_session_id, found_existing
 
 
 # Extraction cache manager loaded lazily to avoid triggering all agent imports at startup
@@ -526,28 +597,37 @@ def _maybe_print_timings(client: "AgentClient", context: str) -> None:
 # ============================================================================
 
 
-def display_session(client: "AgentClient"):
-    """Display current session status with enhanced orange theming."""
+def build_session_blocks(client: "AgentClient") -> List[OutputBlock]:
+    """Build structured blocks describing the current session."""
     from lobster.config.agent_defaults import get_current_profile
 
     status = client.get_status()
-
     current_mode = get_current_profile()
 
-    status_data = {
-        "session_id": status["session_id"],
-        "mode": current_mode,
-        "messages": str(status["message_count"]),
-        "workspace": status["workspace"],
-        "data_loaded": status["has_data"],
-    }
+    rows = [
+        ("Session ID", status["session_id"]),
+        ("Mode", current_mode),
+        ("Messages", status["message_count"]),
+        ("Workspace", status["workspace"]),
+        ("Data Loaded", status["has_data"]),
+    ]
 
     if status["has_data"] and status["data_summary"]:
         summary = status["data_summary"]
-        status_data["data_shape"] = str(summary.get("shape", "N/A"))
-        status_data["memory_usage"] = summary.get("memory_usage", "N/A")
+        rows.append(("Data Shape", summary.get("shape", "N/A")))
+        rows.append(("Memory Usage", summary.get("memory_usage", "N/A")))
 
-    console_manager.print_status_panel(status_data, "Session Status")
+    return [
+        kv_block(rows, title="Session Status"),
+        hint_block("Use `/workspace list` to inspect available datasets."),
+    ]
+
+
+def display_session(client: "AgentClient", output=None):
+    """Display current session status via the configured output adapter."""
+    if output is None:
+        output = ConsoleOutputAdapter(console)
+    output.render_blocks(build_session_blocks(client))
 
 
 # ============================================================================
@@ -830,31 +910,32 @@ def init_client_or_raise_startup_diagnostic(
     if profile_timings_enabled and hasattr(data_manager, "enable_timing"):
         data_manager.enable_timing(True)
 
-    from lobster.utils import SimpleTerminalCallback, TerminalCallbackHandler
-
     callbacks = []
 
-    if reasoning or verbose:
-        callback = TerminalCallbackHandler(
-            console=console,
-            show_reasoning=reasoning,
-            verbose=verbose,
-            show_tools=verbose,
-        )
-        callbacks.append(callback)
-    else:
-        simple_callback = SimpleTerminalCallback(
-            console=console,
-            show_reasoning=False,
-            minimal=True,
-        )
-        callbacks.append(simple_callback)
+    if not _go_tui_active:
+        from lobster.utils import SimpleTerminalCallback, TerminalCallbackHandler
+
+        if reasoning or verbose:
+            callback = TerminalCallbackHandler(
+                console=console,
+                show_reasoning=reasoning,
+                verbose=verbose,
+                show_tools=verbose,
+            )
+            callbacks.append(callback)
+        else:
+            simple_callback = SimpleTerminalCallback(
+                console=console,
+                show_reasoning=False,
+                minimal=True,
+            )
+            callbacks.append(simple_callback)
 
     try:
         local_client = _create_local_agent_client(
             data_manager=data_manager,
             workspace_path=workspace,
-            session_id=session_id,
+            session_id=actual_session_id,
             reasoning=reasoning,
             callbacks=callbacks,
             provider_override=provider_override,

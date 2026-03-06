@@ -113,7 +113,10 @@ classic-tui = ["textual>=6.7.1"]
 # Semantic Vector Search (optional, installed via `lobster init`)
 # =============================================================================
 vector-search = [
-    "lobster-metadata[vector-search]~=1.1.0",
+    # Backend runtime currently lives in lobster-metadata (development package).
+    # Keep public extra installable by shipping only dependency prerequisites.
+    "chromadb>=1.0.0",
+    "openai>=1.0.0",
 ]
 
 # =============================================================================
@@ -184,10 +187,11 @@ azure = [
 # =============================================================================
 # What `lobster init` typically installs for a researcher
 recommended = ["lobster-ai[anthropic,transcriptomics,classic-tui,extended-data]"]
-# Everything except docling and plink (which have platform constraints)
+# Everything available via public lobster-ai extras.
+# Excludes metadata_assistant/vector backend until lobster-metadata is published.
 full = [
     "lobster-ai[transcriptomics,genomics,proteomics]",
-    "lobster-ai[all-providers,classic-tui,extended-data,hdf5,docling,vector-search]",
+    "lobster-ai[all-providers,classic-tui,extended-data,hdf5,docling]",
 ]
 
 # =============================================================================

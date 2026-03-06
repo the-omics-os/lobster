@@ -277,7 +277,11 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     # Parse selection
     selected_indices = set()
     if selection.strip().lower() == "all":
-        selected_indices = set(range(1, len(AVAILABLE_AGENT_PACKAGES) + 1))
+        selected_indices = {
+            index
+            for index, (_, _, _, published) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
+            if published
+        }
     else:
         for part in selection.split(","):
             part = part.strip()
@@ -307,7 +311,8 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
         is_installed = any(a in installed_agent_names for a in agents)
         if not is_installed and published:
             packages_to_install.append(pkg_name)
-        all_agents.extend(agents)
+        if published:
+            all_agents.extend(agents)
 
     # Install missing packages
     if packages_to_install:
@@ -393,7 +398,11 @@ def _prompt_automatic_agent_selection(workspace_path: Path) -> list[str]:
 
 
 def _check_and_prompt_install_packages(
-    selected_agents: list[str], workspace_path: Path
+    selected_agents: list[str],
+    workspace_path: Path,
+    *,
+    prompt_for_install: bool = True,
+    auto_install_missing: bool = False,
 ) -> list[str]:
     """Check if selected agents are installed, prompt to install missing packages.
 
@@ -451,7 +460,13 @@ def _check_and_prompt_install_packages(
         for pkg in sorted(packages_to_install):
             console.print(f"  [cyan]{pkg}[/cyan]")
 
-        if Confirm.ask("\n[bold white]Install now?[/bold white]", default=True):
+        should_install = auto_install_missing
+        if prompt_for_install and not auto_install_missing:
+            should_install = Confirm.ask(
+                "\n[bold white]Install now?[/bold white]", default=True
+            )
+
+        if should_install:
             from lobster.cli_internal.commands.light.agent_commands import (
                 _uv_pip_install,
             )
@@ -466,8 +481,10 @@ def _check_and_prompt_install_packages(
                     console.print(
                         f"[yellow]Warning: Failed to install {pkg}: {msg}[/yellow]"
                     )
-        else:
+        elif prompt_for_install:
             console.print("[dim]Skipping package installation for now[/dim]")
+        else:
+            console.print("[dim]Skipping package installation in non-interactive mode[/dim]")
 
     unresolved = [
         agent for agent in normalized_agents if agent not in confirmed_names
@@ -521,6 +538,7 @@ def _perform_agent_selection_non_interactive(
             raise typer.Exit(1)
 
         expanded = expand_preset(preset_flag)
+        expanded = _filter_unpublished_preset_agents(expanded, console, preset_flag)
         console.print(
             f"[green]v[/green] Using preset: {preset_flag} ({len(expanded)} agents)"
         )
@@ -578,6 +596,93 @@ def _perform_agent_selection_non_interactive(
         f"[dim]Using all {len(all_agents)} installed agents (no agent selection flags provided)[/dim]"
     )
     return all_agents, None
+
+
+def _filter_unpublished_preset_agents(
+    selected_agents: list[str] | None,
+    console,
+    preset_name: str,
+) -> list[str]:
+    """Drop preset agents whose packages are not published on public PyPI."""
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
+
+    published_packages = {
+        pkg_name for pkg_name, _, _, published in AVAILABLE_AGENT_PACKAGES if published
+    }
+
+    filtered: list[str] = []
+    skipped: list[str] = []
+    for agent in _normalize_selected_agents(selected_agents or []):
+        package_name = AGENT_TO_PACKAGE.get(agent)
+        if package_name and package_name not in published_packages:
+            skipped.append(agent)
+            continue
+        filtered.append(agent)
+
+    if skipped:
+        console.print(
+            "[yellow]⚠️  Preset includes agents not published on public PyPI; "
+            f"skipping for this install surface: {', '.join(skipped)}[/yellow]"
+        )
+        console.print(
+            f"[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
+        )
+
+    return filtered
+
+
+def _build_uv_tool_init_command(
+    provider_name: str | None,
+    selected_agents: list[str] | None,
+    *,
+    include_vector_search: bool = False,
+) -> list[str]:
+    """Build the uv tool install command needed after init."""
+    import importlib
+
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
+    from lobster.core.uv_tool_env import build_tool_install_command, detect_uv_tool_env
+
+    info = detect_uv_tool_env()
+
+    extras: list[str] = []
+    if provider_name:
+        module_name = _PROVIDER_IMPORT_NAMES.get(provider_name)
+        if module_name:
+            try:
+                importlib.import_module(module_name)
+            except ImportError:
+                extras.append(provider_name)
+
+    if include_vector_search:
+        try:
+            importlib.import_module("chromadb")
+        except ImportError:
+            extras.append("vector-search")
+
+    published_packages = {
+        pkg_name for pkg_name, _, _, published in AVAILABLE_AGENT_PACKAGES if published
+    }
+    installed_packages = set()
+    if info:
+        installed_packages = {
+            pkg.lower().replace("-", "_") for pkg in info.installed_packages
+        }
+
+    with_packages: list[str] = []
+    for agent in _normalize_selected_agents(selected_agents or []):
+        package_name = AGENT_TO_PACKAGE.get(agent)
+        if not package_name or package_name not in published_packages:
+            continue
+        if package_name.lower().replace("-", "_") in installed_packages:
+            continue
+        if package_name not in with_packages:
+            with_packages.append(package_name)
+
+    return build_tool_install_command(
+        extras=extras or None,
+        with_packages=with_packages or None,
+    )
 
 
 def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str], str]:
@@ -641,6 +746,35 @@ _SMART_STD_AGENT_DISPLAY = {
 }
 
 
+def _vector_search_install_command() -> str:
+    """Return an environment-aware install command for vector dependencies."""
+    from lobster.core.component_registry import get_install_command
+
+    return get_install_command("vector-search", is_extra=True)
+
+
+def _is_vector_search_backend_available() -> bool:
+    """Check whether vector backend modules are importable."""
+    try:
+        from lobster.services.vector.service import VectorSearchService  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _print_vector_backend_unavailable() -> None:
+    """Explain that Smart Standardization backend is unavailable in this install."""
+    console.print(
+        "  [yellow]⚠ Smart Standardization backend requires lobster-metadata (development package).[/yellow]"
+    )
+    console.print(
+        f"  [dim]Install vector dependencies: {_vector_search_install_command()}[/dim]"
+    )
+    console.print(
+        "  [dim]Backend modules are not currently shipped in public lobster-ai releases.[/dim]"
+    )
+
+
 def _get_smart_standardization_beneficiaries(selected_agents: list[str] | None) -> list[str]:
     """Return display names for selected agents that benefit from embeddings."""
     beneficiaries: list[str] = []
@@ -652,6 +786,10 @@ def _get_smart_standardization_beneficiaries(selected_agents: list[str] | None) 
 
 def _install_smart_standardization_dependencies() -> None:
     """Install vector-search dependencies and warm ontology databases."""
+    if not _is_vector_search_backend_available():
+        _print_vector_backend_unavailable()
+        return
+
     console.print("\n  [dim]Installing Smart Standardization dependencies...[/dim]")
     from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
@@ -660,9 +798,7 @@ def _install_smart_standardization_dependencies() -> None:
     if s1 and s2:
         console.print("  [green]✓[/green] Dependencies installed")
     else:
-        console.print(
-            "  [yellow]⚠ Install manually: pip install 'lobster-ai\\[vector-search]'[/yellow]"
-        )
+        console.print(f"  [yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]")
         return
 
     console.print(
@@ -823,67 +959,27 @@ def _uv_tool_env_handoff(
     After the subprocess finishes, we ``sys.exit()`` so the stale process
     never touches the rebuilt venv.
     """
-    import importlib
     import subprocess as _sp
 
     from rich.prompt import Confirm
 
-    from lobster.core.uv_tool_env import build_tool_install_command, detect_uv_tool_env
+    from lobster.core.uv_tool_env import detect_uv_tool_env
 
     info = detect_uv_tool_env()
     if not info:
         return  # Not in a tool env — nothing to do
 
-    # Determine extras needed for the base package.
-    # Only add the provider extra if the provider package is not importable.
-    extras: list[str] = []
-    if not skip_extras and provider_name:
-        module_name = _PROVIDER_IMPORT_NAMES.get(provider_name)
-        if module_name:
-            try:
-                importlib.import_module(module_name)
-            except ImportError:
-                # Provider package not installed — include as extra
-                extras.append(provider_name)
-
-    # Add vector-search extra if user opted in during init
-    if include_vector_search:
-        try:
-            importlib.import_module("chromadb")
-        except ImportError:
-            extras.append("vector-search")
-
-    # Determine additional --with packages for agents (centralized mapping)
-    from lobster.core.component_registry import AGENT_TO_PACKAGE
-
-    # Only include packages that are published on public PyPI
-    _published_packages = {pkg for pkg, _, _, pub in AVAILABLE_AGENT_PACKAGES if pub}
-
-    with_packages: list[str] = []
-    normalized_agents = _normalize_selected_agents(selected_agents or [])
-    if normalized_agents:
-        needed = set()
-        for agent in normalized_agents:
-            pkg = AGENT_TO_PACKAGE.get(agent)
-            if pkg:
-                needed.add(pkg)
-        # Only include packages not already in the receipt AND published on PyPI
-        already = {p.lower().replace("-", "_") for p in info.installed_packages}
-        for pkg in needed:
-            if (
-                pkg.lower().replace("-", "_") not in already
-                and pkg in _published_packages
-            ):
-                with_packages.append(pkg)
-
-    # If nothing new to install, skip
-    if not extras and not with_packages:
-        return
-
-    cmd = build_tool_install_command(
-        extras=extras or None, with_packages=with_packages or None
+    cmd = _build_uv_tool_init_command(
+        None if skip_extras else provider_name,
+        selected_agents,
+        include_vector_search=include_vector_search,
     )
     cmd_str = " ".join(cmd)
+
+    # Skip if the computed command wouldn't add anything new.
+    existing_cmd = " ".join(_build_uv_tool_init_command(None, None))
+    if cmd_str == existing_cmd:
+        return
 
     console.print()
     console.print(
@@ -942,8 +1038,10 @@ def _ensure_provider_installed(provider_name: str) -> bool:
         console.print(f"  [green]✓[/green] {pkg} installed")
         return True
     else:
+        from lobster.core.component_registry import get_install_command
+
         console.print(f"  [yellow]⚠ Could not auto-install {pkg}[/yellow]")
-        console.print(f"  [dim]Run manually: pip install {pkg}[/dim]")
+        console.print(f"  [dim]Run manually: {get_install_command(pkg)}[/dim]")
         return False
 
 
@@ -974,18 +1072,25 @@ def _prompt_docling_install() -> None:
     if choice == "1":
         console.print("  [dim]Installing docling (this may take a moment)...[/dim]")
         from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
+        from lobster.core.component_registry import get_install_command
+        from rich.markup import escape as rich_escape
 
         s1, _ = _uv_pip_install("docling>=2.60.0")
         s2, _ = _uv_pip_install("docling-core>=2.50.0")
         if s1 and s2:
             console.print("  [green]✓[/green] Docling installed")
         else:
+            docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
             console.print(
-                "  [yellow]⚠ Install manually: pip install 'lobster-ai\\[docling]'[/yellow]"
+                f"  [yellow]⚠ Install manually: {docling_cmd}[/yellow]"
             )
     else:
+        from lobster.core.component_registry import get_install_command
+        from rich.markup import escape as rich_escape
+
+        docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
         console.print(
-            "  [dim]Skipped. Install later: pip install 'lobster-ai\\[docling]'[/dim]"
+            f"  [dim]Skipped. Install later: {docling_cmd}[/dim]"
         )
 
 
@@ -1046,7 +1151,7 @@ def _download_ontology_databases() -> bool:
         )
     except ImportError:
         console.print(
-            "  [yellow]⚠ ChromaDB not available. Skipping ontology download.[/yellow]"
+            "  [yellow]⚠ Vector backend not available. Skipping ontology download.[/yellow]"
         )
         return False
 
@@ -1094,6 +1199,11 @@ def _prompt_smart_standardization(
     """
     import os
 
+    if not _is_vector_search_backend_available():
+        console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
+        _print_vector_backend_unavailable()
+        return []
+
     benefiting = _get_smart_standardization_beneficiaries(selected_agents)
 
     console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
@@ -1121,7 +1231,7 @@ def _prompt_smart_standardization(
 
     if choice != "1":
         console.print(
-            "  [dim]Skipped. Enable later: pip install 'lobster-ai\\[vector-search]' && lobster init --force[/dim]"
+            f"  [dim]Skipped. Enable later: {_vector_search_install_command()} && lobster init --force[/dim]"
         )
         return []
 
@@ -1315,7 +1425,7 @@ def init_impl(
     install_vector_search: bool = typer.Option(
         False,
         "--install-vector-search",
-        help="Install semantic vector search deps (non-interactive mode)",
+        help="Install Smart Standardization dependencies (backend requires lobster-metadata dev package)",
     ),
     skip_extras: bool = typer.Option(
         False,
@@ -1469,10 +1579,16 @@ def init_impl(
                 workspace_path=workspace_path,
             )
 
-            # Check and install missing packages
+            # Check and install missing packages without prompting.
             installed_agents = _check_and_prompt_install_packages(
-                selected_agents, workspace_path
+                selected_agents,
+                workspace_path,
+                prompt_for_install=False,
+                auto_install_missing=(not skip_extras and not _in_uv_tool_ni),
             )
+
+            if preset_name and set(installed_agents) != set(selected_agents):
+                preset_name = None
 
             # Save agent config BEFORE provider setup
             _save_agent_config(installed_agents, workspace_path, preset_name)
@@ -1682,26 +1798,35 @@ def init_impl(
                 if s1 and s2:
                     console.print("[green]✓ Docling installed[/green]")
                 else:
+                    from lobster.core.component_registry import get_install_command
+                    from rich.markup import escape as rich_escape
+
+                    docling_cmd = rich_escape(
+                        get_install_command("docling", is_extra=True)
+                    )
                     console.print(
-                        "[yellow]⚠ Docling install failed. Run: pip install 'lobster-ai\\[docling]'[/yellow]"
+                        f"[yellow]⚠ Docling install failed. Run: {docling_cmd}[/yellow]"
                     )
 
             # Install vector search if requested (Smart Standardization — OpenAI)
             if install_vector_search:
-                console.print("[dim]Installing Smart Standardization deps...[/dim]")
-                from lobster.cli_internal.commands.light.agent_commands import (
-                    _uv_pip_install,
-                )
-
-                s1, _ = _uv_pip_install("chromadb>=1.0.0")
-                s2, _ = _uv_pip_install("openai>=1.0.0")
-                if s1 and s2:
-                    console.print("[green]✓ Smart Standardization installed[/green]")
-                    env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
+                if not _is_vector_search_backend_available():
+                    _print_vector_backend_unavailable()
                 else:
-                    console.print(
-                        "[yellow]⚠ Install manually: pip install 'lobster-ai\\[vector-search]'[/yellow]"
+                    console.print("[dim]Installing Smart Standardization deps...[/dim]")
+                    from lobster.cli_internal.commands.light.agent_commands import (
+                        _uv_pip_install,
                     )
+
+                    s1, _ = _uv_pip_install("chromadb>=1.0.0")
+                    s2, _ = _uv_pip_install("openai>=1.0.0")
+                    if s1 and s2:
+                        console.print("[green]✓ Smart Standardization installed[/green]")
+                        env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
+                    else:
+                        console.print(
+                            f"[yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]"
+                        )
 
             # Extended data + TUI (silent)
             _install_extended_data()
@@ -1774,8 +1899,6 @@ def init_impl(
 
         # In uv tool env (non-interactive), print the command for the caller
         if _in_uv_tool_ni and not skip_extras:
-            from lobster.core.uv_tool_env import build_tool_install_command
-
             provider_name_ni = None
             if has_anthropic:
                 provider_name_ni = "anthropic"
@@ -1783,8 +1906,13 @@ def init_impl(
                 provider_name_ni = "bedrock"
             elif has_gemini:
                 provider_name_ni = "gemini"
-            extras_ni = [provider_name_ni] if provider_name_ni else []
-            cmd = build_tool_install_command(extras=extras_ni or None)
+            elif has_openai:
+                provider_name_ni = "openai"
+            cmd = _build_uv_tool_init_command(
+                provider_name_ni,
+                locals().get("installed_agents"),
+                include_vector_search=install_vector_search,
+            )
             console.print(f"\n[bold]uv tool command:[/bold] {' '.join(cmd)}")
 
         raise typer.Exit(0)
@@ -2666,7 +2794,7 @@ def init_impl(
         if _in_uv_tool:
             # Check if user wants Smart Standardization (can't pip install in uv tool env)
             _want_vector_search = False
-            if not skip_extras:
+            if not skip_extras and _is_vector_search_backend_available():
                 try:
                     import chromadb  # noqa: F401
                 except ImportError:
@@ -2676,6 +2804,8 @@ def init_impl(
                         default="n",
                     )
                     _want_vector_search = _vs_choice == "y"
+            elif not skip_extras:
+                _print_vector_backend_unavailable()
 
             _uv_tool_env_handoff(
                 provider_name=provider_map.get(provider),

@@ -1,0 +1,17 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Saved: rna_saved.h5ad\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Skipped 1 unchanged modalities\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Saved 1 items, skipped 1 unchanged"
+}

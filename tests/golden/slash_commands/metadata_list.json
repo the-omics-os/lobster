@@ -1,0 +1,144 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Metadata Information\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Metadata Store\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Dataset ID",
+          "Type",
+          "Title",
+          "Samples",
+          "Cached"
+        ],
+        "rows": [
+          [
+            "GSE12345",
+            "Single Cell Rna",
+            "Pancreatic atlas",
+            "2",
+            "2026-03-01 12:00"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Current Data Metadata\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Key",
+          "Value"
+        ],
+        "rows": [
+          [
+            "dataset_id",
+            "GSE12345"
+          ],
+          [
+            "summary",
+            "Dict with 2 keys: platform, species"
+          ],
+          [
+            "tags",
+            "List with 2 items: tumor, atlas"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Workspace Metadata Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "File",
+          "Size",
+          "Modified"
+        ],
+        "rows": [
+          [
+            "study_metadata.json",
+            "0.0 KB",
+            "2026-03-06 03:15"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Path: /tmp/lobster_ws/metadata\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Export Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "File",
+          "Size",
+          "Modified"
+        ],
+        "rows": [
+          [
+            "analysis_summary.csv",
+            "0.0 KB",
+            "2026-03-06 03:15"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Path: /tmp/lobster_ws/exports\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "warning",
+        "message": "Found 1 file(s) in old location: /tmp/lobster_ws/metadata/exports"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "New exports go to: workspace/exports/\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Migration: mv workspace/metadata/exports/* workspace/exports/\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Displayed metadata information (4 entries)"
+}

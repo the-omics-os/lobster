@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "error",
+        "message": "No files found matching pattern: missing/*.txt"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Searched in: /tmp/lobster_ws\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

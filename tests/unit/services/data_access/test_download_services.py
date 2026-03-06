@@ -18,6 +18,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from lobster.core.interfaces.download_service import IDownloadService
+from lobster.core.schemas.download_queue import StrategyConfig
 
 
 @pytest.fixture
@@ -98,6 +99,56 @@ class TestGEODownloadService:
         service = GEODownloadService(mock_data_manager)
         # Should not raise for valid params
         service.validate_strategy({})
+
+    def test_validate_strategy_wrapper_accepts_auto(self, mock_data_manager):
+        """AUTO should mean auto-detect, not invalid manual override."""
+        from lobster.services.data_access.geo_download_service import (
+            GEODownloadService,
+        )
+
+        service = GEODownloadService(mock_data_manager)
+        service.validate_strategy({"strategy_name": "AUTO"})
+
+    def test_download_dataset_normalizes_auto_strategy(self, mock_data_manager):
+        """AUTO should not be forwarded as a manual GEO pipeline override."""
+        from lobster.services.data_access.geo_download_service import (
+            GEODownloadService,
+        )
+
+        service = GEODownloadService(mock_data_manager)
+        queue_entry = Mock(
+            database="geo",
+            dataset_id="GSE12345",
+            entry_id="queue_GSE12345_test",
+            recommended_strategy=StrategyConfig(
+                strategy_name="AUTO",
+                concatenation_strategy="auto",
+                confidence=0.5,
+                rationale="Use auto-detection",
+            ),
+        )
+        adata = Mock(n_obs=10, n_vars=20)
+        captured_kwargs: Dict[str, Any] = {}
+
+        def _capture_download(**kwargs):
+            captured_kwargs.update(kwargs)
+            return "Downloaded successfully"
+
+        service.geo_service.download_dataset = Mock(side_effect=_capture_download)
+        service._find_stored_modality = Mock(return_value="geo_gse12345_test")
+        mock_data_manager.get_modality.return_value = adata
+
+        _adata, stats, _ir = service.download_dataset(
+            queue_entry,
+            strategy_override={
+                "strategy_name": "AUTO",
+                "strategy_params": {"use_intersecting_genes_only": True},
+            },
+        )
+
+        assert captured_kwargs["manual_strategy_override"] is None
+        assert captured_kwargs["use_intersecting_genes_only"] is True
+        assert stats["strategy_used"] == "auto"
 
     def test_get_service_info(self, mock_data_manager):
         """Test get_service_info returns expected structure."""

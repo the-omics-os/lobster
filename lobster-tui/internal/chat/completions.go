@@ -366,22 +366,20 @@ func (m *Model) dynamicSuggestionsForInput(input string) []string {
 // protocol completion request for path-like commands.
 func (m *Model) refreshSuggestions() tea.Cmd {
 	input := m.input.Value()
+	if m.completionDismissedInput != "" && input != m.completionDismissedInput {
+		m.completionDismissedInput = ""
+	}
 	static := m.buildSuggestions(input)
 	dynamic := m.dynamicSuggestionsForInput(input)
 	merged := mergeSuggestions(static, dynamic)
 	if len(merged) == 0 {
 		m.completionSuggestions = nil
-		m.completionCycleBase = ""
-		m.completionCycleIndex = 0
-		m.completionCycleSuggestions = nil
+		m.completionMenuIndex = 0
+		m.completionMenuInput = ""
 		return m.maybeRequestProtocolCompletions(input)
 	}
 	m.completionSuggestions = append(m.completionSuggestions[:0], merged...)
-	if !containsSuggestion(m.completionSuggestions, input) && input != m.completionCycleBase {
-		m.completionCycleBase = ""
-		m.completionCycleIndex = 0
-		m.completionCycleSuggestions = nil
-	}
+	m.syncCompletionMenuState(input)
 	return m.maybeRequestProtocolCompletions(input)
 }
 

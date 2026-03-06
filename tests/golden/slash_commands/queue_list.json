@@ -1,0 +1,39 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Publication Queue (2 of 2 shown)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "#",
+          "Title",
+          "Year",
+          "Status",
+          "PMID/DOI"
+        ],
+        "rows": [
+          [
+            "1",
+            "Single-cell atlas of pancreatic cancer",
+            "2024",
+            "\u25cb pending",
+            "123456"
+          ],
+          [
+            "2",
+            "ATAC landscape in tumor microenvironment",
+            "2023",
+            "\u2713 completed",
+            "10.1000/example"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Listed 2 of 2 publication queue items"
+}

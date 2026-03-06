@@ -13,6 +13,7 @@ The contract:
 """
 
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 import pytest
 from langchain_core.messages import (
@@ -497,6 +498,42 @@ class TestUnknownToolSuppression:
         assert tool_events[0]["status"] == "running"
         assert tool_events[1]["tool"] == "search_pubmed"
         assert tool_events[1]["status"] == "complete"
+
+    def test_parallel_same_name_tools_keep_stable_identity_and_agent(self):
+        emitted = []
+
+        def capture(msg_type, payload):
+            emitted.append((msg_type, payload))
+
+        handler = ProtocolCallbackHandler(emit_event=capture)
+        run_a = uuid4()
+        run_b = uuid4()
+
+        handler.current_agent = "research_agent"
+        handler.on_tool_start(
+            serialized={"name": "get_dataset_metadata"},
+            input_str="LUAD",
+            run_id=run_a,
+        )
+
+        handler.current_agent = "data_expert_agent"
+        handler.on_tool_start(
+            serialized={"name": "get_dataset_metadata"},
+            input_str="LUAD",
+            run_id=run_b,
+        )
+
+        handler.current_agent = "metadata_assistant"
+        handler.on_tool_end(output="done", run_id=run_a)
+
+        tool_events = [p for t, p in emitted if t == "tool_execution"]
+        assert tool_events[0]["tool_call_id"] == str(run_a)
+        assert tool_events[0]["agent"] == "research_agent"
+        assert tool_events[1]["tool_call_id"] == str(run_b)
+        assert tool_events[1]["agent"] == "data_expert_agent"
+        assert tool_events[2]["tool_call_id"] == str(run_a)
+        assert tool_events[2]["agent"] == "research_agent"
+        assert tool_events[2]["status"] == "complete"
 
 
 # ===========================================================================

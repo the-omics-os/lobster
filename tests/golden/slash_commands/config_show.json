@@ -110,12 +110,6 @@
     },
     {
       "payload": {
-        "content": "\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
         "headers": [
           "Agent",
           "Status",

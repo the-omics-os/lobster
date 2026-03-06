@@ -1,0 +1,24 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "error",
+        "message": "File not found: missing.txt"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Searched in:\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- /tmp/lobster_ws/missing.txt\n- /tmp/lobster_ws/data/missing.txt\n- /tmp/lobster_ws/exports/missing.txt\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "File 'missing.txt' not found"
+}

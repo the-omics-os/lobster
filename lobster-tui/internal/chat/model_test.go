@@ -637,6 +637,33 @@ func TestDoneDoesNotAttributeSupervisorTranscriptToSpecialist(t *testing.T) {
 	}
 }
 
+func TestToolFeedReconcilesSameNameToolsByIdentity(t *testing.T) {
+	m := newTestModel()
+	m.inline = false
+	m.inlineFlow = false
+
+	events := []protocol.ToolExecutionPayload{
+		{ToolName: "get_dataset_metadata", ToolCallID: "tc-1", Event: protocol.ToolExecutionStart},
+		{ToolName: "get_dataset_metadata", ToolCallID: "tc-2", Event: protocol.ToolExecutionStart},
+		{ToolName: "get_dataset_metadata", ToolCallID: "tc-1", Event: protocol.ToolExecutionFinish, Summary: "0.3s"},
+	}
+
+	for _, event := range events {
+		updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeToolExecution, event))
+		m = updated.(Model)
+	}
+
+	if len(m.toolFeed) != 2 {
+		t.Fatalf("expected two tool-feed rows, got %d", len(m.toolFeed))
+	}
+	if m.toolFeed[0].ID != "tc-1" || m.toolFeed[0].Event != protocol.ToolExecutionFinish {
+		t.Fatalf("expected first tool row to be tc-1 finish, got %#v", m.toolFeed[0])
+	}
+	if m.toolFeed[1].ID != "tc-2" || m.toolFeed[1].Event != protocol.ToolExecutionStart {
+		t.Fatalf("expected second tool row to remain tc-2 start, got %#v", m.toolFeed[1])
+	}
+}
+
 func TestActiveWorkerSummaryAggregatesMultipleWorkersHonestly(t *testing.T) {
 	m := newTestModel()
 	m.activeWorkers["research_agent"] = struct{}{}
@@ -743,6 +770,8 @@ func TestInlineFlowStatusCopyEmphasizesTerminalScrollback(t *testing.T) {
 
 func TestKeyTabAppliesSlashCompletionSuggestion(t *testing.T) {
 	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
 	m.ready = true
 	m.input.SetValue("/wo")
 	m.refreshSuggestions()
@@ -752,6 +781,110 @@ func TestKeyTabAppliesSlashCompletionSuggestion(t *testing.T) {
 
 	if got := m.input.Value(); got != "/workspace" {
 		t.Fatalf("expected tab completion to apply /workspace, got %q", got)
+	}
+}
+
+func TestKeyTabAppliesSubcommandCompletionAndAppendsSpace(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/workspace l")
+	m.refreshSuggestions()
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "/workspace list " {
+		t.Fatalf("expected tab completion to apply subcommand with trailing space, got %q", got)
+	}
+}
+
+func TestKeyTabAppliesPathCompletionWithoutTrailingSpace(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/read data")
+	m.completionSuggestions = []string{"/read data/file.txt"}
+	m.syncCompletionMenuState(m.input.Value())
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "/read data/file.txt" {
+		t.Fatalf("expected path completion without trailing space, got %q", got)
+	}
+}
+
+func TestCtrlNMovesInlineCompletionSelection(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/w")
+	m.refreshSuggestions()
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlN})
+	m = updated.(Model)
+
+	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "/workspace-info" {
+		t.Fatalf("expected ctrl+n to select next suggestion, got %q", got)
+	}
+}
+
+func TestInlineViewRendersCompletionMenuAboveComposer(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/wo")
+	m.refreshSuggestions()
+
+	view := m.View()
+	suggestionPos := strings.Index(view, "/workspace")
+	inputPos := strings.LastIndex(view, "/wo")
+
+	if suggestionPos < 0 {
+		t.Fatalf("expected inline view to render completion suggestions, got:\n%s", view)
+	}
+	if inputPos < 0 {
+		t.Fatalf("expected inline composer to still render current input, got:\n%s", view)
+	}
+	if suggestionPos > inputPos {
+		t.Fatalf("expected completion menu to render above composer, got:\n%s", view)
+	}
+	if got := m.currentStatusLine(); !strings.Contains(got, "Tab accept") || !strings.Contains(got, "Ctrl+N/Ctrl+P move") {
+		t.Fatalf("expected completion controls in status line, got %q", got)
+	}
+}
+
+func TestEscapeDismissesInlineCompletionMenuUntilInputChanges(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/wo")
+	m.refreshSuggestions()
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+
+	if m.completionMenuVisible() {
+		t.Fatal("expected escape to dismiss inline completion menu")
+	}
+	if got := m.currentStatusLine(); strings.Contains(got, "Tab accept") {
+		t.Fatalf("expected completion help to clear after dismiss, got %q", got)
+	}
+
+	m.input.SetValue("/w")
+	m.refreshSuggestions()
+
+	if !m.completionMenuVisible() {
+		t.Fatal("expected completion menu to reopen after input changes")
 	}
 }
 
@@ -1098,7 +1231,7 @@ func readSingleProtocolMessage(t *testing.T, buf *bytes.Buffer) protocol.Message
 // Cancel vs Quit tests (Phase 1: Query Cancellation)
 // ---------------------------------------------------------------------------
 
-func TestCtrlCDuringStreamingSendsCancel(t *testing.T) {
+func TestCtrlCDuringStreamingArmsCancel(t *testing.T) {
 	var out bytes.Buffer
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
@@ -1110,17 +1243,22 @@ func TestCtrlCDuringStreamingSendsCancel(t *testing.T) {
 	if got.quitting {
 		t.Fatal("expected model NOT to enter quitting state during streaming")
 	}
-	if cmd != nil {
-		t.Fatal("expected no tea.Quit command during streaming cancel")
+	if !got.isCanceling {
+		t.Fatal("expected isCanceling to be armed after first Ctrl+C")
 	}
-
-	msg := readSingleProtocolMessage(t, &out)
-	if msg.Type != protocol.TypeCancel {
-		t.Fatalf("expected %q message, got %q", protocol.TypeCancel, msg.Type)
+	if got.statusText != "Press Ctrl+C again to cancel" {
+		t.Fatalf("expected cancel prompt, got %q", got.statusText)
+	}
+	// First press should NOT send cancel — it arms the two-phase flow.
+	if out.Len() > 0 {
+		t.Fatal("expected no protocol message on first Ctrl+C press")
+	}
+	if cmd == nil {
+		t.Fatal("expected a timer command from first Ctrl+C press")
 	}
 }
 
-func TestCtrlCDuringSpinnerSendsCancel(t *testing.T) {
+func TestCtrlCDuringSpinnerArmsCancel(t *testing.T) {
 	var out bytes.Buffer
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
@@ -1132,13 +1270,68 @@ func TestCtrlCDuringSpinnerSendsCancel(t *testing.T) {
 	if got.quitting {
 		t.Fatal("expected model NOT to enter quitting state during spinner")
 	}
+	if !got.isCanceling {
+		t.Fatal("expected isCanceling to be armed after first Ctrl+C")
+	}
+	if got.statusText != "Press Ctrl+C again to cancel" {
+		t.Fatalf("expected cancel prompt, got %q", got.statusText)
+	}
+	if out.Len() > 0 {
+		t.Fatal("expected no protocol message on first Ctrl+C press")
+	}
+	if cmd == nil {
+		t.Fatal("expected a timer command from first Ctrl+C press")
+	}
+}
+
+func TestCtrlCDoublePressSendsCancel(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.isStreaming = true
+
+	// First press: arms cancel.
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(Model)
+
+	if !m.isCanceling {
+		t.Fatal("expected isCanceling after first press")
+	}
+
+	// Second press: fires cancel.
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(Model)
+
+	if got.isCanceling {
+		t.Fatal("expected isCanceling to be cleared after second press")
+	}
+	if got.statusText != "Cancelling…" {
+		t.Fatalf("expected statusText %q, got %q", "Cancelling…", got.statusText)
+	}
 	if cmd != nil {
-		t.Fatal("expected no tea.Quit command during spinner cancel")
+		t.Fatal("expected no tea.Quit command during streaming cancel")
 	}
 
 	msg := readSingleProtocolMessage(t, &out)
 	if msg.Type != protocol.TypeCancel {
 		t.Fatalf("expected %q message, got %q", protocol.TypeCancel, msg.Type)
+	}
+}
+
+func TestCancelTimerExpiredResetsArm(t *testing.T) {
+	m := newTestModel()
+	m.isStreaming = true
+	m.isCanceling = true
+	m.statusText = "Press Ctrl+C again to cancel"
+
+	updated, _ := m.Update(cancelTimerExpired{})
+	got := updated.(Model)
+
+	if got.isCanceling {
+		t.Fatal("expected isCanceling to be cleared after timer expiry")
+	}
+	if got.statusText != "" {
+		t.Fatalf("expected empty statusText after timer expiry, got %q", got.statusText)
 	}
 }
 

@@ -2,7 +2,13 @@
   "events": [
     {
       "payload": {
-        "content": "Status\n"
+        "content": "Lobster Status\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Initialization\n"
       },
       "type": "text"
     },
@@ -14,20 +20,16 @@
         ],
         "rows": [
           [
-            "Tier",
-            "free"
+            "Initialization",
+            "Configured"
           ],
           [
             "Provider",
             "openai"
           ],
           [
-            "Model",
-            "gpt-4.1"
-          ],
-          [
-            "Session ID",
-            "sess_123"
+            "Config File",
+            "/tmp/lobster_ws/.env"
           ]
         ]
       },
@@ -35,7 +37,101 @@
     },
     {
       "payload": {
-        "content": "Tip: use `/config provider` or `/config model` to change runtime settings.\n"
+        "content": "Subscription\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Subscription Tier",
+            "Free"
+          ],
+          [
+            "Source",
+            "default"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Installed Packages\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Package",
+          "Version",
+          "Status"
+        ],
+        "rows": [
+          [
+            "lobster-ai",
+            "1.1.2",
+            "Installed"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Optional Capabilities\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Status",
+          "Capability",
+          "Details"
+        ],
+        "rows": [
+          [
+            "available",
+            "Semantic Search",
+            "Vector backend available"
+          ],
+          [
+            "available",
+            "Document Intelligence",
+            "docling"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Available Agents (2)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- data_expert_agent\n- research_agent\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Enabled Features\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- community_support\n- local_only\n"
       },
       "type": "text"
     }

@@ -154,6 +154,8 @@ class OverallState(AgentState):
         store_keys: Registry of store keys from sub-agent delegations.
             Maps store_key -> agent_name. Populated by pre_model_hook
             from InMemoryStore so keys survive message trimming.
+        context_compaction: Metadata emitted when pre_model_hook trims context.
+            Shape: {"before_count": int, "after_count": int, "budget_tokens": int}
 
     Note:
         This is the extensible base class for modular agent packages.
@@ -177,6 +179,10 @@ class OverallState(AgentState):
     # Populated by pre_model_hook from InMemoryStore on each iteration.
     # Survives message trimming — LLM always has access to all store keys.
     store_keys: Dict[str, str] = {}
+
+    # Emitted only when pre_model_hook trims context.
+    # Used by streaming UIs to surface compaction visibility.
+    context_compaction: Dict[str, Any] = {}
 
 
 class SingleCellExpertState(AgentState):

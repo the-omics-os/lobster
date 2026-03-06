@@ -1,0 +1,114 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Workspace Inventory\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "In-Memory Store\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Entries",
+            "3"
+          ],
+          [
+            "geo",
+            "2"
+          ],
+          [
+            "sra",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Workspace Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Total Files",
+            "3"
+          ],
+          [
+            "Total Size",
+            "2.5 MB"
+          ],
+          [
+            "study",
+            "2"
+          ],
+          [
+            "samples",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Export Files (2)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "File",
+          "Size",
+          "Modified"
+        ],
+        "rows": [
+          [
+            "analysis_summary.csv",
+            "3.0 KB",
+            "2026-03-02 10:00"
+          ],
+          [
+            "sample_table.tsv",
+            "1.2 KB",
+            "2026-03-01 09:30"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "level": "warning",
+        "message": "Found files in deprecated metadata/exports/ location."
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Consider migrating: mv workspace/metadata/exports/* workspace/exports/\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Workspace: 3 in-memory, 3 files"
+}

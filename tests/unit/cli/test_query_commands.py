@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from rich.console import Console
 
 from lobster.cli_internal.commands.heavy import query_commands
+from lobster.cli_internal.commands.heavy import session_infra
 
 
 class _Tracker:
@@ -254,3 +255,64 @@ def test_display_streaming_response_delegates_to_shared_helper(monkeypatch):
     )
 
     assert result == expected
+
+
+def test_resolve_session_continuation_prefers_session_directory_for_latest(tmp_path):
+    workspace_path = tmp_path / ".lobster_workspace"
+    session_dir = workspace_path / ".lobster" / "sessions" / "session_20260305_120000"
+    session_dir.mkdir(parents=True)
+
+    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
+        workspace_path,
+        "latest",
+    )
+
+    assert session_file is None
+    assert session_id == "session_20260305_120000"
+    assert found_existing is True
+
+
+def test_resolve_session_continuation_explicit_missing_returns_new_session_id(tmp_path):
+    workspace_path = tmp_path / ".lobster_workspace"
+    workspace_path.mkdir(parents=True)
+
+    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
+        workspace_path,
+        "project_alpha",
+    )
+
+    assert session_file is None
+    assert session_id == "project_alpha"
+    assert found_existing is False
+
+
+def test_resolve_session_continuation_explicit_legacy_json_is_loaded(tmp_path):
+    workspace_path = tmp_path / ".lobster_workspace"
+    workspace_path.mkdir(parents=True)
+    legacy_session = workspace_path / "session_project_beta.json"
+    legacy_session.write_text("{}")
+
+    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
+        workspace_path,
+        "project_beta",
+    )
+
+    assert session_file == legacy_session
+    assert session_id == "project_beta"
+    assert found_existing is True
+
+
+def test_resolve_session_continuation_latest_falls_back_to_legacy_json(tmp_path):
+    workspace_path = tmp_path / ".lobster_workspace"
+    workspace_path.mkdir(parents=True)
+    legacy_session = workspace_path / "session_project_gamma.json"
+    legacy_session.write_text("{}")
+
+    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
+        workspace_path,
+        "latest",
+    )
+
+    assert session_file == legacy_session
+    assert session_id == "project_gamma"
+    assert found_existing is True

@@ -6,12 +6,21 @@ Extracted from cli.py for modularity.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from rich import box
-from rich.panel import Panel
 from rich.table import Table
 
+from lobster.cli_internal.commands.output_adapter import (
+    ConsoleOutputAdapter,
+    OutputBlock,
+    alert_block,
+    hint_block,
+    kv_block,
+    list_block,
+    section_block,
+    table_block,
+)
 from lobster.ui.console_manager import get_console_manager
 
 if TYPE_CHECKING:
@@ -159,61 +168,52 @@ def _get_matrix_info(matrix) -> Dict[str, Any]:
     return info
 
 
-def _display_status_info():
+def build_status_blocks() -> List[OutputBlock]:
     """
-    Display subscription tier, installed packages, and available agents.
+    Build structured status blocks for console, JSON, and protocol adapters.
 
-    Shared implementation for both 'lobster status' CLI command and '/status' chat command.
-    This function is client-independent and shows installation/license information.
+    Shared implementation for both `lobster status` and `/status`.
     """
-    from lobster.ui import LobsterTheme
-
-    console.print()
-    console.print(
-        Panel.fit(
-            f"[bold {LobsterTheme.PRIMARY_ORANGE}]Lobster Status[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-            border_style=LobsterTheme.PRIMARY_ORANGE,
-            padding=(0, 2),
-        )
-    )
-    console.print()
-
+    blocks: List[OutputBlock] = [
+        section_block(title="Lobster Status"),
+    ]
     # Check initialization status
     env_file = Path.cwd() / ".env"
     is_initialized = env_file.exists()
 
+    init_rows = [("Initialization", "Configured" if is_initialized else "Not configured")]
     if is_initialized:
-        console.print("[bold]Initialization:[/bold] Configured")
         try:
             from dotenv import dotenv_values
 
             env_vars = dotenv_values(env_file)
             provider = env_vars.get("LOBSTER_LLM_PROVIDER")
             if provider:
-                console.print(f"[dim]Provider: {provider}[/dim]")
+                init_rows.append(("Provider", provider))
             else:
                 if env_vars.get("ANTHROPIC_API_KEY"):
-                    console.print("[dim]Provider: anthropic (auto-detected)[/dim]")
+                    init_rows.append(("Provider", "anthropic (auto-detected)"))
                 elif env_vars.get("AWS_BEDROCK_ACCESS_KEY"):
-                    console.print("[dim]Provider: bedrock (auto-detected)[/dim]")
+                    init_rows.append(("Provider", "bedrock (auto-detected)"))
                 elif env_vars.get("OLLAMA_BASE_URL"):
-                    console.print("[dim]Provider: ollama (auto-detected)[/dim]")
+                    init_rows.append(("Provider", "ollama (auto-detected)"))
         except Exception:
             pass
-        console.print(f"[dim]Config file: {env_file}[/dim]")
+        init_rows.append(("Config File", str(env_file)))
     else:
-        console.print("[bold]Initialization:[/bold] Not configured")
-        console.print(
-            Panel.fit(
-                "[yellow]Lobster is not initialized yet[/yellow]\n\n"
-                f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
-                "[dim]This will configure your LLM provider (Anthropic/Bedrock/Ollama)[/dim]",
-                border_style="yellow",
-                padding=(1, 2),
+        blocks.append(
+            alert_block(
+                "Lobster is not initialized yet",
+                level="warning",
+                title="Initialization",
             )
         )
-
-    console.print()
+        blocks.append(
+            hint_block(
+                "Run `lobster init` to configure your LLM provider (Anthropic/Bedrock/Ollama)."
+            )
+        )
+    blocks.append(kv_block(init_rows, title="Initialization"))
 
     # Get entitlement status
     from lobster.core.license_manager import get_entitlement_status
@@ -234,111 +234,127 @@ def _display_status_info():
     available = [name for name in worker_agents if is_agent_available(name, tier)]
     restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
 
-    # Subscription tier section
-    tier_display = entitlement.get("tier_display", "Free")
-    tier_emoji = {"free": "free", "premium": "premium", "enterprise": "enterprise"}.get(
-        entitlement.get("tier", "free"), "free"
-    )
-
-    console.print(f"[bold]Subscription Tier:[/bold] {tier_display}")
-    console.print(f"[dim]Source: {entitlement.get('source', 'default')}[/dim]")
+    tier_rows = [
+        ("Subscription Tier", entitlement.get("tier_display", "Free")),
+        ("Source", entitlement.get("source", "default")),
+    ]
 
     if entitlement.get("expires_at"):
         days = entitlement.get("days_until_expiry")
         if days is not None and days < 30:
-            console.print(f"[yellow]License expires in {days} days[/yellow]")
+            blocks.append(
+                alert_block(
+                    f"License expires in {days} days",
+                    level="warning",
+                )
+            )
         else:
-            console.print(f"[dim]Expires: {entitlement.get('expires_at')}[/dim]")
+            tier_rows.append(("Expires", entitlement.get("expires_at")))
 
     if entitlement.get("warnings"):
         for warning in entitlement["warnings"]:
-            console.print(f"[red]{warning}[/red]")
+            blocks.append(alert_block(warning, level="error"))
+    blocks.append(kv_block(tier_rows, title="Subscription"))
 
-    console.print()
-
-    # Installed packages table
-    console.print("[bold]Installed Packages:[/bold]")
-    pkg_table = Table(box=box.ROUNDED, border_style="cyan", show_header=True)
-    pkg_table.add_column("Package", style="white")
-    pkg_table.add_column("Version", style="cyan")
-    pkg_table.add_column("Status", style="green")
-
+    package_rows = []
     for pkg_name, version in packages.items():
         if version == "missing":
-            status_str = "[red]Missing[/red]"
+            status_str = "Missing"
         elif version == "dev":
-            status_str = "[yellow]Development[/yellow]"
+            status_str = "Development"
         else:
-            status_str = "[green]Installed[/green]"
-        pkg_table.add_row(pkg_name, version, status_str)
+            status_str = "Installed"
+        package_rows.append([pkg_name, version, status_str])
+    blocks.append(
+        table_block(
+            [
+                {"name": "Package"},
+                {"name": "Version"},
+                {"name": "Status"},
+            ],
+            package_rows,
+            title="Installed Packages",
+        )
+    )
 
-    console.print(pkg_table)
-    console.print()
-
-    # Optional capabilities
-    console.print("[bold]Optional Capabilities:[/bold]")
     capabilities = []
     try:
-        import chromadb  # noqa: F401
+        from lobster.services.vector.service import VectorSearchService  # noqa: F401
 
-        capabilities.append(
-            ("[green]v[/green]", "Semantic Search", "chromadb + sentence-transformers")
-        )
+        capabilities.append(("available", "Semantic Search", "Vector backend available"))
     except ImportError:
+        from lobster.core.component_registry import get_install_command
+
+        vector_cmd = get_install_command("vector-search", is_extra=True)
         capabilities.append(
             (
-                "[dim]o[/dim]",
+                "optional",
                 "Semantic Search",
-                "pip install 'lobster-ai\\[vector-search]'",
+                f"{vector_cmd} (+ lobster-metadata backend, dev-only)",
             )
         )
     try:
         import docling  # noqa: F401
 
-        capabilities.append(("[green]v[/green]", "Document Intelligence", "docling"))
+        capabilities.append(("available", "Document Intelligence", "docling"))
     except ImportError:
+        from lobster.core.component_registry import get_install_command
+
+        docling_cmd = get_install_command("docling", is_extra=True)
         capabilities.append(
             (
-                "[dim]o[/dim]",
+                "optional",
                 "Document Intelligence",
-                "pip install 'lobster-ai\\[docling]'",
+                docling_cmd,
             )
         )
+    blocks.append(
+        table_block(
+            [
+                {"name": "Status"},
+                {"name": "Capability"},
+                {"name": "Details"},
+            ],
+            capabilities,
+            title="Optional Capabilities",
+        )
+    )
 
-    cap_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
-    cap_table.add_column("Status", width=3)
-    cap_table.add_column("Capability", style="white")
-    cap_table.add_column("Details", style="dim")
-    for status, name, detail in capabilities:
-        cap_table.add_row(status, name, detail)
-    console.print(cap_table)
-    console.print()
-
-    # Available agents
     if available:
-        console.print(f"[bold]Available Agents ({len(available)}):[/bold]")
-        agent_list = ", ".join(sorted(available))
-        console.print(f"[green]{agent_list}[/green]")
-        console.print()
-
-    # Restricted agents (upgrade prompt)
-    if restricted:
-        console.print(f"[bold]Premium Agents ({len(restricted)}):[/bold]")
-        restricted_list = ", ".join(sorted(restricted))
-        console.print(f"[dim]{restricted_list}[/dim]")
-        console.print()
-        console.print(
-            Panel.fit(
-                f"[yellow]Upgrade to Premium to unlock {len(restricted)} additional agents[/yellow]\n"
-                f"[dim]Visit https://omics-os.com/pricing or run 'lobster activate <code>'[/dim]",
-                border_style="yellow",
-                padding=(0, 2),
+        blocks.append(
+            list_block(
+                sorted(available),
+                title=f"Available Agents ({len(available)})",
             )
         )
 
-    # Features
+    if restricted:
+        blocks.append(
+            list_block(
+                sorted(restricted),
+                title=f"Premium Agents ({len(restricted)})",
+            )
+        )
+        blocks.append(
+            hint_block(
+                f"Upgrade to Premium to unlock {len(restricted)} additional agents. Visit https://omics-os.com/pricing or run 'lobster activate <code>'."
+            )
+        )
+
     features = entitlement.get("features", [])
     if features:
-        console.print()
-        console.print("[bold]Enabled Features:[/bold]")
-        console.print(f"[cyan]{', '.join(features)}[/cyan]")
+        blocks.append(list_block([str(feature) for feature in features], title="Enabled Features"))
+
+    return blocks
+
+
+def _display_status_info(output=None):
+    """
+    Display subscription tier, installed packages, and available agents.
+
+    Shared implementation for both 'lobster status' CLI command and '/status' chat command.
+    This function is client-independent and shows installation/license information.
+    """
+    if output is None:
+        output = ConsoleOutputAdapter(console)
+    output.render_blocks(build_status_blocks())

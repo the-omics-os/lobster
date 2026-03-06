@@ -12,7 +12,15 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    OutputBlock,
+    alert_block,
+    hint_block,
+    list_block,
+    section_block,
+    table_block,
+)
 
 
 def truncate_middle(text: str, max_length: int = 60) -> str:
@@ -36,6 +44,238 @@ def truncate_middle(text: str, max_length: int = 60) -> str:
     end_length = available_chars // 2
 
     return f"{text[:start_length]}...{text[-end_length:]}"
+
+
+def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
+    output.render_blocks(blocks)
+
+
+def _build_workspace_list_blocks(
+    available: dict, loaded: set[str]
+) -> list[OutputBlock]:
+    rows = []
+    for idx, (name, info) in enumerate(sorted(available.items()), start=1):
+        status = "Loaded" if name in loaded else "Available"
+        size = f"{info['size_mb']:.1f} MB"
+        shape = (
+            f"{info['shape'][0]:,} × {info['shape'][1]:,}" if info["shape"] else "N/A"
+        )
+        modified = info["modified"].split("T")[0]
+        rows.append(
+            [str(idx), status, truncate_middle(name, max_length=60), size, shape, modified]
+        )
+
+    return [
+        table_block(
+            title="Available Datasets",
+            columns=[
+                {"name": "#", "style": "dim", "width": 4},
+                {"name": "Status", "style": "green", "width": 10},
+                {"name": "Name", "style": "bold", "no_wrap": False},
+                {"name": "Size", "style": "cyan", "width": 10},
+                {"name": "Shape", "style": "white", "width": 15},
+                {"name": "Modified", "style": "dim", "width": 12},
+            ],
+            rows=rows,
+        ),
+        hint_block("Use '/workspace info <#>' to see full details."),
+    ]
+
+
+def _build_workspace_info_blocks(
+    matched_datasets: list[tuple[str, dict]],
+    loaded: set[str],
+) -> list[OutputBlock]:
+    blocks: list[OutputBlock] = []
+    for name, info in matched_datasets:
+        rows = [
+            ["Name", name],
+            ["Status", "Loaded" if name in loaded else "Not Loaded"],
+            ["Path", info["path"]],
+            ["Size", f"{info['size_mb']:.2f} MB"],
+            [
+                "Shape",
+                (
+                    f"{info['shape'][0]:,} observations × {info['shape'][1]:,} variables"
+                    if info["shape"]
+                    else "N/A"
+                ),
+            ],
+            ["Type", info["type"]],
+            ["Modified", info["modified"]],
+        ]
+
+        if "_" in name:
+            parts_list = name.split("_")
+            possible_stages = [
+                part
+                for part in parts_list
+                if any(
+                    keyword in part.lower()
+                    for keyword in [
+                        "quality",
+                        "filter",
+                        "normal",
+                        "doublet",
+                        "cluster",
+                        "marker",
+                        "annot",
+                        "pseudobulk",
+                    ]
+                )
+            ]
+            if possible_stages:
+                rows.append(["Processing Stages", " -> ".join(possible_stages)])
+
+        blocks.append(
+            table_block(
+                title=f"Dataset: {name}",
+                columns=[
+                    {"name": "Property", "style": "bold cyan"},
+                    {"name": "Value", "style": "white"},
+                ],
+                rows=rows,
+            )
+        )
+    return blocks
+
+
+def _build_workspace_status_blocks(
+    workspace_status_dict: dict,
+    modality_detail_rows: list[tuple[str, list[list[str]]]],
+) -> list[OutputBlock]:
+    workspace_path = workspace_status_dict.get("workspace_path", "N/A")
+    modalities_count = workspace_status_dict.get("modalities_loaded", 0)
+    provenance = (
+        "Enabled" if workspace_status_dict.get("provenance_enabled") else "Disabled"
+    )
+    mudata = (
+        "Available" if workspace_status_dict.get("mudata_available") else "Not installed"
+    )
+
+    blocks: list[OutputBlock] = [
+        section_block(title="Workspace Status"),
+        table_block(
+            title="Summary",
+            columns=[{"name": "Field"}, {"name": "Value"}],
+            rows=[
+                ["Workspace", workspace_path],
+                ["Modalities Loaded", str(modalities_count)],
+                ["Provenance", provenance],
+                ["MuData", mudata],
+            ],
+        ),
+    ]
+
+    if workspace_status_dict.get("directories"):
+        dir_icons = {
+            "data": "Data",
+            "exports": "Exports",
+            "cache": "Cache",
+            "literature_cache": "Literature Cache",
+            "metadata": "Metadata",
+            "notebooks": "Notebooks",
+            "queues": "Queues",
+        }
+        dir_rows = []
+        for dir_type, path in workspace_status_dict["directories"].items():
+            file_count, size_str, exists = _get_directory_stats(path)
+            display_path = truncate_middle(path, 45)
+            if not exists:
+                display_path = f"{display_path} (not created)"
+            dir_rows.append(
+                [
+                    dir_icons.get(dir_type, dir_type.replace("_", " ").title()),
+                    str(file_count) if exists else "-",
+                    size_str,
+                    display_path,
+                ]
+            )
+        blocks.append(
+            table_block(
+                title="Directories",
+                columns=[
+                    {"name": "Directory", "style": "bold white"},
+                    {"name": "Files", "style": "cyan", "justify": "right"},
+                    {"name": "Size", "style": "green", "justify": "right"},
+                    {"name": "Path", "style": "grey70"},
+                ],
+                rows=dir_rows,
+            )
+        )
+
+    modality_names = workspace_status_dict.get("modality_names", [])
+    if modality_names:
+        blocks.append(list_block(modality_names, title="Loaded Modalities"))
+    else:
+        blocks.append(hint_block("No modalities currently loaded"))
+
+    backends = workspace_status_dict.get("registered_backends", [])
+    adapters = workspace_status_dict.get("registered_adapters", [])
+    blocks.append(
+        table_block(
+            title="System Capabilities",
+            columns=[{"name": "Field"}, {"name": "Value"}],
+            rows=[
+                ["Backends", ", ".join(backends) if backends else "None"],
+                ["Adapters", ", ".join(adapters[:5]) if adapters else "None"],
+            ],
+        )
+    )
+    if len(adapters) > 5:
+        blocks.append(hint_block(f"... and {len(adapters) - 5} more adapters"))
+
+    if modality_detail_rows:
+        blocks.append(section_block(title="Modality Details"))
+        for modality_name, rows in modality_detail_rows:
+            blocks.append(
+                table_block(
+                    title=modality_name,
+                    columns=[
+                        {"name": "Property", "style": "bold grey93"},
+                        {"name": "Value", "style": "white"},
+                    ],
+                    rows=rows,
+                )
+            )
+
+    return blocks
+
+
+def _build_workspace_load_result_blocks(result: dict) -> list[OutputBlock]:
+    restored = [str(name) for name in result.get("restored", [])]
+    skipped = [str(name) for name in result.get("skipped", [])]
+    total_size_mb = float(result.get("total_size_mb", 0.0))
+
+    if restored:
+        blocks: list[OutputBlock] = [
+            section_block(
+                body=f"Loaded {len(restored)} datasets ({total_size_mb:.1f} MB)"
+            ),
+            list_block(restored, title="Loaded Datasets"),
+        ]
+        if skipped:
+            blocks.extend(
+                [
+                    hint_block(
+                        f"Skipped {len(skipped)} dataset(s) that were already loaded or unavailable."
+                    ),
+                    list_block(skipped, title="Skipped Datasets"),
+                ]
+            )
+        return blocks
+
+    blocks = [alert_block("No datasets loaded", level="warning")]
+    if skipped:
+        blocks.extend(
+            [
+                hint_block(
+                    f"Skipped {len(skipped)} dataset(s) that were already loaded or unavailable."
+                ),
+                list_block(skipped, title="Skipped Datasets"),
+            ]
+        )
+    return blocks
 
 
 def workspace_list(
@@ -69,72 +309,44 @@ def workspace_list(
         # Handle empty case with helpful information
         workspace_path = client.data_manager.workspace_path
         data_dir = workspace_path / "data"
-
-        output.print(
-            "[yellow]📂 No datasets found in workspace[/yellow]", style="warning"
-        )
-        output.print(f"[grey70]Workspace: {workspace_path}[/grey70]", style="info")
-        output.print(f"[grey70]Data directory: {data_dir}[/grey70]", style="info")
+        blocks: list[OutputBlock] = [
+            alert_block("No datasets found in workspace", level="warning"),
+            section_block(body=f"Workspace: {workspace_path}"),
+            section_block(body=f"Data directory: {data_dir}"),
+        ]
 
         if not data_dir.exists():
-            output.print("[red]⚠️  Data directory doesn't exist[/red]", style="error")
-            output.print(
-                f"[cyan]💡 Create it with: mkdir -p {data_dir}[/cyan]", style="info"
-            )
+            blocks.append(alert_block("Data directory does not exist", level="error"))
+            blocks.append(section_block(body=f"Create it with: mkdir -p {data_dir}"))
         else:
             # Check what files are actually in the data directory
             files = list(data_dir.glob("*"))
             if files:
-                output.print(
-                    f"[cyan]Found {len(files)} files in data directory, but none are supported datasets (.h5ad)[/cyan]",
-                    style="info",
+                blocks.append(
+                    section_block(
+                        body=(
+                            f"Found {len(files)} files in data directory, but none are "
+                            "supported datasets (.h5ad)."
+                        )
+                    )
                 )
-                output.print("[grey70]Files found:[/grey70]", style="info")
-                for f in files[:5]:  # Show first 5 files
-                    output.print(f"  • {f.name}", style="info")
+                blocks.append(
+                    list_block([f.name for f in files[:5]], title="Files found")
+                )
                 if len(files) > 5:
-                    output.print(f"  • ... and {len(files) - 5} more", style="info")
+                    blocks.append(
+                        hint_block(f"... and {len(files) - 5} more")
+                    )
             else:
-                output.print(
-                    f"[cyan]💡 Add .h5ad files to {data_dir} to see them here[/cyan]",
-                    style="info",
+                blocks.append(
+                    section_block(
+                        body=f"Add .h5ad files to {data_dir} to see them here."
+                    )
                 )
 
+        _render_blocks(output, blocks)
         return "No datasets found in workspace"
-
-    # Create table data structure
-    table_data = {
-        "title": "Available Datasets",
-        "columns": [
-            {"name": "#", "style": "dim", "width": 4},
-            {"name": "Status", "style": "green", "width": 6},
-            {"name": "Name", "style": "bold", "no_wrap": False},
-            {"name": "Size", "style": "cyan", "width": 10},
-            {"name": "Shape", "style": "white", "width": 15},
-            {"name": "Modified", "style": "dim", "width": 12},
-        ],
-        "rows": [],
-    }
-
-    for idx, (name, info) in enumerate(sorted(available.items()), start=1):
-        status = "✓" if name in loaded else "○"
-        size = f"{info['size_mb']:.1f} MB"
-        shape = (
-            f"{info['shape'][0]:,} × {info['shape'][1]:,}" if info["shape"] else "N/A"
-        )
-        modified = info["modified"].split("T")[0]
-
-        # Use intelligent truncation for long names
-        display_name = truncate_middle(name, max_length=60)
-
-        table_data["rows"].append(
-            [str(idx), status, display_name, size, shape, modified]
-        )
-
-    output.print_table(table_data)
-    output.print(
-        "\n[dim]Use '/workspace info <#>' to see full details[/dim]", style="info"
-    )
+    _render_blocks(output, _build_workspace_list_blocks(available, loaded))
     return f"Listed {len(available)} available datasets"
 
 
@@ -153,10 +365,14 @@ def workspace_info(
         Summary string for conversation history, or None
     """
     if not selector:
-        output.print("[red]Usage: /workspace info <#|pattern>[/red]", style="error")
-        output.print(
-            "[dim]Examples: /workspace info 1, /workspace info gse12345, /workspace info *clustered*[/dim]",
-            style="info",
+        _render_blocks(
+            output,
+            [
+                alert_block("Usage: /workspace info <#|pattern>", level="error"),
+                hint_block(
+                    "Examples: /workspace info 1, /workspace info gse12345, /workspace info *clustered*"
+                ),
+            ],
         )
         return None
 
@@ -172,7 +388,10 @@ def workspace_info(
     loaded = set(client.data_manager.modalities.keys())
 
     if not available:
-        output.print("[yellow]No datasets found in workspace[/yellow]", style="warning")
+        _render_blocks(
+            output,
+            [alert_block("No datasets found in workspace", level="warning")],
+        )
         return None
 
     # Determine if selector is an index or pattern
@@ -187,9 +406,14 @@ def workspace_info(
                 (sorted_names[idx - 1], available[sorted_names[idx - 1]])
             ]
         else:
-            output.print(
-                f"[red]Index {idx} out of range (1-{len(sorted_names)})[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"Index {idx} out of range (1-{len(sorted_names)})",
+                        level="error",
+                    )
+                ],
             )
             return None
     else:
@@ -199,73 +423,18 @@ def workspace_info(
                 matched_datasets.append((name, info))
 
         if not matched_datasets:
-            output.print(
-                f"[yellow]No datasets match pattern: {selector}[/yellow]",
-                style="warning",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"No datasets match pattern: {selector}",
+                        level="warning",
+                    )
+                ],
             )
             return None
 
-    # Display detailed information for matched datasets
-    for name, info in matched_datasets:
-        status = "✓ Loaded" if name in loaded else "○ Not Loaded"
-
-        # Create detailed info table
-        detail_table_data = {
-            "title": f"Dataset: {name}",
-            "columns": [
-                {"name": "Property", "style": "bold cyan"},
-                {"name": "Value", "style": "white"},
-            ],
-            "show_header": False,
-            "border_style": "cyan",
-            "rows": [],
-        }
-
-        detail_table_data["rows"].append(["Name", name])
-        detail_table_data["rows"].append(["Status", status])
-        detail_table_data["rows"].append(["Path", info["path"]])
-        detail_table_data["rows"].append(["Size", f"{info['size_mb']:.2f} MB"])
-        detail_table_data["rows"].append(
-            [
-                "Shape",
-                (
-                    f"{info['shape'][0]:,} observations × {info['shape'][1]:,} variables"
-                    if info["shape"]
-                    else "N/A"
-                ),
-            ]
-        )
-        detail_table_data["rows"].append(["Type", info["type"]])
-        detail_table_data["rows"].append(["Modified", info["modified"]])
-
-        # Try to detect lineage from name (basic version)
-        if "_" in name:
-            parts_list = name.split("_")
-            possible_stages = [
-                p
-                for p in parts_list
-                if any(
-                    keyword in p.lower()
-                    for keyword in [
-                        "quality",
-                        "filter",
-                        "normal",
-                        "doublet",
-                        "cluster",
-                        "marker",
-                        "annot",
-                        "pseudobulk",
-                    ]
-                )
-            ]
-            if possible_stages:
-                detail_table_data["rows"].append(
-                    ["Processing Stages", " → ".join(possible_stages)]
-                )
-
-        output.print_table(detail_table_data)
-        output.print("")  # Add spacing between datasets
-
+    _render_blocks(output, _build_workspace_info_blocks(matched_datasets, loaded))
     return f"Displayed details for {len(matched_datasets)} dataset(s)"
 
 
@@ -290,12 +459,14 @@ def workspace_load(
         Summary string for conversation history, or None
     """
     if not selector:
-        output.print(
-            "[red]Usage: /workspace load <#|pattern|file>[/red]", style="error"
-        )
-        output.print(
-            "[dim]Examples: /workspace load 1, /workspace load recent, /workspace load data.h5ad[/dim]",
-            style="info",
+        _render_blocks(
+            output,
+            [
+                alert_block("Usage: /workspace load <#|pattern|file>", level="error"),
+                hint_block(
+                    "Examples: /workspace load 1, /workspace load recent, /workspace load data.h5ad"
+                ),
+            ],
         )
         return None
 
@@ -311,41 +482,49 @@ def workspace_load(
     resolved = resolver.resolve(selector, search_workspace=True, must_exist=False)
 
     if not resolved.is_safe:
-        output.print(f"[red]❌ Security error: {resolved.error}[/red]", style="error")
+        _render_blocks(
+            output,
+            [alert_block(f"Security error: {resolved.error}", level="error")],
+        )
         return None
 
     file_path = resolved.path
 
     if file_path.exists() and file_path.is_file():
         # Load file directly into workspace
-        output.print(
-            f"[cyan]📂 Loading file into workspace: {file_path.name}[/cyan]\n",
-            style="info",
+        _render_blocks(
+            output, [section_block(body=f"Loading file into workspace: {file_path.name}")]
         )
 
         try:
             result = client.load_data_file(str(file_path))
 
             if result.get("success"):
-                output.print(
-                    f"[green]✅ Loaded '{result['modality_name']}' "
-                    f"({result['data_shape'][0]:,} × {result['data_shape'][1]:,})[/green]",
-                    style="success",
+                _render_blocks(
+                    output,
+                    [
+                        section_block(
+                            body=(
+                                f"Loaded '{result['modality_name']}' "
+                                f"({result['data_shape'][0]:,} × {result['data_shape'][1]:,})"
+                            )
+                        )
+                    ],
                 )
                 return f"Loaded file '{file_path.name}' as modality '{result['modality_name']}'"
-            else:
-                output.print(
-                    f"[red]❌ {result.get('error', 'Unknown error')}[/red]",
-                    style="error",
-                )
-                if result.get("suggestion"):
-                    output.print(
-                        f"[cyan]💡 {result['suggestion']}[/cyan]", style="info"
-                    )
-                return None
+            blocks = [
+                alert_block(result.get("error", "Unknown error"), level="error")
+            ]
+            if result.get("suggestion"):
+                blocks.append(section_block(body=result["suggestion"]))
+            _render_blocks(output, blocks)
+            return None
 
         except Exception as e:
-            output.print(f"[red]❌ Failed to load file: {str(e)}[/red]", style="error")
+            _render_blocks(
+                output,
+                [alert_block(f"Failed to load file: {str(e)}", level="error")],
+            )
             return None
 
     # BUG FIX #2: Use cached scan for load command
@@ -358,10 +537,12 @@ def workspace_load(
         available = client.data_manager.available_datasets
 
     if not available:
-        output.print("[yellow]No datasets found in workspace[/yellow]", style="warning")
-        output.print(
-            f"[dim]Tip: If '{selector}' is a file, ensure the path is correct[/dim]",
-            style="info",
+        _render_blocks(
+            output,
+            [
+                alert_block("No datasets found in workspace", level="warning"),
+                hint_block(f"Tip: If '{selector}' is a file, ensure the path is correct."),
+            ],
         )
         return None
 
@@ -373,55 +554,56 @@ def workspace_load(
         if 1 <= idx <= len(sorted_names):
             dataset_name = sorted_names[idx - 1]
 
-            output.print(
-                f"[yellow]Loading dataset: {dataset_name}...[/yellow]", style="info"
+            _render_blocks(
+                output,
+                [section_block(body=f"Loading dataset: {dataset_name}...")],
             )
 
             # Load single dataset directly
             success = client.data_manager.load_dataset(dataset_name)
 
             if success:
-                output.print(
-                    f"[green]✓ Loaded dataset: {dataset_name} ({available[dataset_name]['size_mb']:.1f} MB)[/green]",
-                    style="success",
+                _render_blocks(
+                    output,
+                    [
+                        section_block(
+                            body=(
+                                f"Loaded dataset: {dataset_name} "
+                                f"({available[dataset_name]['size_mb']:.1f} MB)"
+                            )
+                        )
+                    ],
                 )
                 return "Loaded dataset from workspace"
-            else:
-                output.print(
-                    f"[red]Failed to load dataset: {dataset_name}[/red]", style="error"
-                )
-                return None
-        else:
-            output.print(
-                f"[red]Index {idx} out of range (1-{len(sorted_names)})[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [alert_block(f"Failed to load dataset: {dataset_name}", level="error")],
             )
             return None
-    else:
-        # Pattern-based loading (potentially multiple datasets)
-        output.print(
-            f"[yellow]Loading workspace datasets (pattern: {selector})...[/yellow]",
-            style="info",
+        _render_blocks(
+            output,
+            [alert_block(f"Index {idx} out of range (1-{len(sorted_names)})", level="error")],
         )
+        return None
+    # Pattern-based loading (potentially multiple datasets)
+    _render_blocks(
+        output,
+        [section_block(body=f"Loading workspace datasets (pattern: {selector})...")],
+    )
 
-        # Note: Progress bar creation is CLI-specific, so we skip it here
-        # The CLI layer can add progress bars if needed
+    # Note: Progress bar creation is CLI-specific, so we skip it here
+    # The CLI layer can add progress bars if needed
 
-        # Perform workspace loading
-        result = client.data_manager.restore_session(selector)
+    # Perform workspace loading
+    result = client.data_manager.restore_session(selector)
 
-        # Display results
-        if result["restored"]:
-            output.print(
-                f"[green]✓ Loaded {len(result['restored'])} datasets ({result['total_size_mb']:.1f} MB)[/green]",
-                style="success",
-            )
-            for name in result["restored"]:
-                output.print(f"  • {name}", style="info")
-            return f"Loaded {len(result['restored'])} datasets from workspace"
-        else:
-            output.print("[yellow]No datasets loaded[/yellow]", style="warning")
-            return None
+    # Display results
+    if result["restored"]:
+        _render_blocks(output, _build_workspace_load_result_blocks(result))
+        return f"Loaded {len(result['restored'])} datasets from workspace"
+
+    _render_blocks(output, _build_workspace_load_result_blocks(result))
+    return None
 
 
 def workspace_remove(
@@ -439,44 +621,44 @@ def workspace_remove(
         Summary string for conversation history, or None
     """
     if not selector:
-        output.print(
-            "[red]Usage: /workspace remove <#|pattern|name>[/red]", style="error"
-        )
-        output.print("[dim]Examples:[/dim]", style="info")
-        output.print(
-            "[dim]  /workspace remove 1              - Remove by index[/dim]",
-            style="info",
-        )
-        output.print(
-            "[dim]  /workspace remove *              - Remove all modalities[/dim]",
-            style="info",
-        )
-        output.print(
-            "[dim]  /workspace remove *clustered*    - Remove matching pattern[/dim]",
-            style="info",
-        )
-        output.print(
-            "[dim]  /workspace remove geo_gse12345   - Remove by exact name[/dim]",
-            style="info",
-        )
-        output.print(
-            "\n[dim]💡 Tip: Use '/modalities' to see loaded modalities with indexes[/dim]",
-            style="info",
+        _render_blocks(
+            output,
+            [
+                alert_block("Usage: /workspace remove <#|pattern|name>", level="error"),
+                list_block(
+                    [
+                        "/workspace remove 1 - Remove by index",
+                        "/workspace remove * - Remove all modalities",
+                        "/workspace remove *clustered* - Remove matching pattern",
+                        "/workspace remove geo_gse12345 - Remove by exact name",
+                    ],
+                    title="Examples",
+                ),
+                hint_block("Tip: Use '/modalities' to see loaded modalities with indexes"),
+            ],
         )
         return None
 
     # Check if modality management is available
     if not hasattr(client.data_manager, "list_modalities"):
-        output.print(
-            "[red]❌ Modality management not available in this client[/red]",
-            style="error",
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    "Modality management not available in this client",
+                    level="error",
+                )
+            ],
         )
         return None
 
     available_modalities = client.data_manager.list_modalities()
 
     if not available_modalities:
-        output.print("[yellow]No modalities currently loaded[/yellow]", style="warning")
+        _render_blocks(
+            output,
+            [alert_block("No modalities currently loaded", level="warning")],
+        )
         return None
 
     # Determine which modalities to remove
@@ -489,16 +671,20 @@ def workspace_remove(
         if 1 <= idx <= len(sorted_modalities):
             modalities_to_remove = [sorted_modalities[idx - 1]]
         else:
-            output.print(
-                f"[red]Index {idx} out of range (1-{len(sorted_modalities)})[/red]",
-                style="error",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"Index {idx} out of range (1-{len(sorted_modalities)})",
+                        level="error",
+                    ),
+                    list_block(
+                        sorted_modalities,
+                        title=f"Available modalities ({len(available_modalities)})",
+                        ordered=True,
+                    ),
+                ],
             )
-            output.print(
-                f"\n[yellow]Available modalities ({len(available_modalities)}):[/yellow]",
-                style="warning",
-            )
-            for i, mod in enumerate(sorted_modalities, start=1):
-                output.print(f"  {i}. {mod}", style="info")
             return None
     elif "*" in selector or "?" in selector or "[" in selector:
         # Pattern-based removal (wildcards detected)
@@ -507,42 +693,51 @@ def workspace_remove(
                 modalities_to_remove.append(name)
 
         if not modalities_to_remove:
-            output.print(
-                f"[yellow]No modalities match pattern: {selector}[/yellow]",
-                style="warning",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"No modalities match pattern: {selector}",
+                        level="warning",
+                    ),
+                    list_block(
+                        sorted_modalities,
+                        title=f"Available modalities ({len(available_modalities)})",
+                        ordered=True,
+                    ),
+                ],
             )
-            output.print(
-                f"\n[yellow]Available modalities ({len(available_modalities)}):[/yellow]",
-                style="warning",
-            )
-            for i, mod in enumerate(sorted_modalities, start=1):
-                output.print(f"  {i}. {mod}", style="info")
             return None
     else:
         # Exact name match
         if selector in available_modalities:
             modalities_to_remove = [selector]
         else:
-            output.print(
-                f"[red]❌ Modality '{selector}' not found[/red]", style="error"
+            _render_blocks(
+                output,
+                [
+                    alert_block(f"Modality '{selector}' not found", level="error"),
+                    list_block(
+                        sorted_modalities,
+                        title=f"Available modalities ({len(available_modalities)})",
+                        ordered=True,
+                    ),
+                ],
             )
-            output.print(
-                f"\n[yellow]Available modalities ({len(available_modalities)}):[/yellow]",
-                style="warning",
-            )
-            for i, mod in enumerate(sorted_modalities, start=1):
-                output.print(f"  {i}. {mod}", style="info")
             return None
 
     # Confirm removal for multiple modalities
     if len(modalities_to_remove) > 1:
-        output.print(
-            f"[yellow]⚠️  About to remove {len(modalities_to_remove)} modalities:[/yellow]",
-            style="warning",
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    f"About to remove {len(modalities_to_remove)} modalities:",
+                    level="warning",
+                ),
+                list_block(modalities_to_remove),
+            ],
         )
-        for mod in modalities_to_remove:
-            output.print(f"  • {mod}", style="info")
-        output.print("")  # spacing
 
     try:
         # Import the service
@@ -570,29 +765,40 @@ def workspace_remove(
                 )
 
                 # Display success message
-                output.print(
-                    f"[green]✓ Removed: {stats['removed_modality']}[/green]",
-                    style="success",
+                _render_blocks(
+                    output,
+                    [
+                        section_block(body=f"Removed: {stats['removed_modality']}")
+                    ],
                 )
                 if len(modalities_to_remove) == 1:
                     # Show detailed info only for single removal
-                    output.print(
-                        f"[dim]  Shape: {stats['shape']['n_obs']} obs × {stats['shape']['n_vars']} vars[/dim]",
-                        style="info",
+                    _render_blocks(
+                        output,
+                        [
+                            hint_block(
+                                f"Shape: {stats['shape']['n_obs']} obs × {stats['shape']['n_vars']} vars"
+                            )
+                        ],
                     )
                 removed_count += 1
             else:
-                output.print(
-                    f"[red]✗ Failed to remove: {modality_name}[/red]", style="error"
+                _render_blocks(
+                    output,
+                    [alert_block(f"Failed to remove: {modality_name}", level="error")],
                 )
                 failed_count += 1
 
         # Summary for multiple removals
         if len(modalities_to_remove) > 1:
             remaining = client.data_manager.list_modalities()
-            output.print(
-                f"\n[dim]Summary: {removed_count} removed, {failed_count} failed, {len(remaining)} remaining[/dim]",
-                style="info",
+            _render_blocks(
+                output,
+                [
+                    hint_block(
+                        f"Summary: {removed_count} removed, {failed_count} failed, {len(remaining)} remaining"
+                    )
+                ],
             )
 
         if removed_count > 0:
@@ -603,7 +809,10 @@ def workspace_remove(
         return None
 
     except Exception as e:
-        output.print(f"[red]❌ Error removing modality: {str(e)}[/red]", style="error")
+        _render_blocks(
+            output,
+            [alert_block(f"Error removing modality: {str(e)}", level="error")],
+        )
         return None
 
 
@@ -656,275 +865,61 @@ def workspace_status(client: "AgentClient", output: OutputAdapter) -> Optional[s
     workspace_status_dict = {}
     if hasattr(client.data_manager, "get_workspace_status"):
         workspace_status_dict = client.data_manager.get_workspace_status()
-
-    workspace_path = workspace_status_dict.get("workspace_path", "N/A")
-
-    # Header with workspace path
-    output.print(
-        "\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]",
-        style="info",
-    )
-    output.print(
-        "[bold white]                            🏗️  WORKSPACE STATUS[/bold white]",
-        style="info",
-    )
-    output.print(
-        "[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]\n",
-        style="info",
-    )
-
-    # Workspace path prominently displayed
-    output.print(
-        f"[bold white]📍 Location:[/bold white] [grey74]{workspace_path}[/grey74]\n",
-        style="info",
-    )
-
-    # Quick stats row
-    modalities_count = workspace_status_dict.get("modalities_loaded", 0)
-    provenance = (
-        "✓ Enabled" if workspace_status_dict.get("provenance_enabled") else "✗ Disabled"
-    )
-    mudata = (
-        "✓ Available"
-        if workspace_status_dict.get("mudata_available")
-        else "✗ Not installed"
-    )
-
-    output.print(
-        f"[bold white]📊 Quick Stats:[/bold white]  Modalities: [cyan]{modalities_count}[/cyan]  │  Provenance: [green]{provenance}[/green]  │  MuData: {mudata}",
-        style="info",
-    )
-
-    # Directories section with enhanced display
-    if workspace_status_dict.get("directories"):
-        dirs = workspace_status_dict["directories"]
-
-        output.print(
-            "\n[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]",
-            style="info",
-        )
-        output.print(
-            "[bold white]                              📁 DIRECTORIES[/bold white]",
-            style="info",
-        )
-        output.print(
-            "[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]\n",
-            style="info",
-        )
-
-        # Define icons for each directory type
-        dir_icons = {
-            "data": "💾",
-            "exports": "📤",
-            "cache": "🗄️",
-            "literature_cache": "📚",
-            "metadata": "🏷️",
-            "notebooks": "📓",
-            "queues": "📋",
-        }
-
-        # Create directory table with stats
-        dir_table_data = {
-            "title": "",
-            "columns": [
-                {"name": "Directory", "style": "bold white"},
-                {"name": "Files", "style": "cyan", "justify": "right"},
-                {"name": "Size", "style": "green", "justify": "right"},
-                {"name": "Path", "style": "grey70"},
-            ],
-            "border_style": "dim cyan",
-            "show_header": True,
-            "rows": [],
-        }
-
-        for dir_type, path in dirs.items():
-            file_count, size_str, exists = _get_directory_stats(path)
-            icon = dir_icons.get(dir_type, "📁")
-
-            # Format display name
-            display_name = dir_type.replace("_", " ").title()
-
-            # Truncate path for display
-            truncated_path = truncate_middle(path, 45)
-
-            # Status indicator
-            if not exists:
-                status = "[dim red](not created)[/dim red]"
-                truncated_path = f"{truncated_path} {status}"
-
-            dir_table_data["rows"].append(
-                [
-                    f"{icon} {display_name}",
-                    str(file_count) if exists else "-",
-                    size_str,
-                    truncated_path,
-                ]
-            )
-
-        output.print_table(dir_table_data)
-
-    # Loaded modalities section
-    modality_names = workspace_status_dict.get("modality_names", [])
-    if modality_names:
-        output.print(
-            "\n[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]",
-            style="info",
-        )
-        output.print(
-            "[bold white]                           🧬 LOADED MODALITIES[/bold white]",
-            style="info",
-        )
-        output.print(
-            "[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]\n",
-            style="info",
-        )
-
-        for modality in modality_names:
-            output.print(f"  [green]●[/green] {modality}", style="info")
-    else:
-        output.print(
-            "\n[dim white]🧬 No modalities currently loaded[/dim white]", style="info"
-        )
-
-    # System capabilities (collapsed view)
-    output.print(
-        "\n[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]",
-        style="info",
-    )
-    output.print(
-        "[bold white]                           🔧 SYSTEM CAPABILITIES[/bold white]",
-        style="info",
-    )
-    output.print(
-        "[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]\n",
-        style="info",
-    )
-
-    backends = workspace_status_dict.get("registered_backends", [])
-    adapters = workspace_status_dict.get("registered_adapters", [])
-
-    output.print(
-        f"[bold white]Backends ({len(backends)}):[/bold white] {', '.join(backends) if backends else 'None'}",
-        style="info",
-    )
-    output.print(
-        f"[bold white]Adapters ({len(adapters)}):[/bold white] {', '.join(adapters[:5]) if adapters else 'None'}",
-        style="info",
-    )
-    if len(adapters) > 5:
-        output.print(
-            f"           [grey50]... and {len(adapters) - 5} more[/grey50]",
-            style="info",
-        )
-
-    # Show detailed modality information if modalities are loaded
+    modality_detail_rows: list[tuple[str, list[list[str]]]] = []
     if hasattr(client.data_manager, "list_modalities"):
         modalities = client.data_manager.list_modalities()
 
         if modalities:
-            output.print(
-                "\n[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]",
-                style="info",
-            )
-            output.print(
-                "[bold white]                          🔬 MODALITY DETAILS[/bold white]",
-                style="info",
-            )
-            output.print(
-                "[bold cyan]─────────────────────────────────────────────────────────────────────────────[/bold cyan]\n",
-                style="info",
-            )
-
             for modality_name in modalities:
                 try:
                     adata = client.data_manager.get_modality(modality_name)
-
-                    # Create modality detail table with consistent styling
-                    modality_table_data = {
-                        "title": f"🧬 {modality_name}",
-                        "columns": [
-                            {"name": "Property", "style": "bold grey93"},
-                            {"name": "Value", "style": "white"},
-                        ],
-                        "border_style": "dim cyan",
-                        "show_header": False,
-                        "rows": [],
-                    }
-
-                    # Shape
-                    modality_table_data["rows"].append(
-                        [
-                            "Shape",
-                            f"[cyan]{adata.n_obs:,}[/cyan] obs × [cyan]{adata.n_vars:,}[/cyan] vars",
-                        ]
-                    )
+                    rows = [["Shape", f"{adata.n_obs:,} obs × {adata.n_vars:,} vars"]]
 
                     # Show obs columns
                     obs_cols = list(adata.obs.columns)
                     if obs_cols:
                         cols_preview = ", ".join(obs_cols[:5])
                         if len(obs_cols) > 5:
-                            cols_preview += (
-                                f" [grey50]... (+{len(obs_cols) - 5} more)[/grey50]"
-                            )
-                        modality_table_data["rows"].append(
-                            ["Obs Columns", cols_preview]
-                        )
+                            cols_preview += f" ... (+{len(obs_cols) - 5} more)"
+                        rows.append(["Obs Columns", cols_preview])
 
                     # Show var columns
                     var_cols = list(adata.var.columns)
                     if var_cols:
                         var_preview = ", ".join(var_cols[:5])
                         if len(var_cols) > 5:
-                            var_preview += (
-                                f" [grey50]... (+{len(var_cols) - 5} more)[/grey50]"
-                            )
-                        modality_table_data["rows"].append(["Var Columns", var_preview])
+                            var_preview += f" ... (+{len(var_cols) - 5} more)"
+                        rows.append(["Var Columns", var_preview])
 
                     # Show layers
                     if adata.layers:
                         layers_str = ", ".join(list(adata.layers.keys()))
-                        modality_table_data["rows"].append(
-                            ["Layers", f"[green]{layers_str}[/green]"]
-                        )
+                        rows.append(["Layers", layers_str])
 
                     # Show obsm
                     if adata.obsm:
                         obsm_str = ", ".join(list(adata.obsm.keys()))
-                        modality_table_data["rows"].append(
-                            ["Obsm", f"[yellow]{obsm_str}[/yellow]"]
-                        )
+                        rows.append(["Obsm", obsm_str])
 
                     # Show varm
                     if hasattr(adata, "varm") and adata.varm:
                         varm_str = ", ".join(list(adata.varm.keys()))
-                        modality_table_data["rows"].append(
-                            ["Varm", f"[yellow]{varm_str}[/yellow]"]
-                        )
+                        rows.append(["Varm", varm_str])
 
                     # Show some uns info
                     if adata.uns:
                         uns_keys = list(adata.uns.keys())[:5]
                         uns_str = ", ".join(uns_keys)
                         if len(adata.uns) > 5:
-                            uns_str += (
-                                f" [grey50]... (+{len(adata.uns) - 5} more)[/grey50]"
-                            )
-                        modality_table_data["rows"].append(["Uns Keys", uns_str])
+                            uns_str += f" ... (+{len(adata.uns) - 5} more)"
+                        rows.append(["Uns Keys", uns_str])
 
-                    output.print_table(modality_table_data)
-                    output.print("")  # Add spacing between modalities
-
+                    modality_detail_rows.append((modality_name, rows))
                 except Exception as e:
-                    output.print(
-                        f"  [red]✗ Error accessing {modality_name}: {e}[/red]",
-                        style="error",
-                    )
+                    output.print(f"Error accessing {modality_name}: {e}", style="error")
 
-    # Footer
-    output.print(
-        "[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]\n",
-        style="info",
+    _render_blocks(
+        output,
+        _build_workspace_status_blocks(workspace_status_dict, modality_detail_rows),
     )
-
     return "Displayed workspace status and information"

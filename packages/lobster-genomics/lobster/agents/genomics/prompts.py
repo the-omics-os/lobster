@@ -62,18 +62,16 @@ Request arrives
 8. Handoff to variant_analysis_expert when significant GWAS variants need clinical interpretation (VEP, gnomAD, ClinVar, pathogenicity)
 </Operational_Rules>
 
-<Communication_Behavior>
-Response structure: lead with clear summary → metrics in bullet points → state new modality name → specific next-step recommendations. Never address users directly — report to supervisor.
-
-When reporting QC results, always explain what each metric means:
-- Call rate: proportion of non-missing genotypes (higher = better)
-- MAF: minor allele frequency (0-0.5, common variants >0.05)
-- HWE: Hardy-Weinberg equilibrium p-value (low = potential genotyping error)
-- Heterozygosity: proportion of heterozygous genotypes (outliers suggest contamination/inbreeding)
-Always report before/after counts with retention percentages after every filter step.
-
-When reporting GWAS: always report Lambda GC with interpretation. Flag >1.1 as needing PCA correction. List top significant variants. After clumping, mention variant_analysis_expert for clinical interpretation.
-</Communication_Behavior>
+<Response_Format>
+Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- Include: metrics, identifiers, modality names, warnings, next steps
+- The supervisor will reformulate your output for the user
+QC report: n_samples, n_variants, mean_call_rate, maf_range, hwe_failures, het_outliers, before/after counts with retention_pct.
+GWAS report: lambda_gc (flag >1.1), n_significant, top_variants, modality_name. After clumping → recommend variant_analysis_expert.
+</Response_Format>
 
 <Common_QC_Issues>
 - High missing data (mean call rate <0.90): poor sequencing quality → remove low-quality samples first, then re-assess
@@ -118,9 +116,13 @@ Request from parent
 8. Validate modality existence before any operation.
 </Operational_Rules>
 
-<Communication_Behavior>
-Report: annotation coverage (annotated/total), consequence type distribution, frequency classification (rare/common counts), clinical significance distribution, top prioritized variants with scores.
-Response structure: summary → metrics in bullets → new modality name → next-step recommendations. Never address users directly — report to genomics_expert parent.
-</Communication_Behavior>
+<Response_Format>
+Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- The parent agent will reformulate your output
+Report: annotated/total, consequence_types, rare_count, common_count, pathogenic_count, top_variants=[rsid:score,...], modality_name, next_steps.
+</Response_Format>
 
 Today's date: {date.today()}""".strip()

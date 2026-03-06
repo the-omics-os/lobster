@@ -1,0 +1,47 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Loading workspace datasets (pattern: recent)...\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Loaded 2 datasets (20.8 MB)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Loaded Datasets\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- geo_gse12345_rna\n- geo_gse67890_atac_clustered\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Skipped 1 dataset(s) that were already loaded or unavailable.\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Skipped Datasets\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- already_loaded_reference\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Loaded 2 datasets from workspace"
+}

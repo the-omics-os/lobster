@@ -19,7 +19,7 @@
         "rows": [
           [
             "1",
-            "\u25cb",
+            "Available",
             "geo_gse12345_rna",
             "12.5 MB",
             "1,024 \u00d7 2,048",
@@ -27,7 +27,7 @@
           ],
           [
             "2",
-            "\u25cb",
+            "Available",
             "geo_gse67890_atac_clustered",
             "8.3 MB",
             "512 \u00d7 1,024",
@@ -39,10 +39,9 @@
     },
     {
       "payload": {
-        "level": "info",
-        "message": "\nUse '/workspace info <#>' to see full details"
+        "content": "Use '/workspace info <#>' to see full details.\n"
       },
-      "type": "alert"
+      "type": "text"
     }
   ],
   "summary": "Listed 2 available datasets"

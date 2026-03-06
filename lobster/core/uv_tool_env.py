@@ -16,6 +16,7 @@ class UvToolEnvInfo:
     """Information about the current uv tool environment."""
 
     tool_name: str
+    tool_extras: list[str] = field(default_factory=list)
     installed_packages: list[str] = field(default_factory=list)
     prefix: Path = field(default_factory=lambda: Path(sys.prefix))
 
@@ -57,13 +58,23 @@ def detect_uv_tool_env() -> UvToolEnvInfo | None:
     #   New: [{ name = "lobster-ai", extras = ["full"] }]
     requirements = tool_section.get("requirements", [])
     packages: list[str] = []
+    tool_extras: set[str] = set()
     for req in requirements:
         if isinstance(req, dict):
             # New uv format: {name: "pkg", extras: [...], ...}
             name = req.get("name", "")
+            if name == tool_name:
+                tool_extras.update(req.get("extras", []) or [])
         else:
             # Old uv format: "pkg==1.0.0" or "pkg>=0.1"
-            name = req
+            raw_req = req
+            name = raw_req
+            if raw_req.startswith(f"{tool_name}[") and "]" in raw_req:
+                extras_part = raw_req.split("[", 1)[1].split("]", 1)[0]
+                for extra in extras_part.split(","):
+                    extra = extra.strip()
+                    if extra:
+                        tool_extras.add(extra)
             for sep in (">=", "<=", "==", "!=", "~=", ">", "<", "["):
                 name = name.split(sep)[0]
         name = name.strip()
@@ -72,6 +83,7 @@ def detect_uv_tool_env() -> UvToolEnvInfo | None:
 
     return UvToolEnvInfo(
         tool_name=tool_name,
+        tool_extras=sorted(tool_extras),
         installed_packages=packages,
         prefix=Path(sys.prefix),
     )
@@ -102,10 +114,14 @@ def build_tool_install_command(
 
     info = detect_uv_tool_env()
 
+    merged_extras: set[str] = set(info.tool_extras if info else [])
+    if extras:
+        merged_extras.update(extras)
+
     # Start with the base package specifier
     base_pkg = "lobster-ai"
-    if extras:
-        base_pkg = f"lobster-ai[{','.join(extras)}]"
+    if merged_extras:
+        base_pkg = f"lobster-ai[{','.join(sorted(merged_extras))}]"
 
     cmd = [uv_path, "tool", "install", base_pkg]
 

@@ -107,6 +107,18 @@ class GEODownloadService(IDownloadService):
         """
         return ["geo"]
 
+    @staticmethod
+    def _normalize_strategy_name(strategy_name: Optional[str]) -> Optional[str]:
+        """Treat AUTO/empty values as auto-detection and normalize casing."""
+        if strategy_name is None:
+            return None
+
+        normalized = strategy_name.strip().upper()
+        if not normalized or normalized == "AUTO":
+            return None
+
+        return normalized
+
     def validate_strategy(self, strategy_override: Dict[str, Any]) -> None:
         """
         Validate strategy override parameters.
@@ -142,7 +154,9 @@ class GEODownloadService(IDownloadService):
 
         # Validate strategy_name if present
         if "strategy_name" in strategy_override:
-            strategy_name = strategy_override["strategy_name"]
+            strategy_name = self._normalize_strategy_name(
+                strategy_override["strategy_name"]
+            )
             supported = self.get_supported_strategies()
             if strategy_name and strategy_name not in supported:
                 raise ValueError(
@@ -243,42 +257,52 @@ class GEODownloadService(IDownloadService):
         # Priority: strategy_override > queue_entry.recommended_strategy > None (auto-detect)
         strategy_name = None
         use_intersecting_genes_only = None
+        explicit_strategy_params = (
+            strategy_override.get("strategy_params", {}) if strategy_override else {}
+        )
 
-        if strategy_override and "strategy_name" in strategy_override:
-            # Explicit override provided
-            strategy_name = strategy_override["strategy_name"]
+        if "use_intersecting_genes_only" in explicit_strategy_params:
+            use_intersecting_genes_only = explicit_strategy_params.get(
+                "use_intersecting_genes_only"
+            )
+            logger.debug(
+                f"Explicit concatenation override: use_intersecting_genes_only={use_intersecting_genes_only}"
+            )
+
+        explicit_strategy_name = self._normalize_strategy_name(
+            strategy_override.get("strategy_name") if strategy_override else None
+        )
+        if explicit_strategy_name:
+            strategy_name = explicit_strategy_name
             logger.info(f"Using explicit strategy override: {strategy_name}")
-
-            # Extract strategy parameters if present
-            if "strategy_params" in strategy_override:
-                params = strategy_override["strategy_params"]
-                use_intersecting_genes_only = params.get(
-                    "use_intersecting_genes_only", None
-                )
-                if use_intersecting_genes_only is not None:
-                    logger.debug(
-                        f"Concatenation strategy: use_intersecting_genes_only={use_intersecting_genes_only}"
-                    )
 
         elif queue_entry.recommended_strategy:
             # Use recommended strategy from queue entry
-            strategy_name = queue_entry.recommended_strategy.strategy_name
-            logger.info(f"Using recommended strategy from queue: {strategy_name}")
+            strategy_name = self._normalize_strategy_name(
+                queue_entry.recommended_strategy.strategy_name
+            )
+            if strategy_name:
+                logger.info(f"Using recommended strategy from queue: {strategy_name}")
+            else:
+                logger.info("Queue recommends GEOService auto-detection")
 
             # Map concatenation_strategy to use_intersecting_genes_only
-            concat_strategy = queue_entry.recommended_strategy.concatenation_strategy
-            if concat_strategy == "intersection":
-                use_intersecting_genes_only = True
-            elif concat_strategy == "union":
-                use_intersecting_genes_only = False
-            else:  # "auto" or None
-                use_intersecting_genes_only = None
-
-            if use_intersecting_genes_only is not None:
-                logger.debug(
-                    f"Mapped concatenation strategy '{concat_strategy}' → "
-                    f"use_intersecting_genes_only={use_intersecting_genes_only}"
+            if use_intersecting_genes_only is None:
+                concat_strategy = (
+                    queue_entry.recommended_strategy.concatenation_strategy
                 )
+                if concat_strategy == "intersection":
+                    use_intersecting_genes_only = True
+                elif concat_strategy == "union":
+                    use_intersecting_genes_only = False
+                else:  # "auto" or None
+                    use_intersecting_genes_only = None
+
+                if use_intersecting_genes_only is not None:
+                    logger.debug(
+                        f"Mapped concatenation strategy '{concat_strategy}' → "
+                        f"use_intersecting_genes_only={use_intersecting_genes_only}"
+                    )
 
         else:
             # No strategy specified - GEOService will auto-detect

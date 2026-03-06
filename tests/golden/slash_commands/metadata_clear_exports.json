@@ -1,0 +1,48 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "About to Clear Export Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Location",
+            "/tmp/lobster_ws/exports"
+          ],
+          [
+            "Files",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Preview\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- analysis_summary.csv (0.0 KB)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Operation cancelled\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

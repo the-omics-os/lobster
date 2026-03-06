@@ -35,6 +35,7 @@ import sys
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -45,6 +46,80 @@ from lobster.cli_internal.startup_diagnostics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _PythonTerminalQuarantine:
+    """Process-local terminal quarantine while the Go TUI owns the screen.
+
+    The Go binary is spawned *before* quarantine activation, so it keeps the
+    real terminal. Python then redirects its own stdout/stderr file
+    descriptors to ``os.devnull`` and disables logging for the duration of the
+    Go session. This suppresses:
+
+    - legacy Rich ``console.print(...)`` calls
+    - raw ``print(...)`` output
+    - logger traffic via the root RichHandler
+    - child subprocess stdout/stderr inherited from Python during the session
+    """
+
+    devnull_fd: int
+    stdout_dup_fd: int
+    stderr_dup_fd: int
+    logging_disable_level: int
+
+    @classmethod
+    def activate(cls) -> "_PythonTerminalQuarantine":
+        stdout_fd = 1
+        stderr_fd = 2
+
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        previous_disable = logging.root.manager.disable
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        stdout_dup_fd = os.dup(stdout_fd)
+        stderr_dup_fd = os.dup(stderr_fd)
+
+        try:
+            os.dup2(devnull_fd, stdout_fd)
+            os.dup2(devnull_fd, stderr_fd)
+            logging.disable(logging.CRITICAL)
+        except Exception:
+            for fd in (stdout_dup_fd, stderr_dup_fd, devnull_fd):
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+            raise
+
+        return cls(
+            devnull_fd=devnull_fd,
+            stdout_dup_fd=stdout_dup_fd,
+            stderr_dup_fd=stderr_dup_fd,
+            logging_disable_level=previous_disable,
+        )
+
+    def restore(self) -> None:
+        stdout_fd = 1
+        stderr_fd = 2
+
+        try:
+            os.dup2(self.stdout_dup_fd, stdout_fd)
+            os.dup2(self.stderr_dup_fd, stderr_fd)
+        finally:
+            for fd in (self.stdout_dup_fd, self.stderr_dup_fd, self.devnull_fd):
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+            logging.disable(self.logging_disable_level)
 
 # ---------------------------------------------------------------------------
 # Protocol constants
@@ -167,6 +242,7 @@ class _LightBridge:
         self._events: queue.Queue[dict] = queue.Queue()
         self._running = True
         self._write_lock = threading.Lock()
+        self.cancel_event: Optional[threading.Event] = None
         self._read_thread = threading.Thread(
             target=self._read_loop, daemon=True, name="go-tui-reader"
         )
@@ -215,6 +291,8 @@ class _LightBridge:
             try:
                 msg = json.loads(line)
                 self._events.put(msg)
+                if msg.get("type") == "cancel" and self.cancel_event is not None:
+                    self.cancel_event.set()
             except json.JSONDecodeError:
                 logger.debug("Ignoring malformed message from Go TUI: %s", line[:200])
                 continue
@@ -287,6 +365,7 @@ def _normalize_tool_payload(payload: dict) -> dict:
         "event": event,
         "agent": payload.get("agent", ""),
         "summary": summary,
+        "tool_call_id": payload.get("tool_call_id", ""),
     }
 
 
@@ -673,6 +752,7 @@ def _maybe_restore_go_session_transcript(
 def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
     """Main event loop: dispatch messages from the Go TUI to the client."""
     cancel_event = threading.Event()
+    bridge.cancel_event = cancel_event
     while True:
         event = bridge.recv_event(timeout=None)
         if event is None:
@@ -1031,7 +1111,8 @@ def launch_go_tui_chat(
     os.close(g2p_w)
 
     bridge = _LightBridge(proc, p2g_w, g2p_r)
-    _saved_stderr = sys.stderr
+    terminal_quarantine: Optional[_PythonTerminalQuarantine] = None
+    rich_output_muted = False
     client: Any = None
     should_emit_exit_footer = False
     startup_diagnostic: Optional[StartupDiagnostic] = None
@@ -1083,11 +1164,13 @@ def launch_go_tui_chat(
 
         # -----------------------------------------------------------------
         # 5. HEAVY IMPORTS (Go is already visible and showing spinner)
-        #    Suppress Python logging/stderr so it doesn't corrupt the TUI.
+        #    Quarantine Python terminal ownership for the full Go-TUI session.
         # -----------------------------------------------------------------
-        _saved_stderr = sys.stderr
-        sys.stderr = open(os.devnull, "w")
-        logging.disable(logging.CRITICAL)
+        terminal_quarantine = _PythonTerminalQuarantine.activate()
+
+        from lobster.ui.console_manager import get_console_manager
+
+        rich_output_muted = get_console_manager().mute_terminal_output()
 
         from lobster.cli_internal.commands.heavy.session_infra import (
             init_client_or_raise_startup_diagnostic,
@@ -1142,11 +1225,8 @@ def launch_go_tui_chat(
             client.data_manager.on_modality_loaded = _on_modality_loaded
 
         # -----------------------------------------------------------------
-        # 7. Restore stderr/logging, stop heartbeat, signal ready
+        # 7. Stop heartbeat, signal ready
         # -----------------------------------------------------------------
-        sys.stderr = _saved_stderr
-        logging.disable(logging.NOTSET)
-
         heartbeat_stop.set()
         bridge.send("spinner", {"active": False})
 
@@ -1173,10 +1253,6 @@ def launch_go_tui_chat(
         _await_startup_diagnostic_ack(bridge)
 
     finally:
-        # Restore stderr/logging in case init crashed mid-suppression.
-        sys.stderr = _saved_stderr
-        logging.disable(logging.NOTSET)
-
         bridge.close()
         try:
             from lobster.cli_internal.commands.heavy.session_infra import (
@@ -1189,6 +1265,17 @@ def launch_go_tui_chat(
 
         if client is not None:
             _save_session_json_if_available(client)
+
+        if rich_output_muted:
+            try:
+                from lobster.ui.console_manager import get_console_manager
+
+                get_console_manager().restore_terminal_output()
+            except Exception:
+                pass
+
+        if terminal_quarantine is not None:
+            terminal_quarantine.restore()
 
         if should_emit_exit_footer and client is not None:
             _emit_go_tui_exit_footer(client)

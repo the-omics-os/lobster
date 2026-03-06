@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Loading workspace datasets (pattern: archived)...\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "warning",
+        "message": "No datasets loaded"
+      },
+      "type": "alert"
+    }
+  ],
+  "summary": null
+}

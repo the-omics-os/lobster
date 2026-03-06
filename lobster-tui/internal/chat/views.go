@@ -39,7 +39,7 @@ const (
 	welcomePhaseSporadic
 )
 
-// renderHeader renders the top header line with logo, optional agent badge, and session ID.
+// renderHeader renders the top header line with logo and session metadata.
 func renderHeader(m Model) string {
 	if m.inline {
 		version := m.version
@@ -74,9 +74,6 @@ func renderHeader(m Model) string {
 
 	// Build right-side components.
 	var rightParts []string
-	if m.activeAgent != "" {
-		rightParts = append(rightParts, m.styles.AgentBadge.Render(truncateMiddle(m.activeAgent, 24)))
-	}
 	if m.sessionID != "" {
 		sid := truncateMiddle(m.sessionID, 28)
 		rightParts = append(rightParts, m.styles.Dimmed.Render(sid))
@@ -376,7 +373,7 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 		return styles.UserMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
 	case "assistant":
-		agent := "Assistant"
+		agent := "Supervisor"
 		if msg.Agent != "" {
 			agent = msg.Agent
 		}
@@ -398,6 +395,8 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 		}
 		return styles.AssistantMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
+	case "handoff":
+		return renderBranchBlock("└─", msg.Content, styles.AgentTransition, styles.Dimmed, contentWidth)
 	case "system":
 		return styles.SystemMessage.Width(contentWidth).Render(msg.Content)
 	case "alert_error":
@@ -430,6 +429,8 @@ func renderInlineMessage(msg ChatMessage, styles theme.Styles, width int, mdRend
 		}
 		body = trimSharedLeftPadding(body, 2)
 		return styles.AssistantMessage.Width(contentWidth).Render(body)
+	case "handoff":
+		return renderBranchBlock("└─", msg.Content, styles.AgentTransition, styles.Dimmed, contentWidth)
 	case "system":
 		return styles.Dimmed.Render("• " + strings.TrimSpace(msg.Content))
 	case "alert_error":
@@ -503,6 +504,45 @@ func renderPrefixedBlock(label, body string, labelStyle, bodyStyle lipgloss.Styl
 	indent := strings.Repeat(" ", lipgloss.Width(prefixRaw)+1)
 	var out strings.Builder
 	out.WriteString(prefix)
+	out.WriteByte(' ')
+	out.WriteString(lines[0])
+	for _, line := range lines[1:] {
+		out.WriteByte('\n')
+		out.WriteString(indent)
+		out.WriteString(line)
+	}
+	return out.String()
+}
+
+func renderBranchBlock(prefix, body string, prefixStyle, bodyStyle lipgloss.Style, width int) string {
+	prefix = strings.TrimSpace(prefix)
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	if prefix == "" {
+		return bodyStyle.Width(width).Render(body)
+	}
+
+	prefixRendered := prefixStyle.Render(prefix)
+	bodyWidth := width - lipgloss.Width(prefix) - 1
+	if bodyWidth < 8 {
+		bodyWidth = clampRenderWidth(width, 0)
+		renderedBody := bodyStyle.Width(bodyWidth).Render(body)
+		renderedBody = strings.TrimRight(renderedBody, "\n")
+		return prefixRendered + "\n" + renderedBody
+	}
+
+	renderedBody := bodyStyle.Width(bodyWidth).Render(body)
+	renderedBody = strings.TrimRight(renderedBody, "\n")
+	lines := strings.Split(renderedBody, "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	indent := strings.Repeat(" ", lipgloss.Width(prefix)+1)
+	var out strings.Builder
+	out.WriteString(prefixRendered)
 	out.WriteByte(' ')
 	out.WriteString(lines[0])
 	for _, line := range lines[1:] {

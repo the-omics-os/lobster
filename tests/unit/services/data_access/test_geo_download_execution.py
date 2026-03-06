@@ -94,6 +94,41 @@ class TestDownloadWithStrategy:
         # The cleaned ID should be used for metadata store lookup
         assert mock_service._use_intersecting_genes_only is None
 
+    @patch("lobster.services.data_access.geo.download_execution.logger")
+    def test_pipeline_step_failures_stay_in_debug_logs(
+        self, mock_logger, executor, mock_service
+    ):
+        """Expected fallback misses should not be emitted as warnings."""
+        mock_service.data_manager.metadata_store = {"GSE123": {"metadata": {}}}
+        mock_service.data_manager._get_geo_metadata.return_value = {
+            "metadata": {},
+            "strategy_config": {"pipeline_type": "supplementary_first"},
+        }
+        mock_service._determine_data_type_from_metadata.return_value = "bulk_rna_seq"
+        mock_service.pipeline_engine.determine_pipeline.return_value = (
+            MagicMock(name="SUPPLEMENTARY_FIRST"),
+            "test description",
+        )
+
+        failed_step = MagicMock()
+        failed_step.__name__ = "_try_processed_matrix_first"
+        failed_step.return_value = MagicMock(
+            success=False,
+            error_message="No processed matrix information available in strategy config",
+        )
+        mock_service.pipeline_engine.get_pipeline_functions.return_value = [failed_step]
+
+        result = executor.download_with_strategy("GSE123")
+
+        assert result.success is False
+        assert result.error_message == "All pipeline steps failed after enough attempts"
+        mock_logger.warning.assert_not_called()
+        assert any(
+            "Step failed: No processed matrix information available in strategy config"
+            in call.args[0]
+            for call in mock_logger.debug.call_args_list
+        )
+
 
 class TestGetProcessingPipeline:
     """Test _get_processing_pipeline pipeline selection."""

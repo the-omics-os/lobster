@@ -1,0 +1,55 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Data Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Name",
+          "Size",
+          "Modified",
+          "Path"
+        ],
+        "rows": [
+          [
+            "geo_gse12345_rna.h5ad",
+            "12.5 KB",
+            "2024-03-01 09:30 UTC",
+            "data"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Exports Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Name",
+          "Size",
+          "Modified",
+          "Path"
+        ],
+        "rows": [
+          [
+            "analysis_summary.csv",
+            "3.0 KB",
+            "2024-02-29 09:30 UTC",
+            "exports"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Listed 2 workspace files"
+}

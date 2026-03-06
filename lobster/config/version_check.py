@@ -162,10 +162,21 @@ def get_update_message(latest_version: str) -> str:
     Returns:
         Formatted message string for display.
     """
+    try:
+        from lobster.core.uv_tool_env import is_uv_tool_env
+
+        update_cmd = (
+            "uv tool upgrade lobster-ai"
+            if is_uv_tool_env()
+            else "uv pip install --upgrade lobster-ai"
+        )
+    except Exception:
+        update_cmd = "uv pip install --upgrade lobster-ai"
+
     return (
         f"A new version of lobster-ai is available: {latest_version} "
         f"(current: {__version__})\n"
-        f"Update with: uv pip install --upgrade lobster-ai"
+        f"Update with: {update_cmd}"
     )
 
 

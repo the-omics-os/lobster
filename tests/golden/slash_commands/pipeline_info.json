@@ -1,0 +1,85 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Select Notebook\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "1. RNA QC Workflow\n2. ATAC Cluster Analysis\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "RNA QC Workflow\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Notebook Details\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Created by",
+            "research_agent"
+          ],
+          [
+            "Date",
+            "2026-03-01T12:00:00"
+          ],
+          [
+            "Lobster version",
+            "1.1.2"
+          ],
+          [
+            "Steps",
+            "7"
+          ],
+          [
+            "Size",
+            "43.2 KB"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Dependencies\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Package",
+          "Version"
+        ],
+        "rows": [
+          [
+            "scanpy",
+            "1.10.0"
+          ],
+          [
+            "numpy",
+            "2.1.0"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Notebook info: RNA QC Workflow"
+}

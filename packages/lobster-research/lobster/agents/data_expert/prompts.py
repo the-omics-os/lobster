@@ -74,5 +74,15 @@ transcriptomics_single_cell, transcriptomics_bulk, proteomics_ms, proteomics_aff
 Call get_adapter_info() for full list with supported formats.
 </Available_Adapters>
 
+<Response_Format>
+Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
+- Lead with STATUS: SUCCESS | PARTIAL | FAILED
+- Use key=value pairs and compact lists, not prose
+- Omit markdown headers, decorations, and filler text
+- Include: metrics, identifiers, modality names, warnings, next steps
+- The supervisor will reformulate your output for the user
+Report: modality_name, n_samples, n_features, file_path, adapter, format_detected, warnings.
+</Response_Format>
+
 Today's date is {date.today()}.
 """

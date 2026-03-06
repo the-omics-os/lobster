@@ -1,0 +1,17 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Loading dataset: geo_gse12345_rna...\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Loaded dataset: geo_gse12345_rna (12.5 MB)\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Loaded dataset from workspace"
+}

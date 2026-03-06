@@ -12,7 +12,19 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    OutputBlock,
+    alert_block,
+    hint_block,
+    list_block,
+    section_block,
+    table_block,
+)
+
+
+def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
+    output.render_blocks(blocks)
 
 
 def _print_table_or_empty(
@@ -515,54 +527,41 @@ def config_provider_list(client: "AgentClient", output: OutputAdapter) -> Option
     available_providers = LLMFactory.get_available_providers()
     current_provider = client.provider_override or LLMFactory.get_current_provider()
 
-    # Build provider table
-    provider_table_data = {
-        "title": "🔌 LLM Providers",
-        "columns": [
-            {"name": "Provider", "style": "cyan"},
-            {"name": "Status", "style": "white"},
-            {"name": "Active", "style": "green"},
-        ],
-        "rows": [],
-    }
+    rows = []
 
     # Dynamically fetch all registered providers from ProviderRegistry
     all_providers = ProviderRegistry.get_all()
 
     for provider_obj in all_providers:
         provider_name = provider_obj.name
-        configured = (
-            "✓ Configured"
-            if provider_name in available_providers
-            else "✗ Not configured"
-        )
+        configured = "Configured" if provider_name in available_providers else "Not configured"
         active = "●" if provider_name == current_provider else ""
+        rows.append([provider_obj.display_name, configured, active])
 
-        status_style = "green" if provider_name in available_providers else "grey50"
-        provider_table_data["rows"].append(
-            [
-                provider_obj.display_name,
-                f"[{status_style}]{configured}[/{status_style}]",
-                f"[bold green]{active}[/bold green]" if active else "",
-            ]
-        )
-
-    output.print_table(provider_table_data)
-
-    output.print("\n[cyan]💡 Usage:[/cyan]")
-    output.print(
-        "  • [white]/config provider <name>[/white] - Switch to specified provider (runtime)"
-    )
-    output.print(
-        "  • [white]/config provider <name> --save[/white] - Switch and persist to workspace"
-    )
-
-    # Dynamically show available providers
     provider_names = ", ".join([p.name for p in all_providers])
-    output.print(f"\n[cyan]Available providers:[/cyan] {provider_names}")
 
+    blocks: list[OutputBlock] = [
+        table_block(
+            title="LLM Providers",
+            columns=[
+                {"name": "Provider"},
+                {"name": "Status"},
+                {"name": "Active"},
+            ],
+            rows=rows,
+        ),
+        list_block(
+            [
+                "/config provider <name> - Switch to specified provider (runtime)",
+                "/config provider <name> --save - Switch and persist to workspace",
+            ],
+            title="Usage",
+        ),
+        hint_block(f"Available providers: {provider_names}"),
+    ]
     if current_provider:
-        output.print(f"\n[green]✓ Current provider: {current_provider}[/green]")
+        blocks.append(hint_block(f"Current provider: {current_provider}"))
+    _render_blocks(output, blocks)
 
     return f"Listed providers (current: {current_provider})"
 
@@ -670,7 +669,15 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         )
         provider_obj = get_provider(current_provider)
         if not provider_obj:
-            output.print(f"[red]✗ Provider '{current_provider}' not registered[/red]")
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"Provider '{current_provider}' not registered",
+                        level="error",
+                    )
+                ],
+            )
             return None
 
         provider_display_name = getattr(
@@ -684,16 +691,16 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
             current_model = provider_obj.get_default_model()
             model_source = f"provider default ({current_provider})"
 
-        output.print_table(
-            {
-                "title": "⚙️ Active Model Selection",
-                "width": table_width,
-                "columns": [
+        blocks: list[OutputBlock] = [
+            table_block(
+                title="Active Model Selection",
+                width=table_width,
+                columns=[
                     {"name": "Setting", "style": "cyan", "width": 16},
                     {"name": "Value", "style": "white", "width": 36},
                     {"name": "Source", "style": "yellow", "overflow": "fold"},
                 ],
-                "rows": [
+                rows=[
                     ["Provider", current_provider, provider_source],
                     [
                         "Current model",
@@ -701,14 +708,19 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                         model_source,
                     ],
                 ],
-            }
-        )
+            )
+        ]
 
         # For Ollama, check if server is available
         if current_provider == "ollama":
             if not provider_obj.is_available():
-                output.print("[red]✗ Ollama server not accessible[/red]")
-                output.print("[dim]Make sure Ollama is running: 'ollama serve'[/dim]")
+                blocks.extend(
+                    [
+                        alert_block("Ollama server not accessible", level="error"),
+                        hint_block("Make sure Ollama is running: 'ollama serve'"),
+                    ]
+                )
+                _render_blocks(output, blocks)
                 return None
 
         models = provider_obj.list_models()
@@ -723,26 +735,39 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         icon = provider_icons.get(current_provider, "🤖")
         title = f"{icon} Available {provider_display_name} Models"
 
-        model_table_data = {
-            "title": title,
-            "width": table_width,
-            "columns": [
-                {"name": "Model", "style": "yellow", "width": 24},
-                {"name": "Display Name", "style": "cyan", "width": 26},
-                {"name": "Status", "style": "green", "width": 18},
-                {"name": "Description", "style": "white", "overflow": "fold"},
-            ],
-            "rows": [],
-        }
+        model_rows = []
 
         if not models:
             empty_message = f"No models are currently available for {provider_display_name}."
             if current_provider == "ollama":
                 empty_message = "No Ollama models are installed for the active provider."
-            _print_table_or_empty(output, model_table_data, empty_message)
+            blocks.extend(
+                [
+                    section_block(title=title),
+                    hint_block(empty_message),
+                ]
+            )
             if current_provider == "ollama":
-                output.print("[dim]Install one first, for example: ollama pull llama3.2[/dim]")
-            _print_config_model_command_reference(output, table_width)
+                blocks.append(
+                    hint_block("Install one first, for example: ollama pull llama3.2")
+                )
+            blocks.append(
+                table_block(
+                    title="Model Commands",
+                    width=table_width,
+                    columns=[
+                        {"name": "Command", "style": "white", "width": 34, "overflow": "fold"},
+                        {"name": "Purpose", "style": "dim", "width": 62, "overflow": "fold"},
+                    ],
+                    rows=[
+                        ["/config model <name>", "Switch the active model for the current session only."],
+                        ["/config model <name> --save", "Switch the active model and persist it to this workspace."],
+                        ["/config provider", "List providers and confirm which model catalog is active."],
+                        ["/config provider <name>", "Change providers first when you need a different model catalog."],
+                    ],
+                )
+            )
+            _render_blocks(output, blocks)
             return None
 
         for model in models:
@@ -751,23 +776,56 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                 status_parts.append("Current")
             if model.is_default:
                 status_parts.append("Default")
-            model_table_data["rows"].append(
+            model_rows.append(
                 [
-                    f"[bold]{model.name}[/bold]",
+                    model.name,
                     model.display_name,
                     ", ".join(status_parts) if status_parts else "-",
                     model.description,
                 ]
             )
 
-        output.print_table(model_table_data)
-        _print_config_model_command_reference(output, table_width)
+        blocks.extend(
+            [
+                table_block(
+                    title=title,
+                    width=table_width,
+                    columns=[
+                        {"name": "Model", "style": "yellow", "width": 24},
+                        {"name": "Display Name", "style": "cyan", "width": 26},
+                        {"name": "Status", "style": "green", "width": 18},
+                        {"name": "Description", "style": "white", "overflow": "fold"},
+                    ],
+                    rows=model_rows,
+                ),
+                table_block(
+                    title="Model Commands",
+                    width=table_width,
+                    columns=[
+                        {"name": "Command", "style": "white", "width": 34, "overflow": "fold"},
+                        {"name": "Purpose", "style": "dim", "width": 62, "overflow": "fold"},
+                    ],
+                    rows=[
+                        ["/config model <name>", "Switch the active model for the current session only."],
+                        ["/config model <name> --save", "Switch the active model and persist it to this workspace."],
+                        ["/config provider", "List providers and confirm which model catalog is active."],
+                        ["/config provider <name>", "Change providers first when you need a different model catalog."],
+                    ],
+                ),
+            ]
+        )
+        _render_blocks(output, blocks)
 
         return f"Listed models for {current_provider} provider"
 
     except Exception as e:
-        output.print(f"[red]✗ Failed to list models: {str(e)}[/red]")
-        output.print("[dim]Use /config provider to confirm the active backend first.[/dim]")
+        _render_blocks(
+            output,
+            [
+                alert_block(f"Failed to list models: {str(e)}", level="error"),
+                hint_block("Use /config provider to confirm the active backend first."),
+            ],
+        )
         return None
 
 

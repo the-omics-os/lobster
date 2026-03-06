@@ -12,13 +12,26 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    OutputBlock,
+    alert_block,
+    hint_block,
+    kv_block,
+    list_block,
+    section_block,
+    table_block,
+)
 
 
 def _make_progress_bar(pct: float, width: int = 10) -> str:
     """Create ASCII progress bar for percentages."""
     filled = int(pct / 100 * width)
     return "█" * filled + "░" * (width - filled)
+
+
+def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
+    output.render_blocks(blocks)
 
 
 def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
@@ -39,22 +52,12 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
     service = MetadataOverviewService(client.data_manager)
     overview = service.get_quick_overview()
 
-    output.print("\n[bold cyan]📋 Metadata Overview[/bold cyan]\n", style="info")
+    blocks: list[OutputBlock] = [section_block(title="Metadata Overview")]
 
     # Publication Queue section
     pq = overview.get("publication_queue", {})
     if pq.get("total", 0) > 0:
-        output.print("[bold white]Publication Queue[/bold white]", style="info")
-
-        status_table = {
-            "title": None,
-            "columns": [
-                {"name": "Status", "style": "bold white", "width": 20},
-                {"name": "Count", "style": "cyan", "width": 10},
-            ],
-            "rows": [],
-        }
-
+        status_rows = []
         status_emojis = {
             "pending": "⏳",
             "extracting": "🔄",
@@ -68,73 +71,88 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
 
         for status, count in pq.get("status_breakdown", {}).items():
             emoji = status_emojis.get(status, "📌")
-            status_table["rows"].append([f"{emoji} {status}", str(count)])
+            status_rows.append([f"{emoji} {status}", str(count)])
 
-        if status_table["rows"]:
-            output.print_table(status_table)
-            output.print(
-                f"[grey50]Total: {pq['total']} | Workspace-ready: {pq.get('workspace_ready', 0)} | Extracted datasets: {pq.get('extracted_datasets', 0)}[/grey50]"
+        blocks.append(section_block(title="Publication Queue"))
+        if status_rows:
+            blocks.append(
+                table_block(
+                    columns=[{"name": "Status"}, {"name": "Count"}],
+                    rows=status_rows,
+                )
             )
-        output.print("")
+            blocks.append(
+                hint_block(
+                    " | ".join(
+                        [
+                            f"Total: {pq['total']}",
+                            f"Workspace-ready: {pq.get('workspace_ready', 0)}",
+                            f"Extracted datasets: {pq.get('extracted_datasets', 0)}",
+                        ]
+                    )
+                )
+            )
 
     # Sample Statistics section
     samples = overview.get("samples", {})
     if samples.get("total_samples", 0) > 0:
-        output.print("[bold white]Sample Statistics[/bold white]", style="info")
-        output.print(
-            f"  Total: [cyan]{samples['total_samples']:,}[/cyan] samples from [cyan]{samples.get('bioproject_count', 0)}[/cyan] BioProjects"
-        )
+        sample_rows = [
+            ("Total Samples", f"{samples['total_samples']:,}"),
+            ("BioProjects", str(samples.get("bioproject_count", 0))),
+        ]
 
         if samples.get("has_aggregated"):
             filtered = samples.get("filtered_samples", 0)
             retention = samples.get("retention_rate", 0)
-            output.print(
-                f"  Filtered: [cyan]{filtered:,}[/cyan] ([yellow]{retention:.1f}%[/yellow] retention)"
-            )
+            sample_rows.append(("Filtered Samples", f"{filtered:,}"))
+            sample_rows.append(("Retention", f"{retention:.1f}%"))
 
             coverage = samples.get("disease_coverage", 0)
             bar = _make_progress_bar(coverage)
-            output.print(f"  Disease Coverage: {bar} [yellow]{coverage:.1f}%[/yellow]")
+            sample_rows.append(("Disease Coverage", f"{bar} {coverage:.1f}%"))
         else:
-            output.print(
-                "[grey50]  → Run metadata filtering to generate aggregated statistics[/grey50]"
+            blocks.append(
+                hint_block("Run metadata filtering to generate aggregated statistics.")
             )
-        output.print("")
+        blocks.append(kv_block(sample_rows, title="Sample Statistics"))
 
     # Workspace Files section
     workspace = overview.get("workspace", {})
     if workspace.get("metadata_files", 0) > 0 or workspace.get("export_files", 0) > 0:
-        output.print("[bold white]Workspace Files[/bold white]", style="info")
+        workspace_rows = []
         if workspace.get("metadata_files", 0) > 0:
-            output.print(
-                f"  Metadata: [cyan]{workspace['metadata_files']}[/cyan] files ([grey50]{workspace.get('total_size_mb', 0):.1f} MB[/grey50])"
+            workspace_rows.append(
+                (
+                    "Metadata Files",
+                    f"{workspace['metadata_files']} ({workspace.get('total_size_mb', 0):.1f} MB)",
+                )
             )
         if workspace.get("export_files", 0) > 0:
-            output.print(f"  Exports: [cyan]{workspace['export_files']}[/cyan] files")
+            workspace_rows.append(("Export Files", str(workspace["export_files"])))
         if workspace.get("in_memory_entries", 0) > 0:
-            output.print(
-                f"  In-memory: [cyan]{workspace['in_memory_entries']}[/cyan] entries"
+            workspace_rows.append(
+                ("In-memory Entries", str(workspace["in_memory_entries"]))
             )
-        output.print("")
+        blocks.append(kv_block(workspace_rows, title="Workspace Files"))
 
     # Next Steps
     next_steps = overview.get("next_steps", [])
     if next_steps:
-        output.print("[bold yellow]💡 Next Steps[/bold yellow]", style="info")
-        for step in next_steps:
-            output.print(f"  • {step}")
-        output.print("")
+        blocks.append(list_block(next_steps, title="Next Steps"))
 
     # Deprecated warnings
     if overview.get("has_deprecated"):
-        output.print(
-            "[yellow]⚠️  Found files in deprecated metadata/exports/ location. Use /metadata workspace for details.[/yellow]"
+        blocks.append(
+            alert_block(
+                "Found files in deprecated metadata/exports/ location. Use /metadata workspace for details.",
+                level="warning",
+            )
         )
 
-    # Help text
-    output.print(
-        "[grey50]Commands: /metadata publications | samples | workspace | exports | clear[/grey50]"
+    blocks.append(
+        hint_block("Commands: /metadata publications | samples | workspace | exports | clear")
     )
+    _render_blocks(output, blocks)
 
     return f"Metadata overview: {pq.get('total', 0)} publications, {samples.get('total_samples', 0)} samples"
 
@@ -161,25 +179,21 @@ def metadata_publications(
     summary = service.get_publication_queue_summary(status_filter=status_filter)
 
     if summary.get("total", 0) == 0:
-        output.print(
-            "[yellow]No publication queue found. Use research_agent to process publications.[/yellow]"
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    "No publication queue found. Use research_agent to process publications.",
+                    level="warning",
+                )
+            ],
         )
         return None
 
-    output.print(
-        f"\n[bold cyan]📄 Publication Queue ({summary['total']} entries)[/bold cyan]\n",
-        style="info",
-    )
-
-    # Status breakdown
-    output.print("[bold white]Status Breakdown[/bold white]", style="info")
-    status_table = {
-        "columns": [
-            {"name": "Status", "style": "bold white", "width": 25},
-            {"name": "Count", "style": "cyan", "width": 10},
-        ],
-        "rows": [],
-    }
+    blocks: list[OutputBlock] = [
+        section_block(title=f"Publication Queue ({summary['total']} entries)")
+    ]
+    status_rows = []
 
     status_emojis = {
         "pending": "⏳",
@@ -194,54 +208,76 @@ def metadata_publications(
 
     for status, count in summary.get("status_breakdown", {}).items():
         emoji = status_emojis.get(status, "📌")
-        status_table["rows"].append([f"{emoji} {status}", str(count)])
-
-    output.print_table(status_table)
-    output.print("")
+        status_rows.append([f"{emoji} {status}", str(count)])
+    blocks.append(
+        table_block(
+            title="Status Breakdown",
+            columns=[{"name": "Status"}, {"name": "Count"}],
+            rows=status_rows,
+        )
+    )
 
     # Identifier coverage
     id_cov = summary.get("identifier_coverage", {})
     if id_cov:
-        output.print("[bold white]Identifier Coverage[/bold white]", style="info")
+        coverage_rows = []
         for id_type, stats in id_cov.items():
             count = stats.get("count", 0)
             pct = stats.get("pct", 0)
             bar = _make_progress_bar(pct, width=15)
-            output.print(
-                f"  {id_type.upper()}: {bar} {count}/{summary['total']} ({pct:.1f}%)"
+            coverage_rows.append(
+                [id_type.upper(), f"{count}/{summary['total']}", f"{bar} {pct:.1f}%"]
             )
-        output.print("")
+        blocks.append(
+            table_block(
+                title="Identifier Coverage",
+                columns=[{"name": "Type"}, {"name": "Count"}, {"name": "Coverage"}],
+                rows=coverage_rows,
+            )
+        )
 
     # Extracted datasets
     extracted = summary.get("extracted_datasets", {})
     if extracted:
-        output.print("[bold white]Extracted Identifiers[/bold white]", style="info")
-        for db_type, count in sorted(extracted.items(), key=lambda x: -x[1]):
-            output.print(f"  {db_type.upper()}: [cyan]{count}[/cyan] datasets")
-        output.print("")
+        blocks.append(
+            table_block(
+                title="Extracted Identifiers",
+                columns=[{"name": "Database"}, {"name": "Count"}],
+                rows=[
+                    [db_type.upper(), str(count)]
+                    for db_type, count in sorted(extracted.items(), key=lambda x: -x[1])
+                ],
+            )
+        )
 
     # Workspace readiness
     ws_ready = summary.get("workspace_ready", 0)
     if ws_ready > 0:
-        output.print(
-            f"[bold white]Workspace Status:[/bold white] [green]{ws_ready}[/green] entries with metadata files"
+        blocks.append(
+            section_block(
+                body=f"Workspace Status: {ws_ready} entries with metadata files"
+            )
         )
-        output.print("")
 
     # Recent errors
     errors = summary.get("recent_errors", [])
     if errors:
-        output.print("[bold red]Recent Errors[/bold red]", style="info")
-        for err in errors:
-            output.print(f"  • [yellow]{err['entry_id']}[/yellow]: {err['title']}")
-            output.print(f"    [grey50]{err['error']}[/grey50]")
-        output.print("")
+        blocks.append(section_block(title="Recent Errors"))
+        blocks.append(
+            list_block(
+                [
+                    f"{err['entry_id']}: {err['title']} - {err['error']}"
+                    for err in errors
+                ]
+            )
+        )
 
     # Filter hint
     if not status_filter:
-        output.print(
-            "[grey50]Tip: Filter by status with /metadata publications --status=<status>[/grey50]"
+        blocks.append(
+            hint_block("Tip: Filter by status with /metadata publications --status=<status>")
         )
+    _render_blocks(output, blocks)
 
     return f"Publication queue: {summary['total']} entries"
 
@@ -265,82 +301,94 @@ def metadata_samples(client: "AgentClient", output: OutputAdapter) -> Optional[s
     stats = service.get_sample_statistics()
 
     if stats.get("total_samples", 0) == 0:
-        output.print(
-            "[yellow]No sample metadata found. Process publications with research_agent first.[/yellow]"
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    "No sample metadata found. Process publications with research_agent first.",
+                    level="warning",
+                )
+            ],
         )
         return None
 
-    output.print(
-        "\n[bold cyan]🧬 Sample Statistics[/bold cyan]\n",
-        style="info",
-    )
-
-    # Total samples
     total = stats.get("total_samples", 0)
     bioproject_count = stats.get("bioproject_count", 0)
-    output.print(
-        f"[bold white]Total Samples:[/bold white] [cyan]{total:,}[/cyan] from [cyan]{bioproject_count}[/cyan] BioProjects"
-    )
-    output.print("")
+    blocks: list[OutputBlock] = [
+        kv_block(
+            [
+                ("Total Samples", f"{total:,}"),
+                ("BioProjects", str(bioproject_count)),
+            ],
+            title="Sample Statistics",
+        )
+    ]
 
     if stats.get("has_aggregated"):
-        # Filtered samples
         filtered = stats.get("filtered_samples", 0)
         retention = stats.get("retention_rate", 0)
-        output.print(
-            f"[bold white]Filtered Samples:[/bold white] [cyan]{filtered:,}[/cyan] ([yellow]{retention:.1f}%[/yellow] retention)"
-        )
-
-        # Disease coverage
         coverage = stats.get("disease_coverage", 0)
         bar = _make_progress_bar(coverage, width=20)
-        output.print(
-            f"[bold white]Disease Coverage:[/bold white] {bar} [yellow]{coverage:.1f}%[/yellow]"
-        )
-        output.print("")
+        detail_rows = [
+            ("Filtered Samples", f"{filtered:,}"),
+            ("Retention", f"{retention:.1f}%"),
+            ("Disease Coverage", f"{bar} {coverage:.1f}%"),
+        ]
 
-        # Filter criteria
         criteria = stats.get("filter_criteria", "")
         if criteria:
-            output.print(
-                f"[bold white]Filter Criteria:[/bold white] [grey50]{criteria}[/grey50]"
-            )
-            output.print("")
+            detail_rows.append(("Filter Criteria", criteria))
+        blocks.append(kv_block(detail_rows, title="Aggregated Statistics"))
 
-        # Filter breakdown
         breakdown = stats.get("filter_breakdown", {})
         if breakdown:
-            output.print("[bold white]Filter Breakdown[/bold white]", style="info")
+            breakdown_rows = []
             for filter_name, filter_stats in breakdown.items():
                 if isinstance(filter_stats, dict):
                     retained = filter_stats.get("retained", 0)
                     total_filtered = filter_stats.get("total", 0)
                     pct = retained / total_filtered * 100 if total_filtered > 0 else 0
                     bar = _make_progress_bar(pct, width=15)
-                    output.print(
-                        f"  {filter_name}: {bar} {retained}/{total_filtered} ({pct:.1f}%)"
+                    breakdown_rows.append(
+                        [
+                            filter_name,
+                            f"{retained}/{total_filtered}",
+                            f"{bar} {pct:.1f}%",
+                        ]
                     )
-            output.print("")
-
-        output.print(
-            "[green]✓ Aggregated metadata available. Use /metadata exports to see export files.[/green]"
+            if breakdown_rows:
+                blocks.append(
+                    table_block(
+                        title="Filter Breakdown",
+                        columns=[
+                            {"name": "Filter"},
+                            {"name": "Retained"},
+                            {"name": "Coverage"},
+                        ],
+                        rows=breakdown_rows,
+                    )
+                )
+        blocks.append(
+            section_block(
+                body="Aggregated metadata available. Use /metadata exports to see export files."
+            )
         )
     else:
-        output.print(
-            "[yellow]⚠️  Samples not yet filtered. Use metadata_assistant to apply filters and generate aggregated statistics.[/yellow]"
+        blocks.append(
+            alert_block(
+                "Samples not yet filtered. Use metadata_assistant to apply filters and generate aggregated statistics.",
+                level="warning",
+            )
         )
-        output.print("")
 
-        # Show sample sources
         sources = stats.get("sources", [])
         if sources:
-            output.print(
-                f"[bold white]Sample Sources:[/bold white] {len(sources)} BioProject(s)"
-            )
-            for src in sources[:10]:
-                output.print(f"  • [grey50]{src}[/grey50]")
+            source_items = list(sources[:10])
             if len(sources) > 10:
-                output.print(f"  [grey50]... and {len(sources) - 10} more[/grey50]")
+                source_items.append(f"... and {len(sources) - 10} more")
+            blocks.append(list_block(source_items, title="Sample Sources"))
+
+    _render_blocks(output, blocks)
 
     return f"Sample stats: {total:,} samples, {bioproject_count} BioProjects"
 
@@ -362,63 +410,74 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
 
     service = MetadataOverviewService(client.data_manager)
     inventory = service.get_workspace_inventory()
+    blocks: list[OutputBlock] = [section_block(title="Workspace Inventory")]
 
-    output.print("\n[bold cyan]📁 Workspace Inventory[/bold cyan]\n", style="info")
-
-    # In-memory metadata store
     mem_count = inventory.get("metadata_store_count", 0)
     if mem_count > 0:
-        output.print(
-            f"[bold white]In-Memory Store:[/bold white] [cyan]{mem_count}[/cyan] entries",
-            style="info",
-        )
+        rows = [("Entries", str(mem_count))]
         categories = inventory.get("metadata_store_categories", {})
-        if categories:
-            for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
-                output.print(f"  • {cat}: {count}")
-        output.print("")
+        for cat, count in sorted(categories.items(), key=lambda item: (-item[1], item[0])):
+            rows.append((cat, str(count)))
+        blocks.append(
+            kv_block(
+                rows,
+                title="In-Memory Store",
+            )
+        )
+    else:
+        blocks.append(hint_block("In-memory metadata store is empty."))
 
-    # Workspace files
     ws_files = inventory.get("workspace_files", {})
     if ws_files:
         total_files = inventory.get("workspace_files_total", 0)
         size_mb = inventory.get("total_size_mb", 0)
-        output.print(
-            f"[bold white]Workspace Files:[/bold white] [cyan]{total_files}[/cyan] files ([grey50]{size_mb:.1f} MB[/grey50])",
-            style="info",
+        rows = [
+            ("Total Files", str(total_files)),
+            ("Total Size", f"{size_mb:.1f} MB"),
+        ]
+        for cat, count in sorted(ws_files.items(), key=lambda item: (-item[1], item[0])):
+            rows.append((cat, str(count)))
+        blocks.append(
+            kv_block(
+                rows,
+                title="Workspace Files",
+            )
         )
-        for cat, count in sorted(ws_files.items(), key=lambda x: -x[1]):
-            output.print(f"  • {cat}: {count}")
-        output.print("")
+    else:
+        blocks.append(hint_block("No workspace metadata files found."))
 
-    # Export files
     exports = inventory.get("exports", [])
     if exports:
         total_exports = inventory.get("exports_total", 0)
-        output.print(
-            f"[bold white]Export Files:[/bold white] [cyan]{total_exports}[/cyan] files",
-            style="info",
-        )
-        for exp in exports[:10]:
-            output.print(
-                f"  • {exp['name']} [grey50]({exp['size_kb']} KB, {exp['modified']})[/grey50]"
+        rows = [
+            [exp["name"], f"{exp['size_kb']:.1f} KB", exp["modified"]]
+            for exp in exports[:10]
+        ]
+        blocks.append(
+            table_block(
+                title=f"Export Files ({total_exports})",
+                columns=[
+                    {"name": "File"},
+                    {"name": "Size"},
+                    {"name": "Modified"},
+                ],
+                rows=rows,
             )
+        )
         if len(exports) > 10:
-            output.print(f"  [grey50]... and {total_exports - 10} more files[/grey50]")
-        output.print("")
+            blocks.append(hint_block(f"... and {total_exports - 10} more files"))
 
-    # Deprecated warnings
     warnings = inventory.get("deprecated_warnings", [])
     if warnings:
-        output.print(
-            "[bold yellow]⚠️  Deprecated Locations[/bold yellow]", style="warning"
-        )
         for warn in warnings:
-            output.print(f"  • {warn}")
-        output.print(
-            "[yellow]Consider migrating: mv workspace/metadata/exports/* workspace/exports/[/yellow]"
+            blocks.append(alert_block(warn, level="warning"))
+        blocks.append(
+            hint_block(
+                "Consider migrating: mv workspace/metadata/exports/* workspace/exports/"
+            )
         )
 
+    _render_blocks(output, blocks)
     return f"Workspace: {mem_count} in-memory, {inventory.get('workspace_files_total', 0)} files"
 
 
@@ -441,64 +500,66 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
     exports = service.get_export_summary()
 
     if exports.get("total_count", 0) == 0:
-        output.print(
-            "[yellow]No export files found. Use write_to_workspace() to export data.[/yellow]"
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    exports.get(
+                        "message",
+                        "No export files found. Use write_to_workspace() to export data.",
+                    ),
+                    level="warning",
+                )
+            ],
         )
         return None
 
-    output.print(
-        f"\n[bold cyan]📤 Export Files ({exports['total_count']} files)[/bold cyan]\n",
-        style="info",
-    )
+    blocks: list[OutputBlock] = [
+        section_block(title=f"Export Files ({exports['total_count']} files)")
+    ]
 
-    # Categories
     categories = exports.get("categories", {})
     if categories:
-        output.print("[bold white]File Categories[/bold white]", style="info")
-        cat_emojis = {
-            "rich_export": "📊",
-            "strict_mimarks": "✅",
-            "provenance_log": "📜",
-            "sample_data": "🧬",
-            "analysis_results": "📈",
-            "other": "📄",
-        }
-        for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
-            emoji = cat_emojis.get(cat, "📄")
-            output.print(f"  {emoji} {cat}: {count}")
-        output.print("")
+        rows = [(cat, str(count)) for cat, count in sorted(categories.items(), key=lambda item: (-item[1], item[0]))]
+        blocks.append(kv_block(rows, title="File Categories", key_label="Category", value_label="Count"))
 
-    # File listing
     files = exports.get("files", [])
     if files:
-        output.print("[bold white]Recent Files[/bold white]", style="info")
-        files_table = {
-            "columns": [
-                {"name": "File", "style": "cyan", "width": 50, "overflow": "ellipsis"},
-                {"name": "Size", "style": "grey50", "width": 10},
-                {"name": "Modified", "style": "grey50", "width": 18},
-            ],
-            "rows": [],
-        }
-        for f in files[:15]:
-            files_table["rows"].append(
-                [f["name"], f"{f['size_kb']:.1f} KB", f["modified"]]
+        blocks.append(
+            table_block(
+                title="Recent Files",
+                columns=[
+                    {"name": "File", "style": "cyan", "width": 50, "overflow": "ellipsis"},
+                    {"name": "Size", "style": "grey50", "width": 10},
+                    {"name": "Modified", "style": "grey50", "width": 18},
+                ],
+                rows=[
+                    [f["name"], f"{f['size_kb']:.1f} KB", f["modified"]]
+                    for f in files[:15]
+                ],
             )
-        output.print_table(files_table)
+        )
         if len(files) > 15:
-            output.print(
-                f"[grey50]... and {exports['total_count'] - 15} more files[/grey50]"
+            blocks.append(
+                hint_block(f"... and {exports['total_count'] - 15} more files")
             )
-        output.print("")
 
-    # Usage hints
     hints = exports.get("usage_hints", {})
     if hints:
-        output.print("[bold yellow]💡 Usage Tips[/bold yellow]", style="info")
-        output.print(f"  • List exports: [cyan]{hints.get('list', 'N/A')}[/cyan]")
-        output.print(f"  • Access in code: [cyan]{hints.get('access', 'N/A')}[/cyan]")
-        output.print(f"  • CLI command: [cyan]{hints.get('cli', 'N/A')}[/cyan]")
+        blocks.append(
+            kv_block(
+                [
+                    ("List exports", hints.get("list", "N/A")),
+                    ("Access in code", hints.get("access", "N/A")),
+                    ("CLI command", hints.get("cli", "N/A")),
+                ],
+                title="Usage Tips",
+                key_label="Action",
+                value_label="Command",
+            )
+        )
 
+    _render_blocks(output, blocks)
     return f"Export files: {exports['total_count']} files"
 
 
@@ -513,38 +574,13 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
     Returns:
         Summary string for conversation history, or None
     """
-    output.print("\n[bold red]📋 Metadata Information[/bold red]\n", style="info")
-
+    blocks: list[OutputBlock] = [section_block(title="Metadata Information")]
     entries_shown = 0
 
-    # ========================================================================
-    # Section 1: Metadata Store (Cached GEO/External Data)
-    # ========================================================================
     if hasattr(client.data_manager, "metadata_store"):
         metadata_store = client.data_manager.metadata_store
         if metadata_store:
-            output.print(
-                "[bold white]🗄️  Metadata Store (Cached GEO/External Data):[/bold white]",
-                style="info",
-            )
-
-            store_table_data = {
-                "title": "🗄️ Metadata Store",
-                "columns": [
-                    {"name": "Dataset ID", "style": "bold white"},
-                    {"name": "Type", "style": "cyan"},
-                    {
-                        "name": "Title",
-                        "style": "white",
-                        "max_width": 40,
-                        "overflow": "ellipsis",
-                    },
-                    {"name": "Samples", "style": "grey74"},
-                    {"name": "Cached", "style": "grey50"},
-                ],
-                "rows": [],
-            }
-
+            rows = []
             for dataset_id, metadata_info in metadata_store.items():
                 metadata = metadata_info.get("metadata", {})
                 validation = metadata_info.get("validation", {})
@@ -576,39 +612,37 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
                 except Exception:
                     cached_str = timestamp[:16] if timestamp else "N/A"
 
-                store_table_data["rows"].append(
-                    [dataset_id, data_type, title, str(samples), cached_str]
-                )
+                rows.append([dataset_id, data_type, title, str(samples), cached_str])
 
-            output.print_table(store_table_data)
-            output.print("")  # Blank line
+            blocks.append(
+                table_block(
+                    title="Metadata Store",
+                    columns=[
+                        {"name": "Dataset ID", "style": "bold white"},
+                        {"name": "Type", "style": "cyan"},
+                        {
+                            "name": "Title",
+                            "style": "white",
+                            "max_width": 40,
+                            "overflow": "ellipsis",
+                        },
+                        {"name": "Samples", "style": "grey74"},
+                        {"name": "Cached", "style": "grey50"},
+                    ],
+                    rows=rows,
+                )
+            )
             entries_shown += len(metadata_store)
         else:
-            output.print(
-                "[grey50]No cached metadata in metadata store[/grey50]\n", style="info"
-            )
+            blocks.append(hint_block("No cached metadata in metadata store"))
 
-    # ========================================================================
-    # Section 2: Current Data Metadata
-    # ========================================================================
     if (
         hasattr(client.data_manager, "current_metadata")
         and client.data_manager.current_metadata
     ):
-        output.print("[bold white]📊 Current Data Metadata:[/bold white]", style="info")
         metadata = client.data_manager.current_metadata
-
-        metadata_table_data = {
-            "title": None,
-            "columns": [
-                {"name": "Key", "style": "bold grey93", "width": 25},
-                {"name": "Value", "style": "white", "width": 50, "overflow": "fold"},
-            ],
-            "rows": [],
-        }
-
+        rows = []
         for key, value in metadata.items():
-            # Format value for display
             if isinstance(value, dict):
                 display_value = (
                     f"Dict with {len(value)} keys: {', '.join(list(value.keys())[:3])}"
@@ -626,64 +660,58 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
                 if len(display_value) > 60:
                     display_value = display_value[:60] + "..."
 
-            metadata_table_data["rows"].append([key, display_value])
+            rows.append((key, display_value))
 
-        output.print_table(metadata_table_data)
+        blocks.append(
+            kv_block(
+                rows,
+                title="Current Data Metadata",
+                key_label="Key",
+                value_label="Value",
+            )
+        )
         entries_shown += len(metadata)
     else:
-        output.print(
-            "[grey50]No current data metadata available[/grey50]", style="info"
-        )
+        blocks.append(hint_block("No current data metadata available"))
 
-    # ========================================================================
-    # Section 3: Workspace Metadata Files
-    # ========================================================================
     workspace_path = Path(client.data_manager.workspace_path)
     metadata_dir = workspace_path / "metadata"
 
     if metadata_dir.exists():
         json_files = sorted(metadata_dir.glob("*.json"))
         if json_files:
-            output.print(
-                "\n[bold white]📁 Workspace Metadata Files:[/bold white]", style="info"
-            )
-
-            files_table_data = {
-                "title": None,
-                "columns": [
-                    {
-                        "name": "File",
-                        "style": "cyan",
-                        "width": 50,
-                        "overflow": "ellipsis",
-                    },
-                    {"name": "Size", "style": "grey50", "width": 10},
-                    {"name": "Modified", "style": "grey50", "width": 20},
-                ],
-                "rows": [],
-            }
-
-            for json_file in json_files[:20]:  # Limit to 20 files
+            rows = []
+            for json_file in json_files[:20]:
                 stat = json_file.stat()
                 size_kb = stat.st_size / 1024
                 modified = datetime.fromtimestamp(stat.st_mtime).strftime(
                     "%Y-%m-%d %H:%M"
                 )
-                files_table_data["rows"].append(
-                    [json_file.name, f"{size_kb:.1f} KB", modified]
-                )
+                rows.append([json_file.name, f"{size_kb:.1f} KB", modified])
 
-            output.print_table(files_table_data)
+            blocks.append(
+                table_block(
+                    title="Workspace Metadata Files",
+                    columns=[
+                        {
+                            "name": "File",
+                            "style": "cyan",
+                            "width": 50,
+                            "overflow": "ellipsis",
+                        },
+                        {"name": "Size", "style": "grey50", "width": 10},
+                        {"name": "Modified", "style": "grey50", "width": 20},
+                    ],
+                    rows=rows,
+                )
+            )
 
             if len(json_files) > 20:
-                output.print(
-                    f"[grey50]... and {len(json_files) - 20} more files[/grey50]"
+                blocks.append(
+                    hint_block(f"... and {len(json_files) - 20} more files")
                 )
-            output.print(f"[grey50]Path: {metadata_dir}[/grey50]")
+            blocks.append(hint_block(f"Path: {metadata_dir}"))
 
-    # ========================================================================
-    # Section 4: Export Files
-    # ========================================================================
     exports_dir = workspace_path / "exports"
     if exports_dir.exists():
         export_files = sorted(
@@ -696,61 +724,57 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
             reverse=True,
         )
         if export_files:
-            output.print("\n[bold white]📤 Export Files:[/bold white]", style="info")
-
-            exports_table_data = {
-                "title": None,
-                "columns": [
-                    {
-                        "name": "File",
-                        "style": "green",
-                        "width": 50,
-                        "overflow": "ellipsis",
-                    },
-                    {"name": "Size", "style": "grey50", "width": 10},
-                    {"name": "Modified", "style": "grey50", "width": 20},
-                ],
-                "rows": [],
-            }
-
-            for export_file in export_files[:15]:  # Limit to 15 files
+            rows = []
+            for export_file in export_files[:15]:
                 stat = export_file.stat()
                 size_kb = stat.st_size / 1024
                 modified = datetime.fromtimestamp(stat.st_mtime).strftime(
                     "%Y-%m-%d %H:%M"
                 )
-                exports_table_data["rows"].append(
-                    [export_file.name, f"{size_kb:.1f} KB", modified]
-                )
+                rows.append([export_file.name, f"{size_kb:.1f} KB", modified])
 
-            output.print_table(exports_table_data)
+            blocks.append(
+                table_block(
+                    title="Export Files",
+                    columns=[
+                        {
+                            "name": "File",
+                            "style": "green",
+                            "width": 50,
+                            "overflow": "ellipsis",
+                        },
+                        {"name": "Size", "style": "grey50", "width": 10},
+                        {"name": "Modified", "style": "grey50", "width": 20},
+                    ],
+                    rows=rows,
+                )
+            )
 
             if len(export_files) > 15:
-                output.print(
-                    f"[grey50]... and {len(export_files) - 15} more files[/grey50]"
+                blocks.append(
+                    hint_block(f"... and {len(export_files) - 15} more files")
                 )
-            output.print(f"[grey50]Path: {exports_dir}[/grey50]")
+            blocks.append(hint_block(f"Path: {exports_dir}"))
 
-    # ========================================================================
-    # Section 5: Deprecated Export Location Warning
-    # ========================================================================
     old_exports_dir = workspace_path / "metadata" / "exports"
     if old_exports_dir.exists():
         old_files = list(old_exports_dir.glob("*"))
         if old_files:
-            output.print(
-                "\n[bold yellow]⚠️  Deprecated Export Location Detected[/bold yellow]",
-                style="warning",
+            blocks.append(
+                alert_block(
+                    f"Found {len(old_files)} file(s) in old location: {old_exports_dir}",
+                    level="warning",
+                )
             )
-            output.print(
-                f"[yellow]Found {len(old_files)} file(s) in old location: {old_exports_dir}[/yellow]"
+            blocks.append(
+                hint_block("New exports go to: workspace/exports/")
             )
-            output.print("[yellow]New exports go to: workspace/exports/[/yellow]")
-            output.print(
-                "[grey50]Migration: mv workspace/metadata/exports/* workspace/exports/[/grey50]"
+            blocks.append(
+                hint_block("Migration: mv workspace/metadata/exports/* workspace/exports/")
             )
 
-    # Return summary
+    _render_blocks(output, blocks)
+
     if entries_shown > 0:
         return f"Displayed metadata information ({entries_shown} entries)"
     else:
@@ -799,31 +823,35 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
     total_count = memory_count + disk_count
 
     if total_count == 0:
-        output.print(
-            "[grey50]Metadata is already empty (memory + disk)[/grey50]", style="info"
+        _render_blocks(
+            output,
+            [alert_block("Metadata is already empty (memory + disk)", level="warning")],
         )
         return "Metadata already empty"
 
-    # Show what will be cleared
-    output.print("\n[bold]About to clear:[/bold]")
-    output.print(f"  • Memory (metadata_store): {metadata_store_count} entries")
-    output.print(f"  • Memory (current_metadata): {current_metadata_count} entries")
-    output.print(f"  • Disk (workspace/metadata/): {disk_count} files")
-    output.print(f"  • Total: {total_count} items\n")
-
-    # Confirm with user
-    confirm = output.confirm(
-        f"[yellow]Clear all {total_count} metadata items?[/yellow]"
+    _render_blocks(
+        output,
+        [
+            kv_block(
+                [
+                    ("Memory (metadata_store)", f"{metadata_store_count} entries"),
+                    ("Memory (current_metadata)", f"{current_metadata_count} entries"),
+                    ("Disk (workspace/metadata/)", f"{disk_count} files"),
+                    ("Total", f"{total_count} items"),
+                ],
+                title="About to Clear",
+            )
+        ],
     )
 
+    confirm = output.confirm(f"Clear all {total_count} metadata items?")
+
     if confirm:
-        # 1. Clear metadata_store (in-memory cache)
         cleared_store = 0
         if metadata_store_count > 0 and hasattr(client.data_manager, "metadata_store"):
             client.data_manager.metadata_store.clear()
             cleared_store = metadata_store_count
 
-        # 2. Clear current_metadata (legacy in-memory)
         cleared_current = 0
         if current_metadata_count > 0 and hasattr(
             client.data_manager, "current_metadata"
@@ -831,21 +859,15 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
             client.data_manager.current_metadata.clear()
             cleared_current = current_metadata_count
 
-        # 3. Clear disk files
         deleted_files = 0
-        failed_files = 0
+        failures = []
         for json_file in disk_files:
             try:
                 json_file.unlink()
                 deleted_files += 1
             except Exception as e:
-                failed_files += 1
-                output.print(
-                    f"[yellow]⚠️  Could not delete {json_file.name}: {e}[/yellow]",
-                    style="warning",
-                )
+                failures.append(f"{json_file.name}: {e}")
 
-        # Report results
         result_parts = []
         if cleared_store > 0:
             result_parts.append(f"{cleared_store} metadata_store entries")
@@ -854,19 +876,22 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
         if deleted_files > 0:
             result_parts.append(f"{deleted_files} disk files")
 
-        output.print(
-            f"[green]✓ Cleared {' + '.join(result_parts)}[/green]", style="success"
-        )
-
-        if failed_files > 0:
-            output.print(
-                f"[yellow]⚠️  {failed_files} files could not be deleted[/yellow]",
-                style="warning",
+        blocks = [
+            alert_block(f"Cleared {' + '.join(result_parts)}", level="success")
+        ]
+        if failures:
+            blocks.append(
+                alert_block(
+                    f"{len(failures)} files could not be deleted",
+                    level="warning",
+                )
             )
+            blocks.append(list_block(failures[:5], title="Delete Failures"))
+        _render_blocks(output, blocks)
 
         return f"Cleared {total_count} metadata items (memory + disk)"
     else:
-        output.print("[cyan]Operation cancelled[/cyan]", style="info")
+        _render_blocks(output, [section_block(body="Operation cancelled")])
         return None
 
 
@@ -899,53 +924,56 @@ def metadata_clear_exports(
             ]
 
     if not export_files:
-        output.print("[grey50]No export files to clear[/grey50]", style="info")
+        _render_blocks(
+            output, [alert_block("No export files to clear", level="warning")]
+        )
         return "No export files to clear"
 
-    # Show what will be cleared
-    output.print("\n[bold]About to clear export files:[/bold]")
-    output.print(f"  • Location: {exports_dir}")
-    output.print(f"  • Files: {len(export_files)}\n")
-
-    # Show first few files
-    for f in export_files[:5]:
-        size_kb = f.stat().st_size / 1024
-        output.print(f"    • {f.name} ({size_kb:.1f} KB)")
+    blocks: list[OutputBlock] = [
+        kv_block(
+            [
+                ("Location", str(exports_dir)),
+                ("Files", str(len(export_files))),
+            ],
+            title="About to Clear Export Files",
+        )
+    ]
+    preview_items = [
+        f"{file.name} ({file.stat().st_size / 1024:.1f} KB)"
+        for file in export_files[:5]
+    ]
+    if preview_items:
+        blocks.append(list_block(preview_items, title="Preview"))
     if len(export_files) > 5:
-        output.print(f"    • ... and {len(export_files) - 5} more files\n")
+        blocks.append(hint_block(f"... and {len(export_files) - 5} more files"))
+    _render_blocks(output, blocks)
 
-    # Confirm with user
-    confirm = output.confirm(
-        f"[yellow]Delete all {len(export_files)} export files?[/yellow]"
-    )
+    confirm = output.confirm(f"Delete all {len(export_files)} export files?")
 
     if confirm:
         deleted = 0
-        failed = 0
+        failures = []
         for f in export_files:
             try:
                 f.unlink()
                 deleted += 1
             except Exception as e:
-                failed += 1
-                output.print(
-                    f"[yellow]⚠️  Could not delete {f.name}: {e}[/yellow]",
-                    style="warning",
+                failures.append(f"{f.name}: {e}")
+
+        blocks = [alert_block(f"Deleted {deleted} export files", level="success")]
+        if failures:
+            blocks.append(
+                alert_block(
+                    f"{len(failures)} files could not be deleted",
+                    level="warning",
                 )
-
-        output.print(
-            f"[green]✓ Deleted {deleted} export files[/green]", style="success"
-        )
-
-        if failed > 0:
-            output.print(
-                f"[yellow]⚠️  {failed} files could not be deleted[/yellow]",
-                style="warning",
             )
+            blocks.append(list_block(failures[:5], title="Delete Failures"))
+        _render_blocks(output, blocks)
 
         return f"Cleared {deleted} export files"
     else:
-        output.print("[cyan]Operation cancelled[/cyan]", style="info")
+        _render_blocks(output, [section_block(body="Operation cancelled")])
         return None
 
 
@@ -963,21 +991,14 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
     Returns:
         Summary string for conversation history, or None
     """
-    # ========================================================================
-    # Count all items
-    # ========================================================================
-
-    # Memory: metadata_store
     metadata_store_count = 0
     if hasattr(client.data_manager, "metadata_store"):
         metadata_store_count = len(client.data_manager.metadata_store)
 
-    # Memory: current_metadata
     current_metadata_count = 0
     if hasattr(client.data_manager, "current_metadata"):
         current_metadata_count = len(client.data_manager.current_metadata)
 
-    # Disk: workspace/metadata/*.json
     disk_files = []
     metadata_dir = None
     if hasattr(client.data_manager, "workspace_path"):
@@ -985,7 +1006,6 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
         if metadata_dir.exists():
             disk_files = list(metadata_dir.glob("*.json"))
 
-    # Disk: workspace/exports/*
     export_files = []
     exports_dir = None
     if hasattr(client.data_manager, "workspace_path"):
@@ -997,81 +1017,89 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
                 if f.is_file() and f.suffix in {".csv", ".tsv", ".xlsx"}
             ]
 
-    # Totals
     memory_count = metadata_store_count + current_metadata_count
     disk_count = len(disk_files)
     export_count = len(export_files)
     total_count = memory_count + disk_count + export_count
 
     if total_count == 0:
-        output.print(
-            "[grey50]Nothing to clear (memory, metadata, exports all empty)[/grey50]",
-            style="info",
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    "Nothing to clear (memory, metadata, exports all empty)",
+                    level="warning",
+                )
+            ],
         )
         return "Nothing to clear"
 
-    # ========================================================================
-    # Show what will be cleared
-    # ========================================================================
-    output.print("\n[bold red]⚠️  About to clear ALL metadata:[/bold red]")
-    output.print(f"  • Memory (metadata_store): {metadata_store_count} entries")
-    output.print(f"  • Memory (current_metadata): {current_metadata_count} entries")
-    output.print(f"  • Disk (workspace/metadata/): {disk_count} files")
-    output.print(f"  • Disk (workspace/exports/): {export_count} files")
-    output.print(f"  • Total: {total_count} items\n")
-
-    # Confirm with user
-    confirm = output.confirm(
-        f"[bold red]Clear ALL {total_count} items? This cannot be undone![/bold red]"
+    _render_blocks(
+        output,
+        [
+            alert_block("This cannot be undone.", level="warning"),
+            kv_block(
+                [
+                    ("Memory (metadata_store)", f"{metadata_store_count} entries"),
+                    ("Memory (current_metadata)", f"{current_metadata_count} entries"),
+                    ("Disk (workspace/metadata/)", f"{disk_count} files"),
+                    ("Disk (workspace/exports/)", f"{export_count} files"),
+                    ("Total", f"{total_count} items"),
+                ],
+                title="About to Clear All Metadata",
+            ),
+        ],
     )
+    confirm = output.confirm(f"Clear ALL {total_count} items? This cannot be undone!")
 
     if confirm:
         results = []
 
-        # 1. Clear metadata_store
         if metadata_store_count > 0 and hasattr(client.data_manager, "metadata_store"):
             client.data_manager.metadata_store.clear()
             results.append(f"{metadata_store_count} metadata_store entries")
 
-        # 2. Clear current_metadata
         if current_metadata_count > 0 and hasattr(
             client.data_manager, "current_metadata"
         ):
             client.data_manager.current_metadata.clear()
             results.append(f"{current_metadata_count} current_metadata entries")
 
-        # 3. Clear workspace/metadata/*.json
         deleted_metadata = 0
+        metadata_failures = []
         for f in disk_files:
             try:
                 f.unlink()
                 deleted_metadata += 1
             except Exception as e:
-                output.print(
-                    f"[yellow]⚠️  Could not delete {f.name}: {e}[/yellow]",
-                    style="warning",
-                )
+                metadata_failures.append(f"{f.name}: {e}")
         if deleted_metadata > 0:
             results.append(f"{deleted_metadata} metadata files")
 
-        # 4. Clear workspace/exports/*
         deleted_exports = 0
+        export_failures = []
         for f in export_files:
             try:
                 f.unlink()
                 deleted_exports += 1
             except Exception as e:
-                output.print(
-                    f"[yellow]⚠️  Could not delete {f.name}: {e}[/yellow]",
-                    style="warning",
-                )
+                export_failures.append(f"{f.name}: {e}")
         if deleted_exports > 0:
             results.append(f"{deleted_exports} export files")
 
-        # Report
-        output.print(f"[green]✓ Cleared: {', '.join(results)}[/green]", style="success")
+        blocks = [alert_block(f"Cleared: {', '.join(results)}", level="success")]
+        all_failures = metadata_failures + export_failures
+        if all_failures:
+            blocks.append(
+                alert_block(
+                    f"{len(all_failures)} files could not be deleted",
+                    level="warning",
+                )
+            )
+            blocks.append(list_block(all_failures[:5], title="Delete Failures"))
+        _render_blocks(output, blocks)
 
         return f"Cleared all metadata ({total_count} items)"
     else:
-        output.print("[cyan]Operation cancelled[/cyan]", style="info")
+        _render_blocks(output, [section_block(body="Operation cancelled")])
         return None

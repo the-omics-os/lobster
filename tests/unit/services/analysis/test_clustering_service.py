@@ -837,8 +837,12 @@ def test_louvain_missing_package_raises_error(clustering_service, small_adata, m
     """Test clear error when louvain package is not installed."""
     # Simulate missing louvain by making sc.tl.louvain raise AttributeError
     monkeypatch.delattr(sc.tl, "louvain", raising=False)
+    monkeypatch.setattr(
+        "lobster.core.component_registry.get_install_command",
+        lambda package, is_extra=False: "uv pip install louvain",
+    )
 
-    with pytest.raises(ClusteringError, match="louvain"):
+    with pytest.raises(ClusteringError, match="uv pip install louvain"):
         clustering_service.cluster_and_visualize(
             small_adata, resolution=0.5, algorithm="louvain"
         )

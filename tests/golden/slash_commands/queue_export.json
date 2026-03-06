@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Exporting queue to workspace as 'saved_queue'...\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "success",
+        "message": "Exported 2 items to: /tmp/lobster_ws/saved_queue.jsonl"
+      },
+      "type": "alert"
+    }
+  ],
+  "summary": "Exported 2 queue items to workspace as 'saved_queue'"
+}

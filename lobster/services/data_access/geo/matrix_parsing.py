@@ -155,7 +155,7 @@ class MatrixParser:
                             f"Successfully downloaded matrix for {gsm_id}: {matrix.shape}"
                         )
                     else:
-                        logger.warning(f"No matrix data found for {gsm_id}")
+                        logger.debug(f"No matrix data found for {gsm_id}")
                 except Exception as e:
                     logger.error(f"Error downloading {gsm_id}: {e}")
                     sample_matrices[gsm_id] = None
@@ -193,7 +193,7 @@ class MatrixParser:
                 return df
 
         except Exception as e:
-            logger.warning(f"Single-cell download attempt failed for {gsm_id}: {e}")
+            logger.debug(f"Single-cell download attempt failed for {gsm_id}: {e}")
 
             is_single_cell = False
             if gse_id in self.service.data_manager.metadata_store:
@@ -216,7 +216,7 @@ class MatrixParser:
                 )
                 return None
 
-            logger.warning(f"No expression data found for {gsm_id}")
+            logger.debug(f"No expression data found for {gsm_id}")
             return None
 
         except Exception as e:
@@ -241,7 +241,7 @@ class MatrixParser:
             file_urls = self._extract_all_supplementary_urls(metadata, gsm_id)
 
             if not file_urls:
-                logger.warning(f"No supplementary files found for {gsm_id}")
+                logger.debug(f"No supplementary files found for {gsm_id}")
                 return {}
 
             classified_files = {}
@@ -458,7 +458,7 @@ class MatrixParser:
         if len(found_10x_files) == 3:
             logger.debug(f"Complete 10X trio found for {gsm_id}")
         elif len(found_10x_files) >= 1:
-            logger.warning(
+            logger.debug(
                 f"Incomplete 10X trio for {gsm_id}. Found: {list(found_10x_files)}, Missing: {list(missing_10x_files)}"
             )
 
@@ -504,7 +504,7 @@ class MatrixParser:
                 )
 
             else:
-                logger.warning(f"No suitable file combination found for {gsm_id}")
+                logger.debug(f"No suitable file combination found for {gsm_id}")
                 return None
 
         except Exception as e:

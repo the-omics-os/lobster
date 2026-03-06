@@ -1156,7 +1156,7 @@ class MetadataFetcher:
                         if modality != "rna"
                     ]
                 )
-                logger.warning(
+                logger.debug(
                     f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}. "
                     f"Support planned for future releases (v2.6+)."
                 )

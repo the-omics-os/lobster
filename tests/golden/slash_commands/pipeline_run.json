@@ -1,0 +1,49 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Running validation...\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "success",
+        "message": "Validation passed"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "Validation Summary\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Steps to execute",
+            "4"
+          ],
+          [
+            "Estimated time",
+            "3 min"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Cancelled\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Execution cancelled"
+}

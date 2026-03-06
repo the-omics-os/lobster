@@ -15,12 +15,34 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    OutputBlock,
+    alert_block,
+    code_block,
+    hint_block,
+    kv_block,
+    list_block,
+    section_block,
+)
 from lobster.cli_internal.utils.path_resolution import PathResolver
 
 # NOTE: component_registry is imported lazily in archive_queue() to avoid
 # triggering heavy dependency loads (pandas/numpy) at module import time.
 # This keeps light commands fast (<300ms startup).
+
+
+def build_read_usage_blocks() -> list[OutputBlock]:
+    return [
+        section_block(body="/read views file contents without loading data into memory."),
+        section_block(body="Usage: /read <filename>"),
+        hint_block("Examples: /read my_data.h5ad, /read config.yaml, /read data/*.csv"),
+        hint_block("To load data for analysis, use /workspace load <name>."),
+    ]
+
+
+def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
+    output.render_blocks(blocks)
 
 
 def file_read(
@@ -55,13 +77,12 @@ def file_read(
         - Suggestions for loading data files
     """
     if not filename:
-        output.print("[yellow]Usage: /read <file|pattern>[/yellow]", style="warning")
-        output.print(
-            "[grey50]  View file contents (text files only)[/grey50]", style="info"
-        )
-        output.print(
-            "[grey50]  Use /workspace load <file> to load data files[/grey50]",
-            style="info",
+        output.render_blocks(
+            [
+                alert_block("Usage: /read <file|pattern>", level="warning"),
+                section_block(body="View file contents (text files only)."),
+                hint_block("Use /workspace load <file> to load data files."),
+            ]
         )
         return None
 
@@ -81,8 +102,9 @@ def file_read(
         resolved = resolver.resolve(filename, search_workspace=True, must_exist=False)
 
         if not resolved.is_safe:
-            output.print(
-                f"[red]❌ Security error: {resolved.error}[/red]", style="error"
+            _render_blocks(
+                output,
+                [alert_block(f"Security error: {resolved.error}", level="error")],
             )
             return None
 
@@ -108,12 +130,15 @@ def file_read(
         matching_files = list(itertools.islice(glob_module.iglob(search_pattern), 10))
 
         if not matching_files:
-            output.print(
-                f"[red]❌ No files found matching pattern: {filename}[/red]",
-                style="error",
-            )
-            output.print(
-                f"[grey50]Searched in: {current_directory}[/grey50]", style="info"
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        f"No files found matching pattern: {filename}",
+                        level="error",
+                    ),
+                    section_block(body=f"Searched in: {current_directory}"),
+                ],
             )
             return None
 
@@ -121,10 +146,11 @@ def file_read(
         total_count = sum(1 for _ in glob_module.iglob(search_pattern))
 
         matching_files.sort()
-        output.print(
-            f"[cyan]📁 Found {total_count} files matching '[white]{filename}[/white]', displaying first 10[/cyan]\n",
-            style="info",
-        )
+        blocks: list[OutputBlock] = [
+            section_block(
+                body=f"Found {total_count} files matching '{filename}', displaying first 10."
+            )
+        ]
 
         displayed_count = 0
         for match_path in matching_files:  # Already limited to 10
@@ -137,9 +163,14 @@ def file_read(
                     # BUG FIX #3: Add file size check before reading (10MB limit)
                     file_size = match_file.stat().st_size
                     if file_size > 10_000_000:  # 10MB
-                        output.print(
-                            f"[yellow]⚠️  {match_file.name} too large to display ({file_size / 1_000_000:.1f}MB, limit: 10MB)[/yellow]",
-                            style="warning",
+                        blocks.append(
+                            alert_block(
+                                (
+                                    f"{match_file.name} is too large to display "
+                                    f"({file_size / 1_000_000:.1f}MB, limit: 10MB)."
+                                ),
+                                level="warning",
+                            )
                         )
                         continue
 
@@ -170,29 +201,31 @@ def file_read(
                     }
                     language = language_map.get(ext, "text")
 
-                    # Display using code block
-                    output.print(
-                        f"\n[cyan]📄 {match_file.name}[/cyan] [grey50]({len(lines)} lines)[/grey50]",
-                        style="info",
+                    blocks.extend(
+                        [
+                            section_block(body=f"{match_file.name} ({len(lines)} lines)"),
+                            code_block(content, language=language),
+                        ]
                     )
-                    output.print_code_block(content, language=language)
                     displayed_count += 1
                 except Exception as e:
-                    output.print(
-                        f"[yellow]⚠️  Could not read {match_file.name}: {e}[/yellow]",
-                        style="warning",
+                    blocks.append(
+                        alert_block(
+                            f"Could not read {match_file.name}: {e}",
+                            level="warning",
+                        )
                     )
             else:
-                output.print(
-                    f"[grey50]  • {match_file.name} (binary file - skipped)[/grey50]",
-                    style="info",
+                blocks.append(
+                    hint_block(f"{match_file.name} (binary file - skipped)")
                 )
 
         if total_count > 10:
-            output.print(
-                f"\n[grey50]... and {total_count - 10} more files (not loaded)[/grey50]",
-                style="info",
+            blocks.append(
+                hint_block(f"... and {total_count - 10} more files (not loaded)")
             )
+
+        _render_blocks(output, blocks)
 
         return f"Displayed {displayed_count} text files matching '{filename}' (total: {total_count})"
 
@@ -201,14 +234,17 @@ def file_read(
         # Try to locate via client (searches workspace directories)
         file_info = client.locate_file(filename)
         if not file_info["found"]:
-            output.print(
-                f"[bold red on white] ⚠️  Error [/bold red on white] [red]{file_info['error']}[/red]",
-                style="error",
-            )
+            blocks = [alert_block(file_info["error"], level="error")]
             if "searched_paths" in file_info:
-                output.print("[grey50]Searched in:[/grey50]", style="info")
-                for path in file_info["searched_paths"][:5]:
-                    output.print(f"  • [grey50]{path}[/grey50]", style="info")
+                blocks.extend(
+                    [
+                        section_block(body="Searched in:"),
+                        list_block(
+                            [str(path) for path in file_info["searched_paths"][:5]]
+                        ),
+                    ]
+                )
+            _render_blocks(output, blocks)
             return f"File '{filename}' not found"
         file_path = file_info["path"]
 
@@ -218,10 +254,18 @@ def file_read(
     file_category = file_info.get("category", "unknown")
     is_binary = file_info.get("binary", True)
 
-    # Show file location
-    output.print(f"[cyan]📄 File:[/cyan] [white]{file_path.name}[/white]", style="info")
-    output.print(f"[grey50]   Path: {file_path}[/grey50]", style="info")
-    output.print(f"[grey50]   Type: {file_description}[/grey50]", style="info")
+    output.render_blocks(
+        [
+            kv_block(
+                [
+                    ("Name", file_path.name),
+                    ("Path", str(file_path)),
+                    ("Type", file_description),
+                ],
+                title="File",
+            )
+        ]
+    )
 
     # Handle text files - display content
     if not is_binary:
@@ -254,28 +298,35 @@ def file_read(
             language = language_map.get(ext, "text")
 
             # Display using code block
-            output.print(f"\n[bold red]📄 {file_path.name}[/bold red]", style="info")
-            output.print_code_block(content, language=language)
+            output.render_blocks(
+                [
+                    section_block(body=f"Contents: {file_path.name}"),
+                    code_block(content, language=language),
+                ]
+            )
 
             return f"Displayed text file '{filename}' ({file_description}, {len(lines)} lines)"
 
         except UnicodeDecodeError:
-            output.print(
-                "[yellow]⚠️  File appears to be binary despite extension[/yellow]",
-                style="warning",
+            _render_blocks(
+                output,
+                [
+                    alert_block(
+                        "File appears to be binary despite its extension.",
+                        level="warning",
+                    )
+                ],
             )
             is_binary = True
         except Exception as e:
-            output.print(f"[red]Error reading file: {e}[/red]", style="error")
+            _render_blocks(
+                output,
+                [alert_block(f"Error reading file: {e}", level="error")],
+            )
             return f"Error reading file '{filename}': {str(e)}"
 
     # Handle binary/data files - show info only, suggest /workspace load
     if is_binary:
-        output.print(
-            "\n[bold yellow on black] ℹ️  File Info [/bold yellow on black]",
-            style="info",
-        )
-
         # Format file size
         size_bytes = file_path.stat().st_size
         if size_bytes < 1024:
@@ -287,45 +338,62 @@ def file_read(
         else:
             size_str = f"{size_bytes / 1024**3:.1f} GB"
 
-        output.print(f"[white]Size: [yellow]{size_str}[/yellow][/white]", style="info")
+        output.render_blocks(
+            [
+                kv_block(
+                    [
+                        ("Name", file_path.name),
+                        ("Path", str(file_path)),
+                        ("Type", file_description),
+                        ("Category", file_category),
+                        ("Size", size_str),
+                    ],
+                    title="File Info",
+                )
+            ]
+        )
 
         # Provide guidance based on file type
         if file_category == "bioinformatics":
-            output.print(
-                f"\n[cyan]💡 This is a bioinformatics data file ({file_description}).[/cyan]",
-                style="info",
-            )
-            output.print(
-                f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]",
-                style="info",
+            output.render_blocks(
+                [
+                    section_block(
+                        body=f"This is a bioinformatics data file ({file_description})."
+                    ),
+                    hint_block(
+                        f"To load it into the workspace: /workspace load {filename}"
+                    ),
+                ]
             )
         elif file_category == "tabular":
-            output.print(
-                f"\n[cyan]💡 This is a tabular data file ({file_description}).[/cyan]",
-                style="info",
-            )
-            output.print(
-                f"[cyan]   To load into workspace: [yellow]/workspace load {filename}[/yellow][/cyan]",
-                style="info",
+            output.render_blocks(
+                [
+                    section_block(
+                        body=f"This is a tabular data file ({file_description})."
+                    ),
+                    hint_block(
+                        f"To load it into the workspace: /workspace load {filename}"
+                    ),
+                ]
             )
         elif file_category == "archive":
-            output.print(
-                f"\n[cyan]💡 This is an archive file ({file_description}).[/cyan]",
-                style="info",
-            )
-            output.print(
-                f"[cyan]   To extract and load: [yellow]/workspace load {filename}[/yellow][/cyan]",
-                style="info",
+            output.render_blocks(
+                [
+                    section_block(body=f"This is an archive file ({file_description})."),
+                    hint_block(f"To extract and load it: /workspace load {filename}"),
+                ]
             )
         elif file_category == "image":
-            output.print(
-                "[cyan]💡 This is an image file. Use your system's image viewer to open it.[/cyan]",
-                style="info",
+            output.render_blocks(
+                [
+                    section_block(
+                        body="This is an image file. Use your system image viewer to open it."
+                    )
+                ]
             )
         else:
-            output.print(
-                "[cyan]💡 Binary file - use external tools to view.[/cyan]",
-                style="info",
+            output.render_blocks(
+                [section_block(body="Binary file - use external tools to view it.")]
             )
 
         return f"Inspected file '{filename}' ({file_description}, {size_str}) - use /workspace load to load data files"

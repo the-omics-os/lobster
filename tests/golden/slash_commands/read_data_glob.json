@@ -1,0 +1,23 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Found 2 files matching 'data/*.h5ad', displaying first 10.\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "geo_gse12345_rna.h5ad (binary file - skipped)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "geo_gse67890_atac_clustered.h5ad (binary file - skipped)\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Displayed 0 text files matching 'data/*.h5ad' (total: 2)"
+}

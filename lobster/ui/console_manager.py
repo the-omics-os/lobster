@@ -6,9 +6,10 @@ enhanced logging integration, and session capture capabilities.
 """
 
 import logging
+import os
 from getpass import getpass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TextIO
 
 from rich.console import Capture, Console
 from rich.live import Live
@@ -127,6 +128,9 @@ class LobsterConsoleManager:
     _console: Optional[Console] = None
     _error_console: Optional[Console] = None
     _capture: Optional[Capture] = None
+    _muted_console_file: Optional[TextIO] = None
+    _saved_console_file: Optional[TextIO] = None
+    _saved_error_console_file: Optional[TextIO] = None
 
     def __new__(cls) -> "LobsterConsoleManager":
         """Singleton pattern for console manager."""
@@ -409,6 +413,44 @@ class LobsterConsoleManager:
             vertical_overflow="visible",
             transient=True,  # Enable transient mode to allow terminal scrolling
         )
+
+    def mute_terminal_output(self) -> bool:
+        """Redirect Rich console output to ``os.devnull`` until restored.
+
+        Returns ``True`` only when this call performed the mute operation.
+        Subsequent nested calls are treated as no-ops so callers can restore
+        conditionally.
+        """
+        if self._muted_console_file is not None:
+            return False
+
+        muted_file = open(os.devnull, "w", encoding="utf-8")
+        self._saved_console_file = self._console.file
+        self._saved_error_console_file = self._error_console.file
+        self._console.file = muted_file
+        self._error_console.file = muted_file
+        self._muted_console_file = muted_file
+        return True
+
+    def restore_terminal_output(self) -> None:
+        """Restore Rich console output after ``mute_terminal_output``."""
+        muted_file = self._muted_console_file
+        if muted_file is None:
+            return
+
+        if self._saved_console_file is not None:
+            self._console.file = self._saved_console_file
+        if self._saved_error_console_file is not None:
+            self._error_console.file = self._saved_error_console_file
+
+        self._saved_console_file = None
+        self._saved_error_console_file = None
+        self._muted_console_file = None
+
+        try:
+            muted_file.close()
+        except Exception:
+            pass
 
     def has_history_support(self) -> bool:
         """Check if the console has command history support enabled."""
