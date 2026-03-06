@@ -1335,6 +1335,22 @@ func TestCancelTimerExpiredResetsArm(t *testing.T) {
 	}
 }
 
+func TestCancelPromptNotOverwrittenBySpinner(t *testing.T) {
+	m := newTestModel()
+	m.spinnerActive = true
+	m.spinnerLabel = "thinking"
+	m.isCanceling = true
+	m.statusText = "Press Ctrl+C again to cancel"
+
+	line := m.currentStatusLine()
+	if !strings.Contains(line, "Press Ctrl+C again to cancel") {
+		t.Fatalf("expected cancel prompt to survive spinner, got %q", line)
+	}
+	if strings.Contains(line, "thinking") {
+		t.Fatalf("expected spinner text to be suppressed during cancel arm, got %q", line)
+	}
+}
+
 func TestCtrlCAtIdleSendsQuit(t *testing.T) {
 	var out bytes.Buffer
 	m := newTestModel()

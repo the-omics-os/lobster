@@ -1650,7 +1650,7 @@ func (m Model) shouldRenderStreamingTranscript() bool {
 
 func (m Model) currentStatusLine() string {
 	statusText := m.statusText
-	if m.spinnerActive {
+	if m.spinnerActive && !m.isCanceling {
 		spinnerText := spinnerFrames[m.spinnerFrame] + " " + m.spinnerLabel + "..."
 		if m.quietStartup && !m.ready {
 			spinnerText = "· " + m.spinnerLabel + "..."
