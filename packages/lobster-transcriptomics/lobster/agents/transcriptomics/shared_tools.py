@@ -184,29 +184,16 @@ def create_shared_tools(
         max_ribo_pct: Optional[float] = None,
     ) -> str:
         """
-        Run comprehensive quality control assessment on transcriptomics data.
-
-        Auto-detects data type (single-cell vs bulk) and applies appropriate
-        defaults when parameters are not specified.
+        QC assessment. Auto-detects SC vs bulk defaults.
 
         Args:
-            modality_name: Name of the modality to assess
-            min_genes: Minimum genes per cell/sample (lower bound).
-                      Default: 200 (SC), 1000 (bulk)
-            max_genes: Maximum genes per cell (upper bound, for doublet filtering).
-                      Default: 5000 (SC), None (bulk).
-                      NOTE: For cardiac/muscle tissue or metabolically active cells,
-                      consider 8000-10000 to avoid filtering legitimate cells.
-            max_mt_pct: Maximum mitochondrial percentage.
-                       Default: 20.0% (SC), 30.0% (bulk).
-                       TISSUE WARNING: For cardiac/muscle tissue, neurons, or hepatocytes,
-                       mitochondrial content is naturally higher. Consider 30-50% for
-                       these cell types to avoid removing healthy cells.
-            max_ribo_pct: Maximum ribosomal percentage.
-                         Default: 50.0% (SC), 100.0% (bulk)
-
-        Returns:
-            Formatted QC assessment report with statistics and recommendations
+            modality_name: Modality to assess
+            min_genes: Min genes per cell. Default: 200 (SC), 1000 (bulk).
+            max_genes: Max genes per cell. Default: 5000 (SC), None (bulk).
+                Tissue note: use 8000-10000 for cardiac/neurons/hepatocytes.
+            max_mt_pct: Max mito %. Default: 20 (SC), 30 (bulk).
+                Tissue warning: use 30-50% for cardiac/muscle/neurons/hepatocytes.
+            max_ribo_pct: Max ribo %. Default: 50 (SC), 100 (bulk).
         """
         try:
             if modality_name == "":
@@ -337,35 +324,19 @@ Proceed with filtering and normalization for downstream analysis."""
         save_result: bool = True,
     ) -> str:
         """
-        Filter and normalize transcriptomics data using professional QC standards.
-
-        Auto-detects data type (single-cell vs bulk) and applies appropriate
-        defaults when parameters are not specified.
+        Filter and normalize transcriptomics data. Auto-detects SC vs bulk defaults.
 
         Args:
-            modality_name: Name of the modality to process
-            min_genes_per_cell: Minimum genes expressed per cell/sample.
-                               Default: 200 (SC), 1000 (bulk)
-            max_genes_per_cell: Maximum genes per cell (doublet filtering).
-                               Default: 5000 (SC), None (bulk).
-                               TISSUE NOTE: For metabolically active cells (neurons,
-                               hepatocytes) or proliferative populations, consider
-                               8000-10000 to avoid filtering legitimate high-complexity cells.
-            min_cells_per_gene: Minimum cells/samples expressing each gene.
-                               Default: 3 (SC), 2 (bulk)
-            max_mito_percent: Maximum mitochondrial gene percentage.
-                             Default: 20.0% (SC), 30.0% (bulk).
-                             TISSUE WARNING: For cardiac/muscle tissue, neurons, or
-                             hepatocytes, mitochondrial content is naturally higher.
-                             Consider 30-50% for these cell types.
-            normalization_method: Normalization method ('log1p', 'cpm', 'tpm').
-                                 Default: 'log1p' for both types
-            target_sum: Target sum for normalization.
-                       Default: 10000 (SC), 1000000 (bulk)
-            save_result: Whether to save the filtered modality
-
-        Returns:
-            Formatted processing report with statistics
+            modality_name: Modality to process
+            min_genes_per_cell: Min genes per cell. Default: 200 (SC), 1000 (bulk).
+            max_genes_per_cell: Max genes per cell. Default: 5000 (SC), None (bulk).
+                Tissue note: use 8000-10000 for neurons/hepatocytes/proliferative cells.
+            min_cells_per_gene: Min cells per gene. Default: 3 (SC), 2 (bulk).
+            max_mito_percent: Max mito %. Default: 20 (SC), 30 (bulk).
+                Tissue warning: use 30-50% for cardiac/muscle/neurons/hepatocytes.
+            normalization_method: 'log1p' (default), 'cpm', or 'tpm'
+            target_sum: Normalization target. Default: 10000 (SC), 1000000 (bulk).
+            save_result: Whether to save
         """
         try:
             # Validate modality exists

@@ -162,36 +162,15 @@ def data_expert(
         force_download: bool = False,
         strategy_override: str = "",
     ) -> str:
-        """
-        Execute download from queue entry prepared by research_agent.
+        """Execute download from a queue entry prepared by research_agent.
 
-        This tool implements the queue consumer pattern where:
-        1. research_agent validates metadata and adds to queue (Task 2.2B)
-        2. Supervisor queries queue and extracts entry_id
-        3. data_expert downloads using queue entry metadata
-
-        Also used to retry FAILED downloads with a different strategy.
+        Check get_queue_status() first to find entry_id. Entry must be PENDING or FAILED.
 
         Args:
-            entry_id: Download queue entry ID (format: queue_GSE12345_abc123)
-            concatenation_strategy: How to merge samples ("auto"|"union"|"intersection")
-                - 'auto' (RECOMMENDED): Intelligently decides based on DUAL CRITERIA
-                  * CV criterion: If coefficient of variation > 20% → UNION
-                  * Range criterion: If max/min gene ratio > 1.5x → UNION
-                  * BOTH criteria must pass (CV ≤ 20% AND ratio ≤ 1.5x) for INTERSECTION
-                - 'intersection': Keep only genes present in ALL samples (inner join)
-                - 'union': Include all genes from all samples (outer join with zero-filling)
-            force_download: If True, proceed even if validation has warnings (default: False)
-            strategy_override: Override the download strategy. Empty string = use auto-detected
-                or recommended strategy. Common values:
-                - "MATRIX_FIRST": Try matrix format first
-                - "SUPPLEMENTARY_FIRST": Try supplementary files
-                - "H5_FIRST": Try H5 format if available
-                - "RAW_FIRST": Try raw data files
-                Useful when retrying a FAILED download with a different approach.
-
-        Returns:
-            Download report with modality name, status, and statistics
+            entry_id: Queue entry ID (format: queue_GSE12345_abc123)
+            concatenation_strategy: "auto" (recommended), "union", or "intersection"
+            force_download: Proceed despite validation warnings (default: False)
+            strategy_override: Override strategy for retries: "MATRIX_FIRST", "SUPPLEMENTARY_FIRST", "H5_FIRST", "RAW_FIRST"
         """
         try:
             # 1. RETRIEVE QUEUE ENTRY
@@ -600,24 +579,13 @@ You can now analyze this dataset using the appropriate analysis tools.
         adapter: str,
         dataset_type: str = "custom",
     ) -> str:
-        """
-        Load a data file as a modality using the modular adapter system.
-
-        This tool consolidates upload_data_file and load_modality_from_file functionality.
-
-        IMPORTANT: Use list_files or glob_files FIRST to verify the file exists
-        and inspect its format before calling this tool.
+        """Load a local data file as a modality. Use list_files/glob_files FIRST to verify the file.
 
         Args:
             modality_name: Name for the new modality
-            file_path: Path to the data file (relative to workspace or absolute).
-                       Example: "data/GSE276492_RAW/matrix.mtx" or
-                       "data/my_counts.csv"
-            adapter: Adapter to use (e.g., 'transcriptomics_single_cell', 'proteomics_ms')
-            dataset_type: Source type (e.g., 'custom', 'geo', 'local')
-
-        Returns:
-            str: Status of loading operation with modality details
+            file_path: Path to data file (relative to workspace or absolute)
+            adapter: Adapter name (call get_adapter_info() to see options)
+            dataset_type: Source type ("custom", "geo", "local")
         """
         try:
             adata, stats, ir = modality_service.load_modality(
@@ -716,19 +684,9 @@ The MuData object contains all selected modalities and is ready for cross-modal 
 
     @tool
     def get_adapter_info() -> str:
-        """
-        Show all registered data adapters and the file formats they support.
+        """List all registered data adapters and their supported file formats.
 
-        Lists every adapter available for loading data (CSV, H5AD, 10X, VCF, PLINK, etc.)
-        with their supported file formats and target modality types.
-
-        Call this BEFORE load_modality() to determine:
-        - Which adapter to use for a given file format
-        - What modality types are available for loading
-        - Which file extensions are supported
-
-        Returns:
-            Formatted list of adapters with supported formats and modality targets
+        Call before load_modality() to determine which adapter to use.
         """
         try:
             adapter_info = data_manager.get_adapter_info()
@@ -763,19 +721,16 @@ The MuData object contains all selected modalities and is ready for cross-modal 
         use_intersecting_genes_only: bool = True,
         save_to_file: bool = True,
     ) -> str:
-        """
-        Concatenate multiple sample modalities into a single combined modality.
-        This is useful after downloading individual samples with SAMPLES_FIRST strategy.
+        """Concatenate multiple sample modalities into one combined modality.
+
+        Use after SAMPLES_FIRST download creates multiple per-sample modalities.
 
         Args:
-            sample_modalities: List of modality names to concatenate. If None, will auto-detect based on geo_id
-            output_modality_name: Name for the output modality. If None, will generate based on geo_id
-            geo_id: GEO accession ID to auto-detect samples (e.g., GSE12345)
-            use_intersecting_genes_only: If True, use only common genes. If False, use all genes (fill missing with 0)
-            save_to_file: Whether to save the concatenated data to a file
-
-        Returns:
-            str: Status message with concatenation results
+            sample_modalities: Modality names to merge (None = auto-detect from geo_id)
+            output_modality_name: Output name (None = auto-generate)
+            geo_id: GEO ID for auto-detection (e.g. "GSE12345")
+            use_intersecting_genes_only: True=common genes only, False=all genes (zero-fill)
+            save_to_file: Save concatenated result (default: True)
         """
         try:
             # Import the ConcatenationService
@@ -893,21 +848,11 @@ To save, run again with save_to_file=True"""
         status_filter: str = None,
         dataset_id_filter: str = None,
     ) -> str:
-        """
-        Get current status of download queue with optional filtering.
-
-        This tool provides visibility into the download queue, showing which datasets
-        are pending download, in progress, completed, or failed. Useful for tracking
-        download operations and troubleshooting issues.
+        """Show download queue status with optional filtering.
 
         Args:
-            status_filter: Optional status filter ("PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", "all")
-                         If None, shows all entries.
-            dataset_id_filter: Optional dataset ID filter (e.g., "GSE12345")
-                             Shows only entries matching this dataset ID.
-
-        Returns:
-            Formatted queue status report with entry details
+            status_filter: "PENDING", "IN_PROGRESS", "COMPLETED", "FAILED", or "all" (default: all)
+            dataset_id_filter: Filter by dataset ID (e.g. "GSE12345")
         """
         try:
             # Get all queue entries

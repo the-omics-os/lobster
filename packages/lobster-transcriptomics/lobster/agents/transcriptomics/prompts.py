@@ -57,57 +57,7 @@ Based on detection, appropriate defaults are applied:
 - **Bulk**: min_genes=1000, max_genes=None, target_sum=1000000
 </Data_Type_Detection>
 
-<Your_Tools>
-
-## Shared Tools (SC + Bulk)
-
-1. **check_data_status** - Check loaded modalities, data dimensions, and type classification
-2. **assess_data_quality** - Calculate QC metrics with auto-detected parameters
-3. **filter_and_normalize** - Filter and normalize (auto-detects SC/bulk defaults)
-4. **create_analysis_summary** - Generate comprehensive analysis report
-5. **select_variable_features** - Select highly variable genes/features
-   - method="deviance" (default): Works on RAW COUNTS, run BEFORE normalization
-   - method="hvg": Works on NORMALIZED data, run AFTER filter_and_normalize
-6. **run_pca** - Principal component analysis
-   - Stores adata.raw BEFORE scaling (critical for marker gene fold-change)
-7. **compute_neighbors_and_embed** - Neighbor graph + UMAP/tSNE embedding
-
-## Single-Cell Tools
-
-8. **detect_doublets** - Scrublet doublet detection (run BEFORE filtering)
-9. **integrate_batches** - Harmony/ComBat batch integration with LISI + silhouette quality metrics
-10. **compute_trajectory** - DPT pseudotime + PAGA trajectory inference
-
-## Clustering Tools (Single-Cell Specific)
-
-11. **cluster_cells** - Full clustering pipeline (HVG -> PCA -> neighbors -> clustering -> UMAP)
-    - Supports Leiden (default) and Louvain via `algorithm` parameter
-    - Supports multi-resolution testing with `resolutions` parameter
-    - Custom embeddings via `use_rep` (e.g., "X_scvi")
-12. **subcluster_cells** - Re-cluster specific cell subsets for finer resolution
-    - Also supports `algorithm='leiden'` or `algorithm='louvain'`
-13. **evaluate_clustering_quality** - Silhouette, Davies-Bouldin, Calinski-Harabasz scores
-14. **find_marker_genes** - Marker genes per cluster (Wilcoxon, t-test, or logistic regression)
-
-## Bulk RNA-seq Tools
-
-15. **import_bulk_counts** - Import from Salmon/kallisto/featureCounts/CSV
-    - Directories: auto-detects Salmon vs kallisto quantification files
-    - Files: auto-detects featureCounts header, CSV, or TSV format
-    - Stores raw counts in adata.layers['counts']
-16. **merge_sample_metadata** - Join external metadata (CSV/TSV/Excel) with count matrix
-    - Auto-detects sample ID column by matching values to obs_names
-17. **assess_bulk_sample_quality** - PCA outlier detection, sample correlation, batch R-squared
-18. **filter_bulk_genes** - Remove lowly-expressed genes (min_counts, min_samples thresholds)
-19. **normalize_bulk_counts** - DESeq2 size factors, VST, or CPM normalization
-    - Use "deseq2" for DE analysis, "vst" for visualization/clustering
-20. **detect_batch_effects** - Variance decomposition: batch vs condition R-squared
-21. **convert_gene_identifiers** - Ensembl/Symbol/Entrez conversion via mygene
-    - Auto-detects source type from gene ID patterns
-    - Strips Ensembl version suffixes before querying
-22. **prepare_bulk_for_de** - Validate data readiness before DE handoff
-    - Checks: raw counts, group key, sample counts per group, design factors
-    - Does NOT modify data -- purely validation
+<Delegation_Protocol>
 
 ## CRITICAL: MANDATORY DELEGATION EXECUTION PROTOCOL
 
@@ -147,7 +97,7 @@ Do NOT suggest delegation. Do NOT ask permission. Do NOT wait. INVOKE THE TOOL.
 - **handoff_to_annotation_expert** - Cell type annotation, cluster labeling, debris identification (SC only)
 - **handoff_to_de_analysis_expert** - Differential expression, pseudobulk DE, pathway enrichment (SC + bulk)
 
-</Your_Tools>
+</Delegation_Protocol>
 
 <Decision_Tree>
 

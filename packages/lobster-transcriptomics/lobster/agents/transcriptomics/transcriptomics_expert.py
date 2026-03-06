@@ -169,41 +169,21 @@ def transcriptomics_expert(
         """
         Perform single-cell clustering and UMAP visualization.
 
+        Full pipeline: feature selection → PCA → neighbors → clustering → UMAP.
+        Supports multi-resolution testing via 'resolutions' parameter.
+
         Args:
             modality_name: Name of the single-cell modality to cluster
-            resolution: Clustering resolution (0.1-2.0, higher = more clusters).
-                       Use this for single-resolution clustering. Default: 1.0 if neither resolution nor resolutions specified.
-            resolutions: List of resolutions for multi-resolution testing (e.g., [0.25, 0.5, 1.0]).
-                        Creates multiple clustering results with descriptive keys (e.g., leiden_res0_25, louvain_res0_5).
-                        Use this to explore clustering granularity. If specified, overrides 'resolution' parameter.
-            use_rep: Representation to use for clustering (e.g., 'X_scvi' for deep learning embeddings, 'X_pca' for PCA).
-                    If None, uses standard PCA workflow. Custom embeddings like scVI often provide better results.
-            batch_correction: Whether to perform batch correction for multi-sample data
-            batch_key: Column name for batch information (auto-detected if None)
-            demo_mode: Use faster processing for large single-cell datasets (>50k cells)
+            resolution: Single resolution (0.1-2.0). Default 1.0 if neither resolution nor resolutions set.
+            resolutions: List for multi-resolution testing (e.g., [0.25, 0.5, 1.0]). Overrides resolution.
+            use_rep: Embedding to use (e.g., 'X_scvi'). None = standard PCA workflow.
+            batch_correction: Whether to correct for batch in multi-sample data
+            batch_key: Batch column (auto-detected if None)
+            demo_mode: Faster processing for >50k cells
             save_result: Whether to save the clustered modality
-            feature_selection_method: Method for feature selection ('deviance' or 'hvg').
-                                     'deviance' (default, recommended): Binomial deviance from multinomial null, works on raw counts, no normalization bias.
-                                     'hvg': Traditional highly variable genes (Seurat method), works on normalized data.
+            feature_selection_method: 'deviance' (default, raw counts) or 'hvg' (normalized data)
             n_features: Number of features to select (default: 4000)
-            algorithm: Clustering algorithm - 'leiden' (default, recommended) or 'louvain'.
-                      Use 'louvain' when a protocol or publication specifies it.
-
-        Returns:
-            str: Formatted report with clustering results and cluster distribution
-
-        Examples:
-            # Single resolution clustering with Leiden (default)
-            cluster_cells("geo_gse12345_filtered", resolution=0.5)
-
-            # Louvain clustering (when protocol specifies it)
-            cluster_cells("geo_gse12345_filtered", resolution=0.8, algorithm="louvain")
-
-            # Multi-resolution testing (recommended for exploration)
-            cluster_cells("geo_gse12345_filtered", resolutions=[0.25, 0.5, 1.0])
-
-            # Using scVI embeddings
-            cluster_cells("geo_gse12345_filtered", resolutions=[0.5, 1.0], use_rep="X_scvi")
+            algorithm: 'leiden' (default) or 'louvain'
         """
         try:
             # Validate modality exists
@@ -368,50 +348,16 @@ def transcriptomics_expert(
         """
         Re-cluster specific cell subsets for finer-grained population identification.
 
-        Useful when initial clustering groups heterogeneous populations and you want
-        to refine specific clusters without affecting others. Common scenarios:
-        - "Split cluster 0 into subtypes"
-        - "Refine the T cell clusters"
-        - "Sub-cluster the heterogeneous populations"
-
-        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
-        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'RNA_snn_res.1', etc.
-
         Args:
             modality_name: Name of the modality to sub-cluster
-            cluster_key: Key in adata.obs containing cluster assignments (REQUIRED).
-                        Common values: 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1'.
-                        Use check_data_status() to find the correct column name.
-            clusters_to_refine: List of cluster IDs to re-cluster (e.g., ["0", "3", "5"])
-                               If None, re-clusters ALL cells (full re-clustering)
-            resolution: Single resolution for sub-clustering (default: 0.5)
-                       Typical range: 0.1-2.0 (higher = more clusters)
-            resolutions: List of resolutions for multi-resolution testing (e.g., [0.25, 0.5, 1.0])
-                        Creates multiple sub-clustering results with descriptive keys
-                        Use for exploring different granularities
-            n_pcs: Number of PCs for sub-clustering (default: 20, fewer than full clustering)
-                   Typical range: 15-30
-            n_neighbors: Number of neighbors for KNN graph (default: 15)
-                        Typical range: 10-30
-            demo_mode: Use faster parameters for testing (default: False)
-            algorithm: Clustering algorithm - 'leiden' (default) or 'louvain'
-
-        Returns:
-            str: Summary of sub-clustering results including cluster sizes and new column names
-
-        Examples:
-            # Sub-cluster a single cluster (after checking data status)
-            subcluster_cells("geo_gse12345_clustered", cluster_key="leiden", clusters_to_refine=["0"])
-
-            # Sub-cluster with Seurat-style clusters
-            subcluster_cells("my_data", cluster_key="seurat_clusters", clusters_to_refine=["0", "3"])
-
-            # Multi-resolution sub-clustering
-            subcluster_cells("geo_gse12345_clustered", cluster_key="leiden",
-                            clusters_to_refine=["0"], resolutions=[0.25, 0.5, 1.0])
-
-            # Full re-clustering (all cells)
-            subcluster_cells("geo_gse12345_clustered", cluster_key="leiden", clusters_to_refine=None)
+            cluster_key: Cluster column in adata.obs (REQUIRED). Use check_data_status() to find it.
+            clusters_to_refine: Cluster IDs to re-cluster (e.g., ["0", "3"]). None = all cells.
+            resolution: Single resolution (default: 0.5, range 0.1-2.0)
+            resolutions: List for multi-resolution testing. Overrides resolution.
+            n_pcs: PCs for sub-clustering (default: 20)
+            n_neighbors: KNN neighbors (default: 15)
+            demo_mode: Faster parameters for testing
+            algorithm: 'leiden' (default) or 'louvain'
         """
         try:
             # Validate modality exists
@@ -568,49 +514,14 @@ Please check:
         metrics: Optional[List[str]] = None,
     ) -> str:
         """
-        Evaluate clustering quality using multiple quantitative metrics.
-
-        Computes 3 scientifically-validated metrics to assess clustering results:
-        - Silhouette score: How well-separated clusters are (-1 to 1, higher better)
-        - Davies-Bouldin index: Ratio of intra/inter-cluster distances (lower better)
-        - Calinski-Harabasz score: Ratio of between/within variance (higher better)
-
-        These metrics help answer:
-        - "Is my clustering good?"
-        - "Which resolution gives the best separation?"
-        - "Am I over-clustering or under-clustering?"
-
-        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
-        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'RNA_snn_res.1', etc.
+        Evaluate clustering quality with silhouette, Davies-Bouldin, and Calinski-Harabasz metrics.
 
         Args:
             modality_name: Name of the modality to evaluate
-            cluster_key: Key in adata.obs containing cluster labels (REQUIRED).
-                        Common values: 'leiden', 'louvain', 'seurat_clusters', 'leiden_res0_5'.
-                        Use check_data_status() to find the correct column name.
-            use_rep: Representation to use for distance calculations (default: "X_pca")
-                    Options: "X_pca", "X_umap", or any key in adata.obsm
-            n_pcs: Number of PCs to use (default: None = use all available)
-                   Recommended: 30 for full clustering, 20 for sub-clustering
-            metrics: List of specific metrics to compute (default: None = all 3)
-                    Options: ["silhouette", "davies_bouldin", "calinski_harabasz"]
-
-        Returns:
-            str: Detailed quality report with scores, interpretations, and recommendations
-
-        Examples:
-            # Evaluate single clustering result
-            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden")
-
-            # Compare multiple resolutions
-            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden_res0_25")
-            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden_res0_5")
-
-            # Evaluate with Seurat-style clusters
-            evaluate_clustering_quality("my_data", cluster_key="seurat_clusters")
-
-            # Compute only silhouette score
-            evaluate_clustering_quality("geo_gse12345_clustered", cluster_key="leiden", metrics=["silhouette"])
+            cluster_key: Cluster column in adata.obs (REQUIRED). Use check_data_status() to find it.
+            use_rep: Representation for distances (default: "X_pca")
+            n_pcs: Number of PCs (default: None = all). Recommended: 30 full, 20 sub-clustering.
+            metrics: Specific metrics to compute (default: all 3). Options: silhouette, davies_bouldin, calinski_harabasz.
         """
         try:
             # Validate modality exists
@@ -823,26 +734,18 @@ Please check:
         save_result: bool = True,
     ) -> str:
         """
-        Find marker genes for single-cell clusters using differential expression analysis.
-
-        IMPORTANT: Call check_data_status() first to identify the actual cluster column name.
-        NEVER assume 'leiden' — data may use 'seurat_clusters', 'louvain', 'RNA_snn_res.1', etc.
+        Find marker genes per cluster using differential expression.
 
         Args:
-            modality_name: Name of the single-cell modality to analyze
-            groupby: Column name to group by (REQUIRED).
-                    Common values: 'leiden', 'louvain', 'seurat_clusters', 'cell_type'.
-                    Use check_data_status() to find the correct column name.
-            groups: Specific clusters to analyze (None for all)
-            method: Statistical method ('wilcoxon', 't-test', 'logreg')
-            n_genes: Number of top marker genes per cluster
-            min_fold_change: Minimum fold-change threshold (default: 1.5).
-                Filters genes with fold-change below this value.
-            min_pct: Minimum in-group expression fraction (default: 0.25).
-                Filters genes expressed in <25% of in-group cells.
-            max_out_pct: Maximum out-group expression fraction (default: 0.5).
-                Filters genes expressed in >50% of out-group cells (less specific).
-            save_result: Whether to save the results
+            modality_name: Single-cell modality to analyze
+            groupby: Cluster column (REQUIRED). Use check_data_status() to find it.
+            groups: Specific clusters (None = all)
+            method: 'wilcoxon' (default), 't-test', or 'logreg'
+            n_genes: Top markers per cluster (default: 25)
+            min_fold_change: Min fold-change filter (default: 1.5)
+            min_pct: Min in-group expression fraction (default: 0.25)
+            max_out_pct: Max out-group expression fraction (default: 0.5)
+            save_result: Whether to save results
         """
         try:
             # Validate modality exists
@@ -1001,20 +904,10 @@ Please check:
         """
         Detect doublets using Scrublet on raw counts. Run BEFORE filtering/normalization.
 
-        Doublets are artifactual cell barcodes from two cells captured together.
-        Removing them before downstream analysis prevents spurious clusters and
-        incorrect cell type assignments.
-
         Args:
-            modality_name: Name of the modality to process (must contain raw counts)
-            expected_doublet_rate: Expected fraction of doublets (default: 0.025 = 2.5%).
-                                  Typical range: 0.01 (low loading) to 0.08 (high loading).
-                                  Higher loading densities produce more doublets.
-            threshold: Custom threshold for doublet calling. If None, Scrublet
-                      auto-selects using bimodal distribution detection.
-
-        Returns:
-            Report with doublet count, rate, and recommendation to filter
+            modality_name: Modality with raw counts
+            expected_doublet_rate: Expected doublet fraction (default: 0.025). Range: 0.01-0.08.
+            threshold: Custom doublet threshold. None = Scrublet auto-selects.
         """
         try:
             # Validate modality exists
@@ -1217,25 +1110,14 @@ Please check:
         n_dcs: int = 15,
     ) -> str:
         """
-        Compute DPT pseudotime and PAGA trajectory. Requires clustered data
-        with neighbors computed.
-
-        Trajectory inference reveals temporal ordering of cells along
-        differentiation or activation paths. DPT (Diffusion Pseudotime) computes
-        a pseudotime value for each cell, while PAGA (Partition-based Graph
-        Abstraction) reveals connectivity between clusters.
+        Compute DPT pseudotime and PAGA trajectory. Requires neighbors computed.
 
         Args:
-            modality_name: Name of the modality to process (must have neighbors computed)
-            root_cell: Explicit root cell index (highest priority). If None,
-                      auto-selects using diffusion component minimum.
-            root_group: Cluster name to use as root (e.g., 'stem_cells', '0').
-                       Used only when root_cell is None.
-            cluster_key: Key in adata.obs for cluster assignments (default: 'leiden')
-            n_dcs: Number of diffusion components (default: 15)
-
-        Returns:
-            Report with root cell, pseudotime range, PAGA status, and interpretation guidance
+            modality_name: Modality with neighbors graph
+            root_cell: Root cell index (None = auto-select via diffusion component minimum)
+            root_group: Root cluster name (e.g., 'stem_cells'). Used when root_cell is None.
+            cluster_key: Cluster column (default: 'leiden')
+            n_dcs: Diffusion components (default: 15)
         """
         try:
             # Validate modality exists
