@@ -1,11 +1,14 @@
 <div align="center">
-  <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="200">
-</div>
-
-<br/>
-
-<div align="center">
-  <b>Open-source multi-agent bioinformatics engine. Describe your analysis in natural language.</b>
+  <table border="0" cellspacing="0" cellpadding="0">
+    <tr>
+      <td valign="middle">
+        <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="80">
+      </td>
+      <td valign="middle" align="left" style="padding-left: 18px;">
+        <b>Open-source multi-agent bioinformatics engine.<br/>Describe your analysis in natural language.</b>
+      </td>
+    </tr>
+  </table>
 </div>
 
 <br/>
@@ -16,7 +19,6 @@
       <td><a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a></td>
       <td><a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a></td>
       <td><a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a></td>
-      <td><a href="https://discord.gg/omics-os"><img src="https://img.shields.io/badge/Discord-Join_Community-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a></td>
     </tr>
   </table>
 </div>
@@ -35,10 +37,6 @@
 
 <br/>
 
-<div align="center">
-  🌤️ <b>Want to skip the setup?</b> Run massive multi-omics pipelines instantly on <b><a href="https://app.omics-os.com">Omics-OS Cloud</a></b>!
-</div>
-
 ---
 
 # 🧑‍🔬 Human Quickstart
@@ -54,15 +52,24 @@ curl -fsSL https://install.lobsterbio.com | bash
 lobster init
 ```
 
-**3. Run your first analysis:**
+**3. Start an interactive session and run a full pipeline:**
 ```bash
-lobster query "Download GSE109564 and cluster the cells"
-# Or run interactively: lobster chat
+lobster chat
+```
+Then describe your analysis:
+```
+> Search PubMed for single-cell CRISPR screens in T cells from 2023–2024,
+  download the most cited dataset, run QC, integrate batches with Harmony,
+  cluster the cells, annotate cell types, and export a reproducible notebook.
 ```
 
+<details>
+<summary><b>Watch: installation & init walkthrough</b></summary>
+<br/>
 <div align="center">
   <img alt="Installation and Init" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/recordings/installation_and_init.gif" width="720">
 </div>
+</details>
 
 <br/>
 
@@ -76,46 +83,19 @@ curl -fsSL https://skills.lobsterbio.com | bash
 
 <br/>
 
-# 🎬 Watch it Work
+# Real-World Use Cases
 
-### 🧬 Single-Cell Transcriptomics
-**Task:** *"Download GSE109564, run QC, and cluster cells."*
-```bash
-$ lobster query "Download GSE109564, run QC, and cluster cells"
-[Supervisor] Routing to Transcriptomics Expert...
-[Transcriptomics] Delegating download of 'GSE109564' to Data Expert...
-[Data Expert] Download complete. Modality 'GSE109564' loaded.
-[Transcriptomics] Running QC (calculating MT fraction, filtering cells/genes)...
-[Transcriptomics] Normalizing and finding highly variable genes...
-[Transcriptomics] Running PCA, Neighborhood graph, and UMAP...
-[Transcriptomics] Clustering via Leiden (resolution=1.0)...
-✅ Analysis complete. UMAP plot generated and saved to workspace.
-```
+See Lobster AI applied end-to-end across omics domains:
 
-### 🔬 Mass Spec Proteomics
-**Task:** *"Import MaxQuant data, perform batch correction, and select biomarker panels."*
-```bash
-$ lobster query "Import MaxQuant data, perform batch correction, and select biomarker panels"
-[Supervisor] Routing to Proteomics Expert...
-[Proteomics] Parsing proteinGroups.txt and experimental design...
-[Proteomics] Filtering contaminants and reverse hits...
-[Proteomics] Performing median normalization and ComBat batch correction...
-[Proteomics] Delegating to Biomarker Discovery Expert...
-[Biomarker Expert] Running LASSO stability selection with nested cross-validation...
-✅ Complete. 12 robust biomarker candidates identified (Stability score > 0.8).
-```
-
-### 📚 Automated Literature Discovery
-**Task:** *"Search PubMed for CRISPR studies in 2024 and download the top 3 datasets."*
-```bash
-$ lobster query "Search PubMed for CRISPR studies in 2024 and download the top 3 datasets."
-[Supervisor] Routing to Research Agent...
-[Research] Searching PubMed: "(CRISPR[Title/Abstract]) AND 2024[Date - Publication]"
-[Research] Extracting GEO accessions from top 10 relevant papers...
-[Research] Found GSE251842, GSE252910, GSE260124.
-[Research] Delegating batch download to Data Expert...
-✅ Datasets downloaded and harmonized into AnnData objects.
-```
+| Domain | Case Study |
+|--------|------------|
+| Single-Cell Transcriptomics | [Cell clustering, annotation & trajectory inference](https://docs.omics-os.com/docs/case-studies/transcriptomics/) |
+| CML Drug Resistance | [Resistance mechanism discovery from scRNA-seq](https://docs.omics-os.com/docs/case-studies/cml-resistance/) |
+| Drug Discovery | [Target identification & compound prioritization](https://docs.omics-os.com/docs/case-studies/drug-discovery/) |
+| Clinical Genomics | [Variant annotation & GWAS analysis](https://docs.omics-os.com/docs/case-studies/genomics/) |
+| Mass Spec Proteomics | [Biomarker panel selection from DIA-NN data](https://docs.omics-os.com/docs/case-studies/proteomics/) |
+| Literature Mining | [Automated dataset discovery from PubMed](https://docs.omics-os.com/docs/case-studies/research/) |
+| Multi-Omics ML | [Feature selection & survival analysis](https://docs.omics-os.com/docs/case-studies/machine-learning/) |
 
 <br/>
 
@@ -141,13 +121,13 @@ The `lobster-dev` skill gives your coding assistant (Claude Code, Gemini CLI, Cu
 <div align="center">
   <table border="0" cellspacing="0" cellpadding="12">
     <tr>
-      <td width="50%" valign="top" align="center">
+      <td valign="top" align="center">
         <b>1. The Request</b><br/><br/>
-        <img alt="Claude Terminal" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/terminal-preview.svg" width="100%">
+        <img alt="Claude Terminal" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/terminal-preview.svg" width="380">
       </td>
-      <td width="50%" valign="top" align="center">
+      <td valign="top" align="center">
         <b>2. The Result</b><br/><br/>
-        <img alt="Hackability Preview" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/hackability-preview.svg" width="100%">
+        <img alt="Hackability Preview" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/hackability-preview.svg" width="380">
       </td>
     </tr>
   </table>
