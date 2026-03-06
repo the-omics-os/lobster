@@ -200,9 +200,8 @@ jobs:
       if: steps.detect.outputs.has_changes == 'true'
       id: version
       run: |
-        pip install -e . --quiet 2>/dev/null || true
-        VERSION=$(python -c "from lobster.version import __version__; print(__version__)" 2>/dev/null || echo "dev")
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        VERSION=$(grep '__version__' lobster/version.py | sed 's/.*"\(.*\)".*/\1/')
+        echo "version=${VERSION:-dev}" >> $GITHUB_OUTPUT
 
     - name: Run Go tests
       if: steps.detect.outputs.has_changes == 'true'

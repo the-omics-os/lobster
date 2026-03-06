@@ -140,13 +140,8 @@ jobs:
     - name: Extract version for ldflags
       id: version
       run: |
-        VERSION=$(python -c "
-import re
-with open('lobster/version.py') as f:
-    match = re.search(r'__version__\s*=\s*[\"'\''](.*?)[\"'\'']+', f.read())
-    print(match.group(1) if match else 'dev')
-")
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        VERSION=$(grep '__version__' lobster/version.py | sed 's/.*"\(.*\)".*/\1/')
+        echo "version=${VERSION:-dev}" >> $GITHUB_OUTPUT
 
     - name: Run Go tests
       working-directory: lobster-tui
