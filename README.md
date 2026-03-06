@@ -1,153 +1,152 @@
-# Lobster AI
+<div align="center">
+  <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="400">
+</div>
 
-[![PyPI version](https://img.shields.io/pypi/v/lobster-ai.svg)](https://pypi.org/project/lobster-ai/)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Documentation](https://img.shields.io/badge/docs-omics--os.com-green.svg)](https://docs.omics-os.com)
+<br/>
 
-> Open-source multi-agent bioinformatics engine. Describe your analysis in natural language.
+<div align="center">
+  <b>Open-source multi-agent bioinformatics engine. Describe your analysis in natural language.</b>
+</div>
 
-[Documentation](https://docs.omics-os.com) · [PyPI](https://pypi.org/project/lobster-ai/) · [Omics-OS Cloud](https://app.omics-os.com)
+<br/>
 
-## Quick Start
+<div align="center">
+  <a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a>
+  <img width="16" height="1" alt="">
+  <a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a>
+  <img width="16" height="1" alt="">
+  <a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a>
+  <img width="16" height="1" alt="">
+  <a href="https://discord.gg/omics-os"><img src="https://img.shields.io/badge/Discord-Join_Community-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+</div>
 
+<br/>
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-1.svg" width="30%">
+  <img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-2.svg" width="30%">
+  <img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-3.svg" width="30%">
+</div>
+
+<br/>
+
+🌤️ **Want to skip the setup?** Run massive multi-omics pipelines instantly on **[Omics-OS Cloud](https://app.omics-os.com)**!
+
+---
+
+# 🧑‍🔬 Human Quickstart
+
+**1. Install Lobster AI (macOS/Linux):**
 ```bash
-#installs only core lobster
 curl -fsSL https://install.lobsterbio.com | bash
 ```
+*(Windows users: `irm https://install.lobsterbio.com/windows | iex`)*
 
-Then:
-
+**2. Configure your LLM (Anthropic, Gemini, local Ollama, etc.):**
 ```bash
-# Define LLM provider and domain expert installation
 lobster init
 ```
 
-Finaly:
-
+**3. Run your first analysis:**
 ```bash
-lobster chat 
-# or non-interactive
-lobster query "Hi, what can you do?"
+lobster query "Download GSE109564 and cluster the cells"
+# Or run interactively: lobster chat
 ```
 
-<details>
-<summary>Windows, pip, and other install methods</summary>
+<br/>
 
-**Windows** (PowerShell):
-```powershell
-irm https://install.lobsterbio.com/windows | iex
-```
+# 🤖 For AI Coding Agents
 
-**uv** (recommended manual install):
-```bash
-uv tool install 'lobster-ai[full,anthropic]'
-lobster init
-```
-
-**pip**:
-```bash
-pip install 'lobster-ai[full]'
-lobster init
-```
-
-**Upgrade**:
-```bash
-uv tool upgrade lobster-ai    # uv
-pip install -U lobster-ai      # pip
-```
-
-</details>
-
-## Why Lobster AI
-
-**Your machine, your data.** No uploads, no third-party cloud. Patient data and unpublished results stay on your hardware.
-
-**Tool calls, not token dreams.** Agents execute real bioinformatics tools: Scanpy, PyDESeq2, AnnData. Every result is traceable to a function call with validated inputs and outputs.
-
-**Reproducible by design.** W3C-PROV provenance tracking, Jupyter notebook export, and parameter schemas for every analysis. The same question produces the same pipeline.
-
-## Agents
-
-18 specialist agents across 9 packages. Install exactly what you need.
-
-| Package | Domain | Status |
-|---------|--------|--------|
-| **lobster-ai** | Core engine, supervisor, infrastructure | Stable |
-| **lobster-transcriptomics** | Single-cell & bulk RNA-seq, DE analysis, cell type annotation | Stable |
-| **lobster-research** | PubMed, GEO, Pride, and more.. dataset discovery | Stable |
-| **lobster-visualization** | Publication-quality Plotly plots | Stable |
-| **lobster-metadata** | ID mapping, sample filtering, metadata validation | Stable |
-| **lobster-genomics** | GWAS pipeline, clinical variant analysis | Beta |
-| **lobster-proteomics** | Mass spec & affinity proteomics, biomarker discovery | Beta |
-| **lobster-metabolomics** | LC-MS, GC-MS, NMR analysis | Beta |
-| **lobster-structural-viz** | Protein structure visualization | Beta |
-| **lobster-ml** | Feature selection, survival analysis, MOFA integration | Beta |
-
-<details>
-<summary>Install individual agents</summary>
-
-```bash
-# Pick agents interactively
-lobster init --force
-
-# Or install specific packages
-uv tool install lobster-ai --with lobster-proteomics --with lobster-genomics
-
-# Install everything
-uv tool install 'lobster-ai[full,anthropic]'
-```
-
-</details>
-
-<details>
-<summary>Build your own agent</summary>
-
-Create custom agents for any domain. Agents plug in via Python entry points — discovered automatically, no core changes needed.
-
-Install the **lobster-dev** skill to teach your coding agent the full architecture:
-
+Teach your coding agent (Claude Code, Cursor, Gemini) to use and extend Lobster AI instantly:
 ```bash
 curl -fsSL https://skills.lobsterbio.com | bash
 ```
+*Installs the `lobster-use` and `lobster-dev` skills so your AI knows our entire 10-package architecture.*
 
-Then ask your coding agent: *"Create a Lobster agent for [your domain]"* — it knows the package structure, AGENT_CONFIG pattern, factory function, tool design, testing, and the 28-step checklist.
+<br/>
 
-</details>
+# 🎬 Watch it Work
 
-## Usage
-
+### 🧬 Single-Cell Transcriptomics
+**Task:** *"Download GSE109564, run QC, and cluster cells."*
 ```bash
-# Interactive chat
-lobster chat
-
-# Single-turn queries
-lobster query "Download GSE109564 and cluster cells"
-lobster query "Search PubMed for CRISPR studies in 2024"
-
-# Session continuity
-lobster query --session-id project1 "Search for Alzheimer's scRNA-seq datasets"
-lobster query --session-id project1 "Download the top 3 results"
-lobster query --session-id latest "Cluster the first dataset"
+$ lobster query "Download GSE109564, run QC, and cluster cells"
+[Supervisor] Routing to Transcriptomics Expert...
+[Transcriptomics] Delegating download of 'GSE109564' to Data Expert...
+[Data Expert] Download complete. Modality 'GSE109564' loaded.
+[Transcriptomics] Running QC (calculating MT fraction, filtering cells/genes)...
+[Transcriptomics] Normalizing and finding highly variable genes...
+[Transcriptomics] Running PCA, Neighborhood graph, and UMAP...
+[Transcriptomics] Clustering via Leiden (resolution=1.0)...
+✅ Analysis complete. UMAP plot generated and saved to workspace.
 ```
 
-<details>
-<summary>Pipeline export and slash commands</summary>
-
+### 🔬 Mass Spec Proteomics
+**Task:** *"Import MaxQuant data, perform batch correction, and select biomarker panels."*
 ```bash
-lobster chat
-> /pipeline export         # Export reproducible Jupyter notebook
-> /pipeline list           # List exported pipelines
-> /pipeline run analysis.ipynb geo_gse109564
-> /data                    # Show loaded datasets
-> /status                  # Session info
-> /help                    # All commands
+$ lobster query "Import MaxQuant data, perform batch correction, and select biomarker panels"
+[Supervisor] Routing to Proteomics Expert...
+[Proteomics] Parsing proteinGroups.txt and experimental design...
+[Proteomics] Filtering contaminants and reverse hits...
+[Proteomics] Performing median normalization and ComBat batch correction...
+[Proteomics] Delegating to Biomarker Discovery Expert...
+[Biomarker Expert] Running LASSO stability selection with nested cross-validation...
+✅ Complete. 12 robust biomarker candidates identified (Stability score > 0.8).
 ```
 
-</details>
+### 📚 Automated Literature Discovery
+**Task:** *"Search PubMed for CRISPR studies in 2024 and download the top 3 datasets."*
+```bash
+$ lobster query "Search PubMed for CRISPR studies in 2024 and download the top 3 datasets."
+[Supervisor] Routing to Research Agent...
+[Research] Searching PubMed: "(CRISPR[Title/Abstract]) AND 2024[Date - Publication]"
+[Research] Extracting GEO accessions from top 10 relevant papers...
+[Research] Found GSE251842, GSE252910, GSE260124.
+[Research] Delegating batch download to Data Expert...
+✅ Datasets downloaded and harmonized into AnnData objects.
+```
+
+<br/>
+
+# 🧠 The Architecture
+
+Lobster isn't just a chatbot; it's a modular ecosystem of **22 specialist agents across 10 packages**. 
+* **Your machine, your data:** Patient data never leaves your hardware.
+* **Tool calls, not token dreams:** Agents execute real, validated Python packages (Scanpy, PyDESeq2).
+* **100% Reproducible:** W3C-PROV tracking and automatic Jupyter notebook exports.
+
+<div align="center">
+  <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="100%">
+  <img alt="Core Architecture" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="100%">
+</div>
+
+<br/>
+
+# 🛠️ Build Your Own Agent
+
+The `lobster-dev` skill gives your coding assistant (Claude Code, Gemini CLI, Cursor) deep knowledge of how Lobster agents are structured. Describe the biological domain you need — it scaffolds the package, wires the tools, writes the tests, and registers the agent.
+
+<div align="center">
+  <table>
+    <tr>
+      <td width="50%" valign="top">
+        <b>1. The Request</b><br/>
+        <img alt="Claude Terminal" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/terminal-preview.svg" width="100%">
+      </td>
+      <td width="50%" valign="top">
+        <b>2. The Result</b><br/>
+        <img alt="Hackability Preview" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/hackability-preview.svg" width="100%">
+      </td>
+    </tr>
+  </table>
+</div>
+
+<br/>
+
+# ❓ Deep Dives & FAQ
 
 <details>
-<summary>Capabilities by domain</summary>
+<summary><b>What omics domains are supported?</b></summary>
 
 **Transcriptomics**
 - Single-cell RNA-seq: QC, doublet detection (Scrublet), batch integration (Harmony/scVI), clustering, cell type annotation, trajectory inference (DPT/PAGA)
@@ -175,11 +174,10 @@ lobster chat
 **Research & Metadata**
 - Literature discovery (PubMed, PMC, GEO, PRIDE, MetaboLights)
 - Dataset download orchestration, metadata harmonization, sample filtering
-
 </details>
 
 <details>
-<summary>LLM providers</summary>
+<summary><b>Which LLMs can I use?</b></summary>
 
 Lobster supports 5 LLM providers. Configure via `lobster init` or environment variables.
 
@@ -190,71 +188,68 @@ Lobster supports 5 LLM providers. Configure via `lobster init` or environment va
 | **AWS Bedrock** | Cloud | AWS credentials | Enterprise, compliance |
 | **Google Gemini** | Cloud | Google API key | Multimodal, long context |
 | **Azure AI** | Cloud | Endpoint + credential | Enterprise Azure |
-
 </details>
 
 <details>
-<summary>Coding agent skills</summary>
+<summary><b>Pipeline export and slash commands</b></summary>
 
-Teach your coding agents (Claude Code, Codex, Gemini CLI, OpenClaw) to use Lobster:
+```bash
+lobster chat
+> /pipeline export         # Export reproducible Jupyter notebook
+> /pipeline list           # List exported pipelines
+> /pipeline run analysis.ipynb geo_gse109564
+> /data                    # Show loaded datasets
+> /status                  # Session info
+> /help                    # All commands
+```
+</details>
+
+<details>
+<summary><b>Advanced installation (Windows, pip)</b></summary>
+
+**Windows** (PowerShell):
+```powershell
+irm https://install.lobsterbio.com/windows | iex
+```
+
+**uv** (recommended manual install):
+```bash
+uv tool install 'lobster-ai[full,anthropic]'
+lobster init
+```
+
+**pip**:
+```bash
+pip install 'lobster-ai[full]'
+lobster init
+```
+
+**Upgrade**:
+```bash
+uv tool upgrade lobster-ai    # uv
+pip install -U lobster-ai      # pip
+```
+</details>
+
+<details>
+<summary><b>How do I build my own agent?</b></summary>
+
+Create custom agents for any domain. Agents plug in via Python entry points — discovered automatically, no core changes needed.
+
+Install the **lobster-dev** skill to teach your coding agent the full architecture:
 
 ```bash
 curl -fsSL https://skills.lobsterbio.com | bash
 ```
 
-Installs two skills:
-- **lobster-use** — End-user workflows (search PubMed, analyze cells, RNA-seq)
-- **lobster-dev** — Developer guide (create agents, extend services, testing)
-
+Then ask your coding agent: *"Create a Lobster agent for [your domain]"* — it knows the package structure, AGENT_CONFIG pattern, factory function, tool design, testing, and the 28-step checklist.
 </details>
 
-## Development
+<br/>
 
-```bash
-git clone https://github.com/the-omics-os/lobster.git
-cd lobster
-make dev-install    # editable install with dev deps
-make test           # run all tests
-make format         # black + isort
-```
-
-<details>
-<summary>Environment variables</summary>
-
-Set during `lobster init` or manually:
-
-| Variable | Purpose |
-|----------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic Direct |
-| `AWS_BEDROCK_ACCESS_KEY` | AWS Bedrock |
-| `AWS_BEDROCK_SECRET_ACCESS_KEY` | AWS Bedrock |
-| `GOOGLE_API_KEY` | Google Gemini |
-| `OLLAMA_BASE_URL` | Ollama server (default: `http://localhost:11434`) |
-| `LOBSTER_LLM_PROVIDER` | Explicit provider selection |
-| `LOBSTER_WORKSPACE` | Workspace directory |
-
-</details>
-
-## Ecosystem
-
-| Project | Description | Link |
-|---------|-------------|------|
-| **Lobster AI** | Open-source multi-agent engine | [lobsterbio.com](https://lobsterbio.com) |
-| **Omics-OS Cloud** | Managed cloud platform | [app.omics-os.com](https://app.omics-os.com) |
-| **Documentation** | Guides, API reference, tutorials | [docs.omics-os.com](https://docs.omics-os.com) |
-
-## Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-**Code:** AGPL-3.0-or-later · **Docs:** CC BY 4.0 · See [LICENSE](LICENSE)
-
----
-
-<p align="center">
-  Built by <a href="https://omics-os.com">Omics-OS</a> to accelerate multi-omics research
-  <br>
+<div align="center">
+  <b>Built to accelerate multi-omics research.</b><br/><br/>
+  <!-- TODO: Replace with the actual Omics-OS Mascot/Logo if desired -->
+  <img src="https://placehold.co/100x100/png?text=OS" width="60" style="border-radius: 12px;"/><br/><br/>
   <a href="https://omics-os.com">Omics-OS</a> · <a href="https://lobsterbio.com">Lobster AI</a> · <a href="https://docs.omics-os.com">Docs</a>
-</p>
+</div>
