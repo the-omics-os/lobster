@@ -131,15 +131,19 @@ def _handoff_chunk(target: str, namespace: tuple = ()) -> tuple:
     return (namespace, "messages", (chunk, metadata))
 
 
-def _transfer_back_chunk(namespace: tuple = ()) -> tuple:
-    """Build an AIMessageChunk with a transfer_back_to_supervisor tool call."""
-    chunk = AIMessageChunk(
-        content="",
-        id="transfer-tc",
-        tool_call_chunks=[{"name": "transfer_back_to_supervisor", "args": "{}", "id": "tc-t", "index": 0}],
+def _handoff_tool_response(tool_call_id: str = "tc-h", namespace: tuple = ()) -> tuple:
+    """Build a ToolMessage response for a completed handoff tool.
+
+    When the sub-agent finishes inside the handoff tool, LangGraph emits
+    a ToolMessage with the same tool_call_id as the original handoff.
+    This signals that the supervisor is speaking again.
+    """
+    msg = ToolMessage(
+        content="Agent completed task successfully.",
+        tool_call_id=tool_call_id,
     )
-    metadata = {"langgraph_node": "agent"}
-    return (namespace, "messages", (chunk, metadata))
+    metadata = {"langgraph_node": "tools"}
+    return (namespace, "messages", (msg, metadata))
 
 
 def _updates_event(node: str, payload: dict) -> tuple:
@@ -232,7 +236,12 @@ class TestSingleSpeakerPolicy:
         assert deltas[1]["delta"] == "world"
 
     def test_full_delegation_round_trip(self, tmp_path):
-        """Realistic flow: supervisor → handoff → sub-agent → transfer_back → supervisor.
+        """Realistic flow: supervisor → handoff → sub-agent runs inside tool → ToolMessage → supervisor.
+
+        The graph has ONE node (supervisor as create_react_agent). Sub-agents
+        are invoked as tools (handoff_to_X). The sub-agent runs inside the
+        tool call. When the tool returns, a ToolMessage with the same
+        tool_call_id marks the end of delegation.
 
         Only supervisor content before and after delegation should be
         content_delta.  Sub-agent content should be agent_content.
@@ -240,14 +249,14 @@ class TestSingleSpeakerPolicy:
         events_in = [
             # 1. Supervisor intro (before delegation)
             _ai_chunk("I'll search for datasets.", "agent", "sup-1"),
-            # 2. Supervisor emits handoff tool call
+            # 2. Supervisor emits handoff tool call (tool_call_id = "tc-h")
             _handoff_chunk("research_agent"),
-            # 3. Sub-agent internal reasoning (should be agent_content)
+            # 3. Sub-agent internal reasoning (streamed from within tool execution)
             _ai_chunk('{"modality": "scrna_10x"}', "agent", "ra-1"),
             _ai_chunk("Let me check another dataset", "agent", "ra-2"),
-            # 4. Sub-agent returns to supervisor
-            _transfer_back_chunk(),
-            # 5. Supervisor synthesis (should be content_delta)
+            # 4. Handoff tool returns → ToolMessage with matching tool_call_id
+            _handoff_tool_response("tc-h"),
+            # 5. Supervisor synthesis (should be content_delta again)
             _ai_chunk("Here are the results:", "agent", "sup-2"),
         ]
         client = _make_client(tmp_path, events_in)
@@ -280,11 +289,12 @@ class TestSingleSpeakerPolicy:
         assert working[0]["agent"] == "research_agent"
 
     def test_tool_messages_always_filtered(self, tmp_path):
-        """ToolMessages never produce content_delta or agent_content."""
+        """ToolMessages never produce content_delta or agent_content
+        (but they DO reset the speaker when they match a handoff)."""
         events_in = [
             _tool_msg("tool output", "tools"),
             _handoff_chunk("research_agent"),
-            _tool_msg("tool output", "tools"),
+            _tool_msg("sub-agent tool output", "tools", tool_call_id="other-tc"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)

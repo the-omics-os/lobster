@@ -395,9 +395,10 @@ class AgentClient(BaseClient):
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
 
             # Active speaker tracks which agent currently owns the
-            # narrative.  Updated by handoff/transfer_back tool calls
-            # in the stream — the only reliable boundary signal.
+            # narrative.  Updated by handoff tool calls (start) and
+            # their ToolMessage responses (end).
             active_speaker = "supervisor"
+            pending_handoff_ids: set = set()
 
             for namespace, event_type, chunk in self.graph.stream(
                 graph_input,
@@ -414,15 +415,31 @@ class AgentClient(BaseClient):
                     is_chunk = message_type.endswith("Chunk")
                     message_id = getattr(message_chunk, "id", None)
 
-                    # Skip tool messages entirely
+                    # ToolMessages: check for handoff completion before
+                    # filtering.  The ToolMessage whose tool_call_id
+                    # matches a pending handoff means the sub-agent
+                    # finished and the supervisor is speaking again.
                     if message_type in ("ToolMessage", "ToolMessageChunk"):
+                        tc_id = getattr(message_chunk, "tool_call_id", None)
+                        if tc_id and tc_id in pending_handoff_ids:
+                            active_speaker = "supervisor"
+                            pending_handoff_ids.discard(tc_id)
                         continue
 
-                    # Track speaker transitions from tool calls.
-                    # Handoff/transfer_back calls appear in the stream
-                    # between the delegating and receiving agent's content.
+                    # Track speaker transitions from handoff tool calls.
                     transition = _detect_speaker_transition(message_chunk)
                     if transition:
+                        if transition != "supervisor":
+                            # Record tool_call_id so we can detect when
+                            # the handoff tool returns (via ToolMessage).
+                            for attr in ("tool_calls", "tool_call_chunks"):
+                                for tc in getattr(message_chunk, attr, None) or []:
+                                    if not isinstance(tc, dict):
+                                        continue
+                                    name = tc.get("name") or ""
+                                    tc_id = tc.get("id")
+                                    if name.startswith("handoff_to_") and tc_id:
+                                        pending_handoff_ids.add(tc_id)
                         active_speaker = transition
 
                     # Dedup: skip complete messages we already streamed
