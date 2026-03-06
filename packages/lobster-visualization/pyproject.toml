@@ -23,7 +23,7 @@ classifiers = [
 ]
 keywords = ["bioinformatics", "visualization", "plotting", "single-cell", "omics"]
 dependencies = [
-    "lobster-ai~=1.0.0",
+    "lobster-ai~=1.1.0",
     "numpy>=1.23.0",
     "pandas>=1.5.0",
     "plotly>=5.0.0",
