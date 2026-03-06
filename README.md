@@ -1,10 +1,10 @@
 <div align="center">
-  <table border="0" cellspacing="0" cellpadding="0">
+  <table border="0" cellspacing="0" cellpadding="0" style="border: none; background: transparent;">
     <tr>
-      <td valign="middle">
+      <td valign="middle" style="border: none; background: transparent;">
         <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="80">
       </td>
-      <td valign="middle" align="left" style="padding-left: 18px;">
+      <td valign="middle" align="left" style="border: none; background: transparent; padding-left: 18px;">
         <b>Open-source multi-agent bioinformatics engine.<br/>Describe your analysis in natural language.</b>
       </td>
     </tr>
@@ -14,11 +14,11 @@
 <br/>
 
 <div align="center">
-  <table border="0" cellspacing="6" cellpadding="0">
+  <table border="0" cellspacing="6" cellpadding="0" style="border: none; background: transparent;">
     <tr>
-      <td><a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a></td>
-      <td><a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a></td>
-      <td><a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a></td>
+      <td style="border: none; background: transparent;"><a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a></td>
+      <td style="border: none; background: transparent;"><a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a></td>
+      <td style="border: none; background: transparent;"><a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a></td>
     </tr>
   </table>
 </div>
@@ -26,11 +26,11 @@
 <br/>
 
 <div align="center">
-  <table border="0" cellspacing="0" cellpadding="8">
+  <table border="0" cellspacing="0" cellpadding="8" style="border: none; background: transparent;">
     <tr>
-      <td><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-1.svg" width="260" alt="Testimonial 1"></td>
-      <td><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-2.svg" width="260" alt="Testimonial 2"></td>
-      <td><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-3.svg" width="260" alt="Testimonial 3"></td>
+      <td style="border: none; background: transparent;"><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-1.svg" width="260" alt="Testimonial 1"></td>
+      <td style="border: none; background: transparent;"><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-2.svg" width="260" alt="Testimonial 2"></td>
+      <td style="border: none; background: transparent;"><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-3.svg" width="260" alt="Testimonial 3"></td>
     </tr>
   </table>
 </div>
