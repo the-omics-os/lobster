@@ -3,6 +3,7 @@ Clean Agent Client Interface for LangGraph Multi-Agent System.
 Provides a simple, extensible interface for both CLI and future UI implementations.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -341,6 +342,7 @@ class AgentClient(BaseClient):
             last_agent = None
             accumulated_text = ""
             seen_message_ids: set = set()
+            seen_content_hashes: set = set()
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
 
             for namespace, event_type, chunk in self.graph.stream(
@@ -366,11 +368,26 @@ class AgentClient(BaseClient):
                     # When subgraphs=True, LangGraph re-emits the subgraph's final
                     # complete message at the parent graph level. Without dedup,
                     # the entire response appears twice.
-                    if not is_chunk and message_id and message_id in seen_message_ids:
-                        logger.debug(
-                            f"Streaming: dedup skipped complete msg {message_id}"
-                        )
-                        continue
+                    if not is_chunk:
+                        # Primary: message ID (when available)
+                        if message_id and message_id in seen_message_ids:
+                            logger.debug(
+                                f"Streaming: dedup skipped complete msg {message_id}"
+                            )
+                            continue
+                        # Fallback: content hash (for ID-less replays)
+                        raw = message_chunk.content
+                        content_str = raw if isinstance(raw, str) else str(raw)
+                        if content_str:
+                            h = hashlib.md5(
+                                content_str.encode(), usedforsecurity=False
+                            ).hexdigest()
+                            if h in seen_content_hashes:
+                                logger.debug(
+                                    "Streaming: dedup skipped content-hash replay"
+                                )
+                                continue
+                            seen_content_hashes.add(h)
                     if is_chunk and message_id:
                         seen_message_ids.add(message_id)
 
@@ -432,6 +449,18 @@ class AgentClient(BaseClient):
                                     "delta": block,
                                     "timestamp": datetime.now().isoformat(),
                                 }
+
+                    # After yielding chunk content, register the accumulated
+                    # text hash so that a later complete-message replay whose
+                    # content equals the concatenation of all prior chunks
+                    # will be caught by the content-hash fallback above.
+                    if is_chunk and accumulated_text:
+                        seen_content_hashes.add(
+                            hashlib.md5(
+                                accumulated_text.encode(),
+                                usedforsecurity=False,
+                            ).hexdigest()
+                        )
 
                 # --- Handle "updates" events: agent transitions (backup) ---
                 elif event_type == "updates":
