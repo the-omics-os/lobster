@@ -1,18 +1,9 @@
 """
 Shared tools for {{ display_name }} analysis.
 
-This module provides AQUADIF-categorized tools for the {{ agent_name }} agent.
-Each tool wraps a stateless service method and declares its AQUADIF category
-and provenance requirements.
-
-Tool categories (AQUADIF taxonomy):
-    IMPORT: Load external data formats into workspace
-    QUALITY: Assess data integrity, calculate QC metrics
-    FILTER: Subset data by removing samples/features
-    PREPROCESS: Transform data (normalize, batch correct, scale)
-    ANALYZE: Extract patterns, statistical tests, embeddings
-    ANNOTATE: Add biological meaning
-    UTILITY: Workspace management, status checks
+AQUADIF-categorized tools for the {{ agent_name }} agent.
+Each tool wraps a stateless service and declares its category + provenance.
+See aquadif-contract.md for the full 10-category taxonomy.
 """
 
 from typing import Any, Callable, Dict, List, Optional

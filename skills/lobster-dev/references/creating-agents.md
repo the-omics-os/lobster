@@ -421,73 +421,83 @@ def create_shared_tools(data_manager, ..., force_platform_type=None):
 
 ## System Prompts (prompts.py)
 
+**Cardinal rule: NEVER describe a tool in both the system prompt AND the tool's docstring.** LangGraph serializes every `@tool` docstring into the JSON tool schema sent on every API call. If you also list tools in a `<Your_Tools>` section, the LLM sees the same info twice — wasting tokens and creating split-brain maintenance.
+
+**Budget targets:** Prompt text should be 800-1200 tokens. Combined prompt + tool schemas should stay under 50% of the smallest target model's context window when added to supervisor overhead (~4,300 tokens).
+
+**What goes WHERE:**
+
+| Information | Goes in... | NOT in... |
+|------------|-----------|-----------|
+| Tool parameters, types | `@tool` docstring | System prompt |
+| When to use tool A vs B | `<Decision_Trees>` | Tool docstring |
+| Hard boundaries | `<Constraints>` | Scattered across sections |
+| Error recovery guidance | Tool return values (just-in-time) | System prompt |
+| Domain workflows from GPTomics | `<Decision_Trees>` branches | Duplicate `<Your_Tools>` listing |
+
 ```python
 def create_domain_expert_prompt() -> str:
-    return f"""<Identity_And_Role>
-You are the Domain Expert in Lobster AI's multi-agent architecture.
+    return f"""You are the Domain Expert in Lobster AI. You handle [domain]-specific
+analysis under the supervisor. You never interact with end users directly.
 
-<Core_Mission>
-- [Key workflow 1]
-- [Key workflow 2]
-</Core_Mission>
-</Identity_And_Role>
+<Constraints>
+DO: [2-3 bullet points — what this agent handles]
+DO NOT:
+- Literature search (research_agent), downloads (data_expert), direct user communication
+- [domain-specific boundary, e.g., "generic CSV loading — data_expert handles via adapters"]
+</Constraints>
 
-<Your_Environment>
-You are a specialist agent in 'lobster-ai' by Omics-OS.
-You operate in a LangGraph supervisor-multi-agent architecture.
-You report to the supervisor — never interact with end users directly.
-</Your_Environment>
+<Operational_Rules>
+1. [Sequencing — what must be sequential vs parallel]
+2. [Error handling — fail-fast, retry limits]
+3. [Naming — modality naming pattern: {{source}}_{{operation}}]
+4. [Domain-specific — e.g., "always normalize before DE", from GPTomics research]
+5. Provenance: every data-modifying tool must pass ir=ir to log_tool_usage
+</Operational_Rules>
 
-<Your_Responsibilities>
-- [Responsibility 1]
-- [Responsibility 2]
-</Your_Responsibilities>
+<Decision_Trees>
 
-<Your_Not_Responsibilities>
-- Literature search (research_agent)
-- Downloading datasets (data_expert)
-- Direct user communication (supervisor only)
-</Your_Not_Responsibilities>
+TASK_TYPE_1 (most common):
+  tool_a → tool_b →
+  ├─ Good result → tool_c
+  └─ Error → investigate, retry once
 
-<Your_Tools>
-**Import & Loading:**
-- `import_data(...)` — Load raw data files
+TASK_TYPE_2:
+  tool_d(params) →
+  ├─ Condition A → handoff_to_child_expert
+  └─ Condition B → tool_e
 
-**Quality Control:**
-- `assess_quality(...)` — Calculate QC metrics
+OUTSIDE SCOPE:
+  → Report to supervisor, recommend correct agent
 
-**Analysis:**
-- `run_analysis(...)` — Main analysis method
-</Your_Tools>
+</Decision_Trees>
 
-<Decision_Tree>
-**Handle directly:** [domain]-specific QC, preprocessing, analysis
-**Delegate to child:** [child domain] tasks → handoff_to_child_expert
-**Return to supervisor:** Tasks outside scope, analysis complete
-</Decision_Tree>
-
-<Important_Rules>
-1. Always store results as new modalities (never overwrite source)
-2. Use naming: {{source}}_{{id}}_{{operation}}
-3. Report clear metrics to supervisor
-4. Today's date: {date.today().isoformat()}
-</Important_Rules>
+Today's date is {{date.today().isoformat()}}.
 """
 ```
 
+**Note:** No `<Your_Tools>`, no `<Your_Environment>`, no `<Communication_Style>`. Tool schemas carry the "how"; decision trees carry the "when"; constraints carry the "what not". If you discovered domain workflows from GPTomics, encode them as decision tree branches — NOT as a duplicate tool listing.
+
 ### Required Sections
 
-| Section | Required |
-|---------|----------|
-| `<Identity_And_Role>` | Yes |
-| `<Your_Environment>` | Yes |
-| `<Your_Responsibilities>` | Yes |
-| `<Your_Not_Responsibilities>` | Yes |
-| `<Your_Tools>` (grouped by stage) | Yes |
-| `<Decision_Tree>` | Yes |
-| `<Important_Rules>` | Yes |
-| `<Data_Types>` | If multi-platform |
-| `<Quality_Control_Workflow>` | If QC-heavy |
+| Section | Purpose | Target Size | Required |
+|---------|---------|-------------|----------|
+| Identity (1-2 sentences) | Who, role, reports to supervisor | ~50 tok | Yes |
+| `<Constraints>` | DO/DO NOT boundaries | ~100-200 tok | Yes |
+| `<Operational_Rules>` | Numbered rules: sequencing, errors, naming | ~200-400 tok | Yes |
+| `<Decision_Trees>` | WHEN to use which tool, tree-structured routing | ~200-500 tok | Yes |
+| Domain-specific (1 section max) | Adapters, platform routing, validation levels | ~100-200 tok | If needed |
+| Date footer | `Today's date is {date.today().isoformat()}.` | ~10 tok | Yes |
+
+**NEVER include** (they duplicate tool schemas or waste tokens):
+
+| Removed Section | Why | Where info lives instead |
+|----------------|-----|--------------------------|
+| `<Your_Tools>` | Duplicates tool docstrings | Tool schemas (auto-serialized) |
+| `<Your_Environment>` | Unnecessary context | Agent knows it's an LLM |
+| `<Example_Workflows>` | Duplicates decision trees | `<Decision_Trees>` |
+| `<Communication_Style>` | Generic formatting | Models already format well |
+| `<Core_Capabilities>` | Duplicates constraints | `<Constraints>` DO list |
 
 ---
 
