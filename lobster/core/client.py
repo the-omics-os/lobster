@@ -341,6 +341,7 @@ class AgentClient(BaseClient):
             last_agent = None
             accumulated_text = ""
             seen_message_ids: set = set()
+            seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
 
             for namespace, event_type, chunk in self.graph.stream(
                 graph_input,
@@ -384,8 +385,10 @@ class AgentClient(BaseClient):
 
                     # Emit agent change events for specialist agents
                     if node_name != last_agent and node_name != "supervisor":
-                        if node_name.endswith("_expert") or node_name.endswith(
-                            "_agent"
+                        if (
+                            node_name.endswith("_expert")
+                            or node_name.endswith("_agent")
+                            or node_name.endswith("_assistant")
                         ):
                             yield {
                                 "type": "agent_change",
@@ -394,6 +397,13 @@ class AgentClient(BaseClient):
                                 "timestamp": datetime.now().isoformat(),
                             }
                             last_agent = node_name
+
+                    # Single-speaker policy: only the supervisor's content
+                    # reaches the user stream.  Sub-agent text is internal
+                    # reasoning — surfacing it causes narrator boundary
+                    # breaches, corrupted markdown, and badge duplication.
+                    if node_name != "supervisor":
+                        continue
 
                     # Extract text content from message
                     content = message_chunk.content
@@ -426,12 +436,31 @@ class AgentClient(BaseClient):
                 # --- Handle "updates" events: agent transitions (backup) ---
                 elif event_type == "updates":
                     if isinstance(chunk, dict):
-                        for node_name in chunk:
+                        for node_name, node_update in chunk.items():
+                            if isinstance(node_update, dict):
+                                compaction = node_update.get("context_compaction")
+                                if isinstance(compaction, dict):
+                                    before = compaction.get("before_count")
+                                    after = compaction.get("after_count")
+                                    budget = compaction.get("budget_tokens")
+                                    signature = (node_name, before, after, budget)
+                                    if signature not in seen_compaction_signatures:
+                                        seen_compaction_signatures.add(signature)
+                                        yield {
+                                            "type": "context_compaction",
+                                            "agent": node_name,
+                                            "before_count": before,
+                                            "after_count": after,
+                                            "budget_tokens": budget,
+                                            "timestamp": datetime.now().isoformat(),
+                                        }
                             if node_name in ("__start__", "__end__"):
                                 continue
                             if node_name != last_agent and node_name != "supervisor":
-                                if node_name.endswith("_expert") or node_name.endswith(
-                                    "_agent"
+                                if (
+                                    node_name.endswith("_expert")
+                                    or node_name.endswith("_agent")
+                                    or node_name.endswith("_assistant")
                                 ):
                                     yield {
                                         "type": "agent_change",
