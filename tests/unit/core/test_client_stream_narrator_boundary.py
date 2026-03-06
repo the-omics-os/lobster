@@ -24,8 +24,8 @@ from langchain_core.messages import (
 
 from lobster.core.client import (
     AgentClient,
-    _classify_stream_source,
     _detect_speaker_transition,
+    _is_main_agent_namespace,
 )
 from lobster.ui.callbacks.protocol_callback import ProtocolCallbackHandler
 
@@ -190,21 +190,24 @@ class TestSpeakerDetection:
         chunk = AIMessageChunk(content="just text")
         assert _detect_speaker_transition(chunk) is None
 
-    # -- _classify_stream_source (secondary: namespace) --
+    # -- _is_main_agent_namespace (DeepAgents pattern) --
 
-    def test_namespace_specialist_expert(self):
-        assert _classify_stream_source(("transcriptomics_expert",)) == "transcriptomics_expert"
+    def test_empty_tuple_is_main(self):
+        assert _is_main_agent_namespace(()) is True
 
-    def test_namespace_specialist_agent(self):
-        assert _classify_stream_source(("research_agent",)) == "research_agent"
+    def test_empty_list_is_main(self):
+        """LangGraph may yield namespace as list, not tuple."""
+        assert _is_main_agent_namespace([]) is True
 
-    def test_namespace_empty_returns_none(self):
-        """Empty namespace is uninformative — returns None."""
-        assert _classify_stream_source(()) is None
+    def test_non_empty_is_subagent(self):
+        assert _is_main_agent_namespace(("supervisor",)) is False
+        assert _is_main_agent_namespace(["research_agent"]) is False
 
-    def test_namespace_supervisor_returns_none(self):
-        """Supervisor namespace is not a specialist — returns None."""
-        assert _classify_stream_source(("supervisor",)) is None
+    def test_none_is_main(self):
+        assert _is_main_agent_namespace(None) is True
+
+    def test_empty_string_is_main(self):
+        assert _is_main_agent_namespace("") is True
 
 
 # ===========================================================================
@@ -247,17 +250,17 @@ class TestSingleSpeakerPolicy:
         content_delta.  Sub-agent content should be agent_content.
         """
         events_in = [
-            # 1. Supervisor intro (before delegation)
-            _ai_chunk("I'll search for datasets.", "agent", "sup-1"),
-            # 2. Supervisor emits handoff tool call (tool_call_id = "tc-h")
-            _handoff_chunk("research_agent"),
-            # 3. Sub-agent internal reasoning (streamed from within tool execution)
-            _ai_chunk('{"modality": "scrna_10x"}', "agent", "ra-1"),
-            _ai_chunk("Let me check another dataset", "agent", "ra-2"),
-            # 4. Handoff tool returns → ToolMessage with matching tool_call_id
-            _handoff_tool_response("tc-h"),
-            # 5. Supervisor synthesis (should be content_delta again)
-            _ai_chunk("Here are the results:", "agent", "sup-2"),
+            # 1. Supervisor intro — empty namespace (main agent)
+            _ai_chunk("I'll search for datasets.", "agent", "sup-1", namespace=()),
+            # 2. Supervisor emits handoff tool call
+            _handoff_chunk("research_agent", namespace=()),
+            # 3. Sub-agent reasoning — non-empty namespace (subgraph)
+            _ai_chunk('{"modality": "scrna_10x"}', "agent", "ra-1", namespace=("supervisor", "research_agent")),
+            _ai_chunk("Let me check another dataset", "agent", "ra-2", namespace=("supervisor", "research_agent")),
+            # 4. Handoff tool returns — ToolMessage back in main namespace
+            _handoff_tool_response("tc-h", namespace=()),
+            # 5. Supervisor synthesis — empty namespace again
+            _ai_chunk("Here are the results:", "agent", "sup-2", namespace=()),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -277,8 +280,8 @@ class TestSingleSpeakerPolicy:
     def test_sub_agent_activity_still_tracked(self, tmp_path):
         """Sub-agent transitions emit agent_change events for the activity lane."""
         events_in = [
-            _handoff_chunk("research_agent"),
-            _ai_chunk("thinking...", "agent", "ra-1"),
+            _handoff_chunk("research_agent", namespace=()),
+            _ai_chunk("thinking...", "agent", "ra-1", namespace=("supervisor", "research_agent")),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -304,12 +307,17 @@ class TestSingleSpeakerPolicy:
         assert len(deltas) == 0
         assert len(agent_content) == 0
 
-    def test_namespace_based_classification_as_fallback(self, tmp_path):
-        """When namespace IS populated (future LangGraph), it provides
-        classification even without handoff tool calls in the stream."""
+    def test_namespace_alone_distinguishes_main_vs_subagent(self, tmp_path):
+        """Non-empty namespace = sub-agent, even without handoff tool calls.
+
+        This is the DeepAgents-proven pattern: empty namespace = main
+        agent, non-empty = subgraph (sub-agent).
+        """
         events_in = [
-            _ai_chunk("supervisor text", "agent", "sup-1", namespace=("supervisor",)),
-            _ai_chunk("specialist text", "agent", "ra-1", namespace=("research_agent",)),
+            # Main agent (empty namespace) → content_delta
+            _ai_chunk("supervisor text", "agent", "sup-1", namespace=()),
+            # Sub-agent (non-empty namespace) → agent_content
+            _ai_chunk("specialist text", "agent", "ra-1", namespace=["research_agent"]),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -320,7 +328,6 @@ class TestSingleSpeakerPolicy:
 
         agent_content = _events_of_type(events, "agent_content")
         assert len(agent_content) == 1
-        assert agent_content[0]["source"] == "research_agent"
 
 
 # ===========================================================================

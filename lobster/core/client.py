@@ -51,20 +51,20 @@ def _detect_speaker_transition(message_chunk: Any) -> Optional[str]:
     return None
 
 
-def _classify_stream_source(namespace: Any) -> Optional[str]:
-    """Secondary classification from LangGraph namespace tuple.
+def _is_main_agent_namespace(namespace: Any) -> bool:
+    """Check whether a stream event belongs to the main (supervisor) agent.
 
-    With ``subgraphs=True``, namespace *may* encode the subgraph path
-    (e.g. ``("research_agent",)``).  Returns the specialist name when
-    detected, or ``None`` when namespace is uninformative.
+    With ``subgraphs=True``, LangGraph yields a *namespace* (list or
+    tuple) encoding the subgraph path.  The main agent has an empty
+    namespace; sub-agents have a non-empty one.
+
+    This follows the proven DeepAgents pattern::
+
+        ns_key = tuple(namespace) if namespace else ()
+        is_main = ns_key == ()
     """
-    ns_parts = namespace if isinstance(namespace, tuple) else ()
-    for part in ns_parts:
-        if isinstance(part, str) and any(
-            part.endswith(sfx) for sfx in _SPECIALIST_SUFFIXES
-        ):
-            return part
-    return None
+    ns_key = tuple(namespace) if namespace else ()
+    return ns_key == ()
 from lobster.config.settings import MODEL_PRICING
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
@@ -474,12 +474,16 @@ class AgentClient(BaseClient):
                     if node_name == "__end__":
                         continue
 
-                    # Resolve source: tool-call tracking is primary,
-                    # namespace is secondary (may be unpopulated).
-                    source = (
-                        _classify_stream_source(namespace)
-                        or active_speaker
-                    )
+                    # Resolve source.  Namespace is ground truth
+                    # (empty = supervisor, non-empty = sub-agent).
+                    # Tool-call tracking gives the specific agent name.
+                    is_main = _is_main_agent_namespace(namespace)
+                    if is_main:
+                        source = "supervisor"
+                    elif active_speaker != "supervisor":
+                        source = active_speaker
+                    else:
+                        source = "specialist"
 
                     # Emit agent change events for specialist agents
                     if source != "supervisor" and source != last_agent:
