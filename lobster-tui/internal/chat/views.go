@@ -144,6 +144,11 @@ func renderInlineIntro(m Model) string {
 	if !m.inline || !m.showIntro || m.width <= 0 {
 		return ""
 	}
+	// Keep the large intro for startup/idle, but remove it once transcript
+	// content exists so chat output doesn't crowd out the visible viewport.
+	if m.ready && (len(m.messages) > 0 || m.streamBuf.Len() > 0) {
+		return ""
+	}
 
 	titleLines := welcomeTitleLinesForWidth(m.width)
 	title := renderAnimatedWelcomeTitle(m, titleLines)

@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
@@ -36,6 +36,9 @@ const maxToolFeed = 5
 
 // maxInputHistory is the number of entered lines kept for Up/Down recall.
 const maxInputHistory = 200
+
+const composerMinHeight = 1
+const composerMaxHeight = 8
 
 // spinnerInterval controls the animation frame rate (~12 fps).
 const spinnerInterval = 80 * time.Millisecond
@@ -129,7 +132,7 @@ type Model struct {
 	handler *protocol.Handler
 
 	viewport viewport.Model
-	input    textinput.Model
+	input    textarea.Model
 
 	messages    []ChatMessage
 	activeAgent string
@@ -183,6 +186,10 @@ type Model struct {
 	completionLastRequestedInput string
 	completionRequestInputs      map[string]string
 	completionCache              map[string][]string
+	completionSuggestions        []string
+	completionCycleBase          string
+	completionCycleIndex         int
+	completionCycleSuggestions   []string
 
 	// Heartbeat monitoring: tracks the last heartbeat from the backend.
 	lastHeartbeat time.Time
@@ -205,6 +212,7 @@ type Model struct {
 	width        int
 	height       int
 	inline       bool
+	inlineFlow   bool
 	mouseCapture bool
 	quitting     bool
 	styles       theme.Styles
@@ -229,8 +237,9 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 	vp := viewport.New(width, 1)
 	vp.SetContent("")
 
-	ti := textinput.New()
+	ti := textarea.New()
 	ti.Prompt = ""
+	ti.ShowLineNumbers = false
 	if inline {
 		ti.Placeholder = ""
 	} else {
@@ -238,9 +247,9 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 	}
 	ti.Focus()
 	ti.CharLimit = 4096
-	ti.Width = width - 4 // leave room for prompt and padding
-	ti.ShowSuggestions = true
-	ti.CompletionStyle = styles.Muted
+	ti.SetHeight(composerMinHeight)
+	ti.SetWidth(width)
+	applyComposerStyles(&ti, styles)
 
 	version := resolveLobsterVersion(versionFallback)
 	provider := normalizeProviderName(os.Getenv("LOBSTER_TUI_PROVIDER"))
@@ -278,6 +287,7 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 		width:                   width,
 		height:                  height,
 		inline:                  inline,
+		inlineFlow:              inline,
 		mouseCapture:            mouseCapture,
 		version:                 version,
 		provider:                provider,
@@ -302,7 +312,7 @@ func (m Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		waitForProtocolMsg(m.handler),
 		waitForProtocolErr(m.handler),
-		textinput.Blink,
+		func() tea.Msg { return textarea.Blink() },
 		tea.Tick(5*time.Second, func(time.Time) tea.Msg { return heartbeatCheck{} }),
 	}
 	if m.inline && m.showIntro {
@@ -466,7 +476,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = m.width
-		m.input.Width = m.width - 4
 		m.recalculateViewportHeight()
 
 		// Invalidate glamour renderer on width change (recreated lazily).
@@ -532,7 +541,9 @@ func (m Model) View() string {
 	if m.inline {
 		vpView = strings.TrimRight(vpView, " \n\r\t")
 	}
-	vpView = renderViewportWithScrollbar(vpView, m.viewport, m.styles)
+	if !m.inlineFlowMode() {
+		vpView = renderViewportWithScrollbar(vpView, m.viewport, m.styles)
+	}
 	if vpView != "" {
 		b.WriteString(vpView)
 		b.WriteByte('\n')
@@ -569,12 +580,7 @@ func (m Model) View() string {
 				b.WriteByte('\n')
 			}
 		}
-		prompt := "> "
-		if m.inline {
-			prompt = fmt.Sprintf("%s · $%.4f ❯ ", providerIcon(m.provider), m.promptCostUSD)
-		}
-		b.WriteString(m.styles.InputPrompt.Render(prompt))
-		b.WriteString(m.input.View())
+		b.WriteString(m.renderComposer())
 		b.WriteByte('\n')
 	}
 
@@ -925,11 +931,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 
 	case tea.KeyCtrlC:
-		_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
+		if m.handler != nil {
+			_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
+		}
 		m.quitting = true
 		return m, tea.Quit
 
 	case tea.KeyEnter:
+		if isComposerInsertNewlineKey(msg) {
+			prevVal := m.input.Value()
+			m.input.InsertRune('\n')
+			if m.inputHistoryIndex != -1 && m.input.Value() != prevVal {
+				m.resetHistoryNavigation()
+			}
+			m.recalculateViewportHeight()
+			return m, m.refreshSuggestions()
+		}
+
 		if !m.ready {
 			return m, nil // Silently ignore input until backend is ready.
 		}
@@ -952,6 +970,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			case "clear":
 				m.applyClearTarget("output")
 				m.input.SetValue("")
+				m.recalculateViewportHeight()
 				return m, m.refreshSuggestions()
 			case "exit", "quit":
 				m.pendingConfirm = &protocol.ConfirmPayload{
@@ -967,20 +986,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					Content: "Dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard.",
 				})
 				m.input.SetValue("")
+				m.recalculateViewportHeight()
 				cmd := m.refreshSuggestions()
 				m.rebuildViewport()
 				return m, cmd
 			default:
 				// Forward to Python for handling.
-				_ = m.handler.SendTyped(protocol.TypeSlashCommand, protocol.SlashCommandPayload{
-					Command: cmd,
-					Args:    args,
-				}, "")
+				if m.handler != nil {
+					_ = m.handler.SendTyped(protocol.TypeSlashCommand, protocol.SlashCommandPayload{
+						Command: cmd,
+						Args:    args,
+					}, "")
+				}
 			}
 		} else {
-			_ = m.handler.SendTyped(protocol.TypeInput, protocol.InputPayload{
-				Content: val,
-			}, "")
+			if m.handler != nil {
+				_ = m.handler.SendTyped(protocol.TypeInput, protocol.InputPayload{
+					Content: val,
+				}, "")
+			}
 		}
 
 		m.messages = append(m.messages, ChatMessage{
@@ -989,10 +1013,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		})
 		m.isStreaming = true
 		m.input.SetValue("")
+		m.recalculateViewportHeight()
 		cmd := m.refreshSuggestions()
 		m.rebuildViewport()
 
 		return m, cmd
+
+	case tea.KeyTab:
+		if m.applyNextCompletionSuggestion() {
+			m.recalculateViewportHeight()
+			return m, m.refreshSuggestions()
+		}
+		return m, nil
 
 	case tea.KeyPgUp, tea.KeyPgDown:
 		// Transcript scrollback controls are dedicated to page keys.
@@ -1003,6 +1035,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyUp:
 		// Up/Down are reserved for input history navigation.
 		if m.recallHistoryUp() {
+			m.recalculateViewportHeight()
 			return m, m.refreshSuggestions()
 		}
 		return m, nil
@@ -1010,6 +1043,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyDown:
 		// Up/Down are reserved for input history navigation.
 		if m.recallHistoryDown() {
+			m.recalculateViewportHeight()
 			return m, m.refreshSuggestions()
 		}
 		return m, nil
@@ -1027,6 +1061,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.inputHistoryIndex != -1 && m.input.Value() != prevVal {
 			m.resetHistoryNavigation()
 		}
+		m.recalculateViewportHeight()
 
 		// Refresh autocomplete suggestions after every keystroke.
 		cmd = m.refreshSuggestions()
@@ -1034,20 +1069,72 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-		// Gate viewport scrolling: when autocomplete has matches, Tab should
-		// navigate/accept suggestions rather than scrolling the viewport.
-		hasSuggestions := len(m.input.MatchedSuggestions()) > 0
-		skipViewport := hasSuggestions && msg.Type == tea.KeyTab
-
-		if !skipViewport {
-			m.viewport, cmd = m.viewport.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+		m.viewport, cmd = m.viewport.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 
 		return m, tea.Batch(cmds...)
 	}
+}
+
+func isComposerInsertNewlineKey(msg tea.KeyMsg) bool {
+	key := strings.ToLower(strings.TrimSpace(msg.String()))
+	return key == "shift+enter" || key == "alt+enter"
+}
+
+func (m *Model) applyNextCompletionSuggestion() bool {
+	suggestions := m.completionSuggestions
+	if len(suggestions) == 0 {
+		return false
+	}
+
+	input := m.input.Value()
+	needsReset := !suggestionSlicesEqual(m.completionCycleSuggestions, suggestions)
+	if needsReset || (input != m.completionCycleBase && !containsSuggestion(suggestions, input)) {
+		m.completionCycleBase = input
+		m.completionCycleIndex = 0
+		m.completionCycleSuggestions = append([]string(nil), suggestions...)
+	} else {
+		if idx := suggestionIndex(m.completionCycleSuggestions, input); idx >= 0 {
+			m.completionCycleIndex = (idx + 1) % len(m.completionCycleSuggestions)
+		} else {
+			m.completionCycleIndex = 0
+		}
+	}
+
+	if len(m.completionCycleSuggestions) == 0 {
+		return false
+	}
+
+	m.input.SetValue(m.completionCycleSuggestions[m.completionCycleIndex])
+	m.input.CursorEnd()
+	return true
+}
+
+func containsSuggestion(items []string, target string) bool {
+	return suggestionIndex(items, target) >= 0
+}
+
+func suggestionIndex(items []string, target string) int {
+	for i, item := range items {
+		if item == target {
+			return i
+		}
+	}
+	return -1
+}
+
+func suggestionSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // --------------------------------------------------------------------------
@@ -1157,6 +1244,9 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 		b.WriteByte('\n')
 	}
 	m.viewport.SetContent(b.String())
+	if m.inlineFlowMode() {
+		m.recalculateViewportHeight()
+	}
 	if forceBottom || wasAtBottom {
 		m.viewport.GotoBottom()
 	}
@@ -1198,10 +1288,9 @@ func (m *Model) renderHelp() {
 | /exit | Exit |
 
 ## Controls
-- PgUp/PgDn scroll transcript
-- Ctrl+G toggles mouse mode between select and scroll
-- In select mode you can drag to copy text
-- In scroll mode the mouse wheel/trackpad scrolls the transcript
+- Inline mode uses natural terminal scrollback for transcript reading
+- Fullscreen mode supports PgUp/PgDn transcript scrolling
+- Ctrl+G optionally toggles mouse capture
 
 *Ask anything in natural language — Lobster routes to the right specialist agent.*`
 
@@ -1314,6 +1403,14 @@ func (m Model) currentStatusLine() string {
 	if !m.ready {
 		return statusText
 	}
+
+	if m.inlineFlowMode() {
+		if strings.TrimSpace(statusText) == "" {
+			return "inline flow: use terminal scrollback  ·  Ctrl+G optional mouse capture"
+		}
+		return statusText + "  ·  inline flow via terminal scrollback"
+	}
+
 	mouseLabel := m.mouseModeLabel()
 	if strings.TrimSpace(statusText) == "" {
 		return mouseLabel + "  ·  Ctrl+G toggles"
@@ -1368,11 +1465,7 @@ func (m Model) layoutReservedRows() int {
 		if m.inline {
 			rows += 1 // reserve optional prompt spacer in inline mode
 		}
-		prompt := "> "
-		if m.inline {
-			prompt = fmt.Sprintf("%s · $%.4f ❯ ", providerIcon(m.provider), m.promptCostUSD)
-		}
-		rows += lineCount(m.styles.InputPrompt.Render(prompt) + m.input.View())
+		rows += lineCount(m.renderComposer())
 	}
 
 	statusText := m.currentStatusLine()
@@ -1388,11 +1481,159 @@ func (m Model) layoutReservedRows() int {
 }
 
 func (m *Model) recalculateViewportHeight() {
+	m.recalculateComposerDimensions()
+	if m.inlineFlowMode() {
+		budget := m.height - m.layoutReservedRows()
+		if budget < 1 {
+			budget = 1
+		}
+		h := m.viewport.TotalLineCount()
+		if h < 1 {
+			h = 1
+		}
+		if h > budget {
+			h = budget
+		}
+		m.viewport.Height = h
+		return
+	}
+
 	h := m.height - m.layoutReservedRows()
 	if h < 1 {
 		h = 1
 	}
 	m.viewport.Height = h
+}
+
+func (m Model) inlineFlowMode() bool {
+	return m.inline && m.inlineFlow
+}
+
+func (m Model) composerInitialized() bool {
+	return !(m.input.MaxHeight == 0 && m.input.Width() == 0 && m.input.Height() == 0)
+}
+
+func applyComposerStyles(input *textarea.Model, styles theme.Styles) {
+	focused, blurred := textarea.DefaultStyles()
+
+	textColor := styles.InputField.GetForeground()
+	promptColor := styles.InputPrompt.GetForeground()
+	mutedColor := styles.Muted.GetForeground()
+	dimColor := styles.Dimmed.GetForeground()
+
+	base := lipgloss.NewStyle().UnsetBackground()
+
+	focused.Base = base
+	blurred.Base = base
+
+	focused.Text = lipgloss.NewStyle().Foreground(textColor)
+	blurred.Text = lipgloss.NewStyle().Foreground(textColor)
+
+	focused.CursorLine = lipgloss.NewStyle().Foreground(textColor)
+	blurred.CursorLine = lipgloss.NewStyle().Foreground(textColor)
+
+	focused.Placeholder = lipgloss.NewStyle().Foreground(mutedColor)
+	blurred.Placeholder = lipgloss.NewStyle().Foreground(mutedColor)
+
+	focused.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+	blurred.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+
+	focused.LineNumber = lipgloss.NewStyle().Foreground(dimColor)
+	blurred.LineNumber = lipgloss.NewStyle().Foreground(dimColor)
+	focused.CursorLineNumber = lipgloss.NewStyle().Foreground(mutedColor)
+	blurred.CursorLineNumber = lipgloss.NewStyle().Foreground(mutedColor)
+
+	focused.EndOfBuffer = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+	blurred.EndOfBuffer = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+
+	input.FocusedStyle = focused
+	input.BlurredStyle = blurred
+	input.Focus()
+}
+
+func (m *Model) recalculateComposerDimensions() {
+	if !m.composerInitialized() {
+		return
+	}
+	promptWidth := lipgloss.Width(m.styles.InputPrompt.Render(m.inputPromptText()))
+	inputWidth := m.width - promptWidth
+	if inputWidth < 1 {
+		inputWidth = 1
+	}
+	if m.input.Width() != inputWidth {
+		m.input.SetWidth(inputWidth)
+	}
+	m.recalculateComposerHeight()
+}
+
+func (m *Model) recalculateComposerHeight() {
+	height := m.composerHeightForValue(m.input.Value())
+	if m.input.Height() == height {
+		return
+	}
+	m.input.SetHeight(height)
+}
+
+func (m Model) composerHeightForValue(value string) int {
+	width := m.input.Width()
+	if width < 1 {
+		width = 1
+	}
+
+	lines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+
+	visualLines := 0
+	for _, line := range lines {
+		if line == "" {
+			visualLines++
+			continue
+		}
+		visualLines += len(hardWrapProtocolTableCell(line, width))
+	}
+	if visualLines < composerMinHeight {
+		visualLines = composerMinHeight
+	}
+	if visualLines > composerMaxHeight {
+		visualLines = composerMaxHeight
+	}
+	return visualLines
+}
+
+func (m Model) renderComposer() string {
+	prompt := m.styles.InputPrompt.Render(m.inputPromptText())
+	if !m.composerInitialized() {
+		return prompt
+	}
+	view := m.input.View()
+	lines := strings.Split(view, "\n")
+	if len(lines) == 0 {
+		return prompt
+	}
+
+	prefix := strings.Repeat(" ", lipgloss.Width(prompt))
+	var b strings.Builder
+	for i, line := range lines {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		if i == 0 {
+			b.WriteString(prompt)
+		} else {
+			b.WriteString(prefix)
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+func (m Model) inputPromptText() string {
+	if m.inline {
+		return fmt.Sprintf("%s · $%.4f ❯ ", providerIcon(m.provider), m.promptCostUSD)
+	}
+	return "> "
 }
 
 func protocolTableRenderWidth(viewWidth int) int {

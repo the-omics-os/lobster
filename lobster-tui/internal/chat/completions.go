@@ -1,6 +1,5 @@
 // Completions provides context-aware autocomplete for the chat input.
 //
-// Uses the built-in textinput.SetSuggestions() API from charmbracelet/bubbles.
 // Suggestions are rebuilt on every keystroke to provide context-sensitive
 // completions: top-level commands when typing "/", subcommands after a
 // command with children, and cached modality names for data commands.
@@ -363,13 +362,26 @@ func (m *Model) dynamicSuggestionsForInput(input string) []string {
 	return out
 }
 
-// refreshSuggestions updates the textinput suggestion list and may emit a
+// refreshSuggestions updates suggestion state and may emit a
 // protocol completion request for path-like commands.
 func (m *Model) refreshSuggestions() tea.Cmd {
 	input := m.input.Value()
 	static := m.buildSuggestions(input)
 	dynamic := m.dynamicSuggestionsForInput(input)
-	m.input.SetSuggestions(mergeSuggestions(static, dynamic))
+	merged := mergeSuggestions(static, dynamic)
+	if len(merged) == 0 {
+		m.completionSuggestions = nil
+		m.completionCycleBase = ""
+		m.completionCycleIndex = 0
+		m.completionCycleSuggestions = nil
+		return m.maybeRequestProtocolCompletions(input)
+	}
+	m.completionSuggestions = append(m.completionSuggestions[:0], merged...)
+	if !containsSuggestion(m.completionSuggestions, input) && input != m.completionCycleBase {
+		m.completionCycleBase = ""
+		m.completionCycleIndex = 0
+		m.completionCycleSuggestions = nil
+	}
 	return m.maybeRequestProtocolCompletions(input)
 }
 

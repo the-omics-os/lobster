@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
+	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
 
 func TestHandleConfirmKeyLocalExitConfirmYesQuits(t *testing.T) {
@@ -381,9 +382,10 @@ func TestStreamingAppendFollowsWhenAtBottom(t *testing.T) {
 	}
 }
 
-func TestInlineViewStaysWithinTerminalHeightBudget(t *testing.T) {
+func TestInlineFlowModeKeepsHeaderVisibleWithinTerminalHeight(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
+	m.inlineFlow = true
 	m.width = 80
 	m.height = 16
 	m.welcomeActive = false
@@ -397,9 +399,123 @@ func TestInlineViewStaysWithinTerminalHeightBudget(t *testing.T) {
 	}
 	m.rebuildViewport()
 
+	if m.viewport.VisibleLineCount() >= m.viewport.TotalLineCount() {
+		t.Fatalf("expected bounded inline flow viewport under heavy output: visible=%d total=%d", m.viewport.VisibleLineCount(), m.viewport.TotalLineCount())
+	}
+
 	rendered := m.View()
 	if h := lipgloss.Height(rendered); h > m.height {
-		t.Fatalf("inline view overflow: rendered height=%d terminal height=%d", h, m.height)
+		t.Fatalf("expected inline flow view height <= terminal height, rendered=%d terminal=%d", h, m.height)
+	}
+	if !strings.Contains(rendered, "● lobster") {
+		t.Fatalf("expected inline header to remain visible, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "overflow line 59") {
+		t.Fatalf("expected latest transcript lines to remain visible, got:\n%s", rendered)
+	}
+}
+
+func TestInlinePromptAndLongInputDoNotOverflowTerminalWidth(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.width = 40
+	m.provider = "openai"
+	m.promptCostUSD = 12.3456
+	m.input.SetValue(strings.Repeat("paste-", 40))
+
+	m.recalculateViewportHeight()
+
+	for _, line := range strings.Split(m.renderComposer(), "\n") {
+		if got := lipgloss.Width(line); got > m.width {
+			t.Fatalf("expected each composer line width <= %d, got %d (inputWidth=%d prompt=%q line=%q)", m.width, got, m.input.Width(), m.inputPromptText(), line)
+		}
+	}
+}
+
+func TestApplyComposerStylesRemovesFocusedCursorBackground(t *testing.T) {
+	m := newTestModel()
+
+	bg := m.input.FocusedStyle.CursorLine.GetBackground()
+	if _, isNoColor := bg.(lipgloss.NoColor); !isNoColor {
+		t.Fatalf("expected transparent cursor-line background, got %T", bg)
+	}
+}
+
+func TestKeyEnterSubmitsComposerInput(t *testing.T) {
+	m := newTestModel()
+	m.ready = true
+	m.input.SetValue("hello world")
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "" {
+		t.Fatalf("expected composer to clear after submit, got %q", got)
+	}
+	if len(m.messages) == 0 {
+		t.Fatal("expected submitted user message to be appended")
+	}
+	last := m.messages[len(m.messages)-1]
+	if last.Role != "user" || last.Content != "hello world" {
+		t.Fatalf("unexpected submitted message: %#v", last)
+	}
+}
+
+func TestKeyAltEnterInsertsComposerNewline(t *testing.T) {
+	m := newTestModel()
+	m.ready = true
+	m.input.SetValue("hello")
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "hello\n" {
+		t.Fatalf("expected alt+enter to insert newline, got %q", got)
+	}
+	if len(m.messages) != 0 {
+		t.Fatalf("expected no submitted message, got %d", len(m.messages))
+	}
+}
+
+func TestComposerHeightClampsAtMaxLines(t *testing.T) {
+	m := newTestModel()
+	m.width = 42
+	m.inline = true
+	m.inlineFlow = true
+	m.input.SetValue(strings.Repeat("0123456789abcdef", 32))
+
+	m.recalculateViewportHeight()
+
+	if got := m.input.Height(); got != composerMaxHeight {
+		t.Fatalf("expected composer height clamp at %d, got %d", composerMaxHeight, got)
+	}
+}
+
+func TestInlineFlowStatusCopyEmphasizesTerminalScrollback(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.statusText = ""
+
+	got := m.currentStatusLine()
+	if !strings.Contains(got, "inline flow") || !strings.Contains(got, "terminal scrollback") {
+		t.Fatalf("expected inline flow status guidance, got %q", got)
+	}
+}
+
+func TestKeyTabAppliesSlashCompletionSuggestion(t *testing.T) {
+	m := newTestModel()
+	m.ready = true
+	m.input.SetValue("/wo")
+	m.refreshSuggestions()
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "/workspace" {
+		t.Fatalf("expected tab completion to apply /workspace, got %q", got)
 	}
 }
 
@@ -429,6 +545,7 @@ func TestKeyUpUsesHistoryEvenWhenViewportScrollable(t *testing.T) {
 func TestWelcomeTickKeepsAnimatingUntilReady(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
+	m.inlineFlow = true
 	m.ready = false
 	m.welcomeActive = true
 	m.welcomeStart = time.Now().Add(-3 * time.Second)
@@ -452,6 +569,7 @@ func TestWelcomeTickKeepsAnimatingUntilReady(t *testing.T) {
 func TestHandleProtocolReadyDisablesWelcomeAnimation(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
+	m.inlineFlow = true
 	m.welcomeActive = true
 	m.welcomeSporadicCell = 2
 	m.welcomeSporadicTick = 4
@@ -473,6 +591,7 @@ func TestHandleProtocolReadyDisablesWelcomeAnimation(t *testing.T) {
 func TestWelcomeTickStartsPersistentSparkAfterReady(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
+	m.inlineFlow = true
 	m.ready = true
 	m.welcomeActive = false
 	m.welcomeRNG = rand.New(rand.NewSource(42))
@@ -497,6 +616,7 @@ func TestWelcomeTickStartsPersistentSparkAfterReady(t *testing.T) {
 func TestWelcomeTickPersistentSparkCompletesAndReschedules(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
+	m.inlineFlow = true
 	m.ready = true
 	m.welcomeActive = false
 	m.welcomeRNG = rand.New(rand.NewSource(7))
@@ -520,6 +640,7 @@ func TestWelcomeTickPersistentSparkCompletesAndReschedules(t *testing.T) {
 func TestRenderInlineIntroReturnsEmptyWhenDisabled(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
+	m.inlineFlow = true
 	m.showIntro = false
 	m.welcomeActive = false
 
@@ -648,10 +769,15 @@ func testProtocolMsg(t *testing.T, msgType string, payload any) protocolMsg {
 func newTestModel() Model {
 	vp := viewport.New(80, 8)
 	vp.SetContent("")
+	styles := theme.BuildCleanStyles(theme.LobsterDark.Colors)
 
-	in := textinput.New()
+	in := textarea.New()
 	in.Focus()
-	in.Width = 76
+	in.Prompt = ""
+	in.ShowLineNumbers = false
+	in.SetWidth(76)
+	in.SetHeight(composerMinHeight)
+	applyComposerStyles(&in, styles)
 
 	return Model{
 		viewport:                vp,
@@ -665,8 +791,10 @@ func newTestModel() Model {
 		width:                   80,
 		height:                  20,
 		ready:                   true,
+		inlineFlow:              true,
 		showIntro:               true,
 		welcomeSporadicCell:     -1,
+		styles:                  styles,
 	}
 }
 

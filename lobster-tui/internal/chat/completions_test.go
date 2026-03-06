@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 )
@@ -205,7 +205,7 @@ func TestMaybeRequestProtocolCompletionsUsesCache(t *testing.T) {
 
 func TestInputHistoryRecallUpDown(t *testing.T) {
 	m := &Model{
-		input:             textinput.New(),
+		input:             textarea.New(),
 		inputHistory:      make([]string, 0, maxInputHistory),
 		inputHistoryIndex: -1,
 	}
