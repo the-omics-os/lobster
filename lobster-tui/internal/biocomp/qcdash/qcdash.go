@@ -197,9 +197,9 @@ func (c *QCDashboardComponent) SetData(data json.RawMessage) error {
 	return nil
 }
 
-func (c *QCDashboardComponent) Name() string          { return "qc_dashboard" }
-func (c *QCDashboardComponent) Mode() string          { return "inline" }
-func (c *QCDashboardComponent) KeyBindings() []key.Binding { return nil }
+func (c *QCDashboardComponent) Name() string                { return "qc_dashboard" }
+func (c *QCDashboardComponent) Mode() string                { return "inline" }
+func (c *QCDashboardComponent) KeyBindings() []key.Binding  { return nil }
 func (c *QCDashboardComponent) ChangeEvent() map[string]any { return nil }
 
 // formatValue formats a float value with its unit for display.

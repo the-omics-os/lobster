@@ -11,14 +11,14 @@ import (
 // stubComponent is a minimal BioComponent for registry tests.
 type stubComponent struct{ name string }
 
-func (s *stubComponent) Init(json.RawMessage) error                { return nil }
-func (s *stubComponent) HandleMsg(tea.Msg) *ComponentResult        { return nil }
-func (s *stubComponent) View(int, int) string                      { return "" }
-func (s *stubComponent) SetData(json.RawMessage) error             { return nil }
-func (s *stubComponent) Name() string                              { return s.name }
-func (s *stubComponent) Mode() string                              { return "overlay" }
-func (s *stubComponent) KeyBindings() []key.Binding                { return nil }
-func (s *stubComponent) ChangeEvent() map[string]any               { return nil }
+func (s *stubComponent) Init(json.RawMessage) error         { return nil }
+func (s *stubComponent) HandleMsg(tea.Msg) *ComponentResult { return nil }
+func (s *stubComponent) View(int, int) string               { return "" }
+func (s *stubComponent) SetData(json.RawMessage) error      { return nil }
+func (s *stubComponent) Name() string                       { return s.name }
+func (s *stubComponent) Mode() string                       { return "overlay" }
+func (s *stubComponent) KeyBindings() []key.Binding         { return nil }
+func (s *stubComponent) ChangeEvent() map[string]any        { return nil }
 
 func TestRegisterAndGet(t *testing.T) {
 	t.Parallel()
