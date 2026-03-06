@@ -548,6 +548,30 @@ jobs:
           python -c "from lobster.version import __version__; print(f'Version: {__version__}')"
           lobster --help
 
+      - name: Verify Go TUI binary discovery
+        run: |
+          echo "=== Verifying lobster-ai-tui wheel installed ==="
+          python -c "
+          from lobster_ai_tui import get_binary_path
+          binary = get_binary_path()
+          print(f'TUI binary path: {binary}')
+          assert binary.is_file(), f'Binary not found at {binary}'
+          print('OK: get_binary_path() found the binary')
+          "
+
+          echo "=== Verifying find_tui_binary_fast() finds it ==="
+          python -c "
+          from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
+          binary = find_tui_binary_fast()
+          assert binary is not None, 'FATAL: find_tui_binary_fast() returned None — binary discovery is broken'
+          print(f'OK: find_tui_binary_fast() -> {binary}')
+          "
+
+          echo "=== Verifying binary is executable ==="
+          BINARY=$(python -c "from lobster_ai_tui import get_binary_path; print(get_binary_path())")
+          chmod +x "$BINARY"
+          "$BINARY" version
+
       - name: Test public agent packages
         run: |
           VERSION="${{ needs.validate-version.outputs.version }}"

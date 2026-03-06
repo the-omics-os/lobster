@@ -173,6 +173,28 @@ jobs:
         print(f'Binary discovery OK: {binary}')
         "
 
+        # Simulate wheel install: place binary where the package expects it
+        # This catches path mismatches between find_tui_binary_fast() and get_binary_path()
+        echo "=== Testing wheel-style binary discovery ==="
+        cp "$LOBSTER_TUI_BINARY" packages/lobster-ai-tui/lobster_ai_tui/bin/lobster-tui
+        chmod +x packages/lobster-ai-tui/lobster_ai_tui/bin/lobster-tui
+        pip install -e packages/lobster-ai-tui/ --quiet
+
+        unset LOBSTER_TUI_BINARY
+        python -c "
+        from lobster_ai_tui import get_binary_path
+        binary = get_binary_path()
+        assert binary.is_file(), f'get_binary_path() returned non-existent: {binary}'
+        print(f'OK: get_binary_path() -> {binary}')
+
+        from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
+        found = find_tui_binary_fast()
+        assert found is not None, 'FATAL: find_tui_binary_fast() returned None with wheel installed'
+        assert 'bin/lobster-tui' in found, f'Wrong path: {found}'
+        print(f'OK: find_tui_binary_fast() -> {found}')
+        "
+        rm packages/lobster-ai-tui/lobster_ai_tui/bin/lobster-tui
+
         # Run Go TUI launcher unit tests against built binary
         python -m pytest \
           tests/unit/cli/test_go_tui_launcher_completions.py \
