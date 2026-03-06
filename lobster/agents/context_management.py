@@ -126,27 +126,41 @@ def resolve_context_window(
     Uses the same ConfigResolver + ProviderRegistry path as create_llm.
     Returns None if resolution fails (caller should use DEFAULT_CONTEXT_WINDOW).
     """
+    from lobster.config.providers import get_provider
+
+    provider_name: Optional[str] = provider_override
+    model_id: Optional[str] = model_override
+
+    # When overrides are incomplete, resolve missing values from config.
+    # resolve_provider() returns (provider_name, decision_source) — the second
+    # element is NOT a model ID, so we only use it for the provider name.
+    if not provider_name or not model_id:
+        try:
+            from lobster.core.config_resolver import ConfigResolver
+
+            resolver = ConfigResolver.get_instance(workspace_path)
+            resolved_provider, _source = resolver.resolve_provider()
+
+            if not provider_name:
+                provider_name = resolved_provider
+            if not model_id:
+                # ConfigResolver doesn't resolve model — provider default is used
+                model_id = None
+        except Exception as e:
+            logger.warning(f"Could not resolve provider from config: {e}")
+
+    if not provider_name:
+        logger.warning("No provider available for context window resolution")
+        return None
+
     try:
-        from lobster.core.config_resolver import ConfigResolver
-
-        resolver = ConfigResolver.get_instance(workspace_path)
-        provider_name, model_id = resolver.resolve_provider()
-
-        # CLI overrides take precedence
-        if provider_override:
-            provider_name = provider_override
-        if model_override:
-            model_id = model_override
-
-        from lobster.config.providers import get_provider
-
         provider = get_provider(provider_name)
         if provider:
             model_info = provider.get_model_info(model_id)
             if model_info and model_info.context_window:
                 return model_info.context_window
     except Exception as e:
-        logger.debug(f"Could not resolve context window: {e}")
+        logger.warning(f"Could not resolve context window for {provider_name}/{model_id}: {e}")
     return None
 
 

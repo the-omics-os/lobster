@@ -1,0 +1,200 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "\u2699\ufe0f  Current Configuration\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Setting",
+          "Value",
+          "Source"
+        ],
+        "rows": [
+          [
+            "Provider",
+            "ollama",
+            "workspace config"
+          ],
+          [
+            "Profile",
+            "production",
+            "workspace config"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\ud83d\udcc1 Configuration Files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Location",
+          "Status",
+          "Path"
+        ],
+        "rows": [
+          [
+            "Workspace Config",
+            "\u2713 Exists",
+            "/tmp/lobster_config_show_ws/provider_config.json"
+          ],
+          [
+            "Global Config",
+            "\u2713 Exists",
+            "/tmp/lobster_config_show_global/providers.json"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\ud83e\udd16 Agent Models\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Agent",
+          "Model",
+          "Source"
+        ],
+        "rows": [
+          [
+            "Supervisor",
+            "llama3.2:latest",
+            "workspace config"
+          ],
+          [
+            "Research Agent",
+            "llama3.2:latest",
+            "workspace config"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\n\ud83d\udce6 Agent Composition\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "------------------------------------------------------------------------------------------------\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  Configuration: defaults\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  All available agents enabled (no config.toml or empty)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Agent",
+          "Status",
+          "Tier"
+        ],
+        "rows": [
+          [
+            "Research Agent",
+            "Installed",
+            "Free"
+          ],
+          [
+            "Supervisor",
+            "Installed",
+            "Free"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\n\u2713 2 of 2 agents installed and ready\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\ud83d\udca1 Config Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Area",
+          "Command",
+          "Purpose"
+        ],
+        "rows": [
+          [
+            "Provider",
+            "/config provider",
+            "List providers and show the active runtime provider."
+          ],
+          [
+            "Provider",
+            "/config provider <name>",
+            "Switch provider for the current session only."
+          ],
+          [
+            "Provider",
+            "/config provider <name> --save",
+            "Switch provider and persist it to this workspace."
+          ],
+          [
+            "Model",
+            "/config model",
+            "List models available for the active provider."
+          ],
+          [
+            "Model",
+            "/config model <name>",
+            "Switch model for the current session only."
+          ],
+          [
+            "Model",
+            "/config model <name> --save",
+            "Switch model and persist it to this workspace."
+          ],
+          [
+            "Display",
+            "/config or /config show",
+            "Show the full configuration summary."
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Displayed configuration (provider: ollama, profile: production)"
+}

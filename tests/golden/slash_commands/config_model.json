@@ -1,0 +1,97 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "\u2699\ufe0f Active Model Selection\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Setting",
+          "Value",
+          "Source"
+        ],
+        "rows": [
+          [
+            "Provider",
+            "ollama",
+            "workspace config"
+          ],
+          [
+            "Current model",
+            "llama3.2:latest",
+            "workspace config (ollama model)"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\ud83e\udd99 Available Ollama Models\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Model",
+          "Display Name",
+          "Status",
+          "Description"
+        ],
+        "rows": [
+          [
+            "llama3.2:latest",
+            "Llama 3.2 Latest",
+            "Current, Default",
+            "Balanced default local model for everyday chat and analysis."
+          ],
+          [
+            "qwen2.5-coder:14b",
+            "Qwen 2.5 Coder 14B",
+            "-",
+            "Code-focused local model with stronger instruction following for long edits."
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\ud83d\udca1 Model Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Purpose"
+        ],
+        "rows": [
+          [
+            "/config model <name>",
+            "Switch the active model for the current session only."
+          ],
+          [
+            "/config model <name> --save",
+            "Switch the active model and persist it to this workspace."
+          ],
+          [
+            "/config provider",
+            "List providers and confirm which model catalog is active."
+          ],
+          [
+            "/config provider <name>",
+            "Change providers first when you need a different model catalog."
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Listed models for ollama provider"
+}

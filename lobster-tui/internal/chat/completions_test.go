@@ -109,9 +109,18 @@ func TestParsePathCompletionContext(t *testing.T) {
 	}{
 		{input: "/read ", ok: true, command: "/read", prefix: ""},
 		{input: "/read data/", ok: true, command: "/read", prefix: "data/"},
+		{input: "/read My Data/file.csv", ok: true, command: "/read", prefix: "My Data/file.csv"},
 		{input: "/open ./res", ok: true, command: "/open", prefix: "./res"},
+		{input: "/open My Data/file.csv", ok: true, command: "/open", prefix: "My Data/file.csv"},
+		{input: "/open My Data/file.csv ", ok: true, command: "/open", prefix: "My Data/file.csv "},
+		{input: `/open "My Data/file.csv"`, ok: true, command: "/open", prefix: `"My Data/file.csv"`},
 		{input: "/workspace load ", ok: true, command: "/workspace load", prefix: ""},
 		{input: "/workspace load rn", ok: true, command: "/workspace load", prefix: "rn"},
+		{input: "/workspace load Project A", ok: true, command: "/workspace load", prefix: "Project A"},
+		{input: "/workspace   load Project A", ok: true, command: "/workspace load", prefix: "Project A"},
+		{input: "/workspace load  Project A", ok: true, command: "/workspace load", prefix: " Project A"},
+		{input: `/workspace load "Project A"`, ok: true, command: "/workspace load", prefix: `"Project A"`},
+		{input: "/workspace load", ok: false},
 		{input: "/workspace info ", ok: false},
 		{input: "/workspace lo", ok: false},
 	}

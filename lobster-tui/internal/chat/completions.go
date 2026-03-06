@@ -212,6 +212,64 @@ type completionContext struct {
 	Prefix  string
 }
 
+func isCommandSpace(ch byte) bool {
+	return ch == ' ' || ch == '\t'
+}
+
+func parseSinglePathCommandTail(input string, command string) (tail string, hasArgSeparator bool, ok bool) {
+	i := 0
+	for i < len(input) && !isCommandSpace(input[i]) {
+		i++
+	}
+	if !strings.EqualFold(input[:i], command) {
+		return "", false, false
+	}
+	if i == len(input) {
+		return "", false, true
+	}
+	if !isCommandSpace(input[i]) {
+		return "", false, false
+	}
+	i++ // Preserve any additional spaces as part of raw argument tail.
+	return input[i:], true, true
+}
+
+func parseWorkspaceLoadTail(input string) (tail string, hasArgSeparator bool, ok bool) {
+	i := 0
+	for i < len(input) && !isCommandSpace(input[i]) {
+		i++
+	}
+	if !strings.EqualFold(input[:i], "/workspace") {
+		return "", false, false
+	}
+	if i == len(input) || !isCommandSpace(input[i]) {
+		return "", false, false
+	}
+
+	for i < len(input) && isCommandSpace(input[i]) {
+		i++
+	}
+	if i == len(input) {
+		return "", false, false
+	}
+
+	startSub := i
+	for i < len(input) && !isCommandSpace(input[i]) {
+		i++
+	}
+	if !strings.EqualFold(input[startSub:i], "load") {
+		return "", false, false
+	}
+	if i == len(input) {
+		return "", false, true
+	}
+	if !isCommandSpace(input[i]) {
+		return "", false, false
+	}
+	i++ // Preserve any additional spaces as part of raw argument tail.
+	return input[i:], true, true
+}
+
 // parsePathCompletionContext extracts completion context for commands that need
 // Python-backed suggestions.
 func parsePathCompletionContext(input string) (completionContext, bool) {
@@ -220,42 +278,23 @@ func parsePathCompletionContext(input string) (completionContext, bool) {
 		return completionContext{}, false
 	}
 
-	hasTrailingSpace := strings.HasSuffix(input, " ")
-	parts := strings.Fields(strings.TrimSpace(input))
-	if len(parts) == 0 {
-		return completionContext{}, false
+	if tail, hasArgSeparator, ok := parseSinglePathCommandTail(input, "/read"); ok {
+		if !hasArgSeparator {
+			return completionContext{}, false
+		}
+		return completionContext{Command: "/read", Prefix: tail}, true
 	}
-
-	cmd := strings.ToLower(parts[0])
-	switch cmd {
-	case "/read", "/open":
-		if len(parts) == 1 {
-			if hasTrailingSpace {
-				return completionContext{Command: cmd, Prefix: ""}, true
-			}
+	if tail, hasArgSeparator, ok := parseSinglePathCommandTail(input, "/open"); ok {
+		if !hasArgSeparator {
 			return completionContext{}, false
 		}
-		prefix := parts[1]
-		if hasTrailingSpace {
-			prefix = ""
-		}
-		return completionContext{Command: cmd, Prefix: prefix}, true
-
-	case "/workspace":
-		if len(parts) < 2 || strings.ToLower(parts[1]) != "load" {
+		return completionContext{Command: "/open", Prefix: tail}, true
+	}
+	if tail, hasArgSeparator, ok := parseWorkspaceLoadTail(input); ok {
+		if !hasArgSeparator {
 			return completionContext{}, false
 		}
-		if len(parts) == 2 {
-			if hasTrailingSpace {
-				return completionContext{Command: "/workspace load", Prefix: ""}, true
-			}
-			return completionContext{}, false
-		}
-		prefix := parts[2]
-		if hasTrailingSpace {
-			prefix = ""
-		}
-		return completionContext{Command: "/workspace load", Prefix: prefix}, true
+		return completionContext{Command: "/workspace load", Prefix: tail}, true
 	}
 
 	return completionContext{}, false

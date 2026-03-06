@@ -1,0 +1,39 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "\ud83d\udcd3 Available Notebooks\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Name",
+          "Steps",
+          "Created By",
+          "Created",
+          "Size"
+        ],
+        "rows": [
+          [
+            "RNA QC Workflow",
+            "7",
+            "research_agent",
+            "2026-03-01",
+            "43.2 KB"
+          ],
+          [
+            "ATAC Cluster Analysis",
+            "5",
+            "data_expert",
+            "2026-03-02",
+            "27.8 KB"
+          ]
+        ]
+      },
+      "type": "table"
+    }
+  ],
+  "summary": "Found 2 notebooks"
+}

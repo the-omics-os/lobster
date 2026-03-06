@@ -3,6 +3,7 @@ package chat
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/term"
@@ -16,7 +17,7 @@ import (
 //
 // fdIn and fdOut are file descriptor numbers for the JSON Lines IPC channel
 // (typically inherited from the parent Python process).
-func Run(fdIn, fdOut int, themeName string, version string) error {
+func Run(fdIn, fdOut int, themeName string, version string, inline bool) error {
 	// ---- Protocol setup -----------------------------------------------------
 	protoIn := os.NewFile(uintptr(fdIn), "proto-in")
 	if protoIn == nil {
@@ -61,12 +62,74 @@ func Run(fdIn, fdOut int, themeName string, version string) error {
 	}
 
 	// ---- BubbleTea model ----------------------------------------------------
-	model := NewModel(handler, activeTheme.Styles, width, height)
+	styles := activeTheme.Styles
+	if inline {
+		// Inline mode uses a minimal, less boxed style profile that better
+		// matches the classic Lobster CLI aesthetic.
+		styles = theme.BuildCleanStyles(activeTheme.Colors)
+	}
+	mouseCapture := shouldEnableMouseCapture(inline)
+	model := NewModel(handler, styles, width, height, inline, mouseCapture, version)
 
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	var p *tea.Program
+	opts := make([]tea.ProgramOption, 0, 2)
+	if !inline {
+		opts = append(opts, tea.WithAltScreen())
+	}
+	if mouseCapture {
+		opts = append(opts, tea.WithMouseCellMotion())
+	}
+	p = tea.NewProgram(model, opts...)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("chat session: %w", err)
 	}
 
 	return nil
+}
+
+// shouldEnableMouseCapture returns whether Bubble Tea mouse capture should be
+// active for the chat session.
+//
+// Defaults:
+// - inline mode: disabled (prioritize terminal text selection/copy)
+// - fullscreen mode: enabled (preserve existing mouse scroll UX)
+//
+// Override with LOBSTER_TUI_MOUSE_CAPTURE:
+// - true values: 1, true, yes, on
+// - false values: 0, false, no, off
+func shouldEnableMouseCapture(inline bool) bool {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("LOBSTER_TUI_MOUSE_CAPTURE")))
+	switch mode {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return !inline
+	}
+}
+
+// shouldShowInlineIntro returns whether the inline welcome block should render.
+//
+// Defaults:
+// - inline mode: enabled
+// - fullscreen mode: disabled
+//
+// Override with LOBSTER_TUI_NO_INTRO:
+// - true values: 1, true, yes, on
+// - false values: 0, false, no, off
+func shouldShowInlineIntro(inline bool) bool {
+	if !inline {
+		return false
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("LOBSTER_TUI_NO_INTRO")))
+	switch mode {
+	case "1", "true", "yes", "on":
+		return false
+	case "0", "false", "no", "off", "":
+		return true
+	default:
+		return true
+	}
 }

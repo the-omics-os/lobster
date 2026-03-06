@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple
 
 from lobster.config.constants import VALID_PROVIDERS
 
+DEFAULT_OLLAMA_MODEL = "gpt-oss:20b"
+
 
 @dataclass
 class OllamaStatus:
@@ -369,19 +371,24 @@ def get_recommended_models() -> List[Dict[str, str]]:
     """
     return [
         {
+            "name": "qwen3:8b",
+            "ram_required": "8-12GB",
+            "description": "Fast local default with low hardware requirements",
+        },
+        {
+            "name": "qwen3:14b",
+            "ram_required": "12-20GB",
+            "description": "Stronger reasoning while still practical on a workstation",
+        },
+        {
             "name": "gpt-oss:20b",
             "ram_required": "16-24GB",
-            "description": "Recommended for Lobster (supports tools, good quality)",
+            "description": "Best Lobster default for tool use and balanced quality",
         },
         {
-            "name": "mixtral:8x7b-instruct",
+            "name": "qwen3:30b-a3b",
             "ram_required": "24-32GB",
-            "description": "Better quality for production workflows",
-        },
-        {
-            "name": "llama3:70b-instruct",
-            "ram_required": "48GB VRAM",
-            "description": "Maximum quality (requires GPU)",
+            "description": "Highest-quality local option from the curated set",
         },
     ]
 

@@ -746,39 +746,64 @@ Explored 5 cloned Charm repos (`~/GITHUB/{glamour,bubbles,crush,gum,log}`) via s
 
 ---
 
-### Phase 5: BioCharm Components
-**Goal:** Domain-specific bioinformatics TUI components invokable by LangGraph agents.
+### Phase 5: Human-in-the-Loop Component Architecture (3 sub-phases)
+
+**Full design:** `.planning/charm-ui/HITL_DESIGN.md`
+**Reference implementation:** DeepAgents (`~/GITHUB/deepagents`)
+
+**Key insight:** Agents are fully autonomous today. When a sub-agent encounters ambiguity (unclear markers, multiple valid thresholds), it guesses. This phase adds a structured channel for agents to ask users for input during execution, rendered as interactive TUI components.
+
+**Architecture:** Supervisor calls `ask_user(question, context)` tool -> second LLM maps to component -> `interrupt()` pauses graph -> user interacts with Go TUI component (or prompt_toolkit in classic mode) -> `Command(resume=...)` continues graph.
+
+#### Phase 5A: Python Interrupt Infrastructure (no Go changes)
+**Duration:** 1-2 weeks
+**Prerequisite:** Phase 4 parity baseline stable
+
+- [x] Design approved (`.planning/charm-ui/HITL_DESIGN.md`)
+- [ ] `lobster/services/interaction/component_schemas.py` — component registry (5 base types)
+- [ ] `lobster/services/interaction/component_mapper.py` — LLM mapper with `with_structured_output(ComponentSelection)`
+- [ ] `lobster/tools/user_interaction.py` — `ask_user` tool with `interrupt()`
+- [ ] `lobster/core/client.py` — `__interrupt__` detection in `_stream_query()`, `resume_from_interrupt()`
+- [ ] `lobster/agents/graph.py` — wire `ask_user` to supervisor tools
+- [ ] `lobster/cli_internal/classic_interaction.py` — prompt_toolkit fallback renderers
+- [ ] End-to-end test: classic CLI interrupt/resume cycle
+
+#### Phase 5B: Protocol Extension (Python bridge + Go types)
+**Duration:** 1 week
+**Prerequisite:** 5A validated in classic mode
+
+- [ ] `component_render`, `component_close`, `component_response` in Go `types.go` + Python `protocol.py`
+- [ ] `go_tui_launcher._handle_user_query()` — interrupt detect, render, wait, resume loop
+- [ ] Go-side: route `component_render` to existing `pendingConfirm`/`pendingSelect` for basic types
+- [ ] Protocol smoke tests for interrupt -> render -> response -> resume
+
+#### Phase 5C: BioCharm Go Components (incremental)
 **Duration:** 3-4 weeks
-**Prerequisite:** Phase 4 validated
+**Prerequisite:** 5B validated
 
-**Architecture:** Fully designed in `.claude/docs/charm-tui-architecture.md`. Uses generic 3-message protocol (`component_render`, `component_close`, `component_response`) — new components require Go-side changes only, no protocol modifications.
+| Component | Mode | Priority | Description |
+|-----------|------|----------|-------------|
+| `confirm` | overlay | HIGH | Yes/no (validates full lifecycle) |
+| `select` | overlay | HIGH | Single choice (validates overlay pattern) |
+| `cell_type_selector` | overlay | HIGH | Cluster annotation with markers |
+| `threshold_slider` | overlay | MEDIUM | Numeric cutoff with live preview |
+| `qc_dashboard` | inline | MEDIUM | Multi-metric quality panel |
+| `ontology_browser` | overlay | LOW | GO/Reactome tree navigation |
+| `sequence_input` | fullscreen | LOW | DNA/RNA/protein entry |
+| `dna_animation` | inline | LOW | Loading helix animation |
 
-**Components:**
-
-| Component | Mode | Interactive | Description |
-|-----------|------|-------------|-------------|
-| `dna_animation` | inline | No | ASCII double helix loading animation |
-| `qc_dashboard` | inline | No (streaming) | Multi-metric quality panel |
-| `cell_type_selector` | overlay | Yes | Cluster annotation with marker genes |
-| `threshold_slider` | overlay | Yes (streaming) | p-value/FC cutoff with live gene count |
-| `ontology_browser` | overlay | Yes (lazy-load) | GO/Reactome tree navigation |
-| `sequence_input` | fullscreen | Yes | DNA/RNA/protein entry with validation |
-
-**Deliverables:**
 - [ ] `internal/biocomp/registry.go` — `BioComponent` interface + factory map
 - [ ] Component rendering in `model.go` — `handleComponentRender()`, `activeComponents` map
 - [ ] Agent transition cleanup (close overlay/fullscreen on handoff)
-- [ ] Error boundaries (bad payload → error UI, not crash)
-- [ ] Python `BioComponentMixin` for `ProtocolCallbackHandler`
-- [ ] LangGraph `interrupt()` integration for interactive components
-- [ ] 6 component packages in `internal/biocomp/`
+- [ ] Error boundaries (bad payload -> error UI, not crash)
+- [ ] Per-component Go unit test + integration test via protocol
 
 ---
 
 ### Phase 6: Distribution & Cross-Platform
 **Goal:** Production-ready distribution and UX polish.
 **Duration:** 2-3 weeks
-**Prerequisite:** Phase 5 working
+**Prerequisite:** Phase 5B working (Go TUI is daily-driver-ready)
 
 **What:**
 - Platform-specific wheel packaging (ruff model)

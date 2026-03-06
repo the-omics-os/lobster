@@ -178,8 +178,14 @@ class JsonOutputAdapter(OutputAdapter):
 
     def print_table(self, table_data: Dict[str, Any]) -> None:
         """Extract columns and rows into a serializable dict."""
-        columns = [col["name"] for col in table_data.get("columns", [])]
-        rows = table_data.get("rows", [])
+        columns = [
+            self._strip_markup(str(col.get("name", "")))
+            for col in table_data.get("columns", [])
+        ]
+        rows = [
+            [self._strip_markup(str(cell)) for cell in row]
+            for row in table_data.get("rows", [])
+        ]
         entry: Dict[str, Any] = {"columns": columns, "rows": rows}
         title = table_data.get("title")
         if title:
@@ -265,13 +271,19 @@ class DashboardOutputAdapter(OutputAdapter):
             return
 
         # Header
-        header = "| " + " | ".join(col["name"] for col in columns) + " |"
+        header = "| " + " | ".join(
+            self._strip_markup(str(col.get("name", ""))) for col in columns
+        ) + " |"
         separator = "|" + "|".join("---" for _ in columns) + "|"
 
         # Rows
         table_rows = []
         for row in rows:
-            table_rows.append("| " + " | ".join(row) + " |")
+            table_rows.append(
+                "| "
+                + " | ".join(self._strip_markup(str(cell)) for cell in row)
+                + " |"
+            )
 
         # Combine
         title = table_data.get("title", "")
@@ -342,8 +354,14 @@ class ProtocolOutputAdapter(OutputAdapter):
             self._send("text", {"content": clean + "\n"})
 
     def print_table(self, table_data: Dict[str, Any]) -> None:
-        headers = [col["name"] for col in table_data.get("columns", [])]
-        rows = table_data.get("rows", [])
+        headers = [
+            self._strip_markup(str(col.get("name", "")))
+            for col in table_data.get("columns", [])
+        ]
+        rows = [
+            [self._strip_markup(str(cell)) for cell in row]
+            for row in table_data.get("rows", [])
+        ]
         title = table_data.get("title")
         if title:
             self._send("text", {"content": self._strip_markup(title) + "\n"})

@@ -34,6 +34,11 @@ from lobster.cli_internal.commands.heavy.session_infra import (
     init_client,
     init_client_with_animation,
     should_show_progress,
+    validate_startup_or_raise_startup_diagnostic,
+)
+from lobster.cli_internal.startup_diagnostics import (
+    StartupDiagnosticError,
+    render_startup_diagnostic_rich,
 )
 from lobster.cli_internal.commands.heavy.slash_commands import (
     _execute_command,
@@ -862,14 +867,14 @@ def chat_impl(
     else:
         setup_logging(logging.WARNING)  # Suppress INFO logs
 
-    # Check for configuration
-    env_file = Path.cwd() / ".env"
-    if not env_file.exists():
-        console.print()
-        console.print("[red]✗[/red] no config found")
-        console.print("  run [bold #e45c47]lobster init[/bold #e45c47]")
-        console.print()
-        raise typer.Exit(1)
+    try:
+        validate_startup_or_raise_startup_diagnostic(
+            workspace=workspace,
+            provider_override=provider,
+        )
+    except StartupDiagnosticError as exc:
+        render_startup_diagnostic_rich(console, exc.diagnostic)
+        raise typer.Exit(exc.diagnostic.exit_code)
 
     # Handle session loading for continuity (similar to query command)
     session_file_to_load = None
@@ -1203,6 +1208,5 @@ def handle_command(command: str, client: "AgentClient"):
 # Import these from lobster.cli_internal.commands instead of defining them here.
 # This ensures CLI and Dashboard use the same implementation (Single Source of Truth).
 # ============================================================================
-
 
 

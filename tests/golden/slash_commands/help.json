@@ -115,11 +115,11 @@
             "Load data from workspace"
           ],
           [
-            "/queue clear [download|all]",
+            "/queue clear ",
             "Clear queue(s)"
           ],
           [
-            "/metadata clear [exports|all]",
+            "/metadata clear ",
             "Clear metadata"
           ],
           [
@@ -127,11 +127,11 @@
             "Inspect a modality"
           ],
           [
-            "/save [--force]",
+            "/save ",
             "Persist loaded modalities"
           ],
           [
-            "/restore [pattern]",
+            "/restore ",
             "Restore datasets from session cache"
           ]
         ]

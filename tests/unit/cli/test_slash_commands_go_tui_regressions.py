@@ -133,6 +133,25 @@ def test_config_model_accepts_direct_model_name(tmp_path, monkeypatch):
     assert summary == "model:sonnet-4:save=False"
 
 
+def test_config_model_accepts_direct_model_name_with_save(tmp_path, monkeypatch):
+    output = _DummyOutput()
+    client = _DummyClient(tmp_path)
+
+    def _fake_model_switch(_client, _output, model_name, save):
+        return f"model:{model_name}:save={save}"
+
+    monkeypatch.setattr(slash_commands, "config_model_switch", _fake_model_switch)
+
+    summary = slash_commands._execute_command(
+        "/config model sonnet-4 --save",
+        client,
+        original_command="/config model sonnet-4 --save",
+        output=output,
+    )
+
+    assert summary == "model:sonnet-4:save=True"
+
+
 def test_save_command_protocol_mode_avoids_direct_console_usage(tmp_path, monkeypatch):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)

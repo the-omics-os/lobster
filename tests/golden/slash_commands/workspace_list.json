@@ -1,0 +1,49 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Available Datasets\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "#",
+          "Status",
+          "Name",
+          "Size",
+          "Shape",
+          "Modified"
+        ],
+        "rows": [
+          [
+            "1",
+            "\u25cb",
+            "geo_gse12345_rna",
+            "12.5 MB",
+            "1,024 \u00d7 2,048",
+            "2026-03-01"
+          ],
+          [
+            "2",
+            "\u25cb",
+            "geo_gse67890_atac_clustered",
+            "8.3 MB",
+            "512 \u00d7 1,024",
+            "2026-02-20"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "\nUse '/workspace info <#>' to see full details"
+      },
+      "type": "alert"
+    }
+  ],
+  "summary": "Listed 2 available datasets"
+}

@@ -8,6 +8,7 @@ import os
 import queue
 import signal
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
@@ -239,26 +240,47 @@ class GoTUIBridge:
 
 
 def run_init_wizard(binary_path: str, *, theme: str = "lobster-dark", timeout: int = 300) -> dict:
-    """Run one-shot Go init wizard and parse JSON output."""
-    cmd = [binary_path, "init", "--theme", theme]
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        raise BridgeError(stderr or "lobster-tui init failed")
+    """Run one-shot Go init wizard and parse its JSON result file.
 
-    stdout = (proc.stdout or "").strip()
-    if not stdout:
+    The Go wizard needs the real terminal for interactive rendering, so the
+    result is written to a temporary file instead of stdout capture.
+    """
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=".json", prefix="lobster-init-", delete=False
+    ) as result_file:
+        result_path = result_file.name
+
+    cmd = [binary_path, "init", "--theme", theme, "--result-file", result_path]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            timeout=timeout,
+        )
+
+        try:
+            raw_payload = Path(result_path).read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            raw_payload = ""
+
+        if raw_payload:
+            try:
+                payload = json.loads(raw_payload)
+            except json.JSONDecodeError as e:
+                raise BridgeError("lobster-tui init returned invalid JSON") from e
+        else:
+            payload = None
+    finally:
+        try:
+            Path(result_path).unlink()
+        except FileNotFoundError:
+            pass
+
+    if payload is None:
+        if proc.returncode != 0:
+            raise BridgeError(f"lobster-tui init failed (exit code {proc.returncode})")
         raise BridgeError("lobster-tui init returned empty output")
 
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError as e:
-        raise BridgeError("lobster-tui init returned invalid JSON") from e
     if not isinstance(payload, dict):
         raise BridgeError("lobster-tui init JSON payload must be an object")
     return payload

@@ -36,6 +36,12 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from lobster.cli_internal.startup_diagnostics import (
+    StartupDiagnostic,
+    StartupDiagnosticError,
+    format_startup_diagnostic_text,
+)
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -43,6 +49,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _PROTOCOL_VERSION = 1
+_FEEDBACK_URL = "https://forms.cloud.microsoft/e/AkNk8J8nE8"
+_ISSUES_URL = "https://github.com/the-omics-os/lobster/issues"
+_SUPPORT_EMAIL = "info@omics-os.com"
+_STARTUP_DIAGNOSTIC_CONFIRM_ID = "__startup_diagnostic_exit__"
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +294,149 @@ def _format_usage(client: Any) -> str:
         return f"Tokens: {tracker.total_tokens:,} | Cost: ${tracker.total_cost:.4f}"
     except Exception:
         return "Ready"
+
+
+def _safe_minimal_token_summary(client: Any) -> str:
+    """Return a minimal token summary string, or empty string on failure."""
+    try:
+        tracker = getattr(client, "token_tracker", None)
+        if not tracker:
+            return ""
+        if hasattr(tracker, "get_minimal_summary"):
+            return str(tracker.get_minimal_summary() or "")
+        if hasattr(tracker, "get_verbose_summary"):
+            return str(tracker.get_verbose_summary() or "")
+    except Exception:
+        return ""
+    return ""
+
+
+def _resolve_active_provider_name(client: Any) -> str:
+    """Resolve the active provider name for local clients, if available."""
+    runtime_override = str(
+        getattr(client, "provider_override", None) or ""
+    ).strip()
+
+    # Only local AgentClient instances have a resolver-backed provider choice.
+    if hasattr(client, "data_manager"):
+        workspace_path = getattr(client, "workspace_path", None)
+        if workspace_path:
+            try:
+                from lobster.core.config_resolver import ConfigResolver
+
+                resolver = ConfigResolver(workspace_path=Path(workspace_path))
+                provider_name, _ = resolver.resolve_provider(
+                    runtime_override=runtime_override or None
+                )
+                resolved = str(provider_name or "").strip()
+                if resolved:
+                    return resolved
+            except Exception:
+                pass
+
+    fallback = runtime_override or str(
+        getattr(client, "provider", None) or ""
+    ).strip()
+    return fallback
+
+
+def _emit_provider_status(bridge: _LightBridge, client: Any) -> None:
+    """Push the current provider into Go status state."""
+    provider_name = _resolve_active_provider_name(client) or "auto"
+    bridge.send("status", {"text": f"Provider: {provider_name}"})
+
+
+def _emit_startup_diagnostic(bridge: _LightBridge, diagnostic: StartupDiagnostic) -> None:
+    """Render a fatal startup diagnostic through the Go protocol surface."""
+    bridge.send("spinner", {"active": False})
+    bridge.send(
+        "alert",
+        {
+            "level": diagnostic.level,
+            "message": format_startup_diagnostic_text(diagnostic),
+        },
+    )
+    bridge.send("status", {"text": "Initialization failed"})
+
+
+def _await_startup_diagnostic_ack(bridge: _LightBridge) -> None:
+    """Keep a fatal startup diagnostic visible until the operator exits it."""
+    bridge.send(
+        "confirm",
+        {
+            "title": "Startup failed",
+            "message": "Press Enter to exit.",
+            "default": True,
+        },
+        msg_id=_STARTUP_DIAGNOSTIC_CONFIRM_ID,
+    )
+
+    while True:
+        event = bridge.recv_event(timeout=None)
+        if event is None:
+            return
+
+        msg_type = str(event.get("type", "") or "")
+        if msg_type == "quit":
+            return
+        if (
+            msg_type == "confirm_response"
+            and str(event.get("id", "") or "") == _STARTUP_DIAGNOSTIC_CONFIRM_ID
+        ):
+            return
+
+
+def _build_go_tui_exit_footer_lines(client: Any) -> List[str]:
+    """Build post-exit footer lines for Go chat mode."""
+    lines: List[str] = []
+
+    session = str(getattr(client, "session_id", "") or "").strip()
+    if session:
+        lines.append(f"Session: {session} (use --session-id latest to continue)")
+
+    lines.append(f"Feedback: {_FEEDBACK_URL}")
+    lines.append(f"Issues: {_ISSUES_URL}")
+    lines.append(f"Contact: {_SUPPORT_EMAIL}")
+
+    provider_name = _resolve_active_provider_name(client)
+    model_name = str(
+        getattr(client, "model_override", None)
+        or getattr(client, "model", None)
+        or ""
+    ).strip()
+    runtime_parts: List[str] = []
+    if provider_name:
+        runtime_parts.append(f"provider={provider_name}")
+    if model_name:
+        runtime_parts.append(f"model={model_name}")
+    if runtime_parts:
+        lines.append(f"Runtime: {' '.join(runtime_parts)}")
+
+    token_summary = _safe_minimal_token_summary(client)
+    if token_summary:
+        lines.append(token_summary)
+
+    lines.append("Next steps:")
+    lines.append("  Resume: lobster chat --ui go --session-id latest")
+    lines.append("  New chat: lobster chat --ui go")
+    lines.append("  Help: lobster --help")
+    return lines
+
+
+def _emit_go_tui_exit_footer(client: Any) -> None:
+    """Print Go chat exit footer to stdout after TUI teardown."""
+    try:
+        lines = _build_go_tui_exit_footer_lines(client)
+        if not lines:
+            return
+        sys.stdout.write("\n")
+        for line in lines:
+            sys.stdout.write(f"{line}\n")
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    except Exception:
+        # Never let footer rendering block CLI exit.
+        return
 
 
 def _path_completion_suggestions(prefix: str, limit: int = 50) -> List[str]:
@@ -528,6 +681,7 @@ def _handle_slash_command(
     except Exception as exc:
         bridge.send("alert", {"level": "error", "message": str(exc)})
     finally:
+        _emit_provider_status(bridge, client)
         bridge.send("spinner", {"active": False})
         bridge.send("done", {"summary": ""})
 
@@ -546,6 +700,7 @@ def launch_go_tui_chat(
     model: Optional[str] = None,
     debug: bool = False,
     profile_timings: Any = None,
+    no_intro: bool = False,
     stream: bool = True,
 ) -> None:
     """Launch the Go TUI and wire it to the Lobster agent client.
@@ -580,6 +735,13 @@ def launch_go_tui_chat(
     p2g_r, p2g_w = os.pipe()  # Python-to-Go
     g2p_r, g2p_w = os.pipe()  # Go-to-Python
 
+    theme_name = os.environ.get("LOBSTER_TUI_THEME", "lobster-dark").strip() or "lobster-dark"
+    inline_env = os.environ.get("LOBSTER_TUI_INLINE", "1").strip().lower()
+    fullscreen_env = os.environ.get("LOBSTER_TUI_FULLSCREEN", "").strip().lower()
+    inline_mode = inline_env not in {"0", "false", "no"}
+    if fullscreen_env in {"1", "true", "yes"}:
+        inline_mode = False
+
     cmd = [
         binary,
         "chat",
@@ -588,8 +750,17 @@ def launch_go_tui_chat(
         "--proto-fd-out",
         str(g2p_w),
         "--theme",
-        "lobster-dark",
+        theme_name,
     ]
+    if inline_mode:
+        cmd.append("--inline")
+
+    child_env = _prepare_go_tui_chat_env(
+        os.environ,
+        workspace=workspace,
+        provider=provider,
+        no_intro=no_intro,
+    )
 
     proc = subprocess.Popen(
         cmd,
@@ -599,6 +770,7 @@ def launch_go_tui_chat(
         stderr=subprocess.PIPE if debug else subprocess.DEVNULL,
         text=False,
         preexec_fn=os.setsid,
+        env=child_env,
     )
 
     # Close the child-side FDs in the parent process.
@@ -606,6 +778,10 @@ def launch_go_tui_chat(
     os.close(g2p_w)
 
     bridge = _LightBridge(proc, p2g_w, g2p_r)
+    _saved_stderr = sys.stderr
+    client: Any = None
+    should_emit_exit_footer = False
+    startup_diagnostic: Optional[StartupDiagnostic] = None
 
     try:
         # -----------------------------------------------------------------
@@ -646,13 +822,13 @@ def launch_go_tui_chat(
         logging.disable(logging.CRITICAL)
 
         from lobster.cli_internal.commands.heavy.session_infra import (
-            init_client,
+            init_client_or_raise_startup_diagnostic,
             set_go_tui_active,
         )
 
         set_go_tui_active(True)
 
-        client = init_client(
+        client = init_client_or_raise_startup_diagnostic(
             workspace=workspace,
             reasoning=False,
             verbose=False,
@@ -662,6 +838,8 @@ def launch_go_tui_chat(
             model_override=model,
             session_id=session_id,
         )
+
+        _emit_provider_status(bridge, client)
 
         # -----------------------------------------------------------------
         # 6. Wire the protocol callback handler
@@ -708,12 +886,18 @@ def launch_go_tui_chat(
             pass
 
         bridge.send("ready", {})
-        bridge.send("status", {"text": "Ready"})
+        if not inline_mode:
+            bridge.send("status", {"text": "Ready"})
 
         # -----------------------------------------------------------------
         # 8. Enter event loop
         # -----------------------------------------------------------------
         _go_tui_event_loop(bridge, client)
+        should_emit_exit_footer = True
+    except StartupDiagnosticError as exc:
+        startup_diagnostic = exc.diagnostic
+        _emit_startup_diagnostic(bridge, startup_diagnostic)
+        _await_startup_diagnostic_ack(bridge)
 
     finally:
         # Restore stderr/logging in case init crashed mid-suppression.
@@ -729,3 +913,27 @@ def launch_go_tui_chat(
             set_go_tui_active(False)
         except Exception:
             pass
+
+        if should_emit_exit_footer and client is not None:
+            _emit_go_tui_exit_footer(client)
+
+    if startup_diagnostic is not None:
+        raise SystemExit(startup_diagnostic.exit_code)
+
+
+def _prepare_go_tui_chat_env(
+    base_env: Dict[str, str],
+    *,
+    workspace: Optional[str] = None,
+    provider: Optional[str] = None,
+    no_intro: bool = False,
+) -> Dict[str, str]:
+    """Build the child environment for a Go TUI chat session."""
+    child_env = dict(base_env)
+    child_env["LOBSTER_TUI_PROVIDER"] = (
+        provider or child_env.get("LOBSTER_TUI_PROVIDER", "auto")
+    ).strip() or "auto"
+    child_env["LOBSTER_TUI_WORKSPACE"] = str(workspace or Path.cwd())
+    if no_intro:
+        child_env["LOBSTER_TUI_NO_INTRO"] = "1"
+    return child_env

@@ -12,6 +12,8 @@ contract::
         "ncbi_key":           str,   # optional NCBI API key
         "cloud_key":          str,   # optional Lobster Cloud key
         "ollama_model":       str,   # Ollama model name (empty for non-Ollama)
+        "smart_standardization_enabled": bool,  # enable vector-search setup
+        "smart_standardization_openai_key": str,  # OpenAI key for embeddings
         "cancelled":          bool,  # True when user pressed Escape / Ctrl-C
     }
 
@@ -88,6 +90,16 @@ def apply_tui_init_result(
     ncbi_key          = (result.get("ncbi_key") or "").strip()
     cloud_key         = (result.get("cloud_key") or "").strip()
     ollama_model      = (result.get("ollama_model") or "").strip()
+    smart_std_enabled = bool(result.get("smart_standardization_enabled"))
+    smart_std_openai_key = (
+        result.get("smart_standardization_openai_key") or ""
+    ).strip()
+
+    from lobster.cli_internal.commands.heavy.init_commands import (
+        _normalize_selected_agents,
+    )
+
+    agents = _normalize_selected_agents(agents)
 
     # ------------------------------------------------------------------
     # Build env_lines (same structure as the classic init_impl path)
@@ -109,10 +121,11 @@ def apply_tui_init_result(
             env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={api_key_secondary}")
 
     elif provider == "ollama":
-        # Ollama has no API keys; we write the model name as an env hint
-        env_lines.append("LOBSTER_PROVIDER=ollama")
-        if ollama_model:
-            env_lines.append(f"LOBSTER_OLLAMA_MODEL={ollama_model}")
+        from lobster.config import provider_setup
+
+        config = provider_setup.create_ollama_config(model_name=ollama_model or None)
+        for key, value in config.env_vars.items():
+            env_lines.append(f"{key}={value}")
 
     elif provider == "gemini":
         if api_key:
@@ -150,6 +163,21 @@ def apply_tui_init_result(
     if cloud_key:
         env_lines.append("\n# Lobster Cloud configuration (enables premium tier)")
         env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key}")
+
+    if smart_std_enabled:
+        embedding_key = smart_std_openai_key
+        if provider == "openai" and api_key:
+            embedding_key = api_key
+
+        if embedding_key:
+            env_lines.append("\n# Smart Standardization / vector search")
+            if not (provider == "openai" and embedding_key == api_key):
+                env_lines.append(f"OPENAI_API_KEY={embedding_key}")
+            env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
+        else:
+            logger.warning(
+                "TUI result enabled Smart Standardization without an OpenAI key; skipping env lines"
+            )
 
     # ------------------------------------------------------------------
     # Build structured config_dict for provider_config.json
@@ -212,7 +240,7 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
             if any(
                 tok in key
                 for tok in ["API_KEY", "ACCESS_KEY", "SECRET_KEY", "CLOUD_KEY", "CREDENTIAL"]
-            ):
+            ) or key == "LOBSTER_EMBEDDING_PROVIDER":
                 credentials[key] = value.strip()
 
     if credentials:

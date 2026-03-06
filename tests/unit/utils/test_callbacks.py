@@ -11,7 +11,15 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.outputs import Generation, LLMResult
 
-from lobster.utils.callbacks import TokenInvocation, TokenTrackingCallback
+from rich.console import Console
+
+from lobster.utils.callbacks import (
+    AgentEvent,
+    EventType,
+    TerminalCallbackHandler,
+    TokenInvocation,
+    TokenTrackingCallback,
+)
 
 
 @pytest.fixture
@@ -622,9 +630,9 @@ class TestRobustAgentDetection:
             serialized={},
             prompts=["test"],
             run_id="def-456",
-            run_name="metadata_assistant",
+            run_name="research_agent",
         )
-        assert token_tracker.current_agent == "metadata_assistant"
+        assert token_tracker.current_agent == "research_agent"
 
         # Second call with same run_id but no run_name
         token_tracker.current_agent = None  # Simulate reset
@@ -635,7 +643,7 @@ class TestRobustAgentDetection:
         )
 
         # Should recover agent from run_id mapping
-        assert token_tracker.current_agent == "metadata_assistant"
+        assert token_tracker.current_agent == "research_agent"
 
     def test_on_chat_model_start_detection(self, token_tracker):
         """Test chat model callback (primary for Claude/Bedrock)."""
@@ -817,3 +825,28 @@ class TestMetadataPropagation:
             input_str="",
         )
         assert token_tracker.current_agent == "supervisor"
+
+
+class TestTerminalCallbackVisibility:
+    """Test visibility tracking for terminal callback rendering."""
+
+    def test_reasoning_visibility_flag_tracks_rendered_reasoning(self):
+        console = Console(record=True, width=100)
+        callback = TerminalCallbackHandler(
+            console=console,
+            verbose=False,
+            show_reasoning=True,
+            show_tools=False,
+            use_panels=False,
+        )
+
+        event = AgentEvent(
+            type=EventType.AGENT_THINKING,
+            agent_name="research_agent",
+            content="Investigating tool flow",
+        )
+        callback._display_agent_event(event)
+
+        assert callback.has_visible_output() is True
+        assert callback.has_displayed_reasoning() is True
+        assert "Investigating tool flow" in console.export_text()

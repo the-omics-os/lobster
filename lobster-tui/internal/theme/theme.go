@@ -117,7 +117,7 @@ func BuildStyles(c Colors) Styles {
 
 		StatusBar: lipgloss.NewStyle().
 			Background(c.Surface).
-			Foreground(c.TextMuted).
+			Foreground(c.Text).
 			Padding(0, 1).
 			BorderTop(true).
 			BorderStyle(lipgloss.NormalBorder()).
@@ -159,10 +159,10 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.TextMuted).
 			Padding(0, 1).
 			BorderLeft(true).
-			BorderForeground(c.TextDim),
+			BorderForeground(c.Overlay),
 
 		ToolMessage: lipgloss.NewStyle().
-			Foreground(c.Info).
+			Foreground(c.Text).
 			PaddingLeft(2).
 			BorderLeft(true).
 			BorderForeground(c.Info).
@@ -199,27 +199,40 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.Success).
 			Bold(true).
 			Padding(0, 1).
+			Background(c.Surface).
+			MarginRight(1).
 			BorderLeft(true).
+			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(c.Success),
 
 		AlertWarning: lipgloss.NewStyle().
 			Foreground(c.Warning).
 			Bold(true).
 			Padding(0, 1).
+			Background(c.Surface).
+			MarginRight(1).
 			BorderLeft(true).
+			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(c.Warning),
 
 		AlertError: lipgloss.NewStyle().
 			Foreground(c.Error).
 			Bold(true).
 			Padding(0, 1).
+			Background(c.Surface).
+			MarginRight(1).
 			BorderLeft(true).
+			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(c.Error),
 
 		AlertInfo: lipgloss.NewStyle().
 			Foreground(c.Info).
+			Bold(true).
 			Padding(0, 1).
+			Background(c.Surface).
+			MarginRight(1).
 			BorderLeft(true).
+			BorderStyle(lipgloss.NormalBorder()).
 			BorderForeground(c.Info),
 
 		// ---- Agent / pipeline ---------------------------------------------
@@ -244,13 +257,16 @@ func BuildStyles(c Colors) Styles {
 			Italic(true),
 
 		ToolRunning: lipgloss.NewStyle().
-			Foreground(c.Warning),
+			Foreground(c.Warning).
+			Bold(true),
 
 		ToolSuccess: lipgloss.NewStyle().
-			Foreground(c.Success),
+			Foreground(c.Success).
+			Bold(true),
 
 		ToolError: lipgloss.NewStyle().
-			Foreground(c.Error),
+			Foreground(c.Error).
+			Bold(true),
 
 		ModalityLoaded: lipgloss.NewStyle().
 			Foreground(c.Accent3).
@@ -268,6 +284,140 @@ func BuildStyles(c Colors) Styles {
 			Background(c.Overlay).
 			Foreground(c.Accent2).
 			Padding(0, 1),
+
+		// ---- General ------------------------------------------------------
+		Bold: lipgloss.NewStyle().
+			Foreground(c.Text).
+			Bold(true),
+
+		Muted: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		Dimmed: lipgloss.NewStyle().
+			Foreground(c.TextDim),
+
+		Link: lipgloss.NewStyle().
+			Foreground(c.Info).
+			Underline(true),
+	}
+}
+
+// BuildCleanStyles constructs a low-chrome style profile intended for inline
+// terminal usage where full-screen panels feel too heavy.
+func BuildCleanStyles(c Colors) Styles {
+	return Styles{
+		// ---- Layout -------------------------------------------------------
+		Header: lipgloss.NewStyle().
+			Foreground(c.Primary).
+			Bold(true),
+
+		Footer: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		StatusBar: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		Sidebar: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		MainPanel: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		Divider: lipgloss.NewStyle().
+			Foreground(c.TextDim),
+
+		// ---- Chat messages ------------------------------------------------
+		UserMessage: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		AssistantMessage: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		SystemMessage: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		ToolMessage: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		// ---- Input --------------------------------------------------------
+		InputField: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		InputPrompt: lipgloss.NewStyle().
+			Foreground(c.Primary).
+			Bold(true),
+
+		FormContainer: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		FormField: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		FormLabel: lipgloss.NewStyle().
+			Foreground(c.TextMuted).
+			Bold(true),
+
+		// ---- Feedback -----------------------------------------------------
+		AlertSuccess: lipgloss.NewStyle().
+			Foreground(c.Success).
+			Bold(true).
+			Underline(true),
+
+		AlertWarning: lipgloss.NewStyle().
+			Foreground(c.Warning).
+			Bold(true).
+			Underline(true),
+
+		AlertError: lipgloss.NewStyle().
+			Foreground(c.Error).
+			Bold(true).
+			Underline(true),
+
+		AlertInfo: lipgloss.NewStyle().
+			Foreground(c.Info).
+			Bold(true),
+
+		// ---- Agent / pipeline ---------------------------------------------
+		AgentBadge: lipgloss.NewStyle().
+			Foreground(c.Primary).
+			Bold(true),
+
+		AgentTransition: lipgloss.NewStyle().
+			Foreground(c.Accent2).
+			Italic(true),
+
+		ProgressBar: lipgloss.NewStyle().
+			Foreground(c.Primary),
+
+		SpinnerStyle: lipgloss.NewStyle().
+			Foreground(c.Primary),
+
+		ToolExecution: lipgloss.NewStyle().
+			Foreground(c.TextMuted).
+			Italic(true),
+
+		ToolRunning: lipgloss.NewStyle().
+			Foreground(c.Warning).
+			Bold(true),
+
+		ToolSuccess: lipgloss.NewStyle().
+			Foreground(c.Success).
+			Bold(true),
+
+		ToolError: lipgloss.NewStyle().
+			Foreground(c.Error).
+			Bold(true),
+
+		ModalityLoaded: lipgloss.NewStyle().
+			Foreground(c.Accent3).
+			Bold(true),
+
+		// ---- Code / markdown ----------------------------------------------
+		CodeBlock: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		InlineCode: lipgloss.NewStyle().
+			Foreground(c.Accent2),
 
 		// ---- General ------------------------------------------------------
 		Bold: lipgloss.NewStyle().

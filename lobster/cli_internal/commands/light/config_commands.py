@@ -15,6 +15,129 @@ if TYPE_CHECKING:
 from lobster.cli_internal.commands.output_adapter import OutputAdapter
 
 
+def _print_table_or_empty(
+    output: OutputAdapter, table_data: dict, empty_message: str
+) -> bool:
+    """Render a table when rows exist, otherwise print a compact empty-state note."""
+    if table_data.get("rows"):
+        output.print_table(table_data)
+        return True
+
+    title = table_data.get("title")
+    if title:
+        output.print(str(title))
+    output.print(f"[dim]{empty_message}[/dim]")
+    return False
+
+
+def _print_config_command_reference(
+    output: OutputAdapter, table_width: int = 100
+) -> None:
+    """Render a structured config command reference that works in both Rich and Go mode."""
+    output.print_table(
+        {
+            "title": "💡 Config Commands",
+            "width": table_width,
+            "columns": [
+                {"name": "Area", "style": "cyan", "width": 12},
+                {
+                    "name": "Command",
+                    "style": "white",
+                    "width": 34,
+                    "overflow": "fold",
+                },
+                {
+                    "name": "Purpose",
+                    "style": "dim",
+                    "width": 46,
+                    "overflow": "fold",
+                },
+            ],
+            "rows": [
+                [
+                    "Provider",
+                    "/config provider",
+                    "List providers and show the active runtime provider.",
+                ],
+                [
+                    "Provider",
+                    "/config provider <name>",
+                    "Switch provider for the current session only.",
+                ],
+                [
+                    "Provider",
+                    "/config provider <name> --save",
+                    "Switch provider and persist it to this workspace.",
+                ],
+                [
+                    "Model",
+                    "/config model",
+                    "List models available for the active provider.",
+                ],
+                [
+                    "Model",
+                    "/config model <name>",
+                    "Switch model for the current session only.",
+                ],
+                [
+                    "Model",
+                    "/config model <name> --save",
+                    "Switch model and persist it to this workspace.",
+                ],
+                [
+                    "Display",
+                    "/config or /config show",
+                    "Show the full configuration summary.",
+                ],
+            ],
+        }
+    )
+
+
+def _print_config_model_command_reference(
+    output: OutputAdapter, table_width: int = 100
+) -> None:
+    """Render focused command help for `/config model` using structured output."""
+    output.print_table(
+        {
+            "title": "💡 Model Commands",
+            "width": table_width,
+            "columns": [
+                {
+                    "name": "Command",
+                    "style": "white",
+                    "width": 34,
+                    "overflow": "fold",
+                },
+                {
+                    "name": "Purpose",
+                    "style": "dim",
+                    "width": 62,
+                    "overflow": "fold",
+                },
+            ],
+            "rows": [
+                [
+                    "/config model <name>",
+                    "Switch the active model for the current session only.",
+                ],
+                [
+                    "/config model <name> --save",
+                    "Switch the active model and persist it to this workspace.",
+                ],
+                [
+                    "/config provider",
+                    "List providers and confirm which model catalog is active.",
+                ],
+                [
+                    "/config provider <name>",
+                    "Change providers first when you need a different model catalog.",
+                ],
+            ],
+        }
+    )
+
+
 def _build_agent_hierarchy(output: OutputAdapter, current_tier: str) -> None:
     """
     Display ASCII hierarchy of agent relationships.
@@ -170,6 +293,10 @@ def _build_agent_composition(
             agent_table_data["rows"].append(
                 [f"[dim]{agent_name}[/dim]", "[red]Missing[/red]", "[dim]-[/dim]"]
             )
+
+    if not display_agents:
+        output.print("[dim]No agents are configured or discoverable in this workspace.[/dim]")
+        return config_source, 0, 0
 
     output.print_table(agent_table_data)
 
@@ -341,7 +468,11 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             # Skip agents with config errors
             continue
 
-    output.print_table(agent_table_data)
+    _print_table_or_empty(
+        output,
+        agent_table_data,
+        "No agent-specific model resolution data is available for the current configuration.",
+    )
 
     # ========================================================================
     # Agent Hierarchy (ASCII tree)
@@ -357,31 +488,7 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     # ========================================================================
     # Usage hints
     # ========================================================================
-    output.print("\n[cyan]💡 Available Config Commands:[/cyan]")
-    output.print("\n[yellow]Provider Management:[/yellow]")
-    output.print("  • [white]/config provider[/white] - List available providers")
-    output.print(
-        "  • [white]/config provider <name>[/white] - Switch provider (runtime only)"
-    )
-    output.print(
-        "  • [white]/config provider <name> --save[/white] - Switch and persist to workspace"
-    )
-
-    output.print("\n[yellow]Model Management:[/yellow]")
-    output.print(
-        "  • [white]/config model[/white] - List available models for current provider"
-    )
-    output.print(
-        "  • [white]/config model <name>[/white] - Switch model (runtime only)"
-    )
-    output.print(
-        "  • [white]/config model <name> --save[/white] - Switch model and persist to workspace"
-    )
-
-    output.print("\n[yellow]Configuration Display:[/yellow]")
-    output.print(
-        "  • [white]/config[/white] or [white]/config show[/white] - Show this configuration summary"
-    )
+    _print_config_command_reference(output, TABLE_WIDTH)
 
     return f"Displayed configuration (provider: {provider}, profile: {profile})"
 
@@ -551,21 +658,51 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         Summary string for conversation history, or None
     """
     from lobster.config.providers import get_provider
-    from lobster.config.workspace_config import WorkspaceProviderConfig
     from lobster.core.config_resolver import ConfigResolver
 
-    # Get current provider
     workspace_path = Path(client.workspace_path)
     resolver = ConfigResolver(workspace_path=workspace_path)
-    current_provider, provider_source = resolver.resolve_provider(
-        runtime_override=client.provider_override
-    )
+    table_width = 100
 
     try:
+        current_provider, provider_source = resolver.resolve_provider(
+            runtime_override=client.provider_override
+        )
         provider_obj = get_provider(current_provider)
         if not provider_obj:
             output.print(f"[red]✗ Provider '{current_provider}' not registered[/red]")
             return None
+
+        provider_display_name = getattr(
+            provider_obj, "display_name", current_provider.capitalize()
+        )
+        current_model, model_source = resolver.resolve_model(
+            runtime_override=getattr(client, "model_override", None),
+            provider=current_provider,
+        )
+        if not current_model:
+            current_model = provider_obj.get_default_model()
+            model_source = f"provider default ({current_provider})"
+
+        output.print_table(
+            {
+                "title": "⚙️ Active Model Selection",
+                "width": table_width,
+                "columns": [
+                    {"name": "Setting", "style": "cyan", "width": 16},
+                    {"name": "Value", "style": "white", "width": 36},
+                    {"name": "Source", "style": "yellow", "overflow": "fold"},
+                ],
+                "rows": [
+                    ["Provider", current_provider, provider_source],
+                    [
+                        "Current model",
+                        current_model or "Provider default",
+                        model_source,
+                    ],
+                ],
+            }
+        )
 
         # For Ollama, check if server is available
         if current_provider == "ollama":
@@ -576,18 +713,6 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
 
         models = provider_obj.list_models()
 
-        if not models:
-            if current_provider == "ollama":
-                output.print("[yellow]No Ollama models installed[/yellow]")
-                output.print("\n[cyan]💡 Install a model:[/cyan]")
-                output.print("  ollama pull llama3:8b-instruct")
-            else:
-                output.print(
-                    f"[yellow]No models available for {current_provider}[/yellow]"
-                )
-            return None
-
-        # Provider-specific table title
         provider_icons = {
             "anthropic": "🤖",
             "bedrock": "☁️",
@@ -596,60 +721,53 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
             "azure": "🔷",
         }
         icon = provider_icons.get(current_provider, "🤖")
-        title = f"{icon} Available {current_provider.capitalize()} Models"
-
-        # Get current model from config
-        config = WorkspaceProviderConfig.load(workspace_path)
-        current_model = (
-            config.get_model_for_provider(current_provider)
-            if WorkspaceProviderConfig.exists(workspace_path)
-            else None
-        )
+        title = f"{icon} Available {provider_display_name} Models"
 
         model_table_data = {
             "title": title,
+            "width": table_width,
             "columns": [
-                {"name": "Model", "style": "yellow"},
-                {"name": "Display Name", "style": "cyan"},
-                {"name": "Description", "style": "white", "max_width": 50},
+                {"name": "Model", "style": "yellow", "width": 24},
+                {"name": "Display Name", "style": "cyan", "width": 26},
+                {"name": "Status", "style": "green", "width": 18},
+                {"name": "Description", "style": "white", "overflow": "fold"},
             ],
             "rows": [],
         }
 
+        if not models:
+            empty_message = f"No models are currently available for {provider_display_name}."
+            if current_provider == "ollama":
+                empty_message = "No Ollama models are installed for the active provider."
+            _print_table_or_empty(output, model_table_data, empty_message)
+            if current_provider == "ollama":
+                output.print("[dim]Install one first, for example: ollama pull llama3.2[/dim]")
+            _print_config_model_command_reference(output, table_width)
+            return None
+
         for model in models:
-            is_current = "[green]●[/green]" if model.name == current_model else ""
-            is_default = "[dim](default)[/dim]" if model.is_default else ""
+            status_parts = []
+            if model.name == current_model:
+                status_parts.append("Current")
+            if model.is_default:
+                status_parts.append("Default")
             model_table_data["rows"].append(
                 [
-                    f"[bold]{model.name}[/bold] {is_current}",
-                    f"{model.display_name} {is_default}",
+                    f"[bold]{model.name}[/bold]",
+                    model.display_name,
+                    ", ".join(status_parts) if status_parts else "-",
                     model.description,
                 ]
             )
 
         output.print_table(model_table_data)
-        output.print(
-            f"\n[cyan]Current provider:[/cyan] {current_provider} (from {provider_source})"
-        )
-        output.print("\n[cyan]💡 Usage:[/cyan]")
-        output.print("  • [white]/config model <name>[/white] - Switch model (runtime)")
-        output.print(
-            "  • [white]/config model <name> --save[/white] - Switch + persist"
-        )
-        output.print(
-            "  • [white]/config provider <name>[/white] - Change provider first"
-        )
-
-        if current_model:
-            output.print(f"\n[green]✓ Current model: {current_model}[/green]")
+        _print_config_model_command_reference(output, table_width)
 
         return f"Listed models for {current_provider} provider"
 
     except Exception as e:
-        output.print(
-            f"[red]✗ Failed to list models for {current_provider}: {str(e)}[/red]"
-        )
-        output.print("[dim]Check provider configuration[/dim]")
+        output.print(f"[red]✗ Failed to list models: {str(e)}[/red]")
+        output.print("[dim]Use /config provider to confirm the active backend first.[/dim]")
         return None
 
 
@@ -1756,4 +1874,3 @@ def config_models_impl(workspace=None):
         )
 
     console.print(f"[dim]Saved to: {workspace_path / 'provider_config.json'}[/dim]")
-

@@ -1834,10 +1834,17 @@ def _execute_command(
                     ["Slash command completion", "Enabled"],
                     ["Tab accept suggestion", "Enabled"],
                     ["Up/Down suggestion cycle", "Enabled"],
+                    ["PgUp/PgDn transcript scroll", "Enabled"],
+                    ["Ctrl+G mouse mode toggle", "Enabled"],
+                    ["Mouse select mode", "Drag to copy text"],
+                    ["Mouse scroll mode", "Wheel/trackpad scrolls transcript"],
                     ["Inline dropdown list", "Not supported (inline only)"],
                 ],
             })
-            output.print("Tip: type '/' then press Tab to accept a suggestion.", style="info")
+            output.print(
+                "Tip: type '/' then press Tab to accept a suggestion. Use Ctrl+G to switch mouse mode between select and scroll.",
+                style="info",
+            )
             return None
 
         # Show input capabilities and navigation features

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import shutil
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -20,10 +19,10 @@ def find_tui_binary() -> Optional[str]:
 
     Search order:
       1. Platform wheel: try ``import lobster_ai_tui`` and check its data scripts dir
-      2. User cache: ~/.cache/lobster/bin/lobster-tui
-      3. PATH: shutil.which("lobster-tui")
-      4. Development build: lobster-tui/lobster-tui relative to the repo root
-         (works when running directly from the source checkout)
+      2. Development build: lobster-tui/lobster-tui relative to the repo root
+         (preferred when running directly from the source checkout)
+      3. User cache: ~/.cache/lobster/bin/lobster-tui
+      4. PATH: shutil.which("lobster-tui")
 
     Returns None when nothing is found — callers must fall back gracefully.
     """
@@ -46,23 +45,7 @@ def find_tui_binary() -> Optional[str]:
         pass  # Package not installed — not an error
 
     # ------------------------------------------------------------------ #
-    # 2. User cache: ~/.cache/lobster/bin/lobster-tui                     #
-    # ------------------------------------------------------------------ #
-    cache_bin = Path.home() / ".cache" / "lobster" / "bin" / _BINARY_NAME
-    if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
-        logger.debug("lobster-tui found in cache: %s", cache_bin)
-        return str(cache_bin)
-
-    # ------------------------------------------------------------------ #
-    # 3. PATH lookup                                                       #
-    # ------------------------------------------------------------------ #
-    which = shutil.which(_BINARY_NAME)
-    if which:
-        logger.debug("lobster-tui found on PATH: %s", which)
-        return which
-
-    # ------------------------------------------------------------------ #
-    # 4. Development build — lobster-tui/lobster-tui relative to repo     #
+    # 2. Development build — lobster-tui/lobster-tui relative to repo     #
     # ------------------------------------------------------------------ #
     # Walk up from this file to find the repo root (contains lobster-tui/ dir)
     here = Path(__file__).resolve()
@@ -74,6 +57,22 @@ def find_tui_binary() -> Optional[str]:
         # Stop searching once we leave plausible repo roots (e.g. at /Users or /)
         if ancestor == ancestor.parent:
             break
+
+    # ------------------------------------------------------------------ #
+    # 3. User cache: ~/.cache/lobster/bin/lobster-tui                     #
+    # ------------------------------------------------------------------ #
+    cache_bin = Path.home() / ".cache" / "lobster" / "bin" / _BINARY_NAME
+    if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
+        logger.debug("lobster-tui found in cache: %s", cache_bin)
+        return str(cache_bin)
+
+    # ------------------------------------------------------------------ #
+    # 4. PATH lookup                                                       #
+    # ------------------------------------------------------------------ #
+    which = shutil.which(_BINARY_NAME)
+    if which:
+        logger.debug("lobster-tui found on PATH: %s", which)
+        return which
 
     logger.debug("lobster-tui binary not found")
     return None

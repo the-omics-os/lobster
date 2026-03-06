@@ -49,18 +49,21 @@ Commands:
   help     Show this help message
 
 Flags for init:
-  --theme <name>  Theme to use (lobster-dark, lobster-light). Default: lobster-dark
+  --theme <name>        Theme to use (lobster-dark, lobster-light). Default: lobster-dark
+  --result-file <path>  Write wizard result JSON to a file instead of stdout
 
 Flags for chat:
   --proto-fd-in <fd>   File descriptor for protocol input (required)
   --proto-fd-out <fd>  File descriptor for protocol output (required)
   --theme <name>       Theme to use (lobster-dark, lobster-light). Default: lobster-dark
+  --inline             Run in inline mode (no alternate screen, cleaner rendering)
 `, Version)
 }
 
 // runInit parses the flags for the init subcommand and launches the wizard.
 func runInit(args []string) {
 	themeName := "lobster-dark"
+	resultFile := ""
 
 	// Parse --theme flag from args.
 	for i := 0; i < len(args); i++ {
@@ -73,12 +76,20 @@ func runInit(args []string) {
 				fmt.Fprintf(os.Stderr, "error: --theme requires a value\n")
 				os.Exit(1)
 			}
+		case "--result-file":
+			if i+1 < len(args) {
+				resultFile = args[i+1]
+				i++
+			} else {
+				fmt.Fprintf(os.Stderr, "error: --result-file requires a value\n")
+				os.Exit(1)
+			}
 		default:
 			fmt.Fprintf(os.Stderr, "warning: unknown flag %q (ignored)\n", args[i])
 		}
 	}
 
-	if err := initwizard.Run(themeName); err != nil {
+	if err := initwizard.Run(themeName, resultFile); err != nil {
 		// "cancelled" is a clean exit — exit code 1, no error message.
 		if err.Error() == "cancelled" {
 			os.Exit(1)
@@ -93,6 +104,7 @@ func runChat(args []string) {
 	themeName := "lobster-dark"
 	fdIn := -1
 	fdOut := -1
+	inline := false
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -130,6 +142,9 @@ func runChat(args []string) {
 			themeName = args[i+1]
 			i++
 
+		case "--inline":
+			inline = true
+
 		default:
 			fmt.Fprintf(os.Stderr, "warning: unknown flag %q (ignored)\n", args[i])
 		}
@@ -141,7 +156,7 @@ func runChat(args []string) {
 		os.Exit(1)
 	}
 
-	if err := chat.Run(fdIn, fdOut, themeName, Version); err != nil {
+	if err := chat.Run(fdIn, fdOut, themeName, Version, inline); err != nil {
 		fmt.Fprintf(os.Stderr, "Chat failed: %v\n", err)
 		os.Exit(1)
 	}
