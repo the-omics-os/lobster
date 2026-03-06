@@ -81,6 +81,41 @@ Then describe your analysis in plain language:
 
 <br/>
 
+# CLI Reference
+
+**Core commands:**
+```bash
+lobster chat                        # Interactive session (default)
+lobster query "your request"        # Single-turn, non-interactive
+lobster init                        # Configure LLM provider and API keys
+lobster --help                      # Full command reference
+```
+
+**Session continuity:**
+```bash
+lobster query --session-id my_project "Search PubMed for CRISPR"
+lobster query --session-id latest "Download the first result"  # resume last session
+```
+
+**In-session slash commands** (inside `lobster chat`):
+```text
+> /pipeline export                  # Export analysis as a reproducible Jupyter notebook
+> /pipeline run analysis.ipynb      # Re-run an exported notebook
+> /data                             # List loaded datasets and modalities
+> /files                            # Browse workspace files
+> /status                           # Session info, token usage, active agents
+> /help                             # All slash commands
+```
+
+**Developer commands:**
+```bash
+lobster scaffold agent --name my_expert --display-name "My Expert" \
+  --description "Description" --tier free   # Generate a new agent package
+lobster validate-plugin ./my-package/        # Validate package structure (7 checks)
+```
+
+<br/>
+
 # 🤖 For AI Coding Agents
 
 Install skills that give Claude Code, Cursor, or Gemini CLI deep knowledge of the Lobster architecture:
