@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -105,11 +106,11 @@ type completionTimeout struct{ id string }
 
 // ChatMessage represents a single message in the chat history.
 type ChatMessage struct {
-	// Role is one of "user", "assistant", or "system".
+	// Role is one of "user", "assistant", "system", or "handoff".
 	Role string
 	// Content is the rendered text content of the message.
 	Content string
-	// Agent is the name of the specialist agent (empty for user/system).
+	// Agent is optional metadata for agent-specific UI treatment.
 	Agent string
 }
 
@@ -134,10 +135,11 @@ type Model struct {
 	viewport viewport.Model
 	input    textarea.Model
 
-	messages    []ChatMessage
-	activeAgent string
-	toolFeed    []ToolFeedEntry
-	modalities  []ModalityInfo
+	messages        []ChatMessage
+	pendingHandoffs []ChatMessage
+	activeWorkers   map[string]struct{}
+	toolFeed        []ToolFeedEntry
+	modalities      []ModalityInfo
 
 	statusText  string
 	isStreaming bool
@@ -205,17 +207,19 @@ type Model struct {
 	pendingConfirmID string
 
 	// Pending select dialog state.
-	pendingSelect   *protocol.SelectPayload
-	pendingSelectID string
+	pendingSelect      *protocol.SelectPayload
+	pendingSelectID    string
+	pendingComponentID string // HITL component_render awaiting text input response
 	selectIndex     int
 
-	width        int
-	height       int
-	inline       bool
-	inlineFlow   bool
-	mouseCapture bool
-	quitting     bool
-	styles       theme.Styles
+	width               int
+	height              int
+	inline              bool
+	inlineFlow          bool
+	inlineBannerPrinted bool
+	mouseCapture        bool
+	quitting            bool
+	styles              theme.Styles
 
 	// Inline runtime banner details.
 	totalRAMGB    int
@@ -274,6 +278,8 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 		viewport:                vp,
 		input:                   ti,
 		messages:                make([]ChatMessage, 0, 64),
+		pendingHandoffs:         make([]ChatMessage, 0, 8),
+		activeWorkers:           make(map[string]struct{}, 4),
 		toolFeed:                make([]ToolFeedEntry, 0, maxToolFeed),
 		modalities:              make([]ModalityInfo, 0, 8),
 		inputHistory:            make([]string, 0, maxInputHistory),
@@ -523,14 +529,16 @@ func (m Model) View() string {
 		}
 	}
 
-	// Header (1 line).
-	b.WriteString(renderHeader(m))
-	b.WriteByte('\n')
-	if m.inline {
-		runtimeSummary := renderRuntimeSummary(m)
-		if runtimeSummary != "" {
-			b.WriteString(runtimeSummary)
-			b.WriteString("\n\n")
+	// Header/runtime chrome.
+	if m.shouldRenderHeaderInFrame() {
+		b.WriteString(renderHeader(m))
+		b.WriteByte('\n')
+		if m.inline {
+			runtimeSummary := renderRuntimeSummary(m)
+			if runtimeSummary != "" {
+				b.WriteString(runtimeSummary)
+				b.WriteString("\n\n")
+			}
 		}
 	}
 
@@ -640,17 +648,17 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeAgentTransition:
 		var p protocol.AgentTransitionPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			m.activeAgent = p.To
-			reason := p.Reason
-			if reason == "" {
-				reason = fmt.Sprintf("handing off to %s", p.To)
+			if m.isActivityTransition(p) {
+				m.applyWorkerActivity(p)
+				return m, waitForProtocolMsg(m.handler)
 			}
-			m.messages = append(m.messages, ChatMessage{
-				Role:    "system",
-				Content: reason,
-				Agent:   p.To,
-			})
-			m.rebuildViewport()
+
+			task := strings.TrimSpace(p.Reason)
+			if task == "" {
+				task = fmt.Sprintf("handoff to %s", p.To)
+			}
+			printCmd := m.recordHandoff(task, p.To)
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -661,7 +669,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 				Name:    p.ToolName,
 				Event:   p.Event,
 				Summary: p.Summary,
-				Agent:   m.activeAgent,
+				Agent:   p.Agent,
 			}
 			// In-place update: find the most recent entry with same name in "start" state.
 			updated := false
@@ -683,18 +691,26 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeDone:
-		// Flush the stream buffer as an assistant message.
+		// Flush the stream buffer as supervisor transcript content, then any
+		// buffered handoff lines that belong directly beneath it.
+		toAppend := make([]ChatMessage, 0, 1+len(m.pendingHandoffs))
 		if m.streamBuf.Len() > 0 {
-			m.messages = append(m.messages, ChatMessage{
+			toAppend = append(toAppend, ChatMessage{
 				Role:    "assistant",
 				Content: m.streamBuf.String(),
-				Agent:   m.activeAgent,
 			})
 			m.streamBuf.Reset()
 		}
+		if len(m.pendingHandoffs) > 0 {
+			toAppend = append(toAppend, m.pendingHandoffs...)
+			m.pendingHandoffs = m.pendingHandoffs[:0]
+		}
 		m.isStreaming = false
-		m.rebuildViewportWithMode(true)
-		return m, waitForProtocolMsg(m.handler)
+		printCmd := m.appendMessages(toAppend, true)
+		if len(toAppend) == 0 {
+			m.rebuildViewportWithMode(true)
+		}
+		return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 
 	case protocol.TypeStatus:
 		var p protocol.StatusPayload
@@ -722,11 +738,11 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeAlert:
 		var p protocol.AlertPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			m.messages = append(m.messages, ChatMessage{
+			printCmd := m.appendMessage(ChatMessage{
 				Role:    "alert_" + string(p.Level),
 				Content: p.Message,
-			})
-			m.rebuildViewport()
+			}, false)
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -839,12 +855,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			if p.Shape != "" {
 				info += fmt.Sprintf(" (%s)", p.Shape)
 			}
-			m.messages = append(m.messages, ChatMessage{
+			printCmd := m.appendMessage(ChatMessage{
 				Role:    "system",
 				Content: m.styles.ModalityLoaded.Render(info),
-			})
+			}, false)
 			m.modalities = append(m.modalities, ModalityInfo{Name: p.Name, Shape: p.Shape})
-			m.rebuildViewport()
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -903,6 +919,13 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, waitForProtocolMsg(m.handler)
 
+	case protocol.TypeComponentRender:
+		var p protocol.ComponentRenderPayload
+		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
+			return m.handleComponentRender(p, msg.ID)
+		}
+		return m, waitForProtocolMsg(m.handler)
+
 	default:
 		// Unknown message types are silently ignored for forward compatibility.
 		return m, waitForProtocolMsg(m.handler)
@@ -931,6 +954,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 
 	case tea.KeyCtrlC:
+		if m.isStreaming || m.spinnerActive {
+			// Cancel running query — stay in TUI.
+			if m.handler != nil {
+				_ = m.handler.SendTyped(protocol.TypeCancel, protocol.CancelPayload{}, "")
+			}
+			return m, nil
+		}
+		// Idle prompt — confirm exit (existing flow).
 		if m.handler != nil {
 			_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
 		}
@@ -981,15 +1012,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.pendingConfirmID = localExitConfirmID
 				return m, nil
 			case "dashboard":
-				m.messages = append(m.messages, ChatMessage{
+				printCmd := m.appendMessage(ChatMessage{
 					Role:    "system",
 					Content: "Dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard.",
-				})
+				}, false)
 				m.input.SetValue("")
 				m.recalculateViewportHeight()
 				cmd := m.refreshSuggestions()
-				m.rebuildViewport()
-				return m, cmd
+				return m, tea.Batch(cmd, printCmd)
 			default:
 				// Forward to Python for handling.
 				if m.handler != nil {
@@ -999,6 +1029,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}, "")
 				}
 			}
+		} else if m.pendingComponentID != "" {
+			// HITL text fallback: send as component_response.
+			if m.handler != nil {
+				_ = m.handler.SendTyped(protocol.TypeComponentResponse, protocol.ComponentResponsePayload{
+					ID:   m.pendingComponentID,
+					Data: map[string]any{"answer": val},
+				}, m.pendingComponentID)
+			}
+			m.pendingComponentID = ""
 		} else {
 			if m.handler != nil {
 				_ = m.handler.SendTyped(protocol.TypeInput, protocol.InputPayload{
@@ -1007,17 +1046,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.messages = append(m.messages, ChatMessage{
+		printCmd := m.appendMessage(ChatMessage{
 			Role:    "user",
 			Content: val,
-		})
+		}, false)
 		m.isStreaming = true
 		m.input.SetValue("")
 		m.recalculateViewportHeight()
 		cmd := m.refreshSuggestions()
-		m.rebuildViewport()
 
-		return m, cmd
+		return m, tea.Batch(cmd, printCmd)
 
 	case tea.KeyTab:
 		if m.applyNextCompletionSuggestion() {
@@ -1218,6 +1256,23 @@ func (m *Model) rebuildViewport() {
 	m.rebuildViewportWithMode(false)
 }
 
+func (m *Model) appendMessage(msg ChatMessage, forceBottom bool) tea.Cmd {
+	return m.appendMessages([]ChatMessage{msg}, forceBottom)
+}
+
+func (m *Model) appendMessages(msgs []ChatMessage, forceBottom bool) tea.Cmd {
+	if len(msgs) == 0 {
+		if forceBottom {
+			m.rebuildViewportWithMode(true)
+		}
+		return nil
+	}
+
+	m.messages = append(m.messages, msgs...)
+	m.rebuildViewportWithMode(forceBottom)
+	return m.inlinePrintMessagesCmd(msgs)
+}
+
 // rebuildViewportWithMode reconstructs the viewport while preserving user
 // scroll position unless forceBottom is requested.
 func (m *Model) rebuildViewportWithMode(forceBottom bool) {
@@ -1225,23 +1280,32 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	wasAtBottom := m.viewport.AtBottom()
 	renderer := m.getMarkdownRenderer()
 	var b strings.Builder
-	for _, msg := range m.messages {
-		b.WriteString(renderMessage(msg, m.styles, m.width, renderer, m.inline))
-		b.WriteByte('\n')
-		// Add breathing room between a user turn and assistant response.
-		if m.inline && msg.Role == "user" {
+	if !m.inlineFlowMode() {
+		for _, msg := range m.messages {
+			b.WriteString(renderMessage(msg, m.styles, m.width, renderer, m.inline))
 			b.WriteByte('\n')
+			// Add breathing room between a user turn and assistant response.
+			if m.inline && msg.Role == "user" {
+				b.WriteByte('\n')
+			}
 		}
 	}
-	// Append in-progress streaming text.
-	if m.streamBuf.Len() > 0 {
+	// Append in-progress streaming text only in framed transcript mode.
+	// Inline flow mode prints finalized messages to terminal scrollback;
+	// rendering partial stream text here causes visual duplication/noise.
+	if !m.inlineFlowMode() && m.streamBuf.Len() > 0 {
 		partial := ChatMessage{
 			Role:    "assistant",
 			Content: m.streamBuf.String(),
-			Agent:   m.activeAgent,
 		}
 		b.WriteString(renderMessage(partial, m.styles, m.width, renderer, m.inline))
 		b.WriteByte('\n')
+	}
+	if !m.inlineFlowMode() && len(m.pendingHandoffs) > 0 {
+		for _, msg := range m.pendingHandoffs {
+			b.WriteString(renderMessage(msg, m.styles, m.width, renderer, m.inline))
+			b.WriteByte('\n')
+		}
 	}
 	m.viewport.SetContent(b.String())
 	if m.inlineFlowMode() {
@@ -1252,10 +1316,47 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	}
 }
 
+func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
+	if !m.inlineFlowMode() {
+		return nil
+	}
+
+	renderedParts := make([]string, 0, len(msgs))
+	renderer := m.getMarkdownRenderer()
+	for _, msg := range msgs {
+		rendered := strings.TrimRight(renderMessage(msg, m.styles, m.width, renderer, true), "\n")
+		if strings.TrimSpace(rendered) == "" {
+			continue
+		}
+		renderedParts = append(renderedParts, rendered)
+	}
+	if len(renderedParts) == 0 {
+		return nil
+	}
+
+	if !m.inlineBannerPrinted {
+		m.inlineBannerPrinted = true
+		header := strings.TrimSpace(renderHeader(*m))
+		runtimeSummary := strings.TrimSpace(renderRuntimeSummary(*m))
+		parts := make([]string, 0, 3)
+		if header != "" {
+			parts = append(parts, header)
+		}
+		if runtimeSummary != "" {
+			parts = append(parts, runtimeSummary)
+		}
+		parts = append(parts, renderedParts...)
+		return tea.Println(strings.Join(parts, "\n"))
+	}
+
+	return tea.Println(strings.Join(renderedParts, "\n"))
+}
+
 func (m *Model) applyClearTarget(target string) {
 	switch target {
 	case "output", "all", "":
 		m.messages = m.messages[:0]
+		m.pendingHandoffs = m.pendingHandoffs[:0]
 		m.streamBuf.Reset()
 		m.isStreaming = false
 		m.toolFeed = m.toolFeed[:0]
@@ -1294,19 +1395,19 @@ func (m *Model) renderHelp() {
 
 *Ask anything in natural language — Lobster routes to the right specialist agent.*`
 
-	m.messages = append(m.messages, ChatMessage{
+	m.appendMessage(ChatMessage{
 		Role:    "assistant",
 		Content: help,
-	})
+	}, false)
 }
 
 // renderDataSummary appends a summary of loaded modalities to the chat.
 func (m *Model) renderDataSummary() {
 	if len(m.modalities) == 0 {
-		m.messages = append(m.messages, ChatMessage{
+		m.appendMessage(ChatMessage{
 			Role:    "system",
 			Content: "No data loaded. Use /read <file> or ask Lobster to load data.",
-		})
+		}, false)
 		return
 	}
 	var tb strings.Builder
@@ -1315,10 +1416,10 @@ func (m *Model) renderDataSummary() {
 	for _, mod := range m.modalities {
 		tb.WriteString(fmt.Sprintf("| %s | %s |\n", mod.Name, mod.Shape))
 	}
-	m.messages = append(m.messages, ChatMessage{
+	m.appendMessage(ChatMessage{
 		Role:    "assistant",
 		Content: tb.String(),
-	})
+	}, false)
 }
 
 // pushInputHistory adds a line to local input history with ring semantics.
@@ -1400,22 +1501,129 @@ func (m Model) currentStatusLine() string {
 		}
 		statusText = spinnerText
 	}
+	workerStatus := m.activeWorkerIndicator()
 	if !m.ready {
-		return statusText
+		return joinStatusParts(statusText, workerStatus)
 	}
 
 	if m.inlineFlowMode() {
 		if strings.TrimSpace(statusText) == "" {
-			return "inline flow: use terminal scrollback  ·  Ctrl+G optional mouse capture"
+			return joinStatusParts(
+				workerStatus,
+				"inline flow: use terminal scrollback",
+				"Ctrl+G optional mouse capture",
+			)
 		}
-		return statusText + "  ·  inline flow via terminal scrollback"
+		return joinStatusParts(statusText, workerStatus, "inline flow via terminal scrollback")
 	}
 
 	mouseLabel := m.mouseModeLabel()
 	if strings.TrimSpace(statusText) == "" {
-		return mouseLabel + "  ·  Ctrl+G toggles"
+		return joinStatusParts(workerStatus, mouseLabel, "Ctrl+G toggles")
 	}
-	return statusText + "  ·  " + mouseLabel
+	return joinStatusParts(statusText, workerStatus, mouseLabel)
+}
+
+func joinStatusParts(parts ...string) string {
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return strings.Join(filtered, "  ·  ")
+}
+
+func (m Model) activeWorkerIndicator() string {
+	summary := m.activeWorkerSummary()
+	if summary == "" {
+		return ""
+	}
+	return m.styles.AgentTransition.Render("● " + summary)
+}
+
+func (m Model) activeWorkerSummary() string {
+	if len(m.activeWorkers) == 0 {
+		return ""
+	}
+
+	names := make([]string, 0, len(m.activeWorkers))
+	for name := range m.activeWorkers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	if len(names) == 1 {
+		return names[0]
+	}
+	if len(names) > 3 {
+		return fmt.Sprintf("%d agents active", len(names))
+	}
+	return fmt.Sprintf("%s +%d", names[0], len(names)-1)
+}
+
+func (m Model) isActivityTransition(p protocol.AgentTransitionPayload) bool {
+	kind := strings.TrimSpace(p.Kind)
+	if kind == "activity" {
+		return true
+	}
+	if kind == "task" {
+		return false
+	}
+
+	status := strings.TrimSpace(p.Status)
+	if status != "" {
+		return true
+	}
+
+	switch strings.TrimSpace(p.Reason) {
+	case "working", "complete", "chain_start", "return":
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *Model) applyWorkerActivity(p protocol.AgentTransitionPayload) {
+	worker := strings.TrimSpace(p.To)
+	if worker == "" {
+		worker = strings.TrimSpace(p.From)
+	}
+	if worker == "" {
+		return
+	}
+	if m.activeWorkers == nil {
+		m.activeWorkers = make(map[string]struct{}, 4)
+	}
+
+	status := strings.TrimSpace(p.Status)
+	if status == "" {
+		status = strings.TrimSpace(p.Reason)
+	}
+
+	switch status {
+	case "working":
+		m.activeWorkers[worker] = struct{}{}
+	case "complete", "return":
+		delete(m.activeWorkers, worker)
+	}
+}
+
+func (m *Model) recordHandoff(task string, agent string) tea.Cmd {
+	msg := ChatMessage{
+		Role:    "handoff",
+		Content: task,
+		Agent:   agent,
+	}
+
+	if m.streamBuf.Len() > 0 {
+		m.pendingHandoffs = append(m.pendingHandoffs, msg)
+		m.rebuildViewport()
+		return nil
+	}
+
+	return m.appendMessage(msg, false)
 }
 
 func (m Model) mouseModeLabel() string {
@@ -1443,10 +1651,12 @@ func (m Model) layoutReservedRows() int {
 			rows += lineCount(intro)
 		}
 	}
-	rows += lineCount(renderHeader(m))
-	if m.inline {
-		if runtimeSummary := renderRuntimeSummary(m); runtimeSummary != "" {
-			rows += lineCount(runtimeSummary) + 2 // explicit "\n\n" spacer in View()
+	if m.shouldRenderHeaderInFrame() {
+		rows += lineCount(renderHeader(m))
+		if m.inline {
+			if runtimeSummary := renderRuntimeSummary(m); runtimeSummary != "" {
+				rows += lineCount(runtimeSummary) + 2 // explicit "\n\n" spacer in View()
+			}
 		}
 	}
 
@@ -1507,6 +1717,16 @@ func (m *Model) recalculateViewportHeight() {
 
 func (m Model) inlineFlowMode() bool {
 	return m.inline && m.inlineFlow
+}
+
+func (m Model) shouldRenderHeaderInFrame() bool {
+	if !m.inline {
+		return true
+	}
+	if m.inlineFlowMode() && m.inlineBannerPrinted {
+		return false
+	}
+	return true
 }
 
 func (m Model) composerInitialized() bool {
@@ -1876,12 +2096,11 @@ func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		}
-		m.messages = append(m.messages, ChatMessage{
+		printCmd := m.appendMessage(ChatMessage{
 			Role:    "system",
 			Content: "Exit cancelled.",
-		})
-		m.rebuildViewport()
-		return m, nil
+		}, false)
+		return m, printCmd
 	}
 
 	if m.handler != nil {
@@ -1940,6 +2159,72 @@ func (m Model) handleSelectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// handleComponentRender routes a generic HITL component_render to the
+// appropriate existing UI primitive (confirm, select, or text input).
+// For components we don't yet have native Go widgets for, the fallback
+// prompt is rendered as a text input.
+func (m Model) handleComponentRender(p protocol.ComponentRenderPayload, msgID string) (tea.Model, tea.Cmd) {
+	switch p.Component {
+	case "confirm":
+		question, _ := p.Data["question"].(string)
+		if question == "" {
+			question = p.FallbackPrompt
+		}
+		defaultVal, _ := p.Data["default"].(bool)
+		m.pendingConfirm = &protocol.ConfirmPayload{
+			Message: question,
+			Default: defaultVal,
+		}
+		m.pendingConfirmID = msgID
+		m.recalculateViewportHeight()
+		return m, waitForProtocolMsg(m.handler)
+
+	case "select":
+		question, _ := p.Data["question"].(string)
+		if question == "" {
+			question = p.FallbackPrompt
+		}
+		rawOptions, _ := p.Data["options"].([]any)
+		options := make([]string, 0, len(rawOptions))
+		for _, opt := range rawOptions {
+			if s, ok := opt.(string); ok {
+				options = append(options, s)
+			}
+		}
+		if len(options) == 0 {
+			// Fall through to text input if no valid options.
+			break
+		}
+		m.pendingSelect = &protocol.SelectPayload{
+			Message: question,
+			Options: options,
+		}
+		m.pendingSelectID = msgID
+		m.selectIndex = 0
+		m.recalculateViewportHeight()
+		return m, waitForProtocolMsg(m.handler)
+	}
+
+	// Fallback for text_input, threshold_slider, cell_type_selector,
+	// or any unknown component: show the fallback prompt in the
+	// composer with a placeholder and send the response as
+	// component_response when the user submits.
+	prompt := p.FallbackPrompt
+	if prompt == "" {
+		if q, ok := p.Data["question"].(string); ok && q != "" {
+			prompt = q
+		} else {
+			prompt = "Please provide input"
+		}
+	}
+	m.pendingComponentID = msgID
+	printCmd := m.appendMessage(ChatMessage{
+		Role:    "system",
+		Content: prompt,
+	}, true)
+	return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 }
 
 func clampIndex(value, count int) int {

@@ -382,7 +382,7 @@ func TestStreamingAppendFollowsWhenAtBottom(t *testing.T) {
 	}
 }
 
-func TestInlineFlowModeKeepsHeaderVisibleWithinTerminalHeight(t *testing.T) {
+func TestInlineFlowModeDoesNotRenderArchivedTranscriptInFrame(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
 	m.inlineFlow = true
@@ -399,10 +399,6 @@ func TestInlineFlowModeKeepsHeaderVisibleWithinTerminalHeight(t *testing.T) {
 	}
 	m.rebuildViewport()
 
-	if m.viewport.VisibleLineCount() >= m.viewport.TotalLineCount() {
-		t.Fatalf("expected bounded inline flow viewport under heavy output: visible=%d total=%d", m.viewport.VisibleLineCount(), m.viewport.TotalLineCount())
-	}
-
 	rendered := m.View()
 	if h := lipgloss.Height(rendered); h > m.height {
 		t.Fatalf("expected inline flow view height <= terminal height, rendered=%d terminal=%d", h, m.height)
@@ -410,8 +406,248 @@ func TestInlineFlowModeKeepsHeaderVisibleWithinTerminalHeight(t *testing.T) {
 	if !strings.Contains(rendered, "● lobster") {
 		t.Fatalf("expected inline header to remain visible, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "overflow line 59") {
-		t.Fatalf("expected latest transcript lines to remain visible, got:\n%s", rendered)
+	if strings.Contains(rendered, "overflow line 0") || strings.Contains(rendered, "overflow line 59") {
+		t.Fatalf("expected archived transcript to be omitted from inline frame, got:\n%s", rendered)
+	}
+}
+
+func TestInlineFlowViewportHidesActiveStream(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "older output"})
+	m.streamBuf.WriteString("live output")
+
+	m.rebuildViewport()
+
+	view := m.viewport.View()
+	if strings.TrimSpace(view) != "" {
+		t.Fatalf("expected inline viewport to suppress partial stream content, got:\n%s", view)
+	}
+}
+
+func TestInlineFlowAgentTransitionDoesNotPrintSystemMessage(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+
+	updated, cmd := m.handleProtocol(testProtocolMsg(t, protocol.TypeAgentTransition, protocol.AgentTransitionPayload{
+		To:     "research_agent",
+		Kind:   "activity",
+		Status: "working",
+		Reason: "working",
+	}))
+	m = updated.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected wait command for agent transition")
+	}
+	if len(m.messages) != 0 {
+		t.Fatalf("expected no inline transcript message for agent transition, got %d", len(m.messages))
+	}
+}
+
+func TestInlinePrintMessagesCmdUsesTerminalPrintln(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+
+	cmd := m.inlinePrintMessagesCmd([]ChatMessage{{Role: "user", Content: "hello"}})
+	if cmd == nil {
+		t.Fatal("expected inline print command")
+	}
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.printLineMessage" {
+		t.Fatalf("expected terminal print command, got %s", got)
+	}
+}
+
+func TestInlineFlowReadyDoesNotDetachHeaderBeforeFirstPrintedMessage(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = false
+	m.showIntro = false
+	m.sessionID = "session_123"
+	m.provider = "bedrock"
+	m.totalRAMGB = 32
+	m.computeTarget = "MPS"
+	m.freeStorageGB = 41
+
+	updated, cmd := m.handleProtocol(testProtocolMsg(t, protocol.TypeReady, struct{}{}))
+	m = updated.(Model)
+
+	if m.inlineBannerPrinted {
+		t.Fatal("expected inline banner to remain unprinted immediately after ready")
+	}
+	if cmd == nil {
+		t.Fatal("expected ready handler to return wait command")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "● lobster") {
+		t.Fatalf("expected inline frame header to remain visible before first printed message, got:\n%s", view)
+	}
+	if !strings.Contains(view, "└─ Compute:") {
+		t.Fatalf("expected inline runtime summary to remain visible before first printed message, got:\n%s", view)
+	}
+}
+
+func TestInlineFlowFirstPrintedMessageDetachesHeader(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.showIntro = false
+	m.sessionID = "session_123"
+	m.provider = "bedrock"
+	m.totalRAMGB = 32
+	m.computeTarget = "MPS"
+	m.freeStorageGB = 41
+
+	cmd := m.appendMessage(ChatMessage{Role: "user", Content: "hello"}, false)
+	if cmd == nil {
+		t.Fatal("expected first printed message command")
+	}
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.printLineMessage" {
+		t.Fatalf("expected print command for first message, got %s", got)
+	}
+	if !m.inlineBannerPrinted {
+		t.Fatal("expected inline banner to be marked as printed after first printed message")
+	}
+
+	view := m.View()
+	if strings.Contains(view, "● lobster") {
+		t.Fatalf("expected inline frame header to be hidden after first printed message, got:\n%s", view)
+	}
+	if strings.Contains(view, "└─ Compute:") {
+		t.Fatalf("expected inline runtime summary to be hidden after first printed message, got:\n%s", view)
+	}
+}
+
+func TestTaskHandoffQueuesUntilSupervisorMessageFlushes(t *testing.T) {
+	m := newTestModel()
+	m.inline = false
+	m.inlineFlow = false
+	m.streamBuf.WriteString("I will search GEO for matching datasets.")
+	m.isStreaming = true
+
+	updated, cmd := m.handleProtocol(testProtocolMsg(t, protocol.TypeAgentTransition, protocol.AgentTransitionPayload{
+		To:     "research_agent",
+		Kind:   "task",
+		Reason: "Search GEO for human lung adenocarcinoma scRNA-seq datasets.",
+	}))
+	m = updated.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected wait command for task transition")
+	}
+	if len(m.messages) != 0 {
+		t.Fatalf("expected handoff to remain buffered until stream flush, got %d transcript messages", len(m.messages))
+	}
+	if len(m.pendingHandoffs) != 1 {
+		t.Fatalf("expected one pending handoff, got %d", len(m.pendingHandoffs))
+	}
+
+	updated, _ = m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{}))
+	m = updated.(Model)
+
+	if len(m.messages) != 2 {
+		t.Fatalf("expected assistant message plus handoff line, got %d messages", len(m.messages))
+	}
+	if m.messages[0].Role != "assistant" {
+		t.Fatalf("expected first message to be assistant, got %q", m.messages[0].Role)
+	}
+	if m.messages[1].Role != "handoff" {
+		t.Fatalf("expected second message to be handoff, got %q", m.messages[1].Role)
+	}
+	rendered := renderMessage(m.messages[1], m.styles, m.width, nil, false)
+	if !strings.Contains(rendered, "└─ Search GEO for human lung adenocarcinoma scRNA-seq datasets.") {
+		t.Fatalf("expected rendered handoff line, got:\n%s", rendered)
+	}
+}
+
+func TestActivityTransitionsUpdateFooterStateOnly(t *testing.T) {
+	m := newTestModel()
+	m.inline = false
+	m.inlineFlow = false
+
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeAgentTransition, protocol.AgentTransitionPayload{
+		To:     "research_agent",
+		Kind:   "activity",
+		Status: "working",
+	}))
+	m = updated.(Model)
+
+	if len(m.messages) != 0 {
+		t.Fatalf("expected activity transition to stay out of transcript, got %d messages", len(m.messages))
+	}
+	if _, ok := m.activeWorkers["research_agent"]; !ok {
+		t.Fatal("expected research_agent to be marked active")
+	}
+	if !strings.Contains(m.currentStatusLine(), "research_agent") {
+		t.Fatalf("expected footer to mention active worker, got %q", m.currentStatusLine())
+	}
+	if strings.Contains(renderHeader(m), "research_agent") {
+		t.Fatalf("expected active worker to stay out of header, got %q", renderHeader(m))
+	}
+
+	updated, _ = m.handleProtocol(testProtocolMsg(t, protocol.TypeAgentTransition, protocol.AgentTransitionPayload{
+		To:     "research_agent",
+		Kind:   "activity",
+		Status: "complete",
+	}))
+	m = updated.(Model)
+
+	if _, ok := m.activeWorkers["research_agent"]; ok {
+		t.Fatal("expected research_agent to be cleared after completion")
+	}
+	if strings.Contains(m.currentStatusLine(), "research_agent") {
+		t.Fatalf("expected footer to clear completed worker, got %q", m.currentStatusLine())
+	}
+}
+
+func TestDoneDoesNotAttributeSupervisorTranscriptToSpecialist(t *testing.T) {
+	m := newTestModel()
+	m.inline = false
+	m.inlineFlow = false
+	m.streamBuf.WriteString("Supervisor summary.")
+
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeAgentTransition, protocol.AgentTransitionPayload{
+		To:     "research_agent",
+		Kind:   "activity",
+		Status: "working",
+	}))
+	m = updated.(Model)
+
+	updated, _ = m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{}))
+	m = updated.(Model)
+
+	if len(m.messages) != 1 {
+		t.Fatalf("expected one assistant message, got %d", len(m.messages))
+	}
+	if m.messages[0].Agent != "" {
+		t.Fatalf("expected supervisor transcript to have no specialist attribution, got %q", m.messages[0].Agent)
+	}
+	rendered := renderMessage(m.messages[0], m.styles, m.width, nil, false)
+	if strings.Contains(rendered, "research_agent") {
+		t.Fatalf("expected rendered assistant message to avoid specialist label, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "Supervisor") {
+		t.Fatalf("expected rendered assistant message to use supervisor label, got:\n%s", rendered)
+	}
+}
+
+func TestActiveWorkerSummaryAggregatesMultipleWorkersHonestly(t *testing.T) {
+	m := newTestModel()
+	m.activeWorkers["research_agent"] = struct{}{}
+	m.activeWorkers["data_expert_agent"] = struct{}{}
+	m.activeWorkers["metadata_assistant"] = struct{}{}
+
+	if got := m.activeWorkerSummary(); got != "data_expert_agent +2" {
+		t.Fatalf("expected sorted aggregate worker summary, got %q", got)
+	}
+	if got := m.activeWorkerIndicator(); !strings.Contains(got, "● data_expert_agent +2") {
+		t.Fatalf("expected active worker indicator with distinct dot, got %q", got)
 	}
 }
 
@@ -783,6 +1019,8 @@ func newTestModel() Model {
 		viewport:                vp,
 		input:                   in,
 		messages:                make([]ChatMessage, 0, 16),
+		pendingHandoffs:         make([]ChatMessage, 0, 4),
+		activeWorkers:           make(map[string]struct{}, 4),
 		toolFeed:                make([]ToolFeedEntry, 0, maxToolFeed),
 		modalities:              make([]ModalityInfo, 0, 8),
 		streamBuf:               &strings.Builder{},
@@ -854,4 +1092,211 @@ func readSingleProtocolMessage(t *testing.T, buf *bytes.Buffer) protocol.Message
 		t.Fatalf("unmarshal protocol message: %v", err)
 	}
 	return msg
+}
+
+// ---------------------------------------------------------------------------
+// Cancel vs Quit tests (Phase 1: Query Cancellation)
+// ---------------------------------------------------------------------------
+
+func TestCtrlCDuringStreamingSendsCancel(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.isStreaming = true
+
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(Model)
+
+	if got.quitting {
+		t.Fatal("expected model NOT to enter quitting state during streaming")
+	}
+	if cmd != nil {
+		t.Fatal("expected no tea.Quit command during streaming cancel")
+	}
+
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeCancel {
+		t.Fatalf("expected %q message, got %q", protocol.TypeCancel, msg.Type)
+	}
+}
+
+func TestCtrlCDuringSpinnerSendsCancel(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.spinnerActive = true
+
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(Model)
+
+	if got.quitting {
+		t.Fatal("expected model NOT to enter quitting state during spinner")
+	}
+	if cmd != nil {
+		t.Fatal("expected no tea.Quit command during spinner cancel")
+	}
+
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeCancel {
+		t.Fatalf("expected %q message, got %q", protocol.TypeCancel, msg.Type)
+	}
+}
+
+func TestCtrlCAtIdleSendsQuit(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.isStreaming = false
+	m.spinnerActive = false
+
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(Model)
+
+	if !got.quitting {
+		t.Fatal("expected model to enter quitting state at idle")
+	}
+	if cmd == nil {
+		t.Fatal("expected tea.Quit command at idle")
+	}
+
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeQuit {
+		t.Fatalf("expected %q message at idle, got %q", protocol.TypeQuit, msg.Type)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Component render tests (Phase 3: HITL Protocol Extension)
+// ---------------------------------------------------------------------------
+
+func TestComponentRenderConfirmRoutesToPendingConfirm(t *testing.T) {
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
+
+	payload := protocol.ComponentRenderPayload{
+		Component:      "confirm",
+		Data:           map[string]any{"question": "Proceed with batch correction?", "default": true},
+		FallbackPrompt: "Proceed? [Y/n]",
+	}
+
+	updated, _ := m.handleComponentRender(payload, "intr-001")
+	got := updated.(Model)
+
+	if got.pendingConfirm == nil {
+		t.Fatal("expected pendingConfirm to be set")
+	}
+	if got.pendingConfirm.Message != "Proceed with batch correction?" {
+		t.Fatalf("expected confirm message, got %q", got.pendingConfirm.Message)
+	}
+	if got.pendingConfirmID != "intr-001" {
+		t.Fatalf("expected confirm ID 'intr-001', got %q", got.pendingConfirmID)
+	}
+	if !got.pendingConfirm.Default {
+		t.Fatal("expected default=true")
+	}
+}
+
+func TestComponentRenderSelectRoutesToPendingSelect(t *testing.T) {
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
+
+	payload := protocol.ComponentRenderPayload{
+		Component: "select",
+		Data: map[string]any{
+			"question": "Which method?",
+			"options":  []any{"DESeq2", "CPM", "TMM"},
+		},
+	}
+
+	updated, _ := m.handleComponentRender(payload, "intr-002")
+	got := updated.(Model)
+
+	if got.pendingSelect == nil {
+		t.Fatal("expected pendingSelect to be set")
+	}
+	if len(got.pendingSelect.Options) != 3 {
+		t.Fatalf("expected 3 options, got %d", len(got.pendingSelect.Options))
+	}
+	if got.pendingSelectID != "intr-002" {
+		t.Fatalf("expected select ID 'intr-002', got %q", got.pendingSelectID)
+	}
+	if got.selectIndex != 0 {
+		t.Fatalf("expected selectIndex 0, got %d", got.selectIndex)
+	}
+}
+
+func TestComponentRenderTextInputSetsPendingComponentID(t *testing.T) {
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
+
+	payload := protocol.ComponentRenderPayload{
+		Component:      "text_input",
+		Data:           map[string]any{"question": "What cell types?"},
+		FallbackPrompt: "What cell types?",
+	}
+
+	updated, _ := m.handleComponentRender(payload, "intr-003")
+	got := updated.(Model)
+
+	if got.pendingComponentID != "intr-003" {
+		t.Fatalf("expected pendingComponentID 'intr-003', got %q", got.pendingComponentID)
+	}
+	// Should have appended a system message with the fallback prompt.
+	if len(got.messages) == 0 {
+		t.Fatal("expected system message with fallback prompt")
+	}
+	last := got.messages[len(got.messages)-1]
+	if last.Role != "system" {
+		t.Fatalf("expected system message, got %q", last.Role)
+	}
+	if !strings.Contains(last.Content, "What cell types?") {
+		t.Fatalf("expected fallback prompt in content, got %q", last.Content)
+	}
+}
+
+func TestComponentRenderUnknownFallsBackToTextInput(t *testing.T) {
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
+
+	payload := protocol.ComponentRenderPayload{
+		Component:      "threshold_slider",
+		Data:           map[string]any{"label": "Adjust p-value"},
+		FallbackPrompt: "Adjust p-value (0.0-1.0, default: 0.05)",
+	}
+
+	updated, _ := m.handleComponentRender(payload, "intr-004")
+	got := updated.(Model)
+
+	if got.pendingComponentID != "intr-004" {
+		t.Fatalf("expected pendingComponentID for threshold fallback, got %q", got.pendingComponentID)
+	}
+}
+
+func TestTextInputComponentResponseSendsComponentResponse(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.pendingComponentID = "intr-005"
+	m.ready = true
+	m.input.SetValue("T cells, B cells")
+
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(Model)
+
+	if got.pendingComponentID != "" {
+		t.Fatal("expected pendingComponentID to be cleared after submit")
+	}
+
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeComponentResponse {
+		t.Fatalf("expected %q, got %q", protocol.TypeComponentResponse, msg.Type)
+	}
+
+	var p protocol.ComponentResponsePayload
+	if err := protocol.DecodePayload(msg, &p); err != nil {
+		t.Fatalf("decode component response: %v", err)
+	}
+	if p.Data["answer"] != "T cells, B cells" {
+		t.Fatalf("expected answer 'T cells, B cells', got %v", p.Data["answer"])
+	}
 }

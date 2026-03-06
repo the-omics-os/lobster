@@ -230,13 +230,16 @@ class AgentClient(BaseClient):
             "workspace": str(self.workspace_path),
         }
 
-    def query(self, user_input: str, stream: bool = False) -> Dict[str, Any]:
+    def query(
+        self, user_input: str, stream: bool = False, cancel_event=None
+    ) -> Dict[str, Any]:
         """
         Process a user query through the agent system.
 
         Args:
             user_input: User's input text
             stream: Whether to stream the response
+            cancel_event: Optional threading.Event — set to cooperatively cancel streaming
 
         Returns:
             Dictionary with response and metadata
@@ -255,7 +258,7 @@ class AgentClient(BaseClient):
         }
 
         if stream:
-            return self._stream_query(graph_input, config)
+            return self._stream_query(graph_input, config, cancel_event=cancel_event)
         else:
             return self._run_query(graph_input, config)
 
@@ -369,7 +372,7 @@ class AgentClient(BaseClient):
             }
 
     def _stream_query(
-        self, graph_input: Dict, config: Dict
+        self, graph_input: Dict, config: Dict, cancel_event=None
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Stream query execution with token-by-token text streaming.
@@ -393,6 +396,7 @@ class AgentClient(BaseClient):
             seen_message_ids: set = set()
             seen_content_hashes: set = set()
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
+            was_cancelled = False
 
             # Active speaker tracks which agent currently owns the
             # narrative.  Updated by handoff tool calls (start) and
@@ -406,6 +410,11 @@ class AgentClient(BaseClient):
                 stream_mode=["messages", "updates"],
                 subgraphs=True,
             ):
+                # Cooperative cancellation: break before yielding new content.
+                if cancel_event and cancel_event.is_set():
+                    was_cancelled = True
+                    break
+
                 # --- Handle "messages" events: text content streaming ---
                 if event_type == "messages":
                     message_chunk, metadata = chunk
@@ -538,9 +547,19 @@ class AgentClient(BaseClient):
                             ).hexdigest()
                         )
 
-                # --- Handle "updates" events: agent transitions (backup) ---
+                # --- Handle "updates" events: interrupts, compaction, agent transitions ---
                 elif event_type == "updates":
                     if isinstance(chunk, dict):
+                        # HITL interrupt detection (Phase 2).
+                        if "__interrupt__" in chunk:
+                            for interrupt_obj in chunk["__interrupt__"]:
+                                yield {
+                                    "type": "interrupt",
+                                    "data": getattr(interrupt_obj, "value", interrupt_obj),
+                                    "interrupt_id": getattr(interrupt_obj, "id", None),
+                                }
+                            return  # Stream ends at interrupt checkpoint.
+
                         for node_name, node_update in chunk.items():
                             if isinstance(node_update, dict):
                                 compaction = node_update.get("context_compaction")
@@ -578,6 +597,28 @@ class AgentClient(BaseClient):
                 else:
                     logger.debug(f"Streaming: unexpected event_type={event_type}")
 
+            # On cancellation: save partial state so the next query has context.
+            if was_cancelled:
+                self._save_cancelled_state(accumulated_text, config)
+                return
+
+            # Check for lingering HITL interrupts that didn't appear in the
+            # stream (e.g. the interrupt happened at the very end of a node).
+            try:
+                state = self.graph.get_state(config)
+                if hasattr(state, "tasks") and state.tasks:
+                    for task in state.tasks:
+                        if hasattr(task, "interrupts") and task.interrupts:
+                            for intr in task.interrupts:
+                                yield {
+                                    "type": "interrupt",
+                                    "data": getattr(intr, "value", intr),
+                                    "interrupt_id": getattr(intr, "id", None),
+                                }
+                            return
+            except Exception:
+                logger.debug("Failed to check lingering interrupts", exc_info=True)
+
             # Mark last agent as complete
             if last_agent:
                 yield {
@@ -611,6 +652,60 @@ class AgentClient(BaseClient):
                 "session_id": self.session_id,
                 "timestamp": datetime.now().isoformat(),
             }
+
+    def resume_from_interrupt(
+        self, response, stream: bool = True, cancel_event=None
+    ) -> Generator[Dict[str, Any], None, None]:
+        """Resume graph execution after an HITL interrupt.
+
+        Args:
+            response: The user's response data (dict or primitive).
+            stream: Whether to stream the resumed execution.
+            cancel_event: Optional threading.Event for cooperative cancellation.
+        """
+        from langgraph.types import Command
+
+        config = {
+            "configurable": {"thread_id": self.session_id},
+            "callbacks": self.callbacks,
+            "recursion_limit": 100,
+        }
+        stream_input = Command(resume=response)
+        if stream:
+            yield from self._stream_query(stream_input, config, cancel_event=cancel_event)
+        else:
+            yield self._run_query(stream_input, config)
+
+    def _save_cancelled_state(self, accumulated_text: str, config: Dict) -> None:
+        """Preserve partial progress after user cancellation.
+
+        Writes accumulated AI text and a system cancellation marker to graph
+        state so the next query has context about what was interrupted.
+        """
+        try:
+            if accumulated_text:
+                self.graph.update_state(
+                    config, {"messages": [AIMessage(content=accumulated_text)]}
+                )
+                self.messages.append(AIMessage(content=accumulated_text))
+            self.graph.update_state(
+                config,
+                {
+                    "messages": [
+                        HumanMessage(
+                            content="[SYSTEM] Query cancelled by user. Previous operation was interrupted."
+                        )
+                    ]
+                },
+            )
+            self.messages.append(
+                HumanMessage(
+                    content="[SYSTEM] Query cancelled by user. Previous operation was interrupted."
+                )
+            )
+            self._save_session_json()
+        except Exception:
+            logger.debug("Failed to save cancelled state", exc_info=True)
 
     def _extract_response(self, events: List[Dict]) -> str | Dict[str, str]:
         """Extract the final response from events, expecting supervisor responses.

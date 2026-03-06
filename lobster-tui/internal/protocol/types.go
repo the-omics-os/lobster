@@ -103,6 +103,11 @@ const (
 
 	// TypeCompletionResponse returns completion suggestions for a prior request.
 	TypeCompletionResponse = "completion_response"
+
+	// TypeComponentRender requests the TUI to render an interactive HITL
+	// component (confirm, select, text input, etc.) based on an agent
+	// interrupt. The Message.ID is used to correlate the response.
+	TypeComponentRender = "component_render"
 )
 
 // ---- Go → Python message type constants -----------------------------------
@@ -138,6 +143,10 @@ const (
 
 	// TypeCompletionRequest asks Python for context-aware completion suggestions.
 	TypeCompletionRequest = "completion_request"
+
+	// TypeComponentResponse carries the user's response to a component_render
+	// interrupt. The Message.ID matches the originating component_render.
+	TypeComponentResponse = "component_response"
 )
 
 // ---- Python → Go payloads -------------------------------------------------
@@ -254,12 +263,16 @@ type DonePayload struct {
 	Summary string `json:"summary,omitempty"`
 }
 
-// AgentTransitionPayload reports a supervisor → specialist handoff.
+// AgentTransitionPayload reports either delegation intent or worker activity.
 type AgentTransitionPayload struct {
 	// From is the name of the sending agent (empty if supervisor).
 	From string `json:"from,omitempty"`
 	// To is the name of the receiving agent.
 	To string `json:"to"`
+	// Kind disambiguates transcript-visible task handoffs from footer-only activity.
+	Kind string `json:"kind,omitempty"`
+	// Status is set for activity transitions (for example: "working", "complete").
+	Status string `json:"status,omitempty"`
 	// Reason is an optional human-readable description of the handoff.
 	Reason string `json:"reason,omitempty"`
 }
@@ -287,6 +300,7 @@ const (
 type ToolExecutionPayload struct {
 	ToolName string             `json:"tool_name"`
 	Event    ToolExecutionEvent `json:"event"`
+	Agent    string             `json:"agent,omitempty"`
 	// Summary is an optional one-line description shown to the user.
 	Summary string `json:"summary,omitempty"`
 }
@@ -297,6 +311,21 @@ type CompletionResponsePayload struct {
 	Suggestions []string `json:"suggestions"`
 	// Error is an optional best-effort diagnostic string.
 	Error string `json:"error,omitempty"`
+}
+
+// ComponentRenderPayload requests the TUI to render an interactive HITL
+// component. The Component field determines which primitive is used.
+type ComponentRenderPayload struct {
+	// Component is the registry key: "confirm", "select", "text_input",
+	// "cell_type_selector", "threshold_slider".
+	Component string `json:"component"`
+	// Mode is the rendering hint: "inline", "overlay", "fullscreen".
+	Mode string `json:"mode,omitempty"`
+	// Data carries component-specific typed payload.
+	Data map[string]any `json:"data"`
+	// FallbackPrompt is a plain-text prompt for environments that
+	// cannot render the requested component.
+	FallbackPrompt string `json:"fallback_prompt,omitempty"`
 }
 
 // ---- Go → Python payloads -------------------------------------------------
@@ -368,4 +397,13 @@ type CompletionRequestPayload struct {
 	Command string `json:"command"`
 	// Prefix is the argument fragment currently being completed.
 	Prefix string `json:"prefix,omitempty"`
+}
+
+// ComponentResponsePayload carries the user's response to a component_render
+// interrupt. The ID matches the originating Message.ID.
+type ComponentResponsePayload struct {
+	// ID matches the Message.ID of the originating ComponentRenderPayload.
+	ID string `json:"id"`
+	// Data carries the component-specific response (e.g. {"confirmed": true}).
+	Data map[string]any `json:"data"`
 }

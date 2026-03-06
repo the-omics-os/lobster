@@ -604,6 +604,8 @@ def _build_supervisor_tools(
     # Todo tools for planning
     write_todos, read_todos = create_todo_tools()
 
+    from lobster.tools.user_interaction import ask_user
+
     all_supervisor_tools = agent_tools + [
         list_available_modalities,
         get_content_from_workspace,
@@ -611,6 +613,7 @@ def _build_supervisor_tools(
         write_todos,
         read_todos,
         execute_custom_code,
+        ask_user,
     ]
 
     logger.debug(f"Supervisor-accessible agents: {supervisor_accessible_names}")

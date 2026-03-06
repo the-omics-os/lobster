@@ -181,6 +181,256 @@ def test_handle_slash_command_refreshes_provider_status_after_execution(
     assert ("status", {"text": "Provider: ollama"}, "") in bridge.calls
 
 
+def test_handle_slash_command_writes_command_history_on_summary(tmp_path, monkeypatch):
+    class _StubProtocolOutputAdapter:
+        def __init__(self, emit):
+            self.emit = emit
+
+    history = {}
+
+    monkeypatch.setattr(
+        go_tui_launcher,
+        "_emit_provider_status",
+        lambda bridge, client: None,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.output_adapter.ProtocolOutputAdapter",
+        _StubProtocolOutputAdapter,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.slash_commands._execute_command",
+        lambda *args, **kwargs: "completed",
+    )
+
+    def _fake_add_to_history(client, command, summary, is_error=False):
+        history["command"] = command
+        history["summary"] = summary
+        history["is_error"] = is_error
+
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra._add_command_to_history",
+        _fake_add_to_history,
+    )
+
+    bridge = _FakeBridge()
+    client = _FakeLocalProviderClient(tmp_path)
+
+    go_tui_launcher._handle_slash_command(bridge, client, "/status", "")
+
+    assert history == {
+        "command": "/status",
+        "summary": "completed",
+        "is_error": False,
+    }
+
+
+def test_handle_slash_command_writes_error_history_on_failure(tmp_path, monkeypatch):
+    class _StubProtocolOutputAdapter:
+        def __init__(self, emit):
+            self.emit = emit
+
+    history = {}
+
+    monkeypatch.setattr(
+        go_tui_launcher,
+        "_emit_provider_status",
+        lambda bridge, client: None,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.output_adapter.ProtocolOutputAdapter",
+        _StubProtocolOutputAdapter,
+    )
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.slash_commands._execute_command",
+        _boom,
+    )
+
+    def _fake_add_to_history(client, command, summary, is_error=False):
+        history["command"] = command
+        history["summary"] = summary
+        history["is_error"] = is_error
+
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra._add_command_to_history",
+        _fake_add_to_history,
+    )
+
+    bridge = _FakeBridge()
+    client = _FakeLocalProviderClient(tmp_path)
+
+    go_tui_launcher._handle_slash_command(bridge, client, "/status", "")
+
+    assert history["command"] == "/status"
+    assert history["is_error"] is True
+    assert "RuntimeError: boom" in history["summary"]
+    assert ("alert", {"level": "error", "message": "boom"}, "") in bridge.calls
+
+
+def test_go_tui_event_loop_quit_saves_session():
+    bridge = _FakeBridge(events=[{"type": "quit"}])
+    saved = {}
+
+    class _Client:
+        def _save_session_json(self):
+            saved["called"] = True
+
+    go_tui_launcher._go_tui_event_loop(bridge, _Client())
+
+    assert saved["called"] is True
+
+
+def test_handle_user_query_maps_context_compaction_to_info_alert(monkeypatch):
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+
+    class _QueryClient:
+        def __init__(self):
+            self.token_tracker = type(
+                "Tracker",
+                (),
+                {"total_tokens": 1234, "total_cost": 0.0123},
+            )()
+
+        def query(self, text, stream=True, cancel_event=None):
+            assert text == "analyze"
+            assert stream is True
+            yield {
+                "type": "context_compaction",
+                "before_count": 48,
+                "after_count": 21,
+                "budget_tokens": 8192,
+            }
+            yield {"type": "content_delta", "delta": "done"}
+            yield {"type": "complete"}
+
+    bridge = _FakeBridge()
+    client = _QueryClient()
+
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+
+    assert (
+        "alert",
+        {
+            "level": "info",
+            "message": (
+                "Context compacted: 48->21 messages (budget 8192 tokens).\n"
+                "Full delegated outputs remain available via store keys and retrieve_agent_result."
+            ),
+        },
+        "",
+    ) in bridge.calls
+    assert ("text", {"content": "done"}, "") in bridge.calls
+    assert ("done", {"summary": ""}, "") in bridge.calls
+
+
+def test_handle_user_query_maps_agent_change_to_activity_transition(monkeypatch):
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+
+    class _QueryClient:
+        def __init__(self):
+            self.token_tracker = type(
+                "Tracker",
+                (),
+                {"total_tokens": 12, "total_cost": 0.0012},
+            )()
+
+        def query(self, text, stream=True, cancel_event=None):
+            assert text == "delegate"
+            assert stream is True
+            yield {"type": "agent_change", "agent": "research_agent", "status": "working"}
+            yield {"type": "complete"}
+
+    bridge = _FakeBridge()
+    client = _QueryClient()
+
+    go_tui_launcher._handle_user_query(bridge, client, "delegate")
+
+    assert (
+        "agent_transition",
+        {
+            "to": "research_agent",
+            "kind": "activity",
+            "status": "working",
+            "reason": "working",
+        },
+        "",
+    ) in bridge.calls
+
+
+def test_resolve_go_chat_session_target_latest_missing_returns_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=True: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra.resolve_session_continuation",
+        lambda workspace_path, requested_session_id: (None, "session_x", False),
+    )
+
+    session_file, resolved_id = go_tui_launcher._resolve_go_chat_session_target(
+        str(tmp_path),
+        "latest",
+    )
+
+    assert session_file is None
+    assert resolved_id is None
+
+
+def test_resolve_go_chat_session_target_latest_existing_uses_resolved_id(
+    tmp_path, monkeypatch
+):
+    session_file = tmp_path / "session_abc.json"
+
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=True: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra.resolve_session_continuation",
+        lambda workspace_path, requested_session_id: (
+            session_file,
+            "session_abc",
+            True,
+        ),
+    )
+
+    resolved_file, resolved_id = go_tui_launcher._resolve_go_chat_session_target(
+        str(tmp_path),
+        "latest",
+    )
+
+    assert resolved_file == session_file
+    assert resolved_id == "session_abc"
+
+
+def test_resolve_go_chat_session_target_explicit_missing_keeps_requested_id(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=True: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra.resolve_session_continuation",
+        lambda workspace_path, requested_session_id: (
+            None,
+            requested_session_id,
+            False,
+        ),
+    )
+
+    resolved_file, resolved_id = go_tui_launcher._resolve_go_chat_session_target(
+        str(tmp_path),
+        "my_session",
+    )
+
+    assert resolved_file is None
+    assert resolved_id == "my_session"
+
+
 def test_prepare_go_tui_chat_env_sets_no_intro_flag(tmp_path):
     env = go_tui_launcher._prepare_go_tui_chat_env(
         {"PATH": "/usr/bin"},
@@ -191,6 +441,7 @@ def test_prepare_go_tui_chat_env_sets_no_intro_flag(tmp_path):
 
     assert env["LOBSTER_TUI_PROVIDER"] == "ollama"
     assert env["LOBSTER_TUI_WORKSPACE"] == str(tmp_path)
+    assert env["LOBSTER_TUI_APP_VERSION"]
     assert env["LOBSTER_TUI_NO_INTRO"] == "1"
 
 
@@ -246,3 +497,125 @@ def test_await_startup_diagnostic_ack_waits_for_confirm_response():
             go_tui_launcher._STARTUP_DIAGNOSTIC_CONFIRM_ID,
         )
     ]
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: HITL interrupt → component_render → response → resume
+# ---------------------------------------------------------------------------
+
+
+def test_handle_user_query_interrupt_renders_component_and_resumes(monkeypatch):
+    """Full interrupt cycle: stream → interrupt → component_render → response → resume."""
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+
+    class _QueryClient:
+        def __init__(self):
+            self.token_tracker = type(
+                "Tracker", (), {"total_tokens": 10, "total_cost": 0.001}
+            )()
+            self._resume_called = False
+
+        def query(self, text, stream=True, cancel_event=None):
+            # First stream: yields content then interrupt.
+            yield {"type": "content_delta", "delta": "Analyzing..."}
+            yield {
+                "type": "interrupt",
+                "data": {
+                    "component": "confirm",
+                    "data": {"question": "Proceed?"},
+                    "fallback_prompt": "Proceed? [y/N]",
+                },
+                "interrupt_id": "intr-test",
+            }
+
+        def resume_from_interrupt(self, response, stream=True, cancel_event=None):
+            self._resume_called = True
+            assert response == {"confirmed": True}
+            yield {"type": "content_delta", "delta": "Done!"}
+            yield {"type": "complete"}
+
+    client = _QueryClient()
+
+    # Fake bridge that returns a confirm_response when polled.
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "confirm_response",
+                "payload": {"confirm": True},
+            }
+        ]
+    )
+
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+
+    # Verify component_render was sent.
+    render_calls = [c for c in bridge.calls if c[0] == "component_render"]
+    assert len(render_calls) == 1
+    assert render_calls[0][1]["component"] == "confirm"
+
+    # Verify content from both streams was forwarded.
+    text_calls = [c for c in bridge.calls if c[0] == "text"]
+    assert len(text_calls) == 2
+    assert text_calls[0][1]["content"] == "Analyzing..."
+    assert text_calls[1][1]["content"] == "Done!"
+
+    # Verify resume was called.
+    assert client._resume_called
+
+    # Verify done was sent.
+    done_calls = [c for c in bridge.calls if c[0] == "done"]
+    assert len(done_calls) == 1
+
+
+def test_handle_interrupt_quit_returns_none():
+    """If user quits during interrupt, _handle_interrupt returns None."""
+    bridge = _FakeBridge(events=[{"type": "quit"}])
+    result = go_tui_launcher._handle_interrupt(
+        bridge,
+        {"data": {"component": "text_input", "fallback_prompt": "Enter:"}},
+    )
+    assert result is None
+
+
+def test_handle_interrupt_timeout_returns_none():
+    """If bridge times out, _handle_interrupt returns None."""
+    bridge = _FakeBridge(events=[])  # No events → recv_event returns None.
+    result = go_tui_launcher._handle_interrupt(
+        bridge,
+        {"data": {"component": "text_input", "fallback_prompt": "Enter:"}},
+    )
+    assert result is None
+
+
+def test_handle_interrupt_select_response():
+    """select_response is normalized to {selected, index} dict."""
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "select_response",
+                "payload": {"value": "CPM", "index": 1},
+            }
+        ]
+    )
+    result = go_tui_launcher._handle_interrupt(
+        bridge,
+        {"data": {"component": "select"}},
+    )
+    assert result == {"selected": "CPM", "index": 1}
+
+
+def test_handle_interrupt_component_response_passthrough():
+    """component_response passes through the data dict."""
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "component_response",
+                "payload": {"data": {"answer": "T cells"}},
+            }
+        ]
+    )
+    result = go_tui_launcher._handle_interrupt(
+        bridge,
+        {"data": {"component": "text_input"}},
+    )
+    assert result == {"answer": "T cells"}

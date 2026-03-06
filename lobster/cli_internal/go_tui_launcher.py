@@ -24,6 +24,7 @@ file-descriptor pipes.  Each message is a single JSON object terminated by
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import os
 import queue
@@ -33,6 +34,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -283,6 +285,7 @@ def _normalize_tool_payload(payload: dict) -> dict:
     return {
         "tool_name": payload.get("tool", payload.get("tool_name", "")),
         "event": event,
+        "agent": payload.get("agent", ""),
         "summary": summary,
     }
 
@@ -294,6 +297,24 @@ def _format_usage(client: Any) -> str:
         return f"Tokens: {tracker.total_tokens:,} | Cost: ${tracker.total_cost:.4f}"
     except Exception:
         return "Ready"
+
+
+def _format_context_compaction_notice(event: dict) -> str:
+    """Build operator-facing copy for context compaction stream events."""
+    before = event.get("before_count")
+    after = event.get("after_count")
+    budget = event.get("budget_tokens")
+
+    if all(isinstance(v, int) for v in (before, after, budget)):
+        return (
+            f"Context compacted: {before}->{after} messages (budget {budget} tokens).\n"
+            "Full delegated outputs remain available via store keys and retrieve_agent_result."
+        )
+
+    return (
+        "Context compacted to stay within model budget.\n"
+        "Full delegated outputs remain available via store keys and retrieve_agent_result."
+    )
 
 
 def _safe_minimal_token_summary(client: Any) -> str:
@@ -580,6 +601,70 @@ def _handle_completion_request(bridge: _LightBridge, client: Any, event: dict) -
         )
 
 
+def _save_session_json_if_available(client: Any) -> None:
+    """Persist session transcript when the client supports it."""
+    if hasattr(client, "_save_session_json"):
+        try:
+            client._save_session_json()
+        except Exception:
+            pass
+
+
+def _resolve_go_chat_session_target(
+    workspace: Optional[str],
+    session_id: Optional[str],
+) -> Tuple[Optional[Path], Optional[str]]:
+    """Resolve session continuation target for Go chat.
+
+    Returns:
+        ``(session_file_to_load, session_id_for_client)``
+    """
+    if not session_id:
+        return None, None
+
+    from lobster.core.workspace import resolve_workspace
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        resolve_session_continuation,
+    )
+
+    workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+    (
+        session_file_to_load,
+        session_id_for_client,
+        found_existing_session,
+    ) = resolve_session_continuation(workspace_path, session_id)
+
+    # Match classic chat behavior: unresolved "latest" creates a new session.
+    if session_id == "latest" and not found_existing_session:
+        return None, None
+
+    return session_file_to_load, session_id_for_client
+
+
+def _maybe_restore_go_session_transcript(
+    bridge: _LightBridge,
+    client: Any,
+    session_file_to_load: Optional[Path],
+) -> None:
+    """Load persisted session transcript when available."""
+    if session_file_to_load is None:
+        return
+
+    try:
+        load_result = client.load_session(session_file_to_load)
+        messages_loaded = load_result.get("messages_loaded", 0)
+        if messages_loaded:
+            bridge.send("status", {"text": f"Loaded {messages_loaded} previous messages"})
+    except Exception as exc:
+        bridge.send(
+            "alert",
+            {
+                "level": "warning",
+                "message": f"Failed to restore session transcript: {exc}",
+            },
+        )
+
+
 # ---------------------------------------------------------------------------
 # Event loop
 # ---------------------------------------------------------------------------
@@ -587,16 +672,21 @@ def _handle_completion_request(bridge: _LightBridge, client: Any, event: dict) -
 
 def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
     """Main event loop: dispatch messages from the Go TUI to the client."""
+    cancel_event = threading.Event()
     while True:
         event = bridge.recv_event(timeout=None)
         if event is None:
             break
         msg_type = event.get("type", "")
         if msg_type == "quit":
+            _save_session_json_if_available(client)
             break
+        elif msg_type == "cancel":
+            cancel_event.set()
         elif msg_type == "input":
+            cancel_event.clear()
             content = event.get("payload", {}).get("content", "")
-            _handle_user_query(bridge, client, content)
+            _dispatch_user_query(bridge, client, content, cancel_event)
         elif msg_type == "slash_command":
             payload = event.get("payload", {})
             command = payload.get("command", "")
@@ -604,45 +694,93 @@ def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
             _handle_slash_command(bridge, client, command, args)
         elif msg_type == "completion_request":
             _handle_completion_request(bridge, client, event)
-        elif msg_type == "cancel":
-            pass  # Phase 2: cancellation support
 
 
-def _handle_user_query(bridge: _LightBridge, client: Any, text: str) -> None:
-    """Forward a user query to the Lobster client and stream results back."""
+def _dispatch_user_query(
+    bridge: _LightBridge,
+    client: Any,
+    text: str,
+    cancel_event: threading.Event,
+) -> None:
+    """Call _handle_user_query with optional cancel support when available."""
+    try:
+        params = inspect.signature(_handle_user_query).parameters
+    except (TypeError, ValueError):
+        params = {}
+
+    if "cancel_event" in params:
+        _handle_user_query(bridge, client, text, cancel_event=cancel_event)
+        return
+
+    _handle_user_query(bridge, client, text)
+
+
+def _handle_user_query(
+    bridge: _LightBridge,
+    client: Any,
+    text: str,
+    cancel_event: Optional[threading.Event] = None,
+) -> None:
+    """Forward a user query to the Lobster client and stream results back.
+
+    Implements the resume loop pattern for HITL interrupts:
+    stream → detect interrupt → render component → collect response → resume → stream.
+    """
     bridge.send("spinner", {"active": True})
     query_start = time.time()
+    is_first = True
+    stream_source: Any = None  # Will be set to the generator each iteration.
+
     try:
-        for event in client.query(text, stream=True):
-            etype = event["type"]
-            if etype == "content_delta":
-                bridge.send("text", {"content": event["delta"]})
-            elif etype == "agent_change":
-                bridge.send(
-                    "agent_transition",
-                    {
-                        "from": event.get("from_agent", "supervisor"),
-                        "to": event.get("agent", ""),
-                        "reason": event.get("status", "working"),
-                    },
-                )
-            elif etype == "complete":
-                bridge.send("done", {"summary": ""})
-                # Build rich status with tokens, cost, and duration.
-                duration = time.time() - query_start
-                status_parts = [_format_usage(client)]
-                status_parts.append(f"Duration: {duration:.1f}s")
-                bridge.send("status", {"text": " · ".join(status_parts)})
-                bridge.send("spinner", {"active": False})
-            elif etype == "error":
+        while True:
+            # Build the stream: first iteration uses query(), subsequent use resume.
+            if is_first:
+                stream_source = client.query(text, stream=True, cancel_event=cancel_event)
+                is_first = False
+            # else: stream_source was set by the resume path below.
+
+            interrupt_event = None
+            cancelled = False
+
+            for event in stream_source:
+                if cancel_event and cancel_event.is_set():
+                    cancelled = True
+                    break
+                etype = event["type"]
+                if etype == "interrupt":
+                    interrupt_event = event
+                    break  # Exit inner loop to handle interrupt.
+                _forward_stream_event(bridge, client, event, query_start)
+
+            if cancelled:
                 bridge.send(
                     "alert",
-                    {
-                        "level": "error",
-                        "message": str(event.get("error", "Unknown error")),
-                    },
+                    {"level": "warning", "message": "Query cancelled"},
                 )
+                bridge.send("done", {"summary": "cancelled"})
+                duration = time.time() - query_start
+                bridge.send("status", {"text": f"Cancelled after {duration:.1f}s"})
                 bridge.send("spinner", {"active": False})
+                return
+
+            if interrupt_event is None:
+                # Stream completed normally (no interrupt).
+                return
+
+            # --- HITL interrupt: render component and await user response ---
+            response = _handle_interrupt(bridge, interrupt_event)
+            if response is None:
+                # Interrupt was cancelled or timed out.
+                bridge.send("spinner", {"active": False})
+                return
+
+            # Resume the graph with the user's response.
+            bridge.send("spinner", {"active": True, "label": "resuming"})
+            stream_source = client.resume_from_interrupt(
+                response, stream=True, cancel_event=cancel_event
+            )
+            # Continue the while loop to process the resumed stream.
+
     except KeyboardInterrupt:
         bridge.send(
             "alert", {"level": "warning", "message": "Query interrupted"}
@@ -650,6 +788,96 @@ def _handle_user_query(bridge: _LightBridge, client: Any, text: str) -> None:
         bridge.send("spinner", {"active": False})
     except Exception as exc:
         bridge.send("alert", {"level": "error", "message": f"Error: {exc}"})
+        bridge.send("spinner", {"active": False})
+
+
+# Response types the bridge accepts as HITL answers from the Go TUI.
+_COMPONENT_RESPONSE_TYPES = frozenset(
+    {"component_response", "confirm_response", "select_response"}
+)
+
+
+def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[dict]:
+    """Send component_render to Go TUI and wait for the user's response.
+
+    Returns the response data dict, or None if the interrupt timed out or
+    was cancelled (quit).
+    """
+    data = interrupt_event.get("data", {})
+    msg_id = str(uuid.uuid4())
+
+    bridge.send("spinner", {"active": False})
+    bridge.send("component_render", data, msg_id=msg_id)
+
+    # Block waiting for the Go TUI to send back the response.
+    while True:
+        resp = bridge.recv_event(timeout=300)
+        if resp is None:
+            # Timeout — treat as cancelled.
+            return None
+
+        resp_type = resp.get("type", "")
+        if resp_type in _COMPONENT_RESPONSE_TYPES:
+            payload = resp.get("payload", {})
+            # confirm_response → {"confirmed": bool}
+            if resp_type == "confirm_response":
+                return {"confirmed": payload.get("confirm", False)}
+            # select_response → {"selected": str, "index": int}
+            if resp_type == "select_response":
+                return {
+                    "selected": payload.get("value", ""),
+                    "index": payload.get("index", 0),
+                }
+            # component_response → pass through data
+            return payload.get("data", payload)
+
+        if resp_type == "quit":
+            return None
+        if resp_type == "cancel":
+            return None
+        # Other message types (heartbeat, resize, etc.) — ignore and keep waiting.
+
+
+def _forward_stream_event(
+    bridge: _LightBridge, client: Any, event: dict, query_start: float
+) -> None:
+    """Forward a single stream event to the Go TUI."""
+    etype = event["type"]
+    if etype == "content_delta":
+        bridge.send("text", {"content": event["delta"]})
+    elif etype == "agent_change":
+        bridge.send(
+            "agent_transition",
+            {
+                "to": event.get("agent", ""),
+                "kind": "activity",
+                "status": event.get("status", "working"),
+                "reason": event.get("status", "working"),
+            },
+        )
+    elif etype == "complete":
+        bridge.send("done", {"summary": ""})
+        duration = time.time() - query_start
+        status_parts = [_format_usage(client)]
+        status_parts.append(f"Duration: {duration:.1f}s")
+        bridge.send("status", {"text": " · ".join(status_parts)})
+        bridge.send("spinner", {"active": False})
+    elif etype == "context_compaction":
+        bridge.send(
+            "alert",
+            {
+                "level": "info",
+                "message": _format_context_compaction_notice(event),
+            },
+        )
+    elif etype == "error":
+        bridge.send(
+            "alert",
+            {
+                "level": "error",
+                "message": str(event.get("error", "Unknown error")),
+            },
+        )
         bridge.send("spinner", {"active": False})
 
 
@@ -677,8 +905,33 @@ def _handle_slash_command(
         output = ProtocolOutputAdapter(bridge.send)
 
         from lobster.cli_internal.commands.heavy.slash_commands import _execute_command
-        _execute_command(full_cmd, client, original_command=full_cmd, output=output)
+        from lobster.cli_internal.commands.heavy.session_infra import (
+            _add_command_to_history,
+        )
+
+        command_summary = _execute_command(
+            full_cmd,
+            client,
+            original_command=full_cmd,
+            output=output,
+        )
+        if command_summary:
+            _add_command_to_history(client, full_cmd, command_summary)
     except Exception as exc:
+        try:
+            from lobster.cli_internal.commands.heavy.session_infra import (
+                _add_command_to_history,
+            )
+
+            error_summary = f"Failed: {type(exc).__name__}: {str(exc)[:100]}"
+            _add_command_to_history(
+                client,
+                full_cmd,
+                error_summary,
+                is_error=True,
+            )
+        except Exception:
+            pass
         bridge.send("alert", {"level": "error", "message": str(exc)})
     finally:
         _emit_provider_status(bridge, client)
@@ -797,14 +1050,16 @@ def launch_go_tui_chat(
         # Validate protocol compatibility
         hs_payload = handshake.get("payload", {})
         tui_protocol = hs_payload.get("protocol_version", 0)
-        tui_version = hs_payload.get("version", "unknown")
+        tui_version = hs_payload.get("client_version", "unknown")
         if tui_protocol not in _SUPPORTED_PROTOCOL_VERSIONS:
+            from lobster.core.component_registry import get_install_command
+
             bridge.close()
             raise RuntimeError(
                 f"Go TUI protocol version {tui_protocol} (binary v{tui_version}) "
                 f"is incompatible with this Lobster AI release "
                 f"(supported protocols: {_SUPPORTED_PROTOCOL_VERSIONS}). "
-                f"Update with: pip install --upgrade lobster-ai-tui"
+                f"Install with: {get_install_command('lobster-ai-tui')}"
             )
 
         # -----------------------------------------------------------------
@@ -840,6 +1095,10 @@ def launch_go_tui_chat(
         )
 
         set_go_tui_active(True)
+        session_file_to_load, session_id_for_client = _resolve_go_chat_session_target(
+            workspace,
+            session_id,
+        )
 
         client = init_client_or_raise_startup_diagnostic(
             workspace=workspace,
@@ -849,8 +1108,9 @@ def launch_go_tui_chat(
             profile_timings=profile_timings,
             provider_override=provider,
             model_override=model,
-            session_id=session_id,
+            session_id=session_id_for_client,
         )
+        _maybe_restore_go_session_transcript(bridge, client, session_file_to_load)
 
         _emit_provider_status(bridge, client)
 
@@ -927,6 +1187,9 @@ def launch_go_tui_chat(
         except Exception:
             pass
 
+        if client is not None:
+            _save_session_json_if_available(client)
+
         if should_emit_exit_footer and client is not None:
             _emit_go_tui_exit_footer(client)
 
@@ -947,6 +1210,13 @@ def _prepare_go_tui_chat_env(
         provider or child_env.get("LOBSTER_TUI_PROVIDER", "auto")
     ).strip() or "auto"
     child_env["LOBSTER_TUI_WORKSPACE"] = str(workspace or Path.cwd())
+    if not child_env.get("LOBSTER_TUI_APP_VERSION"):
+        try:
+            from lobster.version import __version__
+
+            child_env["LOBSTER_TUI_APP_VERSION"] = __version__
+        except Exception:
+            pass
     if no_intro:
         child_env["LOBSTER_TUI_NO_INTRO"] = "1"
     return child_env
