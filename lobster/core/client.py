@@ -54,17 +54,23 @@ def _detect_speaker_transition(message_chunk: Any) -> Optional[str]:
 def _is_main_agent_namespace(namespace: Any) -> bool:
     """Check whether a stream event belongs to the main (supervisor) agent.
 
-    With ``subgraphs=True``, LangGraph yields a *namespace* (list or
-    tuple) encoding the subgraph path.  The main agent has an empty
-    namespace; sub-agents have a non-empty one.
+    With ``subgraphs=True`` and the two-layer graph topology (StateGraph
+    wrapping ``create_react_agent``), the supervisor's ReAct agent emits
+    messages under a single-segment namespace like ``("supervisor:abc",)``.
 
-    This follows the proven DeepAgents pattern::
-
-        ns_key = tuple(namespace) if namespace else ()
-        is_main = ns_key == ()
+    Classification rules:
+    - Empty namespace ``()`` → main agent (outer graph-level events)
+    - Single segment starting with ``"supervisor"`` → main agent
+      (inner ReAct agent tokens — the actual LLM output)
+    - Anything else (2+ segments, or segment not starting with
+      ``"supervisor"``) → sub-agent
     """
     ns_key = tuple(namespace) if namespace else ()
-    return ns_key == ()
+    if ns_key == ():
+        return True
+    if len(ns_key) == 1 and str(ns_key[0]).startswith("supervisor"):
+        return True
+    return False
 from lobster.config.settings import MODEL_PRICING
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 

@@ -190,7 +190,7 @@ class TestSpeakerDetection:
         chunk = AIMessageChunk(content="just text")
         assert _detect_speaker_transition(chunk) is None
 
-    # -- _is_main_agent_namespace (DeepAgents pattern) --
+    # -- _is_main_agent_namespace (two-layer graph topology) --
 
     def test_empty_tuple_is_main(self):
         assert _is_main_agent_namespace(()) is True
@@ -199,15 +199,27 @@ class TestSpeakerDetection:
         """LangGraph may yield namespace as list, not tuple."""
         assert _is_main_agent_namespace([]) is True
 
-    def test_non_empty_is_subagent(self):
-        assert _is_main_agent_namespace(("supervisor",)) is False
-        assert _is_main_agent_namespace(["research_agent"]) is False
-
     def test_none_is_main(self):
         assert _is_main_agent_namespace(None) is True
 
     def test_empty_string_is_main(self):
         assert _is_main_agent_namespace("") is True
+
+    def test_supervisor_single_segment_is_main(self):
+        """Supervisor ReAct agent emits under ('supervisor:uuid',)."""
+        assert _is_main_agent_namespace(("supervisor:abc123",)) is True
+        assert _is_main_agent_namespace(["supervisor:abc123"]) is True
+        assert _is_main_agent_namespace(("supervisor",)) is True
+
+    def test_two_segment_supervisor_prefix_is_subagent(self):
+        """Sub-agent inside supervisor's tool call has 2+ segments."""
+        assert _is_main_agent_namespace(("supervisor:abc", "research_agent:def")) is False
+        assert _is_main_agent_namespace(["supervisor:abc", "research_agent:def"]) is False
+
+    def test_non_supervisor_single_segment_is_subagent(self):
+        """A single segment that doesn't start with 'supervisor' is a sub-agent."""
+        assert _is_main_agent_namespace(("research_agent",)) is False
+        assert _is_main_agent_namespace(["research_agent:abc"]) is False
 
 
 # ===========================================================================
@@ -329,6 +341,58 @@ class TestSingleSpeakerPolicy:
         agent_content = _events_of_type(events, "agent_content")
         assert len(agent_content) == 1
 
+    def test_two_layer_graph_supervisor_namespace(self, tmp_path):
+        """Real topology: StateGraph wraps create_react_agent.
+
+        Supervisor ReAct agent tokens arrive under ("supervisor:uuid",),
+        NOT empty namespace.  Sub-agent tokens arrive under two segments
+        like ("supervisor:uuid", "research_agent:uuid").
+        """
+        events_in = [
+            # Supervisor intro — single-segment supervisor namespace
+            _ai_chunk(
+                "I'll help you analyze.",
+                "agent", "sup-1",
+                namespace=("supervisor:abc123",),
+            ),
+            # Supervisor handoff tool call
+            _handoff_chunk("research_agent", namespace=("supervisor:abc123",)),
+            # Sub-agent — two-segment namespace
+            _ai_chunk(
+                "searching databases...",
+                "agent", "ra-1",
+                namespace=("supervisor:abc123", "research_agent:def456"),
+            ),
+            # Handoff tool returns
+            _handoff_tool_response(
+                "tc-h", namespace=("supervisor:abc123",),
+            ),
+            # Supervisor synthesis — still single-segment supervisor namespace
+            _ai_chunk(
+                "Found 3 datasets.",
+                "agent", "sup-2",
+                namespace=("supervisor:abc123",),
+            ),
+        ]
+        client = _make_client(tmp_path, events_in)
+        events = _collect_events(client)
+
+        deltas = _events_of_type(events, "content_delta")
+        delta_texts = [d["delta"] for d in deltas]
+        assert delta_texts == [
+            "I'll help you analyze.",
+            "Found 3 datasets.",
+        ], f"Supervisor text must be content_delta, got {delta_texts}"
+
+        agent_content = _events_of_type(events, "agent_content")
+        assert len(agent_content) == 1
+        assert agent_content[0]["delta"] == "searching databases..."
+
+        # Accumulated text should include supervisor content only.
+        complete = [e for e in events if e["type"] == "complete"]
+        assert len(complete) == 1
+        assert complete[0]["response"] == "I'll help you analyze.Found 3 datasets."
+
 
 # ===========================================================================
 # TestStreamingDedup — message replay suppression
@@ -433,6 +497,89 @@ class TestUnknownToolSuppression:
         assert tool_events[0]["status"] == "running"
         assert tool_events[1]["tool"] == "search_pubmed"
         assert tool_events[1]["status"] == "complete"
+
+
+# ===========================================================================
+# TestProtocolCallbackTransitions — task/activity semantics stay explicit
+# ===========================================================================
+
+class TestProtocolCallbackTransitions:
+    def test_handoff_emits_task_transition_with_extracted_description(self):
+        emitted = []
+
+        def capture(msg_type, payload):
+            emitted.append((msg_type, payload))
+
+        handler = ProtocolCallbackHandler(emit_event=capture)
+        handler.current_agent = "supervisor"
+
+        handler.on_tool_start(
+            serialized={"name": "handoff_to_research_agent"},
+            input_str="fallback task",
+            inputs={
+                "task_description": (
+                    "Search GEO for public human lung adenocarcinoma scRNA-seq datasets."
+                )
+            },
+        )
+
+        assert emitted == [
+            (
+                "agent_transition",
+                {
+                    "from": "supervisor",
+                    "to": "research_agent",
+                    "reason": (
+                        "Search GEO for public human lung adenocarcinoma scRNA-seq datasets."
+                    ),
+                    "kind": "task",
+                },
+            )
+        ]
+
+    def test_transfer_back_emits_activity_complete_for_worker(self):
+        emitted = []
+
+        def capture(msg_type, payload):
+            emitted.append((msg_type, payload))
+
+        handler = ProtocolCallbackHandler(emit_event=capture)
+        handler.current_agent = "research_agent"
+
+        handler.on_tool_start(
+            serialized={"name": "transfer_back_to_supervisor"},
+            input_str="",
+        )
+
+        assert emitted == [
+            (
+                "agent_transition",
+                {
+                    "from": "research_agent",
+                    "to": "research_agent",
+                    "reason": "return",
+                    "kind": "activity",
+                    "status": "complete",
+                },
+            )
+        ]
+
+    def test_chain_start_updates_internal_agent_without_emitting_transition(self):
+        emitted = []
+
+        def capture(msg_type, payload):
+            emitted.append((msg_type, payload))
+
+        handler = ProtocolCallbackHandler(emit_event=capture)
+        handler.current_agent = "supervisor"
+
+        handler.on_chain_start(
+            serialized={"name": "research_agent"},
+            inputs={},
+        )
+
+        assert handler.current_agent == "research_agent"
+        assert emitted == []
 
 
 # ===========================================================================
