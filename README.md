@@ -39,7 +39,7 @@
 
 ---
 
-# 🧑‍🔬 Human Quickstart
+# Quickstart
 
 **1. Install Lobster AI (macOS/Linux):**
 ```bash
@@ -52,17 +52,6 @@ curl -fsSL https://install.lobsterbio.com | bash
 lobster init
 ```
 
-**3. Start an interactive session and run a full pipeline:**
-```bash
-lobster chat
-```
-Then describe your analysis:
-```
-> Search PubMed for single-cell CRISPR screens in T cells from 2023–2024,
-  download the most cited dataset, run QC, integrate batches with Harmony,
-  cluster the cells, annotate cell types, and export a reproducible notebook.
-```
-
 <details>
 <summary><b>Watch: installation & init walkthrough</b></summary>
 <br/>
@@ -71,40 +60,70 @@ Then describe your analysis:
 </div>
 </details>
 
+**3. Start an interactive session:**
+```bash
+lobster chat
+```
+Then describe your analysis in plain language:
+```
+> Search PubMed for single-cell CRISPR screens in T cells from 2023–2024,
+  download the most cited dataset, run QC, integrate batches with Harmony,
+  cluster the cells, annotate cell types, and export a reproducible notebook.
+```
+
 <br/>
 
 # 🤖 For AI Coding Agents
 
-Teach your coding agent (Claude Code, Cursor, Gemini) to use and extend Lobster AI instantly:
+Install skills that give Claude Code, Cursor, or Gemini CLI deep knowledge of the Lobster architecture:
 ```bash
 curl -fsSL https://skills.lobsterbio.com | bash
 ```
-*Installs the `lobster-use` and `lobster-dev` skills so your AI knows our entire 10-package architecture.*
+This installs `lobster-use` (analysis workflows) and `lobster-dev` (agent development). With these loaded, your coding agent understands the full 10-package structure, tool patterns, entry point registration, and AQUADIF contract — without needing to read source code manually.
+
+**Scaffold a new agent package from the command line:**
+```bash
+lobster scaffold agent \
+  --name epigenomics_expert \
+  --display-name "Epigenomics Expert" \
+  --description "ATAC-seq, ChIP-seq, and DNA methylation analysis" \
+  --tier free
+```
+Generates a complete, contract-compliant package: `pyproject.toml`, entry point wiring, tool stubs with AQUADIF metadata, and contract tests. Then point your coding agent at the generated scaffolding and ask it to implement the domain logic.
 
 <br/>
 
-# Real-World Use Cases
+# Use Cases
 
-See Lobster AI applied end-to-end across omics domains:
+End-to-end walkthroughs across omics domains:
 
-| Domain | Case Study |
-|--------|------------|
-| Single-Cell Transcriptomics | [Cell clustering, annotation & trajectory inference](https://docs.omics-os.com/docs/case-studies/transcriptomics/) |
-| CML Drug Resistance | [Resistance mechanism discovery from scRNA-seq](https://docs.omics-os.com/docs/case-studies/cml-resistance/) |
-| Drug Discovery | [Target identification & compound prioritization](https://docs.omics-os.com/docs/case-studies/drug-discovery/) |
-| Clinical Genomics | [Variant annotation & GWAS analysis](https://docs.omics-os.com/docs/case-studies/genomics/) |
-| Mass Spec Proteomics | [Biomarker panel selection from DIA-NN data](https://docs.omics-os.com/docs/case-studies/proteomics/) |
-| Literature Mining | [Automated dataset discovery from PubMed](https://docs.omics-os.com/docs/case-studies/research/) |
-| Multi-Omics ML | [Feature selection & survival analysis](https://docs.omics-os.com/docs/case-studies/machine-learning/) |
+<table width="100%" style="border: none; background: transparent;">
+  <thead>
+    <tr>
+      <th align="left">Domain</th>
+      <th align="left">Case Study</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Single-Cell Transcriptomics</td><td><a href="https://docs.omics-os.com/docs/case-studies/transcriptomics/">Cell clustering, annotation &amp; trajectory inference</a></td></tr>
+    <tr><td>CML Drug Resistance</td><td><a href="https://docs.omics-os.com/docs/case-studies/cml-resistance/">Resistance mechanism discovery from scRNA-seq</a></td></tr>
+    <tr><td>Drug Discovery</td><td><a href="https://docs.omics-os.com/docs/case-studies/drug-discovery/">Target identification &amp; compound prioritization</a></td></tr>
+    <tr><td>Clinical Genomics</td><td><a href="https://docs.omics-os.com/docs/case-studies/genomics/">Variant annotation &amp; GWAS analysis</a></td></tr>
+    <tr><td>Mass Spec Proteomics</td><td><a href="https://docs.omics-os.com/docs/case-studies/proteomics/">Biomarker panel selection from DIA-NN data</a></td></tr>
+    <tr><td>Literature Mining</td><td><a href="https://docs.omics-os.com/docs/case-studies/research/">Automated dataset discovery from PubMed</a></td></tr>
+    <tr><td>Multi-Omics ML</td><td><a href="https://docs.omics-os.com/docs/case-studies/machine-learning/">Feature selection &amp; survival analysis</a></td></tr>
+  </tbody>
+</table>
 
 <br/>
 
-# 🧠 The Architecture
+# 🧠 Architecture
 
-Lobster isn't just a chatbot; it's a modular ecosystem of **22 specialist agents across 10 packages**.
-* **Your machine, your data:** Patient data never leaves your hardware.
-* **Tool calls, not token dreams:** Agents execute real, validated Python packages (Scanpy, PyDESeq2).
-* **100% Reproducible:** W3C-PROV tracking and automatic Jupyter notebook exports.
+Lobster AI is a multi-agent system: **22 specialist agents across 10 installable packages**, orchestrated by a LangGraph supervisor. Each agent owns a specific omics domain and calls validated scientific libraries directly — no code generation, no hallucinated results.
+
+* **Local execution:** All analysis runs on your machine. Patient data never leaves your hardware.
+* **Scientific libraries:** Agents call Scanpy, PyDESeq2, Harmony, and others via tool functions — not by generating scripts.
+* **W3C-PROV provenance:** Every analysis step is tracked and exportable as a reproducible Jupyter notebook.
 
 <div align="center">
   <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
@@ -116,7 +135,7 @@ Lobster isn't just a chatbot; it's a modular ecosystem of **22 specialist agents
 
 # 🛠️ Build Your Own Agent
 
-The `lobster-dev` skill gives your coding assistant (Claude Code, Gemini CLI, Cursor) deep knowledge of how Lobster agents are structured. Describe the biological domain you need — it scaffolds the package, wires the tools, writes the tests, and registers the agent.
+New agents are standalone packages that plug into Lobster via Python entry points. The `lobster-dev` skill loads the full architecture reference into your coding agent (Claude Code, Gemini CLI, Cursor) — package layout, tool patterns, AQUADIF contract, and test fixtures. Use `lobster scaffold` to generate the package skeleton, then let your coding agent implement the domain logic.
 
 <div align="center">
   <table border="0" cellspacing="0" cellpadding="12">
@@ -135,51 +154,38 @@ The `lobster-dev` skill gives your coding assistant (Claude Code, Gemini CLI, Cu
 
 <br/>
 
-# ❓ Deep Dives & FAQ
+# FAQ
 
 <details>
 <summary><b>What omics domains are supported?</b></summary>
 
-**Transcriptomics**
-- Single-cell RNA-seq: QC, doublet detection (Scrublet), batch integration (Harmony/scVI), clustering, cell type annotation, trajectory inference (DPT/PAGA)
-- Bulk RNA-seq: Salmon/kallisto/featureCounts import, sample QC, batch detection, normalization (DESeq2/VST/CPM), DE with PyDESeq2, GSEA, publication-ready export
-
-**Genomics**
-- GWAS: VCF/PLINK import, LD pruning, kinship, association testing, result clumping
-- Clinical: variant annotation (VEP), gnomAD frequencies, ClinVar pathogenicity, variant prioritization
-
-**Proteomics**
-- Mass spec: MaxQuant/DIA-NN/Spectronaut import, PTM analysis, peptide-to-protein rollup, batch correction
-- Affinity: Olink NPX/SomaScan ADAT/Luminex MFI import, LOD quality, bridge normalization
-- Downstream: GO/Reactome/KEGG enrichment, kinase enrichment (KSEA), STRING PPI, biomarker panel selection
-
-**Metabolomics**
-- LC-MS, GC-MS, NMR with auto-detection
-- QC (RSD, TIC), filtering, imputation, normalization (PQN/TIC/IS)
-- PCA, PLS-DA, OPLS-DA, m/z annotation (HMDB/KEGG), lipid class analysis
-
-**Machine Learning**
-- Feature selection (stability selection, LASSO, variance filter)
-- Survival analysis (Cox models, Kaplan-Meier, risk stratification)
-- Cross-validation, SHAP interpretability, multi-omics integration (MOFA)
-
-**Research & Metadata**
-- Literature discovery (PubMed, PMC, GEO, PRIDE, MetaboLights)
-- Dataset download orchestration, metadata harmonization, sample filtering
+| Domain | Input Formats | Key Capabilities |
+|--------|--------------|-----------------|
+| **Single-Cell RNA-seq** | AnnData, 10x, h5ad | QC, doublet detection (Scrublet), batch integration (Harmony/scVI), clustering, cell type annotation, trajectory inference (DPT/PAGA) |
+| **Bulk RNA-seq** | Salmon, kallisto, featureCounts | Sample QC, normalization (DESeq2/VST/CPM), differential expression (PyDESeq2), GSEA, publication-ready export |
+| **Genomics** | VCF, PLINK | GWAS, LD pruning, kinship estimation, association testing, result clumping |
+| **Clinical Genomics** | VCF, ClinVar, gnomAD | Variant annotation (VEP), pathogenicity scoring, clinical variant prioritization |
+| **Mass Spec Proteomics** | MaxQuant, DIA-NN, Spectronaut | PTM analysis (phospho/acetyl/ubiquitin), peptide-to-protein rollup, batch correction |
+| **Affinity Proteomics** | Olink NPX, SomaScan ADAT, Luminex MFI | LOD quality filtering, bridge normalization, cross-platform concordance |
+| **Proteomics Downstream** | Any loaded proteomics modality | GO/Reactome/KEGG enrichment, kinase enrichment (KSEA), STRING PPI, biomarker panel selection (LASSO/Boruta) |
+| **Metabolomics** | LC-MS, GC-MS, NMR | QC (RSD/TIC), imputation, normalization (PQN/TIC/IS), PCA, PLS-DA, OPLS-DA, m/z annotation (HMDB/KEGG), lipid class analysis |
+| **Machine Learning** | Any modality | Feature selection (stability/LASSO/variance), survival analysis (Cox/KM), cross-validation, SHAP, multi-omics integration (MOFA) |
+| **Research & Data Access** | — | PubMed/GEO/PRIDE/MetaboLights search, dataset download orchestration, metadata harmonization |
 </details>
 
 <details>
 <summary><b>Which LLMs can I use?</b></summary>
 
-Lobster supports 5 LLM providers. Configure via `lobster init` or environment variables.
+Configure via `lobster init` or environment variables. All providers use the same agent interface.
 
-| Provider | Type | Setup | Use Case |
-|----------|------|-------|----------|
-| **Ollama** | Local | `ollama pull gpt-oss:20b` | Privacy, zero cost, offline |
-| **Anthropic** | Cloud | API key | Fastest, best quality |
-| **AWS Bedrock** | Cloud | AWS credentials | Enterprise, compliance |
-| **Google Gemini** | Cloud | Google API key | Multimodal, long context |
-| **Azure AI** | Cloud | Endpoint + credential | Enterprise Azure |
+| Provider | Type | Setup | Notes |
+|----------|------|-------|-------|
+| **Anthropic** | Cloud | API key | Claude models — recommended default |
+| **Ollama** | Local | `ollama pull <model>` | Fully offline, no data leaves the machine |
+| **OpenRouter** | Cloud | API key | Access 200+ models via a single endpoint |
+| **Google Gemini** | Cloud | Google API key | Long context window |
+| **AWS Bedrock** | Cloud | AWS credentials | Enterprise compliance, IAM-based auth |
+| **Azure AI** | Cloud | Endpoint + credential | Azure-hosted deployments |
 </details>
 
 <details>
@@ -226,20 +232,48 @@ pip install -U lobster-ai      # pip
 <details>
 <summary><b>How do I build my own agent?</b></summary>
 
-Create custom agents for any domain. Agents plug in via Python entry points — discovered automatically, no core changes needed.
+Agents are standalone Python packages that register via PEP 517 entry points. No changes to core required — Lobster discovers them automatically at startup.
 
-Install the **lobster-dev** skill to teach your coding agent the full architecture:
+**1. Scaffold the package:**
+```bash
+lobster scaffold agent \
+  --name my_domain_expert \
+  --display-name "My Domain Expert" \
+  --description "Analysis for [your domain]" \
+  --tier free
+```
 
+**2. Implement your tools** in the generated `tools/` directory. Each tool must declare AQUADIF metadata:
+```python
+@tool
+def run_analysis(modality_name: str) -> str:
+    """Run domain-specific analysis on a loaded modality."""
+    ...
+
+run_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+run_analysis.tags = ["ANALYZE"]
+```
+
+**3. Validate the package structure** before wiring:
+```bash
+lobster validate-plugin ./my-domain-package/
+```
+
+**4. Install and test:**
+```bash
+uv pip install -e ./my-domain-package/
+pytest -m contract  # runs all AQUADIF contract checks
+```
+
+Install the `lobster-dev` skill to give your coding agent the complete reference — package layout, `AGENT_CONFIG` pattern, factory function signature, tool design rules, and the full validation checklist:
 ```bash
 curl -fsSL https://skills.lobsterbio.com | bash
 ```
-
-Then ask your coding agent: *"Create a Lobster agent for [your domain]"* — it knows the package structure, AGENT_CONFIG pattern, factory function, tool design, testing, and the 28-step checklist.
 </details>
 
 <br/>
 
 <div align="center">
-  <b>Built to accelerate multi-omics research.</b><br/><br/>
+  <b>Multi-omics data infrastructure for foundation models &amp; biotech.</b><br/><br/>
   <a href="https://omics-os.com">Omics-OS</a> &nbsp;·&nbsp; <a href="https://lobsterbio.com">Lobster AI</a> &nbsp;·&nbsp; <a href="https://docs.omics-os.com">Docs</a>
 </div>
