@@ -32,6 +32,7 @@ import (
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/confirm"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/qcdash"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/textinput"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
@@ -577,6 +578,16 @@ func (m Model) View() string {
 	if tf != "" {
 		b.WriteString(tf)
 		b.WriteByte('\n')
+	}
+
+	// Inline BioComp component (rendered as a block above the composer, non-interactive).
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
+		comp := m.activeComponent.Component
+		inlineView := comp.View(m.width, m.height)
+		if inlineView != "" {
+			b.WriteString(inlineView)
+			b.WriteByte('\n')
+		}
 	}
 
 	// Progress bar (0-1 line).
@@ -1850,6 +1861,12 @@ func (m Model) layoutReservedRows() int {
 
 	if tf := renderToolFeed(m.toolFeed, m.styles, m.width, m.inline); tf != "" {
 		rows += lineCount(tf)
+	}
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
+		inlineView := m.activeComponent.Component.View(m.width, m.height)
+		if inlineView != "" {
+			rows += lineCount(inlineView)
+		}
 	}
 	if m.progressActive {
 		rows += lineCount(renderProgressBar(m.progressLabel, m.progressCurrent, m.progressTotal, m.width, m.styles))
