@@ -269,59 +269,70 @@ func TestHandleProtocolTableAppendsPreformattedCodeBlock(t *testing.T) {
 	}
 }
 
-func TestHandleSelectKeyNavigationWraps(t *testing.T) {
+func TestSelectComponentNavigationViaHandleKey(t *testing.T) {
 	m := newTestModel()
-	m.pendingSelect = &protocol.SelectPayload{
-		Message: "Choose one",
-		Options: []string{"a", "b", "c"},
-	}
-	m.selectIndex = 0
+	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
 
-	updated, _ := m.handleSelectKey(tea.KeyMsg{Type: tea.KeyUp})
+	// Set up an active select component.
+	payload := protocol.ComponentRenderPayload{
+		Component: "select",
+		Data: map[string]any{
+			"question": "Choose one",
+			"options":  []any{"a", "b", "c"},
+		},
+	}
+	updated, _ := m.handleComponentRender(payload, "sel-nav")
 	m = updated.(Model)
-	if m.selectIndex != 2 {
-		t.Fatalf("expected up from index 0 to wrap to 2, got %d", m.selectIndex)
+	if m.activeComponent == nil {
+		t.Fatal("expected activeComponent to be set")
 	}
 
-	updated, _ = m.handleSelectKey(tea.KeyMsg{Type: tea.KeyDown})
+	// Press Down twice (should go to index 2).
+	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(Model)
-	if m.selectIndex != 0 {
-		t.Fatalf("expected down from index 2 to wrap to 0, got %d", m.selectIndex)
+	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	// Component should still be active (not submitted).
+	if m.activeComponent == nil {
+		t.Fatal("expected activeComponent to still be active after navigation")
 	}
 }
 
-func TestHandleSelectKeyCtrlCReturnsCurrentIndex(t *testing.T) {
+func TestSelectComponentEscCancelsViaHandleKey(t *testing.T) {
 	var out bytes.Buffer
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
-	m.pendingSelect = &protocol.SelectPayload{
-		Message: "Choose one",
-		Options: []string{"a", "b", "c"},
-	}
-	m.pendingSelectID = "sel-1"
-	m.selectIndex = 2
 
-	updated, _ := m.handleSelectKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	// Set up an active select component.
+	payload := protocol.ComponentRenderPayload{
+		Component: "select",
+		Data: map[string]any{
+			"question": "Choose one",
+			"options":  []any{"a", "b", "c"},
+		},
+	}
+	updated, _ := m.handleComponentRender(payload, "sel-1")
 	m = updated.(Model)
 
-	if m.pendingSelect != nil || m.pendingSelectID != "" {
-		t.Fatal("expected pending select to be cleared after Ctrl+C")
+	// Press Esc to cancel the select component.
+	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+
+	if m.activeComponent != nil {
+		t.Fatal("expected activeComponent to be cleared after Esc")
 	}
 
 	msg := readSingleProtocolMessage(t, &out)
-	if msg.Type != protocol.TypeSelectResponse {
-		t.Fatalf("expected %q message, got %q", protocol.TypeSelectResponse, msg.Type)
+	if msg.Type != protocol.TypeComponentResponse {
+		t.Fatalf("expected %q message, got %q", protocol.TypeComponentResponse, msg.Type)
 	}
 
-	var p protocol.SelectResponsePayload
+	var p protocol.ComponentResponsePayload
 	if err := protocol.DecodePayload(msg, &p); err != nil {
-		t.Fatalf("decode select response payload: %v", err)
+		t.Fatalf("decode component response payload: %v", err)
 	}
-	if p.Index != 2 {
-		t.Fatalf("expected Ctrl+C to return current index 2, got %d", p.Index)
-	}
-	if p.Value != "c" {
-		t.Fatalf("expected Ctrl+C to return current value 'c', got %q", p.Value)
+	if p.ID != "sel-1" {
+		t.Fatalf("expected ID 'sel-1', got %q", p.ID)
 	}
 }
 
@@ -1231,7 +1242,7 @@ func readSingleProtocolMessage(t *testing.T, buf *bytes.Buffer) protocol.Message
 // Cancel vs Quit tests (Phase 1: Query Cancellation)
 // ---------------------------------------------------------------------------
 
-func TestCtrlCDuringStreamingArmsCancel(t *testing.T) {
+func TestCtrlCDuringStreamingSendsCancelImmediately(t *testing.T) {
 	var out bytes.Buffer
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
@@ -1241,75 +1252,16 @@ func TestCtrlCDuringStreamingArmsCancel(t *testing.T) {
 	got := updated.(Model)
 
 	if got.quitting {
-		t.Fatal("expected model NOT to enter quitting state during streaming")
+		t.Fatal("expected model NOT to quit on first Ctrl+C during streaming")
 	}
 	if !got.isCanceling {
-		t.Fatal("expected isCanceling to be armed after first Ctrl+C")
-	}
-	if got.statusText != "Press Ctrl+C again to cancel" {
-		t.Fatalf("expected cancel prompt, got %q", got.statusText)
-	}
-	// First press should NOT send cancel — it arms the two-phase flow.
-	if out.Len() > 0 {
-		t.Fatal("expected no protocol message on first Ctrl+C press")
-	}
-	if cmd == nil {
-		t.Fatal("expected a timer command from first Ctrl+C press")
-	}
-}
-
-func TestCtrlCDuringSpinnerArmsCancel(t *testing.T) {
-	var out bytes.Buffer
-	m := newTestModel()
-	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
-	m.spinnerActive = true
-
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
-	got := updated.(Model)
-
-	if got.quitting {
-		t.Fatal("expected model NOT to enter quitting state during spinner")
-	}
-	if !got.isCanceling {
-		t.Fatal("expected isCanceling to be armed after first Ctrl+C")
-	}
-	if got.statusText != "Press Ctrl+C again to cancel" {
-		t.Fatalf("expected cancel prompt, got %q", got.statusText)
-	}
-	if out.Len() > 0 {
-		t.Fatal("expected no protocol message on first Ctrl+C press")
-	}
-	if cmd == nil {
-		t.Fatal("expected a timer command from first Ctrl+C press")
-	}
-}
-
-func TestCtrlCDoublePressSendsCancel(t *testing.T) {
-	var out bytes.Buffer
-	m := newTestModel()
-	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
-	m.isStreaming = true
-
-	// First press: arms cancel.
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
-	m = updated.(Model)
-
-	if !m.isCanceling {
-		t.Fatal("expected isCanceling after first press")
-	}
-
-	// Second press: fires cancel.
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
-	got := updated.(Model)
-
-	if got.isCanceling {
-		t.Fatal("expected isCanceling to be cleared after second press")
+		t.Fatal("expected isCanceling flag set after cancel sent")
 	}
 	if got.statusText != "Cancelling…" {
 		t.Fatalf("expected statusText %q, got %q", "Cancelling…", got.statusText)
 	}
 	if cmd != nil {
-		t.Fatal("expected no tea.Quit command during streaming cancel")
+		t.Fatal("expected no tea.Cmd from cancel (no timer)")
 	}
 
 	msg := readSingleProtocolMessage(t, &out)
@@ -1318,36 +1270,81 @@ func TestCtrlCDoublePressSendsCancel(t *testing.T) {
 	}
 }
 
-func TestCancelTimerExpiredResetsArm(t *testing.T) {
+func TestCtrlCDuringSpinnerSendsCancelImmediately(t *testing.T) {
+	var out bytes.Buffer
 	m := newTestModel()
-	m.isStreaming = true
-	m.isCanceling = true
-	m.statusText = "Press Ctrl+C again to cancel"
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.spinnerActive = true
 
-	updated, _ := m.Update(cancelTimerExpired{})
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
 	got := updated.(Model)
 
-	if got.isCanceling {
-		t.Fatal("expected isCanceling to be cleared after timer expiry")
+	if got.quitting {
+		t.Fatal("expected model NOT to quit on first Ctrl+C during spinner")
 	}
-	if got.statusText != "" {
-		t.Fatalf("expected empty statusText after timer expiry, got %q", got.statusText)
+	if !got.isCanceling {
+		t.Fatal("expected isCanceling flag set after cancel sent")
+	}
+	if got.statusText != "Cancelling…" {
+		t.Fatalf("expected statusText %q, got %q", "Cancelling…", got.statusText)
+	}
+	if cmd != nil {
+		t.Fatal("expected no tea.Cmd from cancel")
+	}
+
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeCancel {
+		t.Fatalf("expected %q message, got %q", protocol.TypeCancel, msg.Type)
 	}
 }
 
-func TestCancelPromptNotOverwrittenBySpinner(t *testing.T) {
+func TestCtrlCDoublePressForcesQuit(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.isStreaming = true
+
+	// First press: sends cancel immediately.
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	m = updated.(Model)
+
+	if !m.isCanceling {
+		t.Fatal("expected isCanceling after first press")
+	}
+
+	// Drain the cancel message from the buffer.
+	_ = readSingleProtocolMessage(t, &out)
+
+	// Second press: streaming still active → force quit.
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(Model)
+
+	if !got.quitting {
+		t.Fatal("expected force quit on second Ctrl+C during active streaming")
+	}
+	if cmd == nil {
+		t.Fatal("expected tea.Quit command on force quit")
+	}
+
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeQuit {
+		t.Fatalf("expected %q message on force quit, got %q", protocol.TypeQuit, msg.Type)
+	}
+}
+
+func TestCancellingStatusNotOverwrittenBySpinner(t *testing.T) {
 	m := newTestModel()
 	m.spinnerActive = true
 	m.spinnerLabel = "thinking"
 	m.isCanceling = true
-	m.statusText = "Press Ctrl+C again to cancel"
+	m.statusText = "Cancelling…"
 
 	line := m.currentStatusLine()
-	if !strings.Contains(line, "Press Ctrl+C again to cancel") {
-		t.Fatalf("expected cancel prompt to survive spinner, got %q", line)
+	if !strings.Contains(line, "Cancelling…") {
+		t.Fatalf("expected Cancelling status to survive spinner, got %q", line)
 	}
 	if strings.Contains(line, "thinking") {
-		t.Fatalf("expected spinner text to be suppressed during cancel arm, got %q", line)
+		t.Fatalf("expected spinner text to be suppressed during cancel, got %q", line)
 	}
 }
 
@@ -1378,7 +1375,7 @@ func TestCtrlCAtIdleSendsQuit(t *testing.T) {
 // Component render tests (Phase 3: HITL Protocol Extension)
 // ---------------------------------------------------------------------------
 
-func TestComponentRenderConfirmRoutesToPendingConfirm(t *testing.T) {
+func TestComponentRenderConfirmRoutesToActiveComponent(t *testing.T) {
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
 
@@ -1391,21 +1388,18 @@ func TestComponentRenderConfirmRoutesToPendingConfirm(t *testing.T) {
 	updated, _ := m.handleComponentRender(payload, "intr-001")
 	got := updated.(Model)
 
-	if got.pendingConfirm == nil {
-		t.Fatal("expected pendingConfirm to be set")
+	if got.activeComponent == nil {
+		t.Fatal("expected activeComponent to be set")
 	}
-	if got.pendingConfirm.Message != "Proceed with batch correction?" {
-		t.Fatalf("expected confirm message, got %q", got.pendingConfirm.Message)
+	if got.activeComponent.Component.Name() != "confirm" {
+		t.Fatalf("expected component name 'confirm', got %q", got.activeComponent.Component.Name())
 	}
-	if got.pendingConfirmID != "intr-001" {
-		t.Fatalf("expected confirm ID 'intr-001', got %q", got.pendingConfirmID)
-	}
-	if !got.pendingConfirm.Default {
-		t.Fatal("expected default=true")
+	if got.activeComponent.MsgID != "intr-001" {
+		t.Fatalf("expected MsgID 'intr-001', got %q", got.activeComponent.MsgID)
 	}
 }
 
-func TestComponentRenderSelectRoutesToPendingSelect(t *testing.T) {
+func TestComponentRenderSelectRoutesToActiveComponent(t *testing.T) {
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
 
@@ -1420,21 +1414,18 @@ func TestComponentRenderSelectRoutesToPendingSelect(t *testing.T) {
 	updated, _ := m.handleComponentRender(payload, "intr-002")
 	got := updated.(Model)
 
-	if got.pendingSelect == nil {
-		t.Fatal("expected pendingSelect to be set")
+	if got.activeComponent == nil {
+		t.Fatal("expected activeComponent to be set")
 	}
-	if len(got.pendingSelect.Options) != 3 {
-		t.Fatalf("expected 3 options, got %d", len(got.pendingSelect.Options))
+	if got.activeComponent.Component.Name() != "select" {
+		t.Fatalf("expected component name 'select', got %q", got.activeComponent.Component.Name())
 	}
-	if got.pendingSelectID != "intr-002" {
-		t.Fatalf("expected select ID 'intr-002', got %q", got.pendingSelectID)
-	}
-	if got.selectIndex != 0 {
-		t.Fatalf("expected selectIndex 0, got %d", got.selectIndex)
+	if got.activeComponent.MsgID != "intr-002" {
+		t.Fatalf("expected MsgID 'intr-002', got %q", got.activeComponent.MsgID)
 	}
 }
 
-func TestComponentRenderTextInputSetsPendingComponentID(t *testing.T) {
+func TestComponentRenderTextInputSetsActiveComponent(t *testing.T) {
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
 
@@ -1447,19 +1438,14 @@ func TestComponentRenderTextInputSetsPendingComponentID(t *testing.T) {
 	updated, _ := m.handleComponentRender(payload, "intr-003")
 	got := updated.(Model)
 
-	if got.pendingComponentID != "intr-003" {
-		t.Fatalf("expected pendingComponentID 'intr-003', got %q", got.pendingComponentID)
+	if got.activeComponent == nil {
+		t.Fatal("expected activeComponent to be set")
 	}
-	// Should have appended a system message with the fallback prompt.
-	if len(got.messages) == 0 {
-		t.Fatal("expected system message with fallback prompt")
+	if got.activeComponent.Component.Name() != "text_input" {
+		t.Fatalf("expected component name 'text_input', got %q", got.activeComponent.Component.Name())
 	}
-	last := got.messages[len(got.messages)-1]
-	if last.Role != "system" {
-		t.Fatalf("expected system message, got %q", last.Role)
-	}
-	if !strings.Contains(last.Content, "What cell types?") {
-		t.Fatalf("expected fallback prompt in content, got %q", last.Content)
+	if got.activeComponent.MsgID != "intr-003" {
+		t.Fatalf("expected MsgID 'intr-003', got %q", got.activeComponent.MsgID)
 	}
 }
 
@@ -1476,8 +1462,14 @@ func TestComponentRenderUnknownFallsBackToTextInput(t *testing.T) {
 	updated, _ := m.handleComponentRender(payload, "intr-004")
 	got := updated.(Model)
 
-	if got.pendingComponentID != "intr-004" {
-		t.Fatalf("expected pendingComponentID for threshold fallback, got %q", got.pendingComponentID)
+	if got.activeComponent == nil {
+		t.Fatal("expected activeComponent to be set for unknown component fallback")
+	}
+	if got.activeComponent.Component.Name() != "text_input" {
+		t.Fatalf("expected text_input fallback, got %q", got.activeComponent.Component.Name())
+	}
+	if got.activeComponent.MsgID != "intr-004" {
+		t.Fatalf("expected MsgID 'intr-004', got %q", got.activeComponent.MsgID)
 	}
 }
 
@@ -1485,15 +1477,32 @@ func TestTextInputComponentResponseSendsComponentResponse(t *testing.T) {
 	var out bytes.Buffer
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
-	m.pendingComponentID = "intr-005"
 	m.ready = true
-	m.input.SetValue("T cells, B cells")
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	// Set up an active text_input component via handleComponentRender.
+	payload := protocol.ComponentRenderPayload{
+		Component: "text_input",
+		Data:      map[string]any{"question": "What cell types?"},
+	}
+	updated, _ := m.handleComponentRender(payload, "intr-005")
+	m = updated.(Model)
+
+	if m.activeComponent == nil {
+		t.Fatal("expected activeComponent to be set")
+	}
+
+	// Type text into the component, then press Enter to submit.
+	// First type characters into the text_input component.
+	for _, r := range "T cells, B cells" {
+		m.activeComponent.Component.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+
+	// Press Enter to submit.
+	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	got := updated.(Model)
 
-	if got.pendingComponentID != "" {
-		t.Fatal("expected pendingComponentID to be cleared after submit")
+	if got.activeComponent != nil {
+		t.Fatal("expected activeComponent to be cleared after submit")
 	}
 
 	msg := readSingleProtocolMessage(t, &out)
@@ -1505,7 +1514,11 @@ func TestTextInputComponentResponseSendsComponentResponse(t *testing.T) {
 	if err := protocol.DecodePayload(msg, &p); err != nil {
 		t.Fatalf("decode component response: %v", err)
 	}
-	if p.Data["answer"] != "T cells, B cells" {
-		t.Fatalf("expected answer 'T cells, B cells', got %v", p.Data["answer"])
+	answer, ok := p.Data["answer"].(string)
+	if !ok {
+		t.Fatalf("expected string answer, got %T: %v", p.Data["answer"], p.Data["answer"])
+	}
+	if answer != "T cells, B cells" {
+		t.Fatalf("expected answer 'T cells, B cells', got %q", answer)
 	}
 }

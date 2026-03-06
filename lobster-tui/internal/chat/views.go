@@ -688,39 +688,6 @@ func renderConfirmPrompt(p *protocol.ConfirmPayload, styles theme.Styles, width 
 	return lipgloss.NewStyle().Width(contentWidth).Render(strings.Join(lines, "\n"))
 }
 
-// renderSelectPrompt renders an inline select dialog with arrow navigation.
-func renderSelectPrompt(p *protocol.SelectPayload, selectedIdx int, styles theme.Styles, width int) string {
-	contentWidth := clampRenderWidth(width, 4)
-
-	var b strings.Builder
-	msg := strings.TrimSpace(p.Message)
-	title := strings.TrimSpace(p.Title)
-	if title != "" {
-		b.WriteString("  " + styles.Bold.Render(title) + "\n")
-	}
-	if msg == "" {
-		msg = "Select an option"
-	}
-	b.WriteString("  " + styles.Bold.Render("?") + " " + msg + "\n")
-
-	for i, opt := range p.Options {
-		text := strings.TrimSpace(opt)
-		if text == "" {
-			text = "(blank)"
-		}
-		if i == selectedIdx {
-			b.WriteString("  " + styles.InputPrompt.Render(">") + " " + styles.Bold.Render(text))
-		} else {
-			b.WriteString("    " + styles.Dimmed.Render(text))
-		}
-		if i < len(p.Options)-1 {
-			b.WriteByte('\n')
-		}
-	}
-
-	return lipgloss.NewStyle().Width(contentWidth).Render(b.String())
-}
-
 // renderStatusBar renders the bottom status bar spanning the full terminal width.
 func renderStatusBar(text string, styles theme.Styles, width int) string {
 	if text == "" {

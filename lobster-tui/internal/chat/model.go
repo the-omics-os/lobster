@@ -7,6 +7,7 @@ package chat
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
@@ -28,6 +29,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
 
+	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/confirm"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/textinput"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -204,15 +209,12 @@ type Model struct {
 	progressTotal   int
 	progressActive  bool
 
-	// Pending confirm dialog state.
+	// Pending confirm dialog state (local exit confirm only).
 	pendingConfirm   *protocol.ConfirmPayload
 	pendingConfirmID string
 
-	// Pending select dialog state.
-	pendingSelect      *protocol.SelectPayload
-	pendingSelectID    string
-	pendingComponentID string // HITL component_render awaiting text input response
-	selectIndex        int
+	// Active BioComp component (replaces pendingSelect, pendingComponentID).
+	activeComponent *ActiveComponent
 
 	width               int
 	height              int
@@ -239,11 +241,12 @@ type protocolMsg struct {
 // protocolEOF signals that the protocol channel was closed (Python exited).
 type protocolEOF struct{}
 
-// cancelTimerExpired resets the two-phase cancel arm after the confirmation window.
-type cancelTimerExpired struct{}
-
-// cancelConfirmDuration is how long the user has to press Ctrl+C again to confirm.
-const cancelConfirmDuration = 2 * time.Second
+// ActiveComponent tracks the currently displayed BioComp component.
+type ActiveComponent struct {
+	Component biocomp.BioComponent
+	MsgID     string    // correlation ID for protocol response
+	CreatedAt time.Time
+}
 
 // NewModel creates a new chat Model wired to the given handler and styles.
 func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int, inline bool, mouseCapture bool, versionFallback string) Model {
@@ -453,14 +456,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case cancelTimerExpired:
-		m.isCanceling = false
-		// Restore status only if still showing the cancel prompt.
-		if m.statusText == "Press Ctrl+C again to cancel" {
-			m.statusText = ""
-		}
-		return m, nil
-
 	case heartbeatCheck:
 		if m.ready {
 			return m, nil // Stop checking once backend is ready.
@@ -590,12 +585,33 @@ func (m Model) View() string {
 		b.WriteByte('\n')
 	}
 
-	// Input field (1 line) — replaced by confirm/select when pending.
-	if m.pendingConfirm != nil {
-		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
+	// Input field (1 line) — replaced by overlay component or local confirm when active.
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
+		comp := m.activeComponent.Component
+		overlayW, overlayH := biocomp.OverlaySize(m.width, m.height, "small")
+		switch comp.Name() {
+		case "cell_type_selector", "ontology_browser":
+			overlayW, overlayH = biocomp.OverlaySize(m.width, m.height, "large")
+		case "threshold_slider":
+			overlayW, overlayH = biocomp.OverlaySize(m.width, m.height, "medium")
+		}
+		contentW := overlayW - 4
+		contentH := overlayH - 6
+		if contentW < 1 {
+			contentW = 1
+		}
+		if contentH < 1 {
+			contentH = 1
+		}
+		helpBar := biocomp.RenderHelpBar(comp.KeyBindings(), contentW)
+		content := comp.View(contentW, contentH)
+		frame := biocomp.RenderFrame(comp.Name(), content, helpBar, overlayW, overlayH)
+		centered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, frame)
+		b.WriteString(centered)
 		b.WriteByte('\n')
-	} else if m.pendingSelect != nil {
-		b.WriteString(renderSelectPrompt(m.pendingSelect, m.selectIndex, m.styles, m.width))
+	} else if m.pendingConfirm != nil {
+		// Local exit confirm only (not protocol components).
+		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 		b.WriteByte('\n')
 	} else {
 		// Add breathing room before the prompt whenever there is visible
@@ -922,19 +938,28 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeConfirm:
 		var p protocol.ConfirmPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			m.pendingConfirm = &p
-			m.pendingConfirmID = msg.ID
-			m.recalculateViewportHeight()
+			crp := protocol.ComponentRenderPayload{
+				Component: "confirm",
+				Data: map[string]any{
+					"question": p.Message,
+					"default":  p.Default,
+				},
+			}
+			return m.handleComponentRender(crp, msg.ID)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeSelect:
 		var p protocol.SelectPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			m.pendingSelect = &p
-			m.pendingSelectID = msg.ID
-			m.selectIndex = 0
-			m.recalculateViewportHeight()
+			crp := protocol.ComponentRenderPayload{
+				Component: "select",
+				Data: map[string]any{
+					"question": p.Message,
+					"options":  p.Options,
+				},
+			}
+			return m.handleComponentRender(crp, msg.ID)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -961,13 +986,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, mouseCaptureCmd(m.mouseCapture)
 	}
 
-	// Intercept keys for pending confirm dialog.
+	// Intercept keys for active BioComp overlay component.
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
+		result := m.activeComponent.Component.HandleMsg(msg)
+		if result != nil {
+			m.sendComponentResponse(m.activeComponent.MsgID, result.Action, result.Data)
+			m.activeComponent = nil
+			m.recalculateViewportHeight()
+			return m, nil
+		}
+		return m, nil
+	}
+
+	// Intercept keys for pending LOCAL confirm dialog (exit/quit only).
 	if m.pendingConfirm != nil {
 		return m.handleConfirmKey(msg)
-	}
-	// Intercept keys for pending select dialog.
-	if m.pendingSelect != nil {
-		return m.handleSelectKey(msg)
 	}
 
 	if m.completionMenuVisible() {
@@ -999,23 +1032,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyCtrlC:
 		if m.isStreaming || m.spinnerActive {
-			if !m.isCanceling {
-				// First press: arm the cancel and start confirmation timer.
-				m.isCanceling = true
-				m.statusText = "Press Ctrl+C again to cancel"
-				return m, tea.Tick(cancelConfirmDuration, func(time.Time) tea.Msg {
-					return cancelTimerExpired{}
-				})
+			if m.isCanceling {
+				// Cancel already sent but streaming persists — force quit.
+				if m.handler != nil {
+					_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
+				}
+				m.quitting = true
+				return m, tea.Quit
 			}
-			// Second press: actually cancel.
-			m.isCanceling = false
+			// First press: send cancel immediately.
+			m.isCanceling = true
 			m.statusText = "Cancelling…"
 			if m.handler != nil {
 				_ = m.handler.SendTyped(protocol.TypeCancel, protocol.CancelPayload{}, "")
 			}
 			return m, nil
 		}
-		// Idle prompt — confirm exit (existing flow).
+		// Idle prompt — quit.
 		if m.handler != nil {
 			_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
 		}
@@ -1083,15 +1116,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					}, "")
 				}
 			}
-		} else if m.pendingComponentID != "" {
-			// HITL text fallback: send as component_response.
-			if m.handler != nil {
-				_ = m.handler.SendTyped(protocol.TypeComponentResponse, protocol.ComponentResponsePayload{
-					ID:   m.pendingComponentID,
-					Data: map[string]any{"answer": val},
-				}, m.pendingComponentID)
-			}
-			m.pendingComponentID = ""
 		} else {
 			if m.handler != nil {
 				_ = m.handler.SendTyped(protocol.TypeInput, protocol.InputPayload{
@@ -1249,7 +1273,7 @@ func (m Model) visibleCompletionSuggestionCount() int {
 }
 
 func (m Model) completionMenuVisible() bool {
-	if !m.inline || m.pendingConfirm != nil || m.pendingSelect != nil {
+	if !m.inline || m.pendingConfirm != nil || m.activeComponent != nil {
 		return false
 	}
 	if len(m.completionSuggestions) == 0 {
@@ -1831,10 +1855,11 @@ func (m Model) layoutReservedRows() int {
 		rows += lineCount(renderProgressBar(m.progressLabel, m.progressCurrent, m.progressTotal, m.width, m.styles))
 	}
 
-	if m.pendingConfirm != nil {
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
+		_, oh := biocomp.OverlaySize(m.width, m.height, "small")
+		rows += oh
+	} else if m.pendingConfirm != nil {
 		rows += lineCount(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
-	} else if m.pendingSelect != nil {
-		rows += lineCount(renderSelectPrompt(m.pendingSelect, m.selectIndex, m.styles, m.width))
 	} else {
 		if m.inline {
 			rows += 1 // reserve optional prompt spacer in inline mode
@@ -2278,7 +2303,18 @@ func protocolTableDivider(widths []int) string {
 	return strings.Join(parts, "─┼─")
 }
 
-// handleConfirmKey handles key presses when a confirm dialog is pending.
+// sendComponentResponse sends a component_response protocol message to Python.
+func (m *Model) sendComponentResponse(msgID, action string, data map[string]any) {
+	if m.handler == nil {
+		return
+	}
+	_ = m.handler.SendTyped(protocol.TypeComponentResponse, protocol.ComponentResponsePayload{
+		ID:   msgID,
+		Data: data,
+	}, msgID)
+}
+
+// handleConfirmKey handles key presses for the local exit confirm dialog.
 func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyCtrlC:
@@ -2300,148 +2336,74 @@ func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// resolveConfirm finalizes either a Python-originated or local confirm dialog.
+// resolveConfirm finalizes the local exit confirm dialog.
+// Protocol-originated confirms now go through the BioComp activeComponent path.
 func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
-	if m.pendingConfirmID == localExitConfirmID {
-		m.pendingConfirm = nil
-		m.pendingConfirmID = ""
-		m.recalculateViewportHeight()
-		if confirm {
-			if m.handler != nil {
-				_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
-			}
-			m.quitting = true
-			return m, tea.Quit
-		}
-		printCmd := m.appendMessage(ChatMessage{
-			Role:    "system",
-			Content: "Exit cancelled.",
-		}, false)
-		return m, printCmd
-	}
-
-	if m.handler != nil {
-		_ = m.handler.SendTyped(protocol.TypeConfirmResponse, protocol.ConfirmResponsePayload{
-			ID:      m.pendingConfirmID,
-			Confirm: confirm,
-		}, m.pendingConfirmID)
-	}
 	m.pendingConfirm = nil
 	m.pendingConfirmID = ""
 	m.recalculateViewportHeight()
-	return m, nil
-}
-
-// handleSelectKey handles key presses when a select dialog is pending.
-func (m Model) handleSelectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if m.pendingSelect == nil || len(m.pendingSelect.Options) == 0 {
-		return m, nil
+	if confirm {
+		if m.handler != nil {
+			_ = m.handler.SendTyped(protocol.TypeQuit, protocol.QuitPayload{}, "")
+		}
+		m.quitting = true
+		return m, tea.Quit
 	}
-	optCount := len(m.pendingSelect.Options)
-
-	switch msg.Type {
-	case tea.KeyCtrlC:
-		selected := clampIndex(m.selectIndex, optCount)
-		_ = m.handler.SendTyped(protocol.TypeSelectResponse, protocol.SelectResponsePayload{
-			ID:    m.pendingSelectID,
-			Value: m.pendingSelect.Options[selected],
-			Index: selected,
-		}, m.pendingSelectID)
-		m.pendingSelect = nil
-		m.pendingSelectID = ""
-		m.recalculateViewportHeight()
-		return m, nil
-	case tea.KeyUp, tea.KeyShiftTab:
-		m.selectIndex--
-		if m.selectIndex < 0 {
-			m.selectIndex = optCount - 1
-		}
-		return m, nil
-	case tea.KeyDown, tea.KeyTab:
-		m.selectIndex++
-		if m.selectIndex >= optCount {
-			m.selectIndex = 0
-		}
-		return m, nil
-	case tea.KeyEnter:
-		selected := clampIndex(m.selectIndex, optCount)
-		_ = m.handler.SendTyped(protocol.TypeSelectResponse, protocol.SelectResponsePayload{
-			ID:    m.pendingSelectID,
-			Value: m.pendingSelect.Options[selected],
-			Index: selected,
-		}, m.pendingSelectID)
-		m.pendingSelect = nil
-		m.pendingSelectID = ""
-		m.recalculateViewportHeight()
-		return m, nil
-	}
-	return m, nil
-}
-
-// handleComponentRender routes a generic HITL component_render to the
-// appropriate existing UI primitive (confirm, select, or text input).
-// For components we don't yet have native Go widgets for, the fallback
-// prompt is rendered as a text input.
-func (m Model) handleComponentRender(p protocol.ComponentRenderPayload, msgID string) (tea.Model, tea.Cmd) {
-	switch p.Component {
-	case "confirm":
-		question, _ := p.Data["question"].(string)
-		if question == "" {
-			question = p.FallbackPrompt
-		}
-		defaultVal, _ := p.Data["default"].(bool)
-		m.pendingConfirm = &protocol.ConfirmPayload{
-			Message: question,
-			Default: defaultVal,
-		}
-		m.pendingConfirmID = msgID
-		m.recalculateViewportHeight()
-		return m, waitForProtocolMsg(m.handler)
-
-	case "select":
-		question, _ := p.Data["question"].(string)
-		if question == "" {
-			question = p.FallbackPrompt
-		}
-		rawOptions, _ := p.Data["options"].([]any)
-		options := make([]string, 0, len(rawOptions))
-		for _, opt := range rawOptions {
-			if s, ok := opt.(string); ok {
-				options = append(options, s)
-			}
-		}
-		if len(options) == 0 {
-			// Fall through to text input if no valid options.
-			break
-		}
-		m.pendingSelect = &protocol.SelectPayload{
-			Message: question,
-			Options: options,
-		}
-		m.pendingSelectID = msgID
-		m.selectIndex = 0
-		m.recalculateViewportHeight()
-		return m, waitForProtocolMsg(m.handler)
-	}
-
-	// Fallback for text_input, threshold_slider, cell_type_selector,
-	// or any unknown component: show the fallback prompt in the
-	// composer with a placeholder and send the response as
-	// component_response when the user submits.
-	prompt := p.FallbackPrompt
-	if prompt == "" {
-		if q, ok := p.Data["question"].(string); ok && q != "" {
-			prompt = q
-		} else {
-			prompt = "Please provide input"
-		}
-	}
-	m.pendingComponentID = msgID
 	printCmd := m.appendMessage(ChatMessage{
 		Role:    "system",
-		Content: prompt,
-	}, true)
-	return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+		Content: "Exit cancelled.",
+	}, false)
+	return m, printCmd
+}
+
+// handleComponentRender routes a generic HITL component_render to a
+// BioComp component from the registry. Unknown components fall back to
+// text_input with the fallback prompt.
+func (m Model) handleComponentRender(p protocol.ComponentRenderPayload, msgID string) (tea.Model, tea.Cmd) {
+	// Close existing component if any.
+	if m.activeComponent != nil {
+		m.sendComponentResponse(m.activeComponent.MsgID, "cancel", map[string]any{"reason": "replaced"})
+		m.activeComponent = nil
+	}
+
+	factory := biocomp.Get(p.Component)
+	if factory == nil {
+		// Unknown component — use text_input as fallback if available.
+		factory = biocomp.Get("text_input")
+		if factory == nil {
+			m.sendComponentResponse(msgID, "error", map[string]any{"error": "unknown_component", "name": p.Component})
+			return m, waitForProtocolMsg(m.handler)
+		}
+		// Rewrite data to use fallback prompt as question.
+		prompt := p.FallbackPrompt
+		if prompt == "" {
+			if q, ok := p.Data["question"].(string); ok && q != "" {
+				prompt = q
+			} else {
+				prompt = "Please provide input"
+			}
+		}
+		p.Data = map[string]any{"question": prompt}
+	}
+
+	comp := factory()
+	dataBytes, err := json.Marshal(p.Data)
+	if err != nil {
+		m.sendComponentResponse(msgID, "error", map[string]any{"error": "marshal_failed", "detail": err.Error()})
+		return m, waitForProtocolMsg(m.handler)
+	}
+	if err := comp.Init(dataBytes); err != nil {
+		m.sendComponentResponse(msgID, "error", map[string]any{"error": "init_failed", "detail": err.Error()})
+		return m, waitForProtocolMsg(m.handler)
+	}
+
+	m.activeComponent = &ActiveComponent{
+		Component: comp,
+		MsgID:     msgID,
+		CreatedAt: time.Now(),
+	}
+	m.recalculateViewportHeight()
+	return m, waitForProtocolMsg(m.handler)
 }
 
 func clampIndex(value, count int) int {
