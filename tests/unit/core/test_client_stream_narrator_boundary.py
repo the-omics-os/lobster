@@ -22,7 +22,11 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
-from lobster.core.client import AgentClient, _classify_stream_source
+from lobster.core.client import (
+    AgentClient,
+    _classify_stream_source,
+    _detect_speaker_transition,
+)
 from lobster.ui.callbacks.protocol_callback import ProtocolCallbackHandler
 
 
@@ -111,6 +115,33 @@ def _tool_msg(
     return (namespace, "messages", (msg, metadata))
 
 
+def _handoff_chunk(target: str, namespace: tuple = ()) -> tuple:
+    """Build an AIMessageChunk with a handoff_to_<target> tool call.
+
+    This is how LangGraph signals delegation in the stream — the
+    supervisor emits an AIMessageChunk containing the handoff tool call
+    before the sub-agent starts producing content.
+    """
+    chunk = AIMessageChunk(
+        content="",
+        id="handoff-tc",
+        tool_call_chunks=[{"name": f"handoff_to_{target}", "args": "{}", "id": "tc-h", "index": 0}],
+    )
+    metadata = {"langgraph_node": "agent"}
+    return (namespace, "messages", (chunk, metadata))
+
+
+def _transfer_back_chunk(namespace: tuple = ()) -> tuple:
+    """Build an AIMessageChunk with a transfer_back_to_supervisor tool call."""
+    chunk = AIMessageChunk(
+        content="",
+        id="transfer-tc",
+        tool_call_chunks=[{"name": "transfer_back_to_supervisor", "args": "{}", "id": "tc-t", "index": 0}],
+    )
+    metadata = {"langgraph_node": "agent"}
+    return (namespace, "messages", (chunk, metadata))
+
+
 def _updates_event(node: str, payload: dict) -> tuple:
     """Build an updates stream tuple."""
     return ("", "updates", {node: payload})
@@ -124,29 +155,52 @@ def _events_of_type(events, event_type):
 # TestClassifyStreamSource — namespace-based source classification
 # ===========================================================================
 
-class TestClassifyStreamSource:
-    """_classify_stream_source uses the namespace tuple to determine which
-    top-level agent owns a stream event."""
+class TestSpeakerDetection:
+    """_detect_speaker_transition and _classify_stream_source work together
+    to determine which agent owns a stream event."""
 
-    def test_empty_namespace_is_supervisor(self):
-        assert _classify_stream_source(()) == "supervisor"
+    # -- _detect_speaker_transition (primary: tool calls) --
 
-    def test_supervisor_namespace(self):
-        assert _classify_stream_source(("supervisor",)) == "supervisor"
+    def test_handoff_detected(self):
+        chunk = AIMessageChunk(
+            content="",
+            tool_call_chunks=[{"name": "handoff_to_research_agent", "args": "{}", "id": "t1", "index": 0}],
+        )
+        assert _detect_speaker_transition(chunk) == "research_agent"
 
-    def test_specialist_expert(self):
+    def test_transfer_back_detected(self):
+        chunk = AIMessageChunk(
+            content="",
+            tool_call_chunks=[{"name": "transfer_back_to_supervisor", "args": "{}", "id": "t1", "index": 0}],
+        )
+        assert _detect_speaker_transition(chunk) == "supervisor"
+
+    def test_regular_tool_no_transition(self):
+        chunk = AIMessageChunk(
+            content="",
+            tool_calls=[{"name": "search_pubmed", "args": {}, "id": "t1"}],
+        )
+        assert _detect_speaker_transition(chunk) is None
+
+    def test_no_tool_calls_no_transition(self):
+        chunk = AIMessageChunk(content="just text")
+        assert _detect_speaker_transition(chunk) is None
+
+    # -- _classify_stream_source (secondary: namespace) --
+
+    def test_namespace_specialist_expert(self):
         assert _classify_stream_source(("transcriptomics_expert",)) == "transcriptomics_expert"
 
-    def test_specialist_agent(self):
+    def test_namespace_specialist_agent(self):
         assert _classify_stream_source(("research_agent",)) == "research_agent"
 
-    def test_specialist_assistant(self):
-        assert _classify_stream_source(("metadata_assistant",)) == "metadata_assistant"
+    def test_namespace_empty_returns_none(self):
+        """Empty namespace is uninformative — returns None."""
+        assert _classify_stream_source(()) is None
 
-    def test_non_tuple_fallback(self):
-        """Non-tuple namespace (legacy/unexpected) falls back to supervisor."""
-        assert _classify_stream_source("") == "supervisor"
-        assert _classify_stream_source("some_string") == "supervisor"
+    def test_namespace_supervisor_returns_none(self):
+        """Supervisor namespace is not a specialist — returns None."""
+        assert _classify_stream_source(("supervisor",)) is None
 
 
 # ===========================================================================
@@ -155,13 +209,18 @@ class TestClassifyStreamSource:
 
 class TestSingleSpeakerPolicy:
     """The stream contract: only the supervisor's AIMessage content is emitted
-    as ``content_delta``.  Specialist content goes to ``agent_content``."""
+    as ``content_delta``.  Specialist content goes to ``agent_content``.
+
+    These tests simulate REALISTIC LangGraph stream sequences where
+    namespace may be empty and node_name is always "agent".  The tool-call
+    boundary (handoff/transfer_back) is the reliable speaker signal.
+    """
 
     def test_supervisor_content_is_emitted(self, tmp_path):
         """Supervisor AIMessageChunks produce content_delta events."""
         events_in = [
-            _ai_chunk("Hello ", "agent", "sup-1", namespace=("supervisor",)),
-            _ai_chunk("world", "agent", "sup-1", namespace=("supervisor",)),
+            _ai_chunk("Hello ", "agent", "sup-1"),
+            _ai_chunk("world", "agent", "sup-1"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -172,35 +231,45 @@ class TestSingleSpeakerPolicy:
         assert deltas[0]["source"] == "supervisor"
         assert deltas[1]["delta"] == "world"
 
-    def test_sub_agent_content_yields_agent_content(self, tmp_path):
-        """Specialist content produces agent_content events (not content_delta)
-        so future consumers can opt into showing it."""
+    def test_full_delegation_round_trip(self, tmp_path):
+        """Realistic flow: supervisor → handoff → sub-agent → transfer_back → supervisor.
+
+        Only supervisor content before and after delegation should be
+        content_delta.  Sub-agent content should be agent_content.
+        """
         events_in = [
-            _ai_chunk("supervisor says hi", "agent", "sup-1", namespace=("supervisor",)),
-            _ai_chunk("research internal", "agent", "ra-1", namespace=("research_agent",)),
-            _ai_chunk("data expert internal", "agent", "de-1", namespace=("data_expert_agent",)),
+            # 1. Supervisor intro (before delegation)
+            _ai_chunk("I'll search for datasets.", "agent", "sup-1"),
+            # 2. Supervisor emits handoff tool call
+            _handoff_chunk("research_agent"),
+            # 3. Sub-agent internal reasoning (should be agent_content)
+            _ai_chunk('{"modality": "scrna_10x"}', "agent", "ra-1"),
+            _ai_chunk("Let me check another dataset", "agent", "ra-2"),
+            # 4. Sub-agent returns to supervisor
+            _transfer_back_chunk(),
+            # 5. Supervisor synthesis (should be content_delta)
+            _ai_chunk("Here are the results:", "agent", "sup-2"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
 
-        # Only supervisor → content_delta
         deltas = _events_of_type(events, "content_delta")
         delta_texts = [d["delta"] for d in deltas]
-        assert delta_texts == ["supervisor says hi"]
+        assert delta_texts == [
+            "I'll search for datasets.",
+            "Here are the results:",
+        ]
 
-        # Specialists → agent_content (not discarded, just routed differently)
         agent_content = _events_of_type(events, "agent_content")
         assert len(agent_content) == 2
-        assert agent_content[0]["delta"] == "research internal"
         assert agent_content[0]["source"] == "research_agent"
-        assert agent_content[1]["delta"] == "data expert internal"
-        assert agent_content[1]["source"] == "data_expert_agent"
+        assert agent_content[1]["source"] == "research_agent"
 
     def test_sub_agent_activity_still_tracked(self, tmp_path):
-        """Sub-agent nodes still emit agent_change events even when their
-        content is routed to the agent_content lane."""
+        """Sub-agent transitions emit agent_change events for the activity lane."""
         events_in = [
-            _ai_chunk("thinking...", "agent", "ra-1", namespace=("research_agent",)),
+            _handoff_chunk("research_agent"),
+            _ai_chunk("thinking...", "agent", "ra-1"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -213,8 +282,9 @@ class TestSingleSpeakerPolicy:
     def test_tool_messages_always_filtered(self, tmp_path):
         """ToolMessages never produce content_delta or agent_content."""
         events_in = [
-            _tool_msg("tool output", "tools", namespace=("supervisor",)),
-            _tool_msg("tool output", "tools", namespace=("research_agent",)),
+            _tool_msg("tool output", "tools"),
+            _handoff_chunk("research_agent"),
+            _tool_msg("tool output", "tools"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -224,19 +294,23 @@ class TestSingleSpeakerPolicy:
         assert len(deltas) == 0
         assert len(agent_content) == 0
 
-    def test_top_level_namespace_is_supervisor(self, tmp_path):
-        """Messages from the top-level graph (empty namespace) are treated
-        as supervisor content — this covers edge cases where the graph
-        structure doesn't nest the supervisor in a subgraph."""
+    def test_namespace_based_classification_as_fallback(self, tmp_path):
+        """When namespace IS populated (future LangGraph), it provides
+        classification even without handoff tool calls in the stream."""
         events_in = [
-            _ai_chunk("top level", "supervisor", "tl-1", namespace=()),
+            _ai_chunk("supervisor text", "agent", "sup-1", namespace=("supervisor",)),
+            _ai_chunk("specialist text", "agent", "ra-1", namespace=("research_agent",)),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
 
         deltas = _events_of_type(events, "content_delta")
         assert len(deltas) == 1
-        assert deltas[0]["delta"] == "top level"
+        assert deltas[0]["delta"] == "supervisor text"
+
+        agent_content = _events_of_type(events, "agent_content")
+        assert len(agent_content) == 1
+        assert agent_content[0]["source"] == "research_agent"
 
 
 # ===========================================================================
@@ -250,9 +324,9 @@ class TestStreamingDedup:
     def test_dedup_with_message_id(self, tmp_path):
         """Complete message replay with same ID as prior chunks is suppressed."""
         events_in = [
-            _ai_chunk("Hello", "agent", "msg-42", namespace=("supervisor",)),
-            _ai_chunk(" world", "agent", "msg-42", namespace=("supervisor",)),
-            _ai_complete("Hello world", "agent", "msg-42", namespace=("supervisor",)),
+            _ai_chunk("Hello", "agent", "msg-42"),
+            _ai_chunk(" world", "agent", "msg-42"),
+            _ai_complete("Hello world", "agent", "msg-42"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -264,9 +338,9 @@ class TestStreamingDedup:
     def test_dedup_without_message_id(self, tmp_path):
         """Content-hash fallback catches ID-less replays."""
         events_in = [
-            _ai_chunk("Hello", "agent", None, namespace=("supervisor",)),
-            _ai_chunk(" world", "agent", None, namespace=("supervisor",)),
-            _ai_complete("Hello world", "agent", None, namespace=("supervisor",)),
+            _ai_chunk("Hello", "agent", None),
+            _ai_chunk(" world", "agent", None),
+            _ai_complete("Hello world", "agent", None),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -354,8 +428,8 @@ class TestEndNodeFiltered:
     def test_end_node_silent(self, tmp_path):
         """__end__ node content never produces content_delta events."""
         events_in = [
-            _ai_chunk("final summary", "agent", "sup-1", namespace=("supervisor",)),
-            _ai_chunk("end leak", "__end__", "end-1", namespace=()),
+            _ai_chunk("final summary", "agent", "sup-1"),
+            _ai_chunk("end leak", "__end__", "end-1"),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)

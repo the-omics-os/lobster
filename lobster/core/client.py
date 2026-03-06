@@ -19,23 +19,44 @@ from langgraph.store.memory import InMemoryStore
 from lobster.agents.graph import create_bioinformatics_graph
 
 # ---------------------------------------------------------------------------
-# Stream source classification
+# Stream speaker tracking
 # ---------------------------------------------------------------------------
 
 _SPECIALIST_SUFFIXES = ("_expert", "_agent", "_assistant")
 
 
-def _classify_stream_source(namespace: Any) -> str:
-    """Classify which top-level agent owns a stream event.
+def _detect_speaker_transition(message_chunk: Any) -> Optional[str]:
+    """Detect agent transitions from handoff/transfer_back tool calls.
 
-    With ``subgraphs=True``, LangGraph yields a *namespace* (tuple of
-    strings) encoding the subgraph path.  The internal ``langgraph_node``
-    metadata is always ``"agent"`` for ReAct sub-graphs, so namespace is
-    the only reliable discriminator.
+    LangGraph streams tool-call chunks inline with content chunks.
+    When the supervisor delegates via ``handoff_to_<agent>``, the tool
+    call appears in the stream *between* the delegating agent's content
+    and the receiving agent's content — exactly the right boundary.
 
-    Returns the specialist agent name when the event originates inside a
-    specialist subgraph, or ``"supervisor"`` otherwise.  Consumers use
-    this to route content into the correct UI lane.
+    Returns the new active speaker name, or ``None`` if no transition.
+    """
+    for attr in ("tool_calls", "tool_call_chunks"):
+        for tc in getattr(message_chunk, attr, None) or []:
+            name = ""
+            if isinstance(tc, dict):
+                name = tc.get("name") or ""
+            else:
+                name = getattr(tc, "name", "") or ""
+            if not name:
+                continue
+            if name.startswith("handoff_to_"):
+                return name[len("handoff_to_"):]
+            if name.startswith("transfer_back_to_"):
+                return "supervisor"
+    return None
+
+
+def _classify_stream_source(namespace: Any) -> Optional[str]:
+    """Secondary classification from LangGraph namespace tuple.
+
+    With ``subgraphs=True``, namespace *may* encode the subgraph path
+    (e.g. ``("research_agent",)``).  Returns the specialist name when
+    detected, or ``None`` when namespace is uninformative.
     """
     ns_parts = namespace if isinstance(namespace, tuple) else ()
     for part in ns_parts:
@@ -43,7 +64,7 @@ def _classify_stream_source(namespace: Any) -> str:
             part.endswith(sfx) for sfx in _SPECIALIST_SUFFIXES
         ):
             return part
-    return "supervisor"
+    return None
 from lobster.config.settings import MODEL_PRICING
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
@@ -373,6 +394,11 @@ class AgentClient(BaseClient):
             seen_content_hashes: set = set()
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
 
+            # Active speaker tracks which agent currently owns the
+            # narrative.  Updated by handoff/transfer_back tool calls
+            # in the stream — the only reliable boundary signal.
+            active_speaker = "supervisor"
+
             for namespace, event_type, chunk in self.graph.stream(
                 graph_input,
                 config,
@@ -392,18 +418,22 @@ class AgentClient(BaseClient):
                     if message_type in ("ToolMessage", "ToolMessageChunk"):
                         continue
 
-                    # Dedup: skip complete messages we already streamed as chunks.
-                    # When subgraphs=True, LangGraph re-emits the subgraph's final
-                    # complete message at the parent graph level. Without dedup,
-                    # the entire response appears twice.
+                    # Track speaker transitions from tool calls.
+                    # Handoff/transfer_back calls appear in the stream
+                    # between the delegating and receiving agent's content.
+                    transition = _detect_speaker_transition(message_chunk)
+                    if transition:
+                        active_speaker = transition
+
+                    # Dedup: skip complete messages we already streamed
+                    # as chunks.  LangGraph re-emits the subgraph's final
+                    # complete message at the parent graph level.
                     if not is_chunk:
-                        # Primary: message ID (when available)
                         if message_id and message_id in seen_message_ids:
                             logger.debug(
                                 f"Streaming: dedup skipped complete msg {message_id}"
                             )
                             continue
-                        # Fallback: content hash (for ID-less replays)
                         raw = message_chunk.content
                         content_str = raw if isinstance(raw, str) else str(raw)
                         if content_str:
@@ -423,15 +453,16 @@ class AgentClient(BaseClient):
                     if not isinstance(message_chunk, AIMessage):
                         continue
 
-                    # Get node name from metadata for agent tracking
                     node_name = metadata.get("langgraph_node", "")
                     if node_name == "__end__":
                         continue
 
-                    # Classify source from the namespace (subgraph path).
-                    # node_name is unreliable with subgraphs=True — all
-                    # ReAct agents report "agent" internally.
-                    source = _classify_stream_source(namespace)
+                    # Resolve source: tool-call tracking is primary,
+                    # namespace is secondary (may be unpopulated).
+                    source = (
+                        _classify_stream_source(namespace)
+                        or active_speaker
+                    )
 
                     # Emit agent change events for specialist agents
                     if source != "supervisor" and source != last_agent:
@@ -457,11 +488,9 @@ class AgentClient(BaseClient):
                             elif isinstance(block, str) and block:
                                 text_fragments.append(block)
 
-                    # Route extracted text into the correct event lane.
-                    # Supervisor → content_delta (user-visible, accumulated
-                    #   for conversation history).
-                    # Specialist → agent_content (available for future UI
-                    #   lanes; current consumers ignore this event type).
+                    # Route content into the correct event lane.
+                    # Supervisor → content_delta (user-visible, accumulated)
+                    # Specialist → agent_content (future UI lanes)
                     for frag in text_fragments:
                         if source == "supervisor":
                             accumulated_text += frag
@@ -479,9 +508,7 @@ class AgentClient(BaseClient):
                                 "timestamp": datetime.now().isoformat(),
                             }
 
-                    # Register accumulated-text hash so that a later
-                    # complete-message replay is caught by content-hash
-                    # fallback dedup above.
+                    # Register accumulated-text hash for dedup.
                     if is_chunk and accumulated_text:
                         seen_content_hashes.add(
                             hashlib.md5(
