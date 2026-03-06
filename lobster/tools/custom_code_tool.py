@@ -59,6 +59,56 @@ PostProcessor = Callable[
 
 
 # =============================================================================
+# Deferred Help Text (returned on empty code or errors, NOT in tool schema)
+# =============================================================================
+
+_EXECUTE_CUSTOM_CODE_HELP = """EXECUTE_CUSTOM_CODE — Detailed Usage Guide
+
+PARAMETER SELECTION (choose ONE):
+- modality_name: Load AnnData as `adata` variable
+- workspace_key: Load specific JSON/CSV file (token-efficient)
+- Neither: Auto-load all workspace files
+
+NAMESPACE AVAILABLE:
+- WORKSPACE: Path to workspace directory (pathlib.Path)
+- OUTPUT_DIR: Recommended export path (workspace/exports/)
+- adata: Loaded modality (if modality_name provided)
+- Auto-loaded CSV/JSON files as variables (if load_workspace_files=True)
+- publication_queue, download_queue (if they exist in workspace)
+
+RETURNING RESULTS:
+Assign to `result` variable: `result = my_computation()`
+
+LARGE OUTPUT HANDLING:
+stdout capped at 500 chars. result capped at 8,000 chars.
+Save large data to file instead:
+    import json
+    output_path = OUTPUT_DIR / 'my_results.json'
+    with open(output_path, 'w') as f:
+        json.dump(large_data, f)
+    result = {"saved_to": str(output_path), "count": len(large_data), "preview": large_data[:5]}
+
+DEFENSIVE CODING:
+- Use data.get('key', default) instead of data['key']
+- Check `if value is not None` before .lower()/.upper()
+- Convert numpy types: int(val), float(val), list(arr)
+- Check isinstance(data, dict) before dict operations
+
+PERSIST PARAMETER:
+- persist=False (default): Ephemeral — logged but NOT in /notebook export
+- persist=True: Reproducible — included in exported Jupyter notebook
+
+STATE PERSISTENCE:
+Modified adata is saved as NEW modality with _custom suffix.
+Example: modality_name="geo_gse12345_clustered" → "geo_gse12345_clustered_custom"
+
+METADATA PERSISTENCE:
+Return dict with samples and output_key to persist:
+  result = {'samples': [...], 'output_key': 'filtered_samples'}
+"""
+
+
+# =============================================================================
 # Factory Function
 # =============================================================================
 
@@ -113,125 +163,24 @@ def create_execute_custom_code_tool(
         persist: bool = False,
         description: str = "Custom code execution",
     ) -> str:
-        """
-        Execute custom Python code with workspace context.
+        """Execute custom Python code with workspace context.
 
-        **Use this tool ONLY when existing specialized tools don't cover your need.**
+        Use ONLY when existing specialized tools don't cover your need.
 
-        PARAMETER SELECTION (choose ONE based on your data type):
-        - `modality_name`: Load AnnData modality as `adata` variable (for data operations)
-        - `workspace_key`: Load specific JSON/CSV file (token-efficient, for metadata operations)
-        - Neither: Load all workspace files (can be slow with many files)
+        Choose ONE data source: modality_name (AnnData as `adata`), workspace_key
+        (JSON/CSV file), or neither (all workspace files auto-loaded).
 
-        SECURITY MODEL:
-        - Code runs in subprocess with filtered environment (API keys NOT accessible)
-        - AST validation blocks dangerous imports (subprocess, pickle, ctypes, etc.)
-        - 300-second timeout enforced
-        - Network access and file permissions are NOT restricted (local CLI trust model)
-
-        AVAILABLE IN NAMESPACE:
-        - WORKSPACE: Path to workspace directory (pathlib.Path)
-        - OUTPUT_DIR: Recommended path for exports (workspace/exports/)
-        - adata: Loaded modality (if modality_name provided)
-        - Auto-loaded CSV/JSON files (if load_workspace_files=True)
-        - publication_queue, download_queue (if exist in workspace)
-
-        RETURNING RESULTS:
-        Assign to `result` variable: `result = my_computation()`
-
-        LARGE OUTPUT (>100 items or >2000 chars):
-        stdout capped at 500 chars. result capped at 8,000 chars. Truncated
-        output cannot be recovered by re-executing. Save to file instead:
-            import json
-            output_path = OUTPUT_DIR / 'my_results.json'
-            with open(output_path, 'w') as f:
-                json.dump(large_data, f)
-            result = {"saved_to": str(output_path), "count": len(large_data),
-                      "preview": large_data[:5]}
-        Do not assign large lists/dicts to result. Do not print large data.
-
-        DEFENSIVE CODING REQUIRED:
-        - Use data.get('key', default) instead of data['key']
-        - Check `if value is not None` before .lower()/.upper()
-        - Convert numpy types: int(val), float(val), list(arr)
-        - Check isinstance(data, dict) before dict operations
-
-        Example defensive pattern:
-            samples = data.get('samples', [])
-            for s in samples:
-                disease = s.get('disease')
-                if disease:
-                    print(disease.lower())
-
-        NOTEBOOK EXPORT (persist parameter):
-        - persist=False (default): Code is EPHEMERAL
-          * Execution logged in provenance for tracking
-          * NOT included when you run /notebook export
-          * Use for: debugging, quick checks, exploratory analysis
-
-        - persist=True: Code is REPRODUCIBLE
-          * Execution logged in provenance for tracking
-          * Included in /notebook export as executable cell
-          * Code exported AS-IS (not templated) in exact workflow order
-          * Use for: production workflows, data transformations, final analyses
-
-        STATE PERSISTENCE (adata write-back):
-        When you modify adata (add columns, filter cells, compute embeddings),
-        the modified adata is automatically saved as a NEW modality with suffix
-        `_custom`. The original modality is never modified.
-        Example: modality_name="geo_gse12345_clustered" + adding obs column
-        → new modality "geo_gse12345_clustered_custom" created automatically.
-        Use the new name for subsequent operations on the modified data.
-
-        PERSISTING FOR METADATA OPERATIONS:
-        Return dict with samples and output_key to persist to metadata_store:
-        `result = {'samples': [...], 'output_key': 'filtered_samples'}`
+        Namespace: WORKSPACE, OUTPUT_DIR, adata (if modality_name), auto-loaded files.
+        Assign results to `result` variable. Large output (>8K chars) is truncated
+        — save to OUTPUT_DIR instead.
 
         Args:
             python_code: Python code to execute (multi-line supported)
-            modality_name: AnnData modality to load as 'adata' (for data operations)
-            workspace_key: Specific workspace file to load (for metadata operations)
-            load_workspace_files: Auto-inject CSV/JSON from workspace (default: True)
-            persist: Control notebook export behavior (default: False)
-                    - False: Ephemeral execution (exploratory, debugging, quick checks)
-                              Logged in provenance but NOT included in /notebook export
-                    - True: Reproducible execution (production workflow, data transformations)
-                             Included in exported Jupyter notebook for full reproducibility
-                    Use True for steps that are part of your final analysis pipeline.
+            modality_name: AnnData modality to load as 'adata'
+            workspace_key: Specific workspace JSON/CSV file to load
+            load_workspace_files: Auto-inject workspace files (default: True)
+            persist: False=ephemeral (default), True=included in /notebook export
             description: Human-readable description of the operation
-
-        Returns:
-            Formatted string with execution results, warnings, and outputs
-
-        Example (exploratory - no notebook export):
-            >>> execute_custom_code(
-            ...     modality_name="geo_gse12345_filtered",
-            ...     python_code="result = adata.obs['cell_type'].value_counts().to_dict()",
-            ...     persist=False,  # Ephemeral debugging
-            ...     description="Count cell types in filtered dataset"
-            ... )
-
-        Example (production workflow - included in notebook):
-            >>> execute_custom_code(
-            ...     workspace_key="aggregated_samples",
-            ...     python_code=\"\"\"
-            ...     # Filter samples with complete annotations
-            ...     samples = aggregated_samples['samples']
-            ...     valid = [s for s in samples if s.get('body_site') and s.get('disease')]
-            ...     result = {'samples': valid, 'output_key': 'reviewed_samples'}
-            ...     \"\"\",
-            ...     persist=True,  # Include in /notebook export for reproducibility
-            ...     description="Filter samples with body_site and disease annotations"
-            ... )
-            # This code will appear AS-IS in exported Jupyter notebook
-
-        Example (quick check - no persistence):
-            >>> execute_custom_code(
-            ...     workspace_key="sra_prjna834801_samples",
-            ...     python_code="result = len(sra_prjna834801_samples['samples'])",
-            ...     persist=False,  # Quick check, not part of workflow
-            ...     description="Count samples in PRJNA834801"
-            ... )
         """
         # Lazy import to prevent circular imports when component_registry loads entry points
         # These exceptions are needed at runtime for except clauses, but importing the
@@ -249,6 +198,10 @@ def create_execute_custom_code_tool(
                 "- `modality_name`: For AnnData/H5AD operations\n"
                 "- `workspace_key`: For JSON/CSV metadata operations"
             )
+
+        # Empty code guard
+        if not python_code or not python_code.strip():
+            return _EXECUTE_CUSTOM_CODE_HELP
 
         try:
             # Convert workspace_key to list (service expects Optional[List[str]])
@@ -311,12 +264,34 @@ def create_execute_custom_code_tool(
             logger.error(f"Code execution failed: {e}")
             import json
 
+            # Include defensive coding hints on runtime errors (just-in-time guidance)
+            error_str = str(e)
+            hints = ""
+            if "KeyError" in error_str or "'NoneType'" in error_str:
+                hints = (
+                    "\n\nHINT — Defensive coding required:\n"
+                    "- Use data.get('key', default) instead of data['key']\n"
+                    "- Check `if value is not None` before .lower()/.upper()\n"
+                    "- Check isinstance(data, dict) before dict operations"
+                )
+            elif "numpy" in error_str.lower() or "int64" in error_str or "float64" in error_str:
+                hints = (
+                    "\n\nHINT — Convert numpy types:\n"
+                    "- int(val), float(val), list(arr), str(val)"
+                )
+            elif "truncat" in error_str.lower() or len(error_str) > 2000:
+                hints = (
+                    "\n\nHINT — Large output handling:\n"
+                    "- Save to OUTPUT_DIR / 'results.json' instead of returning large data\n"
+                    "- result = {'saved_to': str(path), 'count': N, 'preview': data[:5]}"
+                )
+
             return json.dumps(
                 {
                     "success": False,
-                    "error": str(e),
+                    "error": error_str + hints,
                     "error_type": "execution_error",
-                    "stderr": str(e),
+                    "stderr": error_str,
                 },
                 indent=2,
             )

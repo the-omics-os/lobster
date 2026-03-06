@@ -36,46 +36,13 @@ def create_todo_tools():
         todos: List[Dict[str, str]],
         tool_call_id: Annotated[str, InjectedToolCallId],
     ) -> Command[Dict[str, Any]]:
-        """Update todo list for planning multi-step tasks.
+        """Create or update todo list for multi-step tasks (3+ steps or multi-agent).
 
-        Use this tool to create and manage a structured task list for your current
-        session. This helps track progress, organize complex tasks, and demonstrate
-        thoroughness.
-
-        ## When to Use This Tool
-
-        Use proactively in these scenarios:
-        1. Complex multi-step tasks - When a task requires 3 or more distinct steps
-        2. Multi-agent coordination - Tasks involving multiple specialists
-        3. User provides multiple tasks - Numbered or comma-separated requests
-        4. After receiving new instructions - Immediately capture requirements
-
-        ## When NOT to Use This Tool
-
-        Skip using this tool when:
-        1. Single, straightforward task (e.g., "list modalities")
-        2. Simple lookups (check queue status, list cached items)
-        3. Task completable in 1-2 trivial steps
-        4. Purely conversational or informational requests
-
-        ## Task Structure
-
-        Each todo item must have:
-        - content: Imperative form (e.g., "Download GSE12345")
-        - status: One of "pending", "in_progress", or "completed"
-        - activeForm: Present continuous form (e.g., "Downloading GSE12345")
-
-        ## Status Rules
-
-        - Exactly ONE task should be "in_progress" at a time
-        - Mark tasks completed IMMEDIATELY after finishing
-        - Never mark a task completed if errors occurred
+        Each item needs: content (imperative), status (pending/in_progress/completed),
+        activeForm (present continuous). Keep exactly 1 task in_progress at a time.
 
         Args:
-            todos: List of todo items, each with content, status, activeForm keys
-
-        Returns:
-            Command to atomically update state with new todos
+            todos: List of todo items with content, status, activeForm keys
         """
         # Validate todos structure
         valid_statuses = {"pending", "in_progress", "completed"}

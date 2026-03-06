@@ -89,6 +89,61 @@ def _check_deprecated_export_location(workspace_path: Path) -> Optional[List[Pat
 
 
 # ===============================================================================
+# Deferred Help Text (returned on errors, NOT in tool schema)
+# ===============================================================================
+
+_WORKSPACE_TOOL_HELP = """GET_CONTENT_FROM_WORKSPACE — Detailed Usage Guide
+
+WORKSPACE CATEGORIES:
+- "literature": Publications, papers, abstracts
+- "data": Dataset metadata, GEO records
+- "metadata": Validation results, sample mappings, pub_queue files
+- "exports": CSV/TSV exports, user-facing files
+- "download_queue": Dataset download tracking (GEO/SRA/PRIDE)
+- "publication_queue": Publication processing pipeline
+
+DETAIL LEVELS:
+- "summary": Key-value overview (default)
+- "methods": Methods section (publications)
+- "metadata": Full content — for queues: Stats + Head 10 + Guidance;
+              for items: complete JSON including full publication text
+- "samples": Sample IDs list (datasets)
+- "platform": Platform info (datasets)
+- "github": GitHub repos (publications)
+- "validation": Validation results (download_queue)
+- "strategy": Download strategy (download_queue)
+
+USAGE PATTERNS:
+  # List all cached content
+  get_content_from_workspace()
+
+  # List by workspace
+  get_content_from_workspace(workspace="literature")
+
+  # Exact lookup
+  get_content_from_workspace(identifier="GSE123456", workspace="data")
+
+  # Glob filtering
+  get_content_from_workspace(pattern="GSE*", workspace="data")
+
+  # Queue status filtering
+  get_content_from_workspace(workspace="download_queue", status_filter="PENDING")
+
+  # Full publication text (for enrichment)
+  get_content_from_workspace(identifier="pub_queue_doi_..._metadata", workspace="metadata", level="metadata")
+
+QUEUE SELECTION:
+- download_queue: Dataset file downloads (status: PENDING/IN_PROGRESS/COMPLETED/FAILED)
+- publication_queue: Literature processing (status: pending/extracting/metadata_extracted/completed/failed)
+
+PARAMETER RULES:
+- identifier: Exact filename/ID for single item lookup
+- pattern: Glob wildcards (*?[]) for list filtering — do NOT use for exact lookup
+- Cannot use both identifier and pattern simultaneously
+"""
+
+
+# ===============================================================================
 # Contextual Error System
 # ===============================================================================
 
@@ -109,7 +164,11 @@ def generate_contextual_error(
     section_title: str,
     param_name: str,
 ) -> str:
-    """Generate helpful error message with fuzzy-match suggestions."""
+    """Generate helpful error message with fuzzy-match suggestions.
+
+    Appends the full usage guide so the LLM gets just-in-time documentation
+    instead of carrying it in the tool schema on every API call.
+    """
     error_msg = (
         f"Error: Invalid value '{invalid_value}' for parameter '{param_name}'\n\n"
     )
@@ -123,6 +182,8 @@ def generate_contextual_error(
     example = _PARAM_EXAMPLES.get(param_name, {}).get(section_title)
     if example:
         error_msg += f"\n{example}\n"
+
+    error_msg += f"\n---\n{_WORKSPACE_TOOL_HELP}"
 
     return error_msg.strip()
 
@@ -202,211 +263,20 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
         status_filter: str = None,
         pattern: str = None,
     ) -> str:
-        """
-        Retrieve cached research content from workspace with flexible detail levels.
+        """Retrieve cached research content from workspace.
 
-        **Unified Architecture (v2.6+)**: All workspace types now use a consistent
-        adapter-based architecture with unified formatting and error handling. All
-        workspaces support the same operations (list, filter, retrieve) with consistent
-        output format.
-
-        Reads previously cached publications, datasets, and metadata from workspace
-        directories. Supports listing all content, filtering by workspace, and
-        extracting specific details (summary, methods, samples, platform, full metadata).
-
-        ## Workspace Categories
-        - "literature": Publications, papers, abstracts (cached research content)
-        - "data": Dataset metadata, GEO records (cached dataset information)
-        - "metadata": Validation results, sample mappings (processed metadata)
-        - "exports": Centralized export files (CSV/TSV exports, user-facing files)
-        - "download_queue": Dataset downloads from databases (GEO/SRA/PRIDE/etc.) - tracks file download progress
-        - "publication_queue": Publication processing pipeline (RIS imports, PubMed papers, full-text extraction) - tracks literature mining workflows
-        Example: get_content_from_workspace(workspace="literature")
-
-        ## Detail Levels
-        - "summary": Key-value pairs, high-level overview (default)
-        - "methods": Methods section only (for publications)
-        - "metadata": **Smart hybrid view for queues** (Statistics + Head 10 entries + Guidance).
-                     For single items: Full JSON including COMPLETE PUBLICATION TEXT (for pubs),
-                     full entry details (for queue entries), or complete metadata (for datasets).
-                     NOTE: Queue listing uses smart truncation to prevent context overflow.
-        - "samples": Sample IDs list (for datasets)
-        - "platform": Platform information (for datasets)
-        - "github": GitHub repositories (for publications)
-        - "validation": Validation results (for download_queue)
-        - "strategy": Download strategy (for download_queue)
-        Example: get_content_from_workspace("literature", level="summary")
-
-        **Queue Selection Guide**:
-        - Use "download_queue" when tracking dataset downloads from databases (GEO, SRA, PRIDE, etc.)
-        - Use "publication_queue" when tracking publication processing workflows (RIS files, PubMed searches, full-text extraction, identifier extraction)
-
-        For download_queue workspace:
-        - identifier=None: List all entries (filtered by status_filter if provided)
-        - identifier=<entry_id>: Retrieve specific entry
-        - status_filter: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "FAILED"
-        - level="summary": Stats + top 5 recent entries
-        - level="metadata": **Smart hybrid** (Stats + head 10 entries + guidance)
-
-        For publication_queue workspace (publication/paper/literature processing):
-        - Tracks: RIS file imports, PubMed paper extraction, full-text retrieval, dataset identifier mining
-        - identifier=None: List all publication entries (filtered by status_filter if provided)
-        - identifier=<entry_id>: Retrieve specific publication entry
-        - status_filter: "pending" | "extracting" | "metadata_extracted" | "metadata_enriched" | "handoff_ready" | "completed" | "failed"
-        - level="summary": Stats + top 5 recent publications
-        - level="metadata": **Smart hybrid** (Stats + head 10 publications + guidance)
-
-        **Unified Behavior**: All workspaces now support consistent operations:
-        - List mode (identifier=None): Always returns formatted markdown list
-        - Filter by status: Works across all queue workspaces
-        - Consistent error handling: Defensive against missing fields
-        - Same output format: Status emojis, titles, details (see WorkspaceItem TypedDict)
-
-        For publication content (manual enrichment use case):
-        - Cached publications have 3 workspace files:
-          * pub_queue_doi_X_Y_Z_metadata.json: FULL PUBLICATION TEXT + metadata
-          * pub_queue_doi_X_Y_Z_methods.json: Methods section only + structured extraction
-          * pub_queue_doi_X_Y_Z_identifiers.json: Extracted dataset IDs (GEO/SRA/PRIDE)
-
-        - level="metadata" on *_metadata identifier returns JSON with:
-          * "content" field: COMPLETE PUBLICATION TEXT (Title + Intro + Methods + Results + Discussion)
-          * "title", "authors", "journal", "year" fields
-          * Use for: disease extraction from title/abstract, demographics from methods,
-                     tissue context from results, comprehensive manual enrichment
-
-        - level="methods" on *_methods identifier returns:
-          * "methods_text" field: Methods section text only
-          * "methods_dict" with software_used, parameters, statistical_methods
-          * Use for: focused age/sex extraction, cohort characteristics
-
-        - To extract specific sections from full text, use regex on "content" field
-        - To enrich samples, combine with execute_custom_code tool
+        Workspaces: literature, data, metadata, exports, download_queue, publication_queue
+        Levels: summary (default), methods, metadata, samples, platform, github, validation, strategy
 
         Args:
-            identifier: **EXACT LOOKUP** - Complete filename or ID for single item retrieval (e.g., "harmonized_metadata.csv", "GSE123456"). Use this for accessing specific files.
-            workspace: Filter by workspace category (None = all workspaces)
-            level: Detail level to extract (default: "summary")
-            status_filter: Status filter for download_queue/publication_queue (optional)
-            pattern: **GLOB FILTER** - Wildcard pattern for filtering lists (e.g., "harmonized*", "GSE*"). Only use with wildcards (*?[]), NOT for exact filenames.
+            identifier: Exact filename or ID for single item (e.g. "GSE123456")
+            workspace: Filter by category (None = all)
+            level: Detail level (default: "summary")
+            status_filter: Queue status filter (e.g. "PENDING", "COMPLETED")
+            pattern: Glob pattern for filtering lists (e.g. "GSE*", "harmonized*")
 
-        Returns:
-            Formatted content based on detail level or list of cached items
-
-        Examples:
-            # ===== EXACT LOOKUPS (use identifier parameter) =====
-            # Retrieve specific export file by exact filename
-            get_content_from_workspace(identifier="harmonized_metadata.csv", workspace="exports")
-            get_content_from_workspace(identifier="harmonized_metadata_170_datasets.csv", workspace="exports")
-
-            # Retrieve specific dataset by accession
-            get_content_from_workspace(identifier="GSE123456", workspace="data")
-
-            # ===== GLOB FILTERING (use pattern parameter) =====
-            # List all files starting with "harmonized"
-            get_content_from_workspace(pattern="harmonized*", workspace="exports")
-
-            # List all GEO datasets
-            get_content_from_workspace(pattern="GSE*", workspace="data")
-
-            # ===== LISTING (no identifier or pattern) =====
-            # List all cached content
-            get_content_from_workspace()
-
-            # List content in specific workspace
-            get_content_from_workspace(workspace="literature")
-
-            # List metadata with pattern filter (avoids loading all 1000+ items)
-            get_content_from_workspace(workspace="metadata", pattern="aggregated_*")
-            get_content_from_workspace(workspace="metadata", pattern="sra_*")
-            get_content_from_workspace(workspace="metadata", pattern="pub_queue_*")
-
-            # Read publication methods section
-            get_content_from_workspace(
-                identifier="publication_PMID12345",
-                workspace="literature",
-                level="methods"
-            )
-
-            # Get dataset sample IDs
-            get_content_from_workspace(
-                identifier="dataset_GSE12345",
-                workspace="data",
-                level="samples"
-            )
-
-            # Get full metadata
-            get_content_from_workspace(
-                identifier="metadata_GSE12345_samples",
-                workspace="metadata",
-                level="metadata"
-            )
-
-            # List pending downloads
-            get_content_from_workspace(
-                workspace="download_queue",
-                status_filter="PENDING"
-            )
-
-            # Get download queue entry details
-            get_content_from_workspace(
-                identifier="queue_entry_123",
-                workspace="download_queue",
-                level="metadata"
-            )
-
-            # PUBLICATION ENRICHMENT: Read full publication text (COMPLETE CONTENT)
-            # For manual sample enrichment, use level="metadata" to access full text
-            get_content_from_workspace(
-                identifier="pub_queue_doi_10_1080_19490976_2022_2046244_metadata",
-                workspace="metadata",
-                level="metadata"
-            )
-            # Returns JSON with "content" field containing:
-            # - Complete publication text (Title + Introduction + Methods + Results + Discussion)
-            # - All sections accessible for disease/demographics extraction
-            # - Use for: extracting disease from title, demographics from methods,
-            #            tissue context from results
-
-            # PUBLICATION ENRICHMENT: Read methods section only (FOCUSED)
-            get_content_from_workspace(
-                identifier="pub_queue_doi_10_1080_19490976_2022_2046244_methods",
-                workspace="metadata",
-                level="methods"
-            )
-            # Returns: Methods section text with cohort demographics, experimental design
-            # Use for: age/sex extraction, sample collection details
-
-            # PUBLICATION ENRICHMENT: Quick title/abstract check
-            get_content_from_workspace(
-                identifier="pub_queue_doi_10_1080_19490976_2022_2046244_metadata",
-                workspace="metadata",
-                level="summary"
-            )
-            # Returns: Title, authors, journal, year (no full text)
-            # Use for: quick disease context check before full extraction
-
-            # List pending publication extractions
-            get_content_from_workspace(
-                workspace="publication_queue",
-                status_filter="pending"
-            )
-
-            # Get publication queue entry details
-            get_content_from_workspace(
-                identifier="pub_queue_456",
-                workspace="publication_queue",
-                level="metadata"
-            )
-
-            # Check publication processing queue state
-            get_content_from_workspace(
-                workspace="publication_queue"
-            )
-
-            # Check dataset download queue state
-            get_content_from_workspace(
-                workspace="download_queue"
-            )
+        Call with no arguments to list all cached content.
+        On errors, detailed usage guidance is returned automatically.
         """
         try:
             # Initialize workspace service
@@ -2052,71 +1922,15 @@ def create_delete_from_workspace_tool(data_manager: DataManagerV2):
         workspace: str = None,
         confirmation: bool = False,
     ) -> str:
-        """
-        Delete cached content, queue entries, or modalities from workspace.
+        """Delete cached content, queue entries, or modalities from workspace.
 
-        Unified deletion tool supporting:
-        - Cached workspace files (literature, data, metadata)
-        - Queue entries (download_queue, publication_queue)
-        - Modalities (loaded datasets)
-
-        Safety features:
-        - Preview mode (confirmation=False): Shows what will be deleted without executing
-        - Execution mode (confirmation=True): Performs actual deletion after preview
-        - Auto-detects workspace category from identifier format
-        - Validates existence before deletion
-        - Tracks all deletions via provenance logging
-
-        Workspace Categories (auto-detected):
-        - "literature": Publications, papers (pub_*, publication_*, pmid_*)
-        - "data": Dataset metadata (dataset_*, geo_*, gse_*)
-        - "metadata": Validation results, sample mappings (metadata_*, samples_*)
-        - "download_queue": Pending/completed download tasks (queue_*, dlq_*)
-        - "publication_queue": Publication extraction tasks (pub_queue_*)
-        - "modality": Loaded datasets in memory (any modality name)
+        Auto-detects workspace category from identifier prefix. Use confirmation=False
+        (default) to preview, confirmation=True to execute.
 
         Args:
             identifier: Content identifier or modality name to delete
-            workspace: Optional workspace category override
-                      If None, auto-detects from identifier format
-            confirmation: If True, executes deletion. If False, shows preview only (default: False)
-
-        Returns:
-            Preview of deletion actions (confirmation=False) or
-            Confirmation of completed deletions (confirmation=True)
-
-        Examples:
-            # Preview deletion (safe - no actual deletion)
-            delete_from_workspace(
-                identifier="pub_queue_doi_10_1234_5678_metadata",
-                confirmation=False
-            )
-
-            # Execute deletion after preview
-            delete_from_workspace(
-                identifier="pub_queue_doi_10_1234_5678_metadata",
-                confirmation=True
-            )
-
-            # Delete queue entry
-            delete_from_workspace(
-                identifier="queue_entry_123",
-                workspace="download_queue",
-                confirmation=True
-            )
-
-            # Delete modality from memory
-            delete_from_workspace(
-                identifier="geo_gse12345_clustered",
-                workspace="modality",
-                confirmation=True
-            )
-
-            # Delete all cached files for a publication
-            delete_from_workspace(
-                identifier="pub_queue_doi_10_1234_5678",
-                confirmation=True
-            )
+            workspace: Optional workspace override (auto-detected if None)
+            confirmation: False=preview only (default), True=execute deletion
         """
         try:
             workspace_service = WorkspaceContentService(data_manager=data_manager)
