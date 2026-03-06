@@ -74,6 +74,8 @@ dependencies = [
     "tabulate>=0.9.0",
     "tomli_w>=1.0",
     "psutil>=7.0.0",
+    # Go TUI (default chat UI on supported platforms)
+    'lobster-ai-tui~=1.1.0; platform_system != "Windows"',
 ]
 
 [project.optional-dependencies]
@@ -103,15 +105,15 @@ hdf5 = ["tables>=3.8.0"]
 server = ["fastapi>=0.100.0", "uvicorn>=0.23.0", "python-multipart>=0.0.20"]
 
 # =============================================================================
-# Terminal UI
+# Terminal UI (classic Rich/Textual fallback — Go TUI is in core dependencies)
 # =============================================================================
-tui = ["textual>=6.7.1"]
+classic-tui = ["textual>=6.7.1"]
 
 # =============================================================================
 # Semantic Vector Search (optional, installed via `lobster init`)
 # =============================================================================
 vector-search = [
-    "lobster-metadata[vector-search]~=1.0.0",
+    "lobster-metadata[vector-search]~=1.1.0",
 ]
 
 # =============================================================================
@@ -137,28 +139,28 @@ extended-data = [
 #   pip install lobster-ai[full]               # Everything
 # =============================================================================
 transcriptomics = [
-    "lobster-transcriptomics[batch-integration]~=1.0.0",
-    "lobster-research~=1.0.0",
-    "lobster-visualization~=1.0.0",
+    "lobster-transcriptomics[batch-integration]~=1.1.0",
+    "lobster-research~=1.1.0",
+    "lobster-visualization~=1.1.0",
 ]
 # Doublet detection requires scrublet → annoy (C++ compilation).
 # Install separately: pip install lobster-transcriptomics[doublet-detection]
 doublet-detection = [
-    "lobster-transcriptomics[doublet-detection]~=1.0.0",
+    "lobster-transcriptomics[doublet-detection]~=1.1.0",
 ]
 genomics = [
-    "lobster-genomics~=1.0.0",
-    "lobster-research~=1.0.0",
-    "lobster-visualization~=1.0.0",
+    "lobster-genomics~=1.1.0",
+    "lobster-research~=1.1.0",
+    "lobster-visualization~=1.1.0",
 ]
 proteomics = [
-    "lobster-proteomics[network-analysis]~=1.0.0",
-    "lobster-research~=1.0.0",
-    "lobster-visualization~=1.0.0",
+    "lobster-proteomics[network-analysis]~=1.1.0",
+    "lobster-research~=1.1.0",
+    "lobster-visualization~=1.1.0",
 ]
 research = [
-    "lobster-research~=1.0.0",
-    "lobster-visualization~=1.0.0",
+    "lobster-research~=1.1.0",
+    "lobster-visualization~=1.1.0",
 ]
 plink = [
     "bed-reader>=0.2.0",
@@ -181,11 +183,11 @@ azure = [
 # Convenience meta-extras
 # =============================================================================
 # What `lobster init` typically installs for a researcher
-recommended = ["lobster-ai[anthropic,transcriptomics,tui,extended-data]"]
+recommended = ["lobster-ai[anthropic,transcriptomics,classic-tui,extended-data]"]
 # Everything except docling and plink (which have platform constraints)
 full = [
     "lobster-ai[transcriptomics,genomics,proteomics]",
-    "lobster-ai[all-providers,tui,extended-data,hdf5,docling,vector-search]",
+    "lobster-ai[all-providers,classic-tui,extended-data,hdf5,docling,vector-search]",
 ]
 
 # =============================================================================
@@ -332,6 +334,7 @@ lobster-visualization = { workspace = true }
 lobster-genomics = { workspace = true }
 lobster-proteomics = { workspace = true }
 lobster-metadata = { workspace = true }
+lobster-ai-tui = { workspace = true }
 
 [tool.setuptools.packages.find]
 # Core lobster-ai package discovery with extracted agent exclusions
