@@ -1,0 +1,68 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "\ud83d\udd0c LLM Providers\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Provider",
+          "Status",
+          "Active"
+        ],
+        "rows": [
+          [
+            "OpenAI",
+            "\u2713 Configured",
+            "\u25cf"
+          ],
+          [
+            "Ollama",
+            "\u2713 Configured",
+            ""
+          ],
+          [
+            "Anthropic",
+            "\u2717 Not configured",
+            ""
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\n\ud83d\udca1 Usage:\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /config provider <name> - Switch to specified provider (runtime)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /config provider <name> --save - Switch and persist to workspace\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\nAvailable providers: openai, ollama, anthropic\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\n\u2713 Current provider: openai\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Listed providers (current: openai)"
+}

@@ -907,6 +907,11 @@ def init(
         "--skip-extras",
         help="Skip optional package installation (provider, TUI, extended-data)",
     ),
+    ui_mode: str = typer.Option(
+        "auto",
+        "--ui",
+        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+    ),
 ):
     """
     Initialize Lobster AI configuration.
@@ -966,18 +971,120 @@ def init(
         preset=preset, auto_agents=auto_agents, agents_description=agents_description,
         skip_docling=skip_docling, install_docling=install_docling,
         install_vector_search=install_vector_search, skip_extras=skip_extras,
+        ui_mode=ui_mode,
     )
 
 
-def _display_streaming_response(
-    client, user_input: str, console: Console,
-) -> Dict[str, Any]:
+def _display_streaming_response(client, user_input: str, console: Console) -> Dict[str, Any]:
     """Display streaming response with live updates."""
     from lobster.cli_internal.commands.heavy.slash_commands import _display_streaming_response as _impl
     return _impl(client, user_input, console)
 
+def _validate_chat_ui_mode(ui_mode: str) -> None:
+    """Validate `lobster chat --ui` values early with CLI-friendly errors."""
+    if ui_mode in {"auto", "go", "classic"}:
+        return
+    _raise_cli_error(f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, classic, go")
 
 
+def _raise_cli_error(message: str) -> None:
+    """Emit a CLI error and exit."""
+    import typer as _typer
+
+    _typer.echo(message, err=True)
+    raise typer.Exit(1)
+
+
+def _ensure_go_chat_tty(ui_mode: str) -> None:
+    """Reject explicit Go UI requests when stdin is not interactive."""
+    if ui_mode == "go" and not os.isatty(0):
+        _raise_cli_error("Error: Go TUI requires an interactive terminal (stdin is not a TTY)")
+
+
+def _should_try_go_chat_ui(ui_mode: str, reasoning: bool, verbose: bool) -> bool:
+    """Return True when chat should attempt the Go UI fast path."""
+    return ui_mode in ("auto", "go") and not reasoning and not verbose and os.isatty(0)
+
+
+def _resolve_go_chat_binary(ui_mode: str) -> Optional[str]:
+    """Return Go TUI binary path, or raise for explicit `--ui go`."""
+    from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
+
+    binary = find_tui_binary_fast()
+    if binary or ui_mode != "go":
+        return binary
+    _raise_cli_error("Error: Go TUI binary not found. Install with: pip install lobster-ai-tui")
+    return None
+
+
+def _launch_go_chat_binary(
+    binary: str,
+    *,
+    workspace: Optional[Path],
+    session_id: Optional[str],
+    provider: Optional[str],
+    model: Optional[str],
+    debug: bool,
+    profile_timings: Optional[bool],
+    no_intro: bool,
+    stream: bool,
+) -> bool:
+    """Launch the Go chat binary once the fast-path decision is made."""
+    from lobster.cli_internal.go_tui_launcher import launch_go_tui_chat
+
+    launch_go_tui_chat(
+        binary,
+        workspace=workspace,
+        session_id=session_id,
+        provider=provider,
+        model=model,
+        debug=debug,
+        profile_timings=profile_timings,
+        no_intro=no_intro,
+        stream=stream,
+    )
+    return True
+
+
+def _maybe_launch_go_chat_ui(
+    *,
+    ui_mode: str,
+    workspace: Optional[Path],
+    session_id: Optional[str],
+    reasoning: bool,
+    verbose: bool,
+    debug: bool,
+    profile_timings: Optional[bool],
+    provider: Optional[str],
+    model: Optional[str],
+    no_intro: bool,
+    stream: bool,
+) -> bool:
+    """Launch Go chat UI when requested and supported, else return False."""
+    _ensure_go_chat_tty(ui_mode)
+    if not _should_try_go_chat_ui(ui_mode, reasoning, verbose):
+        return False
+
+    binary = _resolve_go_chat_binary(ui_mode)
+    if not binary:
+        return False
+
+    try:
+        return _launch_go_chat_binary(
+            binary,
+            workspace=workspace,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            debug=debug,
+            profile_timings=profile_timings,
+            no_intro=no_intro,
+            stream=stream,
+        )
+    except Exception:
+        if ui_mode == "go":
+            raise
+        return False
 
 @app.command()
 def chat(
@@ -1022,10 +1129,17 @@ def chat(
         "-m",
         help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration.",
     ),
+    no_intro: bool = typer.Option(False, "--no-intro", is_flag=True,
+        help="Disable the Go TUI inline intro animation (useful for automation and PTY capture)."),
     stream: bool = typer.Option(
         True,
         "--stream/--no-stream",
         help="Enable real-time text streaming (default: on)",
+    ),
+    ui_mode: str = typer.Option(
+        "auto",
+        "--ui",
+        help="UI mode: auto (Go TUI if available), go (require Go TUI), classic (Rich terminal)",
     ),
 ):
     """
@@ -1036,13 +1150,29 @@ def chat(
       lobster chat --session-id session_20241208_150000
 
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
+    Use --ui to select the UI backend: auto, go, or classic.
     """
+    _validate_chat_ui_mode(ui_mode)
+    if _maybe_launch_go_chat_ui(
+        ui_mode=ui_mode,
+        workspace=workspace,
+        session_id=session_id,
+        reasoning=reasoning,
+        verbose=verbose,
+        debug=debug,
+        profile_timings=profile_timings,
+        provider=provider,
+        model=model,
+        no_intro=no_intro,
+        stream=stream,
+    ):
+        return
+
+    # Classic Rich terminal path (heavy imports happen here).
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
-    chat_impl(
-        workspace=workspace, session_id=session_id, reasoning=reasoning,
+    chat_impl(workspace=workspace, session_id=session_id, reasoning=reasoning,
         verbose=verbose, debug=debug, profile_timings=profile_timings,
-        provider=provider, model=model, stream=stream,
-    )
+        provider=provider, model=model, stream=stream)
 
 
 @app.command(name="dashboard")

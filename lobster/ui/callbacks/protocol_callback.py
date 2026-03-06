@@ -86,12 +86,17 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
             duration_ms = (datetime.now() - self.start_times[key]).total_seconds() * 1000
             self.start_times.pop(key, None)
 
+        summary = ""
+        if duration_ms is not None:
+            summary = f"{duration_ms / 1000:.1f}s"
+
         self._emit(
             "tool_execution",
             {
                 "tool": tool_name,
                 "agent": self.current_agent or "unknown",
                 "status": "complete",
+                "summary": summary,
                 "duration_ms": duration_ms,
             },
         )
@@ -107,7 +112,45 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
                 "tool": tool_name,
                 "agent": self.current_agent or "unknown",
                 "status": "error",
-                "result": str(error)[:200],
+                "summary": str(error)[:200],
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # High-level event emitters (called from Lobster internals)
+    # ------------------------------------------------------------------
+
+    def emit_modality_loaded(
+        self,
+        name: str,
+        shape: str = "",
+        workspace: str = "",
+    ) -> None:
+        """Emit a modality_loaded event for the Go TUI data panel."""
+        self._emit(
+            "modality_loaded",
+            {
+                "name": name,
+                "shape": shape,
+                "workspace": workspace,
+            },
+        )
+
+    def emit_progress(
+        self,
+        label: str,
+        current: int,
+        total: int,
+        done: bool = False,
+    ) -> None:
+        """Emit a progress event for the Go TUI progress bar."""
+        self._emit(
+            "progress",
+            {
+                "label": label,
+                "current": current,
+                "total": total,
+                "done": done,
             },
         )
 
@@ -124,28 +167,27 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         if not chain_name:
             return
 
-        # Best-effort agent detection from chain names.
-        for candidate in (
-            "supervisor",
-            "research_agent",
-            "data_expert",
-            "transcriptomics_expert",
-            "de_analysis_expert",
-            "annotation_expert",
-            "visualization_expert_agent",
-            "genomics_expert",
-            "proteomics_expert",
-            "metabolomics_expert",
-            "machine_learning_expert",
-        ):
-            if candidate in chain_name and candidate != self.current_agent:
+        # Dynamic agent detection: matches supervisor and any name ending
+        # with _expert, _agent, or _assistant (covers all 21 current agents
+        # and future ones without hardcoding).
+        if chain_name == "supervisor" and self.current_agent != "supervisor":
+            self._emit(
+                "agent_transition",
+                {
+                    "from": self.current_agent or "supervisor",
+                    "to": "supervisor",
+                    "reason": "chain_start",
+                },
+            )
+            self.current_agent = "supervisor"
+        elif any(chain_name.endswith(s) for s in ("_expert", "_agent", "_assistant")):
+            if chain_name != self.current_agent:
                 self._emit(
                     "agent_transition",
                     {
                         "from": self.current_agent or "supervisor",
-                        "to": candidate,
+                        "to": chain_name,
                         "reason": "chain_start",
                     },
                 )
-                self.current_agent = candidate
-                break
+                self.current_agent = chain_name

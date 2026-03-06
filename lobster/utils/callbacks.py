@@ -99,6 +99,19 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         # Display components
         self.progress: Optional[Progress] = None
         self.current_task = None
+        self._displayed_event_types: set[EventType] = set()
+
+    def _mark_displayed(self, event_type: EventType) -> None:
+        """Record that an event type produced visible terminal output."""
+        self._displayed_event_types.add(event_type)
+
+    def has_visible_output(self) -> bool:
+        """Return True when this callback already rendered terminal activity."""
+        return bool(self._displayed_event_types)
+
+    def has_displayed_reasoning(self) -> bool:
+        """Return True when reasoning text was already rendered live."""
+        return EventType.AGENT_THINKING in self._displayed_event_types
 
     def _format_agent_name(self, name: str) -> str:
         """Format agent name for display."""
@@ -134,6 +147,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
                 # Skip supervisor — only show the specialist agent
                 if event.agent_name != "supervisor" and not self._minimal_agent_shown:
                     self.console.print(f"[dim]◀ {agent_display}[/dim]")
+                    self._mark_displayed(EventType.AGENT_START)
                     self._minimal_agent_shown = True
             elif event.type == EventType.HANDOFF:
                 to_agent = event.metadata.get("to", "Unknown")
@@ -141,6 +155,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
                     self.console.print(
                         f"[dim]◀ {self._format_agent_name(to_agent)}[/dim]"
                     )
+                    self._mark_displayed(EventType.HANDOFF)
                     self._minimal_agent_shown = True
             # Skip thinking, other events in minimal mode
             return
@@ -157,15 +172,18 @@ class TerminalCallbackHandler(BaseCallbackHandler):
                 self.console.print(panel)
             else:
                 self.console.print(f"\n[cyan]🤖 {agent_display}[/cyan]")
+            self._mark_displayed(EventType.AGENT_START)
 
         elif event.type == EventType.AGENT_THINKING and self.show_reasoning:
             if event.content:
                 content = self._truncate_content(event.content)
                 self.console.print(f"[dim]   💭 {content}[/dim]")
+                self._mark_displayed(EventType.AGENT_THINKING)
 
         elif event.type == EventType.AGENT_ACTION:
             if event.content:
                 self.console.print(f"[yellow]   ➤ {event.content}[/yellow]")
+                self._mark_displayed(EventType.AGENT_ACTION)
 
         elif event.type == EventType.AGENT_COMPLETE:
             duration_str = ""
@@ -174,6 +192,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
             self.console.print(
                 f"[green]   ✓ {agent_display} complete{duration_str}[/green]"
             )
+            self._mark_displayed(EventType.AGENT_COMPLETE)
 
         elif event.type == EventType.HANDOFF:
             from_agent = event.metadata.get("from", "Unknown")
@@ -186,6 +205,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
                 self.console.print(
                     f"[dim]   Task: {self._truncate_content(event.content)}[/dim]"
                 )
+            self._mark_displayed(EventType.HANDOFF)
 
     def _display_tool_event(self, event: AgentEvent):
         """Display a tool event with Rich formatting."""
@@ -197,6 +217,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         if event.type == EventType.TOOL_START:
             # Minimal oh-my-zsh style tool indicator
             self.console.print(f"[dim]  → {tool_name}[/dim]")
+            self._mark_displayed(EventType.TOOL_START)
             if self.verbose and event.content:
                 self.console.print(
                     f"[dim]      Input: {self._truncate_content(event.content)}[/dim]"
@@ -204,17 +225,18 @@ class TerminalCallbackHandler(BaseCallbackHandler):
 
         elif event.type == EventType.TOOL_COMPLETE:
             # Silent completion - only show start
-            pass
             if self.verbose and event.content:
                 self.console.print(
                     f"[dim]      Result: {self._truncate_content(event.content)}[/dim]"
                 )
+                self._mark_displayed(EventType.TOOL_COMPLETE)
 
         elif event.type == EventType.TOOL_ERROR:
             if self.verbose:
                 self.console.print(
                     f"[red]      ✗ {tool_name} failed: {event.content}[/red]"
                 )
+                self._mark_displayed(EventType.TOOL_ERROR)
 
     # LangChain Callback Methods
 
@@ -658,6 +680,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         self.start_times = {}
         self._minimal_agent_shown = False
         self.current_task = None
+        self._displayed_event_types = set()
 
 
 class StreamingTerminalCallback(TerminalCallbackHandler):

@@ -19,6 +19,11 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from lobster.cli_internal.startup_diagnostics import (
+    StartupDiagnosticError,
+    render_startup_diagnostic_rich,
+    raise_startup_diagnostic,
+)
 from lobster.ui.console_manager import get_console_manager
 
 if TYPE_CHECKING:
@@ -30,6 +35,24 @@ console_manager = get_console_manager()
 console = console_manager.console
 
 _COMMAND_HISTORY_LOCK = threading.Lock()
+
+# Go TUI active flag: when True, Rich progress indicators are suppressed
+# because the Go TUI handles its own spinner/progress display.
+_go_tui_active = False
+
+
+def set_go_tui_active(active: bool) -> None:
+    """Set whether the Go TUI is the active UI backend."""
+    global _go_tui_active
+    _go_tui_active = active
+
+
+def _startup_console_print(*args, **kwargs) -> None:
+    """Print startup notices only when a Rich terminal owns the screen."""
+    if _go_tui_active:
+        return
+    console.print(*args, **kwargs)
+
 
 # Extraction cache manager loaded lazily to avoid triggering all agent imports at startup
 _ExtractionCacheManager = None
@@ -79,12 +102,16 @@ def should_show_progress(client_arg: Optional["AgentClient"] = None) -> bool:
     Determine if progress indicators should be shown based on current mode.
 
     Returns False (no progress) when:
+    - Go TUI is active (it has its own spinner)
     - Reasoning mode is enabled
     - Verbose mode is enabled
     - Any callback has verbose/show_tools enabled
 
     Returns True (show progress) otherwise.
     """
+    if _go_tui_active:
+        return False
+
     # Use provided client or try to get from cli module
     c = client_arg
     if c is None:
@@ -538,62 +565,137 @@ def init_client(
     model_override: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> "AgentClient":
-    """Initialize either local or cloud client based on environment."""
+    """Initialize a client and render startup diagnostics via the Rich console."""
     import typer
 
-    from lobster.config.settings import settings
-    from lobster.core.client import AgentClient
-    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
-    from lobster.core.workspace import resolve_workspace
-    from lobster.ui import LobsterTheme, setup_logging
+    try:
+        return init_client_or_raise_startup_diagnostic(
+            workspace=workspace,
+            reasoning=reasoning,
+            verbose=verbose,
+            debug=debug,
+            profile_timings=profile_timings,
+            provider_override=provider_override,
+            model_override=model_override,
+            session_id=session_id,
+        )
+    except StartupDiagnosticError as exc:
+        render_startup_diagnostic_rich(console, exc.diagnostic)
+        raise typer.Exit(code=exc.diagnostic.exit_code)
 
-    # Resolve workspace (create if needed for proper config loading)
-    workspace_path = resolve_workspace(explicit_path=workspace, create=True)
 
-    # Auto-inject provider config into new workspaces that lack one.
+def _maybe_seed_workspace_provider_config(workspace_path: Path) -> None:
+    """Copy the default workspace provider config into new workspaces when useful."""
     from lobster.config.global_config import GlobalProviderConfig
     from lobster.config.workspace_config import WorkspaceProviderConfig
 
-    if not WorkspaceProviderConfig.exists(workspace_path):
-        env_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
-        if not env_provider and not GlobalProviderConfig.exists():
-            default_workspace = Path.cwd() / ".lobster_workspace"
-            if default_workspace != workspace_path and WorkspaceProviderConfig.exists(
-                default_workspace
-            ):
-                source_config = WorkspaceProviderConfig.load(default_workspace)
-                if source_config.global_provider:
-                    source_config.save(workspace_path)
-                    logger.info(
-                        f"Auto-injected provider config into {workspace_path} "
-                        f"from {default_workspace}"
-                    )
+    if WorkspaceProviderConfig.exists(workspace_path):
+        return
 
-    # Reload credentials for the target workspace
+    env_provider = os.environ.get("LOBSTER_LLM_PROVIDER")
+    if env_provider or GlobalProviderConfig.exists():
+        return
+
+    default_workspace = Path.cwd() / ".lobster_workspace"
+    if default_workspace == workspace_path:
+        return
+    if not WorkspaceProviderConfig.exists(default_workspace):
+        return
+
+    source_config = WorkspaceProviderConfig.load(default_workspace)
+    if source_config.global_provider:
+        source_config.save(workspace_path)
+        logger.info(
+            f"Auto-injected provider config into {workspace_path} "
+            f"from {default_workspace}"
+        )
+
+
+def validate_startup_or_raise_startup_diagnostic(
+    workspace: Optional[Path] = None,
+    *,
+    provider_override: Optional[str] = None,
+) -> Path:
+    """Validate provider startup prerequisites without binding a UI renderer."""
+    from lobster.config.settings import settings
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
+    from lobster.core.workspace import resolve_workspace
+
+    workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+    _maybe_seed_workspace_provider_config(workspace_path)
     settings.reload_credentials(workspace_path)
 
     resolver = ConfigResolver.get_instance(workspace_path)
-
     try:
-        resolver.resolve_provider()
-    except ConfigurationError as e:
-        console.print(f"[red]{str(e)}[/red]")
-        console.print(f"\n[yellow]{e.help_text}[/yellow]")
-        raise typer.Exit(code=1)
+        resolver.resolve_provider(runtime_override=provider_override)
+    except ConfigurationError as exc:
+        raise_startup_diagnostic(
+            exc,
+            workspace=workspace_path,
+            provider_override=provider_override,
+        )
+    return workspace_path
+
+
+def _create_local_agent_client(
+    *,
+    data_manager: Any,
+    workspace_path: Path,
+    session_id: Optional[str],
+    reasoning: bool,
+    callbacks: list[Any],
+    provider_override: Optional[str],
+    model_override: Optional[str],
+) -> "AgentClient":
+    from lobster.core.client import AgentClient
+
+    return AgentClient(
+        data_manager=data_manager,
+        workspace_path=workspace_path,
+        session_id=session_id,
+        enable_reasoning=reasoning,
+        custom_callbacks=callbacks,
+        provider_override=provider_override,
+        model_override=model_override,
+    )
+
+
+def init_client_or_raise_startup_diagnostic(
+    workspace: Optional[Path] = None,
+    reasoning: bool = False,
+    verbose: bool = False,
+    debug: bool = False,
+    profile_timings: Optional[bool] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> "AgentClient":
+    """Initialize either local or cloud client, raising structured diagnostics."""
+    from lobster.core.config_resolver import ConfigurationError
+    from lobster.ui import setup_logging
+
+    workspace_path = validate_startup_or_raise_startup_diagnostic(
+        workspace=workspace,
+        provider_override=provider_override,
+    )
 
     # Check for cloud API key
     cloud_key = os.environ.get("LOBSTER_CLOUD_KEY")
     cloud_endpoint = os.environ.get("LOBSTER_ENDPOINT")
 
     if cloud_key:
-        console.print("[bold blue]Cloud API key detected...[/bold blue]")
+        _startup_console_print("[bold blue]Cloud API key detected...[/bold blue]")
 
         try:
             from lobster.lobster_cloud.client import CloudLobsterClient
 
-            console.print("[bold blue]   Initializing Lobster Cloud...[/bold blue]")
+            _startup_console_print(
+                "[bold blue]   Initializing Lobster Cloud...[/bold blue]"
+            )
             if cloud_endpoint:
-                console.print(f"[dim blue]   Endpoint: {cloud_endpoint}[/dim blue]")
+                _startup_console_print(
+                    f"[dim blue]   Endpoint: {cloud_endpoint}[/dim blue]"
+                )
 
             client_kwargs = {"api_key": cloud_key}
             if cloud_endpoint:
@@ -609,29 +711,29 @@ def init_client(
                     status_result = cloud_client.get_status()
 
                     if status_result.get("success", False):
-                        console.print(
+                        _startup_console_print(
                             "[bold green]Cloud connection established[/bold green]"
                         )
-                        console.print(
+                        _startup_console_print(
                             f"[dim blue]   Status: {status_result.get('status', 'unknown')}[/dim blue]"
                         )
                         if status_result.get("version"):
-                            console.print(
+                            _startup_console_print(
                                 f"[dim blue]   Version: {status_result.get('version')}[/dim blue]"
                             )
                         return cloud_client
                     else:
                         error_msg = status_result.get("error", "Unknown error")
                         if attempt < max_retries - 1:
-                            console.print(
+                            _startup_console_print(
                                 f"[yellow]Connection test failed (attempt {attempt + 1}): {error_msg}[/yellow]"
                             )
-                            console.print(
+                            _startup_console_print(
                                 f"[yellow]   Retrying in {retry_delay} seconds...[/yellow]"
                             )
                             time.sleep(retry_delay)
                         else:
-                            console.print(
+                            _startup_console_print(
                                 f"[red]Cloud connection failed after {max_retries} attempts: {error_msg}[/red]"
                             )
                             raise Exception(
@@ -653,46 +755,52 @@ def init_client(
                         suggestion = "Check network connectivity and service status"
 
                     if attempt < max_retries - 1:
-                        console.print(
+                        _startup_console_print(
                             f"[yellow]{error_type} (attempt {attempt + 1}): {e}[/yellow]"
                         )
-                        console.print(
+                        _startup_console_print(
                             f"[yellow]   Retrying in {retry_delay} seconds...[/yellow]"
                         )
                         time.sleep(retry_delay)
                     else:
-                        console.print(
+                        _startup_console_print(
                             f"[red]{error_type} after {max_retries} attempts[/red]"
                         )
-                        console.print(f"[red]   Error: {e}[/red]")
-                        console.print(f"[yellow]   Suggestion: {suggestion}[/yellow]")
+                        _startup_console_print(f"[red]   Error: {e}[/red]")
+                        _startup_console_print(
+                            f"[yellow]   Suggestion: {suggestion}[/yellow]"
+                        )
                         raise Exception(f"{error_type}: {e}")
 
         except ImportError:
-            console.print(
+            _startup_console_print(
                 "[bold yellow]Lobster Cloud Not Available Locally[/bold yellow]"
             )
-            console.print(
+            _startup_console_print(
                 "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
             )
-            console.print(
+            _startup_console_print(
                 "[white]You have a [bold blue]LOBSTER_CLOUD_KEY[/bold blue] set, but this is the open-source version.[/white]"
             )
-            console.print("")
-            console.print("[bold white]Get Lobster Cloud Access:[/bold white]")
-            console.print("   Visit: [bold blue]https://cloud.lobster.ai[/bold blue]")
-            console.print("   Email: [bold blue]cloud@omics-os.com[/bold blue]")
-            console.print("")
-            console.print(
+            _startup_console_print("")
+            _startup_console_print("[bold white]Get Lobster Cloud Access:[/bold white]")
+            _startup_console_print(
+                "   Visit: [bold blue]https://cloud.lobster.ai[/bold blue]"
+            )
+            _startup_console_print(
+                "   Email: [bold blue]cloud@omics-os.com[/bold blue]"
+            )
+            _startup_console_print("")
+            _startup_console_print(
                 "[bold white]For now, using local mode with full functionality:[/bold white]"
             )
-            console.print(
+            _startup_console_print(
                 "[cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/cyan]"
             )
 
         except Exception as e:
-            console.print(f"[red]Cloud connection error: {e}[/red]")
-            console.print("[yellow]   Falling back to local mode...[/yellow]")
+            _startup_console_print(f"[red]Cloud connection error: {e}[/red]")
+            _startup_console_print("[yellow]   Falling back to local mode...[/yellow]")
 
     # Use local client (existing code)
     import logging as _logging
@@ -702,7 +810,7 @@ def init_client(
     else:
         setup_logging(_logging.WARNING)
 
-    workspace = resolve_workspace(explicit_path=workspace, create=True)
+    workspace = workspace_path
 
     from datetime import datetime
 
@@ -743,70 +851,21 @@ def init_client(
         callbacks.append(simple_callback)
 
     try:
-        local_client = AgentClient(
+        local_client = _create_local_agent_client(
             data_manager=data_manager,
             workspace_path=workspace,
             session_id=session_id,
-            enable_reasoning=reasoning,
-            custom_callbacks=callbacks,
+            reasoning=reasoning,
+            callbacks=callbacks,
             provider_override=provider_override,
             model_override=model_override,
         )
-    except ImportError as e:
-        from rich.markup import escape as rich_escape
-
-        error_msg = str(e)
-        console.print("\n[red bold]Missing provider package[/red bold]")
-        console.print(f"[red]  {rich_escape(error_msg)}[/red]\n")
-
-        if "Install with:" in error_msg:
-            cmd = error_msg.split("Install with:")[-1].strip()
-            console.print("[yellow]How to fix:[/yellow]")
-            console.print(f"  [white]Run:[/white] [dim]{rich_escape(cmd)}[/dim]")
-        else:
-            console.print("[yellow]How to fix:[/yellow]")
-            console.print(
-                "  [white]Run:[/white] [dim]lobster init[/dim] to configure your LLM provider"
-            )
-        console.print()
-        raise typer.Exit(code=1)
-    except ValueError as e:
-        from rich.markup import escape as rich_escape
-
-        error_msg = str(e)
-        resolved_provider = provider_override or "configured provider"
-        console.print(
-            f"\n[red bold]Missing credentials for provider '{rich_escape(resolved_provider)}'[/red bold]"
+    except (ImportError, ValueError, ConfigurationError) as exc:
+        raise_startup_diagnostic(
+            exc,
+            workspace=workspace,
+            provider_override=provider_override,
         )
-        console.print(f"[red]  {rich_escape(error_msg)}[/red]\n")
-        console.print("[yellow]How to fix:[/yellow]")
-        console.print(
-            f"  1. [white]Add the key to the workspace .env file:[/white]\n"
-            f"     [dim]{workspace}/.env[/dim]"
-        )
-        console.print(
-            "  2. [white]Or add to global credentials (works everywhere):[/white]\n"
-            "     [dim]lobster init --global[/dim]"
-        )
-        console.print(
-            f"  3. [white]Or export in your shell:[/white]\n"
-            f"     [dim]{error_msg.split('Set it with: ')[-1] if 'Set it with: ' in error_msg else 'export <KEY>=<value>'}[/dim]"
-        )
-        from lobster.core.config_resolver import _find_existing_configs
-
-        found_configs = _find_existing_configs()
-        if found_configs:
-            closest = found_configs[0]
-            project_root = closest.parent
-            console.print(
-                f"\n  [dim]Found an existing workspace at "
-                f"[cyan]{rich_escape(str(closest))}[/cyan] --\n"
-                f"     it may already have credentials configured.\n"
-                f"     Try: [bold]export LOBSTER_WORKSPACE={rich_escape(str(project_root))}/.lobster_workspace[/bold]\n"
-                f"     then re-run your command.[/dim]"
-            )
-        console.print()
-        raise typer.Exit(code=1)
 
     local_client.profile_timings_enabled = profile_timings_enabled
 
@@ -820,11 +879,11 @@ def init_client(
                 with open(graph_file, "wb") as f:
                     f.write(mermaid_png)
 
-                console.print(
+                _startup_console_print(
                     f"[green]Graph visualization saved to: {graph_file}[/green]"
                 )
         except Exception as e:
-            console.print(
+            _startup_console_print(
                 f"[yellow]Could not generate graph visualization: {e}[/yellow]"
             )
 

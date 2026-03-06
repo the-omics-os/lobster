@@ -1,0 +1,112 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "info",
+        "message": "\n\ud83d\udcc4 Publication Queue (3 entries)\n"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "Status Breakdown"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Status",
+          "Count"
+        ],
+        "rows": [
+          [
+            "\u23f3 pending",
+            "2"
+          ],
+          [
+            "\ud83d\udcc4 metadata_extracted",
+            "1"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "Identifier Coverage"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "  PMID: \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591 2/3 (66.7%)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  DOI: \u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591 1/3 (33.3%)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "Extracted Identifiers"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "  GEO: 2 datasets\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  SRA: 1 datasets\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Workspace Status: 1 entries with metadata files\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Tip: Filter by status with /metadata publications --status=<status>\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Publication queue: 3 entries"
+}

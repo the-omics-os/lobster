@@ -114,7 +114,74 @@ AVAILABLE_AGENT_PACKAGES = [
         ],
         True,
     ),
+    (
+        "lobster-metabolomics",
+        "LC-MS, GC-MS, and NMR metabolomics analysis",
+        ["metabolomics_expert"],
+        True,
+    ),
+    (
+        "lobster-ml",
+        "Machine learning, feature selection, and survival analysis",
+        [
+            "machine_learning_expert",
+            "feature_selection_expert",
+            "survival_analysis_expert",
+        ],
+        True,
+    ),
+    (
+        "lobster-drug-discovery",
+        "Drug discovery, cheminformatics, and translational strategy",
+        [
+            "drug_discovery_expert",
+            "cheminformatics_expert",
+            "clinical_dev_expert",
+            "pharmacogenomics_expert",
+        ],
+        True,
+    ),
 ]
+
+_DEFAULT_TUI_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
+
+
+def _get_init_package_agents_map() -> dict[str, list[str]]:
+    """Return package -> agents mapping for init selection UIs."""
+    return {pkg_name: list(agents) for pkg_name, _, agents, _ in AVAILABLE_AGENT_PACKAGES}
+
+
+def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
+    """Normalize mixed agent/package selections into canonical agent ids.
+
+    Older Go/questionary init flows returned package ids such as
+    ``lobster-research``. The workspace config and install prompt expect agent
+    ids such as ``research_agent``. This helper accepts either shape and
+    preserves order while deduplicating.
+    """
+    package_agents = _get_init_package_agents_map()
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for value in selected_agents or []:
+        for agent in package_agents.get(value, [value]):
+            agent = str(agent).strip()
+            if not agent or agent in seen:
+                continue
+            normalized.append(agent)
+            seen.add(agent)
+
+    return normalized
+
+
+def _get_tui_agent_package_choices() -> list[tuple[str, str, list[str]]]:
+    """Return published init package choices for Go/questionary UIs."""
+    choices: list[tuple[str, str, list[str]]] = []
+    for pkg_name, description, agents, published in AVAILABLE_AGENT_PACKAGES:
+        if not published:
+            continue
+        choices.append((pkg_name, description, list(agents)))
+    return choices
 
 
 def _get_installed_agents() -> dict[str, any]:
@@ -341,39 +408,43 @@ def _check_and_prompt_install_packages(
 
     console = Console()
 
+    normalized_agents = _normalize_selected_agents(selected_agents)
+
     agents_dict = _get_installed_agents()
     installed_names = set(agents_dict.keys())
+    confirmed_names = set(installed_names)
 
     # Find agents that need installation
-    missing = [a for a in selected_agents if a not in installed_names]
+    missing = [a for a in normalized_agents if a not in installed_names]
 
     if not missing:
-        return selected_agents  # All agents installed
+        return normalized_agents  # All agents installed
 
     # In uv tool env, defer installation — return full list for handoff
     if is_uv_tool_env():
         console.print(
             "\n[dim]  Agent packages will be added via uv tool install after setup completes.[/dim]"
         )
-        return selected_agents
+        return normalized_agents
 
-    console.print("\n[yellow]These agents are not installed:[/yellow]")
-    for agent in missing:
-        console.print(f"  [dim]- {agent}[/dim]")
+    console.print("\n[yellow]These agent packages are not installed:[/yellow]")
 
     # Map agents to packages using centralized mapping
     from lobster.core.component_registry import AGENT_TO_PACKAGE
 
-    packages_to_install = set()
+    packages_to_install: dict[str, list[str]] = {}
+    unmapped_agents: list[str] = []
     for agent in missing:
         pkg = AGENT_TO_PACKAGE.get(agent)
         if pkg:
-            packages_to_install.add(pkg)
+            packages_to_install.setdefault(pkg, []).append(agent)
         else:
-            # Try guessing package name for unknown agents
-            packages_to_install.add(
-                f"lobster-{agent.replace('_agent', '').replace('_expert', '')}"
-            )
+            unmapped_agents.append(agent)
+
+    for pkg, agents in sorted(packages_to_install.items()):
+        console.print(f"  [dim]- {pkg}[/dim] [dim]({', '.join(agents)})[/dim]")
+    for agent in unmapped_agents:
+        console.print(f"  [dim]- {agent}[/dim]")
 
     if packages_to_install:
         console.print("\n[bold white]Install these packages?[/bold white]")
@@ -384,24 +455,33 @@ def _check_and_prompt_install_packages(
             from lobster.cli_internal.commands.light.agent_commands import (
                 _uv_pip_install,
             )
-            from lobster.core.component_registry import component_registry
 
-            for pkg in packages_to_install:
+            for pkg in sorted(packages_to_install):
                 console.print(f"[dim]Installing {pkg}...[/dim]")
                 success, msg = _uv_pip_install(pkg)
                 if success:
                     console.print(f"[green]v[/green] {pkg} installed")
+                    confirmed_names.update(packages_to_install[pkg])
                 else:
                     console.print(
                         f"[yellow]Warning: Failed to install {pkg}: {msg}[/yellow]"
                     )
+        else:
+            console.print("[dim]Skipping package installation for now[/dim]")
 
-            # Refresh registry
-            component_registry.reset()
+    unresolved = [
+        agent for agent in normalized_agents if agent not in confirmed_names
+    ]
+    if unresolved:
+        console.print(
+            "\n[yellow]Skipping uninstalled agents:[/yellow] "
+            + ", ".join(unresolved)
+        )
 
-    # Return only installed agents
-    agents_dict = _get_installed_agents()
-    return [a for a in selected_agents if a in agents_dict]
+    # Avoid immediate same-process registry reload here. In development installs we
+    # often install editable packages from packages/, and the running interpreter
+    # does not reliably observe their new import hooks until the next process.
+    return [a for a in normalized_agents if a in confirmed_names]
 
 
 def _save_agent_config(
@@ -552,6 +632,48 @@ _SMART_STD_AGENTS = {
     "annotation_expert",
     "proteomics_expert",
 }
+
+_SMART_STD_AGENT_DISPLAY = {
+    "metadata_assistant": "Metadata Assistant",
+    "transcriptomics_expert": "Transcriptomics Expert",
+    "annotation_expert": "Annotation Expert",
+    "proteomics_expert": "Proteomics Expert",
+}
+
+
+def _get_smart_standardization_beneficiaries(selected_agents: list[str] | None) -> list[str]:
+    """Return display names for selected agents that benefit from embeddings."""
+    beneficiaries: list[str] = []
+    for agent in _normalize_selected_agents(selected_agents or []):
+        if agent in _SMART_STD_AGENTS:
+            beneficiaries.append(_SMART_STD_AGENT_DISPLAY.get(agent, agent))
+    return beneficiaries
+
+
+def _install_smart_standardization_dependencies() -> None:
+    """Install vector-search dependencies and warm ontology databases."""
+    console.print("\n  [dim]Installing Smart Standardization dependencies...[/dim]")
+    from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
+
+    s1, _ = _uv_pip_install("chromadb>=1.0.0")
+    s2, _ = _uv_pip_install("openai>=1.0.0")
+    if s1 and s2:
+        console.print("  [green]✓[/green] Dependencies installed")
+    else:
+        console.print(
+            "  [yellow]⚠ Install manually: pip install 'lobster-ai\\[vector-search]'[/yellow]"
+        )
+        return
+
+    console.print(
+        "\n  [dim]Downloading ontology databases (MONDO, UBERON, Cell Ontology)...[/dim]"
+    )
+    if _download_ontology_databases():
+        console.print("  [green]✓[/green] Ontology databases ready")
+    else:
+        console.print(
+            "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
+        )
 
 def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """
@@ -738,9 +860,10 @@ def _uv_tool_env_handoff(
     _published_packages = {pkg for pkg, _, _, pub in AVAILABLE_AGENT_PACKAGES if pub}
 
     with_packages: list[str] = []
-    if selected_agents:
+    normalized_agents = _normalize_selected_agents(selected_agents or [])
+    if normalized_agents:
         needed = set()
-        for agent in selected_agents:
+        for agent in normalized_agents:
             pkg = AGENT_TO_PACKAGE.get(agent)
             if pkg:
                 needed.add(pkg)
@@ -866,6 +989,47 @@ def _prompt_docling_install() -> None:
         )
 
 
+def _postprocess_tui_init_result(
+    result: Dict[str, Any],
+    *,
+    workspace_path: Path,
+    env_path: Path,
+    global_config: bool,
+    skip_extras: bool,
+) -> Dict[str, Any]:
+    """Normalize, persist, and complete a Go/questionary init result."""
+    from lobster.core.uv_tool_env import is_uv_tool_env
+    from lobster.ui.bridge.init_adapter import apply_tui_init_result
+
+    normalized_result = dict(result)
+    normalized_agents = _normalize_selected_agents(normalized_result.get("agents") or [])
+    if normalized_agents:
+        normalized_agents = _check_and_prompt_install_packages(
+            normalized_agents, workspace_path
+        )
+    normalized_result["agents"] = normalized_agents
+
+    apply_tui_init_result(
+        normalized_result,
+        workspace_path=workspace_path,
+        env_path=env_path,
+        global_config=global_config,
+    )
+
+    if is_uv_tool_env():
+        return normalized_result
+
+    if not skip_extras:
+        provider_name = (normalized_result.get("provider") or "").strip().lower()
+        if provider_name:
+            _ensure_provider_installed(provider_name)
+
+        if normalized_result.get("smart_standardization_enabled"):
+            _install_smart_standardization_dependencies()
+
+    return normalized_result
+
+
 def _download_ontology_databases() -> bool:
     """Download pre-built ontology databases from S3.
 
@@ -930,18 +1094,7 @@ def _prompt_smart_standardization(
     """
     import os
 
-    # Check which selected agents benefit from this feature
-    benefiting = []
-    if selected_agents:
-        agent_display = {
-            "metadata_assistant": "Metadata Assistant",
-            "transcriptomics_expert": "Transcriptomics Expert",
-            "annotation_expert": "Annotation Expert",
-            "proteomics_expert": "Proteomics Expert",
-        }
-        benefiting = [
-            agent_display[a] for a in selected_agents if a in _SMART_STD_AGENTS
-        ]
+    benefiting = _get_smart_standardization_beneficiaries(selected_agents)
 
     console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
     console.print(
@@ -998,30 +1151,7 @@ def _prompt_smart_standardization(
 
     env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
 
-    # --- Install ChromaDB + OpenAI packages ---
-    console.print("\n  [dim]Installing Smart Standardization dependencies...[/dim]")
-    from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
-
-    s1, _ = _uv_pip_install("chromadb>=1.0.0")
-    s2, _ = _uv_pip_install("openai>=1.0.0")
-    if s1 and s2:
-        console.print("  [green]✓[/green] Dependencies installed")
-    else:
-        console.print(
-            "  [yellow]⚠ Install manually: pip install 'lobster-ai\\[vector-search]'[/yellow]"
-        )
-        return env_lines  # Return env lines even if install failed — user can retry
-
-    # --- Download ontology databases ---
-    console.print(
-        "\n  [dim]Downloading ontology databases (MONDO, UBERON, Cell Ontology)...[/dim]"
-    )
-    if _download_ontology_databases():
-        console.print("  [green]✓[/green] Ontology databases ready")
-    else:
-        console.print(
-            "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
-        )
+    _install_smart_standardization_dependencies()
 
     return env_lines
 
@@ -1110,7 +1240,7 @@ def init_impl(
     ollama_model: Optional[str] = typer.Option(
         None,
         "--ollama-model",
-        help="Ollama model name (default: llama3:8b-instruct, non-interactive mode)",
+        help=f"Ollama model name (default: {provider_setup.DEFAULT_OLLAMA_MODEL}, non-interactive mode)",
     ),
     gemini_key: Optional[str] = typer.Option(
         None, "--gemini-key", help="Google API key (non-interactive mode)"
@@ -1192,6 +1322,11 @@ def init_impl(
         "--skip-extras",
         help="Skip optional package installation (provider, TUI, extended-data)",
     ),
+    ui_mode: str = typer.Option(
+        "auto",
+        "--ui",
+        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+    ),
 ):
     """
     Initialize Lobster AI configuration.
@@ -1234,7 +1369,7 @@ def init_impl(
       lobster init --non-interactive \\
         --use-ollama                                 # CI/CD: Ollama (profile not applicable)
       lobster init --non-interactive \\
-        --use-ollama --ollama-model=mixtral:8x7b-instruct  # CI/CD: Ollama with custom model
+        --use-ollama --ollama-model=qwen3:14b       # CI/CD: Ollama with custom model
       lobster init --non-interactive \\
         --anthropic-key=sk-ant-xxx \\
         --cloud-key=cloud_xxx                        # CI/CD: With cloud access
@@ -1287,7 +1422,9 @@ def init_impl(
         )
         raise typer.Exit(0)
 
-    # If force flag and config exists, create backup and confirm
+    # If force flag and config exists, create backup and continue.
+    # `--force` is already explicit consent; adding a second prompt breaks
+    # the Go/questionary wizard path and creates inconsistent semantics.
     backup_path = None
     if config_exists and force:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1302,9 +1439,6 @@ def init_impl(
             console.print("[yellow]⚠️  Existing config will be backed up to:[/yellow]")
             console.print(f"[yellow]   {backup_path}[/yellow]")
             console.print()
-            if not Confirm.ask("Continue with reconfiguration?", default=False):
-                console.print("[yellow]Configuration cancelled[/yellow]")
-                raise typer.Exit(0)
 
         # Create backup
         try:
@@ -1656,6 +1790,132 @@ def init_impl(
         raise typer.Exit(0)
 
     # Interactive mode: run wizard
+    # =========================================================================
+    # === TRY GO TUI / QUESTIONARY FIRST (ui_mode: auto | go | classic) ===
+    # The Go binary and the questionary fallback both return the same JSON dict,
+    # so a single apply_tui_init_result() call handles both paths.
+    # The classic Rich-prompt flow further below is used when neither is
+    # available (or when --ui classic is passed explicitly).
+    # =========================================================================
+    if ui_mode != "classic" and not non_interactive:
+        _tui_handled = False
+
+        # ---- Try Go TUI ----
+        if ui_mode in ("auto", "go"):
+            try:
+                from lobster.ui.bridge.binary_finder import find_tui_binary
+
+                _binary = find_tui_binary()
+                if _binary:
+                    try:
+                        from lobster.ui.bridge.go_tui_bridge import run_init_wizard
+
+                        _tui_result = run_init_wizard(_binary, theme="lobster-dark")
+                        if _tui_result.get("cancelled", False):
+                            console.print("[yellow]Setup cancelled.[/yellow]")
+                            raise typer.Exit(0)
+
+                        _ws_path = Path.cwd() / ".lobster_workspace"
+                        _ev_path = Path.cwd() / ".env"
+                        _tui_result = _postprocess_tui_init_result(
+                            _tui_result,
+                            workspace_path=_ws_path,
+                            env_path=_ev_path,
+                            global_config=global_config,
+                            skip_extras=skip_extras,
+                        )
+
+                        console.print(
+                            "[bold green]Configuration saved![/bold green] "
+                            "Run [bold]lobster chat[/bold] to start analyzing."
+                        )
+                        from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
+
+                        if _is_uv():
+                            _uv_tool_env_handoff(
+                                provider_name=(_tui_result.get("provider") or "")
+                                .strip()
+                                .lower()
+                                or None,
+                                selected_agents=_tui_result.get("agents") or [],
+                                skip_extras=skip_extras,
+                                include_vector_search=bool(
+                                    _tui_result.get("smart_standardization_enabled")
+                                )
+                                and not skip_extras,
+                            )
+                        _tui_handled = True
+                    except typer.Exit:
+                        raise
+                    except Exception as _go_exc:
+                        if ui_mode == "go":
+                            console.print(f"[red]Go TUI init failed: {_go_exc}[/red]")
+                            raise typer.Exit(1)
+                        console.print(
+                            f"[dim]Go TUI unavailable ({_go_exc}), falling back.[/dim]"
+                        )
+                elif ui_mode == "go":
+                    # --ui go was explicitly requested but binary not found
+                    console.print(
+                        "[red]lobster-tui binary not found. "
+                        "Install it or use --ui classic.[/red]"
+                    )
+                    raise typer.Exit(1)
+            except ImportError as _ie:
+                console.print(f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]")
+
+        # ---- Try questionary fallback (auto mode only, when Go TUI was unavailable) ----
+        if not _tui_handled and ui_mode == "auto":
+            try:
+                from lobster.ui.bridge.questionary_fallback import run_questionary_init
+
+                _q_result = run_questionary_init()
+                if _q_result.get("cancelled", False):
+                    console.print("[yellow]Setup cancelled.[/yellow]")
+                    raise typer.Exit(0)
+
+                _ws_path = Path.cwd() / ".lobster_workspace"
+                _ev_path = Path.cwd() / ".env"
+                _q_result = _postprocess_tui_init_result(
+                    _q_result,
+                    workspace_path=_ws_path,
+                    env_path=_ev_path,
+                    global_config=global_config,
+                    skip_extras=skip_extras,
+                )
+
+                console.print(
+                    "[bold green]Configuration saved![/bold green] "
+                    "Run [bold]lobster chat[/bold] to start analyzing."
+                )
+                from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
+
+                if _is_uv():
+                    _uv_tool_env_handoff(
+                        provider_name=(_q_result.get("provider") or "").strip().lower()
+                        or None,
+                        selected_agents=_q_result.get("agents") or [],
+                        skip_extras=skip_extras,
+                        include_vector_search=bool(
+                            _q_result.get("smart_standardization_enabled")
+                        )
+                        and not skip_extras,
+                    )
+                _tui_handled = True
+            except typer.Exit:
+                raise
+            except ImportError:
+                # questionary not installed — fall through to classic Rich prompts silently
+                pass
+            except Exception as _q_exc:
+                console.print(
+                    f"[dim]Questionary wizard failed ({_q_exc}), falling back to classic mode.[/dim]"
+                )
+
+        if _tui_handled:
+            raise typer.Exit(0)
+    # === END GO TUI / QUESTIONARY PATH ===
+
     console.print("\n")
     if global_config:
         from lobster.config.global_config import get_global_credentials_path
@@ -1832,7 +2092,9 @@ def init_impl(
                 env_lines.append(
                     "# Install Ollama: curl -fsSL https://ollama.com/install.sh | sh"
                 )
-                env_lines.append("# Then run: ollama pull llama3:8b-instruct")
+                env_lines.append(
+                    f"# Then run: ollama pull {provider_setup.DEFAULT_OLLAMA_MODEL}"
+                )
                 config_dict["provider"] = "ollama"
                 console.print(
                     "[green]✓ Ollama provider configured (install Ollama to use)[/green]"
@@ -1860,13 +2122,14 @@ def init_impl(
 
                     # Ask which model to use
                     use_custom_model = Confirm.ask(
-                        "Specify a model? (default: llama3:8b-instruct)", default=False
+                        f"Specify a model? (default: {provider_setup.DEFAULT_OLLAMA_MODEL})",
+                        default=False,
                     )
 
                     if use_custom_model:
                         model_name = Prompt.ask(
                             "[bold white]Enter model name[/bold white]",
-                            default="llama3:8b-instruct",
+                            default=provider_setup.DEFAULT_OLLAMA_MODEL,
                         )
                         config = provider_setup.create_ollama_config(
                             model_name=model_name
@@ -2427,5 +2690,3 @@ def init_impl(
     except Exception as e:
         console.print(f"\n[red]❌ Configuration failed: {str(e)}[/red]")
         raise typer.Exit(1)
-
-

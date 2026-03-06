@@ -127,6 +127,12 @@ console = console_manager.console
 # Global current directory tracking (shared with cli.py)
 current_directory = Path.cwd()
 
+
+def _is_protocol_output(output: Optional["OutputAdapter"]) -> bool:
+    """Return True when command output is routed to the Go TUI protocol."""
+    return output is not None and output.__class__.__name__ == "ProtocolOutputAdapter"
+
+
 def check_for_missing_slash_command(user_input: str) -> Optional[str]:
     """Check if user input matches a command without the leading slash."""
     if not user_input or user_input.startswith("/"):
@@ -197,8 +203,6 @@ def extract_available_commands() -> Dict[str, str]:
         "/read": "View file contents (inspection only)",
         "/export": "Export to ZIP (--no-png, --force to re-serialize all)",
         "/reset": "Reset conversation",
-        "/mode": "Change operation mode",
-        "/modes": "List available modes",
         "/config": "Show current configuration (provider, profile, config files)",
         "/config provider": "List available LLM providers",
         "/config provider <name>": "Switch to specified provider (runtime only)",
@@ -1551,7 +1555,8 @@ def _extract_argument(original_command: str, prefix: str) -> Optional[str]:
 
 
 def _execute_command(
-    cmd: str, client: "AgentClient", original_command: Optional[str] = None
+    cmd: str, client: "AgentClient", original_command: Optional[str] = None,
+    output: Optional["OutputAdapter"] = None,
 ) -> Optional[str]:
     """Execute individual slash commands.
 
@@ -1560,6 +1565,8 @@ def _execute_command(
         client: AgentClient instance.
         original_command: Original command string with preserved case.
             Used for argument extraction so file paths keep their case.
+        output: Optional OutputAdapter for rendering results. Defaults to
+            ConsoleOutputAdapter(console) when not provided.
 
     Returns:
         Optional[str]: Summary of command execution for conversation history,
@@ -1567,6 +1574,9 @@ def _execute_command(
     """
     if original_command is None:
         original_command = cmd
+
+    if output is None:
+        output = ConsoleOutputAdapter(console)
 
     # -------------------------------------------------------------------------
     # Helper function for quantification directory detection
@@ -1623,139 +1633,220 @@ def _execute_command(
         return None
 
     if cmd == "/help":
-        help_text = f"""[bold white]Quick Start:[/bold white]
-
-  [dim]• Just ask what you want to do in natural language
-  • Example: "analyze my single-cell data" or "find breast cancer datasets"
-  • Load data: /read <file> or drag-and-drop files (supports *.h5ad, *.csv, etc.)
-  • View results: /data, /plots, /workspace[/dim]
-
-[bold white]Key Commands:[/bold white]
-
-[{LobsterTheme.PRIMARY_ORANGE}]/session[/{LobsterTheme.PRIMARY_ORANGE}]      [grey50]-[/grey50] Current session status
-[{LobsterTheme.PRIMARY_ORANGE}]/status[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Subscription tier & agents
-[{LobsterTheme.PRIMARY_ORANGE}]/data[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Current data summary
-[{LobsterTheme.PRIMARY_ORANGE}]/workspace[/{LobsterTheme.PRIMARY_ORANGE}]    [grey50]-[/grey50] Workspace info
-[{LobsterTheme.PRIMARY_ORANGE}]/plots[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] List generated plots
-[{LobsterTheme.PRIMARY_ORANGE}]/read[/{LobsterTheme.PRIMARY_ORANGE}] <file>  [grey50]-[/grey50] Load data file (supports glob: *.h5ad)
-[{LobsterTheme.PRIMARY_ORANGE}]/pipeline export[/{LobsterTheme.PRIMARY_ORANGE}] [grey50]-[/grey50] Export as Jupyter notebook
-[{LobsterTheme.PRIMARY_ORANGE}]/dashboard[/{LobsterTheme.PRIMARY_ORANGE}]    [grey50]-[/grey50] Interactive TUI dashboard
-[{LobsterTheme.PRIMARY_ORANGE}]/tokens[/{LobsterTheme.PRIMARY_ORANGE}]       [grey50]-[/grey50] Token usage & costs
-[{LobsterTheme.PRIMARY_ORANGE}]/clear[/{LobsterTheme.PRIMARY_ORANGE}]        [grey50]-[/grey50] Clear screen
-[{LobsterTheme.PRIMARY_ORANGE}]/exit[/{LobsterTheme.PRIMARY_ORANGE}]         [grey50]-[/grey50] Exit
-
-[dim]Shell commands:[/dim] [grey50]Standard shell commands work directly (cd, ls, pwd, mkdir, etc.)[/grey50]"""
-
-        help_panel = LobsterTheme.create_panel(help_text, title="Help")
-        console_manager.print(help_panel)
+        output.print("## Quick Start\n")
+        output.print("Just ask what you want to do in natural language")
+        output.print('Example: "analyze my single-cell data" or "find breast cancer datasets"')
+        output.print("Load data: /read <file> (supports *.h5ad, *.csv, etc.)\n")
+        output.print_table({
+            "title": "Core Commands",
+            "columns": [
+                {"name": "Command"},
+                {"name": "Description"},
+            ],
+            "rows": [
+                ["/session", "Current session status"],
+                ["/status", "Subscription tier & agents"],
+                ["/data", "Current data summary"],
+                ["/workspace", "Workspace info"],
+                ["/queue", "Queue status & controls"],
+                ["/metadata", "Metadata overview"],
+                ["/config", "Provider/model settings"],
+                ["/plots", "List generated plots"],
+                ["/read <file>", "Load data file"],
+                ["/pipeline export", "Export as Jupyter notebook"],
+                ["/tokens", "Token usage & costs"],
+                ["/clear", "Clear screen"],
+                ["/exit", "Exit"],
+            ],
+        })
+        output.print_table({
+            "title": "Power Commands",
+            "columns": [
+                {"name": "Command"},
+                {"name": "Description"},
+            ],
+            "rows": [
+                ["/workspace list", "List available datasets"],
+                ["/workspace load <name>", "Load data from workspace"],
+                ["/queue clear [download|all]", "Clear queue(s)"],
+                ["/metadata clear [exports|all]", "Clear metadata"],
+                ["/describe <modality>", "Inspect a modality"],
+                ["/save [--force]", "Persist loaded modalities"],
+                ["/restore [pattern]", "Restore datasets from session cache"],
+            ],
+        })
+        output.print_table({
+            "title": "Admin & UI Commands",
+            "columns": [
+                {"name": "Command"},
+                {"name": "Description"},
+            ],
+            "rows": [
+                ["/dashboard", "Classic/Textual dashboard (Go-safe fallback shown in Go mode)"],
+                ["/status-panel", "Rich status dashboard (degraded to /status in Go mode)"],
+                ["/workspace-info", "Rich workspace dashboard (degraded to /workspace in Go mode)"],
+                ["/analysis-dash", "Rich analysis dashboard (degraded to /plots + /metadata in Go mode)"],
+                ["/progress", "Rich progress monitor (degraded in Go mode)"],
+            ],
+        })
+        output.print("Next step: use `/workspace list` or `/read <file>` to begin.", style="dim")
 
     elif cmd == "/data":
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         return data_summary(client, output)
 
     elif cmd == "/session":
-        display_session(client)
+        try:
+            if _is_protocol_output(output):
+                workspace = getattr(client, "workspace_path", None)
+                if workspace is None and hasattr(client, "data_manager"):
+                    workspace = getattr(client.data_manager, "workspace_path", None)
+                modality_count = 0
+                if hasattr(client, "data_manager"):
+                    modality_count = len(getattr(client.data_manager, "modalities", {}))
+                output.print_table({
+                    "title": "Session",
+                    "columns": [{"name": "Field"}, {"name": "Value"}],
+                    "rows": [
+                        ["Session ID", str(getattr(client, "session_id", "unknown"))],
+                        ["Workspace", str(workspace or "unknown")],
+                        ["Loaded Modalities", str(modality_count)],
+                    ],
+                })
+                output.print("Tip: use `/workspace list` to inspect available datasets.", style="dim")
+                return f"Session: {getattr(client, 'session_id', 'unknown')}"
+            display_session(client)
+        except Exception as e:
+            output.print(f"Session info error: {e}", style="error")
 
     elif cmd == "/status":
-        # Display subscription tier, packages, and agents (replicates CLI 'lobster status')
-        _display_status_info()
+        try:
+            if _is_protocol_output(output):
+                tier = "unknown"
+                try:
+                    from lobster.core.governance.license_manager import get_current_tier
+
+                    tier = get_current_tier()
+                except Exception:
+                    pass
+                provider = getattr(client, "provider_override", None) or "auto"
+                model = getattr(client, "model_override", None) or "auto"
+                output.print_table({
+                    "title": "Status",
+                    "columns": [{"name": "Field"}, {"name": "Value"}],
+                    "rows": [
+                        ["Tier", str(tier)],
+                        ["Provider", str(provider)],
+                        ["Model", str(model)],
+                        ["Session ID", str(getattr(client, "session_id", "unknown"))],
+                    ],
+                })
+                output.print("Tip: use `/config provider` or `/config model` to change runtime settings.", style="dim")
+                return None
+            _display_status_info()
+        except Exception as e:
+            output.print(f"Status info error: {e}", style="error")
 
     elif cmd == "/tokens":
-        # Display token usage and cost information
         try:
             token_usage = client.get_token_usage()
-
             if not token_usage or "error" in token_usage:
-                console_manager.print(
-                    "[yellow]Token tracking not available for this client type[/yellow]"
-                )
+                output.print("Token tracking not available for this client type", style="warning")
                 return
 
-            # Check if using Ollama (local = free)
             from lobster.config.llm_factory import LLMFactory
-
             current_provider = (
                 getattr(client, "provider_override", None)
                 or LLMFactory.get_current_provider()
             )
             is_ollama = current_provider == "ollama"
 
-            # Create summary table
             title = (
-                "🦙 Session Token Usage (FREE - Local)"
+                "Session Token Usage (FREE - Local)"
                 if is_ollama
-                else "💰 Session Token Usage & Cost"
+                else "Session Token Usage & Cost"
             )
-            summary_table = Table(title=title, box=box.ROUNDED)
-            summary_table.add_column("Metric", style="cyan", no_wrap=True)
-            summary_table.add_column("Value", style="green")
-
-            summary_table.add_row("Session ID", token_usage["session_id"])
-            # Handle None provider gracefully
+            cost_display = (
+                "FREE (local model)"
+                if is_ollama
+                else f"${token_usage['total_cost_usd']:.4f}"
+            )
             provider_display = (
-                "🦙 Ollama (Local)"
+                "Ollama (Local)"
                 if is_ollama
                 else (current_provider.capitalize() if current_provider else "Unknown")
             )
-            summary_table.add_row("Provider", provider_display)
-            summary_table.add_row(
-                "Total Input Tokens", f"{token_usage['total_input_tokens']:,}"
-            )
-            summary_table.add_row(
-                "Total Output Tokens", f"{token_usage['total_output_tokens']:,}"
-            )
-            summary_table.add_row("Total Tokens", f"{token_usage['total_tokens']:,}")
-            if is_ollama:
-                summary_table.add_row("Total Cost", "[green]FREE[/green] (local model)")
-            else:
-                summary_table.add_row(
-                    "Total Cost (USD)", f"${token_usage['total_cost_usd']:.4f}"
-                )
 
-            console_manager.print(summary_table)
+            output.print_table({
+                "title": title,
+                "columns": [
+                    {"name": "Metric"},
+                    {"name": "Value"},
+                ],
+                "rows": [
+                    ["Session ID", token_usage["session_id"]],
+                    ["Provider", provider_display],
+                    ["Total Input Tokens", f"{token_usage['total_input_tokens']:,}"],
+                    ["Total Output Tokens", f"{token_usage['total_output_tokens']:,}"],
+                    ["Total Tokens", f"{token_usage['total_tokens']:,}"],
+                    ["Total Cost", cost_display],
+                ],
+            })
 
-            # Create per-agent breakdown table if agents have been used
             if token_usage.get("by_agent"):
-                agent_title = "📊 Tokens by Agent" if is_ollama else "📊 Cost by Agent"
-                agent_table = Table(title=agent_title, box=box.ROUNDED)
-                agent_table.add_column("Agent", style="cyan")
-                agent_table.add_column("Input", style="blue", justify="right")
-                agent_table.add_column("Output", style="magenta", justify="right")
-                agent_table.add_column("Total", style="yellow", justify="right")
+                agent_cols = [
+                    {"name": "Agent"},
+                    {"name": "Input"},
+                    {"name": "Output"},
+                    {"name": "Total"},
+                ]
                 if not is_ollama:
-                    agent_table.add_column("Cost (USD)", style="green", justify="right")
-                agent_table.add_column("Calls", style="grey50", justify="right")
+                    agent_cols.append({"name": "Cost (USD)"})
+                agent_cols.append({"name": "Calls"})
 
+                agent_rows = []
                 for agent_name, stats in token_usage["by_agent"].items():
-                    agent_display = agent_name.replace("_", " ").title()
-                    if is_ollama:
-                        agent_table.add_row(
-                            agent_display,
-                            f"{stats['input_tokens']:,}",
-                            f"{stats['output_tokens']:,}",
-                            f"{stats['total_tokens']:,}",
-                            str(stats["invocation_count"]),
-                        )
-                    else:
-                        agent_table.add_row(
-                            agent_display,
-                            f"{stats['input_tokens']:,}",
-                            f"{stats['output_tokens']:,}",
-                            f"{stats['total_tokens']:,}",
-                            f"${stats['cost_usd']:.4f}",
-                            str(stats["invocation_count"]),
-                        )
+                    row = [
+                        agent_name.replace("_", " ").title(),
+                        f"{stats['input_tokens']:,}",
+                        f"{stats['output_tokens']:,}",
+                        f"{stats['total_tokens']:,}",
+                    ]
+                    if not is_ollama:
+                        row.append(f"${stats['cost_usd']:.4f}")
+                    row.append(str(stats["invocation_count"]))
+                    agent_rows.append(row)
 
-                console_manager.print("\n")
-                console_manager.print(agent_table)
+                output.print_table({
+                    "title": "Tokens by Agent",
+                    "columns": agent_cols,
+                    "rows": agent_rows,
+                })
 
         except Exception as e:
-            console_manager.print_error_panel(
-                f"Failed to retrieve token usage: {str(e)}"
-            )
+            output.print(f"Failed to retrieve token usage: {e}", style="error")
 
     elif cmd == "/input-features":
+        if _is_protocol_output(output):
+            output.print_table({
+                "title": "Input Features (Go TUI)",
+                "columns": [{"name": "Feature"}, {"name": "Status"}],
+                "rows": [
+                    ["Slash command completion", "Enabled"],
+                    ["Tab accept suggestion", "Enabled"],
+                    ["Up/Down suggestion cycle", "Enabled"],
+                    ["PgUp/PgDn transcript scroll", "Enabled"],
+                    ["Ctrl+G mouse mode toggle", "Enabled"],
+                    ["Mouse select mode", "Drag to copy text"],
+                    ["Mouse scroll mode", "Wheel/trackpad scrolls transcript"],
+                    ["Inline dropdown list", "Not supported (inline only)"],
+                ],
+            })
+            output.print(
+                "Tip: type '/' then press Tab to accept a suggestion. Use Ctrl+G to switch mouse mode between select and scroll.",
+                style="info",
+            )
+            return None
+
         # Show input capabilities and navigation features
         input_features = console_manager.get_input_features()
 
@@ -1857,6 +1948,13 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             )
 
     elif cmd == "/status-panel":
+        if _is_protocol_output(output):
+            output.print(
+                "/status-panel renders Rich dashboard panels and is not available in Go TUI. Use /status instead.",
+                style="warning",
+            )
+            return None
+
         # Show comprehensive system health dashboard (Rich panels)
         try:
             # Create a compact dashboard using individual panels instead of full-screen layout
@@ -1885,6 +1983,13 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             )
 
     elif cmd == "/workspace-info":
+        if _is_protocol_output(output):
+            output.print(
+                "/workspace-info renders Rich dashboard panels and is not available in Go TUI. Use /workspace or /files instead.",
+                style="warning",
+            )
+            return None
+
         # Show detailed workspace overview
         try:
             # Create a compact workspace overview using individual panels instead of full-screen layout
@@ -1913,6 +2018,13 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             )
 
     elif cmd == "/analysis-dash":
+        if _is_protocol_output(output):
+            output.print(
+                "/analysis-dash renders Rich dashboard panels and is not available in Go TUI. Use /plots and /metadata instead.",
+                style="warning",
+            )
+            return None
+
         # Show analysis monitoring dashboard
         try:
             # Create a compact analysis dashboard using individual panels instead of full-screen layout
@@ -1939,6 +2051,13 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             )
 
     elif cmd == "/progress":
+        if _is_protocol_output(output):
+            output.print(
+                "/progress renders Rich live panels and is not available in Go TUI.",
+                style="warning",
+            )
+            return None
+
         # Show multi-task progress monitor
         try:
             progress_manager = get_multi_progress_manager()
@@ -1988,8 +2107,6 @@ when they are started by agents or analysis workflows.
             )
 
     elif cmd.startswith("/metadata"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
         subcommand = parts[1] if len(parts) > 1 else None
         subsubcommand = parts[2] if len(parts) > 2 else None
@@ -2003,9 +2120,10 @@ when they are started by agents or analysis workflows.
             elif subsubcommand is None:
                 return metadata_clear(client, output)
             else:
-                console.print(f"[yellow]Unknown clear type: {subsubcommand}[/yellow]")
-                console.print(
-                    "[cyan]Available: /metadata clear, /metadata clear exports, /metadata clear all[/cyan]"
+                output.print(f"Unknown clear type: {subsubcommand}", style="warning")
+                output.print(
+                    "Available: /metadata clear, /metadata clear exports, /metadata clear all",
+                    style="info",
                 )
                 return None
         elif subcommand in ("publications", "pub"):
@@ -2027,13 +2145,17 @@ when they are started by agents or analysis workflows.
             # Default: new smart overview
             return metadata_overview(client, output)
         else:
-            console.print(f"[yellow]Unknown metadata subcommand: {subcommand}[/yellow]")
-            console.print(
-                "[cyan]Available: publications, samples, workspace, exports, list, clear[/cyan]"
+            output.print(f"Unknown metadata subcommand: {subcommand}", style="warning")
+            output.print(
+                "Available: publications, samples, workspace, exports, list, clear",
+                style="info",
             )
             return None
 
     elif cmd == "/files":
+        if _is_protocol_output(output):
+            return _command_files(client, output)
+
         # Get categorized workspace files from data_manager
         workspace_files = client.data_manager.list_workspace_files()
 
@@ -2075,6 +2197,13 @@ when they are started by agents or analysis workflows.
             console_manager.print("[grey50]No files in workspace[/grey50]")
 
     elif cmd == "/tree":
+        if _is_protocol_output(output):
+            output.print(
+                "Tree rendering is not available in Go TUI. Use /files for structured listing.",
+                style="info",
+            )
+            return None
+
         # Show directory tree view
         try:
             # Show current directory tree
@@ -2112,8 +2241,6 @@ when they are started by agents or analysis workflows.
             )
 
     elif cmd.startswith("/workspace"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
 
         # Default to showing status summary when no args (like /config and /queue)
@@ -2138,16 +2265,18 @@ when they are started by agents or analysis workflows.
             return workspace_remove(client, output, selector)
         elif subcommand == "status":
             return workspace_status(client, output)
+        elif subcommand == "save":
+            force_save = "--force" in parts
+            return _command_save(client, output, force=force_save)
         else:
-            console.print(
-                f"[yellow]Unknown workspace subcommand: {subcommand}[/yellow]"
+            output.print(f"Unknown workspace subcommand: {subcommand}", style="warning")
+            output.print(
+                "Available: status, list, info, load, remove, save",
+                style="info",
             )
-            console.print("[cyan]Available: status, list, info, load, remove[/cyan]")
             return None
 
     elif cmd.startswith("/queue"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
 
         if len(parts) == 1:
@@ -2161,7 +2290,7 @@ when they are started by agents or analysis workflows.
             try:
                 return queue_load_file(client, filename, output, current_directory)
             except QueueFileTypeNotSupported as e:
-                console.print(f"[yellow]⚠️  {str(e)}[/yellow]")
+                output.print(str(e), style="warning")
                 return None
 
         elif subcommand == "list":
@@ -2173,9 +2302,10 @@ when they are started by agents or analysis workflows.
                 elif parts[2] == "publication":
                     queue_type = "publication"
                 else:
-                    console.print(f"[yellow]Unknown queue type: {parts[2]}[/yellow]")
-                    console.print(
-                        "[cyan]Usage: /queue list [download|publication][/cyan]"
+                    output.print(f"Unknown queue type: {parts[2]}", style="warning")
+                    output.print(
+                        "Usage: /queue list [download|publication]",
+                        style="info",
                     )
                     return None
             return queue_list(client, output, queue_type=queue_type)
@@ -2189,8 +2319,8 @@ when they are started by agents or analysis workflows.
                 elif parts[2] == "all":
                     queue_type = "all"
                 else:
-                    console.print(f"[yellow]Unknown queue type: {parts[2]}[/yellow]")
-                    console.print("[cyan]Usage: /queue clear [download|all][/cyan]")
+                    output.print(f"Unknown queue type: {parts[2]}", style="warning")
+                    output.print("Usage: /queue clear [download|all]", style="info")
                     return None
             return queue_clear(client, output, queue_type=queue_type)
 
@@ -2203,8 +2333,8 @@ when they are started by agents or analysis workflows.
             return queue_import(client, filename, output, current_directory)
 
         else:
-            console.print(f"[yellow]Unknown queue subcommand: {subcommand}[/yellow]")
-            console.print("[cyan]Available: load, list, clear, export, import[/cyan]")
+            output.print(f"Unknown queue subcommand: {subcommand}", style="warning")
+            output.print("Available: load, list, clear, export, import", style="info")
             return None
 
     # =========================================================================
@@ -2212,44 +2342,29 @@ when they are started by agents or analysis workflows.
     # =========================================================================
     elif cmd == "/read":
         # No argument provided - show usage help
-        console.print(
-            "\n[bold cyan]/read[/bold cyan] - View file contents (inspection only)\n"
-        )
-        console.print("[bold]Usage:[/bold]")
-        console.print("  /read <filename>        View a single file")
-        console.print("  /read *.h5ad            View all H5AD files (glob pattern)")
-        console.print("  /read data/*.csv        View CSVs from a subfolder\n")
-        console.print("[bold]Examples:[/bold]")
-        console.print("  /read my_data.h5ad      Inspect H5AD file structure")
-        console.print("  /read config.yaml       View configuration file")
-        console.print("  /read results.csv       Preview CSV contents\n")
-        console.print(
-            "[dim]Note: /read is for inspection only. To load data for analysis, use:[/dim]"
-        )
-        console.print("[dim]  • /workspace load <name>  - Load from workspace[/dim]")
-        console.print(
-            "[dim]  • /archive <file.tar>     - Load multi-sample archives[/dim]"
-        )
-        console.print('[dim]  • Natural language: "load my_data.h5ad"[/dim]\n')
+        output.print("/read - View file contents (inspection only)", style="info")
+        output.print("Usage:")
+        output.print("  /read <filename>        View a single file")
+        output.print("  /read *.h5ad            View all H5AD files (glob pattern)")
+        output.print("  /read data/*.csv        View CSVs from a subfolder")
+        output.print("Examples:")
+        output.print("  /read my_data.h5ad      Inspect H5AD file structure")
+        output.print("  /read config.yaml       View configuration file")
+        output.print("  /read results.csv       Preview CSV contents")
+        output.print("To load data for analysis, use /workspace load <name>.", style="dim")
         return None
 
     elif cmd.startswith("/read "):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         filename = _extract_argument(original_command, "/read")
         return file_read(client, output, filename, current_directory, PathResolver)
 
     elif cmd.startswith("/archive"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
         subcommand = parts[1] if len(parts) > 1 else "help"
         args = parts[2:] if len(parts) > 2 else None
         return archive_queue(client, output, subcommand, args)
 
     elif cmd.startswith("/pipeline"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
         subcommand = parts[1] if len(parts) > 1 else None
 
@@ -2265,9 +2380,11 @@ when they are started by agents or analysis workflows.
             return pipeline_run(client, output, notebook_name, input_modality)
         elif subcommand == "info":
             return pipeline_info(client, output)
+        elif subcommand is None:
+            return pipeline_list(client, output)
         else:
-            console.print(f"[yellow]Unknown pipeline subcommand: {subcommand}[/yellow]")
-            console.print("[cyan]Available: export, list, run, info[/cyan]")
+            output.print(f"Unknown pipeline subcommand: {subcommand}", style="warning")
+            output.print("Available: export, list, run, info", style="info")
             return None
 
     elif cmd.startswith("/export"):
@@ -2276,7 +2393,6 @@ when they are started by agents or analysis workflows.
         include_png = "--no-png" not in cmd
         force_resave = "--force" in cmd
 
-        output = ConsoleOutputAdapter(console)
         return export_data(
             client,
             output,
@@ -2285,28 +2401,44 @@ when they are started by agents or analysis workflows.
             console=console,
         )
 
-    elif cmd.startswith("/open "):
+    elif cmd == "/open" or cmd.startswith("/open "):
         # Handle /open command for files and folders
         file_or_folder = _extract_argument(original_command, "/open") or ""
 
         if not file_or_folder:
-            console.print("[red]/open: missing file or folder argument[/red]")
-            console.print("[grey50]Usage: /open <file_or_folder>[/grey50]")
+            output.print("/open: missing file or folder argument", style="error")
+            output.print("Usage: /open <file_or_folder>")
             return "No file or folder specified for /open command"
 
+        # Resolve path relative to current working directory.
+        if not file_or_folder.startswith("/") and not file_or_folder.startswith("~/"):
+            target_path = (current_directory / file_or_folder).expanduser()
+        else:
+            target_path = Path(file_or_folder).expanduser()
+
+        if not target_path.exists():
+            output.print(
+                f"/open: '{file_or_folder}': No such file or folder",
+                style="error",
+            )
+            return None
+
+        from lobster.utils import open_path
+
+        success, message = open_path(target_path)
+        if success:
+            output.print(message, style="success")
+            return f"Opened {target_path.name}"
+        output.print(f"/open failed: {message}", style="error")
+        return None
+
     elif cmd == "/plots":
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         return plots_list(client, output)
 
     elif cmd == "/modalities":
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         return modalities_list(client, output)
 
     elif cmd.startswith("/describe"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         modality_name = _extract_argument(original_command, "/describe")
         return modality_describe(client, output, modality_name)
 
@@ -2314,6 +2446,10 @@ when they are started by agents or analysis workflows.
         # Auto-save current state with progress display
         # Support /save --force to force re-save all modalities
         force_save = "--force" in cmd
+
+        if _is_protocol_output(output):
+            # Go TUI protocol cannot rely on direct Rich console rendering.
+            return _command_save(client, output, force=force_save)
 
         modality_count = len(client.data_manager.modalities)
         if modality_count == 0:
@@ -2379,20 +2515,14 @@ when they are started by agents or analysis workflows.
         pattern = "recent"  # default
         if len(parts) > 1:
             pattern = parts[1]
-
-        # Show what will be restored
-        console.print(f"[yellow]Restoring workspace (pattern: {pattern})...[/yellow]")
+        return _command_restore(client, output, pattern=pattern)
 
     elif cmd.startswith("/plot"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
         plot_identifier = parts[1] if len(parts) > 1 else None
         return plot_show(client, output, plot_identifier)
 
     elif cmd.startswith("/config"):
-        # Use shared command implementation (unified with dashboard)
-        output = ConsoleOutputAdapter(console)
         parts = cmd.split()
 
         if len(parts) == 1 or parts[1] == "show":
@@ -2404,6 +2534,10 @@ when they are started by agents or analysis workflows.
                 provider_name = parts[3] if len(parts) > 3 else None
                 save = "--save" in parts
                 return config_provider_switch(client, output, provider_name, save)
+            else:
+                provider_name = parts[2] if len(parts) > 2 else None
+                save = "--save" in parts
+                return config_provider_switch(client, output, provider_name, save)
         elif parts[1] == "model":
             if len(parts) == 2 or parts[2] == "list":
                 return config_model_list(client, output)
@@ -2411,18 +2545,22 @@ when they are started by agents or analysis workflows.
                 model_name = parts[3] if len(parts) > 3 else None
                 save = "--save" in parts
                 return config_model_switch(client, output, model_name, save)
+            else:
+                model_name = parts[2] if len(parts) > 2 else None
+                save = "--save" in parts
+                return config_model_switch(client, output, model_name, save)
         else:
-            console.print(f"[yellow]Unknown config subcommand: {parts[1]}[/yellow]")
-            console.print("[cyan]Available: show, provider, model[/cyan]")
+            output.print(f"Unknown config subcommand: {parts[1]}", style="warning")
+            output.print("Available: show, provider, model", style="info")
             return None
 
     elif cmd.startswith("/vector-search"):
         # Parse: /vector-search "query" [--top-k N]
         raw_args = cmd[len("/vector-search") :].strip()
         if not raw_args:
-            console.print("[cyan]Usage: /vector-search <query> [--top-k N][/cyan]")
-            console.print('[dim]Example: /vector-search "glioblastoma"[/dim]')
-            console.print("[dim]Example: /vector-search CD8+ T cell --top-k 10[/dim]")
+            output.print("Usage: /vector-search <query> [--top-k N]", style="info")
+            output.print('Example: /vector-search "glioblastoma"', style="dim")
+            output.print("Example: /vector-search CD8+ T cell --top-k 10", style="dim")
             return None
 
         # Parse --top-k flag
@@ -2433,57 +2571,51 @@ when they are started by agents or analysis workflows.
             try:
                 vs_top_k = int(parts_vs[1].strip().split()[0])
             except (ValueError, IndexError):
-                console.print(
-                    "[yellow]Invalid --top-k value, using default (5)[/yellow]"
-                )
+                output.print("Invalid --top-k value, using default (5)", style="warning")
 
         # Strip surrounding quotes from query
         query_text = raw_args.strip().strip("\"'")
         if not query_text:
-            console.print("[yellow]Please provide a search query.[/yellow]")
+            output.print("Please provide a search query.", style="warning")
             return None
 
         try:
             from lobster.cli_internal.commands import vector_search_all_collections
 
             result = vector_search_all_collections(query_text, top_k=vs_top_k)
-            console.print()
-            console.print(
-                Syntax(
-                    json.dumps(result, indent=2),
-                    "json",
-                    theme="monokai",
-                    line_numbers=False,
-                )
-            )
-            console.print()
+            output.print_code_block(json.dumps(result, indent=2), language="json")
             # Summary for conversation history
             total = sum(len(v) for v in result["results"].values())
             return (
                 f"Vector search for '{query_text}': {total} matches across 3 ontologies"
             )
         except ImportError as e:
-            from rich.markup import escape as rich_escape
-
-            console.print(f"[red]{rich_escape(str(e))}[/red]")
+            output.print(str(e), style="error")
             return None
         except Exception as e:
-            from rich.markup import escape as rich_escape
-
-            console.print(f"[red]Vector search error: {rich_escape(str(e))}[/red]")
+            output.print(f"Vector search error: {e}", style="error")
             return None
 
     elif cmd == "/clear":
+        if _is_protocol_output(output):
+            # Go TUI owns screen clearing; avoid direct Rich console calls.
+            return None
         console.clear()
 
     elif cmd == "/reset":
         # Reset conversation state
         client.reset()
-        console.print("[green]✓ Conversation reset[/green]")
-        console.print("[dim]Messages cleared. Data and modalities retained.[/dim]")
+        output.print("Conversation reset", style="success")
+        output.print("Messages cleared. Data and modalities retained.", style="dim")
         return "Conversation reset"
 
     elif cmd == "/exit":
+        if _is_protocol_output(output):
+            # Non-interactive protocol mode cannot use direct Rich prompts.
+            if output.confirm("exit?"):
+                raise KeyboardInterrupt
+            return None
+
         if Confirm.ask("[dim]exit?[/dim]"):
             display_goodbye()
 
@@ -2509,9 +2641,7 @@ when they are started by agents or analysis workflows.
             raise KeyboardInterrupt
 
     else:
-        console.print(
-            f"[bold red on white] ⚠️  Error [/bold red on white] [red]Unknown command: {cmd}[/red]"
-        )
+        output.print(f"Unknown command: {cmd}", style="error")
 
 
 # ============================================================================
@@ -3337,4 +3467,3 @@ def serve_impl(port: int = 8000, host: str = "0.0.0.0"):
 
     console.print(f"[red]🦞 Starting Lobster API server on {host}:{port}[/red]")
     uvicorn.run(api, host=host, port=port)
-

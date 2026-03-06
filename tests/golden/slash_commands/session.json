@@ -1,0 +1,40 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Session\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Session ID",
+            "sess_123"
+          ],
+          [
+            "Workspace",
+            "/tmp/lobster_ws"
+          ],
+          [
+            "Loaded Modalities",
+            "2"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Tip: use `/workspace list` to inspect available datasets.\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Session: sess_123"
+}

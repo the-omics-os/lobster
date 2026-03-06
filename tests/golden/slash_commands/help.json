@@ -1,0 +1,186 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "## Quick Start\n\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Just ask what you want to do in natural language\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Example: \"analyze my single-cell data\" or \"find breast cancer datasets\"\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Load data: /read <file> (supports *.h5ad, *.csv, etc.)\n\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Core Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Description"
+        ],
+        "rows": [
+          [
+            "/session",
+            "Current session status"
+          ],
+          [
+            "/status",
+            "Subscription tier & agents"
+          ],
+          [
+            "/data",
+            "Current data summary"
+          ],
+          [
+            "/workspace",
+            "Workspace info"
+          ],
+          [
+            "/queue",
+            "Queue status & controls"
+          ],
+          [
+            "/metadata",
+            "Metadata overview"
+          ],
+          [
+            "/config",
+            "Provider/model settings"
+          ],
+          [
+            "/plots",
+            "List generated plots"
+          ],
+          [
+            "/read <file>",
+            "Load data file"
+          ],
+          [
+            "/pipeline export",
+            "Export as Jupyter notebook"
+          ],
+          [
+            "/tokens",
+            "Token usage & costs"
+          ],
+          [
+            "/clear",
+            "Clear screen"
+          ],
+          [
+            "/exit",
+            "Exit"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Power Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Description"
+        ],
+        "rows": [
+          [
+            "/workspace list",
+            "List available datasets"
+          ],
+          [
+            "/workspace load <name>",
+            "Load data from workspace"
+          ],
+          [
+            "/queue clear ",
+            "Clear queue(s)"
+          ],
+          [
+            "/metadata clear ",
+            "Clear metadata"
+          ],
+          [
+            "/describe <modality>",
+            "Inspect a modality"
+          ],
+          [
+            "/save ",
+            "Persist loaded modalities"
+          ],
+          [
+            "/restore ",
+            "Restore datasets from session cache"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Admin & UI Commands\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Command",
+          "Description"
+        ],
+        "rows": [
+          [
+            "/dashboard",
+            "Classic/Textual dashboard (Go-safe fallback shown in Go mode)"
+          ],
+          [
+            "/status-panel",
+            "Rich status dashboard (degraded to /status in Go mode)"
+          ],
+          [
+            "/workspace-info",
+            "Rich workspace dashboard (degraded to /workspace in Go mode)"
+          ],
+          [
+            "/analysis-dash",
+            "Rich analysis dashboard (degraded to /plots + /metadata in Go mode)"
+          ],
+          [
+            "/progress",
+            "Rich progress monitor (degraded in Go mode)"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Next step: use `/workspace list` or `/read <file>` to begin.\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

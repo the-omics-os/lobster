@@ -1,0 +1,24 @@
+{
+  "id": "lobster-dark",
+  "name": "Lobster Dark",
+  "description": "Official Lobster AI dark theme",
+  "author": "Omics-OS",
+  "version": "1.0.0",
+  "colors": {
+    "primary":    "#e45c47",
+    "secondary":  "#CC2C18",
+    "background": "#1a1a2e",
+    "surface":    "#252538",
+    "overlay":    "#2a2a40",
+    "text":       "#FAFAFA",
+    "text_muted": "#888888",
+    "text_dim":   "#555555",
+    "success":    "#28a745",
+    "warning":    "#ffc107",
+    "error":      "#dc3545",
+    "info":       "#17a2b8",
+    "accent1":    "#e45c47",
+    "accent2":    "#FF6B4A",
+    "accent3":    "#4CAF50"
+  }
+}

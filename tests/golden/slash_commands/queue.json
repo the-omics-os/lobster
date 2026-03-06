@@ -1,0 +1,147 @@
+{
+  "events": [
+    {
+      "payload": {
+        "level": "info",
+        "message": "\n\ud83d\udccb Queue Status"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "\n\u2b07\ufe0f  Download Queue"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "headers": [
+          "",
+          "Status",
+          "Count"
+        ],
+        "rows": [
+          [
+            "\u25cb",
+            "Pending",
+            "2"
+          ],
+          [
+            "\u2713",
+            "Completed",
+            "1"
+          ],
+          [
+            "",
+            "Total",
+            "3"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "  Databases: geo: 2, sra: 1\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "\n\ud83d\udcda Publication Queue"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "headers": [
+          "",
+          "Status",
+          "Count"
+        ],
+        "rows": [
+          [
+            "\u25cb",
+            "Pending",
+            "1"
+          ],
+          [
+            "\u2713",
+            "Completed",
+            "1"
+          ],
+          [
+            "",
+            "Total",
+            "2"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "  Extraction levels: methods: 2\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  Identifiers extracted: 4\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "info",
+        "message": "\n\ud83d\udca1 Commands:"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue load <file> - Load .ris file into publication queue\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue list - List publication queue items\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue list download - List download queue items\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue clear - Clear publication queue\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue clear download - Clear download queue\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue clear all - Clear all queues\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "  \u2022 /queue export - Export publication queue to workspace\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": "Queue status: 3 downloads, 2 publications (5 total)"
+}

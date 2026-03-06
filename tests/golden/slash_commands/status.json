@@ -1,0 +1,44 @@
+{
+  "events": [
+    {
+      "payload": {
+        "content": "Status\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Tier",
+            "free"
+          ],
+          [
+            "Provider",
+            "openai"
+          ],
+          [
+            "Model",
+            "gpt-4.1"
+          ],
+          [
+            "Session ID",
+            "sess_123"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Tip: use `/config provider` or `/config model` to change runtime settings.\n"
+      },
+      "type": "text"
+    }
+  ],
+  "summary": null
+}

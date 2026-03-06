@@ -1,0 +1,9 @@
+# Compiled binary
+lobster-tui
+*.exe
+
+# Go build cache
+/vendor/
+
+# macOS
+.DS_Store

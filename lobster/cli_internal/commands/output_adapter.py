@@ -178,8 +178,14 @@ class JsonOutputAdapter(OutputAdapter):
 
     def print_table(self, table_data: Dict[str, Any]) -> None:
         """Extract columns and rows into a serializable dict."""
-        columns = [col["name"] for col in table_data.get("columns", [])]
-        rows = table_data.get("rows", [])
+        columns = [
+            self._strip_markup(str(col.get("name", "")))
+            for col in table_data.get("columns", [])
+        ]
+        rows = [
+            [self._strip_markup(str(cell)) for cell in row]
+            for row in table_data.get("rows", [])
+        ]
         entry: Dict[str, Any] = {"columns": columns, "rows": rows}
         title = table_data.get("title")
         if title:
@@ -265,13 +271,19 @@ class DashboardOutputAdapter(OutputAdapter):
             return
 
         # Header
-        header = "| " + " | ".join(col["name"] for col in columns) + " |"
+        header = "| " + " | ".join(
+            self._strip_markup(str(col.get("name", ""))) for col in columns
+        ) + " |"
         separator = "|" + "|".join("---" for _ in columns) + "|"
 
         # Rows
         table_rows = []
         for row in rows:
-            table_rows.append("| " + " | ".join(row) + " |")
+            table_rows.append(
+                "| "
+                + " | ".join(self._strip_markup(str(cell)) for cell in row)
+                + " |"
+            )
 
         # Combine
         title = table_data.get("title", "")
@@ -325,4 +337,46 @@ class DashboardOutputAdapter(OutputAdapter):
         import re
 
         # Remove [style] and [/style] tags
+        return re.sub(r"\[/?[^\]]+\]", "", text)
+
+
+class ProtocolOutputAdapter(OutputAdapter):
+    """OutputAdapter that emits protocol messages to the Go TUI."""
+
+    def __init__(self, send_fn):
+        self._send = send_fn
+
+    def print(self, message: str, style: Optional[str] = None) -> None:
+        clean = self._strip_markup(message)
+        if style in ("error", "warning", "success", "info"):
+            self._send("alert", {"level": style, "message": clean})
+        else:
+            self._send("text", {"content": clean + "\n"})
+
+    def print_table(self, table_data: Dict[str, Any]) -> None:
+        headers = [
+            self._strip_markup(str(col.get("name", "")))
+            for col in table_data.get("columns", [])
+        ]
+        rows = [
+            [self._strip_markup(str(cell)) for cell in row]
+            for row in table_data.get("rows", [])
+        ]
+        title = table_data.get("title")
+        if title:
+            self._send("text", {"content": self._strip_markup(title) + "\n"})
+        self._send("table", {"headers": headers, "rows": rows})
+
+    def print_code_block(self, code: str, language: str = "python") -> None:
+        self._send("code", {"content": code, "language": language})
+
+    def confirm(self, question: str) -> bool:
+        return False  # Non-interactive
+
+    def prompt(self, question: str, default: str = "") -> str:
+        return default
+
+    @staticmethod
+    def _strip_markup(text: str) -> str:
+        import re
         return re.sub(r"\[/?[^\]]+\]", "", text)

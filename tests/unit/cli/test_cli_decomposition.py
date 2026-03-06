@@ -36,7 +36,9 @@ def test_session_infra_exports():
         "should_show_progress",
         "create_progress",
         "init_client",
+        "init_client_or_raise_startup_diagnostic",
         "init_client_with_animation",
+        "validate_startup_or_raise_startup_diagnostic",
     ]
     for name in required:
         assert hasattr(session_infra, name), f"session_infra missing export: {name}"
@@ -183,3 +185,23 @@ def test_cli_help_outputs():
     for subcmd in ["chat", "query", "init"]:
         result = runner.invoke(app, [subcmd, "--help"])
         assert result.exit_code == 0, f"{subcmd} --help failed: {result.output}"
+
+
+def test_chat_no_intro_passes_flag_to_go_launcher(monkeypatch):
+    from typer.testing import CliRunner
+    from lobster.cli import app
+
+    seen = {}
+
+    def _fake_maybe_launch_go_chat_ui(**kwargs):
+        seen.update(kwargs)
+        return True
+
+    monkeypatch.setattr("lobster.cli._maybe_launch_go_chat_ui", _fake_maybe_launch_go_chat_ui)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["chat", "--ui", "go", "--no-intro"])
+
+    assert result.exit_code == 0, result.output
+    assert seen["ui_mode"] == "go"
+    assert seen["no_intro"] is True

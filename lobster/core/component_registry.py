@@ -62,6 +62,15 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 logger = logging.getLogger(__name__)
 
+_ENTRY_POINT_GROUPS: Tuple[str, ...] = (
+    "lobster.services",
+    "lobster.agents",
+    "lobster.adapters",
+    "lobster.providers",
+    "lobster.download_services",
+    "lobster.queue_preparers",
+)
+
 
 # =============================================================================
 # KNOWN PACKAGE MAPPINGS (single source of truth for install suggestions)
@@ -282,6 +291,8 @@ class ComponentRegistry:
         # Keyed by (group, name) to avoid cross-group collisions
         # (e.g., "metabolights" exists in both providers and download_services).
         self._failed_entries: Dict[Tuple[str, str], str] = {}
+        self._loaded_groups: set[str] = set()
+        self._agent_contract_checked = False
         self._loaded = False
 
     def load_components(self) -> None:
@@ -289,30 +300,13 @@ class ComponentRegistry:
         Discover and load all components from entry points.
         Idempotent - safe to call multiple times.
         """
-        if self._loaded:
+        if len(self._loaded_groups) == len(_ENTRY_POINT_GROUPS):
             return
 
         logger.debug("Discovering components via entry points...")
 
-        # Load services from 'lobster.services' entry point
-        self._load_entry_point_group("lobster.services", self._services)
-
-        # Load ALL agents from 'lobster.agents' entry point
-        # This includes both core (lobster-ai) and custom (lobster-custom-*) agents
-        self._load_entry_point_group("lobster.agents", self._agents)
-
-        # Omics plugin groups — adapters, providers, download services, queue preparers
-        self._load_entry_point_group("lobster.adapters", self._adapters)
-        self._load_entry_point_group("lobster.providers", self._providers)
-        self._load_entry_point_group(
-            "lobster.download_services", self._download_services
-        )
-        self._load_entry_point_group("lobster.queue_preparers", self._queue_preparers)
-
-        self._loaded = True
-
-        # Soft AQUADIF enforcement: warn about agents missing contract fields
-        self._check_agent_contract_compliance()
+        for group in _ENTRY_POINT_GROUPS:
+            self._ensure_group_loaded(group)
 
         logger.debug(
             f"Component discovery complete. "
@@ -323,6 +317,34 @@ class ComponentRegistry:
             f"Download services: {len(self._download_services)}, "
             f"Queue preparers: {len(self._queue_preparers)}"
         )
+
+    def _target_dict_for_group(self, group: str) -> Dict[str, Any]:
+        """Return the storage dictionary for an entry-point group."""
+        group_targets: Dict[str, Dict[str, Any]] = {
+            "lobster.services": self._services,
+            "lobster.agents": self._agents,
+            "lobster.adapters": self._adapters,
+            "lobster.providers": self._providers,
+            "lobster.download_services": self._download_services,
+            "lobster.queue_preparers": self._queue_preparers,
+        }
+        try:
+            return group_targets[group]
+        except KeyError as exc:
+            raise ValueError(f"Unknown component group: {group}") from exc
+
+    def _ensure_group_loaded(self, group: str) -> None:
+        """Load a single entry-point group on demand."""
+        if group in self._loaded_groups:
+            return
+
+        self._load_entry_point_group(group, self._target_dict_for_group(group))
+        self._loaded_groups.add(group)
+        self._loaded = True
+
+        if group == "lobster.agents" and not self._agent_contract_checked:
+            self._check_agent_contract_compliance()
+            self._agent_contract_checked = True
 
     def _check_agent_contract_compliance(self) -> None:
         """Soft enforcement: warn about agents missing plugin contract fields.
@@ -407,8 +429,7 @@ class ComponentRegistry:
         Raises:
             ValueError: If required=True and service not found
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.services")
 
         service = self._services.get(name)
 
@@ -422,14 +443,12 @@ class ComponentRegistry:
 
     def has_service(self, name: str) -> bool:
         """Check if a service is available."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.services")
         return name in self._services
 
     def list_services(self) -> Dict[str, str]:
         """List all available services with their module paths."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.services")
         return {
             name: f"{cls.__module__}.{cls.__name__}"
             for name, cls in self._services.items()
@@ -453,8 +472,7 @@ class ComponentRegistry:
         Raises:
             ValueError: If required=True and agent not found
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.agents")
 
         agent = self._agents.get(name)
 
@@ -465,8 +483,7 @@ class ComponentRegistry:
 
     def has_agent(self, name: str) -> bool:
         """Check if an agent is available."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.agents")
         return name in self._agents
 
     def list_custom_agents(self) -> Dict[str, Any]:
@@ -478,8 +495,7 @@ class ComponentRegistry:
         For backward compatibility, this filters to non-core agents
         (agents from packages other than lobster-ai).
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.agents")
         # For backward compatibility, filter to non-core agents
         # Core agents have package_name=None (from lobster-ai)
         return {
@@ -499,8 +515,7 @@ class ComponentRegistry:
         Returns:
             Dict[str, AgentRegistryConfig] - All available agents
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.agents")
         return dict(self._agents)
 
     # =========================================================================
@@ -522,8 +537,7 @@ class ComponentRegistry:
         Returns:
             Callable/class if found, None otherwise
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.adapters")
         adapter = self._adapters.get(name)
         if adapter is None and required:
             raise ValueError(
@@ -534,14 +548,12 @@ class ComponentRegistry:
 
     def has_adapter(self, name: str) -> bool:
         """Check if an adapter is available."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.adapters")
         return name in self._adapters
 
     def list_adapters(self) -> Dict[str, Union[Callable, Type[Any]]]:
         """List all available adapters."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.adapters")
         return dict(self._adapters)
 
     # =========================================================================
@@ -560,8 +572,7 @@ class ComponentRegistry:
         Returns:
             Class/callable if found, None otherwise
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.providers")
         provider = self._providers.get(name)
         if provider is None and required:
             raise ValueError(
@@ -572,14 +583,12 @@ class ComponentRegistry:
 
     def has_provider(self, name: str) -> bool:
         """Check if a provider is available."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.providers")
         return name in self._providers
 
     def list_providers(self) -> Dict[str, Union[Callable, Type[Any]]]:
         """List all available providers."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.providers")
         return dict(self._providers)
 
     # =========================================================================
@@ -598,8 +607,7 @@ class ComponentRegistry:
         Returns:
             Class/callable if found, None otherwise
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.download_services")
         svc = self._download_services.get(name)
         if svc is None and required:
             raise ValueError(
@@ -610,14 +618,12 @@ class ComponentRegistry:
 
     def has_download_service(self, name: str) -> bool:
         """Check if a download service is available."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.download_services")
         return name in self._download_services
 
     def list_download_services(self) -> Dict[str, Union[Callable, Type[Any]]]:
         """List all available download services."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.download_services")
         return dict(self._download_services)
 
     # =========================================================================
@@ -636,8 +642,7 @@ class ComponentRegistry:
         Returns:
             Class/callable if found, None otherwise
         """
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.queue_preparers")
         prep = self._queue_preparers.get(name)
         if prep is None and required:
             raise ValueError(
@@ -648,14 +653,12 @@ class ComponentRegistry:
 
     def has_queue_preparer(self, name: str) -> bool:
         """Check if a queue preparer is available."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.queue_preparers")
         return name in self._queue_preparers
 
     def list_queue_preparers(self) -> Dict[str, Union[Callable, Type[Any]]]:
         """List all available queue preparers."""
-        if not self._loaded:
-            self.load_components()
+        self._ensure_group_loaded("lobster.queue_preparers")
         return dict(self._queue_preparers)
 
     # =========================================================================
@@ -664,8 +667,7 @@ class ComponentRegistry:
 
     def get_info(self) -> Dict[str, Any]:
         """Get comprehensive registry info for diagnostics."""
-        if not self._loaded:
-            self.load_components()
+        self.load_components()
 
         return {
             "services": {
@@ -719,6 +721,8 @@ class ComponentRegistry:
         self._download_services.clear()
         self._queue_preparers.clear()
         self._failed_entries.clear()
+        self._loaded_groups.clear()
+        self._agent_contract_checked = False
         self._loaded = False
 
 
