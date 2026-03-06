@@ -65,7 +65,7 @@ lobster init
 lobster chat
 ```
 Then describe your analysis in plain language:
-```
+```text
 > Search PubMed for single-cell CRISPR screens in T cells from 2023–2024,
   download the most cited dataset, run QC, integrate batches with Harmony,
   cluster the cells, annotate cell types, and export a reproducible notebook.
@@ -199,7 +199,7 @@ Configure via `lobster init` or environment variables. All providers use the sam
 <details>
 <summary><b>Pipeline export and slash commands</b></summary>
 
-```bash
+```text
 lobster chat
 > /pipeline export         # Export reproducible Jupyter notebook
 > /pipeline list           # List exported pipelines
