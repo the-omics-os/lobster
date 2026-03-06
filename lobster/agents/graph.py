@@ -556,10 +556,7 @@ def _build_supervisor_tools(
     supervisor_accessible_names = []
 
     for agent_name, agent_config in worker_agents.items():
-        if (
-            not agent_config.handoff_tool_name
-            or not agent_config.handoff_tool_description
-        ):
+        if not agent_config.handoff_tool_name:
             continue
 
         if agent_config.supervisor_accessible is None:
@@ -568,11 +565,18 @@ def _build_supervisor_tools(
             is_supervisor_accessible = agent_config.supervisor_accessible
 
         if is_supervisor_accessible:
+            # Use agent's own handoff_tool_description for routing signal.
+            # Small models (8B-20B) rely on tool descriptions for selection —
+            # they cannot cross-reference a separate Agent Directory block.
+            # Rich descriptions with domain keywords enable pattern matching.
+            desc = agent_config.handoff_tool_description or (
+                f"Delegate task to {agent_config.display_name}."
+            )
             agent_tool = _create_agent_tool(
                 agent_name=agent_config.name,
                 agent=created_agents[agent_name],
                 tool_name=agent_config.handoff_tool_name,
-                description=agent_config.handoff_tool_description,
+                description=desc,
                 store=store,
             )
             agent_tools.append(agent_tool)
