@@ -1,5 +1,5 @@
 <div align="center">
-  <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="400">
+  <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="420">
 </div>
 
 <br/>
@@ -12,25 +12,31 @@
 
 <div align="center">
   <a href="https://docs.omics-os.com"><img src="https://img.shields.io/badge/docs-omics--os.com-black?style=for-the-badge&logo=readthedocs" alt="Docs"></a>
-  <img width="16" height="1" alt="">
+  &nbsp;&nbsp;
   <a href="https://app.omics-os.com"><img src="https://img.shields.io/badge/cloud-Omics--OS-blue?style=for-the-badge&logo=googlecloud" alt="Cloud"></a>
-  <img width="16" height="1" alt="">
+  &nbsp;&nbsp;
   <a href="https://pypi.org/project/lobster-ai/"><img src="https://img.shields.io/badge/PyPI-lobster--ai-black?style=for-the-badge&logo=pypi" alt="PyPI"></a>
-  <img width="16" height="1" alt="">
+  &nbsp;&nbsp;
   <a href="https://discord.gg/omics-os"><img src="https://img.shields.io/badge/Discord-Join_Community-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
 </div>
 
 <br/>
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-1.svg" width="30%">
-  <img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-2.svg" width="30%">
-  <img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-3.svg" width="30%">
+  <table border="0" cellspacing="0" cellpadding="8">
+    <tr>
+      <td><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-1.svg" width="260" alt="Testimonial 1"></td>
+      <td><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-2.svg" width="260" alt="Testimonial 2"></td>
+      <td><img src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/testimonial-3.svg" width="260" alt="Testimonial 3"></td>
+    </tr>
+  </table>
 </div>
 
 <br/>
 
-🌤️ **Want to skip the setup?** Run massive multi-omics pipelines instantly on **[Omics-OS Cloud](https://app.omics-os.com)**!
+<div align="center">
+  🌤️ <b>Want to skip the setup?</b> Run massive multi-omics pipelines instantly on <b><a href="https://app.omics-os.com">Omics-OS Cloud</a></b>!
+</div>
 
 ---
 
@@ -110,14 +116,15 @@ $ lobster query "Search PubMed for CRISPR studies in 2024 and download the top 3
 
 # 🧠 The Architecture
 
-Lobster isn't just a chatbot; it's a modular ecosystem of **22 specialist agents across 10 packages**. 
+Lobster isn't just a chatbot; it's a modular ecosystem of **22 specialist agents across 10 packages**.
 * **Your machine, your data:** Patient data never leaves your hardware.
 * **Tool calls, not token dreams:** Agents execute real, validated Python packages (Scanpy, PyDESeq2).
 * **100% Reproducible:** W3C-PROV tracking and automatic Jupyter notebook exports.
 
 <div align="center">
-  <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="100%">
-  <img alt="Core Architecture" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="100%">
+  <img alt="Ecosystem Topology" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-topology.svg" width="88%">
+  <br/><br/>
+  <img alt="Core Architecture" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/architecture-core.svg" width="88%">
 </div>
 
 <br/>
@@ -127,14 +134,14 @@ Lobster isn't just a chatbot; it's a modular ecosystem of **22 specialist agents
 The `lobster-dev` skill gives your coding assistant (Claude Code, Gemini CLI, Cursor) deep knowledge of how Lobster agents are structured. Describe the biological domain you need — it scaffolds the package, wires the tools, writes the tests, and registers the agent.
 
 <div align="center">
-  <table>
+  <table border="0" cellspacing="0" cellpadding="12">
     <tr>
-      <td width="50%" valign="top">
-        <b>1. The Request</b><br/>
+      <td width="50%" valign="top" align="center">
+        <b>1. The Request</b><br/><br/>
         <img alt="Claude Terminal" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/terminal-preview.svg" width="100%">
       </td>
-      <td width="50%" valign="top">
-        <b>2. The Result</b><br/>
+      <td width="50%" valign="top" align="center">
+        <b>2. The Result</b><br/><br/>
         <img alt="Hackability Preview" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/hackability-preview.svg" width="100%">
       </td>
     </tr>
@@ -249,7 +256,5 @@ Then ask your coding agent: *"Create a Lobster agent for [your domain]"* — it 
 
 <div align="center">
   <b>Built to accelerate multi-omics research.</b><br/><br/>
-  <!-- TODO: Replace with the actual Omics-OS Mascot/Logo if desired -->
-  <img src="https://placehold.co/100x100/png?text=OS" width="60" style="border-radius: 12px;"/><br/><br/>
-  <a href="https://omics-os.com">Omics-OS</a> · <a href="https://lobsterbio.com">Lobster AI</a> · <a href="https://docs.omics-os.com">Docs</a>
+  <a href="https://omics-os.com">Omics-OS</a> &nbsp;·&nbsp; <a href="https://lobsterbio.com">Lobster AI</a> &nbsp;·&nbsp; <a href="https://docs.omics-os.com">Docs</a>
 </div>
