@@ -163,7 +163,7 @@ test_aws_deployment.py
 activate_claude_code*.sh
 
 # === Documentation & Notes ===
-docs/
+#docs/
 docs_p/**/*.gif
 docs_p/**/*.mp4
 CLAUDE.md

@@ -66,12 +66,7 @@ jobs:
           fi
 
           # Validate against source
-          SOURCE_VERSION=$(python3 -c "
-          import re
-          with open('lobster/version.py') as f:
-              m = re.search(r'__version__\s*=\s*[\"'\''](.*?)[\"'\'']+', f.read())
-              print(m.group(1) if m else 'UNKNOWN')
-          ")
+          SOURCE_VERSION=$(grep '__version__' lobster/version.py | sed 's/.*"\(.*\)".*/\1/')
 
           if [ "$VERSION" != "$SOURCE_VERSION" ]; then
             echo "ERROR: Tag version ($VERSION) != source version ($SOURCE_VERSION)"
