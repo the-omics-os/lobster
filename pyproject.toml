@@ -323,7 +323,18 @@ metabolights = "lobster.services.data_access.metabolights_download_service:Metab
 #   - lobster-proteomics: MS (DDA/DIA), affinity platforms (Olink, SomaScan)
 #   - lobster-ml: Feature engineering, data splitting, scVI embeddings
 [tool.uv.workspace]
-members = ["packages/*"]
+# Explicit list — private packages (metadata, ml, structural-viz) are .gitignore'd
+# and absent from CI checkouts, so wildcard "packages/*" breaks uv build.
+members = [
+    "packages/lobster-ai-tui",
+    "packages/lobster-drug-discovery",
+    "packages/lobster-genomics",
+    "packages/lobster-metabolomics",
+    "packages/lobster-proteomics",
+    "packages/lobster-research",
+    "packages/lobster-transcriptomics",
+    "packages/lobster-visualization",
+]
 
 [tool.uv.sources]
 # Declare workspace members for [full] extra dependencies
@@ -333,7 +344,6 @@ lobster-research = { workspace = true }
 lobster-visualization = { workspace = true }
 lobster-genomics = { workspace = true }
 lobster-proteomics = { workspace = true }
-lobster-metadata = { workspace = true }
 lobster-ai-tui = { workspace = true }
 
 [tool.setuptools.packages.find]
