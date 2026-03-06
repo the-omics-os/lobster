@@ -17,6 +17,33 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from lobster.agents.graph import create_bioinformatics_graph
+
+# ---------------------------------------------------------------------------
+# Stream source classification
+# ---------------------------------------------------------------------------
+
+_SPECIALIST_SUFFIXES = ("_expert", "_agent", "_assistant")
+
+
+def _classify_stream_source(namespace: Any) -> str:
+    """Classify which top-level agent owns a stream event.
+
+    With ``subgraphs=True``, LangGraph yields a *namespace* (tuple of
+    strings) encoding the subgraph path.  The internal ``langgraph_node``
+    metadata is always ``"agent"`` for ReAct sub-graphs, so namespace is
+    the only reliable discriminator.
+
+    Returns the specialist agent name when the event originates inside a
+    specialist subgraph, or ``"supervisor"`` otherwise.  Consumers use
+    this to route content into the correct UI lane.
+    """
+    ns_parts = namespace if isinstance(namespace, tuple) else ()
+    for part in ns_parts:
+        if isinstance(part, str) and any(
+            part.endswith(sfx) for sfx in _SPECIALIST_SUFFIXES
+        ):
+            return part
+    return "supervisor"
 from lobster.config.settings import MODEL_PRICING
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
@@ -332,7 +359,8 @@ class AgentClient(BaseClient):
         streaming from the inner ReAct agent subgraph.
 
         Yields events in the following format:
-        - {"type": "content_delta", "delta": "..."} - Text content increments
+        - {"type": "content_delta", "delta": "...", "source": "supervisor"} - Supervisor text (user-visible)
+        - {"type": "agent_content", "delta": "...", "source": "<agent>"} - Specialist text (activity lane, not shown by default)
         - {"type": "agent_change", "agent": "...", "status": "working|complete"} - Agent transitions
         - {"type": "complete", ...} - Final completion event
         - {"type": "error", ...} - Error events
@@ -400,60 +428,60 @@ class AgentClient(BaseClient):
                     if node_name == "__end__":
                         continue
 
-                    # Emit agent change events for specialist agents
-                    if node_name != last_agent and node_name != "supervisor":
-                        if (
-                            node_name.endswith("_expert")
-                            or node_name.endswith("_agent")
-                            or node_name.endswith("_assistant")
-                        ):
-                            yield {
-                                "type": "agent_change",
-                                "agent": node_name,
-                                "status": "working",
-                                "timestamp": datetime.now().isoformat(),
-                            }
-                            last_agent = node_name
+                    # Classify source from the namespace (subgraph path).
+                    # node_name is unreliable with subgraphs=True — all
+                    # ReAct agents report "agent" internally.
+                    source = _classify_stream_source(namespace)
 
-                    # Single-speaker policy: only the supervisor's content
-                    # reaches the user stream.  Sub-agent text is internal
-                    # reasoning — surfacing it causes narrator boundary
-                    # breaches, corrupted markdown, and badge duplication.
-                    if node_name != "supervisor":
-                        continue
+                    # Emit agent change events for specialist agents
+                    if source != "supervisor" and source != last_agent:
+                        yield {
+                            "type": "agent_change",
+                            "agent": source,
+                            "status": "working",
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        last_agent = source
 
                     # Extract text content from message
                     content = message_chunk.content
+                    text_fragments: list[str] = []
                     if isinstance(content, str) and content:
-                        accumulated_text += content
-                        yield {
-                            "type": "content_delta",
-                            "delta": content,
-                            "timestamp": datetime.now().isoformat(),
-                        }
+                        text_fragments.append(content)
                     elif isinstance(content, list):
                         for block in content:
                             if isinstance(block, dict) and block.get("type") == "text":
-                                text = block.get("text", "")
-                                if text:
-                                    accumulated_text += text
-                                    yield {
-                                        "type": "content_delta",
-                                        "delta": text,
-                                        "timestamp": datetime.now().isoformat(),
-                                    }
+                                t = block.get("text", "")
+                                if t:
+                                    text_fragments.append(t)
                             elif isinstance(block, str) and block:
-                                accumulated_text += block
-                                yield {
-                                    "type": "content_delta",
-                                    "delta": block,
-                                    "timestamp": datetime.now().isoformat(),
-                                }
+                                text_fragments.append(block)
 
-                    # After yielding chunk content, register the accumulated
-                    # text hash so that a later complete-message replay whose
-                    # content equals the concatenation of all prior chunks
-                    # will be caught by the content-hash fallback above.
+                    # Route extracted text into the correct event lane.
+                    # Supervisor → content_delta (user-visible, accumulated
+                    #   for conversation history).
+                    # Specialist → agent_content (available for future UI
+                    #   lanes; current consumers ignore this event type).
+                    for frag in text_fragments:
+                        if source == "supervisor":
+                            accumulated_text += frag
+                            yield {
+                                "type": "content_delta",
+                                "delta": frag,
+                                "source": source,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        else:
+                            yield {
+                                "type": "agent_content",
+                                "delta": frag,
+                                "source": source,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+
+                    # Register accumulated-text hash so that a later
+                    # complete-message replay is caught by content-hash
+                    # fallback dedup above.
                     if is_chunk and accumulated_text:
                         seen_content_hashes.add(
                             hashlib.md5(
