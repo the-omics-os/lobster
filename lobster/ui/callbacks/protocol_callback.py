@@ -46,6 +46,8 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         **kwargs,
     ) -> None:
         tool_name = (serialized or {}).get("name", "unknown_tool")
+        if tool_name == "unknown_tool":
+            return
         self.current_tool = tool_name
         self.start_times[f"tool_{tool_name}"] = datetime.now()
 
@@ -80,6 +82,9 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
 
     def on_tool_end(self, output: Any, **kwargs) -> None:
         tool_name = self.current_tool or "unknown_tool"
+        if tool_name == "unknown_tool":
+            self.current_tool = None
+            return
         duration_ms = None
         key = f"tool_{tool_name}"
         if key in self.start_times:
@@ -106,6 +111,9 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         self, error: Union[Exception, KeyboardInterrupt], **kwargs
     ) -> None:
         tool_name = self.current_tool or kwargs.get("name", "unknown_tool")
+        if tool_name == "unknown_tool":
+            self.current_tool = None
+            return
         self._emit(
             "tool_execution",
             {
