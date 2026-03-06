@@ -71,6 +71,14 @@ Then describe your analysis in plain language:
   cluster the cells, annotate cell types, and export a reproducible notebook.
 ```
 
+<details>
+<summary><b>Watch: analysis session walkthrough</b></summary>
+<br/>
+<div align="center">
+  <img alt="Lobster AI Usage" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/recordings/usage.gif" width="720">
+</div>
+</details>
+
 <br/>
 
 # 🤖 For AI Coding Agents
