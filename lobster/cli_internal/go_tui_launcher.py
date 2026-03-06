@@ -93,13 +93,12 @@ def find_tui_binary_fast() -> Optional[str]:
 
     # 3. Platform wheel package (tiny or absent -- safe to attempt)
     try:
-        import lobster_ai_tui  # type: ignore[import-untyped]
+        from lobster_ai_tui import get_binary_path  # type: ignore[import-untyped]
 
-        pkg_dir = Path(lobster_ai_tui.__file__).parent
-        candidate = pkg_dir / "lobster-tui"
+        candidate = get_binary_path()
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
-    except (ImportError, AttributeError, TypeError):
+    except (ImportError, FileNotFoundError, AttributeError, TypeError):
         pass
 
     # 4. User cache
