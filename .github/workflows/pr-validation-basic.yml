@@ -164,6 +164,64 @@ jobs:
         retention-days: 14
 
   # =====================================================================
+  # Go TUI Validation (path-filtered)
+  # =====================================================================
+  go-tui-validation:
+    name: Go TUI Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - name: Check for Go TUI changes
+      id: changes
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+
+    - name: Detect Go TUI changes
+      id: detect
+      run: |
+        tui_changes=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep -E '^lobster-tui/|^lobster/cli_internal/go_tui_launcher\.py|^lobster/ui/callbacks/protocol_callback\.py|^lobster/ui/bridge/' | wc -l)
+        if [ "$tui_changes" -gt 0 ]; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        else
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Set up Go
+      if: steps.detect.outputs.has_changes == 'true'
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+        cache-dependency-path: lobster-tui/go.sum
+
+    - name: Extract version for ldflags
+      if: steps.detect.outputs.has_changes == 'true'
+      id: version
+      run: |
+        pip install -e . --quiet 2>/dev/null || true
+        VERSION=$(python -c "from lobster.version import __version__; print(__version__)" 2>/dev/null || echo "dev")
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Run Go tests
+      if: steps.detect.outputs.has_changes == 'true'
+      working-directory: lobster-tui
+      run: go test ./internal/chat ./internal/protocol ./internal/initwizard -v
+
+    - name: Build Go binary
+      if: steps.detect.outputs.has_changes == 'true'
+      working-directory: lobster-tui
+      run: |
+        go build -ldflags "-X main.Version=${{ steps.version.outputs.version }}" \
+          -o lobster-tui ./cmd/lobster-tui
+        ./lobster-tui version
+
+    - name: Skip (no Go TUI changes)
+      if: steps.detect.outputs.has_changes == 'false'
+      run: echo "No Go TUI changes detected, skipping validation"
+
+  # =====================================================================
   # Security Check
   # =====================================================================
   security-check:
@@ -260,7 +318,7 @@ jobs:
   pr-status:
     name: PR Status Summary
     runs-on: ubuntu-latest
-    needs: [pr-analysis, fast-validation, security-check, extended-tests]
+    needs: [pr-analysis, fast-validation, security-check, extended-tests, go-tui-validation]
     if: always()
     
     steps:
@@ -282,7 +340,8 @@ jobs:
             'PR Analysis': '${{ needs.pr-analysis.result }}',
             'Fast Validation': '${{ needs.fast-validation.result }}',
             'Security Check': '${{ needs.security-check.result }}',
-            'Extended Tests': '${{ needs.extended-tests.result }}'
+            'Extended Tests': '${{ needs.extended-tests.result }}',
+            'Go TUI': '${{ needs.go-tui-validation.result }}'
           };
           
           let summary = '## 🎯 PR Validation Summary\n\n';

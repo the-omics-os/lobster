@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _PROTOCOL_VERSION = 1
+_SUPPORTED_PROTOCOL_VERSIONS = {1}
 _FEEDBACK_URL = "https://forms.cloud.microsoft/e/AkNk8J8nE8"
 _ISSUES_URL = "https://github.com/the-omics-os/lobster/issues"
 _SUPPORT_EMAIL = "info@omics-os.com"
@@ -792,6 +793,19 @@ def launch_go_tui_chat(
             raise RuntimeError(
                 "Go TUI handshake failed -- "
                 "did not receive handshake within 5 seconds"
+            )
+
+        # Validate protocol compatibility
+        hs_payload = handshake.get("payload", {})
+        tui_protocol = hs_payload.get("protocol_version", 0)
+        tui_version = hs_payload.get("version", "unknown")
+        if tui_protocol not in _SUPPORTED_PROTOCOL_VERSIONS:
+            bridge.close()
+            raise RuntimeError(
+                f"Go TUI protocol version {tui_protocol} (binary v{tui_version}) "
+                f"is incompatible with this Lobster AI release "
+                f"(supported protocols: {_SUPPORTED_PROTOCOL_VERSIONS}). "
+                f"Update with: pip install --upgrade lobster-ai-tui"
             )
 
         # -----------------------------------------------------------------

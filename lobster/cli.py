@@ -1067,6 +1067,13 @@ def _maybe_launch_go_chat_ui(
 
     binary = _resolve_go_chat_binary(ui_mode)
     if not binary:
+        if ui_mode == "auto":
+            import sys
+            print(
+                "\033[33mNote:\033[0m Go TUI not found, using classic mode. "
+                "Install with: pip install lobster-ai-tui",
+                file=sys.stderr,
+            )
         return False
 
     try:
@@ -1081,9 +1088,14 @@ def _maybe_launch_go_chat_ui(
             no_intro=no_intro,
             stream=stream,
         )
-    except Exception:
+    except Exception as exc:
         if ui_mode == "go":
             raise
+        import sys
+        print(
+            f"\033[33mNote:\033[0m Go TUI failed ({exc}), falling back to classic mode.",
+            file=sys.stderr,
+        )
         return False
 
 @app.command()
@@ -1141,6 +1153,12 @@ def chat(
         "--ui",
         help="UI mode: auto (Go TUI if available), go (require Go TUI), classic (Rich terminal)",
     ),
+    classic: bool = typer.Option(
+        False,
+        "--classic",
+        is_flag=True,
+        help="Shorthand for --ui classic (force Rich/Textual UI)",
+    ),
 ):
     """
     Start an interactive chat session with the multi-agent system.
@@ -1150,8 +1168,10 @@ def chat(
       lobster chat --session-id session_20241208_150000
 
     Use --reasoning to see agent thinking process. Use --verbose for detailed tool output.
-    Use --ui to select the UI backend: auto, go, or classic.
+    Use --classic to force the Rich/Textual UI instead of the Go TUI.
     """
+    if classic:
+        ui_mode = "classic"
     _validate_chat_ui_mode(ui_mode)
     if _maybe_launch_go_chat_ui(
         ui_mode=ui_mode,

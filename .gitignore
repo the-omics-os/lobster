@@ -208,6 +208,12 @@ ui/.cache/
 ui/dist/
 ui/node_modules/
 
+# === Go TUI ===
+# Dev-built binary (15 MB, not for git)
+/lobster-tui/lobster-tui
+# CI-placed binary in wrapper package
+packages/lobster-ai-tui/lobster_ai_tui/bin/lobster-tui
+
 # === OS Files ===
 .DS_Store
 .DS_Store?

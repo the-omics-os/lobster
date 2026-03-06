@@ -11,8 +11,12 @@ import (
 	initwizard "github.com/the-omics-os/lobster-tui/internal/initwizard"
 )
 
-// Version is the current version of lobster-tui.
-const Version = "0.1.0"
+// Version is injected at build time via -ldflags:
+//
+//	go build -ldflags "-X main.Version=1.1.0" ./cmd/lobster-tui
+//
+// Falls back to "dev" for local development builds.
+var Version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {

@@ -243,10 +243,43 @@ jobs:
   # Public packages: publish to PyPI or TestPyPI (based on tag)
   # Private packages: publish to TestPyPI only (skipped on production tags)
 
+  # --- Wait for TUI wheels (published by publish-tui.yml) ---
+  wait-for-tui:
+    name: Wait for lobster-ai-tui
+    needs: [validate-version]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for TUI wheels to be available
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          IS_TEST="${{ needs.validate-version.outputs.is_test }}"
+
+          if [[ "$IS_TEST" == "true" ]]; then
+            INDEX_URL="https://test.pypi.org/simple/lobster-ai-tui/"
+          else
+            INDEX_URL="https://pypi.org/simple/lobster-ai-tui/"
+          fi
+
+          echo "Waiting for lobster-ai-tui==$VERSION on $([[ $IS_TEST == 'true' ]] && echo TestPyPI || echo PyPI)..."
+
+          for i in $(seq 1 30); do
+            if curl -sf "$INDEX_URL" | grep -q "lobster.ai.tui-${VERSION}" 2>/dev/null || \
+               curl -sf "$INDEX_URL" | grep -q "lobster_ai_tui-${VERSION}" 2>/dev/null; then
+              echo "lobster-ai-tui $VERSION is available!"
+              exit 0
+            fi
+            echo "  Attempt $i/30 -- not yet available, waiting 30s..."
+            sleep 30
+          done
+
+          echo "WARNING: lobster-ai-tui $VERSION not found after 15 minutes."
+          echo "The publish-tui.yml workflow may still be running."
+          echo "Proceeding anyway -- pip install may fail if TUI wheel is not yet indexed."
+
   # --- Core Package (public) ---
   publish-lobster-ai:
     name: Publish lobster-ai
-    needs: [validate-version, build]
+    needs: [validate-version, build, wait-for-tui]
     runs-on: ubuntu-latest
     environment:
       name: ${{ needs.validate-version.outputs.is_test == 'true' && 'testpypi-lobster-ai' || 'pypi-lobster-ai' }}
