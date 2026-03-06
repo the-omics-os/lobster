@@ -1,3 +1,6 @@
+# === Planning (local only) ===
+.planning/
+
 # === Python ===
 # Byte-compiled / optimized / DLL files
 __pycache__/
