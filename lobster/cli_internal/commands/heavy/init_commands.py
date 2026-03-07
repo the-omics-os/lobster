@@ -71,7 +71,7 @@ def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
 # Available Agent Packages (static registry for init flow)
 # =============================================================================
 # These are the official lobster-* packages that can be installed.
-# Format: (package_name, description, agents_provided, published_on_pypi)
+# Format: (package_name, description, agents_provided, published_on_pypi, experimental)
 
 AVAILABLE_AGENT_PACKAGES = [
     (
@@ -79,23 +79,20 @@ AVAILABLE_AGENT_PACKAGES = [
         "Literature search & data discovery",
         ["research_agent", "data_expert_agent"],
         True,
+        False,
     ),
     (
         "lobster-transcriptomics",
         "Single-cell & bulk RNA-seq analysis",
         ["transcriptomics_expert", "annotation_expert", "de_analysis_expert"],
         True,
+        False,
     ),
     (
         "lobster-visualization",
         "Data visualization & plotting",
         ["visualization_expert_agent"],
         True,
-    ),
-    (
-        "lobster-metadata",
-        "Metadata filtering & standardization",
-        ["metadata_assistant"],
         False,
     ),
     (
@@ -103,6 +100,7 @@ AVAILABLE_AGENT_PACKAGES = [
         "Genomics/DNA analysis (VCF, GWAS, clinical variants)",
         ["genomics_expert", "variant_analysis_expert"],
         True,
+        False,
     ),
     (
         "lobster-proteomics",
@@ -113,12 +111,14 @@ AVAILABLE_AGENT_PACKAGES = [
             "biomarker_discovery_expert",
         ],
         True,
+        False,
     ),
     (
         "lobster-metabolomics",
         "LC-MS, GC-MS, and NMR metabolomics analysis",
         ["metabolomics_expert"],
         True,
+        False,
     ),
     (
         "lobster-ml",
@@ -128,6 +128,7 @@ AVAILABLE_AGENT_PACKAGES = [
             "feature_selection_expert",
             "survival_analysis_expert",
         ],
+        True,
         True,
     ),
     (
@@ -140,6 +141,21 @@ AVAILABLE_AGENT_PACKAGES = [
             "pharmacogenomics_expert",
         ],
         True,
+        True,
+    ),
+    (
+        "lobster-metadata",
+        "Metadata filtering & standardization",
+        ["metadata_assistant"],
+        True,
+        True,
+    ),
+    (
+        "lobster-structural-viz",
+        "Protein structure visualization (PyMOL, PDB)",
+        ["protein_structure_visualization_expert"],
+        True,
+        True,
     ),
 ]
 
@@ -148,7 +164,7 @@ _DEFAULT_TUI_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
 
 def _get_init_package_agents_map() -> dict[str, list[str]]:
     """Return package -> agents mapping for init selection UIs."""
-    return {pkg_name: list(agents) for pkg_name, _, agents, _ in AVAILABLE_AGENT_PACKAGES}
+    return {pkg_name: list(agents) for pkg_name, _, agents, _, _ in AVAILABLE_AGENT_PACKAGES}
 
 
 def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
@@ -177,7 +193,7 @@ def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
 def _get_tui_agent_package_choices() -> list[tuple[str, str, list[str]]]:
     """Return published init package choices for Go/questionary UIs."""
     choices: list[tuple[str, str, list[str]]] = []
-    for pkg_name, description, agents, published in AVAILABLE_AGENT_PACKAGES:
+    for pkg_name, description, agents, published, _experimental in AVAILABLE_AGENT_PACKAGES:
         if not published:
             continue
         choices.append((pkg_name, description, list(agents)))
@@ -248,7 +264,7 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     table.add_column("Agents", style="yellow")
     table.add_column("Status", style="green", width=12)
 
-    for i, (pkg_name, desc, agents, published) in enumerate(
+    for i, (pkg_name, desc, agents, published, experimental) in enumerate(
         AVAILABLE_AGENT_PACKAGES, 1
     ):
         # Check if this package's agents are installed
@@ -257,6 +273,8 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
             status = "[green]installed[/green]"
         elif not published:
             status = "[dim]coming soon[/dim]"
+        elif experimental:
+            status = "[yellow]experimental[/yellow]"
         else:
             status = ""
         agents_str = ", ".join(agents[:2])  # Show first 2 agents
@@ -279,7 +297,7 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     if selection.strip().lower() == "all":
         selected_indices = {
             index
-            for index, (_, _, _, published) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
+            for index, (_, _, _, published, _) in enumerate(AVAILABLE_AGENT_PACKAGES, 1)
             if published
         }
     else:
@@ -306,7 +324,7 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     all_agents = []
 
     for idx in sorted(selected_indices):
-        pkg_name, _, agents, published = AVAILABLE_AGENT_PACKAGES[idx - 1]
+        pkg_name, _, agents, published, _ = AVAILABLE_AGENT_PACKAGES[idx - 1]
         # Check if already installed
         is_installed = any(a in installed_agent_names for a in agents)
         if not is_installed and published:
@@ -607,7 +625,7 @@ def _filter_unpublished_preset_agents(
     from lobster.core.component_registry import AGENT_TO_PACKAGE
 
     published_packages = {
-        pkg_name for pkg_name, _, _, published in AVAILABLE_AGENT_PACKAGES if published
+        pkg_name for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES if published
     }
 
     filtered: list[str] = []
@@ -661,7 +679,7 @@ def _build_uv_tool_init_command(
             extras.append("vector-search")
 
     published_packages = {
-        pkg_name for pkg_name, _, _, published in AVAILABLE_AGENT_PACKAGES if published
+        pkg_name for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES if published
     }
     installed_packages = set()
     if info:

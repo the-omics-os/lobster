@@ -68,10 +68,11 @@ var providersWithProfile = map[string]bool{
 }
 
 type initAgentPackage struct {
-	Name        string
-	Description string
-	Agents      []string
-	Default     bool
+	Name         string
+	Description  string
+	Agents       []string
+	Default      bool
+	Experimental bool
 }
 
 type ollamaStatus struct {
@@ -115,14 +116,28 @@ var initAgentPackages = []initAgentPackage{
 		Agents:      []string{"metabolomics_expert"},
 	},
 	{
-		Name:        "lobster-ml",
-		Description: "Machine learning, feature selection, and survival analysis",
-		Agents:      []string{"machine_learning_expert", "feature_selection_expert", "survival_analysis_expert"},
+		Name:         "lobster-ml",
+		Description:  "Machine learning, feature selection, and survival analysis",
+		Agents:       []string{"machine_learning_expert", "feature_selection_expert", "survival_analysis_expert"},
+		Experimental: true,
 	},
 	{
-		Name:        "lobster-drug-discovery",
-		Description: "Drug discovery, cheminformatics, and translational strategy",
-		Agents:      []string{"drug_discovery_expert", "cheminformatics_expert", "clinical_dev_expert", "pharmacogenomics_expert"},
+		Name:         "lobster-drug-discovery",
+		Description:  "Drug discovery, cheminformatics, and translational strategy",
+		Agents:       []string{"drug_discovery_expert", "cheminformatics_expert", "clinical_dev_expert", "pharmacogenomics_expert"},
+		Experimental: true,
+	},
+	{
+		Name:         "lobster-metadata",
+		Description:  "Metadata filtering & standardization",
+		Agents:       []string{"metadata_assistant"},
+		Experimental: true,
+	},
+	{
+		Name:         "lobster-structural-viz",
+		Description:  "Protein structure visualization (PyMOL, PDB)",
+		Agents:       []string{"protein_structure_visualization_expert"},
+		Experimental: true,
 	},
 }
 
@@ -247,7 +262,7 @@ func Run(themeName string, resultPath string) error {
 	)
 
 	// ---- Step 1 + 2: Agents + Provider in one form -------------------------
-	agentOptions := buildAgentOptions()
+	agentOptions := buildAgentOptions(activeTheme)
 
 	providerOptions := []huh.Option[string]{
 		huh.NewOption("Anthropic (Claude)  — Quick testing, development", providerAnthropic),
@@ -601,8 +616,9 @@ func Run(themeName string, resultPath string) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-func buildAgentOptions() []huh.Option[string] {
+func buildAgentOptions(t *lobsterTheme.Theme) []huh.Option[string] {
 	options := make([]huh.Option[string], 0, len(initAgentPackages))
+	experimentalStyle := lipgloss.NewStyle().Foreground(t.Colors.Warning).Bold(true)
 	for _, pkg := range initAgentPackages {
 		agentCount := len(pkg.Agents)
 		agentLabel := "agents"
@@ -610,6 +626,9 @@ func buildAgentOptions() []huh.Option[string] {
 			agentLabel = "agent"
 		}
 		label := fmt.Sprintf("%-24s %s (%d %s)", pkg.Name, pkg.Description, agentCount, agentLabel)
+		if pkg.Experimental {
+			label = label + experimentalStyle.Render(" [experimental]")
+		}
 		option := huh.NewOption(label, pkg.Name)
 		if pkg.Default {
 			option = option.Selected(true)

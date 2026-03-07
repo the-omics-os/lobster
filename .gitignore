@@ -139,10 +139,8 @@ logs/
 *.temp
 *.tmp
 
-# === Private & Premium Packages ===
-packages/lobster-metadata/
-packages/lobster-ml/
-packages/lobster-structural-viz/
+# === Experimental Packages (now published on PyPI) ===
+# Previously .gitignored; un-ignored for public experimental release.
 
 # === Cloud & Infrastructure ===
 lobster-cloud/

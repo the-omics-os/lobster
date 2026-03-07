@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-structural-viz"
+version = "1.1.2"
+description = "Protein structure visualization agent for Lobster AI - 3D structural biology and PyMOL integration"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+keywords = ["bioinformatics", "protein-structure", "pymol", "pdb", "structural-biology", "3d-visualization"]
+dependencies = [
+    "lobster-ai~=1.1.0",
+    "anndata>=0.9.0",
+    "numpy>=1.23.0",
+    "biopython>=1.81",
+]
+
+[project.urls]
+"Homepage" = "https://www.omics-os.com"
+"Documentation" = "https://docs.omics-os.com"
+"Source Code" = "https://github.com/the-omics-os/lobster"
+
+[project.entry-points."lobster.agents"]
+protein_structure_visualization_expert = "lobster.agents.protein_structure_visualization_expert:AGENT_CONFIG"
+
+[project.entry-points."lobster.states"]
+ProteinStructureVisualizationExpertState = "lobster.agents.structural_viz_state:ProteinStructureVisualizationExpertState"
+
+[tool.setuptools]
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
