@@ -49,7 +49,7 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md -- API spike validating v2 assumptions (View type, color types, KeyPressMsg, viewport, glamour coexistence)
-- [ ] 02-02-PLAN.md -- Mechanical import migration + View() return type + color type updates + KeyMsg->KeyPressMsg
+- [x] 02-02-PLAN.md -- Mechanical import migration + View() return type + color type updates + KeyMsg->KeyPressMsg
 - [ ] 02-03-PLAN.md -- Init wizard rewrite with v2 state machine + forms.go rewrite + huh removal
 
 ### Phase 3: Rendering and Style
