@@ -48,7 +48,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md -- API spike validating v2 assumptions (View type, color types, KeyPressMsg, viewport, glamour coexistence)
+- [x] 02-01-PLAN.md -- API spike validating v2 assumptions (View type, color types, KeyPressMsg, viewport, glamour coexistence)
 - [ ] 02-02-PLAN.md -- Mechanical import migration + View() return type + color type updates + KeyMsg->KeyPressMsg
 - [ ] 02-03-PLAN.md -- Init wizard rewrite with v2 state machine + forms.go rewrite + huh removal
 
@@ -103,7 +103,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/2 | Complete | 2026-03-07 |
-| 2. Charm v2 Migration | 0/3 | Not started | - |
+| 2. Charm v2 Migration | 1/3 | In progress | - |
 | 3. Rendering and Style | 0/2 | Not started | - |
 | 4. Layout | 0/1 | Not started | - |
 | 5. Python Integration | 0/1 | Not started | - |
