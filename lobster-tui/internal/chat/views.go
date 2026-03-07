@@ -405,16 +405,31 @@ func renderMessageUncached(msg ChatMessage, styles theme.Styles, width int, mdRe
 		return styles.AssistantMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
 	case "handoff":
+		if b := findBlock[BlockHandoff](msg.Blocks); b != nil {
+			return renderBlockHandoff(*b, styles, contentWidth)
+		}
 		return renderBranchBlock("└─", msg.Content(), styles.AgentTransition, styles.Dimmed, contentWidth)
 	case "system":
 		return styles.SystemMessage.Width(contentWidth).Render(msg.Content())
 	case "alert_error":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderAlert("error", msg.Content(), styles, width)
 	case "alert_warning":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderAlert("warning", msg.Content(), styles, width)
 	case "alert_success":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderAlert("success", msg.Content(), styles, width)
 	case "alert_info":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderAlert("info", msg.Content(), styles, width)
 
 	default:
@@ -450,16 +465,31 @@ func renderInlineMessage(msg ChatMessage, styles theme.Styles, width int, mdRend
 		body = trimSharedLeftPadding(body, 2)
 		return styles.AssistantMessage.Width(contentWidth).Render(body)
 	case "handoff":
+		if b := findBlock[BlockHandoff](msg.Blocks); b != nil {
+			return renderBlockHandoff(*b, styles, contentWidth)
+		}
 		return renderBranchBlock("└─", msg.Content(), styles.AgentTransition, styles.Dimmed, contentWidth)
 	case "system":
 		return styles.Dimmed.Render("• " + strings.TrimSpace(msg.Content()))
 	case "alert_error":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderInlineAlert("error", msg.Content(), styles, width)
 	case "alert_warning":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderInlineAlert("warning", msg.Content(), styles, width)
 	case "alert_success":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderInlineAlert("success", msg.Content(), styles, width)
 	case "alert_info":
+		if b := findBlock[BlockAlert](msg.Blocks); b != nil {
+			return renderBlockAlert(*b, styles, width)
+		}
 		return renderInlineAlert("info", msg.Content(), styles, width)
 	default:
 		return lipgloss.NewStyle().Width(contentWidth).Render(strings.TrimSpace(msg.Content()))

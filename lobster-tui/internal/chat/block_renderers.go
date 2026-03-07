@@ -128,12 +128,80 @@ func highlightCode(code, language string) string {
 	return strings.TrimRight(buf.String(), "\n")
 }
 
-// renderBlockAlert is a stub for alert block rendering (Plan 02).
+// renderBlockAlert renders an alert with colored severity icon, chip, and body.
 func renderBlockAlert(b BlockAlert, styles theme.Styles, width int) string {
-	return b.Message
+	contentWidth := width - 8
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+
+	var style lipgloss.Style
+	var icon string
+	var chip string
+
+	switch b.Level {
+	case "error":
+		style = styles.AlertError
+		icon = "\u2716" // ✖
+		chip = "ERROR"
+	case "warning":
+		style = styles.AlertWarning
+		icon = "\u26a0" // ⚠
+		chip = "WARNING"
+	case "success":
+		style = styles.AlertSuccess
+		icon = "\u2713" // ✓
+		chip = "SUCCESS"
+	default: // "info" and anything else
+		style = styles.AlertInfo
+		icon = "\u2139" // ℹ
+		chip = "INFO"
+	}
+
+	title, body := parseAlertContent(b.Message)
+	if strings.EqualFold(title, chip) || strings.EqualFold(title, b.Level) {
+		title = ""
+	}
+	if body == "" {
+		body = strings.TrimSpace(b.Message)
+	}
+
+	chipStyle := lipgloss.NewStyle().
+		Foreground(style.GetForeground()).
+		Bold(true)
+	header := chipStyle.Render(icon + " " + chip)
+	if title != "" {
+		header += " " + styles.Bold.Render(title)
+	}
+	if strings.TrimSpace(body) != "" {
+		if title != "" {
+			body = "  " + styles.Muted.Render(strings.TrimSpace(body))
+			return style.Width(contentWidth).Render(header + "\n" + body)
+		}
+		header += ": " + strings.TrimSpace(body)
+	}
+	return style.Width(contentWidth).Render(header)
 }
 
-// renderBlockHandoff is a stub for handoff block rendering (Plan 02).
+// renderBlockHandoff renders an agent handoff with from/to/reason formatting.
 func renderBlockHandoff(b BlockHandoff, styles theme.Styles, width int) string {
-	return b.Reason
+	var parts []string
+
+	// First line: [from] --> to
+	var firstLine strings.Builder
+	if b.From != "" {
+		firstLine.WriteString(styles.Dimmed.Render(b.From))
+		firstLine.WriteByte(' ')
+	}
+	firstLine.WriteString(styles.HandoffPrefix.Render("-->"))
+	firstLine.WriteByte(' ')
+	firstLine.WriteString(styles.AgentName.Render(b.To))
+	parts = append(parts, firstLine.String())
+
+	// Second line: reason (indented)
+	if b.Reason != "" {
+		parts = append(parts, "    "+styles.Muted.Render(b.Reason))
+	}
+
+	return strings.Join(parts, "\n")
 }

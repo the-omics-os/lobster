@@ -81,6 +81,18 @@ func (m ChatMessage) Content() string {
 	return b.String()
 }
 
+// findBlock searches a block slice for the first block of type T and returns
+// a pointer to it, or nil if not found. Used by views.go to check for typed
+// blocks before falling back to legacy string-based rendering.
+func findBlock[T ContentBlock](blocks []ContentBlock) *T {
+	for _, b := range blocks {
+		if typed, ok := b.(T); ok {
+			return &typed
+		}
+	}
+	return nil
+}
+
 // appendBlock appends a ContentBlock to the last assistant message in the
 // message list. If no assistant message exists, it creates one.
 func (m *Model) appendBlock(block ContentBlock) {

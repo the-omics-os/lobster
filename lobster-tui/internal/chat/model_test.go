@@ -569,8 +569,8 @@ func TestTaskHandoffQueuesUntilSupervisorMessageFlushes(t *testing.T) {
 		t.Fatalf("expected second message to be handoff, got %q", m.messages[1].Role)
 	}
 	rendered := renderMessage(m.messages[1], m.styles, m.width, nil, false)
-	if !strings.Contains(rendered, "└─") || !strings.Contains(rendered, "Search GEO for human lung adenocarcinoma scRNA-seq datasets.") {
-		t.Fatalf("expected rendered handoff line with branch prefix and description, got:\n%s", rendered)
+	if !strings.Contains(rendered, "-->") || !strings.Contains(rendered, "Search GEO for human lung adenocarcinoma scRNA-seq datasets.") {
+		t.Fatalf("expected rendered handoff line with arrow prefix and description, got:\n%s", rendered)
 	}
 }
 
