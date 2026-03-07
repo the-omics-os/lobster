@@ -39,9 +39,9 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 - [x] **REND-01**: Tables render via lipgloss/table with rounded borders, themed header/row styles
 - [x] **REND-02**: Messages flow without box borders (crush-style, padding+margin only)
-- [ ] **REND-03**: Code blocks render with language labels and syntax highlighting
-- [ ] **REND-04**: Alert blocks render with colored severity indicators
-- [ ] **REND-05**: Agent handoff blocks render with from/to/reason formatting
+- [x] **REND-03**: Code blocks render with language labels and syntax highlighting
+- [x] **REND-04**: Alert blocks render with colored severity indicators
+- [x] **REND-05**: Agent handoff blocks render with from/to/reason formatting
 - [x] **REND-06**: Width-keyed render cache for finalized messages (invalidate on width/theme change)
 - [x] **REND-07**: Streaming messages are never cached
 
@@ -58,7 +58,7 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 - [x] **STYL-01**: Expanded Styles struct with 40+ semantic tokens
 - [x] **STYL-02**: Dedicated table styles (TableHeader, TableRowEven, TableRowOdd, TableBorder)
-- [ ] **STYL-03**: Dedicated alert styles (AlertSuccess, AlertWarning, AlertError, AlertInfo)
+- [x] **STYL-03**: Dedicated alert styles (AlertSuccess, AlertWarning, AlertError, AlertInfo)
 - [x] **STYL-04**: Dedicated code styles (CodeBlock, CodeLabel)
 - [x] **STYL-05**: Dedicated footer styles (FooterStatus, FooterToolFeed, FooterComponentFrame)
 - [x] **STYL-06**: Chat styles (AgentName, UserName, MessageBody, HandoffPrefix)
@@ -116,14 +116,14 @@ Deferred to future release. Tracked but not in current roadmap.
 | MIGR-07 | Phase 2 | Complete |
 | REND-01 | Phase 3 | Complete |
 | REND-02 | Phase 3 | Complete |
-| REND-03 | Phase 3 | Pending |
-| REND-04 | Phase 3 | Pending |
-| REND-05 | Phase 3 | Pending |
+| REND-03 | Phase 3 | Complete |
+| REND-04 | Phase 3 | Complete |
+| REND-05 | Phase 3 | Complete |
 | REND-06 | Phase 3 | Complete |
 | REND-07 | Phase 3 | Complete |
 | STYL-01 | Phase 3 | Complete |
 | STYL-02 | Phase 3 | Complete |
-| STYL-03 | Phase 3 | Pending |
+| STYL-03 | Phase 3 | Complete |
 | STYL-04 | Phase 3 | Complete |
 | STYL-05 | Phase 3 | Complete |
 | STYL-06 | Phase 3 | Complete |
