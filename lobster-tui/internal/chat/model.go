@@ -1920,7 +1920,10 @@ func mouseCaptureCmd(_ bool) tea.Cmd {
 }
 
 // layoutReservedRows estimates non-viewport rows currently occupied by UI chrome.
-func (m Model) layoutReservedRows() int {
+// layoutReservedRowsLegacy is the original inline-mode layout calculator.
+// It is preserved for inline mode where the 4-layer layout engine does not apply.
+// For non-inline mode, layoutReservedRows() in layout.go delegates to computeLayout().
+func (m Model) layoutReservedRowsLegacy() int {
 	rows := 0
 
 	if m.inline {

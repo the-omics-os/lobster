@@ -66,7 +66,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md -- Semantic style expansion + native table rendering + crush-style messages + render cache
-- [ ] 03-02-PLAN.md -- Code block rendering with chroma + alert/handoff renderers + views.go wiring
+- [x] 03-02-PLAN.md -- Code block rendering with chroma + alert/handoff renderers + views.go wiring
 
 ### Phase 4: Layout
 **Goal**: TUI has a proper layout system with dynamic footer that hosts interactive components
@@ -77,10 +77,11 @@ Plans:
   2. Footer shows status line (spinner + agent + cost) when no component is active
   3. When a BioCharm component activates, footer expands to host it; when it dismisses, footer contracts back
   4. Resizing the terminal triggers layout recomputation without visual artifacts or height oscillation
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: 4-layer layout engine (computeLayout, JoinVertical View, footer dual-purpose, tool feed migration, resize handling)
+- [ ] 04-01-PLAN.md -- Layout engine core (Layout struct, computeLayout, footer state machine, footer renderers)
+- [ ] 04-02-PLAN.md -- View() rewrite with JoinVertical + component footer hosting + resize handling
 
 ### Phase 5: Python Integration
 **Goal**: Supervisor can ask users interactive questions via BioCharm components selected by the LLM
@@ -105,5 +106,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation | 2/2 | Complete | 2026-03-07 |
 | 2. Charm v2 Migration | 3/3 | Complete   | 2026-03-07 |
 | 3. Rendering and Style | 2/2 | Complete   | 2026-03-07 |
-| 4. Layout | 0/1 | Not started | - |
+| 4. Layout | 0/2 | Not started | - |
 | 5. Python Integration | 0/1 | Not started | - |
