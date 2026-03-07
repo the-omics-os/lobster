@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, call
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.tools.custom_code_tool import (
     PostProcessor,
     create_execute_custom_code_tool,

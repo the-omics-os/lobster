@@ -20,7 +20,7 @@ import pandas as pd
 import pytest
 from anndata import AnnData
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.analysis.gwas_service import GWASService
 
 

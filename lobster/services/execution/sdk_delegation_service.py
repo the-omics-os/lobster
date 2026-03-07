@@ -26,7 +26,7 @@ except ImportError:
     ClaudeSDKClient = None
     ClaudeAgentOptions = None
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
 

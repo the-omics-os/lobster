@@ -16,7 +16,7 @@ import pytest
 import scanpy as sc
 import scipy.sparse as spr
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.quality.preprocessing_service import (
     PreprocessingError,
     PreprocessingService,

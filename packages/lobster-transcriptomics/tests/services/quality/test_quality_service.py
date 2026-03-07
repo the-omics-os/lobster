@@ -17,7 +17,7 @@ import pytest
 import scipy.sparse as sp
 from anndata import AnnData
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.quality.quality_service import QualityError, QualityService
 
 

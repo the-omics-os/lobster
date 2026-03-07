@@ -13,7 +13,7 @@ import numpy as np
 from Bio import PDB
 from Bio.PDB import DSSP, Superimposer
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

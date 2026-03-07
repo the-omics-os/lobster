@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 logger = logging.getLogger(__name__)
 

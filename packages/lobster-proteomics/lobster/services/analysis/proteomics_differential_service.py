@@ -19,7 +19,7 @@ from scipy import stats
 from scipy.stats import pearsonr, spearmanr
 from sklearn.linear_model import LinearRegression
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

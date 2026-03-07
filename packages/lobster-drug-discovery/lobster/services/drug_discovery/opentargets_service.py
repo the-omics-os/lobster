@@ -18,7 +18,7 @@ from lobster.agents.drug_discovery.config import (
     OPENTARGETS_GRAPHQL,
     TARGET_EVIDENCE_WEIGHTS,
 )
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.drug_discovery.base_api_service import BaseAPIService
 from lobster.utils.logger import get_logger
 

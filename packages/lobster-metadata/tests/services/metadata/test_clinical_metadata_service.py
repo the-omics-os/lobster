@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.metadata.clinical_metadata_service import ClinicalMetadataService
 
 

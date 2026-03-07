@@ -159,7 +159,7 @@ class TestIRCoverageAnalyzer:
     def test_has_analysis_step_import_positive(self):
         """Test detection of AnalysisStep import."""
         source = """
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
 def some_function():
     pass
@@ -246,7 +246,7 @@ def process_data(adata, params):
     def test_analyze_methods(self):
         """Test method analysis in a service class."""
         source = """
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 class TestService:
     def method_with_ir(self, data):
@@ -278,7 +278,7 @@ class TestService:
     def test_analyze_service_file(self):
         """Test analysis of a complete service file."""
         service_code = """
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 class QualityService:
     def assess_quality(self, adata):
@@ -321,7 +321,7 @@ class QualityService:
 
             # Create service1 with IR
             service1_code = """
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 class Service1:
     def method1(self, data):
@@ -357,7 +357,7 @@ class Service2:
 
             # Create test service
             service_code = """
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 class TestService:
     def with_ir(self, data):

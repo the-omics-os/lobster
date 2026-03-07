@@ -13,7 +13,7 @@ from typing import Any, Dict, Tuple
 import anndata
 import numpy as np
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

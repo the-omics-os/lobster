@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.ml.ml_preprocessing_service import (
     MLPreprocessingService,
     infer_task_type,

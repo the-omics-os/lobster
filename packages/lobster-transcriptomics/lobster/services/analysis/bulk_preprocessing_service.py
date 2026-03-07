@@ -17,7 +17,7 @@ import pandas as pd
 from scipy import sparse
 from sklearn.decomposition import PCA
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

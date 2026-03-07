@@ -10,7 +10,7 @@ import re
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 from .conftest import RDKIT_AVAILABLE
 

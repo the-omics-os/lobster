@@ -7,7 +7,7 @@ and utility functions for the Service-Emitted IR architecture.
 
 import pytest
 
-from lobster.core.analysis_ir import (
+from lobster.core.provenance.analysis_ir import (
     AnalysisStep,
     ParameterSpec,
     create_minimal_ir,

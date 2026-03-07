@@ -19,7 +19,7 @@ import pandas as pd
 import requests
 from anndata import AnnData
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.workspace import resolve_workspace
 from lobster.utils.logger import get_logger
 

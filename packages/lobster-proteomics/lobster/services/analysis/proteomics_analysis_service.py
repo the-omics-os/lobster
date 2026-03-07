@@ -23,7 +23,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.analysis.pathway_enrichment_service import (
     PathwayEnrichmentError,
     PathwayEnrichmentService,

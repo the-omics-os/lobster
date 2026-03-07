@@ -22,7 +22,7 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.ml.ml_preparation_service import MLPreparationService
 
 # =============================================================================

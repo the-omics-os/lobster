@@ -12,7 +12,7 @@ reproducible notebook export via /pipeline export.
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

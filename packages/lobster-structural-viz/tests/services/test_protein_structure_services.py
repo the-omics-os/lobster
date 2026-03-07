@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 from Bio import PDB
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.analysis.structure_analysis_service import (
     StructureAnalysisError,
     StructureAnalysisService,

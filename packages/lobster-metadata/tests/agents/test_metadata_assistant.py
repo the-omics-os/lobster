@@ -2485,7 +2485,7 @@ class TestFilterSamplesBy:
     ):
         """Test basic filtering with single criterion (16S amplicon)."""
         from lobster.agents.metadata_assistant import metadata_assistant
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -2629,7 +2629,7 @@ class TestFilterSamplesBy:
     ):
         """Test multi-criteria filtering (16S + human + fecal)."""
         from lobster.agents.metadata_assistant import metadata_assistant
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         # Setup mocks
         mock_settings_instance = Mock()

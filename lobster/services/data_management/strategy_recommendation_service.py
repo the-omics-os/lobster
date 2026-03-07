@@ -13,7 +13,7 @@ from lobster.agents.data_expert.config import (
     SUPPORTED_DOWNLOAD_STRATEGIES,
     get_strategy_config,
 )
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
 logger = logging.getLogger(__name__)
 

@@ -11,7 +11,7 @@ import pytest
 from anndata import AnnData
 
 try:
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
     from lobster.services.drug_discovery.synergy_scoring_service import (
         SynergyScoringError,
     )

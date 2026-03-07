@@ -50,7 +50,7 @@ from lobster.agents.transcriptomics.shared_tools import create_shared_tools
 from lobster.agents.transcriptomics.state import TranscriptomicsExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.bulk_preprocessing_service import (
     BulkPreprocessingService,

@@ -464,7 +464,7 @@ class TestIRParameterValidation:
 
         # Schema should define expected parameter types
         # Values are ParameterSpec objects, not dicts
-        from lobster.core.analysis_ir import ParameterSpec
+        from lobster.core.provenance.analysis_ir import ParameterSpec
 
         for param_name, param_spec in ir.parameter_schema.items():
             assert isinstance(param_spec, ParameterSpec)

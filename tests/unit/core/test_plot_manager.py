@@ -23,7 +23,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.plot_manager import PlotManager
 
 # =============================================================================

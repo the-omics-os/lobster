@@ -7,7 +7,7 @@ Each pipeline chains 3+ services end-to-end and validates the biology at every s
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 from .conftest import KNOWN_SMILES, KNOWN_TARGETS, RDKIT_AVAILABLE
 

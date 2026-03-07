@@ -46,7 +46,7 @@ import pandas as pd
 import requests
 import scipy.sparse as sp
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
 from lobster.core.schemas.download_queue import DownloadQueueEntry
@@ -456,7 +456,7 @@ class SRADownloadService(IDownloadService):
         Returns:
             AnalysisStep: Provenance tracking object with executable file-listing template
         """
-        from lobster.core.analysis_ir import ParameterSpec
+        from lobster.core.provenance.analysis_ir import ParameterSpec
 
         fastq_dir = f"downloads/sra/{accession}"
 

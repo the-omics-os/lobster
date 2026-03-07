@@ -9,7 +9,7 @@ Ground truth sourced from PubChem Compound pages and DrugBank.
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 from .conftest import KNOWN_DRUGS, KNOWN_SMILES, RDKIT_AVAILABLE
 

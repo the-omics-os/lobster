@@ -21,7 +21,7 @@ from lobster.core import (
     PseudobulkError,
 )
 from lobster.core.adapters.pseudobulk_adapter import PseudobulkAdapter
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.provenance import ProvenanceTracker
 from lobster.utils.logger import get_logger
 

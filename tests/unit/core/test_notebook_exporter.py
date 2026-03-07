@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.notebook_exporter import NotebookExporter
 from lobster.core.provenance import ProvenanceTracker
@@ -329,7 +329,7 @@ class TestNotebookExporter:
 
     def test_extract_irs_with_ir(self, data_manager):
         """Test IR extraction from activities with IR."""
-        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+        from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
         # Create tracker with IR-enriched activities
         tracker = ProvenanceTracker()
@@ -379,7 +379,7 @@ class TestNotebookExporter:
 
     def test_activity_to_code_with_ir(self, data_manager):
         """Test activity to code conversion with IR present."""
-        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+        from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
         # Create IR with correct signature
         ir = AnalysisStep(
@@ -434,7 +434,7 @@ class TestNotebookExporter:
 
     def test_create_imports_cell_with_irs(self, data_manager):
         """Test imports cell creation with IRs."""
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         # Create IRs with imports using correct signature
         ir1 = AnalysisStep(
@@ -482,7 +482,7 @@ class TestNotebookExporter:
 
     def test_create_parameters_cell_with_irs(self, data_manager):
         """Test Papermill parameters cell creation with IRs."""
-        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+        from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
         # Create IR with parameters
         ir = AnalysisStep(

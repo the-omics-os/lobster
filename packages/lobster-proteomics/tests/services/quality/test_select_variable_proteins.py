@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import anndata
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.quality.proteomics_quality_service import ProteomicsQualityService
 
 

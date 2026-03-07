@@ -13,7 +13,7 @@ import xarray as xr
 from scipy.stats import chi2
 from statsmodels.stats.multitest import multipletests
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

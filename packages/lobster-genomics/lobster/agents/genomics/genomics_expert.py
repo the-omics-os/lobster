@@ -36,7 +36,7 @@ from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.adapters.genomics.plink_adapter import PLINKAdapter
 from lobster.core.adapters.genomics.vcf_adapter import VCFAdapter
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.gwas_service import GWASService
 from lobster.services.analysis.variant_annotation_service import (

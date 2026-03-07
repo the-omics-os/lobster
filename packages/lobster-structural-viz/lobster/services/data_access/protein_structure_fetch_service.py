@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 import anndata
 from Bio import PDB
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.tools.providers.pdb_provider import PDBProvider, PDBStructureMetadata
 from lobster.utils.logger import get_logger
 

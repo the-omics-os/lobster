@@ -316,7 +316,7 @@ def test_detect_batch_effects_invalid_condition_key(service, bulk_adata_with_bat
 
 def test_all_methods_return_analysis_step(service, bulk_adata_with_batch):
     """Verify all 4 methods return proper AnalysisStep IR."""
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
 
     # assess_sample_quality
     _, _, ir1 = service.assess_sample_quality(bulk_adata_with_batch)

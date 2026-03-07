@@ -18,7 +18,7 @@ from lobster.agents.metabolomics.config import (
     detect_platform_type,
     get_platform_config,
 )
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.metabolomics_analysis_service import (
     MetabolomicsAnalysisService,

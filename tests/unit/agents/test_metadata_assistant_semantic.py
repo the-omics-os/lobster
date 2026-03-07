@@ -113,7 +113,7 @@ def _build_tissue_tool(mock_data_manager, mock_vector_service_instance):
     from lobster.agents.metadata_assistant.metadata_assistant import (
         metadata_assistant as _factory,
     )
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
 
     # We don't build the full agent -- we extract the tool by directly
     # calling the tool function with patched internals.
@@ -184,7 +184,7 @@ def _build_disease_tool(mock_data_manager, mock_disease_service_instance):
     """Build the standardize_disease_term tool with mocked disease service."""
     from langchain_core.tools import tool
 
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
 
     dm = mock_data_manager
     _disease_svc = mock_disease_service_instance
@@ -307,7 +307,7 @@ class TestStandardizeTissueTerm:
 
     def test_tissue_ir_logged(self, mock_data_manager, mock_ontology_matches):
         """Verify log_tool_usage called with ir= kwarg containing AnalysisStep."""
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         mock_vs = MagicMock()
         mock_vs.match_ontology.return_value = mock_ontology_matches
@@ -384,7 +384,7 @@ class TestStandardizeDiseaseTerm:
         # by using a simplified version that checks the flag
         from langchain_core.tools import tool
 
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         dm = mock_data_manager
 
@@ -433,7 +433,7 @@ class TestStandardizeDiseaseTerm:
     )
     def test_disease_ir_logged(self, mock_data_manager, mock_disease_matches):
         """Verify log_tool_usage called with ir= kwarg containing AnalysisStep."""
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         mock_svc = MagicMock()
         mock_svc.match_disease.return_value = mock_disease_matches

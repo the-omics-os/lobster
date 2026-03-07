@@ -23,7 +23,7 @@ from typing import Callable, Dict, List, Tuple
 
 from langchain_core.tools import tool
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.utils.logger import get_logger
 

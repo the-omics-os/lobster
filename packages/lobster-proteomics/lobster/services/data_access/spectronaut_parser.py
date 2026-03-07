@@ -38,7 +38,7 @@ import anndata
 import numpy as np
 import pandas as pd
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.data_access.proteomics_parsers.base_parser import (
     FileValidationError,
     ParsingError,

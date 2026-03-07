@@ -7,7 +7,7 @@ These are well-established pharmacological facts.
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 pytestmark = [pytest.mark.integration, pytest.mark.real_api]
 

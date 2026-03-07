@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.metadata.microbiome_filtering_service import (
     HOST_ALIASES,
     MicrobiomeFilteringService,

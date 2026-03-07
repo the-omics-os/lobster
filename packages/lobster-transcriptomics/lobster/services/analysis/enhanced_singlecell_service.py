@@ -15,7 +15,7 @@ import plotly.graph_objects as go
 import scanpy as sc
 from scipy.stats import pearsonr
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 # Pathway enrichment is a PREMIUM feature - lazy import to avoid breaking FREE tier
 # The service is imported inside run_pathway_enrichment() method

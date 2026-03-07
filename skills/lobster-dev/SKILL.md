@@ -37,7 +37,16 @@ python -c "import lobster; print(lobster.__path__)"
 ls packages/lobster-*/pyproject.toml 2>/dev/null && echo "CONTRIBUTOR" || echo "PLUGIN_AUTHOR"
 ```
 
-If `lobster` is not installed: `uv pip install lobster-ai[<LLM provider package depends on the setup>]` once you know where to add the plugin and what to do. using a uv venv is important! 
+**HARD GATE — If `lobster` is not installed, STOP. Install it NOW before doing anything else:**
+```bash
+uv venv --python 3.12 .venv && source .venv/bin/activate
+uv pip install 'lobster-ai[anthropic]'  # or [openai], [google], depending on provider
+lobster --version  # Must succeed before you proceed
+```
+Do NOT skip this. Do NOT "come back to it later". Do NOT manually create package directories.
+`lobster scaffold agent` is the ONLY way to create new agent packages — it generates correct
+PEP 420 structure, entry points, AQUADIF metadata, and contract tests that you WILL get wrong
+by hand. If scaffold is unavailable, installing lobster-ai is your first task.
 
 **Your development mode determines your workflow:**
 
@@ -71,7 +80,14 @@ Both modes produce the same result: a PEP 420 namespace package discovered by `C
 
 user requests: "Build a Lobster agent for epigenomics analysis (bisulfite-seq, ChIP-seq, ATAC-seq) because no lobster packages cover this domain"
 
-READ THE CORRECT REFERENCE FILE -> BUILD -> VALIDATE -> REPEAT
+```
+Step 1: lobster --version          # Not found? Install it FIRST (see Step 0 hard gate)
+Step 2: Read planning-workflow.md  # Understand need, check what exists, gather domain knowledge
+Step 3: lobster scaffold agent ... # Generate correct package structure (NEVER skip this)
+Step 4: Fill in real domain logic  # Read creating-agents.md, creating-services.md
+Step 5: lobster validate-plugin ./lobster-<domain>/  # Must pass 8/8
+Step 6: uv pip install -e ./lobster-<domain>/ && pytest tests/ -m contract
+```
 
 **Expected result:** A standalone PEP 420 package at `./lobster-<your implementation>/` that installs with `uv pip install -e ./lobster-<your implementation>/` and registers via entry points, runs 'lobster status' without errors and running 'lobster query "hi"' without any errors.
 
@@ -97,6 +113,7 @@ Non-negotiable. Violating these causes runtime failures or contract test failure
 6. **No `try/except ImportError`** — use entry points for agent discovery, not eager imports
 7. **No module-level `component_registry` calls** — causes slow startup; use lazy functions inside factories
 8. **All tools MUST have AQUADIF metadata** — `.metadata` and `.tags` assigned after `@tool` decorator
+9. **NEVER manually create package directories** — always use `lobster scaffold agent`. If lobster is not installed, install it first. Scaffold gets PEP 420, entry points, and contract tests right; you won't.
 
 ## Contributing
 

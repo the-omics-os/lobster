@@ -14,7 +14,7 @@ import pytest
 
 try:
     from lobster.agents.drug_discovery.config import TARGET_EVIDENCE_WEIGHTS
-    from lobster.core.analysis_ir import AnalysisStep
+    from lobster.core.provenance.analysis_ir import AnalysisStep
     from lobster.services.drug_discovery.target_scoring_service import (
         TargetScoringError,
         TargetScoringService,

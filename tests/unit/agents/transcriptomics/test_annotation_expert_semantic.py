@@ -272,7 +272,7 @@ class TestSemanticAnnotationBasic:
         mock_provider_config,
     ):
         """Call tool with valid modality, verify annotations, storage, and IR logging."""
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         vs, backend = mock_vector_service
 
@@ -506,7 +506,7 @@ class TestSemanticToolDirect:
         mock_provider_config,
     ):
         """Verify data_manager.log_tool_usage called with ir= kwarg containing AnalysisStep."""
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         result, dm, _ = self._build_and_call_tool(
             mock_data_manager, mock_singlecell_service, mock_vector_service

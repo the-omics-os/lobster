@@ -25,7 +25,7 @@ import pandas as pd
 from scipy import sparse
 
 from lobster.core import FormulaError
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.sparse_utils import safe_toarray
 from lobster.services.analysis.differential_formula_service import (
     DifferentialFormulaService,

@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from lobster.agents.data_expert.config import (
     PLATFORM_SIGNATURES,
 )
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
 logger = logging.getLogger(__name__)
 

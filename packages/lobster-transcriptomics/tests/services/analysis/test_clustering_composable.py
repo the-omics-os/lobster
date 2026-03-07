@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import scanpy as sc
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.analysis.clustering_service import (
     ClusteringError,
     ClusteringService,

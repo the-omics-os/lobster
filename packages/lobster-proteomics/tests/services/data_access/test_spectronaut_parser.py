@@ -526,7 +526,7 @@ class TestSpectronautParserIntegration:
 
         # Verify IR is generated
         assert ir is not None
-        from lobster.core.analysis_ir import AnalysisStep
+        from lobster.core.provenance.analysis_ir import AnalysisStep
 
         assert isinstance(ir, AnalysisStep)
 

@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 import scanpy as sc
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.analysis.enhanced_singlecell_service import (
     EnhancedSingleCellService,
 )

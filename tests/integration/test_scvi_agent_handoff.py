@@ -451,7 +451,7 @@ class TestAgentToolIntegration:
         with patch(
             "lobster.agents.transcriptomics.transcriptomics_expert.ClusteringService"
         ) as mock_service_class:
-            from lobster.core.analysis_ir import AnalysisStep
+            from lobster.core.provenance.analysis_ir import AnalysisStep
 
             mock_service = MagicMock()
             mock_ir = AnalysisStep(

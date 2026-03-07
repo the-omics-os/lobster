@@ -20,7 +20,7 @@ from scipy.spatial.distance import squareform
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 from lobster.utils.statistics import benjamini_hochberg
 

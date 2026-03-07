@@ -16,7 +16,7 @@ import pytest
 from anndata import AnnData
 from jinja2 import Template
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.visualization.bulk_visualization_service import (
     BulkVisualizationError,
     BulkVisualizationService,

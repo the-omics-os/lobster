@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationError
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.core.schemas.transcriptomics import TranscriptomicsMetadataSchema
 from lobster.services.metadata.metadata_validation_service import (

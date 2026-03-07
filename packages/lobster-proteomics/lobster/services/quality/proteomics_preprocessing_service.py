@@ -21,7 +21,7 @@ from scipy.stats import linregress, rankdata
 from sklearn.decomposition import PCA
 from sklearn.impute import KNNImputer, SimpleImputer
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.sparse_utils import safe_toarray
 from lobster.utils.logger import get_logger
 

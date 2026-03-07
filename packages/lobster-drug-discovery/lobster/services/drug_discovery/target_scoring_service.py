@@ -12,7 +12,7 @@ reproducible notebook export via /pipeline export.
 from typing import Any, Dict, List, Tuple
 
 from lobster.agents.drug_discovery.config import TARGET_EVIDENCE_WEIGHTS
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

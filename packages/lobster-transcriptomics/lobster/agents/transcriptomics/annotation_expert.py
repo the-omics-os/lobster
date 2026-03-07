@@ -1246,7 +1246,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
         """
         import scanpy as sc
 
-        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+        from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
         try:
             # Validate modality exists
@@ -1457,7 +1457,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
             validate_graph: If True, validate top matches via ontology graph traversal
             save_result: Whether to save annotated modality
         """
-        from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+        from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
         try:
             # Validate modality exists

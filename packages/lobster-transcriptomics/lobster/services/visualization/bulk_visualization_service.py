@@ -15,7 +15,7 @@ import plotly.graph_objects as go
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.sparse import issparse
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

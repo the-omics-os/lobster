@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import anndata as ad
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
 from lobster.core.schemas.download_queue import DownloadQueueEntry
@@ -448,7 +448,7 @@ class GEODownloadService(IDownloadService):
         Returns:
             AnalysisStep: Provenance tracking object with executable file-load template
         """
-        from lobster.core.analysis_ir import ParameterSpec
+        from lobster.core.provenance.analysis_ir import ParameterSpec
 
         raw_file = f"data/{modality_name}_raw.h5ad"
 

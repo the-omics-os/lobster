@@ -14,7 +14,7 @@ import scanpy as sc
 import scipy.sparse as spr
 from plotly.subplots import make_subplots
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.deviance import calculate_deviance
 from lobster.utils.gene_annotation import ANNOTATE_QC_GENES_HELPER, annotate_qc_genes
 from lobster.utils.logger import get_logger

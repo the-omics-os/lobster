@@ -26,7 +26,7 @@ from langgraph.prebuilt import create_react_agent
 
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.core.interfaces.validator import ValidationResult
 

@@ -8,7 +8,7 @@ if the API disagrees, the API is wrong.
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 from .conftest import KNOWN_TARGETS
 

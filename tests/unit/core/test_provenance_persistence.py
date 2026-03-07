@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.provenance import ProvenanceTracker
 
 # ============================================================================

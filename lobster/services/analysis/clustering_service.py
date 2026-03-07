@@ -20,7 +20,7 @@ from sklearn.metrics import (
     silhouette_score,
 )
 
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.deviance import calculate_deviance
 from lobster.utils.logger import get_logger
 from lobster.utils.progress_wrapper import with_periodic_progress

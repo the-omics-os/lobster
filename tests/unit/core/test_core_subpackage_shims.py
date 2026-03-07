@@ -198,3 +198,23 @@ def test_no_deprecated_data_manager_imports_in_packages():
     assert result.returncode == 1, (
         f"Deprecated imports found in packages/:\n{result.stdout}"
     )
+
+
+def test_no_deprecated_analysis_ir_imports_in_packages():
+    """packages/ must not import from deprecated lobster.core.analysis_ir."""
+    import subprocess
+
+    result = subprocess.run(
+        [
+            "grep",
+            "-rn",
+            "--include=*.py",
+            "from lobster.core.analysis_ir import",
+            "packages/",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1, (
+        f"Deprecated analysis_ir imports found in packages/:\n{result.stdout}"
+    )
