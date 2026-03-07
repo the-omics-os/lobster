@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 03-02-PLAN.md (code/alert/handoff block renderers)
-last_updated: "2026-03-07T05:16:38Z"
-last_activity: 2026-03-07 -- Completed 03-02-PLAN.md (code/alert/handoff block renderers)
+stopped_at: Completed 04-01-PLAN.md (layout engine)
+last_updated: "2026-03-07T05:48:00Z"
+last_activity: 2026-03-07 -- Completed 04-01-PLAN.md (layout engine)
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The TUI renders structured protocol data beautifully and correctly -- typed content blocks survive to render time, components have correct lifecycle semantics, and the layout adapts dynamically.
-**Current focus:** Phase 3 complete. Next: Phase 4 (Interaction Model)
+**Current focus:** Phase 4 in progress. Layout engine complete, View() migration next.
 
 ## Current Position
 
-Phase: 3 of 5 (Rendering and Style) -- COMPLETE
-Plan: 2 of 2 in current phase (all done)
-Status: Phase 03 complete -- all block renderers implemented
-Last activity: 2026-03-07 -- Completed 03-02-PLAN.md (code/alert/handoff block renderers)
+Phase: 4 of 5 (Layout)
+Plan: 1 of 2 in current phase (1 done, 1 remaining)
+Status: 04-01 complete -- layout engine with computeLayout() and footer state machine
+Last activity: 2026-03-07 -- Completed 04-01-PLAN.md (layout engine)
 
-Progress: [########..] 78%
+Progress: [########.] 89%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 29min
-- Total execution time: 3.32 hours
+- Total plans completed: 8
+- Average duration: 26min
+- Total execution time: 3.37 hours
 
 **By Phase:**
 
@@ -46,10 +46,11 @@ Progress: [########..] 78%
 | 01-foundation | 2 | 15min | 7.5min |
 | 02-charm-v2-migration | 3 | 146min | 49min |
 | 03-rendering-and-style | 2 | 9min | 4.5min |
+| 04-layout | 1 | 3min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (3min), 03-01 (6min), 02-03 (6min), 02-02 (137min), 02-01 (3min)
-- Trend: Fast execution with TDD on well-scoped rendering tasks
+- Last 5 plans: 04-01 (3min), 03-02 (3min), 03-01 (6min), 02-03 (6min), 02-02 (137min)
+- Trend: Fast execution with TDD on well-scoped layout/rendering tasks
 
 *Updated after each plan completion*
 
@@ -80,6 +81,10 @@ Recent decisions affecting current work:
 - Chroma monokai + terminal256 for code syntax highlighting
 - findBlock[T] generic helper for typed-block-first routing with legacy fallback
 - Handoff arrow format (-->) replaces branch prefix
+- 4-layer layout: Header+Viewport+Input+Footer sum to m.height; viewport is greedy (absorbs remaining, min 1)
+- Footer state machine: footerMode() classifies, footerHeight() sizes, renderFooterRegion() dispatches
+- Footer renderers in views.go, layout computation in layout.go (rendering vs data concern separation)
+- layoutReservedRows() delegates to computeLayout() for non-inline; inline mode uses legacy path unchanged
 
 ### Pending Todos
 
@@ -94,5 +99,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 03-02-PLAN.md (code/alert/handoff block renderers)
+Stopped at: Completed 04-01-PLAN.md (layout engine)
 Resume file: None

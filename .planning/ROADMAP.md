@@ -80,7 +80,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Layout engine core (Layout struct, computeLayout, footer state machine, footer renderers)
+- [x] 04-01-PLAN.md -- Layout engine core (Layout struct, computeLayout, footer state machine, footer renderers)
 - [ ] 04-02-PLAN.md -- View() rewrite with JoinVertical + component footer hosting + resize handling
 
 ### Phase 5: Python Integration
@@ -106,5 +106,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation | 2/2 | Complete | 2026-03-07 |
 | 2. Charm v2 Migration | 3/3 | Complete   | 2026-03-07 |
 | 3. Rendering and Style | 2/2 | Complete   | 2026-03-07 |
-| 4. Layout | 0/2 | Not started | - |
+| 4. Layout | 1/2 | In progress | - |
 | 5. Python Integration | 0/1 | Not started | - |

@@ -47,12 +47,12 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 ### Layout
 
-- [ ] **LAYO-01**: 4-layer layout with header, viewport, input, footer regions via computeLayout()
-- [ ] **LAYO-02**: Footer shows status line (spinner + agent + cost) when idle
+- [x] **LAYO-01**: 4-layer layout with header, viewport, input, footer regions via computeLayout()
+- [x] **LAYO-02**: Footer shows status line (spinner + agent + cost) when idle
 - [ ] **LAYO-03**: Footer expands for active BioCharm component with help bar
 - [ ] **LAYO-04**: Footer contracts when component dismisses
 - [ ] **LAYO-05**: Terminal resize triggers layout recomputation without visual artifacts
-- [ ] **LAYO-06**: Tool feed migrates from mid-View to footer region
+- [x] **LAYO-06**: Tool feed migrates from mid-View to footer region
 
 ### Style System
 
@@ -127,12 +127,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | STYL-04 | Phase 3 | Complete |
 | STYL-05 | Phase 3 | Complete |
 | STYL-06 | Phase 3 | Complete |
-| LAYO-01 | Phase 4 | Pending |
-| LAYO-02 | Phase 4 | Pending |
+| LAYO-01 | Phase 4 | Complete |
+| LAYO-02 | Phase 4 | Complete |
 | LAYO-03 | Phase 4 | Pending |
 | LAYO-04 | Phase 4 | Pending |
 | LAYO-05 | Phase 4 | Pending |
-| LAYO-06 | Phase 4 | Pending |
+| LAYO-06 | Phase 4 | Complete |
 | PYTH-01 | Phase 5 | Pending |
 
 **Coverage:**
