@@ -1,0 +1,109 @@
+# Roadmap: Lobster TUI v2 Overhaul
+
+## Overview
+
+Incremental overhaul of the Go TUI from Charm v1 to v2, introducing typed content blocks, fixing BioComp lifecycle bugs, migrating the framework, and delivering native table/code rendering with a 4-layer layout system. Each phase produces a compiling, testable binary. The critical path is Foundation (data model) -> Migration (v2 gate) -> Rendering (first visible payoff). Layout and Python integration follow once the rendering layer is solid.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases (1, 2, 3): Planned milestone work
+- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+
+Decimal phases appear between their surrounding integers in numeric order.
+
+- [ ] **Phase 1: Foundation** - Typed content block model + BioComp lifecycle fixes
+- [ ] **Phase 2: Charm v2 Migration** - Full framework migration from v1 to v2 (imports, key handling, huh removal)
+- [ ] **Phase 3: Rendering and Style** - Native tables, clean messages, code blocks, alerts, render cache, semantic style system
+- [ ] **Phase 4: Layout** - 4-layer layout system with dynamic footer for components
+- [ ] **Phase 5: Python Integration** - Supervisor ask-user tool with LLM-driven component selection
+
+## Phase Details
+
+### Phase 1: Foundation
+**Goal**: Messages carry typed structure from protocol to renderer, and BioComp components work correctly
+**Depends on**: Nothing (first phase)
+**Requirements**: DATA-01, DATA-02, DATA-03, DATA-04, COMP-01, COMP-02, COMP-03, COMP-04, COMP-05, COMP-06, COMP-07, COMP-08
+**Success Criteria** (what must be TRUE):
+  1. Protocol table/code/alert/handoff messages arrive at View() as typed ContentBlocks (not flat strings)
+  2. Streaming text followed by a structured block produces both blocks without data loss
+  3. BioComp threshold_slider and cell_type_selector instantiate their native components (not text_input fallback)
+  4. Pressing Esc on an active component sends a cancel action distinct from submitting empty data
+  5. SetData updates only reach the matching active component (stale MsgID updates are discarded)
+**Plans**: 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md -- Typed content block model (content.go, protocol handler updates, Content() helper)
+- [ ] 01-02-PLAN.md -- BioComp lifecycle fixes (imports, cancel, replacement, layout math, SetData/ChangeEvent, error boundary, stale guard)
+
+### Phase 2: Charm v2 Migration
+**Goal**: Entire TUI runs on Charm v2 packages with no v1 dependencies remaining
+**Depends on**: Phase 1
+**Requirements**: MIGR-01, MIGR-02, MIGR-03, MIGR-04, MIGR-05, MIGR-06, MIGR-07
+**Success Criteria** (what must be TRUE):
+  1. All Go imports use charm.land/*/v2 paths (no github.com/charmbracelet/* v1 imports remain)
+  2. View() returns tea.View across all models (not string)
+  3. Init wizard completes all 5 steps using bubbles v2 primitives (huh dependency removed from go.mod)
+  4. All keyboard shortcuts work correctly with v2 KeyPressMsg (space, enter, esc, ctrl+c, arrow keys)
+**Plans**: TBD
+
+Plans:
+- [ ] 02-01: API spike validating v2 assumptions (isolated test, color types, viewport behavior)
+- [ ] 02-02: Mechanical import migration + View() return type + color type updates
+- [ ] 02-03: Key handling rewrite + huh removal + init wizard rewrite with bubbles v2
+
+### Phase 3: Rendering and Style
+**Goal**: Users see beautiful tables, clean flowing messages, syntax-highlighted code, and consistent visual styling
+**Depends on**: Phase 2
+**Requirements**: REND-01, REND-02, REND-03, REND-04, REND-05, REND-06, REND-07, STYL-01, STYL-02, STYL-03, STYL-04, STYL-05, STYL-06
+**Success Criteria** (what must be TRUE):
+  1. Tables render with rounded borders and themed header/row styles via lipgloss/table (no ASCII art)
+  2. Messages flow without box borders (crush-style with padding and margin only)
+  3. Code blocks display language labels and syntax highlighting
+  4. Resizing the terminal re-renders finalized messages from cache without flickering or delay
+  5. All block types (table, code, alert, handoff) have dedicated style tokens in the theme system
+**Plans**: TBD
+
+Plans:
+- [ ] 03-01: Native table rendering + clean flowing messages + render cache
+- [ ] 03-02: Code block rendering + alert/handoff renderers + semantic style system
+
+### Phase 4: Layout
+**Goal**: TUI has a proper layout system with dynamic footer that hosts interactive components
+**Depends on**: Phase 2
+**Requirements**: LAYO-01, LAYO-02, LAYO-03, LAYO-04, LAYO-05, LAYO-06
+**Success Criteria** (what must be TRUE):
+  1. Terminal window has distinct header, viewport, input, and footer regions computed by computeLayout()
+  2. Footer shows status line (spinner + agent + cost) when no component is active
+  3. When a BioCharm component activates, footer expands to host it; when it dismisses, footer contracts back
+  4. Resizing the terminal triggers layout recomputation without visual artifacts or height oscillation
+**Plans**: TBD
+
+Plans:
+- [ ] 04-01: 4-layer layout engine (computeLayout, JoinVertical View, footer dual-purpose, tool feed migration, resize handling)
+
+### Phase 5: Python Integration
+**Goal**: Supervisor can ask users interactive questions via BioCharm components selected by the LLM
+**Depends on**: Phase 4
+**Requirements**: PYTH-01
+**Success Criteria** (what must be TRUE):
+  1. Supervisor ask-user tool triggers the correct BioCharm component type based on question context
+  2. User response from the TUI component flows back to the supervisor as tool result
+**Plans**: TBD
+
+Plans:
+- [ ] 05-01: Supervisor ask-user tool with LLM-driven component selection
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+(Phases 3 and 4 both depend on Phase 2 but execute sequentially for solo developer safety)
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Foundation | 0/2 | Not started | - |
+| 2. Charm v2 Migration | 0/3 | Not started | - |
+| 3. Rendering and Style | 0/2 | Not started | - |
+| 4. Layout | 0/1 | Not started | - |
+| 5. Python Integration | 0/1 | Not started | - |
