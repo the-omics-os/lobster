@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func makeClusters(clusters []ClusterInfo) json.RawMessage {
@@ -70,11 +70,11 @@ func TestCellTypeNavigation(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Down twice.
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyDown})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
-	result = c.HandleMsg(tea.KeyMsg{Type: tea.KeyDown})
+	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -83,7 +83,7 @@ func TestCellTypeNavigation(t *testing.T) {
 	}
 
 	// Up once.
-	result = c.HandleMsg(tea.KeyMsg{Type: tea.KeyUp})
+	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -92,11 +92,11 @@ func TestCellTypeNavigation(t *testing.T) {
 	}
 
 	// j/k navigation.
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	c.HandleMsg(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if c.cursor != 2 {
 		t.Fatalf("expected cursor at 2 after j, got %d", c.cursor)
 	}
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	c.HandleMsg(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	if c.cursor != 1 {
 		t.Fatalf("expected cursor at 1 after k, got %d", c.cursor)
 	}
@@ -107,7 +107,7 @@ func TestCellTypeEditMode(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Enter edit mode on cluster 0.
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result != nil {
 		t.Fatal("expected nil result when entering edit mode")
 	}
@@ -117,14 +117,14 @@ func TestCellTypeEditMode(t *testing.T) {
 
 	// Type "T cells".
 	for _, r := range "T cells" {
-		c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		c.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 	if c.inputs[0].Value() != "T cells" {
 		t.Fatalf("expected input value 'T cells', got %q", c.inputs[0].Value())
 	}
 
 	// Esc exits edit mode.
-	result = c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc})
+	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result != nil {
 		t.Fatal("expected nil result when exiting edit mode via Esc")
 	}
@@ -142,18 +142,18 @@ func TestCellTypeTabAcceptNext(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Enter edit mode on cluster 0.
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if c.editingIndex != 0 {
 		t.Fatalf("expected editingIndex 0, got %d", c.editingIndex)
 	}
 
 	// Type a label.
 	for _, r := range "NK cells" {
-		c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		c.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 
 	// Tab moves to next cluster and enters edit mode there.
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyTab})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyTab})
 	if result != nil {
 		t.Fatal("expected nil result on Tab")
 	}
@@ -174,16 +174,16 @@ func TestCellTypeSubmit(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Type labels in cluster 0 and 2.
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter}) // edit cluster 0
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter}) // edit cluster 0
 	for _, r := range "CD8+ T cells" {
-		c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		c.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc}) // exit edit
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape}) // exit edit
 
 	// Cluster 1 already has prefilled "Monocytes".
 
 	// Submit via Ctrl+S.
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyCtrlS})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	if result == nil {
 		t.Fatal("expected non-nil result on Ctrl+S")
 	}
@@ -211,7 +211,7 @@ func TestCellTypeCancel(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Esc when not editing should cancel.
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on Esc")
 	}
@@ -257,11 +257,11 @@ func TestCellTypeProgress(t *testing.T) {
 	}
 
 	// Label cluster 0.
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter}) // edit cluster 0
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter}) // edit cluster 0
 	for _, r := range "T cells" {
-		c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		c.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc}) // exit edit
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape}) // exit edit
 
 	if c.labeledCount() != 2 {
 		t.Fatalf("expected 2 labeled after typing, got %d", c.labeledCount())

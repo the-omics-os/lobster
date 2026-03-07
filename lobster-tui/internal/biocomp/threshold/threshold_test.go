@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // helper to create a component with valid defaults.
@@ -104,7 +104,7 @@ func TestThresholdInitBadJSON(t *testing.T) {
 
 func TestThresholdAdjustRight(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.50})
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRight})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
 	if !floatEq(c.value, 0.51) {
 		t.Errorf("expected 0.51 after right, got %f", c.value)
 	}
@@ -112,7 +112,7 @@ func TestThresholdAdjustRight(t *testing.T) {
 
 func TestThresholdAdjustLeft(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.50})
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyLeft})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
 	if !floatEq(c.value, 0.49) {
 		t.Errorf("expected 0.49 after left, got %f", c.value)
 	}
@@ -121,12 +121,12 @@ func TestThresholdAdjustLeft(t *testing.T) {
 func TestThresholdCoarseAdjust(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.50})
 
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyShiftRight})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight, Mod: tea.ModShift})
 	if !floatEq(c.value, 0.60) {
 		t.Errorf("expected 0.60 after shift+right, got %f", c.value)
 	}
 
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyShiftLeft})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft, Mod: tea.ModShift})
 	if !floatEq(c.value, 0.50) {
 		t.Errorf("expected 0.50 after shift+left, got %f", c.value)
 	}
@@ -134,7 +134,7 @@ func TestThresholdCoarseAdjust(t *testing.T) {
 
 func TestThresholdClampMin(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.0})
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyLeft})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
 	if !floatEq(c.value, 0.0) {
 		t.Errorf("expected 0.0 (clamped at min), got %f", c.value)
 	}
@@ -142,7 +142,7 @@ func TestThresholdClampMin(t *testing.T) {
 
 func TestThresholdClampMax(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 1.0})
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRight})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
 	if !floatEq(c.value, 1.0) {
 		t.Errorf("expected 1.0 (clamped at max), got %f", c.value)
 	}
@@ -150,7 +150,7 @@ func TestThresholdClampMax(t *testing.T) {
 
 func TestThresholdSubmit(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.05})
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected result on enter")
 	}
@@ -165,7 +165,7 @@ func TestThresholdSubmit(t *testing.T) {
 
 func TestThresholdCancel(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.05})
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected result on esc")
 	}
@@ -183,7 +183,7 @@ func TestThresholdChangeEvent(t *testing.T) {
 	}
 
 	// Adjust right
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRight})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
 	evt := c.ChangeEvent()
 	if evt == nil {
 		t.Fatal("expected change event after adjustment")

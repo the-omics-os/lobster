@@ -22,11 +22,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
@@ -263,7 +263,7 @@ type ActiveComponent struct {
 
 // NewModel creates a new chat Model wired to the given handler and styles.
 func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int, inline bool, mouseCapture bool, versionFallback string) Model {
-	vp := viewport.New(width, 1)
+	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(1))
 	vp.SetContent("")
 
 	ti := textarea.New()
@@ -513,13 +513,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, waitForProtocolMsg(m.handler)
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.Width = m.width
+		m.viewport.SetWidth(m.width)
 		m.recalculateViewportHeight()
 
 		// Invalidate glamour renderer on width change (recreated lazily).
@@ -552,9 +552,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the full TUI layout.
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 
 	var b strings.Builder
@@ -689,7 +689,14 @@ func (m Model) View() string {
 		b.WriteString(renderStatusBar(statusText, m.styles, m.width))
 	}
 
-	return b.String()
+	v := tea.NewView(b.String())
+	if !m.inline {
+		v.AltScreen = true
+	}
+	if m.mouseCapture {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	return v
 }
 
 // --------------------------------------------------------------------------
@@ -1047,8 +1054,8 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 // Key dispatch
 // --------------------------------------------------------------------------
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if msg.Type == tea.KeyCtrlG {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "ctrl+g" {
 		m.mouseCapture = !m.mouseCapture
 		return m, mouseCaptureCmd(m.mouseCapture)
 	}
@@ -1091,19 +1098,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.completionMenuVisible() {
-		switch msg.Type {
-		case tea.KeyEsc:
+		switch msg.String() {
+		case "esc":
 			m.dismissCompletionMenu()
 			return m, nil
-		case tea.KeyTab:
+		case "tab":
 			if m.applySelectedCompletionSuggestion() {
 				m.recalculateViewportHeight()
 				return m, m.refreshSuggestions()
 			}
 			return m, nil
-		}
-
-		switch key := strings.ToLower(strings.TrimSpace(msg.String())); key {
 		case "ctrl+n":
 			if m.moveCompletionSelection(1) {
 				return m, nil
@@ -1115,9 +1119,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	switch msg.Type {
+	switch msg.String() {
 
-	case tea.KeyCtrlC:
+	case "ctrl+c":
 		if m.isStreaming || m.spinnerActive {
 			if m.isCanceling {
 				// Cancel already sent but streaming persists — force quit.
@@ -1142,7 +1146,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
-	case tea.KeyEnter:
+	case "enter":
 		if isComposerInsertNewlineKey(msg) {
 			prevVal := m.input.Value()
 			m.input.InsertRune('\n')
@@ -1222,20 +1226,20 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		return m, tea.Batch(cmd, printCmd)
 
-	case tea.KeyTab:
+	case "tab":
 		if m.applySelectedCompletionSuggestion() {
 			m.recalculateViewportHeight()
 			return m, m.refreshSuggestions()
 		}
 		return m, nil
 
-	case tea.KeyPgUp, tea.KeyPgDown:
+	case "pgup", "pgdown":
 		// Transcript scrollback controls are dedicated to page keys.
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
 
-	case tea.KeyUp:
+	case "up":
 		// Up/Down are reserved for input history navigation.
 		if m.recallHistoryUp() {
 			m.recalculateViewportHeight()
@@ -1243,7 +1247,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyDown:
+	case "down":
 		// Up/Down are reserved for input history navigation.
 		if m.recallHistoryDown() {
 			m.recalculateViewportHeight()
@@ -1281,7 +1285,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func isComposerInsertNewlineKey(msg tea.KeyMsg) bool {
+func isComposerInsertNewlineKey(msg tea.KeyPressMsg) bool {
 	key := strings.ToLower(strings.TrimSpace(msg.String()))
 	return key == "shift+enter" || key == "alt+enter"
 }
@@ -1448,7 +1452,7 @@ func renderViewportWithScrollbar(view string, vp viewport.Model, styles theme.St
 	trackSpan := height - thumbSize
 	thumbTop := 0
 	if trackSpan > 0 && maxOffset > 0 {
-		thumbTop = int(math.Round(float64(vp.YOffset) / float64(maxOffset) * float64(trackSpan)))
+		thumbTop = int(math.Round(float64(vp.YOffset()) / float64(maxOffset) * float64(trackSpan)))
 	}
 	if thumbTop < 0 {
 		thumbTop = 0
@@ -1908,13 +1912,10 @@ func (m Model) mouseModeLabel() string {
 	return "mouse: select"
 }
 
-func mouseCaptureCmd(enabled bool) tea.Cmd {
-	return func() tea.Msg {
-		if enabled {
-			return tea.EnableMouseCellMotion()
-		}
-		return tea.DisableMouse()
-	}
+func mouseCaptureCmd(_ bool) tea.Cmd {
+	// In v2, mouse mode is controlled via View() fields (View.MouseMode).
+	// Toggling m.mouseCapture is sufficient; the next View() render picks it up.
+	return nil
 }
 
 // layoutReservedRows estimates non-viewport rows currently occupied by UI chrome.
@@ -1989,7 +1990,7 @@ func (m *Model) recalculateViewportHeight() {
 		if h > budget {
 			h = budget
 		}
-		m.viewport.Height = h
+		m.viewport.SetHeight(h)
 		return
 	}
 
@@ -1997,7 +1998,7 @@ func (m *Model) recalculateViewportHeight() {
 	if h < 1 {
 		h = 1
 	}
-	m.viewport.Height = h
+	m.viewport.SetHeight(h)
 }
 
 func (m Model) inlineFlowMode() bool {
@@ -2019,7 +2020,7 @@ func (m Model) composerInitialized() bool {
 }
 
 func applyComposerStyles(input *textarea.Model, styles theme.Styles) {
-	focused, blurred := textarea.DefaultStyles()
+	s := textarea.DefaultDarkStyles()
 
 	textColor := styles.InputField.GetForeground()
 	promptColor := styles.InputPrompt.GetForeground()
@@ -2028,31 +2029,30 @@ func applyComposerStyles(input *textarea.Model, styles theme.Styles) {
 
 	base := lipgloss.NewStyle().UnsetBackground()
 
-	focused.Base = base
-	blurred.Base = base
+	s.Focused.Base = base
+	s.Blurred.Base = base
 
-	focused.Text = lipgloss.NewStyle().Foreground(textColor)
-	blurred.Text = lipgloss.NewStyle().Foreground(textColor)
+	s.Focused.Text = lipgloss.NewStyle().Foreground(textColor)
+	s.Blurred.Text = lipgloss.NewStyle().Foreground(textColor)
 
-	focused.CursorLine = lipgloss.NewStyle().Foreground(textColor)
-	blurred.CursorLine = lipgloss.NewStyle().Foreground(textColor)
+	s.Focused.CursorLine = lipgloss.NewStyle().Foreground(textColor)
+	s.Blurred.CursorLine = lipgloss.NewStyle().Foreground(textColor)
 
-	focused.Placeholder = lipgloss.NewStyle().Foreground(mutedColor)
-	blurred.Placeholder = lipgloss.NewStyle().Foreground(mutedColor)
+	s.Focused.Placeholder = lipgloss.NewStyle().Foreground(mutedColor)
+	s.Blurred.Placeholder = lipgloss.NewStyle().Foreground(mutedColor)
 
-	focused.Prompt = lipgloss.NewStyle().Foreground(promptColor)
-	blurred.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+	s.Focused.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+	s.Blurred.Prompt = lipgloss.NewStyle().Foreground(promptColor)
 
-	focused.LineNumber = lipgloss.NewStyle().Foreground(dimColor)
-	blurred.LineNumber = lipgloss.NewStyle().Foreground(dimColor)
-	focused.CursorLineNumber = lipgloss.NewStyle().Foreground(mutedColor)
-	blurred.CursorLineNumber = lipgloss.NewStyle().Foreground(mutedColor)
+	s.Focused.LineNumber = lipgloss.NewStyle().Foreground(dimColor)
+	s.Blurred.LineNumber = lipgloss.NewStyle().Foreground(dimColor)
+	s.Focused.CursorLineNumber = lipgloss.NewStyle().Foreground(mutedColor)
+	s.Blurred.CursorLineNumber = lipgloss.NewStyle().Foreground(mutedColor)
 
-	focused.EndOfBuffer = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
-	blurred.EndOfBuffer = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+	s.Focused.EndOfBuffer = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+	s.Blurred.EndOfBuffer = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
 
-	input.FocusedStyle = focused
-	input.BlurredStyle = blurred
+	input.SetStyles(s)
 	input.Focus()
 }
 
@@ -2436,23 +2436,19 @@ func safeView(comp biocomp.BioComponent, w, h int) (content string, panicked boo
 }
 
 // handleConfirmKey handles key presses for the local exit confirm dialog.
-func (m Model) handleConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyCtrlC:
+func (m Model) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
 		// Dismiss confirm and send decline.
 		return m.resolveConfirm(false)
-	case tea.KeyEnter:
+	case "enter":
 		// Enter accepts the default.
 		confirm := m.pendingConfirm.Default
 		return m.resolveConfirm(confirm)
-	case tea.KeyRunes:
-		s := msg.String()
-		if s == "y" || s == "Y" {
-			return m.resolveConfirm(true)
-		}
-		if s == "n" || s == "N" {
-			return m.resolveConfirm(false)
-		}
+	case "y", "Y":
+		return m.resolveConfirm(true)
+	case "n", "N":
+		return m.resolveConfirm(false)
 	}
 	return m, nil
 }

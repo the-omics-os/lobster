@@ -10,11 +10,12 @@ package theme
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ThemeJSON is the serialisation schema for theme files.
@@ -46,12 +47,12 @@ type ColorsJSON struct {
 	Accent3    string `json:"accent3"`
 }
 
-// parseColor converts a hex string (with or without '#') to a lipgloss.Color.
-// Returns an empty Color and an error if the string is empty.
-func parseColor(s string) (lipgloss.Color, error) {
+// parseColor converts a hex string (with or without '#') to a color.Color via
+// lipgloss.Color(). Returns nil and an error if the string is empty.
+func parseColor(s string) (color.Color, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return lipgloss.Color(""), fmt.Errorf("empty color value")
+		return nil, fmt.Errorf("empty color value")
 	}
 	// lipgloss accepts bare hex strings; ensure the '#' prefix is present.
 	if !strings.HasPrefix(s, "#") {
@@ -66,7 +67,7 @@ func colorsFromJSON(j ColorsJSON) (Colors, error) {
 		c   Colors
 		err error
 	)
-	parse := func(field string, dest *lipgloss.Color) {
+	parse := func(field string, dest *color.Color) {
 		if err != nil {
 			return
 		}

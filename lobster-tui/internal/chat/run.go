@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"
 
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
@@ -71,15 +71,9 @@ func Run(fdIn, fdOut int, themeName string, version string, inline bool) error {
 	mouseCapture := shouldEnableMouseCapture(inline)
 	model := NewModel(handler, styles, width, height, inline, mouseCapture, version)
 
-	var p *tea.Program
-	opts := make([]tea.ProgramOption, 0, 2)
-	if !inline {
-		opts = append(opts, tea.WithAltScreen())
-	}
-	if mouseCapture {
-		opts = append(opts, tea.WithMouseCellMotion())
-	}
-	p = tea.NewProgram(model, opts...)
+	// In v2, AltScreen and MouseMode are set via View() fields on the Model,
+	// not as Program options. See Model.View() for the field assignments.
+	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("chat session: %w", err)
 	}

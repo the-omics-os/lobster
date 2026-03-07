@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -43,37 +43,34 @@ func (c *ConfirmComponent) Init(data json.RawMessage) error {
 }
 
 func (c *ConfirmComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
-	km, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return nil
 	}
 
-	switch km.Type {
-	case tea.KeyLeft, tea.KeyRight, tea.KeyTab:
+	switch km.String() {
+	case "left", "right", "tab":
 		c.selected = !c.selected
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data:   map[string]any{"confirmed": c.selected},
 		}
-	case tea.KeyEsc:
+	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{"confirmed": false},
 		}
-	case tea.KeyRunes:
-		switch km.String() {
-		case "y", "Y":
-			return &biocomp.ComponentResult{
-				Action: "submit",
-				Data:   map[string]any{"confirmed": true},
-			}
-		case "n", "N":
-			return &biocomp.ComponentResult{
-				Action: "submit",
-				Data:   map[string]any{"confirmed": false},
-			}
+	case "y", "Y":
+		return &biocomp.ComponentResult{
+			Action: "submit",
+			Data:   map[string]any{"confirmed": true},
+		}
+	case "n", "N":
+		return &biocomp.ComponentResult{
+			Action: "submit",
+			Data:   map[string]any{"confirmed": false},
 		}
 	}
 	return nil

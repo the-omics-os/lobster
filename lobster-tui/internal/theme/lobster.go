@@ -1,7 +1,7 @@
 // Package theme — Lobster-branded built-in themes.
 package theme
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // LobsterDark is the official Lobster AI dark theme.
 var LobsterDark = &Theme{

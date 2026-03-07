@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -47,21 +47,21 @@ func (t *TextInputComponent) Init(data json.RawMessage) error {
 	t.input.Placeholder = d.Placeholder
 	t.input.Focus()
 	t.input.CharLimit = 1024
-	t.input.Width = 40 // default, adjusted in View
+	t.input.SetWidth(40) // default, adjusted in View
 
 	return nil
 }
 
 func (t *TextInputComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
-	km, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyPressMsg)
 	if ok {
-		switch km.Type {
-		case tea.KeyEnter:
+		switch km.String() {
+		case "enter":
 			return &biocomp.ComponentResult{
 				Action: "submit",
 				Data:   map[string]any{"answer": t.input.Value()},
 			}
-		case tea.KeyEsc:
+		case "esc":
 			return &biocomp.ComponentResult{
 				Action: "cancel",
 				Data:   map[string]any{},
@@ -91,7 +91,7 @@ func (t *TextInputComponent) View(width, height int) string {
 	if inputW < 10 {
 		inputW = 10
 	}
-	t.input.Width = inputW
+	t.input.SetWidth(inputW)
 
 	return lipgloss.JoinVertical(lipgloss.Left, q, t.input.View())
 }

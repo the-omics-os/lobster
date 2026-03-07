@@ -8,30 +8,31 @@ package theme
 
 import (
 	"fmt"
+	"image/color"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Colors holds all semantic color tokens for a theme.
 type Colors struct {
-	Primary    lipgloss.Color
-	Secondary  lipgloss.Color
-	Background lipgloss.Color
-	Surface    lipgloss.Color
-	Overlay    lipgloss.Color
+	Primary    color.Color
+	Secondary  color.Color
+	Background color.Color
+	Surface    color.Color
+	Overlay    color.Color
 
-	Text      lipgloss.Color
-	TextMuted lipgloss.Color
-	TextDim   lipgloss.Color
+	Text      color.Color
+	TextMuted color.Color
+	TextDim   color.Color
 
-	Success lipgloss.Color
-	Warning lipgloss.Color
-	Error   lipgloss.Color
-	Info    lipgloss.Color
+	Success color.Color
+	Warning color.Color
+	Error   color.Color
+	Info    color.Color
 
-	Accent1 lipgloss.Color
-	Accent2 lipgloss.Color
-	Accent3 lipgloss.Color
+	Accent1 color.Color
+	Accent2 color.Color
+	Accent3 color.Color
 }
 
 // Styles holds pre-built lipgloss styles derived from a Colors palette.

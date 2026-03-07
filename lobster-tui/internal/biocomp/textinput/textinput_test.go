@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func makeData(question, placeholder string) json.RawMessage {
@@ -51,10 +51,10 @@ func TestSubmitEnter(t *testing.T) {
 	_ = c.Init(makeData("Name?", ""))
 
 	// Type some characters via rune key messages.
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'H'}})
-	c.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	c.HandleMsg(tea.KeyPressMsg{Code: 'H', Text: "H"})
+	c.HandleMsg(tea.KeyPressMsg{Code: 'i', Text: "i"})
 
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected non-nil result on enter")
 	}
@@ -76,7 +76,7 @@ func TestCancelEsc(t *testing.T) {
 	c := &TextInputComponent{}
 	_ = c.Init(makeData("Name?", ""))
 
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on esc")
 	}

@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -50,7 +50,7 @@ func (c *CellTypeSelectorComponent) Init(data json.RawMessage) error {
 		ti := textinput.New()
 		ti.Placeholder = "cell type..."
 		ti.CharLimit = 128
-		ti.Width = 30
+		ti.SetWidth(30)
 		if cl.Label != "" {
 			ti.SetValue(cl.Label)
 		}
@@ -64,7 +64,7 @@ func (c *CellTypeSelectorComponent) Init(data json.RawMessage) error {
 }
 
 func (c *CellTypeSelectorComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
-	km, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		// Forward non-key messages to active textinput if editing.
 		if c.editingIndex >= 0 && c.editingIndex < len(c.inputs) {
@@ -83,45 +83,36 @@ func (c *CellTypeSelectorComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentRes
 }
 
 // handleNavMode processes keys when not editing any textinput.
-func (c *CellTypeSelectorComponent) handleNavMode(km tea.KeyMsg) *biocomp.ComponentResult {
-	switch km.Type {
-	case tea.KeyUp:
+func (c *CellTypeSelectorComponent) handleNavMode(km tea.KeyPressMsg) *biocomp.ComponentResult {
+	switch km.String() {
+	case "up", "k":
 		c.moveUp()
 		return nil
-	case tea.KeyDown:
+	case "down", "j":
 		c.moveDown()
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		c.enterEditMode()
 		return nil
-	case tea.KeyEsc:
+	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{},
 		}
-	case tea.KeyCtrlS:
+	case "ctrl+s":
 		return c.submitAll()
-	case tea.KeyRunes:
-		switch km.String() {
-		case "k":
-			c.moveUp()
-			return nil
-		case "j":
-			c.moveDown()
-			return nil
-		}
 	}
 	return nil
 }
 
 // handleEditMode processes keys when a textinput is focused.
-func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyMsg) *biocomp.ComponentResult {
-	switch km.Type {
-	case tea.KeyEsc:
+func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyPressMsg) *biocomp.ComponentResult {
+	switch km.String() {
+	case "esc":
 		// Exit edit mode, keep text.
 		c.exitEditMode()
 		return nil
-	case tea.KeyTab:
+	case "tab":
 		// Accept current input and move to next cluster.
 		c.exitEditMode()
 		if c.cursor < len(c.clusters)-1 {
@@ -130,10 +121,10 @@ func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyMsg) *biocomp.Compo
 		}
 		c.enterEditMode()
 		return nil
-	case tea.KeyCtrlS:
+	case "ctrl+s":
 		c.exitEditMode()
 		return c.submitAll()
-	case tea.KeyEnter:
+	case "enter":
 		// Accept current input and exit edit mode.
 		c.exitEditMode()
 		return nil
@@ -260,7 +251,7 @@ func (c *CellTypeSelectorComponent) View(width, height int) string {
 		inputW = 10
 	}
 	for i := range c.inputs {
-		c.inputs[i].Width = inputW
+		c.inputs[i].SetWidth(inputW)
 	}
 
 	var rows []string

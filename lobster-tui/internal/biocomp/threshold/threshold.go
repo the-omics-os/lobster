@@ -12,9 +12,9 @@ import (
 	"math"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -52,30 +52,30 @@ func (c *ThresholdSliderComponent) Init(data json.RawMessage) error {
 }
 
 func (c *ThresholdSliderComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
-	km, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return nil
 	}
 
-	switch km.Type {
-	case tea.KeyRight:
+	switch km.String() {
+	case "right":
 		c.adjustValue(c.data.Step)
 		return nil
-	case tea.KeyLeft:
+	case "left":
 		c.adjustValue(-c.data.Step)
 		return nil
-	case tea.KeyShiftRight:
+	case "shift+right":
 		c.adjustValue(10 * c.data.Step)
 		return nil
-	case tea.KeyShiftLeft:
+	case "shift+left":
 		c.adjustValue(-10 * c.data.Step)
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data:   map[string]any{"value": roundTo(c.value, c.precision)},
 		}
-	case tea.KeyEsc:
+	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{"value": roundTo(c.value, c.precision)},

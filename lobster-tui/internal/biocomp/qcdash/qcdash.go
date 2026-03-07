@@ -8,12 +8,13 @@ package qcdash
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"math"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -170,8 +171,8 @@ func (c *QCDashboardComponent) styledStatus(text, status string) string {
 	return lipgloss.NewStyle().Bold(true).Foreground(color).Render(text)
 }
 
-// statusColor returns the lipgloss color for a status string.
-func (c *QCDashboardComponent) statusColor(status string) lipgloss.Color {
+// statusColor returns the color for a status string.
+func (c *QCDashboardComponent) statusColor(status string) color.Color {
 	switch strings.ToLower(status) {
 	case "pass":
 		return colorPass

@@ -2,11 +2,12 @@ package chat
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
@@ -279,7 +280,7 @@ func welcomeAnimationPhase(elapsed time.Duration) welcomePhase {
 	}
 }
 
-func welcomeBaseColor(elapsed time.Duration) lipgloss.Color {
+func welcomeBaseColor(elapsed time.Duration) color.Color {
 	switch {
 	case elapsed < welcomeFadeStepDuration:
 		return lipgloss.Color(welcomeColorSubtleHex)
@@ -327,7 +328,7 @@ func welcomeNucleotideAt(seq string, cellIndex, frame int) rune {
 	return welcomeNucleotides[(cellIndex+frame)%len(welcomeNucleotides)]
 }
 
-func welcomeNucleotideColor(base rune) lipgloss.Color {
+func welcomeNucleotideColor(base rune) color.Color {
 	switch base {
 	case 'A':
 		return lipgloss.Color("#22c55e")

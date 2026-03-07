@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image/color"
 	"os"
 	"os/exec"
 	"strings"
@@ -25,6 +26,14 @@ import (
 
 	lobsterTheme "github.com/the-omics-os/lobster-tui/internal/theme"
 )
+
+// toV1Color converts a color.Color (from the v2 theme) to a v1 lipgloss.Color
+// for use with huh, which depends on lipgloss v1. This bridge is temporary
+// until huh is removed in Plan 03.
+func toV1Color(c color.Color) lipgloss.Color {
+	r, g, b, _ := c.RGBA()
+	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8))
+}
 
 // ---------------------------------------------------------------------------
 // Output schema
@@ -166,13 +175,14 @@ var smartStandardizationAgentLabels = map[string]string{
 func buildHuhTheme(t *lobsterTheme.Theme) *huh.Theme {
 	ht := huh.ThemeBase()
 
-	primary := t.Colors.Primary
-	accent := t.Colors.Accent2
-	muted := t.Colors.TextMuted
-	text := t.Colors.Text
-	success := t.Colors.Success
-	errColor := t.Colors.Error
-	surface := t.Colors.Surface
+	// Bridge v2 color.Color to v1 lipgloss.Color for huh compatibility.
+	primary := toV1Color(t.Colors.Primary)
+	accent := toV1Color(t.Colors.Accent2)
+	muted := toV1Color(t.Colors.TextMuted)
+	text := toV1Color(t.Colors.Text)
+	success := toV1Color(t.Colors.Success)
+	errColor := toV1Color(t.Colors.Error)
+	surface := toV1Color(t.Colors.Surface)
 
 	// Focused state
 	ht.Focused.Base = ht.Focused.Base.BorderForeground(primary)
@@ -190,7 +200,7 @@ func buildHuhTheme(t *lobsterTheme.Theme) *huh.Theme {
 	ht.Focused.UnselectedPrefix = lipgloss.NewStyle().Foreground(muted).SetString("[ ] ")
 	ht.Focused.UnselectedOption = lipgloss.NewStyle().Foreground(text)
 	ht.Focused.FocusedButton = lipgloss.NewStyle().
-		Foreground(t.Colors.Background).
+		Foreground(toV1Color(t.Colors.Background)).
 		Background(primary).
 		Bold(true).
 		Padding(0, 2).
@@ -618,7 +628,7 @@ func Run(themeName string, resultPath string) error {
 
 func buildAgentOptions(t *lobsterTheme.Theme) []huh.Option[string] {
 	options := make([]huh.Option[string], 0, len(initAgentPackages))
-	experimentalStyle := lipgloss.NewStyle().Foreground(t.Colors.Warning).Bold(true)
+	experimentalStyle := lipgloss.NewStyle().Foreground(toV1Color(t.Colors.Warning)).Bold(true)
 	for _, pkg := range initAgentPackages {
 		agentCount := len(pkg.Agents)
 		agentLabel := "agents"

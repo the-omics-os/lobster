@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // sampleMetrics returns a 3-metric payload for testing.
@@ -68,15 +68,15 @@ func TestQCDashHandleMsgNoop(t *testing.T) {
 	_ = c.Init(mustMarshal(t, sampleMetrics()))
 
 	// Key messages should always return nil (non-interactive).
-	result := c.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result != nil {
 		t.Fatal("HandleMsg should always return nil for inline component")
 	}
-	result = c.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc})
+	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result != nil {
 		t.Fatal("HandleMsg should return nil for Esc too")
 	}
-	result = c.HandleMsg(tea.KeyMsg{Type: tea.KeyLeft})
+	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
 	if result != nil {
 		t.Fatal("HandleMsg should return nil for arrow keys")
 	}

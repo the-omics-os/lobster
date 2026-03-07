@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
@@ -27,10 +27,7 @@ func TestHandleConfirmKeyLocalExitConfirmYesQuits(t *testing.T) {
 		pendingConfirmID: localExitConfirmID,
 	}
 
-	updated, cmd := m.handleConfirmKey(tea.KeyMsg{
-		Type:  tea.KeyRunes,
-		Runes: []rune{'y'},
-	})
+	updated, cmd := m.handleConfirmKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	got := updated.(Model)
 	if !got.quitting {
@@ -54,10 +51,7 @@ func TestHandleConfirmKeyLocalExitConfirmNoCancels(t *testing.T) {
 		streamBuf:        &strings.Builder{},
 	}
 
-	updated, cmd := m.handleConfirmKey(tea.KeyMsg{
-		Type:  tea.KeyRunes,
-		Runes: []rune{'n'},
-	})
+	updated, cmd := m.handleConfirmKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
 
 	got := updated.(Model)
 	if got.quitting {
@@ -304,9 +298,9 @@ func TestSelectComponentNavigationViaHandleKey(t *testing.T) {
 	}
 
 	// Press Down twice (should go to index 2).
-	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
-	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = updated.(Model)
 	// Component should still be active (not submitted).
 	if m.activeComponent == nil {
@@ -331,7 +325,7 @@ func TestSelectComponentEscCancelsViaHandleKey(t *testing.T) {
 	m = updated.(Model)
 
 	// Press Esc to cancel the select component.
-	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = updated.(Model)
 
 	if m.activeComponent != nil {
@@ -355,7 +349,7 @@ func TestSelectComponentEscCancelsViaHandleKey(t *testing.T) {
 func TestClearParityLocalAndProtocolTargetsProduceEquivalentState(t *testing.T) {
 	local := seededModelForClear()
 	local.input.SetValue("/clear")
-	updated, _ := local.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := local.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	local = updated.(Model)
 
 	protocolOutput := seededModelForClear()
@@ -737,7 +731,7 @@ func TestKeyEnterSubmitsComposerInput(t *testing.T) {
 	m.ready = true
 	m.input.SetValue("hello world")
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = updated.(Model)
 
 	if got := m.input.Value(); got != "" {
@@ -757,7 +751,7 @@ func TestKeyAltEnterInsertsComposerNewline(t *testing.T) {
 	m.ready = true
 	m.input.SetValue("hello")
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
 	m = updated.(Model)
 
 	if got := m.input.Value(); got != "hello\n" {
@@ -803,7 +797,7 @@ func TestKeyTabAppliesSlashCompletionSuggestion(t *testing.T) {
 	m.input.SetValue("/wo")
 	m.refreshSuggestions()
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 
 	if got := m.input.Value(); got != "/workspace" {
@@ -819,7 +813,7 @@ func TestKeyTabAppliesSubcommandCompletionAndAppendsSpace(t *testing.T) {
 	m.input.SetValue("/workspace l")
 	m.refreshSuggestions()
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 
 	if got := m.input.Value(); got != "/workspace list " {
@@ -836,7 +830,7 @@ func TestKeyTabAppliesPathCompletionWithoutTrailingSpace(t *testing.T) {
 	m.completionSuggestions = []string{"/read data/file.txt"}
 	m.syncCompletionMenuState(m.input.Value())
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 
 	if got := m.input.Value(); got != "/read data/file.txt" {
@@ -852,10 +846,10 @@ func TestCtrlNMovesInlineCompletionSelection(t *testing.T) {
 	m.input.SetValue("/w")
 	m.refreshSuggestions()
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlN})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
 	m = updated.(Model)
 
-	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyTab})
+	updated, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = updated.(Model)
 
 	if got := m.input.Value(); got != "/workspace-info" {
@@ -897,7 +891,7 @@ func TestEscapeDismissesInlineCompletionMenuUntilInputChanges(t *testing.T) {
 	m.input.SetValue("/wo")
 	m.refreshSuggestions()
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = updated.(Model)
 
 	if m.completionMenuVisible() {
@@ -927,7 +921,7 @@ func TestKeyUpUsesHistoryEvenWhenViewportScrollable(t *testing.T) {
 		t.Fatalf("expected seeded model to be scrollable, got yOffset=%d", startYOffset)
 	}
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 
 	if m.viewport.YOffset != startYOffset {
@@ -1055,7 +1049,7 @@ func TestKeyPgUpScrollsViewportEvenWhenInputHasContent(t *testing.T) {
 	}
 	m.input.SetValue("/config model")
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyPgUp})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyPgUp})
 	m = updated.(Model)
 
 	if m.viewport.YOffset >= startYOffset {
@@ -1076,7 +1070,7 @@ func TestKeyUpDoesNotScrollViewportWhenHistoryEmpty(t *testing.T) {
 		t.Fatalf("expected seeded model to be scrollable, got yOffset=%d", startYOffset)
 	}
 
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 
 	if m.viewport.YOffset != startYOffset {
@@ -1091,7 +1085,7 @@ func TestKeyCtrlGTogglesMouseCaptureOn(t *testing.T) {
 	m := newTestModel()
 	m.mouseCapture = false
 
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlG})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
 	m = updated.(Model)
 
 	if !m.mouseCapture {
@@ -1109,7 +1103,7 @@ func TestKeyCtrlGTogglesMouseCaptureOff(t *testing.T) {
 	m := newTestModel()
 	m.mouseCapture = true
 
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlG})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
 	m = updated.(Model)
 
 	if m.mouseCapture {
@@ -1326,7 +1320,7 @@ func TestCtrlCDuringStreamingSendsCancelImmediately(t *testing.T) {
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
 	m.isStreaming = true
 
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	got := updated.(Model)
 
 	if got.quitting {
@@ -1354,7 +1348,7 @@ func TestCtrlCDuringSpinnerSendsCancelImmediately(t *testing.T) {
 	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
 	m.spinnerActive = true
 
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	got := updated.(Model)
 
 	if got.quitting {
@@ -1383,7 +1377,7 @@ func TestCtrlCDoublePressForcesQuit(t *testing.T) {
 	m.isStreaming = true
 
 	// First press: sends cancel immediately.
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	m = updated.(Model)
 
 	if !m.isCanceling {
@@ -1394,7 +1388,7 @@ func TestCtrlCDoublePressForcesQuit(t *testing.T) {
 	_ = readSingleProtocolMessage(t, &out)
 
 	// Second press: streaming still active → force quit.
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	got := updated.(Model)
 
 	if !got.quitting {
@@ -1433,7 +1427,7 @@ func TestCtrlCAtIdleSendsQuit(t *testing.T) {
 	m.isStreaming = false
 	m.spinnerActive = false
 
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlC})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	got := updated.(Model)
 
 	if !got.quitting {
@@ -1575,11 +1569,11 @@ func TestTextInputComponentResponseSendsComponentResponse(t *testing.T) {
 	// Type text into the component, then press Enter to submit.
 	// First type characters into the text_input component.
 	for _, r := range "T cells, B cells" {
-		m.activeComponent.Component.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m.activeComponent.Component.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 
 	// Press Enter to submit.
-	updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	got := updated.(Model)
 
 	if got.activeComponent != nil {

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func makeData(question string, options []string, def int) json.RawMessage {
@@ -78,7 +78,7 @@ func TestNavigateDown(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A", "B", "C"}, 0))
 
-	result := s.HandleMsg(tea.KeyMsg{Type: tea.KeyDown})
+	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -87,7 +87,7 @@ func TestNavigateDown(t *testing.T) {
 	}
 
 	// Navigate with j.
-	result = s.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	result = s.HandleMsg(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if result != nil {
 		t.Fatal("expected nil result during j navigation")
 	}
@@ -96,7 +96,7 @@ func TestNavigateDown(t *testing.T) {
 	}
 
 	// Past end should stay at last.
-	s.HandleMsg(tea.KeyMsg{Type: tea.KeyDown})
+	s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if s.cursor != 2 {
 		t.Fatalf("expected cursor to stay at 2, got %d", s.cursor)
 	}
@@ -107,7 +107,7 @@ func TestNavigateUp(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A", "B", "C"}, 2))
 
-	result := s.HandleMsg(tea.KeyMsg{Type: tea.KeyUp})
+	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -116,13 +116,13 @@ func TestNavigateUp(t *testing.T) {
 	}
 
 	// Navigate with k.
-	s.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	s.HandleMsg(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	if s.cursor != 0 {
 		t.Fatalf("expected cursor at 0, got %d", s.cursor)
 	}
 
 	// Past beginning should stay at 0.
-	s.HandleMsg(tea.KeyMsg{Type: tea.KeyUp})
+	s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
 	if s.cursor != 0 {
 		t.Fatalf("expected cursor to stay at 0, got %d", s.cursor)
 	}
@@ -133,7 +133,7 @@ func TestSubmitEnter(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"Alpha", "Beta"}, 1))
 
-	result := s.HandleMsg(tea.KeyMsg{Type: tea.KeyEnter})
+	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected non-nil result on enter")
 	}
@@ -153,7 +153,7 @@ func TestNumberKeyDirectSelect(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A", "B", "C"}, 0))
 
-	result := s.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	result := s.HandleMsg(tea.KeyPressMsg{Code: '2', Text: "2"})
 	if result == nil {
 		t.Fatal("expected non-nil result on number key")
 	}
@@ -174,7 +174,7 @@ func TestNumberKeyIgnoredWhenMoreThan9Options(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", opts, 0))
 
-	result := s.HandleMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}})
+	result := s.HandleMsg(tea.KeyPressMsg{Code: '1', Text: "1"})
 	if result != nil {
 		t.Fatal("expected nil result when >9 options")
 	}
@@ -185,7 +185,7 @@ func TestCancelEsc(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A"}, 0))
 
-	result := s.HandleMsg(tea.KeyMsg{Type: tea.KeyEsc})
+	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on esc")
 	}

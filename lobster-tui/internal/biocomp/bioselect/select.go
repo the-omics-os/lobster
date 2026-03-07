@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -55,19 +55,19 @@ func (s *SelectComponent) Init(data json.RawMessage) error {
 }
 
 func (s *SelectComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
-	km, ok := msg.(tea.KeyMsg)
+	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return nil
 	}
 
-	switch km.Type {
-	case tea.KeyUp:
+	switch km.String() {
+	case "up", "k":
 		s.moveUp()
 		return nil
-	case tea.KeyDown:
+	case "down", "j":
 		s.moveDown()
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data: map[string]any{
@@ -75,23 +75,15 @@ func (s *SelectComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
 				"index":    s.cursor,
 			},
 		}
-	case tea.KeyEsc:
+	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{},
 		}
-	case tea.KeyRunes:
-		switch km.String() {
-		case "k":
-			s.moveUp()
-			return nil
-		case "j":
-			s.moveDown()
-			return nil
-		}
+	default:
 		// Number keys 1-9 for direct selection.
-		if len(km.Runes) == 1 {
-			r := km.Runes[0]
+		if km.Text != "" && len([]rune(km.Text)) == 1 {
+			r := []rune(km.Text)[0]
 			if r >= '1' && r <= '9' && len(s.options) <= 9 {
 				idx := int(r - '1')
 				if idx < len(s.options) {

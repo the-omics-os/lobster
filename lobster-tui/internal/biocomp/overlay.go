@@ -3,8 +3,8 @@ package biocomp
 import (
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/lipgloss/v2"
 )
 
 // OverlaySize returns overlay dimensions based on size hint and terminal size.

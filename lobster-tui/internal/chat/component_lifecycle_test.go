@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	// Blank imports to trigger init() registration for COMP-01 test.
@@ -365,7 +365,7 @@ func TestErrorBoundary_PanicInHandleMsgRecovers(t *testing.T) {
 				t.Fatalf("HandleMsg panic was NOT recovered: %v", r)
 			}
 		}()
-		updated, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+		updated, _ = m.handleKey(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	}()
 
 	// Verify error response was sent.
@@ -410,7 +410,7 @@ func TestChangeEvent_DebouncedAt50ms(t *testing.T) {
 	}
 
 	// Send a key that triggers HandleMsg (returns nil = still interacting).
-	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	got := updated.(Model)
 
 	// The pending change event should be stored.
@@ -461,12 +461,12 @@ func TestChangeEvent_MultipleWithinDebounce(t *testing.T) {
 	}
 
 	// First key press — starts debounce.
-	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	got := updated.(Model)
 
 	// Second key press with different value — should overwrite pending.
 	comp.changeEvent = map[string]any{"value": 0.10}
-	updated2, _ := got.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	updated2, _ := got.handleKey(tea.KeyPressMsg{Code: 'b', Text: "b"})
 	got2 := updated2.(Model)
 
 	// Now fire tick.
