@@ -537,6 +537,7 @@ def _build_supervisor_tools(
     child_agent_names: set,
     data_manager: DataManagerV2,
     store,
+    llm=None,
 ) -> Tuple[List, List[str]]:
     """Build all supervisor tools: handoff, workspace, code execution, and todo.
 
@@ -546,6 +547,7 @@ def _build_supervisor_tools(
         child_agent_names: Set of agent names that are children (not supervisor-accessible)
         data_manager: DataManagerV2 for workspace/code tools
         store: Optional InMemoryStore for dual-write
+        llm: Optional supervisor LLM for ask_user component selection
 
     Returns:
         (all_supervisor_tools, supervisor_accessible_names):
@@ -604,7 +606,9 @@ def _build_supervisor_tools(
     # Todo tools for planning
     write_todos, read_todos = create_todo_tools()
 
-    from lobster.tools.user_interaction import ask_user
+    from lobster.tools.user_interaction import create_ask_user_tool
+
+    ask_user = create_ask_user_tool(llm=llm)
 
     all_supervisor_tools = agent_tools + [
         list_available_modalities,
@@ -788,6 +792,7 @@ def create_bioinformatics_graph(
         child_agent_names=child_agent_names,
         data_manager=data_manager,
         store=store,
+        llm=supervisor_model,
     )
 
     # Create supervisor prompt with active agents list
