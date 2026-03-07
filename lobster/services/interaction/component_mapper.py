@@ -1,18 +1,25 @@
 """Map natural-language questions to HITL UI components.
 
-The mapper uses rule-based heuristics to select the appropriate component.
-A future version may use an LLM with structured output for complex cases.
+Hybrid approach: rule-based fast path for unambiguous structural context,
+LLM structured output for ambiguous/novel question patterns.
 """
 
 from __future__ import annotations
 
+import json as _json
+import logging
 import re
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from lobster.services.interaction.component_schemas import (
     COMPONENT_SCHEMAS,
     ComponentSelection,
 )
+
+if TYPE_CHECKING:
+    from langchain_core.language_models import BaseChatModel
+
+logger = logging.getLogger(__name__)
 
 # Patterns that strongly suggest a confirmation question.
 _CONFIRM_PATTERNS = re.compile(
@@ -30,18 +37,25 @@ _THRESHOLD_PATTERNS = re.compile(
 
 
 def map_question(
-    question: str, context: Optional[Dict[str, Any]] = None
+    question: str,
+    context: Optional[Dict[str, Any]] = None,
+    llm: Optional["BaseChatModel"] = None,
 ) -> ComponentSelection:
     """Map a question + context to a ComponentSelection.
 
-    Uses rule-based heuristics:
-    1. If context has "options" list -> select
-    2. If context has "clusters" list -> cell_type_selector
-    3. If context has threshold-related keys -> threshold_slider
-    4. If question matches confirm patterns -> confirm
-    5. Fallback -> text_input
+    Hybrid approach:
+    1. Rule-based fast path for unambiguous structural context
+    2. LLM structured output for ambiguous/novel questions (when llm provided)
+    3. Rule-based fallback when no LLM available
+
+    Args:
+        question: Natural language question for the user.
+        context: Structural context (options, clusters, thresholds, etc.).
+        llm: Optional LLM for classifying ambiguous questions.
     """
     ctx = context or {}
+
+    # --- Rule-based fast path (unambiguous structural context) ---
 
     # Explicit options list -> select component.
     options = ctx.get("options")
@@ -75,13 +89,64 @@ def map_question(
             fallback_prompt=f"{question} [y/N]",
         )
 
-    # Fallback: text_input.
+    # --- LLM path (ambiguous questions) ---
+    if llm is not None:
+        return _llm_select_component(llm, question, ctx)
+
+    # --- Fallback: text_input ---
     placeholder = ctx.get("placeholder", "")
     return ComponentSelection(
         component="text_input",
         data={"question": question, "placeholder": placeholder},
         fallback_prompt=question,
     )
+
+
+def _llm_select_component(
+    llm: "BaseChatModel",
+    question: str,
+    context: Dict[str, Any],
+) -> ComponentSelection:
+    """Use LLM structured output to select the best component.
+
+    Builds a prompt listing available components and their schemas,
+    then calls the LLM with structured output to get a ComponentSelection.
+    Falls back to text_input on any error.
+    """
+    try:
+        # Build component catalog for the prompt.
+        component_lines = []
+        for name, schema in COMPONENT_SCHEMAS.items():
+            desc = schema.get("description", "")
+            inputs = _json.dumps(schema.get("input_schema", {}))
+            component_lines.append(f"- {name}: {desc} (inputs: {inputs})")
+        catalog = "\n".join(component_lines)
+
+        ctx_str = _json.dumps(context) if context else "{}"
+
+        prompt = (
+            "Select the best UI component for this user question.\n\n"
+            f"Available components:\n{catalog}\n\n"
+            f"User question: {question}\n"
+            f"Context: {ctx_str}\n\n"
+            "Return the component name, rendering mode, data payload, "
+            "and a plain-text fallback prompt."
+        )
+
+        structured_llm = llm.with_structured_output(ComponentSelection)
+        result = structured_llm.invoke(prompt)
+        return result  # Pydantic validator handles invalid component names
+
+    except Exception:
+        logger.debug(
+            "LLM component selection failed, falling back to text_input",
+            exc_info=True,
+        )
+        return ComponentSelection(
+            component="text_input",
+            data={"question": question},
+            fallback_prompt=question,
+        )
 
 
 def _has_threshold_context(ctx: Dict[str, Any]) -> bool:

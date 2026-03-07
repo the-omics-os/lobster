@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ComponentSelection(BaseModel):
@@ -28,6 +28,22 @@ class ComponentSelection(BaseModel):
     fallback_prompt: str = Field(
         description="Plain-text prompt for classic CLI or unknown components"
     )
+
+    @model_validator(mode="after")
+    def _validate_component_and_fallback(self) -> "ComponentSelection":
+        """Ensure component is valid and fallback_prompt is never empty."""
+        # Validate component name against registry.
+        if self.component not in COMPONENT_SCHEMAS:
+            self.component = "text_input"
+            # Ensure data has question key for text_input.
+            if "question" not in self.data:
+                self.data["question"] = self.fallback_prompt or "Please respond"
+
+        # Ensure fallback_prompt is never empty/whitespace.
+        if not self.fallback_prompt or not self.fallback_prompt.strip():
+            self.fallback_prompt = self.data.get("question", "Please respond")
+
+        return self
 
 
 # Registry of available HITL components.
