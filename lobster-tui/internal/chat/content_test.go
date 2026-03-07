@@ -3,6 +3,8 @@ package chat
 import (
 	"strings"
 	"testing"
+
+	"github.com/the-omics-os/lobster-tui/internal/protocol"
 )
 
 func TestContentBlock_BlockTypes(t *testing.T) {
@@ -114,6 +116,107 @@ func TestFlushStreamBuffer(t *testing.T) {
 	}
 	if bt.Text != "streamed text" {
 		t.Errorf("BlockText.Text = %q, want %q", bt.Text, "streamed text")
+	}
+}
+
+// --- Integration tests: protocol handlers create typed blocks ---
+
+func TestHandleProtocol_TableCreatesBlockTable(t *testing.T) {
+	m := newTestModel()
+
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeTable, protocol.TablePayload{
+		Headers: []string{"Gene", "LogFC"},
+		Rows:    [][]string{{"TP53", "2.1"}, {"BRCA1", "-1.5"}},
+	}))
+	m = updated.(Model)
+
+	if len(m.messages) == 0 {
+		t.Fatal("expected at least one message")
+	}
+	last := m.messages[len(m.messages)-1]
+	found := false
+	for _, b := range last.Blocks {
+		if tb, ok := b.(BlockTable); ok {
+			if len(tb.Headers) != 2 || tb.Headers[0] != "Gene" {
+				t.Errorf("unexpected headers: %v", tb.Headers)
+			}
+			if len(tb.Rows) != 2 || tb.Rows[0][0] != "TP53" {
+				t.Errorf("unexpected rows: %v", tb.Rows)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no BlockTable found in message blocks")
+	}
+}
+
+func TestHandleProtocol_CodeCreatesBlockCode(t *testing.T) {
+	m := newTestModel()
+
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeCode, protocol.CodePayload{
+		Language: "python",
+		Content:  "import scanpy as sc",
+	}))
+	m = updated.(Model)
+
+	if len(m.messages) == 0 {
+		t.Fatal("expected at least one message")
+	}
+	last := m.messages[len(m.messages)-1]
+	found := false
+	for _, b := range last.Blocks {
+		if cb, ok := b.(BlockCode); ok {
+			if cb.Language != "python" {
+				t.Errorf("expected language 'python', got %q", cb.Language)
+			}
+			if cb.Content != "import scanpy as sc" {
+				t.Errorf("unexpected code content: %q", cb.Content)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no BlockCode found in message blocks")
+	}
+}
+
+func TestStreamThenTable_BothBlocksPreserved(t *testing.T) {
+	m := newTestModel()
+
+	// Simulate text streaming.
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeText, protocol.TextPayload{
+		Content: "Here are the results:\n",
+	}))
+	m = updated.(Model)
+
+	// Then a table arrives.
+	updated, _ = m.handleProtocol(testProtocolMsg(t, protocol.TypeTable, protocol.TablePayload{
+		Headers: []string{"Sample", "Count"},
+		Rows:    [][]string{{"A", "100"}},
+	}))
+	m = updated.(Model)
+
+	if len(m.messages) == 0 {
+		t.Fatal("expected at least one message")
+	}
+	last := m.messages[len(m.messages)-1]
+	if len(last.Blocks) < 2 {
+		t.Fatalf("expected at least 2 blocks (text + table), got %d", len(last.Blocks))
+	}
+
+	// First block should be the flushed text.
+	bt, ok := last.Blocks[0].(BlockText)
+	if !ok {
+		t.Fatalf("block 0: want BlockText, got %T", last.Blocks[0])
+	}
+	if !strings.Contains(bt.Text, "results") {
+		t.Errorf("block 0 text missing expected content: %q", bt.Text)
+	}
+
+	// Second block should be the table.
+	if _, ok := last.Blocks[1].(BlockTable); !ok {
+		t.Fatalf("block 1: want BlockTable, got %T", last.Blocks[1])
 	}
 }
 
