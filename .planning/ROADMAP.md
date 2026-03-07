@@ -50,7 +50,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md -- API spike validating v2 assumptions (View type, color types, KeyPressMsg, viewport, glamour coexistence)
 - [x] 02-02-PLAN.md -- Mechanical import migration + View() return type + color type updates + KeyMsg->KeyPressMsg
-- [ ] 02-03-PLAN.md -- Init wizard rewrite with v2 state machine + forms.go rewrite + huh removal
+- [x] 02-03-PLAN.md -- Init wizard rewrite with v2 state machine + forms.go rewrite + huh removal
 
 ### Phase 3: Rendering and Style
 **Goal**: Users see beautiful tables, clean flowing messages, syntax-highlighted code, and consistent visual styling
@@ -62,11 +62,11 @@ Plans:
   3. Code blocks display language labels and syntax highlighting
   4. Resizing the terminal re-renders finalized messages from cache without flickering or delay
   5. All block types (table, code, alert, handoff) have dedicated style tokens in the theme system
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Native table rendering + clean flowing messages + render cache
-- [ ] 03-02: Code block rendering + alert/handoff renderers + semantic style system
+- [ ] 03-01-PLAN.md -- Semantic style expansion + native table rendering + crush-style messages + render cache
+- [ ] 03-02-PLAN.md -- Code block rendering with chroma + alert/handoff renderers + views.go wiring
 
 ### Phase 4: Layout
 **Goal**: TUI has a proper layout system with dynamic footer that hosts interactive components
