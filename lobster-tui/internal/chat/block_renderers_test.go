@@ -101,6 +101,68 @@ func TestStreamingNeverCached(t *testing.T) {
 	}
 }
 
+func TestRenderBlockCode_Python(t *testing.T) {
+	s := testStyles()
+	b := BlockCode{Language: "python", Content: "def hello():\n    print('hi')"}
+	out := renderBlockCode(b, s, 60)
+
+	if !strings.Contains(out, "python") {
+		t.Error("expected output to contain language label 'python'")
+	}
+	if !strings.Contains(out, "hello") {
+		t.Error("expected output to contain code text 'hello'")
+	}
+	// Syntax highlighting should produce ANSI escape codes (terminal256 formatter)
+	if !strings.Contains(out, "\x1b[") {
+		t.Error("expected ANSI escape codes from syntax highlighting")
+	}
+	// Should NOT contain raw triple backticks (that's the stub format)
+	if strings.Contains(out, "```") {
+		t.Error("should not contain raw backtick fencing (stub format)")
+	}
+}
+
+func TestRenderBlockCode_UnknownLang(t *testing.T) {
+	s := testStyles()
+	b := BlockCode{Language: "zzzunknown", Content: "some code"}
+	out := renderBlockCode(b, s, 60)
+
+	if !strings.Contains(out, "some code") {
+		t.Error("expected fallback to render code content for unknown language")
+	}
+}
+
+func TestRenderBlockCode_Empty(t *testing.T) {
+	s := testStyles()
+	b := BlockCode{Language: "go", Content: ""}
+	out := renderBlockCode(b, s, 60)
+
+	// Should at minimum contain the label or be minimal
+	if strings.Contains(out, "panic") {
+		t.Error("empty content should not cause panic")
+	}
+}
+
+func TestRenderBlockCode_NoLanguage(t *testing.T) {
+	s := testStyles()
+	b := BlockCode{Language: "", Content: "plain text code"}
+	out := renderBlockCode(b, s, 60)
+
+	if !strings.Contains(out, "plain text code") {
+		t.Error("expected output to contain code content")
+	}
+}
+
+func TestRenderBlockCode_WidthConstrained(t *testing.T) {
+	s := testStyles()
+	b := BlockCode{Language: "python", Content: "def hello():\n    print('hi')"}
+	// Should not panic at narrow width
+	out := renderBlockCode(b, s, 30)
+	if out == "" {
+		t.Error("expected non-empty output even at narrow width")
+	}
+}
+
 func TestCrushStyleMessages(t *testing.T) {
 	s := testStyles()
 	msg := ChatMessage{
