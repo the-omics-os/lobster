@@ -99,6 +99,31 @@ func TestChatStyles(t *testing.T) {
 	}
 }
 
+// TestAlertStyles verifies AlertSuccess, AlertWarning, AlertError, AlertInfo
+// style fields have non-zero foreground color (STYL-03).
+func TestAlertStyles(t *testing.T) {
+	s := BuildStyles(LobsterDark.Colors)
+
+	for _, tc := range []struct {
+		name  string
+		style lipgloss.Style
+	}{
+		{"AlertSuccess", s.AlertSuccess},
+		{"AlertWarning", s.AlertWarning},
+		{"AlertError", s.AlertError},
+		{"AlertInfo", s.AlertInfo},
+	} {
+		if isZeroStyle(tc.style) {
+			t.Errorf("%s is zero-value style", tc.name)
+		}
+		// Verify each has a non-nil foreground color set
+		fg := tc.style.GetForeground()
+		if fg == nil {
+			t.Errorf("%s has nil foreground color", tc.name)
+		}
+	}
+}
+
 // TestCrushStyleMessages verifies that UserMessage uses border-left (not full
 // box border) and AssistantMessage has padding but no border at all.
 func TestCrushStyleMessages(t *testing.T) {

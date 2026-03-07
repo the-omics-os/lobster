@@ -163,6 +163,79 @@ func TestRenderBlockCode_WidthConstrained(t *testing.T) {
 	}
 }
 
+func TestRenderBlockAlert_Error(t *testing.T) {
+	s := testStyles()
+	b := BlockAlert{Level: "error", Message: "Something failed"}
+	out := renderBlockAlert(b, s, 80)
+
+	if !strings.Contains(out, "ERROR") {
+		t.Error("expected output to contain 'ERROR' chip")
+	}
+	if !strings.Contains(out, "Something failed") {
+		t.Error("expected output to contain message text")
+	}
+}
+
+func TestRenderBlockAlert_Warning(t *testing.T) {
+	s := testStyles()
+	b := BlockAlert{Level: "warning", Message: "Be careful"}
+	out := renderBlockAlert(b, s, 80)
+
+	if !strings.Contains(out, "WARNING") {
+		t.Error("expected output to contain 'WARNING' chip")
+	}
+}
+
+func TestRenderBlockAlert_Success(t *testing.T) {
+	s := testStyles()
+	b := BlockAlert{Level: "success", Message: "All good"}
+	out := renderBlockAlert(b, s, 80)
+
+	if !strings.Contains(out, "SUCCESS") {
+		t.Error("expected output to contain 'SUCCESS' chip")
+	}
+}
+
+func TestRenderBlockAlert_Info(t *testing.T) {
+	s := testStyles()
+	// Default/info level
+	b := BlockAlert{Level: "", Message: "FYI message"}
+	out := renderBlockAlert(b, s, 80)
+
+	if !strings.Contains(out, "INFO") {
+		t.Error("expected output to contain 'INFO' chip for default level")
+	}
+}
+
+func TestRenderBlockHandoff(t *testing.T) {
+	s := testStyles()
+	b := BlockHandoff{From: "supervisor", To: "transcriptomics_expert", Reason: "analyzing RNA-seq"}
+	out := renderBlockHandoff(b, s, 80)
+
+	if !strings.Contains(out, "transcriptomics_expert") {
+		t.Error("expected output to contain To agent name")
+	}
+	if !strings.Contains(out, "-->") {
+		t.Error("expected output to contain handoff arrow prefix")
+	}
+	if !strings.Contains(out, "analyzing RNA-seq") {
+		t.Error("expected output to contain reason")
+	}
+}
+
+func TestRenderBlockHandoff_EmptyReason(t *testing.T) {
+	s := testStyles()
+	b := BlockHandoff{From: "supervisor", To: "data_expert", Reason: ""}
+	out := renderBlockHandoff(b, s, 80)
+
+	if !strings.Contains(out, "data_expert") {
+		t.Error("expected output to contain To agent name")
+	}
+	if !strings.Contains(out, "-->") {
+		t.Error("expected output to contain handoff arrow prefix")
+	}
+}
+
 func TestCrushStyleMessages(t *testing.T) {
 	s := testStyles()
 	msg := ChatMessage{
