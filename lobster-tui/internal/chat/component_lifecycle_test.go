@@ -390,5 +390,221 @@ func TestErrorBoundary_PanicInHandleMsgRecovers(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// COMP-05: ChangeEvent debounce
+// ---------------------------------------------------------------------------
+
+func TestChangeEvent_DebouncedAt50ms(t *testing.T) {
+	h, buf := newCapturingHandler()
+	m := newTestModelWithHandler(h)
+
+	// Set up an active overlay component that returns a ChangeEvent.
+	comp := &mockComponent{
+		name:        "slider",
+		mode:        "overlay",
+		changeEvent: map[string]any{"value": 0.05},
+	}
+	m.activeComponent = &ActiveComponent{
+		Component: comp,
+		MsgID:     "ce-msg-id",
+	}
+
+	// Send a key that triggers HandleMsg (returns nil = still interacting).
+	updated, cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	got := updated.(Model)
+
+	// The pending change event should be stored.
+	if got.pendingChangeEvent == nil {
+		t.Fatal("expected pendingChangeEvent to be set after ChangeEvent returned data")
+	}
+
+	// A debounce tick command should have been returned.
+	if cmd == nil {
+		t.Fatal("expected a tick command for debounce")
+	}
+
+	// Simulate the tick firing.
+	updated2, _ := got.Update(changeEventTick{})
+	got2 := updated2.(Model)
+
+	// After tick, pending should be cleared.
+	if got2.pendingChangeEvent != nil {
+		t.Fatal("expected pendingChangeEvent to be nil after tick")
+	}
+
+	// Check that a change_event message was sent.
+	msgs := parseCapturedMessages(buf)
+	found := false
+	for _, msg := range msgs {
+		if msg.Type == "change_event" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected change_event protocol message after tick")
+	}
+}
+
+func TestChangeEvent_MultipleWithinDebounce(t *testing.T) {
+	h, buf := newCapturingHandler()
+	m := newTestModelWithHandler(h)
+
+	comp := &mockComponent{
+		name:        "slider",
+		mode:        "overlay",
+		changeEvent: map[string]any{"value": 0.01},
+	}
+	m.activeComponent = &ActiveComponent{
+		Component: comp,
+		MsgID:     "ce-multi-id",
+	}
+
+	// First key press — starts debounce.
+	updated, _ := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	got := updated.(Model)
+
+	// Second key press with different value — should overwrite pending.
+	comp.changeEvent = map[string]any{"value": 0.10}
+	updated2, _ := got.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	got2 := updated2.(Model)
+
+	// Now fire tick.
+	updated3, _ := got2.Update(changeEventTick{})
+	_ = updated3.(Model)
+
+	// Only one change_event message should be sent, with the latest value.
+	msgs := parseCapturedMessages(buf)
+	changeEvents := 0
+	for _, msg := range msgs {
+		if msg.Type == "change_event" {
+			changeEvents++
+			// Verify it has the latest value.
+			var payload map[string]any
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+				if data, ok := payload["data"].(map[string]any); ok {
+					if val, ok := data["value"].(float64); ok && val != 0.10 {
+						t.Fatalf("expected latest value 0.10, got %v", val)
+					}
+				}
+			}
+		}
+	}
+	if changeEvents != 1 {
+		t.Fatalf("expected exactly 1 change_event message, got %d", changeEvents)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COMP-06: SetData routes to active component
+// ---------------------------------------------------------------------------
+
+func TestSetData_RoutesToActiveComponent(t *testing.T) {
+	h, _ := newCapturingHandler()
+	m := newTestModelWithHandler(h)
+
+	comp := &mockComponent{
+		name: "slider",
+		mode: "overlay",
+	}
+	m.activeComponent = &ActiveComponent{
+		Component: comp,
+		MsgID:     "sd-msg-id",
+	}
+
+	// Build a TypeComponentSetData protocol message.
+	setDataPayload := protocol.ComponentSetDataPayload{
+		ID:   "sd-msg-id",
+		Data: json.RawMessage(`{"count": 42}`),
+	}
+	raw, _ := json.Marshal(setDataPayload)
+	msg := protocolMsg{
+		Message: protocol.Message{
+			Type:    protocol.TypeComponentSetData,
+			Payload: raw,
+			ID:      "sd-msg-id",
+		},
+	}
+
+	updated, _ := m.handleProtocol(msg)
+	_ = updated.(Model)
+
+	// Verify SetData was called on the component.
+	if len(comp.setDataCalls) != 1 {
+		t.Fatalf("expected 1 SetData call, got %d", len(comp.setDataCalls))
+	}
+	if string(comp.setDataCalls[0]) != `{"count":42}` {
+		t.Fatalf("unexpected SetData payload: %s", string(comp.setDataCalls[0]))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// COMP-08: Stale MsgID guard on SetData
+// ---------------------------------------------------------------------------
+
+func TestStaleSetData_DiscardedOnMismatch(t *testing.T) {
+	h, _ := newCapturingHandler()
+	m := newTestModelWithHandler(h)
+
+	comp := &mockComponent{
+		name: "slider",
+		mode: "overlay",
+	}
+	m.activeComponent = &ActiveComponent{
+		Component: comp,
+		MsgID:     "current-msg-id",
+	}
+
+	// Send SetData with a DIFFERENT MsgID.
+	setDataPayload := protocol.ComponentSetDataPayload{
+		ID:   "stale-msg-id",
+		Data: json.RawMessage(`{"count": 99}`),
+	}
+	raw, _ := json.Marshal(setDataPayload)
+	msg := protocolMsg{
+		Message: protocol.Message{
+			Type:    protocol.TypeComponentSetData,
+			Payload: raw,
+			ID:      "stale-msg-id",
+		},
+	}
+
+	m.handleProtocol(msg)
+
+	// SetData should NOT have been called.
+	if len(comp.setDataCalls) != 0 {
+		t.Fatalf("expected 0 SetData calls for stale MsgID, got %d", len(comp.setDataCalls))
+	}
+}
+
+func TestSetData_NoActiveComponent(t *testing.T) {
+	h, _ := newCapturingHandler()
+	m := newTestModelWithHandler(h)
+	m.activeComponent = nil // No active component.
+
+	setDataPayload := protocol.ComponentSetDataPayload{
+		ID:   "orphan-msg-id",
+		Data: json.RawMessage(`{"count": 1}`),
+	}
+	raw, _ := json.Marshal(setDataPayload)
+	msg := protocolMsg{
+		Message: protocol.Message{
+			Type:    protocol.TypeComponentSetData,
+			Payload: raw,
+			ID:      "orphan-msg-id",
+		},
+	}
+
+	// Should not panic or error — silently discard.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("SetData with no active component panicked: %v", r)
+			}
+		}()
+		m.handleProtocol(msg)
+	}()
+}
+
 // Suppress unused import warnings.
 var _ = fmt.Sprintf

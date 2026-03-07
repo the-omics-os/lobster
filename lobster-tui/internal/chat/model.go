@@ -98,6 +98,10 @@ var loadingTips = []string{
 // spinnerTick fires periodically to advance the spinner animation frame.
 type spinnerTick struct{}
 
+// changeEventTick fires after the debounce interval to flush a pending
+// ChangeEvent from an active BioComp component.
+type changeEventTick struct{}
+
 // heartbeatCheck fires periodically to verify the backend is still alive.
 type heartbeatCheck struct{}
 
@@ -218,6 +222,11 @@ type Model struct {
 
 	// Active BioComp component (replaces pendingSelect, pendingComponentID).
 	activeComponent *ActiveComponent
+
+	// ChangeEvent debounce state for active BioComp components.
+	pendingChangeEvent   map[string]any
+	changeEventMsgID     string
+	changeDebounceActive bool
 
 	width               int
 	height              int
@@ -358,6 +367,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case protocolErr:
 		// Log but don't crash — keep draining the error channel.
 		return m, waitForProtocolErr(m.handler)
+
+	case changeEventTick:
+		m.changeDebounceActive = false
+		if m.pendingChangeEvent != nil && m.activeComponent != nil {
+			if m.handler != nil {
+				_ = m.handler.SendTyped("change_event", map[string]any{
+					"id":   m.changeEventMsgID,
+					"data": m.pendingChangeEvent,
+				}, m.changeEventMsgID)
+			}
+			m.pendingChangeEvent = nil
+		}
+		return m, nil
 
 	case spinnerTick:
 		if !m.spinnerActive || (m.quietStartup && !m.ready) {
@@ -996,6 +1018,17 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, waitForProtocolMsg(m.handler)
 
+	case protocol.TypeComponentSetData:
+		var p protocol.ComponentSetDataPayload
+		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
+			// COMP-08: Stale guard — only route if MsgID matches.
+			if m.activeComponent != nil && m.activeComponent.MsgID == p.ID {
+				_ = m.activeComponent.Component.SetData(p.Data)
+			}
+			// Silently discard if no active component or MsgID mismatch.
+		}
+		return m, waitForProtocolMsg(m.handler)
+
 	default:
 		// Unknown message types are silently ignored for forward compatibility.
 		return m, waitForProtocolMsg(m.handler)
@@ -1024,8 +1057,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if result != nil {
 			m.sendComponentResponse(m.activeComponent.MsgID, result.Action, result.Data)
 			m.activeComponent = nil
+			m.pendingChangeEvent = nil
+			m.changeDebounceActive = false
 			m.recalculateViewportHeight()
 			return m, nil
+		}
+		// COMP-05: Poll ChangeEvent after HandleMsg when result is nil
+		// (user still interacting). Debounce at 50ms to avoid flooding.
+		if ce := m.activeComponent.Component.ChangeEvent(); ce != nil {
+			m.pendingChangeEvent = ce
+			m.changeEventMsgID = m.activeComponent.MsgID
+			if !m.changeDebounceActive {
+				m.changeDebounceActive = true
+				return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+					return changeEventTick{}
+				})
+			}
 		}
 		return m, nil
 	}
