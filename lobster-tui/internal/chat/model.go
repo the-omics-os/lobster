@@ -613,8 +613,10 @@ func (m Model) viewInline() tea.View {
 		b.WriteByte('\n')
 	}
 
-	// Inline BioComp component (rendered as a block above the composer).
-	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
+	// BioComp component (rendered as a block above the composer).
+	// In inline TUI mode, all components render inline regardless of their
+	// declared mode — there is no overlay layer to composite onto.
+	if m.activeComponent != nil {
 		comp := m.activeComponent.Component
 		inlineView, panicked := safeView(comp, m.width, m.height)
 		if panicked {
@@ -760,21 +762,35 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			return m, waitForProtocolMsg(m.handler)
 		}
 
+		if dp.Summary == "interrupt" {
+			// HITL interrupt: flush streamed text to scrollback so the
+			// supervisor's question is visible while the component renders.
+			// Do NOT clear tool feed or reset streaming state — the tool
+			// is still logically running (paused at interrupt).
+			m.flushStreamBuffer()
+			toPrint := m.collectLastAssistantMessage()
+			m.rebuildViewportWithMode(true)
+			printCmd := m.inlinePrintMessagesCmd(toPrint)
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+		}
+
 		// Flush any remaining streamed text into typed blocks, then append
 		// buffered handoff lines that belong directly beneath the response.
 		m.flushStreamBuffer()
 
-		toAppend := make([]ChatMessage, 0, len(m.pendingHandoffs))
+		// Collect the finalized assistant message for printing. In inline
+		// flow mode, flushStreamBuffer puts text into m.messages in-place
+		// but nothing prints it to scrollback — we must do that explicitly.
+		toPrint := m.collectLastAssistantMessage()
 		if len(m.pendingHandoffs) > 0 {
-			toAppend = append(toAppend, m.pendingHandoffs...)
+			m.messages = append(m.messages, m.pendingHandoffs...)
+			toPrint = append(toPrint, m.pendingHandoffs...)
 			m.pendingHandoffs = m.pendingHandoffs[:0]
 		}
 		m.isStreaming = false
 		m.isCanceling = false
-		printCmd := m.appendMessages(toAppend, true)
-		if len(toAppend) == 0 {
-			m.rebuildViewportWithMode(true)
-		}
+		m.rebuildViewportWithMode(true)
+		printCmd := m.inlinePrintMessagesCmd(toPrint)
 		return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 
 	case protocol.TypeStatus:
@@ -1027,6 +1043,16 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "ctrl+g" {
 		m.mouseCapture = !m.mouseCapture
 		return m, mouseCaptureCmd(m.mouseCapture)
+	}
+
+	// Global keys that must ALWAYS work, even with an active component.
+	if msg.String() == "ctrl+c" && m.activeComponent != nil {
+		m.sendComponentResponse(m.activeComponent.MsgID, "cancel", map[string]any{"reason": "ctrl+c"})
+		m.activeComponent = nil
+		m.pendingChangeEvent = nil
+		m.changeDebounceActive = false
+		m.recalculateViewportHeight()
+		// Fall through to the normal ctrl+c handler below.
 	}
 
 	// Intercept keys for active BioComp overlay component.
@@ -1912,17 +1938,25 @@ func (m Model) layoutReservedRowsLegacy() int {
 	if tf := renderToolFeed(m.toolFeed, m.styles, m.width, m.inline); tf != "" {
 		rows += lineCount(tf)
 	}
-	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
-		inlineView := m.activeComponent.Component.View(m.width, m.height)
-		if inlineView != "" {
-			rows += lineCount(inlineView)
+	if m.activeComponent != nil {
+		if m.inline {
+			// In inline mode, all components render as inline blocks.
+			inlineView := m.activeComponent.Component.View(m.width, m.height)
+			if inlineView != "" {
+				rows += lineCount(inlineView)
+			}
+		} else if m.activeComponent.Component.Mode() == "inline" {
+			inlineView := m.activeComponent.Component.View(m.width, m.height)
+			if inlineView != "" {
+				rows += lineCount(inlineView)
+			}
 		}
 	}
 	if m.progressActive {
 		rows += lineCount(renderProgressBar(m.progressLabel, m.progressCurrent, m.progressTotal, m.width, m.styles))
 	}
 
-	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" && !m.inline {
 		_, oh := biocomp.OverlaySize(m.width, m.height, "small")
 		rows += oh
 	} else if m.pendingConfirm != nil {
@@ -2048,9 +2082,25 @@ func (m *Model) recalculateComposerDimensions() {
 func (m *Model) recalculateComposerHeight() {
 	height := m.composerHeightForValue(m.input.Value())
 	if m.input.Height() == height {
+		// Height unchanged, but check if content fits and scroll is off.
+		if height > 0 && m.input.ScrollYOffset() > 0 {
+			totalVisual := m.composerHeightForValue(m.input.Value())
+			if totalVisual <= height {
+				m.input.MoveToBegin()
+				m.input.MoveToEnd()
+			}
+		}
 		return
 	}
 	m.input.SetHeight(height)
+	// When all content fits in the new height, reset scroll to show
+	// everything from the top. MoveToBegin zeroes the viewport offset;
+	// MoveToEnd restores the cursor to where the user is typing.
+	totalVisual := m.composerHeightForValue(m.input.Value())
+	if totalVisual <= height && m.input.ScrollYOffset() > 0 {
+		m.input.MoveToBegin()
+		m.input.MoveToEnd()
+	}
 }
 
 func (m Model) composerHeightForValue(value string) int {

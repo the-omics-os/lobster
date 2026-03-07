@@ -163,6 +163,29 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
         if tool_name == "unknown_tool":
             self.current_tool = None
             return
+
+        # GraphInterrupt/Interrupt is control flow (HITL interrupt), not an error.
+        # Emit as "complete" so the TUI shows ✓ instead of ✗.
+        # Check full MRO to catch subclasses (GraphInterrupt → GraphBubbleUp).
+        _interrupt_names = {"GraphInterrupt", "Interrupt", "GraphBubbleUp"}
+        error_mro = {cls.__name__ for cls in type(error).__mro__}
+        if _interrupt_names & error_mro:
+            self._emit(
+                "tool_execution",
+                {
+                    "tool": tool_name,
+                    "agent": (
+                        str(run_state.get("agent"))
+                        if run_state is not None
+                        else self.current_agent or "unknown"
+                    ),
+                    "status": "complete",
+                    "summary": "awaiting user input",
+                    "tool_call_id": run_key,
+                },
+            )
+            return
+
         self._emit(
             "tool_execution",
             {

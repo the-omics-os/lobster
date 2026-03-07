@@ -42,7 +42,11 @@ func (c *ThresholdSliderComponent) Init(data json.RawMessage) error {
 		return fmt.Errorf("threshold_slider: min (%g) must be less than max (%g)", d.Min, d.Max)
 	}
 	if d.Step <= 0 {
-		return fmt.Errorf("threshold_slider: step must be positive, got %g", d.Step)
+		// Python mapper often omits step. Auto-derive a sensible default.
+		d.Step = (d.Max - d.Min) / 100
+		if d.Step <= 0 {
+			d.Step = 0.01
+		}
 	}
 	c.data = d
 	c.value = clamp(d.Default, d.Min, d.Max)

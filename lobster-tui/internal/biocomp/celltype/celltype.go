@@ -125,8 +125,15 @@ func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyPressMsg) *biocomp.
 		c.exitEditMode()
 		return c.submitAll()
 	case "enter":
-		// Accept current input and exit edit mode.
+		// Accept current input. On the last cluster, auto-submit.
+		// On non-last clusters, move to the next one (like tab).
 		c.exitEditMode()
+		if c.cursor >= len(c.clusters)-1 {
+			return c.submitAll()
+		}
+		c.cursor++
+		c.adjustOffset()
+		c.enterEditMode()
 		return nil
 	default:
 		// Forward to the active textinput.

@@ -60,10 +60,17 @@ def map_question(
     # Explicit options list -> select component.
     options = ctx.get("options")
     if isinstance(options, list) and len(options) > 0:
+        # Normalize dicts to strings — Go TUI select expects []string.
+        str_options = [
+            opt.get("label", opt.get("name", str(opt)))
+            if isinstance(opt, dict)
+            else str(opt)
+            for opt in options
+        ]
         return ComponentSelection(
             component="select",
-            data={"question": question, "options": options},
-            fallback_prompt=_build_select_fallback(question, options),
+            data={"question": question, "options": str_options},
+            fallback_prompt=_build_select_fallback(question, str_options),
         )
 
     # Cluster data -> cell_type_selector.

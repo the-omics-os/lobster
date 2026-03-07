@@ -79,19 +79,19 @@ func TestThresholdInitInvalid(t *testing.T) {
 		t.Error("expected error for min == max")
 	}
 
-	// Step <= 0
+	// Step <= 0 should auto-derive (not error) — Python mapper omits step.
 	data, _ = json.Marshal(map[string]any{
 		"label": "test", "min": 0.0, "max": 1.0, "step": 0.0, "default": 0.5,
 	})
-	if err := c.Init(data); err == nil {
-		t.Error("expected error for step <= 0")
+	if err := c.Init(data); err != nil {
+		t.Errorf("step=0 should auto-derive, got error: %v", err)
 	}
 
 	data, _ = json.Marshal(map[string]any{
 		"label": "test", "min": 0.0, "max": 1.0, "step": -0.1, "default": 0.5,
 	})
-	if err := c.Init(data); err == nil {
-		t.Error("expected error for negative step")
+	if err := c.Init(data); err != nil {
+		t.Errorf("step<0 should auto-derive, got error: %v", err)
 	}
 }
 

@@ -127,3 +127,16 @@ func (m *Model) flushStreamBuffer() {
 	m.streamBuf.Reset()
 	m.appendBlock(BlockText{Text: text})
 }
+
+// collectLastAssistantMessage returns a single-element slice containing the
+// last assistant message, or nil if none exists. Used by the TypeDone handler
+// to feed inlinePrintMessagesCmd after flushStreamBuffer has put text into
+// m.messages in-place (which otherwise never gets tea.Println'd).
+func (m *Model) collectLastAssistantMessage() []ChatMessage {
+	for i := len(m.messages) - 1; i >= 0; i-- {
+		if m.messages[i].Role == "assistant" {
+			return []ChatMessage{m.messages[i]}
+		}
+	}
+	return nil
+}

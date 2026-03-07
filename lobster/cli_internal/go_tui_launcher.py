@@ -844,6 +844,11 @@ def _handle_user_query(
                 return
 
             # --- HITL interrupt: render component and await user response ---
+            # Flush any streamed text to scrollback BEFORE rendering the
+            # component so the supervisor's question is visible while the
+            # user interacts with the HITL widget.
+            bridge.send("done", {"summary": "interrupt"})
+
             response = _handle_interrupt(bridge, interrupt_event)
             if response is None:
                 # Interrupt was cancelled or timed out.
@@ -904,8 +909,14 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
                     "selected": payload.get("value", ""),
                     "index": payload.get("index", 0),
                 }
-            # component_response → pass through data
-            return payload.get("data", payload)
+            # component_response → check action before accepting.
+            data = payload.get("data", payload)
+            action = data.get("action", "submit") if isinstance(data, dict) else "submit"
+            if action in ("cancel", "error"):
+                # Component was cancelled or failed to render — don't resume
+                # the graph with garbage data.
+                return None
+            return data
 
         if resp_type == "quit":
             return None
