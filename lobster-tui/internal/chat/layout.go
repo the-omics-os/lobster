@@ -92,10 +92,12 @@ func (m Model) computeLayout() Layout {
 		return Layout{}
 	}
 
-	// Header: visible when shouldRenderHeaderInFrame().
+	// Header: always 1 line in non-inline mode + 1 newline separator.
+	// renderHeader() constrains to Width(m.width).MaxWidth(m.width) so it
+	// never wraps. We use a constant instead of render-to-measure.
 	header := 0
 	if m.shouldRenderHeaderInFrame() {
-		header = lineCount(renderHeader(m)) + 1 // +1 for newline separator
+		header = 2 // 1 header line + 1 separator newline
 	}
 
 	// Input: composer + newline, or confirm prompt, or 0 for overlay component.

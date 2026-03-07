@@ -269,7 +269,7 @@ type ActiveComponent struct {
 
 // NewModel creates a new chat Model wired to the given handler and styles.
 func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int, inline bool, mouseCapture bool, versionFallback string) Model {
-	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(1))
+	vp := viewport.New(viewport.WithWidth(width-1), viewport.WithHeight(1)) // -1 reserves scrollbar column
 	vp.SetContent("")
 
 	ti := textarea.New()
@@ -513,7 +513,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.viewport.SetWidth(m.width)
+		m.viewport.SetWidth(m.width - 1) // -1 reserves scrollbar column
 		m.recalculateViewportHeight()
 
 		// Invalidate glamour renderer on width change (recreated lazily).

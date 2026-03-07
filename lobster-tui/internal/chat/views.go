@@ -912,18 +912,21 @@ func (m Model) renderHeaderRegion(layout Layout) string {
 		Height(layout.HeaderHeight).
 		MaxHeight(layout.HeaderHeight).
 		Width(m.width).
+		MaxWidth(m.width).
 		Render(header)
 }
 
 // renderViewportRegion renders the scrollable message viewport constrained
-// to exactly layout.ViewportHeight rows. Width is NOT constrained here because
-// renderViewportWithScrollbar appends a scrollbar column beyond the viewport width.
+// to exactly layout.ViewportHeight rows and m.width columns. The viewport is
+// set to m.width-1 so the scrollbar column fits within the total m.width.
 func (m Model) renderViewportRegion(layout Layout) string {
 	vpView := m.viewport.View()
 	vpView = renderViewportWithScrollbar(vpView, m.viewport, m.styles)
 	return lipgloss.NewStyle().
 		Height(layout.ViewportHeight).
 		MaxHeight(layout.ViewportHeight).
+		Width(m.width).
+		MaxWidth(m.width).
 		Render(vpView)
 }
 
@@ -976,6 +979,7 @@ func (m Model) renderInputRegion(layout Layout) string {
 		Height(layout.InputHeight).
 		MaxHeight(layout.InputHeight).
 		Width(m.width).
+		MaxWidth(m.width).
 		Render(b.String())
 }
 
@@ -997,22 +1001,28 @@ func (m Model) renderFooterRegion(layout Layout) string {
 }
 
 // renderStatusFooter renders the status line using FooterStatus style.
-// The output is height-constrained to layout.FooterHeight.
+// The output is height- and width-constrained to prevent terminal wrapping.
 func (m Model) renderStatusFooter(layout Layout) string {
 	statusText := m.currentStatusLine()
-	// Use FooterStatus style if available, otherwise fall back to StatusBar.
-	styled := m.styles.FooterStatus.Width(m.width).Render(statusText)
+	// Truncate to width to prevent wrapping (status is always 1 visual line).
+	styled := m.styles.FooterStatus.
+		Width(m.width).
+		MaxWidth(m.width).
+		Render(statusText)
 	return lipgloss.NewStyle().
 		Height(layout.FooterHeight).
 		MaxHeight(layout.FooterHeight).
+		Width(m.width).
+		MaxWidth(m.width).
 		Render(styled)
 }
 
 // renderToolFeedFooter renders the tool feed entries + status line together
-// in the footer region with FooterToolFeed styling.
+// in the footer region with FooterToolFeed styling. Width is constrained once
+// at the outer level to avoid double-wrapping.
 func (m Model) renderToolFeedFooter(layout Layout) string {
 	feed := renderToolFeed(m.toolFeed, m.styles, m.width, false)
-	status := m.styles.FooterStatus.Width(m.width).Render(m.currentStatusLine())
+	status := m.styles.FooterStatus.Render(m.currentStatusLine())
 	var content string
 	if feed == "" {
 		content = status
@@ -1021,6 +1031,7 @@ func (m Model) renderToolFeedFooter(layout Layout) string {
 	}
 	return m.styles.FooterToolFeed.
 		Width(m.width).
+		MaxWidth(m.width).
 		Height(layout.FooterHeight).
 		MaxHeight(layout.FooterHeight).
 		Render(content)
@@ -1054,6 +1065,7 @@ func (m Model) renderComponentFooter(layout Layout) string {
 
 	return m.styles.FooterComponentFrame.
 		Width(m.width).
+		MaxWidth(m.width).
 		Height(layout.FooterHeight).
 		MaxHeight(layout.FooterHeight).
 		Render(frame)

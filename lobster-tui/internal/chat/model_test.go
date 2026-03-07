@@ -1134,7 +1134,7 @@ func testProtocolMsg(t *testing.T, msgType string, payload any) protocolMsg {
 }
 
 func newTestModel() Model {
-	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(8))
+	vp := viewport.New(viewport.WithWidth(79), viewport.WithHeight(8)) // width-1 reserves scrollbar column
 	vp.SetContent("")
 	styles := theme.BuildCleanStyles(theme.LobsterDark.Colors)
 

@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -258,5 +259,83 @@ func TestComponentFooterClamp(t *testing.T) {
 	sum := layout.HeaderHeight + layout.ViewportHeight + layout.InputHeight + layout.FooterHeight
 	if sum != 15 {
 		t.Errorf("heights sum = %d, want 15", sum)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Regression tests: width invariants (prevent JoinVertical overflow)
+// ---------------------------------------------------------------------------
+
+func TestRegionWidthInvariant(t *testing.T) {
+	// Every rendered region must be <= m.width to prevent JoinVertical from
+	// expanding the frame beyond the terminal, causing auto-wrap and ghosting.
+	for _, width := range []int{30, 40, 60, 80, 120} {
+		m := testModel(30, width)
+		layout := m.computeLayout()
+
+		header := m.renderHeaderRegion(layout)
+		viewport := m.renderViewportRegion(layout)
+		input := m.renderInputRegion(layout)
+		footer := m.renderFooterRegion(layout)
+
+		for name, region := range map[string]string{
+			"header":   header,
+			"viewport": viewport,
+			"input":    input,
+			"footer":   footer,
+		} {
+			if region == "" {
+				continue
+			}
+			w := lipgloss.Width(region)
+			if w > width {
+				t.Errorf("width=%d: %s region width=%d exceeds terminal width", width, name, w)
+			}
+		}
+	}
+}
+
+func TestRegionWidthWithToolFeed(t *testing.T) {
+	// Tool feed footer must also respect width.
+	for _, width := range []int{30, 50, 80} {
+		m := testModel(30, width)
+		m.toolFeed = []ToolFeedEntry{
+			{Name: "search_pubmed", Event: "start", Summary: "searching PubMed for CRISPR gene editing papers"},
+			{Name: "load_dataset", Event: "finish", Summary: "loaded 500 genes from GEO dataset GSE12345"},
+		}
+		layout := m.computeLayout()
+		footer := m.renderFooterRegion(layout)
+		w := lipgloss.Width(footer)
+		if w > width {
+			t.Errorf("width=%d: tool feed footer width=%d exceeds terminal width", width, w)
+		}
+	}
+}
+
+func TestHeightSumAcrossNarrowWidths(t *testing.T) {
+	// Heights must sum to m.height at all widths, including narrow ones
+	// where content might try to wrap.
+	for _, width := range []int{20, 30, 40, 60, 80, 120} {
+		for _, height := range []int{10, 20, 30, 50} {
+			m := testModel(height, width)
+			layout := m.computeLayout()
+			sum := layout.HeaderHeight + layout.ViewportHeight + layout.InputHeight + layout.FooterHeight
+			if sum != height {
+				t.Errorf("width=%d height=%d: sum=%d (header=%d vp=%d input=%d footer=%d)",
+					width, height, sum, layout.HeaderHeight, layout.ViewportHeight, layout.InputHeight, layout.FooterHeight)
+			}
+		}
+	}
+}
+
+func TestGeometryFirstHeader(t *testing.T) {
+	// Header height should be constant (2) regardless of width,
+	// not dependent on rendering.
+	for _, width := range []int{20, 40, 80, 120} {
+		m := testModel(30, width)
+		layout := m.computeLayout()
+		if layout.HeaderHeight != 2 {
+			t.Errorf("width=%d: HeaderHeight=%d, want 2 (geometry-first)", width, layout.HeaderHeight)
+		}
 	}
 }
