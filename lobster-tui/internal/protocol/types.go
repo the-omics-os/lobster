@@ -108,6 +108,10 @@ const (
 	// component (confirm, select, text input, etc.) based on an agent
 	// interrupt. The Message.ID is used to correlate the response.
 	TypeComponentRender = "component_render"
+
+	// TypeComponentSetData pushes updated data to an active BioComp component.
+	// Used for streaming updates (e.g. threshold slider count refresh).
+	TypeComponentSetData = "component_set_data"
 )
 
 // ---- Go → Python message type constants -----------------------------------
@@ -328,6 +332,16 @@ type ComponentRenderPayload struct {
 	// FallbackPrompt is a plain-text prompt for environments that
 	// cannot render the requested component.
 	FallbackPrompt string `json:"fallback_prompt,omitempty"`
+}
+
+// ComponentSetDataPayload pushes updated data to an active BioComp component.
+// The ID must match the active component's MsgID; mismatches are silently
+// discarded (stale guard).
+type ComponentSetDataPayload struct {
+	// ID matches the Message.ID of the originating ComponentRenderPayload.
+	ID string `json:"id"`
+	// Data carries the component-specific update payload.
+	Data json.RawMessage `json:"data"`
 }
 
 // ---- Go → Python payloads -------------------------------------------------

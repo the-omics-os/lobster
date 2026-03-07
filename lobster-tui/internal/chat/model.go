@@ -31,9 +31,11 @@ import (
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/celltype"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/confirm"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/qcdash"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/textinput"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/threshold"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -95,6 +97,10 @@ var loadingTips = []string{
 
 // spinnerTick fires periodically to advance the spinner animation frame.
 type spinnerTick struct{}
+
+// changeEventTick fires after the debounce interval to flush a pending
+// ChangeEvent from an active BioComp component.
+type changeEventTick struct{}
 
 // heartbeatCheck fires periodically to verify the backend is still alive.
 type heartbeatCheck struct{}
@@ -217,6 +223,11 @@ type Model struct {
 
 	// Active BioComp component (replaces pendingSelect, pendingComponentID).
 	activeComponent *ActiveComponent
+
+	// ChangeEvent debounce state for active BioComp components.
+	pendingChangeEvent   map[string]any
+	changeEventMsgID     string
+	changeDebounceActive bool
 
 	width               int
 	height              int
@@ -357,6 +368,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case protocolErr:
 		// Log but don't crash — keep draining the error channel.
 		return m, waitForProtocolErr(m.handler)
+
+	case changeEventTick:
+		m.changeDebounceActive = false
+		if m.pendingChangeEvent != nil && m.activeComponent != nil {
+			if m.handler != nil {
+				_ = m.handler.SendTyped("change_event", map[string]any{
+					"id":   m.changeEventMsgID,
+					"data": m.pendingChangeEvent,
+				}, m.changeEventMsgID)
+			}
+			m.pendingChangeEvent = nil
+		}
+		return m, nil
 
 	case spinnerTick:
 		if !m.spinnerActive || (m.quietStartup && !m.ready) {
@@ -584,8 +608,11 @@ func (m Model) View() string {
 	// Inline BioComp component (rendered as a block above the composer, non-interactive).
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
 		comp := m.activeComponent.Component
-		inlineView := comp.View(m.width, m.height)
-		if inlineView != "" {
+		inlineView, panicked := safeView(comp, m.width, m.height)
+		if panicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
+			m.activeComponent = nil
+		} else if inlineView != "" {
 			b.WriteString(inlineView)
 			b.WriteByte('\n')
 		}
@@ -598,6 +625,7 @@ func (m Model) View() string {
 	}
 
 	// Input field (1 line) — replaced by overlay component or local confirm when active.
+	overlayRendered := false
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
 		comp := m.activeComponent.Component
 		overlayW, overlayH := biocomp.OverlaySize(m.width, m.height, "small")
@@ -616,11 +644,20 @@ func (m Model) View() string {
 			contentH = 1
 		}
 		helpBar := biocomp.RenderHelpBar(comp.KeyBindings(), contentW)
-		content := comp.View(contentW, contentH)
-		frame := biocomp.RenderFrame(comp.Name(), content, helpBar, overlayW, overlayH)
-		centered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, frame)
-		b.WriteString(centered)
-		b.WriteByte('\n')
+		content, viewPanicked := safeView(comp, contentW, contentH)
+		if viewPanicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
+			m.activeComponent = nil
+		} else {
+			frame := biocomp.RenderFrame(comp.Name(), content, helpBar, overlayW, overlayH)
+			centered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, frame)
+			b.WriteString(centered)
+			b.WriteByte('\n')
+			overlayRendered = true
+		}
+	}
+	if overlayRendered {
+		// Overlay was rendered; skip composer/confirm.
 	} else if m.pendingConfirm != nil {
 		// Local exit confirm only (not protocol components).
 		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
@@ -974,6 +1011,17 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, waitForProtocolMsg(m.handler)
 
+	case protocol.TypeComponentSetData:
+		var p protocol.ComponentSetDataPayload
+		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
+			// COMP-08: Stale guard — only route if MsgID matches.
+			if m.activeComponent != nil && m.activeComponent.MsgID == p.ID {
+				_ = m.activeComponent.Component.SetData(p.Data)
+			}
+			// Silently discard if no active component or MsgID mismatch.
+		}
+		return m, waitForProtocolMsg(m.handler)
+
 	default:
 		// Unknown message types are silently ignored for forward compatibility.
 		return m, waitForProtocolMsg(m.handler)
@@ -992,12 +1040,32 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Intercept keys for active BioComp overlay component.
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
-		result := m.activeComponent.Component.HandleMsg(msg)
-		if result != nil {
-			m.sendComponentResponse(m.activeComponent.MsgID, result.Action, result.Data)
+		result, panicked := safeHandleMsg(m.activeComponent.Component, msg)
+		if panicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "handleMsg_panic"})
 			m.activeComponent = nil
 			m.recalculateViewportHeight()
 			return m, nil
+		}
+		if result != nil {
+			m.sendComponentResponse(m.activeComponent.MsgID, result.Action, result.Data)
+			m.activeComponent = nil
+			m.pendingChangeEvent = nil
+			m.changeDebounceActive = false
+			m.recalculateViewportHeight()
+			return m, nil
+		}
+		// COMP-05: Poll ChangeEvent after HandleMsg when result is nil
+		// (user still interacting). Debounce at 50ms to avoid flooding.
+		if ce := m.activeComponent.Component.ChangeEvent(); ce != nil {
+			m.pendingChangeEvent = ce
+			m.changeEventMsgID = m.activeComponent.MsgID
+			if !m.changeDebounceActive {
+				m.changeDebounceActive = true
+				return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+					return changeEventTick{}
+				})
+			}
 		}
 		return m, nil
 	}
@@ -2314,14 +2382,42 @@ func protocolTableDivider(widths []int) string {
 }
 
 // sendComponentResponse sends a component_response protocol message to Python.
+// The action parameter is always included in the Data map so Python can
+// distinguish submit, cancel, and error responses.
 func (m *Model) sendComponentResponse(msgID, action string, data map[string]any) {
 	if m.handler == nil {
 		return
 	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["action"] = action
 	_ = m.handler.SendTyped(protocol.TypeComponentResponse, protocol.ComponentResponsePayload{
 		ID:   msgID,
 		Data: data,
 	}, msgID)
+}
+
+// safeHandleMsg wraps comp.HandleMsg in a recover boundary so a panicking
+// component does not crash the entire TUI.
+func safeHandleMsg(comp biocomp.BioComponent, msg tea.Msg) (result *biocomp.ComponentResult, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+		}
+	}()
+	return comp.HandleMsg(msg), false
+}
+
+// safeView wraps comp.View in a recover boundary. Returns empty string on panic.
+func safeView(comp biocomp.BioComponent, w, h int) (content string, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			content = ""
+		}
+	}()
+	return comp.View(w, h), false
 }
 
 // handleConfirmKey handles key presses for the local exit confirm dialog.
