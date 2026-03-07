@@ -14,26 +14,17 @@ package initwizard
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"image/color"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	lobsterTheme "github.com/the-omics-os/lobster-tui/internal/theme"
 )
-
-// toV1Color converts a color.Color (from the v2 theme) to a v1 lipgloss.Color
-// for use with huh, which depends on lipgloss v1. This bridge is temporary
-// until huh is removed in Plan 03.
-func toV1Color(c color.Color) lipgloss.Color {
-	r, g, b, _ := c.RGBA()
-	return lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8))
-}
 
 // ---------------------------------------------------------------------------
 // Output schema
@@ -168,65 +159,930 @@ var smartStandardizationAgentLabels = map[string]string{
 }
 
 // ---------------------------------------------------------------------------
-// huh theme builder
+// Wizard steps
 // ---------------------------------------------------------------------------
 
-// buildHuhTheme derives a huh.Theme from the active Lobster lipgloss theme.
-func buildHuhTheme(t *lobsterTheme.Theme) *huh.Theme {
-	ht := huh.ThemeBase()
+type wizardStep int
 
-	// Bridge v2 color.Color to v1 lipgloss.Color for huh compatibility.
-	primary := toV1Color(t.Colors.Primary)
-	accent := toV1Color(t.Colors.Accent2)
-	muted := toV1Color(t.Colors.TextMuted)
-	text := toV1Color(t.Colors.Text)
-	success := toV1Color(t.Colors.Success)
-	errColor := toV1Color(t.Colors.Error)
-	surface := toV1Color(t.Colors.Surface)
+const (
+	stepAgentPackages wizardStep = iota
+	stepProvider
+	stepAPIKey
+	stepProfile
+	stepOptionalKeys
+	stepDone
+)
 
-	// Focused state
-	ht.Focused.Base = ht.Focused.Base.BorderForeground(primary)
-	ht.Focused.Title = lipgloss.NewStyle().Foreground(primary).Bold(true)
-	ht.Focused.Description = lipgloss.NewStyle().Foreground(muted)
-	ht.Focused.ErrorIndicator = lipgloss.NewStyle().Foreground(errColor).SetString(" *")
-	ht.Focused.ErrorMessage = lipgloss.NewStyle().Foreground(errColor)
-	ht.Focused.SelectSelector = lipgloss.NewStyle().Foreground(accent).SetString("> ")
-	ht.Focused.NextIndicator = lipgloss.NewStyle().Foreground(accent).MarginLeft(1).SetString("->")
-	ht.Focused.PrevIndicator = lipgloss.NewStyle().Foreground(accent).MarginRight(1).SetString("<-")
-	ht.Focused.Option = lipgloss.NewStyle().Foreground(text)
-	ht.Focused.MultiSelectSelector = lipgloss.NewStyle().Foreground(accent).SetString("> ")
-	ht.Focused.SelectedOption = lipgloss.NewStyle().Foreground(success)
-	ht.Focused.SelectedPrefix = lipgloss.NewStyle().Foreground(success).SetString("[x] ")
-	ht.Focused.UnselectedPrefix = lipgloss.NewStyle().Foreground(muted).SetString("[ ] ")
-	ht.Focused.UnselectedOption = lipgloss.NewStyle().Foreground(text)
-	ht.Focused.FocusedButton = lipgloss.NewStyle().
-		Foreground(toV1Color(t.Colors.Background)).
-		Background(primary).
-		Bold(true).
-		Padding(0, 2).
-		MarginRight(1)
-	ht.Focused.BlurredButton = lipgloss.NewStyle().
-		Foreground(muted).
-		Background(surface).
-		Padding(0, 2).
-		MarginRight(1)
-	ht.Focused.TextInput.Cursor = lipgloss.NewStyle().Foreground(primary)
-	ht.Focused.TextInput.Placeholder = lipgloss.NewStyle().Foreground(muted)
-	ht.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(accent)
-	ht.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(text)
+// optionalKeySubStep tracks sub-phases within stepOptionalKeys.
+type optionalKeySubStep int
 
-	// Blurred state mirrors focused but with dimmer border
-	ht.Blurred = ht.Focused
-	ht.Blurred.Base = ht.Focused.Base.BorderStyle(lipgloss.HiddenBorder())
-	ht.Blurred.Card = ht.Blurred.Base
-	ht.Blurred.NextIndicator = lipgloss.NewStyle()
-	ht.Blurred.PrevIndicator = lipgloss.NewStyle()
+const (
+	subStepNCBIConfirm optionalKeySubStep = iota
+	subStepNCBIKey
+	subStepCloudConfirm
+	subStepCloudKey
+	subStepSmartStdConfirm
+	subStepSmartStdKey
+	subStepOptionalDone
+)
 
-	// Group title/description
-	ht.Group.Title = lipgloss.NewStyle().Foreground(primary).Bold(true).MarginBottom(1)
-	ht.Group.Description = lipgloss.NewStyle().Foreground(muted)
+// ---------------------------------------------------------------------------
+// Sub-models: multiSelect
+// ---------------------------------------------------------------------------
 
-	return ht
+type multiSelectItem struct {
+	label    string
+	value    string
+	selected bool
+}
+
+type multiSelectModel struct {
+	title       string
+	description string
+	items       []multiSelectItem
+	cursor      int
+}
+
+func (m multiSelectModel) Update(msg tea.Msg) (multiSelectModel, bool, bool) {
+	km, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, false, false
+	}
+	switch km.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.items)-1 {
+			m.cursor++
+		}
+	case "space":
+		m.items[m.cursor].selected = !m.items[m.cursor].selected
+	case "enter":
+		// Validate at least one selected.
+		count := 0
+		for _, item := range m.items {
+			if item.selected {
+				count++
+			}
+		}
+		if count > 0 {
+			return m, true, false // done
+		}
+	case "esc":
+		return m, false, true // cancelled
+	}
+	return m, false, false
+}
+
+func (m multiSelectModel) View(th *lobsterTheme.Theme) string {
+	titleStyle := lipgloss.NewStyle().Foreground(th.Colors.Primary).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
+	cursorStyle := lipgloss.NewStyle().Foreground(th.Colors.Accent2)
+	selectedStyle := lipgloss.NewStyle().Foreground(th.Colors.Success)
+	unselectedStyle := lipgloss.NewStyle().Foreground(th.Colors.Text)
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render(m.title) + "\n")
+	if m.description != "" {
+		sb.WriteString(descStyle.Render(m.description) + "\n")
+	}
+	sb.WriteString("\n")
+
+	for i, item := range m.items {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = cursorStyle.Render("> ")
+		}
+
+		checkbox := "[ ] "
+		style := unselectedStyle
+		if item.selected {
+			checkbox = selectedStyle.Render("[x] ")
+			style = selectedStyle
+		}
+
+		sb.WriteString(cursor + checkbox + style.Render(item.label) + "\n")
+	}
+
+	sb.WriteString("\n" + descStyle.Render("space: toggle  enter: confirm  esc: cancel"))
+	return sb.String()
+}
+
+func (m multiSelectModel) Selected() []string {
+	var result []string
+	for _, item := range m.items {
+		if item.selected {
+			result = append(result, item.value)
+		}
+	}
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Sub-models: singleSelect
+// ---------------------------------------------------------------------------
+
+type singleSelectItem struct {
+	label string
+	value string
+}
+
+type singleSelectModel struct {
+	title       string
+	description string
+	items       []singleSelectItem
+	cursor      int
+}
+
+func (m singleSelectModel) Update(msg tea.Msg) (singleSelectModel, string, bool, bool) {
+	km, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, "", false, false
+	}
+	switch km.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.items)-1 {
+			m.cursor++
+		}
+	case "enter":
+		return m, m.items[m.cursor].value, true, false
+	case "esc":
+		return m, "", false, true
+	}
+	return m, "", false, false
+}
+
+func (m singleSelectModel) View(th *lobsterTheme.Theme) string {
+	titleStyle := lipgloss.NewStyle().Foreground(th.Colors.Primary).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
+	cursorStyle := lipgloss.NewStyle().Foreground(th.Colors.Accent2)
+	itemStyle := lipgloss.NewStyle().Foreground(th.Colors.Text)
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render(m.title) + "\n")
+	if m.description != "" {
+		sb.WriteString(descStyle.Render(m.description) + "\n")
+	}
+	sb.WriteString("\n")
+
+	for i, item := range m.items {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = cursorStyle.Render("> ")
+		}
+		sb.WriteString(cursor + itemStyle.Render(item.label) + "\n")
+	}
+
+	sb.WriteString("\n" + descStyle.Render("enter: select  esc: back"))
+	return sb.String()
+}
+
+// ---------------------------------------------------------------------------
+// Sub-models: confirmModel
+// ---------------------------------------------------------------------------
+
+type confirmModel struct {
+	title       string
+	description string
+	value       bool
+}
+
+func (m confirmModel) Update(msg tea.Msg) (confirmModel, bool, bool) {
+	km, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return m, false, false
+	}
+	switch km.String() {
+	case "y", "Y":
+		m.value = true
+		return m, true, false
+	case "n", "N":
+		m.value = false
+		return m, true, false
+	case "enter":
+		return m, true, false
+	case "left", "h":
+		m.value = true
+	case "right", "l":
+		m.value = false
+	case "esc":
+		return m, false, true
+	}
+	return m, false, false
+}
+
+func (m confirmModel) View(th *lobsterTheme.Theme) string {
+	titleStyle := lipgloss.NewStyle().Foreground(th.Colors.Primary).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
+	activeStyle := lipgloss.NewStyle().Foreground(th.Colors.Success).Bold(true)
+	inactiveStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render(m.title) + "\n")
+	if m.description != "" {
+		sb.WriteString(descStyle.Render(m.description) + "\n")
+	}
+	sb.WriteString("\n")
+
+	yes := inactiveStyle.Render("Yes")
+	no := inactiveStyle.Render("No")
+	if m.value {
+		yes = activeStyle.Render("> Yes")
+		no = inactiveStyle.Render("  No")
+	} else {
+		yes = inactiveStyle.Render("  Yes")
+		no = activeStyle.Render("> No")
+	}
+	sb.WriteString(yes + "  " + no + "\n")
+	sb.WriteString("\n" + descStyle.Render("y/n: choose  enter: confirm  esc: back"))
+	return sb.String()
+}
+
+// ---------------------------------------------------------------------------
+// WizardModel — main BubbleTea model
+// ---------------------------------------------------------------------------
+
+// WizardModel is a BubbleTea model that implements the 5-step init wizard.
+type WizardModel struct {
+	step    wizardStep
+	theme   *lobsterTheme.Theme
+	result  WizardResult
+	done    bool
+	err     error
+	resultPath string
+
+	// Step 1: Agent packages
+	agentSelect multiSelectModel
+
+	// Step 2: Provider
+	providerSelect singleSelectModel
+
+	// Step 3: API key(s)
+	apiKeyInputs    []textinput.Model
+	apiKeyLabels    []string
+	apiKeyFocusIdx  int
+	// Ollama model selection
+	ollamaSelect    singleSelectModel
+	ollamaCustom    textinput.Model
+	ollamaIsCustom  bool
+
+	// Step 4: Profile
+	profileSelect singleSelectModel
+
+	// Step 5: Optional keys
+	optionalSub    optionalKeySubStep
+	ncbiConfirm    confirmModel
+	ncbiInput      textinput.Model
+	cloudConfirm   confirmModel
+	cloudInput     textinput.Model
+	smartStdConfirm confirmModel
+	smartStdInput   textinput.Model
+}
+
+// NewWizardModel creates a WizardModel with the given theme and result path.
+func NewWizardModel(themeName string, resultPath string) WizardModel {
+	if themeName != "" {
+		if err := lobsterTheme.SetTheme(themeName); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		}
+	}
+	activeTheme := lobsterTheme.Current
+	if activeTheme == nil {
+		activeTheme = lobsterTheme.LobsterDark
+	}
+
+	m := WizardModel{
+		step:       stepAgentPackages,
+		theme:      activeTheme,
+		resultPath: resultPath,
+	}
+
+	// Build agent multi-select items.
+	warningStyle := lipgloss.NewStyle().Foreground(activeTheme.Colors.Warning).Bold(true)
+	items := make([]multiSelectItem, 0, len(initAgentPackages))
+	for _, pkg := range initAgentPackages {
+		agentCount := len(pkg.Agents)
+		agentLabel := "agents"
+		if agentCount == 1 {
+			agentLabel = "agent"
+		}
+		label := fmt.Sprintf("%-24s %s (%d %s)", pkg.Name, pkg.Description, agentCount, agentLabel)
+		if pkg.Experimental {
+			label = label + warningStyle.Render(" [experimental]")
+		}
+		items = append(items, multiSelectItem{
+			label:    label,
+			value:    pkg.Name,
+			selected: pkg.Default,
+		})
+	}
+	m.agentSelect = multiSelectModel{
+		title:       "Agent Packages",
+		description: "Select the agent packages to install. Use space to toggle.",
+		items:       items,
+	}
+
+	// Build provider single-select.
+	m.providerSelect = singleSelectModel{
+		title:       "LLM Provider",
+		description: "Select the provider for Lobster AI.",
+		items: []singleSelectItem{
+			{label: "Anthropic (Claude)  -- Quick testing, development", value: providerAnthropic},
+			{label: "AWS Bedrock         -- Production, enterprise use", value: providerBedrock},
+			{label: "Ollama (Local)      -- Privacy, zero cost, offline", value: providerOllama},
+			{label: "Google Gemini       -- Latest models with thinking", value: providerGemini},
+			{label: "Azure AI            -- Enterprise Azure deployments", value: providerAzure},
+			{label: "OpenAI              -- GPT-4o, reasoning models", value: providerOpenAI},
+			{label: "OpenRouter          -- 600+ models via one API key", value: providerOpenRouter},
+		},
+	}
+
+	return m
+}
+
+func (m WizardModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.step {
+	case stepAgentPackages:
+		return m.updateAgentPackages(msg)
+	case stepProvider:
+		return m.updateProvider(msg)
+	case stepAPIKey:
+		return m.updateAPIKey(msg)
+	case stepProfile:
+		return m.updateProfile(msg)
+	case stepOptionalKeys:
+		return m.updateOptionalKeys(msg)
+	case stepDone:
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m WizardModel) View() tea.View {
+	var content string
+	switch m.step {
+	case stepAgentPackages:
+		content = m.agentSelect.View(m.theme)
+	case stepProvider:
+		content = m.providerSelect.View(m.theme)
+	case stepAPIKey:
+		content = m.viewAPIKey()
+	case stepProfile:
+		content = m.profileSelect.View(m.theme)
+	case stepOptionalKeys:
+		content = m.viewOptionalKeys()
+	case stepDone:
+		content = ""
+	}
+	return tea.NewView(content)
+}
+
+// ---------------------------------------------------------------------------
+// Step 1: Agent packages
+// ---------------------------------------------------------------------------
+
+func (m WizardModel) updateAgentPackages(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var done, cancelled bool
+	m.agentSelect, done, cancelled = m.agentSelect.Update(msg)
+	if cancelled {
+		return m.cancel()
+	}
+	if done {
+		m.result.Agents = nil // populated at output time
+		m.step = stepProvider
+	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Provider
+// ---------------------------------------------------------------------------
+
+func (m WizardModel) updateProvider(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var value string
+	var done, cancelled bool
+	m.providerSelect, value, done, cancelled = m.providerSelect.Update(msg)
+	if cancelled {
+		m.step = stepAgentPackages
+		return m, nil
+	}
+	if done {
+		m.result.Provider = value
+		m.initAPIKeyStep()
+		m.step = stepAPIKey
+		return m, textinput.Blink
+	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------------------
+// Step 3: API key(s)
+// ---------------------------------------------------------------------------
+
+func (m *WizardModel) initAPIKeyStep() {
+	m.apiKeyInputs = nil
+	m.apiKeyLabels = nil
+	m.apiKeyFocusIdx = 0
+	m.ollamaIsCustom = false
+
+	switch m.result.Provider {
+	case providerAnthropic:
+		ti := textinput.New()
+		ti.Placeholder = "sk-ant-..."
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"Anthropic API Key"}
+
+	case providerBedrock:
+		ti1 := textinput.New()
+		ti1.Placeholder = "AKIAIOSFODNN7EXAMPLE"
+		ti1.Focus()
+		ti2 := textinput.New()
+		ti2.Placeholder = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+		ti2.EchoMode = textinput.EchoPassword
+		m.apiKeyInputs = []textinput.Model{ti1, ti2}
+		m.apiKeyLabels = []string{"AWS Bedrock Access Key ID", "AWS Bedrock Secret Access Key"}
+
+	case providerOllama:
+		status := detectOllamaStatus()
+		items := buildOllamaSelectItems(status)
+		defaultChoice := resolveDefaultOllamaSelectChoice(items)
+		m.ollamaSelect = singleSelectModel{
+			title:       "Ollama Model",
+			description: buildOllamaModelDescription(status),
+			items:       items,
+			cursor:      defaultChoice,
+		}
+		// Also prepare custom model input.
+		ti := textinput.New()
+		ti.Placeholder = defaultOllamaModel
+		ti.Focus()
+		m.ollamaCustom = ti
+
+	case providerGemini:
+		ti := textinput.New()
+		ti.Placeholder = "AIzaSy..."
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"Google API Key"}
+
+	case providerAzure:
+		ti1 := textinput.New()
+		ti1.Placeholder = "https://your-resource.openai.azure.com/"
+		ti1.Focus()
+		ti2 := textinput.New()
+		ti2.Placeholder = "your-azure-api-key"
+		ti2.EchoMode = textinput.EchoPassword
+		m.apiKeyInputs = []textinput.Model{ti1, ti2}
+		m.apiKeyLabels = []string{"Azure AI Endpoint URL", "Azure AI API Key"}
+
+	case providerOpenAI:
+		ti := textinput.New()
+		ti.Placeholder = "sk-..."
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"OpenAI API Key"}
+
+	case providerOpenRouter:
+		ti := textinput.New()
+		ti.Placeholder = "sk-or-..."
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"OpenRouter API Key"}
+
+	default:
+		ti := textinput.New()
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"API Key"}
+	}
+}
+
+func (m WizardModel) updateAPIKey(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.result.Provider == providerOllama {
+		return m.updateOllamaKey(msg)
+	}
+
+	km, ok := msg.(tea.KeyPressMsg)
+	if ok {
+		switch km.String() {
+		case "enter":
+			if m.apiKeyFocusIdx < len(m.apiKeyInputs)-1 {
+				m.apiKeyInputs[m.apiKeyFocusIdx].Blur()
+				m.apiKeyFocusIdx++
+				m.apiKeyInputs[m.apiKeyFocusIdx].Focus()
+				return m, textinput.Blink
+			}
+			// Submit all inputs.
+			m.collectAPIKeys()
+			m.advanceFromAPIKey()
+			return m, textinput.Blink
+		case "tab":
+			if m.apiKeyFocusIdx < len(m.apiKeyInputs)-1 {
+				m.apiKeyInputs[m.apiKeyFocusIdx].Blur()
+				m.apiKeyFocusIdx++
+				m.apiKeyInputs[m.apiKeyFocusIdx].Focus()
+				return m, textinput.Blink
+			}
+		case "shift+tab":
+			if m.apiKeyFocusIdx > 0 {
+				m.apiKeyInputs[m.apiKeyFocusIdx].Blur()
+				m.apiKeyFocusIdx--
+				m.apiKeyInputs[m.apiKeyFocusIdx].Focus()
+				return m, textinput.Blink
+			}
+		case "esc":
+			m.step = stepProvider
+			return m, nil
+		}
+	}
+
+	// Forward to active input.
+	var cmd tea.Cmd
+	m.apiKeyInputs[m.apiKeyFocusIdx], cmd = m.apiKeyInputs[m.apiKeyFocusIdx].Update(msg)
+	return m, cmd
+}
+
+func (m *WizardModel) collectAPIKeys() {
+	switch m.result.Provider {
+	case providerBedrock:
+		m.result.APIKey = m.apiKeyInputs[0].Value()
+		m.result.APIKeySecondary = m.apiKeyInputs[1].Value()
+	case providerAzure:
+		m.result.APIKeySecondary = m.apiKeyInputs[0].Value()
+		m.result.APIKey = m.apiKeyInputs[1].Value()
+	default:
+		if len(m.apiKeyInputs) > 0 {
+			m.result.APIKey = m.apiKeyInputs[0].Value()
+		}
+	}
+}
+
+func (m *WizardModel) advanceFromAPIKey() {
+	if providersWithProfile[m.result.Provider] {
+		m.profileSelect = singleSelectModel{
+			title:       "Performance Profile",
+			description: "Choose a profile that balances cost and capability.",
+			items: []singleSelectItem{
+				{label: "Development  -- Sonnet 4, fastest and most affordable", value: "development"},
+				{label: "Production   -- Sonnet 4 + Sonnet 4.5 supervisor [Recommended]", value: "production"},
+				{label: "Performance  -- Sonnet 4.5, highest quality", value: "performance"},
+				{label: "Max          -- Opus 4.5 supervisor, most capable, expensive", value: "max"},
+			},
+			cursor: 1, // Default to production
+		}
+		m.step = stepProfile
+	} else {
+		m.initOptionalKeys()
+		m.step = stepOptionalKeys
+	}
+}
+
+func (m WizardModel) updateOllamaKey(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.ollamaIsCustom {
+		// Custom model text input.
+		km, ok := msg.(tea.KeyPressMsg)
+		if ok {
+			switch km.String() {
+			case "enter":
+				val := strings.TrimSpace(m.ollamaCustom.Value())
+				if val == "" {
+					val = defaultOllamaModel
+				}
+				m.result.OllamaModel = val
+				m.advanceFromAPIKey()
+				return m, textinput.Blink
+			case "esc":
+				m.ollamaIsCustom = false
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.ollamaCustom, cmd = m.ollamaCustom.Update(msg)
+		return m, cmd
+	}
+
+	var value string
+	var done, cancelled bool
+	m.ollamaSelect, value, done, cancelled = m.ollamaSelect.Update(msg)
+	if cancelled {
+		m.step = stepProvider
+		return m, nil
+	}
+	if done {
+		if value == customOllamaModel {
+			m.ollamaIsCustom = true
+			m.ollamaCustom.Focus()
+			return m, textinput.Blink
+		}
+		m.result.OllamaModel = strings.TrimSpace(value)
+		m.advanceFromAPIKey()
+		return m, textinput.Blink
+	}
+	return m, nil
+}
+
+func (m WizardModel) viewAPIKey() string {
+	if m.result.Provider == providerOllama {
+		if m.ollamaIsCustom {
+			titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
+			descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+			var sb strings.Builder
+			sb.WriteString(titleStyle.Render("Custom Ollama Model") + "\n")
+			sb.WriteString(descStyle.Render("Type the model name exactly as it appears in `ollama list` or `ollama pull`.") + "\n\n")
+			sb.WriteString(m.ollamaCustom.View() + "\n")
+			sb.WriteString("\n" + descStyle.Render("enter: confirm  esc: back"))
+			return sb.String()
+		}
+		return m.ollamaSelect.View(m.theme)
+	}
+
+	titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+	labelStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2)
+	focusIndicator := lipgloss.NewStyle().Foreground(m.theme.Colors.Success)
+
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render("API Keys") + "\n\n")
+
+	for i, label := range m.apiKeyLabels {
+		indicator := "  "
+		if i == m.apiKeyFocusIdx {
+			indicator = focusIndicator.Render("> ")
+		}
+		sb.WriteString(indicator + labelStyle.Render(label) + "\n")
+		sb.WriteString("  " + m.apiKeyInputs[i].View() + "\n\n")
+	}
+
+	sb.WriteString(descStyle.Render("enter: confirm  tab: next field  esc: back"))
+	return sb.String()
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: Profile
+// ---------------------------------------------------------------------------
+
+func (m WizardModel) updateProfile(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var value string
+	var done, cancelled bool
+	m.profileSelect, value, done, cancelled = m.profileSelect.Update(msg)
+	if cancelled {
+		m.step = stepAPIKey
+		m.initAPIKeyStep()
+		return m, textinput.Blink
+	}
+	if done {
+		m.result.Profile = value
+		m.initOptionalKeys()
+		m.step = stepOptionalKeys
+		return m, textinput.Blink
+	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------------------
+// Step 5: Optional keys
+// ---------------------------------------------------------------------------
+
+func (m *WizardModel) initOptionalKeys() {
+	m.optionalSub = subStepNCBIConfirm
+	m.ncbiConfirm = confirmModel{
+		title:       "NCBI API Key",
+		description: "Add an NCBI API key for enhanced PubMed / literature search? (Recommended for heavy use)",
+		value:       false,
+	}
+	ti := textinput.New()
+	ti.Placeholder = "your-ncbi-api-key"
+	ti.EchoMode = textinput.EchoPassword
+	m.ncbiInput = ti
+
+	m.cloudConfirm = confirmModel{
+		title:       "Omics-OS Cloud API Key",
+		description: "Add an Omics-OS Cloud API key to unlock premium features?",
+		value:       false,
+	}
+	ti2 := textinput.New()
+	ti2.Placeholder = "omics-..."
+	ti2.EchoMode = textinput.EchoPassword
+	m.cloudInput = ti2
+
+	// Smart standardization default depends on selected agents.
+	selectedPackages := m.agentSelect.Selected()
+	selectedAgents := expandSelectedPackages(selectedPackages)
+	beneficiaries := getSmartStandardizationBeneficiaries(selectedAgents)
+	desc := "Map biomedical terms to ontology concepts with OpenAI embeddings + ChromaDB."
+	if len(beneficiaries) > 0 {
+		desc = desc + " Helpful for " + strings.Join(beneficiaries, ", ") + "."
+	}
+	m.smartStdConfirm = confirmModel{
+		title:       "Smart Standardization",
+		description: desc,
+		value:       len(beneficiaries) > 0,
+	}
+	ti3 := textinput.New()
+	ti3.Placeholder = "sk-..."
+	ti3.EchoMode = textinput.EchoPassword
+	m.smartStdInput = ti3
+}
+
+func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.optionalSub {
+	case subStepNCBIConfirm:
+		var done, cancelled bool
+		m.ncbiConfirm, done, cancelled = m.ncbiConfirm.Update(msg)
+		if cancelled {
+			// Go back to previous step.
+			if providersWithProfile[m.result.Provider] {
+				m.step = stepProfile
+			} else {
+				m.step = stepAPIKey
+				m.initAPIKeyStep()
+			}
+			return m, textinput.Blink
+		}
+		if done {
+			if m.ncbiConfirm.value {
+				m.optionalSub = subStepNCBIKey
+				m.ncbiInput.Focus()
+				return m, textinput.Blink
+			}
+			m.optionalSub = subStepCloudConfirm
+		}
+		return m, nil
+
+	case subStepNCBIKey:
+		km, ok := msg.(tea.KeyPressMsg)
+		if ok {
+			switch km.String() {
+			case "enter":
+				m.result.NCBIKey = m.ncbiInput.Value()
+				m.optionalSub = subStepCloudConfirm
+				return m, nil
+			case "esc":
+				m.optionalSub = subStepNCBIConfirm
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.ncbiInput, cmd = m.ncbiInput.Update(msg)
+		return m, cmd
+
+	case subStepCloudConfirm:
+		var done, cancelled bool
+		m.cloudConfirm, done, cancelled = m.cloudConfirm.Update(msg)
+		if cancelled {
+			m.optionalSub = subStepNCBIConfirm
+			return m, nil
+		}
+		if done {
+			if m.cloudConfirm.value {
+				m.optionalSub = subStepCloudKey
+				m.cloudInput.Focus()
+				return m, textinput.Blink
+			}
+			m.optionalSub = subStepSmartStdConfirm
+		}
+		return m, nil
+
+	case subStepCloudKey:
+		km, ok := msg.(tea.KeyPressMsg)
+		if ok {
+			switch km.String() {
+			case "enter":
+				m.result.CloudKey = m.cloudInput.Value()
+				m.optionalSub = subStepSmartStdConfirm
+				return m, nil
+			case "esc":
+				m.optionalSub = subStepCloudConfirm
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.cloudInput, cmd = m.cloudInput.Update(msg)
+		return m, cmd
+
+	case subStepSmartStdConfirm:
+		var done, cancelled bool
+		m.smartStdConfirm, done, cancelled = m.smartStdConfirm.Update(msg)
+		if cancelled {
+			m.optionalSub = subStepCloudConfirm
+			return m, nil
+		}
+		if done {
+			m.result.SmartStandardizationEnabled = m.smartStdConfirm.value
+			if m.smartStdConfirm.value {
+				// Check if we already have an OpenAI key.
+				switch {
+				case m.result.Provider == providerOpenAI:
+					m.result.SmartStandardizationOpenAIKey = strings.TrimSpace(m.result.APIKey)
+					return m.finishWizard()
+				case strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "":
+					m.result.SmartStandardizationOpenAIKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+					return m.finishWizard()
+				default:
+					m.optionalSub = subStepSmartStdKey
+					m.smartStdInput.Focus()
+					return m, textinput.Blink
+				}
+			}
+			return m.finishWizard()
+		}
+		return m, nil
+
+	case subStepSmartStdKey:
+		km, ok := msg.(tea.KeyPressMsg)
+		if ok {
+			switch km.String() {
+			case "enter":
+				val := strings.TrimSpace(m.smartStdInput.Value())
+				if val == "" {
+					return m, nil // require non-empty
+				}
+				m.result.SmartStandardizationOpenAIKey = val
+				return m.finishWizard()
+			case "esc":
+				m.optionalSub = subStepSmartStdConfirm
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.smartStdInput, cmd = m.smartStdInput.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+func (m WizardModel) viewOptionalKeys() string {
+	switch m.optionalSub {
+	case subStepNCBIConfirm:
+		return m.ncbiConfirm.View(m.theme)
+	case subStepNCBIKey:
+		return m.viewTextInput("NCBI API Key", "Your NCBI API key. Find it at ncbi.nlm.nih.gov/account/settings.", m.ncbiInput)
+	case subStepCloudConfirm:
+		return m.cloudConfirm.View(m.theme)
+	case subStepCloudKey:
+		return m.viewTextInput("Omics-OS Cloud API Key", "Your Omics-OS Cloud key. Find it at app.omics-os.com/settings.", m.cloudInput)
+	case subStepSmartStdConfirm:
+		return m.smartStdConfirm.View(m.theme)
+	case subStepSmartStdKey:
+		return m.viewTextInput("OpenAI API Key for Embeddings", "Required for Smart Standardization / vector search.", m.smartStdInput)
+	}
+	return ""
+}
+
+func (m WizardModel) viewTextInput(title, desc string, ti textinput.Model) string {
+	titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+	var sb strings.Builder
+	sb.WriteString(titleStyle.Render(title) + "\n")
+	sb.WriteString(descStyle.Render(desc) + "\n\n")
+	sb.WriteString(ti.View() + "\n")
+	sb.WriteString("\n" + descStyle.Render("enter: confirm  esc: back"))
+	return sb.String()
+}
+
+// ---------------------------------------------------------------------------
+// Finish / Cancel
+// ---------------------------------------------------------------------------
+
+func (m WizardModel) finishWizard() (tea.Model, tea.Cmd) {
+	// Expand selected packages to agent names.
+	selectedPackages := m.agentSelect.Selected()
+	m.result.Agents = expandSelectedPackages(selectedPackages)
+	m.result.OllamaModel = strings.TrimSpace(m.result.OllamaModel)
+	m.result.Cancelled = false
+	m.done = true
+	m.step = stepDone
+	return m, tea.Quit
+}
+
+func (m WizardModel) cancel() (tea.Model, tea.Cmd) {
+	m.result = WizardResult{Cancelled: true}
+	m.done = true
+	m.err = fmt.Errorf("cancelled")
+	m.step = stepDone
+	return m, tea.Quit
+}
+
+// Result returns the wizard result and error after the program finishes.
+func (m WizardModel) Result() (WizardResult, error) {
+	return m.result, m.err
 }
 
 // ---------------------------------------------------------------------------
@@ -238,415 +1094,26 @@ func buildHuhTheme(t *lobsterTheme.Theme) *huh.Theme {
 // On successful completion it writes a JSON result to stdout or resultPath and returns nil.
 // On cancellation it writes {"cancelled":true} and returns a non-nil sentinel.
 func Run(themeName string, resultPath string) error {
-	// ---- Theme setup --------------------------------------------------------
-	if themeName != "" {
-		if err := lobsterTheme.SetTheme(themeName); err != nil {
-			// Non-fatal: fall back to whatever Current already is.
-			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-		}
-	}
-	activeTheme := lobsterTheme.Current
-	if activeTheme == nil {
-		activeTheme = lobsterTheme.LobsterDark
-	}
-	ht := buildHuhTheme(activeTheme)
+	model := NewWizardModel(themeName, resultPath)
 
-	// ---- State --------------------------------------------------------------
-	var (
-		selectedPackages []string
-		provider         string
-
-		apiKey          string
-		apiKeySecondary string
-		ollamaModel     string
-		ollamaChoice    string
-
-		profile string
-
-		wantNCBI                 bool
-		ncbiKey                  string
-		wantCloud                bool
-		cloudKey                 string
-		wantSmartStandardization bool
-		smartStdOpenAIKey        string
-	)
-
-	// ---- Step 1 + 2: Agents + Provider in one form -------------------------
-	agentOptions := buildAgentOptions(activeTheme)
-
-	providerOptions := []huh.Option[string]{
-		huh.NewOption("Anthropic (Claude)  — Quick testing, development", providerAnthropic),
-		huh.NewOption("AWS Bedrock         — Production, enterprise use", providerBedrock),
-		huh.NewOption("Ollama (Local)      — Privacy, zero cost, offline", providerOllama),
-		huh.NewOption("Google Gemini       — Latest models with thinking", providerGemini),
-		huh.NewOption("Azure AI            — Enterprise Azure deployments", providerAzure),
-		huh.NewOption("OpenAI              — GPT-4o, reasoning models", providerOpenAI),
-		huh.NewOption("OpenRouter          — 600+ models via one API key", providerOpenRouter),
+	p := tea.NewProgram(model)
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("wizard: %w", err)
 	}
 
-	// Default provider selection to anthropic
-	provider = providerAnthropic
-
-	form1 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewMultiSelect[string]().
-				Title("Agent Packages").
-				Description("Select the agent packages to install. Use space to toggle.").
-				Options(agentOptions...).
-				Value(&selectedPackages).
-				Validate(func(vals []string) error {
-					if len(vals) == 0 {
-						return fmt.Errorf("select at least one agent package")
-					}
-					return nil
-				}),
-		),
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("LLM Provider").
-				Description("Select the provider for Lobster AI.").
-				Options(providerOptions...).
-				Value(&provider),
-		),
-	).WithTheme(ht)
-
-	if err := form1.Run(); err != nil {
-		return handleAbort(err, resultPath)
+	wm, ok := finalModel.(WizardModel)
+	if !ok {
+		return fmt.Errorf("wizard: unexpected model type")
 	}
 
-	// ---- Step 3: API key(s) — provider-specific ----------------------------
-	var form2 *huh.Form
-
-	switch provider {
-	case providerAnthropic:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Anthropic API Key").
-					Description("Your Anthropic API key. Find it at console.anthropic.com.").
-					Placeholder("sk-ant-...").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKey),
-			),
-		).WithTheme(ht)
-
-	case providerBedrock:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("AWS Bedrock Access Key ID").
-					Description("AWS access key ID with Bedrock permissions.").
-					Placeholder("AKIAIOSFODNN7EXAMPLE").
-					Value(&apiKey),
-				huh.NewInput().
-					Title("AWS Bedrock Secret Access Key").
-					Description("AWS secret access key (stored locally, never transmitted).").
-					Placeholder("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKeySecondary),
-			),
-		).WithTheme(ht)
-
-	case providerOllama:
-		status := detectOllamaStatus()
-		ollamaOptions := buildOllamaModelOptions(status)
-		ollamaChoice = resolveDefaultOllamaChoice(ollamaOptions)
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Ollama Model").
-					Description(buildOllamaModelDescription(status)).
-					Options(ollamaOptions...).
-					Value(&ollamaChoice),
-			),
-		).WithTheme(ht)
-
-	case providerGemini:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Google API Key").
-					Description("Your Google AI Studio API key. Find it at aistudio.google.com.").
-					Placeholder("AIzaSy...").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKey),
-			),
-		).WithTheme(ht)
-
-	case providerAzure:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Azure AI Endpoint URL").
-					Description("Your Azure AI Services endpoint URL.").
-					Placeholder("https://your-resource.openai.azure.com/").
-					Value(&apiKeySecondary),
-				huh.NewInput().
-					Title("Azure AI API Key").
-					Description("Your Azure AI Services API key.").
-					Placeholder("your-azure-api-key").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKey),
-			),
-		).WithTheme(ht)
-
-	case providerOpenAI:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("OpenAI API Key").
-					Description("Your OpenAI API key. Find it at platform.openai.com/api-keys.").
-					Placeholder("sk-...").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKey),
-			),
-		).WithTheme(ht)
-
-	case providerOpenRouter:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("OpenRouter API Key").
-					Description("Your OpenRouter API key. Find it at openrouter.ai/keys.").
-					Placeholder("sk-or-...").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKey),
-			),
-		).WithTheme(ht)
-
-	default:
-		form2 = huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("API Key").
-					Description("API key for the selected provider.").
-					EchoMode(huh.EchoModePassword).
-					Value(&apiKey),
-			),
-		).WithTheme(ht)
-	}
-
-	if err := form2.Run(); err != nil {
-		return handleAbort(err, resultPath)
-	}
-
-	if provider == providerOllama {
-		if ollamaChoice == customOllamaModel {
-			ollamaModel = defaultOllamaModel
-			customModelForm := huh.NewForm(
-				huh.NewGroup(
-					huh.NewInput().
-						Title("Custom Ollama Model").
-						Description("Type the model name exactly as it appears in `ollama list` or `ollama pull`.").
-						Placeholder(defaultOllamaModel).
-						Value(&ollamaModel).
-						Validate(func(value string) error {
-							if strings.TrimSpace(value) == "" {
-								return fmt.Errorf("enter a model name")
-							}
-							return nil
-						}),
-				),
-			).WithTheme(ht)
-
-			if err := customModelForm.Run(); err != nil {
-				return handleAbort(err, resultPath)
-			}
-		} else {
-			ollamaModel = strings.TrimSpace(ollamaChoice)
-		}
-	}
-
-	// ---- Step 4: Profile — Anthropic and Bedrock only ----------------------
-	if providersWithProfile[provider] {
-		profileOptions := []huh.Option[string]{
-			huh.NewOption("Development  — Sonnet 4, fastest and most affordable", "development"),
-			huh.NewOption("Production   — Sonnet 4 + Sonnet 4.5 supervisor [Recommended]", "production"),
-			huh.NewOption("Performance  — Sonnet 4.5, highest quality", "performance"),
-			huh.NewOption("Max          — Opus 4.5 supervisor, most capable, expensive", "max"),
-		}
-
-		// Default to production
-		profile = "production"
-
-		form3 := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Performance Profile").
-					Description("Choose a profile that balances cost and capability.").
-					Options(profileOptions...).
-					Value(&profile),
-			),
-		).WithTheme(ht)
-
-		if err := form3.Run(); err != nil {
-			return handleAbort(err, resultPath)
-		}
-	}
-
-	// ---- Step 5: Optional keys --------------------------------------------
-	form4 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("NCBI API Key").
-				Description("Add an NCBI API key for enhanced PubMed / literature search? (Recommended for heavy use)").
-				Affirmative("Yes, add key").
-				Negative("Skip").
-				Value(&wantNCBI),
-		),
-	).WithTheme(ht)
-
-	if err := form4.Run(); err != nil {
-		return handleAbort(err, resultPath)
-	}
-
-	if wantNCBI {
-		form4b := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("NCBI API Key").
-					Description("Your NCBI API key. Find it at ncbi.nlm.nih.gov/account/settings.").
-					Placeholder("your-ncbi-api-key").
-					EchoMode(huh.EchoModePassword).
-					Value(&ncbiKey),
-			),
-		).WithTheme(ht)
-
-		if err := form4b.Run(); err != nil {
-			return handleAbort(err, resultPath)
-		}
-	}
-
-	form5 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Omics-OS Cloud API Key").
-				Description("Add an Omics-OS Cloud API key to unlock premium features?").
-				Affirmative("Yes, add key").
-				Negative("Skip").
-				Value(&wantCloud),
-		),
-	).WithTheme(ht)
-
-	if err := form5.Run(); err != nil {
-		return handleAbort(err, resultPath)
-	}
-
-	if wantCloud {
-		form5b := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Omics-OS Cloud API Key").
-					Description("Your Omics-OS Cloud key. Find it at app.omics-os.com/settings.").
-					Placeholder("omics-...").
-					EchoMode(huh.EchoModePassword).
-					Value(&cloudKey),
-			),
-		).WithTheme(ht)
-
-		if err := form5b.Run(); err != nil {
-			return handleAbort(err, resultPath)
-		}
-	}
-
-	// ---- Step 6: Smart Standardization / vector search --------------------
-	selectedAgents := expandSelectedPackages(selectedPackages)
-	smartStdDescription := "Map biomedical terms to ontology concepts with OpenAI embeddings + ChromaDB."
-	beneficiaries := getSmartStandardizationBeneficiaries(selectedAgents)
-	if len(beneficiaries) > 0 {
-		smartStdDescription = smartStdDescription + " Helpful for " + strings.Join(beneficiaries, ", ") + "."
-	}
-
-	wantSmartStandardization = len(beneficiaries) > 0
-	form6 := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Smart Standardization").
-				Description(smartStdDescription).
-				Affirmative("Enable").
-				Negative("Skip").
-				Value(&wantSmartStandardization),
-		),
-	).WithTheme(ht)
-
-	if err := form6.Run(); err != nil {
-		return handleAbort(err, resultPath)
-	}
-
-	if wantSmartStandardization {
-		switch {
-		case provider == providerOpenAI:
-			smartStdOpenAIKey = strings.TrimSpace(apiKey)
-		case strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "":
-			smartStdOpenAIKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
-		default:
-			form6b := huh.NewForm(
-				huh.NewGroup(
-					huh.NewInput().
-						Title("OpenAI API Key for Embeddings").
-						Description("Required for Smart Standardization / vector search.").
-						Placeholder("sk-...").
-						EchoMode(huh.EchoModePassword).
-						Value(&smartStdOpenAIKey).
-						Validate(func(value string) error {
-							if strings.TrimSpace(value) == "" {
-								return fmt.Errorf("enter an OpenAI API key")
-							}
-							return nil
-						}),
-				),
-			).WithTheme(ht)
-
-			if err := form6b.Run(); err != nil {
-				return handleAbort(err, resultPath)
-			}
-			smartStdOpenAIKey = strings.TrimSpace(smartStdOpenAIKey)
-		}
-	}
-
-	// ---- Output ------------------------------------------------------------
-	result := WizardResult{
-		Provider:                      provider,
-		APIKey:                        apiKey,
-		APIKeySecondary:               apiKeySecondary,
-		Profile:                       profile,
-		Agents:                        selectedAgents,
-		NCBIKey:                       ncbiKey,
-		CloudKey:                      cloudKey,
-		OllamaModel:                   strings.TrimSpace(ollamaModel),
-		SmartStandardizationEnabled:   wantSmartStandardization,
-		SmartStandardizationOpenAIKey: smartStdOpenAIKey,
-		Cancelled:                     false,
-	}
-
-	return writeResult(result, resultPath)
+	result, wizErr := wm.Result()
+	return writeResult(result, resultPath, wizErr)
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-func buildAgentOptions(t *lobsterTheme.Theme) []huh.Option[string] {
-	options := make([]huh.Option[string], 0, len(initAgentPackages))
-	experimentalStyle := lipgloss.NewStyle().Foreground(toV1Color(t.Colors.Warning)).Bold(true)
-	for _, pkg := range initAgentPackages {
-		agentCount := len(pkg.Agents)
-		agentLabel := "agents"
-		if agentCount == 1 {
-			agentLabel = "agent"
-		}
-		label := fmt.Sprintf("%-24s %s (%d %s)", pkg.Name, pkg.Description, agentCount, agentLabel)
-		if pkg.Experimental {
-			label = label + experimentalStyle.Render(" [experimental]")
-		}
-		option := huh.NewOption(label, pkg.Name)
-		if pkg.Default {
-			option = option.Selected(true)
-		}
-		options = append(options, option)
-	}
-	return options
-}
 
 func expandSelectedPackages(selectedPackages []string) []string {
 	seen := map[string]bool{}
@@ -733,8 +1200,8 @@ func detectOllamaStatus() ollamaStatus {
 	return status
 }
 
-func buildOllamaModelOptions(status ollamaStatus) []huh.Option[string] {
-	options := make([]huh.Option[string], 0, len(status.Models)+len(curatedOllamaModels)+1)
+func buildOllamaSelectItems(status ollamaStatus) []singleSelectItem {
+	items := make([]singleSelectItem, 0, len(status.Models)+len(curatedOllamaModels)+1)
 	seen := map[string]bool{}
 
 	for _, model := range status.Models {
@@ -742,7 +1209,10 @@ func buildOllamaModelOptions(status ollamaStatus) []huh.Option[string] {
 		if model == "" || seen[model] {
 			continue
 		}
-		options = append(options, huh.NewOption(fmt.Sprintf("%-20s detected locally", model), model))
+		items = append(items, singleSelectItem{
+			label: fmt.Sprintf("%-20s detected locally", model),
+			value: model,
+		})
 		seen[model] = true
 	}
 
@@ -750,24 +1220,27 @@ func buildOllamaModelOptions(status ollamaStatus) []huh.Option[string] {
 		if seen[model.Name] {
 			continue
 		}
-		options = append(options, huh.NewOption(fmt.Sprintf("%-20s %s", model.Name, model.Description), model.Name))
+		items = append(items, singleSelectItem{
+			label: fmt.Sprintf("%-20s %s", model.Name, model.Description),
+			value: model.Name,
+		})
 		seen[model.Name] = true
 	}
 
-	options = append(options, huh.NewOption("Other model          Type a custom model name", customOllamaModel))
-	return options
+	items = append(items, singleSelectItem{
+		label: "Other model          Type a custom model name",
+		value: customOllamaModel,
+	})
+	return items
 }
 
-func resolveDefaultOllamaChoice(options []huh.Option[string]) string {
-	for _, option := range options {
-		if option.Value == defaultOllamaModel {
-			return option.Value
+func resolveDefaultOllamaSelectChoice(items []singleSelectItem) int {
+	for i, item := range items {
+		if item.value == defaultOllamaModel {
+			return i
 		}
 	}
-	if len(options) == 0 {
-		return defaultOllamaModel
-	}
-	return options[0].Value
+	return 0
 }
 
 func buildOllamaModelDescription(status ollamaStatus) string {
@@ -785,18 +1258,8 @@ func buildOllamaModelDescription(status ollamaStatus) string {
 	}
 }
 
-// handleAbort converts a huh.ErrUserAborted into a canonical cancelled output.
-// All other errors are returned as-is.
-func handleAbort(err error, resultPath string) error {
-	if errors.Is(err, huh.ErrUserAborted) {
-		_ = writeResult(WizardResult{Cancelled: true}, resultPath)
-		return fmt.Errorf("cancelled")
-	}
-	return err
-}
-
 // writeResult serialises result to stdout or a result file as compact JSON.
-func writeResult(r WizardResult, resultPath string) error {
+func writeResult(r WizardResult, resultPath string, wizErr error) error {
 	writer := os.Stdout
 	if resultPath != "" {
 		file, err := os.Create(resultPath)
@@ -812,5 +1275,5 @@ func writeResult(r WizardResult, resultPath string) error {
 	if err := enc.Encode(r); err != nil {
 		return fmt.Errorf("write result: %w", err)
 	}
-	return nil
+	return wizErr
 }
