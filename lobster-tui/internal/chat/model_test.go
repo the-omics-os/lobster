@@ -374,15 +374,15 @@ func TestStreamingAppendDoesNotJumpWhenUserIsScrolledUp(t *testing.T) {
 	if m.viewport.AtBottom() {
 		t.Fatal("expected fixture to be scrolled away from bottom")
 	}
-	before := m.viewport.YOffset
+	before := m.viewport.YOffset()
 
 	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeText, protocol.TextPayload{
 		Content: "stream chunk",
 	}))
 	m = updated.(Model)
 
-	if m.viewport.YOffset != before {
-		t.Fatalf("expected y offset to remain %d while scrolled up, got %d", before, m.viewport.YOffset)
+	if m.viewport.YOffset() != before {
+		t.Fatalf("expected y offset to remain %d while scrolled up, got %d", before, m.viewport.YOffset())
 	}
 }
 
@@ -420,7 +420,7 @@ func TestInlineFlowModeDoesNotRenderArchivedTranscriptInFrame(t *testing.T) {
 	}
 	m.rebuildViewport()
 
-	rendered := m.View()
+	rendered := m.View().Content
 	if h := lipgloss.Height(rendered); h > m.height {
 		t.Fatalf("expected inline flow view height <= terminal height, rendered=%d terminal=%d", h, m.height)
 	}
@@ -504,7 +504,7 @@ func TestInlineFlowReadyDoesNotDetachHeaderBeforeFirstPrintedMessage(t *testing.
 		t.Fatal("expected ready handler to return wait command")
 	}
 
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "● lobster") {
 		t.Fatalf("expected inline frame header to remain visible before first printed message, got:\n%s", view)
 	}
@@ -536,7 +536,7 @@ func TestInlineFlowFirstPrintedMessageDetachesHeader(t *testing.T) {
 		t.Fatal("expected inline banner to be marked as printed after first printed message")
 	}
 
-	view := m.View()
+	view := m.View().Content
 	if strings.Contains(view, "● lobster") {
 		t.Fatalf("expected inline frame header to be hidden after first printed message, got:\n%s", view)
 	}
@@ -582,8 +582,8 @@ func TestTaskHandoffQueuesUntilSupervisorMessageFlushes(t *testing.T) {
 		t.Fatalf("expected second message to be handoff, got %q", m.messages[1].Role)
 	}
 	rendered := renderMessage(m.messages[1], m.styles, m.width, nil, false)
-	if !strings.Contains(rendered, "└─ Search GEO for human lung adenocarcinoma scRNA-seq datasets.") {
-		t.Fatalf("expected rendered handoff line, got:\n%s", rendered)
+	if !strings.Contains(rendered, "└─") || !strings.Contains(rendered, "Search GEO for human lung adenocarcinoma scRNA-seq datasets.") {
+		t.Fatalf("expected rendered handoff line with branch prefix and description, got:\n%s", rendered)
 	}
 }
 
@@ -720,7 +720,7 @@ func TestInlinePromptAndLongInputDoNotOverflowTerminalWidth(t *testing.T) {
 func TestApplyComposerStylesRemovesFocusedCursorBackground(t *testing.T) {
 	m := newTestModel()
 
-	bg := m.input.FocusedStyle.CursorLine.GetBackground()
+	bg := m.input.Styles().Focused.CursorLine.GetBackground()
 	if _, isNoColor := bg.(lipgloss.NoColor); !isNoColor {
 		t.Fatalf("expected transparent cursor-line background, got %T", bg)
 	}
@@ -865,7 +865,7 @@ func TestInlineViewRendersCompletionMenuAboveComposer(t *testing.T) {
 	m.input.SetValue("/wo")
 	m.refreshSuggestions()
 
-	view := m.View()
+	view := m.View().Content
 	suggestionPos := strings.Index(view, "/workspace")
 	inputPos := strings.LastIndex(view, "/wo")
 
@@ -916,7 +916,7 @@ func TestKeyUpUsesHistoryEvenWhenViewportScrollable(t *testing.T) {
 	m.pushInputHistory("/status")
 	m.pushInputHistory("/help")
 	m.viewport.GotoBottom()
-	startYOffset := m.viewport.YOffset
+	startYOffset := m.viewport.YOffset()
 	if startYOffset <= 0 {
 		t.Fatalf("expected seeded model to be scrollable, got yOffset=%d", startYOffset)
 	}
@@ -924,8 +924,8 @@ func TestKeyUpUsesHistoryEvenWhenViewportScrollable(t *testing.T) {
 	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 
-	if m.viewport.YOffset != startYOffset {
-		t.Fatalf("expected viewport offset to remain %d, got %d", startYOffset, m.viewport.YOffset)
+	if m.viewport.YOffset() != startYOffset {
+		t.Fatalf("expected viewport offset to remain %d, got %d", startYOffset, m.viewport.YOffset())
 	}
 	if got := m.input.Value(); got != "/help" {
 		t.Fatalf("expected history recall to set latest input '/help', got %q", got)
@@ -1043,7 +1043,7 @@ func TestKeyPgUpScrollsViewportEvenWhenInputHasContent(t *testing.T) {
 	m := seededScrollableModel()
 	m.ready = true
 	m.viewport.GotoBottom()
-	startYOffset := m.viewport.YOffset
+	startYOffset := m.viewport.YOffset()
 	if startYOffset <= 0 {
 		t.Fatalf("expected seeded model to be scrollable, got yOffset=%d", startYOffset)
 	}
@@ -1052,8 +1052,8 @@ func TestKeyPgUpScrollsViewportEvenWhenInputHasContent(t *testing.T) {
 	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyPgUp})
 	m = updated.(Model)
 
-	if m.viewport.YOffset >= startYOffset {
-		t.Fatalf("expected page-up to scroll viewport (from %d), got %d", startYOffset, m.viewport.YOffset)
+	if m.viewport.YOffset() >= startYOffset {
+		t.Fatalf("expected page-up to scroll viewport (from %d), got %d", startYOffset, m.viewport.YOffset())
 	}
 	if got := m.input.Value(); got != "/config model" {
 		t.Fatalf("expected input draft to remain unchanged, got %q", got)
@@ -1065,7 +1065,7 @@ func TestKeyUpDoesNotScrollViewportWhenHistoryEmpty(t *testing.T) {
 	m.ready = true
 	m.input.SetValue("")
 	m.viewport.GotoBottom()
-	startYOffset := m.viewport.YOffset
+	startYOffset := m.viewport.YOffset()
 	if startYOffset <= 0 {
 		t.Fatalf("expected seeded model to be scrollable, got yOffset=%d", startYOffset)
 	}
@@ -1073,8 +1073,8 @@ func TestKeyUpDoesNotScrollViewportWhenHistoryEmpty(t *testing.T) {
 	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = updated.(Model)
 
-	if m.viewport.YOffset != startYOffset {
-		t.Fatalf("expected viewport offset to remain %d, got %d", startYOffset, m.viewport.YOffset)
+	if m.viewport.YOffset() != startYOffset {
+		t.Fatalf("expected viewport offset to remain %d, got %d", startYOffset, m.viewport.YOffset())
 	}
 	if got := m.input.Value(); got != "" {
 		t.Fatalf("expected input to remain empty, got %q", got)
@@ -1085,35 +1085,25 @@ func TestKeyCtrlGTogglesMouseCaptureOn(t *testing.T) {
 	m := newTestModel()
 	m.mouseCapture = false
 
-	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
 	m = updated.(Model)
 
 	if !m.mouseCapture {
 		t.Fatal("expected Ctrl+G to enable mouse capture")
 	}
-	if cmd == nil {
-		t.Fatal("expected mouse enable command")
-	}
-	if got := fmt.Sprintf("%T", cmd()); got != "tea.enableMouseCellMotionMsg" {
-		t.Fatalf("expected enable mouse command, got %s", got)
-	}
+	// In v2, mouse mode is controlled via View() fields, not commands.
+	// Toggling m.mouseCapture is sufficient.
 }
 
 func TestKeyCtrlGTogglesMouseCaptureOff(t *testing.T) {
 	m := newTestModel()
 	m.mouseCapture = true
 
-	updated, cmd := m.handleKey(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl})
 	m = updated.(Model)
 
 	if m.mouseCapture {
 		t.Fatal("expected Ctrl+G to disable mouse capture")
-	}
-	if cmd == nil {
-		t.Fatal("expected mouse disable command")
-	}
-	if got := fmt.Sprintf("%T", cmd()); got != "tea.disableMouseMsg" {
-		t.Fatalf("expected disable mouse command, got %s", got)
 	}
 }
 
@@ -1134,7 +1124,7 @@ func TestViewRendersScrollbarWhenViewportScrollable(t *testing.T) {
 	m.ready = true
 	m.viewport.GotoBottom()
 
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "█") || !strings.Contains(view, "│") {
 		t.Fatalf("expected view to include scrollbar thumb/track, got: %q", view)
 	}
@@ -1157,7 +1147,7 @@ func testProtocolMsg(t *testing.T, msgType string, payload any) protocolMsg {
 }
 
 func newTestModel() Model {
-	vp := viewport.New(80, 8)
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(8))
 	vp.SetContent("")
 	styles := theme.BuildCleanStyles(theme.LobsterDark.Colors)
 

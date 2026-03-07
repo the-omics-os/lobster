@@ -105,7 +105,7 @@ func parseCapturedMessages(buf *bytes.Buffer) []capturedMessage {
 }
 
 func newTestModelWithHandler(h *protocol.Handler) Model {
-	vp := viewport.New(80, 8)
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(8))
 	vp.SetContent("")
 	styles := theme.BuildCleanStyles(theme.LobsterDark.Colors)
 

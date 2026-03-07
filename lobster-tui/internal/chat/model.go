@@ -1146,7 +1146,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
-	case "enter":
+	case "enter", "alt+enter", "shift+enter":
 		if isComposerInsertNewlineKey(msg) {
 			prevVal := m.input.Value()
 			m.input.InsertRune('\n')
