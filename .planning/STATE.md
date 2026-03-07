@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 04-02-PLAN.md (View rewrite)
-last_updated: "2026-03-07T05:57:58Z"
-last_activity: 2026-03-07 -- Completed 04-02-PLAN.md (View rewrite)
+stopped_at: Completed 04-02-PLAN.md (View rewrite + resize fix)
+last_updated: "2026-03-07T06:30:00Z"
+last_activity: 2026-03-07 -- Completed 04-02 resize stability fix (checkpoint resolved)
 progress:
   total_phases: 5
   completed_phases: 4
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-03-06)
 
 Phase: 4 of 5 (Layout)
 Plan: 2 of 2 in current phase (2 done, 0 remaining)
-Status: 04-02 complete -- View() rewritten with JoinVertical, component footer hosting, overlay removed
-Last activity: 2026-03-07 -- Completed 04-02-PLAN.md (View rewrite)
+Status: 04-02 complete -- View() rewritten with JoinVertical, resize stability fix applied
+Last activity: 2026-03-07 -- Completed 04-02 resize stability fix (checkpoint resolved)
 
 Progress: [#########] 100%
 
@@ -86,9 +86,10 @@ Recent decisions affecting current work:
 - Footer renderers in views.go, layout computation in layout.go (rendering vs data concern separation)
 - layoutReservedRows() delegates to computeLayout() for non-inline; inline mode uses legacy path unchanged
 - View() split: non-inline uses JoinVertical(header, viewport, input, footer); inline uses legacy viewInline()
-- Viewport region skips lipgloss Width to preserve scrollbar column
+- Viewport width = m.width-1 to reserve scrollbar column; all regions Width+MaxWidth constrained (prevents JoinVertical overflow)
 - Component footer uses fixed height allocation per component name (avoids double-render)
 - Overlay lipgloss.Place removed; components render in footer frame via renderComponentFooter
+- Geometry-first header (constant 2 rows) instead of render-to-measure (prevents width-dependent height drift)
 
 ### Pending Todos
 

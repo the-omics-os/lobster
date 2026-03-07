@@ -29,7 +29,7 @@ key-files:
 
 key-decisions:
   - "View() split into non-inline (JoinVertical) and viewInline() (legacy builder) to preserve inline behavior"
-  - "Viewport region skips lipgloss Width constraint to preserve scrollbar column appended by renderViewportWithScrollbar"
+  - "Viewport width set to m.width-1 to reserve scrollbar column; all regions constrained with Width+MaxWidth to prevent JoinVertical overflow"
   - "componentFooterHeight uses fixed base heights per component name (15/8/10) plus 3 for borders+help, avoiding double-render anti-pattern"
   - "Overlay lipgloss.Place removed entirely; components now render in footer frame via renderComponentFooter"
 
@@ -52,7 +52,7 @@ completed: 2026-03-07
 - **Duration:** 7 min
 - **Started:** 2026-03-07T05:50:43Z
 - **Completed:** 2026-03-07T05:57:58Z
-- **Tasks:** 2 of 3 (task 3 is human verification checkpoint)
+- **Tasks:** 3 of 3 (task 3 checkpoint: resize fix applied after human verification)
 - **Files modified:** 4
 
 ## Accomplishments
@@ -71,6 +71,7 @@ Each task was committed atomically:
 
 1. **Task 1: Component footer renderer + expand/contract + resize tests** - `6cfca6b` (feat)
 2. **Task 2: Rewrite View() with JoinVertical layout composition** - `85fa13e` (feat)
+3. **Task 3: Resize stability fix (checkpoint)** - `17038b8` (fix) — viewport width-1 for scrollbar, Width+MaxWidth on all regions, geometry-first header, regression tests
 
 ## Files Created/Modified
 - `lobster-tui/internal/chat/layout.go` - componentFooterHeight() with per-component base heights and clamping
@@ -80,36 +81,40 @@ Each task was committed atomically:
 
 ## Decisions Made
 - Split View() into two methods rather than keeping inline conditional blocks -- cleaner separation, inline code preserved verbatim
-- Viewport region renders without Width constraint because scrollbar column extends beyond viewport width
+- Viewport width = m.width-1 to reserve scrollbar column within terminal width budget (fixes JoinVertical overflow)
+- All 4 regions get Width(m.width).MaxWidth(m.width) to prevent any region from expanding the JoinVertical frame
+- Geometry-first header: constant 2 rows instead of render-to-measure lineCount(renderHeader(m))
 - Component footer height uses fixed allocation per component name instead of calling View() to measure (avoids double-render anti-pattern)
+- Footer status line truncated via MaxWidth to prevent wrapping at narrow terminals
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
-**1. [Rule 1 - Bug] Scrollbar thumb stripped by lipgloss Width constraint**
-- **Found during:** Task 2 (View() rewrite)
-- **Issue:** renderViewportWithScrollbar appends scrollbar column beyond viewport width; lipgloss Width(m.width) truncated the thumb character
-- **Fix:** Removed Width constraint from renderViewportRegion, relying on viewport's internal width management
-- **Files modified:** lobster-tui/internal/chat/views.go
-- **Verification:** TestViewRendersScrollbarWhenViewportScrollable passes
-- **Committed in:** 85fa13e (Task 2 commit)
+**1. [Rule 1 - Bug] Resize instability: JoinVertical overflow from scrollbar width**
+- **Found during:** Task 3 (human verification checkpoint)
+- **Issue:** viewport.View() returned m.width-wide content, renderViewportWithScrollbar appended +1 char, JoinVertical padded all regions to m.width+1, terminal auto-wrapped causing ghosting and duplication
+- **Root cause verified by:** Codex GPT-5.4 analysis of BubbleTea v2 / lipgloss v2 / Bubbles v2 source
+- **Fix:** 6 changes: (1) viewport width=m.width-1, (2) Width+MaxWidth on all regions, (3) status truncation, (4) fix double-wrap in tool feed footer, (5) geometry-first header, (6) regression tests
+- **Files modified:** layout.go, layout_test.go, views.go, model.go, model_test.go
+- **Verification:** 4 new regression tests + full suite passes
+- **Committed in:** 17038b8
 
 ---
 
-**Total deviations:** 1 auto-fixed (1 bug)
-**Impact on plan:** Essential fix for scrollbar visibility. No scope creep.
+**Total deviations:** 1 auto-fixed (1 critical resize bug)
+**Impact on plan:** Essential fix for resize stability. No scope creep.
 
 ## Issues Encountered
-None beyond the auto-fixed scrollbar issue.
+Resize instability found during human checkpoint — fully resolved with 6-part fix.
 
 ## User Setup Required
 None - no external service configuration required.
 
 ## Next Phase Readiness
-- 4-layer layout system complete and tested
-- Task 3 (human verification) pending -- visual check of layout rendering
-- Ready for phase 05 (component lifecycle) after verification
+- 4-layer layout system complete, resize-stable, and regression-tested
+- Task 3 checkpoint resolved — resize fix applied and verified
+- Ready for phase 05 (component lifecycle)
 
 ---
 *Phase: 04-layout*

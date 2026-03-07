@@ -81,7 +81,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md -- Layout engine core (Layout struct, computeLayout, footer state machine, footer renderers)
-- [ ] 04-02-PLAN.md -- View() rewrite with JoinVertical + component footer hosting + resize handling
+- [x] 04-02-PLAN.md -- View() rewrite with JoinVertical + component footer hosting + resize handling
 
 ### Phase 5: Python Integration
 **Goal**: Supervisor can ask users interactive questions via BioCharm components selected by the LLM
@@ -90,10 +90,10 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Supervisor ask-user tool triggers the correct BioCharm component type based on question context
   2. User response from the TUI component flows back to the supervisor as tool result
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 05-01: Supervisor ask-user tool with LLM-driven component selection
+- [ ] 05-01-PLAN.md -- Hybrid component mapper (rule-based fast path + LLM structured output) + ask_user factory with supervisor LLM closure
 
 ## Progress
 
