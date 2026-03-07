@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 04-01-PLAN.md (layout engine)
-last_updated: "2026-03-07T05:48:00Z"
-last_activity: 2026-03-07 -- Completed 04-01-PLAN.md (layout engine)
+stopped_at: Completed 04-02-PLAN.md (View rewrite)
+last_updated: "2026-03-07T05:57:58Z"
+last_activity: 2026-03-07 -- Completed 04-02-PLAN.md (View rewrite)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The TUI renders structured protocol data beautifully and correctly -- typed content blocks survive to render time, components have correct lifecycle semantics, and the layout adapts dynamically.
-**Current focus:** Phase 4 in progress. Layout engine complete, View() migration next.
+**Current focus:** Phase 4 complete. 4-layer layout system with JoinVertical composition done. Ready for phase 5 (lifecycle).
 
 ## Current Position
 
 Phase: 4 of 5 (Layout)
-Plan: 1 of 2 in current phase (1 done, 1 remaining)
-Status: 04-01 complete -- layout engine with computeLayout() and footer state machine
-Last activity: 2026-03-07 -- Completed 04-01-PLAN.md (layout engine)
+Plan: 2 of 2 in current phase (2 done, 0 remaining)
+Status: 04-02 complete -- View() rewritten with JoinVertical, component footer hosting, overlay removed
+Last activity: 2026-03-07 -- Completed 04-02-PLAN.md (View rewrite)
 
-Progress: [########.] 89%
+Progress: [#########] 100%
 
 ## Performance Metrics
 
@@ -46,10 +46,10 @@ Progress: [########.] 89%
 | 01-foundation | 2 | 15min | 7.5min |
 | 02-charm-v2-migration | 3 | 146min | 49min |
 | 03-rendering-and-style | 2 | 9min | 4.5min |
-| 04-layout | 1 | 3min | 3min |
+| 04-layout | 2 | 10min | 5min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (3min), 03-02 (3min), 03-01 (6min), 02-03 (6min), 02-02 (137min)
+- Last 5 plans: 04-02 (7min), 04-01 (3min), 03-02 (3min), 03-01 (6min), 02-03 (6min)
 - Trend: Fast execution with TDD on well-scoped layout/rendering tasks
 
 *Updated after each plan completion*
@@ -85,6 +85,10 @@ Recent decisions affecting current work:
 - Footer state machine: footerMode() classifies, footerHeight() sizes, renderFooterRegion() dispatches
 - Footer renderers in views.go, layout computation in layout.go (rendering vs data concern separation)
 - layoutReservedRows() delegates to computeLayout() for non-inline; inline mode uses legacy path unchanged
+- View() split: non-inline uses JoinVertical(header, viewport, input, footer); inline uses legacy viewInline()
+- Viewport region skips lipgloss Width to preserve scrollbar column
+- Component footer uses fixed height allocation per component name (avoids double-render)
+- Overlay lipgloss.Place removed; components render in footer frame via renderComponentFooter
 
 ### Pending Todos
 
@@ -99,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 04-01-PLAN.md (layout engine)
+Stopped at: Completed 04-02-PLAN.md (View rewrite)
 Resume file: None
