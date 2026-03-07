@@ -29,10 +29,10 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 - [ ] **MIGR-01**: All imports migrated from github.com/charmbracelet/* to charm.land/*/v2
 - [ ] **MIGR-02**: View() returns tea.View (not string) across all models
-- [ ] **MIGR-03**: All tea.KeyMsg handling rewritten to tea.KeyPressMsg (Code/Mod fields)
+- [x] **MIGR-03**: All tea.KeyMsg handling rewritten to tea.KeyPressMsg (Code/Mod fields)
 - [ ] **MIGR-04**: Color types updated from lipgloss string to image/color.Color
-- [ ] **MIGR-05**: Init wizard rewritten with bubbles v2 primitives (huh dependency removed)
-- [ ] **MIGR-06**: Forms rewritten with bubbles v2 primitives
+- [x] **MIGR-05**: Init wizard rewritten with bubbles v2 primitives (huh dependency removed)
+- [x] **MIGR-06**: Forms rewritten with bubbles v2 primitives
 - [x] **MIGR-07**: Phase 2A spike validates v2 API assumptions before full migration
 
 ### Rendering
@@ -109,10 +109,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | COMP-08 | Phase 1 | Complete |
 | MIGR-01 | Phase 2 | Pending |
 | MIGR-02 | Phase 2 | Pending |
-| MIGR-03 | Phase 2 | Pending |
+| MIGR-03 | Phase 2 | Complete |
 | MIGR-04 | Phase 2 | Pending |
-| MIGR-05 | Phase 2 | Pending |
-| MIGR-06 | Phase 2 | Pending |
+| MIGR-05 | Phase 2 | Complete |
+| MIGR-06 | Phase 2 | Complete |
 | MIGR-07 | Phase 2 | Complete |
 | REND-01 | Phase 3 | Pending |
 | REND-02 | Phase 3 | Pending |
