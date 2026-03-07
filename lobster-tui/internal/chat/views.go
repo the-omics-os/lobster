@@ -368,7 +368,7 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 
 	switch msg.Role {
 	case "user":
-		body := lipgloss.NewStyle().Width(contentWidth).Render(msg.Content)
+		body := lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
 		header := styles.InputPrompt.Render("You")
 		return styles.UserMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
@@ -382,34 +382,34 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 		// Render markdown through glamour if available.
 		var body string
 		if mdRenderer != nil {
-			rendered, err := mdRenderer.Render(msg.Content)
+			rendered, err := mdRenderer.Render(msg.Content())
 			if err == nil {
 				// Glamour adds trailing newlines — trim them.
 				body = strings.TrimRight(rendered, "\n")
 			} else {
 				// Fallback to plain text on glamour error.
-				body = lipgloss.NewStyle().Width(contentWidth).Render(msg.Content)
+				body = lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
 			}
 		} else {
-			body = lipgloss.NewStyle().Width(contentWidth).Render(msg.Content)
+			body = lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
 		}
 		return styles.AssistantMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
 	case "handoff":
-		return renderBranchBlock("└─", msg.Content, styles.AgentTransition, styles.Dimmed, contentWidth)
+		return renderBranchBlock("└─", msg.Content(), styles.AgentTransition, styles.Dimmed, contentWidth)
 	case "system":
-		return styles.SystemMessage.Width(contentWidth).Render(msg.Content)
+		return styles.SystemMessage.Width(contentWidth).Render(msg.Content())
 	case "alert_error":
-		return renderAlert("error", msg.Content, styles, width)
+		return renderAlert("error", msg.Content(), styles, width)
 	case "alert_warning":
-		return renderAlert("warning", msg.Content, styles, width)
+		return renderAlert("warning", msg.Content(), styles, width)
 	case "alert_success":
-		return renderAlert("success", msg.Content, styles, width)
+		return renderAlert("success", msg.Content(), styles, width)
 	case "alert_info":
-		return renderAlert("info", msg.Content, styles, width)
+		return renderAlert("info", msg.Content(), styles, width)
 
 	default:
-		return lipgloss.NewStyle().Width(contentWidth).Render(msg.Content)
+		return lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
 	}
 }
 
@@ -418,11 +418,11 @@ func renderInlineMessage(msg ChatMessage, styles theme.Styles, width int, mdRend
 
 	switch msg.Role {
 	case "user":
-		return renderPrefixedBlock("You", msg.Content, styles.InputPrompt, lipgloss.NewStyle(), contentWidth)
+		return renderPrefixedBlock("You", msg.Content(), styles.InputPrompt, lipgloss.NewStyle(), contentWidth)
 	case "assistant":
-		body := msg.Content
+		body := msg.Content()
 		if mdRenderer != nil {
-			rendered, err := mdRenderer.Render(msg.Content)
+			rendered, err := mdRenderer.Render(msg.Content())
 			if err == nil {
 				body = strings.Trim(rendered, "\n")
 			}
@@ -430,19 +430,19 @@ func renderInlineMessage(msg ChatMessage, styles theme.Styles, width int, mdRend
 		body = trimSharedLeftPadding(body, 2)
 		return styles.AssistantMessage.Width(contentWidth).Render(body)
 	case "handoff":
-		return renderBranchBlock("└─", msg.Content, styles.AgentTransition, styles.Dimmed, contentWidth)
+		return renderBranchBlock("└─", msg.Content(), styles.AgentTransition, styles.Dimmed, contentWidth)
 	case "system":
-		return styles.Dimmed.Render("• " + strings.TrimSpace(msg.Content))
+		return styles.Dimmed.Render("• " + strings.TrimSpace(msg.Content()))
 	case "alert_error":
-		return renderInlineAlert("error", msg.Content, styles, width)
+		return renderInlineAlert("error", msg.Content(), styles, width)
 	case "alert_warning":
-		return renderInlineAlert("warning", msg.Content, styles, width)
+		return renderInlineAlert("warning", msg.Content(), styles, width)
 	case "alert_success":
-		return renderInlineAlert("success", msg.Content, styles, width)
+		return renderInlineAlert("success", msg.Content(), styles, width)
 	case "alert_info":
-		return renderInlineAlert("info", msg.Content, styles, width)
+		return renderInlineAlert("info", msg.Content(), styles, width)
 	default:
-		return lipgloss.NewStyle().Width(contentWidth).Render(strings.TrimSpace(msg.Content))
+		return lipgloss.NewStyle().Width(contentWidth).Render(strings.TrimSpace(msg.Content()))
 	}
 }
 
