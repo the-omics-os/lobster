@@ -27,8 +27,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/glamour"
 	"charm.land/lipgloss/v2"
-	"github.com/muesli/reflow/wordwrap"
-
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/celltype"
@@ -126,6 +124,11 @@ type ChatMessage struct {
 	Blocks []ContentBlock
 	// Agent is optional metadata for agent-specific UI treatment.
 	Agent string
+	// IsStreaming is true when the message is actively being streamed.
+	// Streaming messages are never cached.
+	IsStreaming bool
+	// cache stores width-keyed rendered output for finalized messages.
+	cache renderCache
 }
 
 // ToolFeedEntry represents a single tool execution with its lifecycle state.
@@ -1534,8 +1537,9 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	// rendering partial stream text here causes visual duplication/noise.
 	if !m.inlineFlowMode() && m.streamBuf.Len() > 0 {
 		partial := ChatMessage{
-			Role:   "assistant",
-			Blocks: textBlocks(m.streamBuf.String()),
+			Role:        "assistant",
+			Blocks:      textBlocks(m.streamBuf.String()),
+			IsStreaming: true,
 		}
 		b.WriteString(renderMessage(partial, m.styles, m.width, renderer, m.inline))
 		b.WriteByte('\n')
@@ -2093,7 +2097,7 @@ func (m Model) composerHeightForValue(value string) int {
 			visualLines++
 			continue
 		}
-		visualLines += len(hardWrapProtocolTableCell(line, width))
+		visualLines += hardWrapLineCount(line, width)
 	}
 	if visualLines < composerMinHeight {
 		visualLines = composerMinHeight
@@ -2102,6 +2106,32 @@ func (m Model) composerHeightForValue(value string) int {
 		visualLines = composerMaxHeight
 	}
 	return visualLines
+}
+
+// hardWrapLineCount returns the number of visual lines a string occupies
+// when hard-wrapped to the given width.
+func hardWrapLineCount(value string, width int) int {
+	w := lipgloss.Width(value)
+	if w <= width {
+		return 1
+	}
+	count := 0
+	currentWidth := 0
+	for _, r := range value {
+		rw := lipgloss.Width(string(r))
+		if currentWidth+rw > width && currentWidth > 0 {
+			count++
+			currentWidth = 0
+		}
+		currentWidth += rw
+	}
+	if currentWidth > 0 {
+		count++
+	}
+	if count == 0 {
+		return 1
+	}
+	return count
 }
 
 func (m Model) renderComposer() string {
@@ -2215,182 +2245,6 @@ func appendProtocolCodeBlock(buf *strings.Builder, block string) {
 	buf.WriteString("```text\n")
 	buf.WriteString(block)
 	buf.WriteString("\n```\n")
-}
-
-func renderProtocolTable(headers []string, rows [][]string, totalWidth int) string {
-	colCount := len(headers)
-	if colCount == 0 {
-		return ""
-	}
-
-	separatorWidth := lipgloss.Width(" │ ") * (colCount - 1)
-	available := totalWidth - separatorWidth
-	if available < colCount*6 {
-		available = colCount * 6
-	}
-
-	widths := make([]int, colCount)
-	minWidths := make([]int, colCount)
-	for i, header := range headers {
-		desired := lipgloss.Width(strings.TrimSpace(header))
-		for _, row := range rows {
-			if i >= len(row) {
-				continue
-			}
-			for _, line := range strings.Split(strings.ReplaceAll(row[i], "\r\n", "\n"), "\n") {
-				if w := lipgloss.Width(line); w > desired {
-					desired = w
-				}
-			}
-		}
-
-		if desired < 8 {
-			desired = 8
-		}
-		if desired > 42 {
-			desired = 42
-		}
-		widths[i] = desired
-		minWidths[i] = 6
-	}
-
-	widthBudget := 0
-	for _, width := range widths {
-		widthBudget += width
-	}
-	for widthBudget > available {
-		shrinkIdx := -1
-		for i := range widths {
-			if widths[i] <= minWidths[i] {
-				continue
-			}
-			if shrinkIdx == -1 || widths[i] > widths[shrinkIdx] {
-				shrinkIdx = i
-			}
-		}
-		if shrinkIdx == -1 {
-			break
-		}
-		widths[shrinkIdx]--
-		widthBudget--
-	}
-	if widthBudget < available {
-		widths[len(widths)-1] += available - widthBudget
-	}
-
-	headerLines := wrapProtocolTableRow(headers, widths)
-	var out strings.Builder
-	for _, line := range headerLines {
-		out.WriteString(line)
-		out.WriteByte('\n')
-	}
-	out.WriteString(protocolTableDivider(widths))
-	for _, row := range rows {
-		out.WriteByte('\n')
-		for _, line := range wrapProtocolTableRow(row, widths) {
-			out.WriteString(line)
-			out.WriteByte('\n')
-		}
-	}
-
-	return strings.TrimRight(out.String(), "\n")
-}
-
-func wrapProtocolTableRow(row []string, widths []int) []string {
-	cells := make([][]string, len(widths))
-	rowHeight := 1
-	for i, width := range widths {
-		value := ""
-		if i < len(row) {
-			value = row[i]
-		}
-		cells[i] = wrapProtocolTableCell(value, width)
-		if len(cells[i]) > rowHeight {
-			rowHeight = len(cells[i])
-		}
-	}
-
-	lines := make([]string, 0, rowHeight)
-	for lineIdx := 0; lineIdx < rowHeight; lineIdx++ {
-		parts := make([]string, len(widths))
-		for colIdx, width := range widths {
-			cellLine := ""
-			if lineIdx < len(cells[colIdx]) {
-				cellLine = cells[colIdx][lineIdx]
-			}
-			parts[colIdx] = padProtocolTableCell(cellLine, width)
-		}
-		lines = append(lines, strings.Join(parts, " │ "))
-	}
-
-	return lines
-}
-
-func wrapProtocolTableCell(value string, width int) []string {
-	if width < 1 {
-		return []string{""}
-	}
-
-	normalized := strings.ReplaceAll(value, "\r\n", "\n")
-	rawLines := strings.Split(normalized, "\n")
-	lines := make([]string, 0, len(rawLines))
-	for _, raw := range rawLines {
-		if raw == "" {
-			lines = append(lines, "")
-			continue
-		}
-		wrapped := wordwrap.String(raw, width)
-		for _, segment := range strings.Split(wrapped, "\n") {
-			lines = append(lines, hardWrapProtocolTableCell(segment, width)...)
-		}
-	}
-	if len(lines) == 0 {
-		return []string{""}
-	}
-	return lines
-}
-
-func hardWrapProtocolTableCell(value string, width int) []string {
-	if lipgloss.Width(value) <= width {
-		return []string{value}
-	}
-
-	lines := make([]string, 0, 2)
-	var current strings.Builder
-	currentWidth := 0
-	for _, r := range value {
-		rw := lipgloss.Width(string(r))
-		if currentWidth+rw > width && current.Len() > 0 {
-			lines = append(lines, current.String())
-			current.Reset()
-			currentWidth = 0
-		}
-		current.WriteRune(r)
-		currentWidth += rw
-	}
-	if current.Len() > 0 {
-		lines = append(lines, current.String())
-	}
-	if len(lines) == 0 {
-		return []string{""}
-	}
-	return lines
-}
-
-func padProtocolTableCell(value string, width int) string {
-	padding := width - lipgloss.Width(value)
-	if padding <= 0 {
-		return value
-	}
-	return value + strings.Repeat(" ", padding)
-}
-
-func protocolTableDivider(widths []int) string {
-	parts := make([]string, len(widths))
-	for i, width := range widths {
-		parts[i] = strings.Repeat("─", width)
-	}
-	return strings.Join(parts, "─┼─")
 }
 
 // sendComponentResponse sends a component_response protocol message to Python.

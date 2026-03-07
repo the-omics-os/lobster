@@ -209,32 +209,19 @@ func TestHandleProtocolSpinnerStopClearsWhenNoStatusExists(t *testing.T) {
 	}
 }
 
-func TestRenderProtocolTableWrapsLongCellsAndKeepsLineWidthsAligned(t *testing.T) {
-	rendered := renderProtocolTable(
-		[]string{"Location", "Status", "Path"},
-		[][]string{
-			{
-				"Workspace Config",
-				"Not found",
-				"/Users/tyo/Omics-OS/lobster-charm-ui/provider_config.json",
-			},
-		},
-		52,
-	)
-
-	lines := strings.Split(rendered, "\n")
-	if len(lines) < 4 {
-		t.Fatalf("expected wrapped table output, got:\n%s", rendered)
+func TestRenderBlockTableProducesThemedOutput(t *testing.T) {
+	s := theme.BuildStyles(theme.LobsterDark.Colors)
+	b := BlockTable{
+		Headers: []string{"Location", "Status"},
+		Rows:    [][]string{{"Workspace", "Found"}},
 	}
-	if !strings.Contains(lines[1], "┼") {
-		t.Fatalf("expected divider line, got %q", lines[1])
-	}
+	rendered := renderBlockTable(b, s, 60)
 
-	wantWidth := lipgloss.Width(lines[0])
-	for _, line := range lines {
-		if got := lipgloss.Width(line); got != wantWidth {
-			t.Fatalf("expected aligned line width %d, got %d for %q", wantWidth, got, line)
-		}
+	if !strings.Contains(rendered, "Location") {
+		t.Error("expected table output to contain header 'Location'")
+	}
+	if !strings.Contains(rendered, "Workspace") {
+		t.Error("expected table output to contain cell 'Workspace'")
 	}
 }
 

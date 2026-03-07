@@ -67,7 +67,11 @@ func (m ChatMessage) Content() string {
 		case BlockCode:
 			b.WriteString(fmt.Sprintf("\n```%s\n%s\n```\n", v.Language, v.Content))
 		case BlockTable:
-			b.WriteString(renderProtocolTable(v.Headers, v.Rows, 80))
+			// Backward-compat: pipe-delimited markdown table
+			b.WriteString(strings.Join(v.Headers, " | ") + "\n")
+			for _, row := range v.Rows {
+				b.WriteString(strings.Join(row, " | ") + "\n")
+			}
 		case BlockAlert:
 			b.WriteString(v.Message)
 		case BlockHandoff:

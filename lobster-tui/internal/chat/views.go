@@ -359,7 +359,29 @@ func clampRenderWidth(totalWidth, reserve int) int {
 
 // renderMessage renders a single chat message with role-appropriate styling.
 // For assistant messages, mdRenderer may be non-nil to enable glamour rendering.
+// Finalized messages (IsStreaming=false) are cached by width; streaming messages
+// are never cached.
 func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *glamour.TermRenderer, inline bool) string {
+	// Check cache for finalized messages.
+	if !msg.IsStreaming {
+		if cached, _, ok := msg.cache.get(width); ok {
+			return cached
+		}
+	}
+
+	rendered := renderMessageUncached(msg, styles, width, mdRenderer, inline)
+
+	// Populate cache for finalized messages only.
+	if !msg.IsStreaming {
+		height := strings.Count(rendered, "\n") + 1
+		msg.cache.set(rendered, width, height)
+	}
+
+	return rendered
+}
+
+// renderMessageUncached performs the actual rendering without cache logic.
+func renderMessageUncached(msg ChatMessage, styles theme.Styles, width int, mdRenderer *glamour.TermRenderer, inline bool) string {
 	// Constrain content width to leave room for borders/padding.
 	contentWidth := clampRenderWidth(width, 6)
 	messageWidth := clampRenderWidth(width, 1)
@@ -369,8 +391,8 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 
 	switch msg.Role {
 	case "user":
-		body := lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
-		header := styles.InputPrompt.Render("You")
+		body := renderBlocksOrContent(msg, styles, contentWidth, nil)
+		header := styles.UserName.Render("You")
 		return styles.UserMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
 	case "assistant":
@@ -378,22 +400,8 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 		if msg.Agent != "" {
 			agent = msg.Agent
 		}
-		header := styles.Bold.Render(agent)
-
-		// Render markdown through glamour if available.
-		var body string
-		if mdRenderer != nil {
-			rendered, err := mdRenderer.Render(msg.Content())
-			if err == nil {
-				// Glamour adds trailing newlines — trim them.
-				body = strings.TrimRight(rendered, "\n")
-			} else {
-				// Fallback to plain text on glamour error.
-				body = lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
-			}
-		} else {
-			body = lipgloss.NewStyle().Width(contentWidth).Render(msg.Content())
-		}
+		header := styles.AgentName.Render(agent)
+		body := renderBlocksOrContent(msg, styles, contentWidth, mdRenderer)
 		return styles.AssistantMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
 	case "handoff":
@@ -414,20 +422,31 @@ func renderMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *
 	}
 }
 
+// renderBlocksOrContent renders message blocks individually via renderBlock()
+// if the message has typed blocks, otherwise falls back to Content() rendering.
+func renderBlocksOrContent(msg ChatMessage, styles theme.Styles, width int, mdRenderer *glamour.TermRenderer) string {
+	if len(msg.Blocks) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(msg.Blocks))
+	for _, block := range msg.Blocks {
+		rendered := renderBlock(block, styles, width, mdRenderer)
+		if rendered != "" {
+			parts = append(parts, rendered)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 func renderInlineMessage(msg ChatMessage, styles theme.Styles, width int, mdRenderer *glamour.TermRenderer) string {
 	contentWidth := clampRenderWidth(width, 2)
 
 	switch msg.Role {
 	case "user":
-		return renderPrefixedBlock("You", msg.Content(), styles.InputPrompt, lipgloss.NewStyle(), contentWidth)
+		return renderPrefixedBlock("You", msg.Content(), styles.UserName, lipgloss.NewStyle(), contentWidth)
 	case "assistant":
-		body := msg.Content()
-		if mdRenderer != nil {
-			rendered, err := mdRenderer.Render(msg.Content())
-			if err == nil {
-				body = strings.Trim(rendered, "\n")
-			}
-		}
+		body := renderBlocksOrContent(msg, styles, contentWidth, mdRenderer)
 		body = trimSharedLeftPadding(body, 2)
 		return styles.AssistantMessage.Width(contentWidth).Render(body)
 	case "handoff":

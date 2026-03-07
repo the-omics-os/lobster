@@ -62,7 +62,7 @@ func TestContentHelper_Mixed(t *testing.T) {
 	if !strings.Contains(got, "x = 1") {
 		t.Error("Content() missing code content")
 	}
-	// Table block should use renderProtocolTable output
+	// Table block should produce pipe-delimited markdown fallback
 	if !strings.Contains(got, "Name") {
 		t.Error("Content() missing table header")
 	}
