@@ -896,3 +896,52 @@ func looksLikeAlertTitle(s string) bool {
 	}
 	return lipgloss.Width(candidate) <= 48
 }
+
+// ---------------------------------------------------------------------------
+// Footer rendering functions (dispatched by Layout engine)
+// ---------------------------------------------------------------------------
+
+// renderFooterRegion dispatches to the appropriate footer renderer based on
+// footerMode(). Returns styled output constrained to layout.FooterHeight rows.
+func (m Model) renderFooterRegion(layout Layout) string {
+	switch m.footerMode() {
+	case FooterModeToolFeed:
+		return m.renderToolFeedFooter(layout)
+	case FooterModeComponent:
+		// Component footer rendering is plan 02 (LAYO-03/LAYO-04).
+		// Fall back to status footer for now.
+		return m.renderStatusFooter(layout)
+	default:
+		return m.renderStatusFooter(layout)
+	}
+}
+
+// renderStatusFooter renders the status line using FooterStatus style.
+// The output is height-constrained to layout.FooterHeight.
+func (m Model) renderStatusFooter(layout Layout) string {
+	statusText := m.currentStatusLine()
+	// Use FooterStatus style if available, otherwise fall back to StatusBar.
+	styled := m.styles.FooterStatus.Width(m.width).Render(statusText)
+	return lipgloss.NewStyle().
+		Height(layout.FooterHeight).
+		MaxHeight(layout.FooterHeight).
+		Render(styled)
+}
+
+// renderToolFeedFooter renders the tool feed entries + status line together
+// in the footer region with FooterToolFeed styling.
+func (m Model) renderToolFeedFooter(layout Layout) string {
+	feed := renderToolFeed(m.toolFeed, m.styles, m.width, false)
+	status := m.styles.FooterStatus.Width(m.width).Render(m.currentStatusLine())
+	var content string
+	if feed == "" {
+		content = status
+	} else {
+		content = feed + "\n" + status
+	}
+	return m.styles.FooterToolFeed.
+		Width(m.width).
+		Height(layout.FooterHeight).
+		MaxHeight(layout.FooterHeight).
+		Render(content)
+}

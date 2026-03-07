@@ -103,38 +103,6 @@ func (m Model) computeLayout() Layout {
 	}
 }
 
-// renderFooterRegion dispatches to the appropriate footer renderer based on
-// footerMode(). The rendered output is constrained to layout.FooterHeight rows.
-func (m Model) renderFooterRegion(layout Layout) string {
-	switch m.footerMode() {
-	case FooterModeToolFeed:
-		return m.renderToolFeedFooter(layout)
-	case FooterModeComponent:
-		// Component footer rendering is plan 02 (LAYO-03/LAYO-04).
-		// Fall back to status footer for now.
-		return m.renderStatusFooter(layout)
-	default:
-		return m.renderStatusFooter(layout)
-	}
-}
-
-// renderStatusFooter renders a single status line in the footer region.
-func (m Model) renderStatusFooter(layout Layout) string {
-	statusText := m.currentStatusLine()
-	return renderStatusBar(statusText, m.styles, m.width)
-}
-
-// renderToolFeedFooter renders the tool feed entries + status line together
-// in the footer region.
-func (m Model) renderToolFeedFooter(layout Layout) string {
-	feed := renderToolFeed(m.toolFeed, m.styles, m.width, false)
-	status := renderStatusBar(m.currentStatusLine(), m.styles, m.width)
-	if feed == "" {
-		return status
-	}
-	return feed + "\n" + status
-}
-
 // layoutReservedRows returns the number of rows consumed by everything except
 // the viewport. It delegates to computeLayout so existing callers work during
 // the transition to the new layout engine.
