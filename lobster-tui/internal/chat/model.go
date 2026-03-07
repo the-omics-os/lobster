@@ -551,55 +551,69 @@ func (m Model) View() tea.View {
 		return tea.NewView("")
 	}
 
+	// Inline mode: preserved legacy string-builder approach.
+	if m.inline {
+		return m.viewInline()
+	}
+
+	// Non-inline: 4-layer layout with JoinVertical composition.
+	layout := m.computeLayout()
+	header := m.renderHeaderRegion(layout)
+	vp := m.renderViewportRegion(layout)
+	input := m.renderInputRegion(layout)
+	footer := m.renderFooterRegion(layout)
+
+	content := lipgloss.JoinVertical(lipgloss.Left, header, vp, input, footer)
+	v := tea.NewView(content)
+	v.AltScreen = true
+	if m.mouseCapture {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	return v
+}
+
+// viewInline renders the inline-mode layout using the legacy string-builder.
+// This path is intentionally preserved unchanged from the pre-layout-engine code.
+func (m Model) viewInline() tea.View {
 	var b strings.Builder
 	completionView := m.renderCompletionMenu()
 
-	if m.inline {
-		intro := renderInlineIntro(m)
-		if intro != "" {
-			b.WriteString(intro)
-			b.WriteByte('\n')
-		}
+	intro := renderInlineIntro(m)
+	if intro != "" {
+		b.WriteString(intro)
+		b.WriteByte('\n')
 	}
 
 	// Header/runtime chrome.
 	if m.shouldRenderHeaderInFrame() {
 		b.WriteString(renderHeader(m))
 		b.WriteByte('\n')
-		if m.inline {
-			runtimeSummary := renderRuntimeSummary(m)
-			if runtimeSummary != "" {
-				b.WriteString(runtimeSummary)
-				b.WriteString("\n\n")
-			}
+		runtimeSummary := renderRuntimeSummary(m)
+		if runtimeSummary != "" {
+			b.WriteString(runtimeSummary)
+			b.WriteString("\n\n")
 		}
 	}
 
-	// Viewport (scrollable message history).
-	// In inline mode, trim Bubble viewport padding so the input appears
-	// directly below content instead of at the bottom of the terminal.
+	// Viewport.
 	vpView := m.viewport.View()
-	if m.inline {
-		vpView = strings.TrimRight(vpView, " \n\r\t")
-	}
+	vpView = strings.TrimRight(vpView, " \n\r\t")
 	if !m.inlineFlowMode() {
 		vpView = renderViewportWithScrollbar(vpView, m.viewport, m.styles)
 	}
 	if vpView != "" {
 		b.WriteString(vpView)
 		b.WriteByte('\n')
-	} else if !m.inline {
-		b.WriteByte('\n')
 	}
 
-	// Tool feed (0-N lines, dim).
-	tf := renderToolFeed(m.toolFeed, m.styles, m.width, m.inline)
+	// Tool feed (inline renders between viewport and input).
+	tf := renderToolFeed(m.toolFeed, m.styles, m.width, true)
 	if tf != "" {
 		b.WriteString(tf)
 		b.WriteByte('\n')
 	}
 
-	// Inline BioComp component (rendered as a block above the composer, non-interactive).
+	// Inline BioComp component (rendered as a block above the composer).
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
 		comp := m.activeComponent.Component
 		inlineView, panicked := safeView(comp, m.width, m.height)
@@ -612,64 +626,26 @@ func (m Model) View() tea.View {
 		}
 	}
 
-	// Progress bar (0-1 line).
+	// Progress bar.
 	if m.progressActive {
 		b.WriteString(renderProgressBar(m.progressLabel, m.progressCurrent, m.progressTotal, m.width, m.styles))
 		b.WriteByte('\n')
 	}
 
-	// Inline form (protocol form rendered in-place, replaces huh tea.Exec).
+	// Inline form.
 	if m.activeForm != nil {
 		b.WriteString(m.activeForm.View())
 		b.WriteByte('\n')
 	}
 
-	// Input field (1 line) — replaced by overlay component or local confirm when active.
-	overlayRendered := false
-	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
-		comp := m.activeComponent.Component
-		overlayW, overlayH := biocomp.OverlaySize(m.width, m.height, "small")
-		switch comp.Name() {
-		case "cell_type_selector", "ontology_browser":
-			overlayW, overlayH = biocomp.OverlaySize(m.width, m.height, "large")
-		case "threshold_slider":
-			overlayW, overlayH = biocomp.OverlaySize(m.width, m.height, "medium")
-		}
-		contentW := overlayW - 4
-		contentH := overlayH - 6
-		if contentW < 1 {
-			contentW = 1
-		}
-		if contentH < 1 {
-			contentH = 1
-		}
-		helpBar := biocomp.RenderHelpBar(comp.KeyBindings(), contentW)
-		content, viewPanicked := safeView(comp, contentW, contentH)
-		if viewPanicked {
-			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
-			m.activeComponent = nil
-		} else {
-			frame := biocomp.RenderFrame(comp.Name(), content, helpBar, overlayW, overlayH)
-			centered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, frame)
-			b.WriteString(centered)
-			b.WriteByte('\n')
-			overlayRendered = true
-		}
-	}
-	if overlayRendered {
-		// Overlay was rendered; skip composer/confirm.
-	} else if m.pendingConfirm != nil {
-		// Local exit confirm only (not protocol components).
+	// Input / confirm.
+	if m.pendingConfirm != nil {
 		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 		b.WriteByte('\n')
 	} else {
-		// Add breathing room before the prompt whenever there is visible
-		// output above it in inline mode.
-		if m.inline {
-			hasOutputAbove := strings.TrimSpace(vpView) != "" || tf != "" || m.progressActive
-			if hasOutputAbove {
-				b.WriteByte('\n')
-			}
+		hasOutputAbove := strings.TrimSpace(vpView) != "" || tf != "" || m.progressActive
+		if hasOutputAbove {
+			b.WriteByte('\n')
 		}
 		if completionView != "" {
 			b.WriteString(completionView)
@@ -679,20 +655,13 @@ func (m Model) View() tea.View {
 		b.WriteByte('\n')
 	}
 
-	// Status bar (1 line). Override status text with animated spinner when active.
+	// Status bar.
 	statusText := m.currentStatusLine()
-	if m.inline {
-		if strings.TrimSpace(statusText) != "" {
-			b.WriteString(m.styles.Dimmed.Render(statusText))
-		}
-	} else {
-		b.WriteString(renderStatusBar(statusText, m.styles, m.width))
+	if strings.TrimSpace(statusText) != "" {
+		b.WriteString(m.styles.Dimmed.Render(statusText))
 	}
 
 	v := tea.NewView(b.String())
-	if !m.inline {
-		v.AltScreen = true
-	}
 	if m.mouseCapture {
 		v.MouseMode = tea.MouseModeCellMotion
 	}
@@ -1998,7 +1967,8 @@ func (m *Model) recalculateViewportHeight() {
 		return
 	}
 
-	h := m.height - m.layoutReservedRows()
+	// Non-inline: use computeLayout() as single source of truth.
+	h := m.computeLayout().ViewportHeight
 	if h < 1 {
 		h = 1
 	}

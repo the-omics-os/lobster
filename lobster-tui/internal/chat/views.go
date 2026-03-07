@@ -899,6 +899,87 @@ func looksLikeAlertTitle(s string) bool {
 }
 
 // ---------------------------------------------------------------------------
+// Region rendering functions (called by View() with Layout struct)
+// ---------------------------------------------------------------------------
+
+// renderHeaderRegion renders the header row constrained to layout.HeaderHeight.
+func (m Model) renderHeaderRegion(layout Layout) string {
+	if layout.HeaderHeight == 0 {
+		return ""
+	}
+	header := renderHeader(m)
+	return lipgloss.NewStyle().
+		Height(layout.HeaderHeight).
+		MaxHeight(layout.HeaderHeight).
+		Width(m.width).
+		Render(header)
+}
+
+// renderViewportRegion renders the scrollable message viewport constrained
+// to exactly layout.ViewportHeight rows. Width is NOT constrained here because
+// renderViewportWithScrollbar appends a scrollbar column beyond the viewport width.
+func (m Model) renderViewportRegion(layout Layout) string {
+	vpView := m.viewport.View()
+	vpView = renderViewportWithScrollbar(vpView, m.viewport, m.styles)
+	return lipgloss.NewStyle().
+		Height(layout.ViewportHeight).
+		MaxHeight(layout.ViewportHeight).
+		Render(vpView)
+}
+
+// renderInputRegion renders the composer, completion menu, confirm prompt,
+// progress bar, and forms constrained to layout.InputHeight rows.
+func (m Model) renderInputRegion(layout Layout) string {
+	if layout.InputHeight == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+
+	// Inline BioComp component (rendered as block above composer).
+	if m.activeComponent != nil && m.activeComponent.Component != nil && m.activeComponent.Component.Mode() == "inline" {
+		comp := m.activeComponent.Component
+		inlineView, panicked := safeView(comp, m.width, m.height)
+		if panicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
+		} else if inlineView != "" {
+			b.WriteString(inlineView)
+			b.WriteByte('\n')
+		}
+	}
+
+	// Progress bar.
+	if m.progressActive {
+		b.WriteString(renderProgressBar(m.progressLabel, m.progressCurrent, m.progressTotal, m.width, m.styles))
+		b.WriteByte('\n')
+	}
+
+	// Inline form.
+	if m.activeForm != nil {
+		b.WriteString(m.activeForm.View())
+		b.WriteByte('\n')
+	}
+
+	// Confirm prompt or composer.
+	if m.pendingConfirm != nil {
+		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
+	} else if m.activeComponent == nil || m.activeComponent.Component == nil || m.activeComponent.Component.Mode() != "overlay" {
+		completionView := m.renderCompletionMenu()
+		if completionView != "" {
+			b.WriteString(completionView)
+			b.WriteByte('\n')
+		}
+		b.WriteString(m.renderComposer())
+	}
+
+	return lipgloss.NewStyle().
+		Height(layout.InputHeight).
+		MaxHeight(layout.InputHeight).
+		Width(m.width).
+		Render(b.String())
+}
+
+// ---------------------------------------------------------------------------
 // Footer rendering functions (dispatched by Layout engine)
 // ---------------------------------------------------------------------------
 
