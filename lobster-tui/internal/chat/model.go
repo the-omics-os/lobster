@@ -224,6 +224,9 @@ type Model struct {
 	// Active BioComp component (replaces pendingSelect, pendingComponentID).
 	activeComponent *ActiveComponent
 
+	// Active inline form (replaces huh tea.Exec suspension).
+	activeForm *inlineFormModel
+
 	// ChangeEvent debounce state for active BioComp components.
 	pendingChangeEvent   map[string]any
 	changeEventMsgID     string
@@ -497,23 +500,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-subscribe to the protocol read loop which was broken by Suspend.
 		return m, waitForProtocolMsg(m.handler)
 
-	case formResult:
-		// Form completed (from tea.Exec). Send the response back to Python.
-		if msg.err != nil {
-			// User cancelled or huh error — send empty values.
-			_ = m.handler.SendTyped(protocol.TypeFormResponse, protocol.FormResponsePayload{
-				ID:     msg.id,
-				Values: map[string]string{},
-			}, msg.id)
-		} else {
-			_ = m.handler.SendTyped(protocol.TypeFormResponse, protocol.FormResponsePayload{
-				ID:     msg.id,
-				Values: msg.values,
-			}, msg.id)
-		}
-		return m, waitForProtocolMsg(m.handler)
-
 	case tea.KeyPressMsg:
+		// If an inline form is active, delegate all key input to it.
+		if m.activeForm != nil {
+			return m.updateActiveForm(msg)
+		}
 		return m.handleKey(msg)
 
 	case tea.WindowSizeMsg:
@@ -621,6 +612,12 @@ func (m Model) View() tea.View {
 	// Progress bar (0-1 line).
 	if m.progressActive {
 		b.WriteString(renderProgressBar(m.progressLabel, m.progressCurrent, m.progressTotal, m.width, m.styles))
+		b.WriteByte('\n')
+	}
+
+	// Inline form (protocol form rendered in-place, replaces huh tea.Exec).
+	if m.activeForm != nil {
+		b.WriteString(m.activeForm.View())
 		b.WriteByte('\n')
 	}
 
@@ -993,8 +990,8 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeForm:
 		var p protocol.FormPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			formCmd := m.runFormSuspended(p, msg.ID)
-			return m, tea.Batch(waitForProtocolMsg(m.handler), formCmd)
+			m, cmd := m.handleFormMessage(p, msg.ID)
+			return m, tea.Batch(waitForProtocolMsg(m.handler), cmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
