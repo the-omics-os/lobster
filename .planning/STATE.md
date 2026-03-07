@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: Completed 04-02-PLAN.md (View rewrite + resize fix)
-last_updated: "2026-03-07T06:30:00Z"
-last_activity: 2026-03-07 -- Completed 04-02 resize stability fix (checkpoint resolved)
+stopped_at: Completed 05-01-PLAN.md (LLM-driven component selection)
+last_updated: "2026-03-07T07:56:37Z"
+last_activity: 2026-03-07 -- Completed 05-01 LLM-driven component selection
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
+  total_plans: 10
+  completed_plans: 10
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The TUI renders structured protocol data beautifully and correctly -- typed content blocks survive to render time, components have correct lifecycle semantics, and the layout adapts dynamically.
-**Current focus:** Phase 4 complete. 4-layer layout system with JoinVertical composition done. Ready for phase 5 (lifecycle).
+**Current focus:** Phase 5 in progress. LLM-driven component selection complete (05-01). Python integration continues.
 
 ## Current Position
 
-Phase: 4 of 5 (Layout)
-Plan: 2 of 2 in current phase (2 done, 0 remaining)
-Status: 04-02 complete -- View() rewritten with JoinVertical, resize stability fix applied
-Last activity: 2026-03-07 -- Completed 04-02 resize stability fix (checkpoint resolved)
+Phase: 5 of 5 (Python Integration)
+Plan: 1 of 1 in current phase (1 done, 0 remaining)
+Status: 05-01 complete -- Hybrid LLM/rule-based component mapper with ask_user factory
+Last activity: 2026-03-07 -- Completed 05-01 LLM-driven component selection
 
-Progress: [#########] 100%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 26min
-- Total execution time: 3.37 hours
+- Total plans completed: 9
+- Average duration: 24min
+- Total execution time: 3.44 hours
 
 **By Phase:**
 
@@ -47,10 +47,11 @@ Progress: [#########] 100%
 | 02-charm-v2-migration | 3 | 146min | 49min |
 | 03-rendering-and-style | 2 | 9min | 4.5min |
 | 04-layout | 2 | 10min | 5min |
+| 05-python-integration | 1 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 04-02 (7min), 04-01 (3min), 03-02 (3min), 03-01 (6min), 02-03 (6min)
-- Trend: Fast execution with TDD on well-scoped layout/rendering tasks
+- Last 5 plans: 05-01 (4min), 04-02 (7min), 04-01 (3min), 03-02 (3min), 03-01 (6min)
+- Trend: Fast execution with TDD on well-scoped tasks
 
 *Updated after each plan completion*
 
@@ -90,6 +91,9 @@ Recent decisions affecting current work:
 - Component footer uses fixed height allocation per component name (avoids double-render)
 - Overlay lipgloss.Place removed; components render in footer frame via renderComponentFooter
 - Geometry-first header (constant 2 rows) instead of render-to-measure (prevents width-dependent height drift)
+- LLM branch in mapper after confirm check, before text_input fallback -- preserves all rule-based fast paths
+- Factory pattern with module-level backward-compat instance for ask_user
+- Pydantic model_validator corrects invalid component names to text_input automatically
 
 ### Pending Todos
 
@@ -104,5 +108,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 04-02-PLAN.md (View rewrite)
+Stopped at: Completed 05-01-PLAN.md (LLM-driven component selection)
 Resume file: None

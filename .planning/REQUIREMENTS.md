@@ -65,7 +65,7 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 ### Python Integration
 
-- [ ] **PYTH-01**: Supervisor ask-user tool with LLM-driven component selection
+- [x] **PYTH-01**: Supervisor ask-user tool with LLM-driven component selection
 
 ## v2 Requirements
 
@@ -133,7 +133,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | LAYO-04 | Phase 4 | Complete |
 | LAYO-05 | Phase 4 | Complete |
 | LAYO-06 | Phase 4 | Complete |
-| PYTH-01 | Phase 5 | Pending |
+| PYTH-01 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 39 total
