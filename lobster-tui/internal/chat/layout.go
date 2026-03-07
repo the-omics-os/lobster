@@ -40,18 +40,49 @@ func (m Model) footerHeight() int {
 		// feed entries + "Tools" header + status line
 		return len(m.toolFeed) + 2
 	case FooterModeComponent:
-		// Delegate to plan 02; for now use a reasonable default.
-		h := m.height / 2
-		if h > 20 {
-			h = 20
-		}
-		if h < 3 {
-			h = 3
-		}
-		return h
+		return m.componentFooterHeight()
 	default: // FooterModeStatus
 		return 1
 	}
+}
+
+// componentFooterHeight returns the footer height for an active BioCharm component.
+// Height is based on component name, plus 3 for borders + help bar,
+// clamped to min(m.height/2, 20) max and 5 min.
+func (m Model) componentFooterHeight() int {
+	if m.activeComponent == nil || m.activeComponent.Component == nil {
+		return 1
+	}
+
+	// Base content height by component name.
+	var base int
+	switch m.activeComponent.Component.Name() {
+	case "cell_type_selector", "ontology_browser":
+		base = 15
+	case "threshold_slider":
+		base = 8
+	default:
+		base = 10
+	}
+
+	// Add 3 for top border + bottom border + help bar line.
+	h := base + 3
+
+	// Clamp to max half-terminal or 20, whichever is smaller.
+	maxH := m.height / 2
+	if maxH > 20 {
+		maxH = 20
+	}
+	if h > maxH {
+		h = maxH
+	}
+
+	// Minimum of 5 (borders + at least 2 content lines).
+	if h < 5 {
+		h = 5
+	}
+
+	return h
 }
 
 // computeLayout calculates the vertical region heights for the 4-layer layout.

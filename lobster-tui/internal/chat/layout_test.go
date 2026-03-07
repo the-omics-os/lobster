@@ -1,8 +1,12 @@
 package chat
 
 import (
+	"encoding/json"
 	"testing"
 
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
+	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
 
@@ -138,5 +142,121 @@ func TestToolFeedInFooter(t *testing.T) {
 	result := m.renderToolFeedFooter(layout)
 	if result == "" {
 		t.Error("renderToolFeedFooter() returned empty string")
+	}
+}
+
+// layoutMockComponent is a minimal BioComponent for layout tests.
+type layoutMockComponent struct {
+	name string
+	mode string
+}
+
+func (c *layoutMockComponent) Init(_ json.RawMessage) error                  { return nil }
+func (c *layoutMockComponent) HandleMsg(_ tea.Msg) *biocomp.ComponentResult  { return nil }
+func (c *layoutMockComponent) View(w, h int) string                          { return "mock content" }
+func (c *layoutMockComponent) SetData(_ json.RawMessage) error               { return nil }
+func (c *layoutMockComponent) Name() string                                  { return c.name }
+func (c *layoutMockComponent) Mode() string                                  { return c.mode }
+func (c *layoutMockComponent) KeyBindings() []key.Binding                    { return nil }
+func (c *layoutMockComponent) ChangeEvent() map[string]any                   { return nil }
+
+func TestFooterComponentExpand(t *testing.T) {
+	m := testModel(40, 80)
+	m.activeComponent = &ActiveComponent{
+		Component: &layoutMockComponent{name: "threshold_slider", mode: "overlay"},
+	}
+
+	mode := m.footerMode()
+	if mode != FooterModeComponent {
+		t.Fatalf("footerMode() = %d, want FooterModeComponent", mode)
+	}
+
+	fh := m.footerHeight()
+	// Component footer: base height + borders/help, clamped to min(height/2, 20)
+	maxH := m.height / 2
+	if maxH > 20 {
+		maxH = 20
+	}
+	if fh > maxH {
+		t.Errorf("footerHeight() = %d, exceeds max clamp %d", fh, maxH)
+	}
+	if fh < 5 {
+		t.Errorf("footerHeight() = %d, want >= 5 minimum", fh)
+	}
+
+	// Heights must still sum correctly
+	layout := m.computeLayout()
+	sum := layout.HeaderHeight + layout.ViewportHeight + layout.InputHeight + layout.FooterHeight
+	if sum != 40 {
+		t.Errorf("heights sum = %d, want 40", sum)
+	}
+
+	// renderFooterRegion should dispatch to component footer (not empty)
+	result := m.renderFooterRegion(layout)
+	if result == "" {
+		t.Error("renderFooterRegion() returned empty for component mode")
+	}
+
+	// renderComponentFooter should produce output with frame
+	compResult := m.renderComponentFooter(layout)
+	if compResult == "" {
+		t.Error("renderComponentFooter() returned empty string")
+	}
+}
+
+func TestFooterComponentContract(t *testing.T) {
+	// When activeComponent is nil, footer should be status mode (1 line)
+	m := testModel(40, 80)
+	m.activeComponent = nil
+
+	mode := m.footerMode()
+	if mode != FooterModeStatus {
+		t.Errorf("footerMode() = %d after component dismissed, want FooterModeStatus", mode)
+	}
+	fh := m.footerHeight()
+	if fh != 1 {
+		t.Errorf("footerHeight() = %d after component dismissed, want 1", fh)
+	}
+}
+
+func TestLayoutResize(t *testing.T) {
+	// Changing height should produce layouts that still sum correctly
+	for _, height := range []int{20, 30, 40, 50, 60, 80} {
+		m := testModel(height, 80)
+		m.toolFeed = []ToolFeedEntry{
+			{Name: "tool1", Event: "start"},
+		}
+		layout := m.computeLayout()
+		sum := layout.HeaderHeight + layout.ViewportHeight + layout.InputHeight + layout.FooterHeight
+		if sum != height {
+			t.Errorf("height=%d: sum=%d (header=%d viewport=%d input=%d footer=%d)",
+				height, sum, layout.HeaderHeight, layout.ViewportHeight, layout.InputHeight, layout.FooterHeight)
+		}
+		if layout.ViewportHeight < 1 {
+			t.Errorf("height=%d: viewport=%d, want >= 1", height, layout.ViewportHeight)
+		}
+	}
+}
+
+func TestComponentFooterClamp(t *testing.T) {
+	// Small terminal (height=15): component footer clamped to height/2 = 7
+	m := testModel(15, 80)
+	m.activeComponent = &ActiveComponent{
+		Component: &layoutMockComponent{name: "cell_type_selector", mode: "overlay"},
+	}
+
+	fh := m.footerHeight()
+	maxH := 15 / 2 // = 7
+	if fh > maxH {
+		t.Errorf("footerHeight() = %d on height=15, want <= %d (height/2)", fh, maxH)
+	}
+
+	layout := m.computeLayout()
+	if layout.ViewportHeight < 1 {
+		t.Errorf("ViewportHeight = %d, want >= 1 even with component on small terminal", layout.ViewportHeight)
+	}
+	sum := layout.HeaderHeight + layout.ViewportHeight + layout.InputHeight + layout.FooterHeight
+	if sum != 15 {
+		t.Errorf("heights sum = %d, want 15", sum)
 	}
 }

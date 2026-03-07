@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/glamour"
 	"charm.land/lipgloss/v2"
 
+	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -908,9 +909,7 @@ func (m Model) renderFooterRegion(layout Layout) string {
 	case FooterModeToolFeed:
 		return m.renderToolFeedFooter(layout)
 	case FooterModeComponent:
-		// Component footer rendering is plan 02 (LAYO-03/LAYO-04).
-		// Fall back to status footer for now.
-		return m.renderStatusFooter(layout)
+		return m.renderComponentFooter(layout)
 	default:
 		return m.renderStatusFooter(layout)
 	}
@@ -944,4 +943,37 @@ func (m Model) renderToolFeedFooter(layout Layout) string {
 		Height(layout.FooterHeight).
 		MaxHeight(layout.FooterHeight).
 		Render(content)
+}
+
+// renderComponentFooter renders a BioCharm component inside the footer frame
+// with title bar and help bar. Falls back to status footer on panic.
+func (m Model) renderComponentFooter(layout Layout) string {
+	if m.activeComponent == nil || m.activeComponent.Component == nil {
+		return m.renderStatusFooter(layout)
+	}
+
+	comp := m.activeComponent.Component
+	contentW := m.width - 4 // frame padding/borders
+	if contentW < 1 {
+		contentW = 1
+	}
+	contentH := layout.FooterHeight - 3 // borders + help bar
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	content, panicked := safeView(comp, contentW, contentH)
+	if panicked {
+		m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
+		return m.renderStatusFooter(layout)
+	}
+
+	helpBar := biocomp.RenderHelpBar(comp.KeyBindings(), contentW)
+	frame := biocomp.RenderFrame(comp.Name(), content, helpBar, m.width, layout.FooterHeight)
+
+	return m.styles.FooterComponentFrame.
+		Width(m.width).
+		Height(layout.FooterHeight).
+		MaxHeight(layout.FooterHeight).
+		Render(frame)
 }
