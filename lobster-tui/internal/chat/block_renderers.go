@@ -3,6 +3,10 @@ package chat
 import (
 	"strings"
 
+	"github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/lexers"
+	chromaStyles "github.com/alecthomas/chroma/v2/styles"
 	"github.com/charmbracelet/glamour"
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
@@ -69,9 +73,59 @@ func renderBlockTable(b BlockTable, styles theme.Styles, width int) string {
 	return t.String()
 }
 
-// renderBlockCode is a stub for code block rendering (Plan 02).
+// renderBlockCode renders a code block with syntax highlighting via chroma.
 func renderBlockCode(b BlockCode, styles theme.Styles, width int) string {
-	return "```" + b.Language + "\n" + b.Content + "\n```"
+	var parts []string
+
+	// Language label line
+	if b.Language != "" {
+		parts = append(parts, styles.CodeLabel.Render(b.Language))
+	}
+
+	// Syntax highlight the code content
+	highlighted := highlightCode(b.Content, b.Language)
+
+	// Wrap in CodeBlock style with width accounting for padding
+	codeWidth := width - 4
+	if codeWidth < 1 {
+		codeWidth = 1
+	}
+	codeRendered := styles.CodeBlock.Width(codeWidth).Render(highlighted)
+	parts = append(parts, codeRendered)
+
+	return strings.Join(parts, "\n")
+}
+
+// highlightCode applies chroma syntax highlighting for terminal256 output.
+// Falls back to plain text if the language is unknown or tokenisation fails.
+func highlightCode(code, language string) string {
+	lexer := lexers.Get(language)
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+	lexer = chroma.Coalesce(lexer)
+
+	formatter := formatters.Get("terminal256")
+	if formatter == nil {
+		return code
+	}
+
+	style := chromaStyles.Get("monokai")
+	if style == nil {
+		return code
+	}
+
+	iterator, err := lexer.Tokenise(nil, code)
+	if err != nil {
+		return code
+	}
+
+	var buf strings.Builder
+	if err := formatter.Format(&buf, style, iterator); err != nil {
+		return code
+	}
+
+	return strings.TrimRight(buf.String(), "\n")
 }
 
 // renderBlockAlert is a stub for alert block rendering (Plan 02).
