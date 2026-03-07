@@ -115,8 +115,9 @@ type completionTimeout struct{ id string }
 type ChatMessage struct {
 	// Role is one of "user", "assistant", "system", or "handoff".
 	Role string
-	// Content is the rendered text content of the message.
-	Content string
+	// Blocks holds typed content blocks (text, code, table, alert, handoff).
+	// Use Content() method to get a backward-compatible flat string.
+	Blocks []ContentBlock
 	// Agent is optional metadata for agent-specific UI treatment.
 	Agent string
 }
@@ -685,15 +686,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeCode:
-		// Wrap code content in fenced code block so glamour renders it.
+		// Create a typed BlockCode instead of writing markdown fences to streamBuf.
 		var p protocol.CodePayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
-			m.streamBuf.WriteString("\n```")
-			m.streamBuf.WriteString(p.Language)
-			m.streamBuf.WriteByte('\n')
-			m.streamBuf.WriteString(p.Content)
-			m.streamBuf.WriteString("\n```\n")
+			m.flushStreamBuffer()
+			m.appendBlock(BlockCode{Language: p.Language, Content: p.Content})
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
@@ -734,16 +732,11 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeDone:
-		// Flush the stream buffer as supervisor transcript content, then any
-		// buffered handoff lines that belong directly beneath it.
-		toAppend := make([]ChatMessage, 0, 1+len(m.pendingHandoffs))
-		if m.streamBuf.Len() > 0 {
-			toAppend = append(toAppend, ChatMessage{
-				Role:    "assistant",
-				Content: m.streamBuf.String(),
-			})
-			m.streamBuf.Reset()
-		}
+		// Flush any remaining streamed text into typed blocks, then append
+		// buffered handoff lines that belong directly beneath the response.
+		m.flushStreamBuffer()
+
+		toAppend := make([]ChatMessage, 0, len(m.pendingHandoffs))
 		if len(m.pendingHandoffs) > 0 {
 			toAppend = append(toAppend, m.pendingHandoffs...)
 			m.pendingHandoffs = m.pendingHandoffs[:0]
@@ -783,8 +776,8 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.AlertPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			printCmd := m.appendMessage(ChatMessage{
-				Role:    "alert_" + string(p.Level),
-				Content: p.Message,
+				Role:   "alert_" + string(p.Level),
+				Blocks: []ContentBlock{BlockAlert{Level: string(p.Level), Message: p.Message}},
 			}, false)
 			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
@@ -900,8 +893,8 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 				info += fmt.Sprintf(" (%s)", p.Shape)
 			}
 			printCmd := m.appendMessage(ChatMessage{
-				Role:    "system",
-				Content: m.styles.ModalityLoaded.Render(info),
+				Role:   "system",
+				Blocks: textBlocks(m.styles.ModalityLoaded.Render(info)),
 			}, false)
 			m.modalities = append(m.modalities, ModalityInfo{Name: p.Name, Shape: p.Shape})
 			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
@@ -929,9 +922,9 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeTable:
 		var p protocol.TablePayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil && len(p.Headers) > 0 {
-			tb := renderProtocolTable(p.Headers, p.Rows, protocolTableRenderWidth(m.width))
 			m.isStreaming = true
-			appendProtocolCodeBlock(m.streamBuf, tb)
+			m.flushStreamBuffer()
+			m.appendBlock(BlockTable{Headers: p.Headers, Rows: p.Rows})
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
@@ -1111,8 +1104,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "dashboard":
 				printCmd := m.appendMessage(ChatMessage{
-					Role:    "system",
-					Content: "Dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard.",
+					Role:   "system",
+					Blocks: textBlocks("Dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard."),
 				}, false)
 				m.input.SetValue("")
 				m.recalculateViewportHeight()
@@ -1136,8 +1129,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 		printCmd := m.appendMessage(ChatMessage{
-			Role:    "user",
-			Content: val,
+			Role:   "user",
+			Blocks: textBlocks(val),
 		}, false)
 		m.isStreaming = true
 		m.input.SetValue("")
@@ -1457,8 +1450,8 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	// rendering partial stream text here causes visual duplication/noise.
 	if !m.inlineFlowMode() && m.streamBuf.Len() > 0 {
 		partial := ChatMessage{
-			Role:    "assistant",
-			Content: m.streamBuf.String(),
+			Role:   "assistant",
+			Blocks: textBlocks(m.streamBuf.String()),
 		}
 		b.WriteString(renderMessage(partial, m.styles, m.width, renderer, m.inline))
 		b.WriteByte('\n')
@@ -1558,8 +1551,8 @@ func (m *Model) renderHelp() {
 *Ask anything in natural language — Lobster routes to the right specialist agent.*`
 
 	m.appendMessage(ChatMessage{
-		Role:    "assistant",
-		Content: help,
+		Role:   "assistant",
+		Blocks: textBlocks(help),
 	}, false)
 }
 
@@ -1567,8 +1560,8 @@ func (m *Model) renderHelp() {
 func (m *Model) renderDataSummary() {
 	if len(m.modalities) == 0 {
 		m.appendMessage(ChatMessage{
-			Role:    "system",
-			Content: "No data loaded. Use /read <file> or ask Lobster to load data.",
+			Role:   "system",
+			Blocks: textBlocks("No data loaded. Use /read <file> or ask Lobster to load data."),
 		}, false)
 		return
 	}
@@ -1579,8 +1572,8 @@ func (m *Model) renderDataSummary() {
 		tb.WriteString(fmt.Sprintf("| %s | %s |\n", mod.Name, mod.Shape))
 	}
 	m.appendMessage(ChatMessage{
-		Role:    "assistant",
-		Content: tb.String(),
+		Role:   "assistant",
+		Blocks: textBlocks(tb.String()),
 	}, false)
 }
 
@@ -1809,9 +1802,9 @@ func (m *Model) applyWorkerActivity(p protocol.AgentTransitionPayload) {
 
 func (m *Model) recordHandoff(task string, agent string) tea.Cmd {
 	msg := ChatMessage{
-		Role:    "handoff",
-		Content: task,
-		Agent:   agent,
+		Role:   "handoff",
+		Blocks: []ContentBlock{BlockHandoff{From: "", To: agent, Reason: task}},
+		Agent:  agent,
 	}
 
 	if m.streamBuf.Len() > 0 {
@@ -2367,8 +2360,8 @@ func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	printCmd := m.appendMessage(ChatMessage{
-		Role:    "system",
-		Content: "Exit cancelled.",
+		Role:   "system",
+		Blocks: textBlocks("Exit cancelled."),
 	}, false)
 	return m, printCmd
 }

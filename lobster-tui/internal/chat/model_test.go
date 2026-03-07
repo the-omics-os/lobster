@@ -66,7 +66,7 @@ func TestHandleConfirmKeyLocalExitConfirmNoCancels(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("expected no quit command on cancel")
 	}
-	if len(got.messages) == 0 || got.messages[len(got.messages)-1].Content != "Exit cancelled." {
+	if len(got.messages) == 0 || got.messages[len(got.messages)-1].Content() != "Exit cancelled." {
 		t.Fatal("expected cancellation message")
 	}
 }
@@ -244,9 +244,9 @@ func TestRenderProtocolTableWrapsLongCellsAndKeepsLineWidthsAligned(t *testing.T
 	}
 }
 
-func TestHandleProtocolTableAppendsPreformattedCodeBlock(t *testing.T) {
+func TestHandleProtocolTableCreatesBlockTable(t *testing.T) {
 	m := newTestModel()
-	m.streamBuf.WriteString("⚙️  Current Configuration\n")
+	m.streamBuf.WriteString("before table text")
 
 	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeTable, protocol.TablePayload{
 		Headers: []string{"Setting", "Value", "Source"},
@@ -257,15 +257,31 @@ func TestHandleProtocolTableAppendsPreformattedCodeBlock(t *testing.T) {
 	}))
 	m = updated.(Model)
 
-	got := m.streamBuf.String()
-	if !strings.Contains(got, "```text\n") {
-		t.Fatalf("expected table to be wrapped in a text code block, got:\n%s", got)
+	// streamBuf should have been flushed (table handler calls flushStreamBuffer).
+	if m.streamBuf.Len() != 0 {
+		t.Fatalf("expected streamBuf to be flushed, got: %q", m.streamBuf.String())
 	}
-	if strings.Contains(got, "| --- |") {
-		t.Fatalf("expected markdown table fallback to be removed, got:\n%s", got)
+
+	// Last assistant message should contain both BlockText (flushed) and BlockTable.
+	if len(m.messages) == 0 {
+		t.Fatal("expected at least one message")
 	}
-	if !strings.Contains(got, "Setting") || !strings.Contains(got, "Provider") {
-		t.Fatalf("expected rendered table contents in stream buffer, got:\n%s", got)
+	last := m.messages[len(m.messages)-1]
+	if len(last.Blocks) < 2 {
+		t.Fatalf("expected at least 2 blocks (text + table), got %d", len(last.Blocks))
+	}
+	if _, ok := last.Blocks[0].(BlockText); !ok {
+		t.Errorf("block 0: want BlockText, got %T", last.Blocks[0])
+	}
+	tb, ok := last.Blocks[1].(BlockTable)
+	if !ok {
+		t.Fatalf("block 1: want BlockTable, got %T", last.Blocks[1])
+	}
+	if len(tb.Headers) != 3 || tb.Headers[0] != "Setting" {
+		t.Errorf("unexpected table headers: %v", tb.Headers)
+	}
+	if len(tb.Rows) != 2 || tb.Rows[0][0] != "Provider" {
+		t.Errorf("unexpected table rows: %v", tb.Rows)
 	}
 }
 
@@ -404,8 +420,8 @@ func TestInlineFlowModeDoesNotRenderArchivedTranscriptInFrame(t *testing.T) {
 	m.spinnerActive = false
 	for i := 0; i < 60; i++ {
 		m.messages = append(m.messages, ChatMessage{
-			Role:    "assistant",
-			Content: fmt.Sprintf("overflow line %d", i),
+			Role:   "assistant",
+			Blocks: textBlocks(fmt.Sprintf("overflow line %d", i)),
 		})
 	}
 	m.rebuildViewport()
@@ -426,7 +442,7 @@ func TestInlineFlowViewportHidesActiveStream(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
 	m.inlineFlow = true
-	m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "older output"})
+	m.messages = append(m.messages, ChatMessage{Role: "assistant", Blocks: textBlocks("older output")})
 	m.streamBuf.WriteString("live output")
 
 	m.rebuildViewport()
@@ -463,7 +479,7 @@ func TestInlinePrintMessagesCmdUsesTerminalPrintln(t *testing.T) {
 	m.inline = true
 	m.inlineFlow = true
 
-	cmd := m.inlinePrintMessagesCmd([]ChatMessage{{Role: "user", Content: "hello"}})
+	cmd := m.inlinePrintMessagesCmd([]ChatMessage{{Role: "user", Blocks: textBlocks("hello")}})
 	if cmd == nil {
 		t.Fatal("expected inline print command")
 	}
@@ -515,7 +531,7 @@ func TestInlineFlowFirstPrintedMessageDetachesHeader(t *testing.T) {
 	m.computeTarget = "MPS"
 	m.freeStorageGB = 41
 
-	cmd := m.appendMessage(ChatMessage{Role: "user", Content: "hello"}, false)
+	cmd := m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("hello")}, false)
 	if cmd == nil {
 		t.Fatal("expected first printed message command")
 	}
@@ -731,7 +747,7 @@ func TestKeyEnterSubmitsComposerInput(t *testing.T) {
 		t.Fatal("expected submitted user message to be appended")
 	}
 	last := m.messages[len(m.messages)-1]
-	if last.Role != "user" || last.Content != "hello world" {
+	if last.Role != "user" || last.Content() != "hello world" {
 		t.Fatalf("unexpected submitted message: %#v", last)
 	}
 }
@@ -1182,8 +1198,8 @@ func newTestModel() Model {
 
 func seededModelForClear() Model {
 	m := newTestModel()
-	m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "one"})
-	m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "two"})
+	m.messages = append(m.messages, ChatMessage{Role: "assistant", Blocks: textBlocks("one")})
+	m.messages = append(m.messages, ChatMessage{Role: "assistant", Blocks: textBlocks("two")})
 	m.streamBuf.WriteString("partial stream")
 	m.toolFeed = append(m.toolFeed, ToolFeedEntry{Name: "x", Event: protocol.ToolExecutionStart})
 	m.modalities = append(m.modalities, ModalityInfo{Name: "rna", Shape: "10x10"})
@@ -1196,8 +1212,8 @@ func seededScrollableModel() Model {
 	m := newTestModel()
 	for i := 0; i < 24; i++ {
 		m.messages = append(m.messages, ChatMessage{
-			Role:    "assistant",
-			Content: fmt.Sprintf("line %d", i),
+			Role:   "assistant",
+			Blocks: textBlocks(fmt.Sprintf("line %d", i)),
 		})
 	}
 	m.rebuildViewport()
