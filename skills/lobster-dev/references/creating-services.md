@@ -26,7 +26,7 @@ def analyze(self, adata: AnnData, **params) -> Tuple[AnnData, Dict, AnalysisStep
 
 from typing import Tuple, Dict, Optional
 import anndata as ad
-from lobster.core.provenance import AnalysisStep
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 class MyService:
     """Service for my domain analysis."""
@@ -69,13 +69,16 @@ class MyService:
         
         # Create provenance record
         ir = AnalysisStep(
-            activity_type="my_analysis",
-            inputs={
-                "n_obs": adata.n_obs,
-                "n_vars": adata.n_vars
-            },
-            outputs=stats,
-            params={"param1": param1, "param2": param2}
+            operation="my_domain.analyze",
+            tool_name="analyze",
+            description="Performed analysis",
+            library="lobster.services.analysis.my_service",
+            code_template="# Reproducible code template",
+            imports=["import scanpy as sc"],
+            parameters={"param1": param1, "param2": param2},
+            parameter_schema={},
+            input_entities=["adata"],
+            output_entities=["adata_result"],
         )
         
         return result, stats, ir
@@ -196,14 +199,14 @@ def test_analyze_returns_tuple(sample_adata):
     assert len(result) == 3
     assert isinstance(result[0], ad.AnnData)
     assert isinstance(result[1], dict)
-    assert hasattr(result[2], "activity_type")
+    assert hasattr(result[2], "operation")
 
 
 def test_analyze_stats(sample_adata):
     """Test returned statistics."""
     service = MyService()
     _, stats, _ = service.analyze(sample_adata, param1="test")
-    
+
     assert "n_cells" in stats
     assert "status" in stats
     assert stats["status"] == "complete"
@@ -213,10 +216,10 @@ def test_analyze_provenance(sample_adata):
     """Test provenance record."""
     service = MyService()
     _, _, ir = service.analyze(sample_adata, param1="test", param2=20)
-    
-    assert ir.activity_type == "my_analysis"
-    assert ir.params["param1"] == "test"
-    assert ir.params["param2"] == 20
+
+    assert ir.operation == "my_domain.analyze"
+    assert ir.parameters["param1"] == "test"
+    assert ir.parameters["param2"] == 20
 
 
 def test_analyze_with_none_raises():
@@ -253,11 +256,16 @@ def full_pipeline(self, adata, **params):
     # Combine stats
     combined_stats = {**stats1, **stats2}
     combined_ir = AnalysisStep(
-        activity_type="full_pipeline",
-        inputs=ir1.inputs,
-        outputs=combined_stats,
-        params=params,
-        sub_steps=[ir1, ir2]
+        operation="my_domain.full_pipeline",
+        tool_name="full_pipeline",
+        description="Full analysis pipeline",
+        library="lobster.services.analysis.my_service",
+        code_template="# Pipeline code",
+        imports=[],
+        parameters=params,
+        parameter_schema={},
+        input_entities=["adata"],
+        output_entities=["adata_processed"],
     )
     
     return adata, combined_stats, combined_ir

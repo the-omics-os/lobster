@@ -16,9 +16,14 @@ class TestSharedToolsTemplate:
         content = _render_template("shared_tools.py.j2", self.CONTEXT)
         ast.parse(content)
 
-    def test_has_aquadif_import(self):
+    def test_uses_string_literals_not_aquadif_import(self):
+        """AQUADIF metadata must use string literals, not AquadifCategory import."""
         content = _render_template("shared_tools.py.j2", self.CONTEXT)
-        assert "from lobster.config.aquadif import AquadifCategory" in content
+        assert "AquadifCategory" not in content, "Use string literals, not AquadifCategory import"
+        assert '"IMPORT"' in content
+        assert '"QUALITY"' in content
+        assert '"ANALYZE"' in content
+        assert '"UTILITY"' in content
 
     def test_tools_have_metadata_assignment(self):
         """Every tool must have .metadata and .tags assigned."""

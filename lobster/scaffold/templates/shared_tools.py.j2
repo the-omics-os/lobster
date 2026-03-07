@@ -10,8 +10,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.tools import tool
 
-from lobster.config.aquadif import AquadifCategory
-from lobster.core.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.utils.logger import get_logger
 
@@ -85,10 +84,10 @@ def create_shared_tools(
     # ANALYZE, ANNOTATE, SYNTHESIZE) MUST be listed FIRST in categories.
     # Contract test test_provenance_categories_not_buried() enforces this.
     import_{{ domain }}_data.metadata = {
-        "categories": [AquadifCategory.IMPORT.value],
+        "categories": ["IMPORT"],
         "provenance": True,
     }
-    import_{{ domain }}_data.tags = [AquadifCategory.IMPORT.value]
+    import_{{ domain }}_data.tags = ["IMPORT"]
 
     # =========================================================================
     # QUALITY tools — Assess data integrity
@@ -129,10 +128,10 @@ def create_shared_tools(
         return f"Quality assessment complete: {stats}"
 
     assess_{{ domain }}_quality.metadata = {
-        "categories": [AquadifCategory.QUALITY.value],
+        "categories": ["QUALITY"],
         "provenance": True,
     }
-    assess_{{ domain }}_quality.tags = [AquadifCategory.QUALITY.value]
+    assess_{{ domain }}_quality.tags = ["QUALITY"]
 
     # =========================================================================
     # ANALYZE tools — Extract patterns
@@ -177,10 +176,10 @@ def create_shared_tools(
         return f"Analysis complete: {stats}"
 
     analyze_{{ domain }}.metadata = {
-        "categories": [AquadifCategory.ANALYZE.value],
+        "categories": ["ANALYZE"],
         "provenance": True,
     }
-    analyze_{{ domain }}.tags = [AquadifCategory.ANALYZE.value]
+    analyze_{{ domain }}.tags = ["ANALYZE"]
 
     # =========================================================================
     # UTILITY tools — Workspace management
@@ -195,10 +194,10 @@ def create_shared_tools(
         return f"Available modalities: {', '.join(modalities)}"
 
     list_{{ domain }}_modalities.metadata = {
-        "categories": [AquadifCategory.UTILITY.value],
+        "categories": ["UTILITY"],
         "provenance": False,
     }
-    list_{{ domain }}_modalities.tags = [AquadifCategory.UTILITY.value]
+    list_{{ domain }}_modalities.tags = ["UTILITY"]
 
     # =========================================================================
     # Return all tools

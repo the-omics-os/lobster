@@ -39,7 +39,7 @@ irm https://install.lobsterbio.com/windows | iex
 
 ### Manual install (any platform)
 ```bash
-uv tool install 'lobster-ai[full,anthropic]' && lobster init
+uv tool install 'lobster-ai[full]' && lobster init
 # or: pip install 'lobster-ai[full]' && lobster init
 ```
 

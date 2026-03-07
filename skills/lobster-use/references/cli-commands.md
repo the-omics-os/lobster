@@ -15,7 +15,7 @@ Complete reference for Lobster AI command-line interface.
 |----------|---------|
 | macOS / Linux | `curl -fsSL https://install.lobsterbio.com \| bash` |
 | Windows (PowerShell) | `irm https://install.lobsterbio.com/windows \| iex` |
-| Manual (any) | `uv tool install 'lobster-ai[full,anthropic]' && lobster init` |
+| Manual (any) | `uv tool install 'lobster-ai[full]' && lobster init` |
 | pip (any) | `pip install 'lobster-ai[full]' && lobster init` |
 | pip (targeted) | See targeted domain extras below |
 

@@ -255,7 +255,7 @@ irm https://install.lobsterbio.com/windows | iex
 
 **uv** (recommended manual install):
 ```bash
-uv tool install 'lobster-ai[full,anthropic]'
+uv tool install 'lobster-ai[full]'              # All agents, choose provider at init
 lobster init
 ```
 

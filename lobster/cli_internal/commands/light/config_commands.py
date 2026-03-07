@@ -982,20 +982,30 @@ def config_test_impl(output_json: bool = False):
             else:
                 console.print(msg)
 
-    # Check .env file exists
+    # Load credentials from multiple sources (local .env, global config, env vars)
+    from lobster.config.global_config import (
+        get_global_credentials_path,
+        global_credentials_exist,
+    )
+
     env_file = Path.cwd() / ".env"
-    test_results["env_file"] = str(env_file) if env_file.exists() else None
+    credential_source = None
 
-    if not env_file.exists():
-        if output_json:
-            test_results["checks"]["llm_provider"]["message"] = "No .env file found"
-            print(json_module.dumps(test_results, indent=2))
-        else:
-            console.print("[red]❌ No .env file found in current directory[/red]")
-            console.print("[dim]Run 'lobster init' to create configuration[/dim]")
-        raise typer.Exit(1)
+    if env_file.exists():
+        load_dotenv(env_file)
+        credential_source = "local .env"
+        test_results["env_file"] = str(env_file)
+    elif global_credentials_exist():
+        global_creds = get_global_credentials_path()
+        load_dotenv(global_creds)
+        credential_source = f"global credentials ({global_creds})"
+        test_results["env_file"] = str(global_creds)
+    else:
+        credential_source = "environment variables"
+        test_results["env_file"] = None
+        # Don't exit — env vars or workspace config may provide credentials
 
-    load_dotenv()
+    test_results["credential_source"] = credential_source
 
     if not output_json:
         console.print()
@@ -1007,7 +1017,10 @@ def config_test_impl(output_json: bool = False):
             )
         )
         console.print()
-        console.print(f"[green]✅ Found .env file:[/green] {env_file}")
+        if credential_source == "environment variables":
+            console.print("[yellow]No .env or global credentials found — testing environment variables[/yellow]")
+        else:
+            console.print(f"[green]✅ Credentials source:[/green] {credential_source}")
         console.print()
 
     # Test LLM Provider
@@ -1237,8 +1250,8 @@ def config_test_impl(output_json: bool = False):
             console.print(
                 Panel.fit(
                     "[bold red]❌ Configuration Issues Detected[/bold red]\n\n"
-                    "Please check your API keys in the .env file.\n"
-                    f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init --force[/bold {LobsterTheme.PRIMARY_ORANGE}] to reconfigure",
+                    "Please check your API keys.\n"
+                    f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}] to reconfigure",
                     border_style="red",
                     padding=(1, 2),
                 )

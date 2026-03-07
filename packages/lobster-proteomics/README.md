@@ -27,7 +27,7 @@ pip install lobster-proteomics
 | ProteomicsVisualizationService | Volcano plots, heatmaps, and network graphs |
 | MaxQuantParser | Parse MaxQuant proteinGroups.txt output |
 | DIANNParser | Parse DIA-NN report.tsv output |
-| SpectronaultParser | Parse Spectronaut report output |
+| SpectronautParser | Parse Spectronaut report output |
 | OlinkParser | Parse Olink NPX export files |
 
 ## Features
@@ -58,7 +58,7 @@ pip install lobster-proteomics
 
 ## Tier Requirement
 
-This is a **premium** agent. Access is controlled at runtime via Lobster AI's tier system.
+This is a **free** agent. Access is controlled at runtime via Lobster AI's tier system.
 
 ## Documentation
 

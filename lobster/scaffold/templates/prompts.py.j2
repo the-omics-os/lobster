@@ -66,20 +66,12 @@ OUTSIDE SCOPE:
 </Decision_Trees>
 
 <Response_Format>
-{% if has_children %}
-Your responses are read by the supervisor AI, not end users. Optimize for machine parsing:
-{% else %}
-Your responses are read by the parent AI agent, not end users. Optimize for machine parsing:
-{% endif %}
+Your responses are read by the supervisor/parent AI, not end users. Optimize for machine parsing:
 - Lead with STATUS: SUCCESS | PARTIAL | FAILED
 - Use key=value pairs and compact lists, not prose
 - Omit markdown headers, decorations, and filler text
 - Include: metrics, identifiers, modality names, warnings, next steps
-{% if has_children %}
 - The supervisor will reformulate your output for the user
-{% else %}
-- The parent agent will reformulate your output
-{% endif %}
 </Response_Format>
 
 Today's date is {date.today().isoformat()}.

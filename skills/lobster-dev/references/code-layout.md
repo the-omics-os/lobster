@@ -14,7 +14,7 @@ lobster/                          # Repository root
 │   └── cli.py                    # CLI implementation (3,900+ lines)
 ├── packages/                     # Agent packages (PEP 420)
 │   ├── lobster-<domain>/         # A domain agent installed from the lobster pypi repository
-│   └── lobster-research/         # The reserach agent of lobster allowing for interactions with biological databasese
+│   └── lobster-research/         # The research agent of lobster allowing for interactions with biological databases
 
 ├── tests/
 │   ├── unit/

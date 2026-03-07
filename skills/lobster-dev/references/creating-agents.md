@@ -198,7 +198,7 @@ from typing import Optional
 from langgraph.prebuilt import create_react_agent
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 ```
 
 ### Field Reference
@@ -289,7 +289,7 @@ def domain_expert(
 | `create_llm` | `from lobster.config.llm_factory import create_llm` | ~~`lobster.core.llm_factory`~~ |
 | `get_settings` | `from lobster.config.settings import get_settings` | ~~`lobster.core.settings`~~ |
 | `AgentRegistryConfig` | `from lobster.config.agent_registry import AgentRegistryConfig` | — |
-| `DataManagerV2` | `from lobster.core.data_manager_v2 import DataManagerV2` | — |
+| `DataManagerV2` | `from lobster.core.runtime.data_manager import DataManagerV2` | — |
 | `create_react_agent` | `from langgraph.prebuilt import create_react_agent` | — |
 | `AgentState` | `from langgraph.prebuilt.chat_agent_executor import AgentState` | ~~`MessagesState`~~ |
 | `get_logger` | `from lobster.utils.logger import get_logger` | ~~`lobster.core.logger`~~ |
