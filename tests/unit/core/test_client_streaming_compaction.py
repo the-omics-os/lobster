@@ -151,8 +151,8 @@ def test_cancel_event_breaks_stream(tmp_path):
     assert len(complete_events) == 0, "stream should NOT emit 'complete' on cancel"
 
 
-def test_cancel_saves_partial_state(tmp_path):
-    """Cancellation writes accumulated text and system marker to graph state."""
+def test_cancel_rolls_back_to_pre_query_state(tmp_path):
+    """Cancellation rolls back in-memory messages to pre-query state."""
     events = [
         (
             (),
@@ -175,7 +175,19 @@ def test_cancel_saves_partial_state(tmp_path):
     cancel_event = threading.Event()
 
     client = _make_client_with_stream_events(tmp_path, events)
+
+    # Simulate graph state with messages added during the query.
+    mock_state = Mock()
+    mock_state.values = {
+        "messages": [
+            HumanMessage(content="test", id="human-1"),
+            AIMessage(content="partial response", id="ai-1"),
+        ]
+    }
+    client.graph.get_state = Mock(return_value=mock_state)
     client.graph.update_state = Mock()
+
+    pre_query_count = len(client.messages)
 
     result = []
     for event in client.query("test", stream=True, cancel_event=cancel_event):
@@ -183,21 +195,20 @@ def test_cancel_saves_partial_state(tmp_path):
         if event["type"] == "content_delta":
             cancel_event.set()
 
-    # Verify update_state was called with accumulated text and system message.
-    assert client.graph.update_state.call_count == 2
-    first_call_messages = client.graph.update_state.call_args_list[0][0][1]["messages"]
-    assert len(first_call_messages) == 1
-    assert isinstance(first_call_messages[0], AIMessage)
-    assert first_call_messages[0].content == "partial response"
+    # In-memory messages should be rolled back to pre-query state.
+    assert len(client.messages) == pre_query_count
 
-    second_call_messages = client.graph.update_state.call_args_list[1][0][1]["messages"]
-    assert len(second_call_messages) == 1
-    assert isinstance(second_call_messages[0], HumanMessage)
-    assert "[SYSTEM] Query cancelled" in second_call_messages[0].content
+    # The HumanMessage we added for the query should be gone.
+    human_msgs = [m for m in client.messages if isinstance(m, HumanMessage)]
+    assert not any(m.content == "test" for m in human_msgs)
+
+    # Graph state should have RemoveMessage calls for messages added during query.
+    assert client.graph.get_state.called
+    assert client.graph.update_state.called
 
 
-def test_cancel_preserves_session_messages(tmp_path):
-    """After cancellation, client.messages includes partial text + system marker."""
+def test_cancel_rollback_removes_query_human_message(tmp_path):
+    """After cancellation, client.messages does NOT include the cancelled query's HumanMessage."""
     events = [
         (
             (),
@@ -213,18 +224,26 @@ def test_cancel_preserves_session_messages(tmp_path):
     cancel_event.set()  # Pre-set: cancel immediately.
 
     client = _make_client_with_stream_events(tmp_path, events)
+    # Graph returns empty state (cancel happened before graph had any messages).
+    mock_state = Mock()
+    mock_state.values = {"messages": []}
+    client.graph.get_state = Mock(return_value=mock_state)
     client.graph.update_state = Mock()
+
+    pre_query_count = len(client.messages)
 
     # Drain the generator.
     list(client.query("test", stream=True, cancel_event=cancel_event))
 
-    # The HumanMessage from query() + system cancel marker should be in messages.
+    # Messages should be back to pre-query state — no HumanMessage, no system marker.
+    assert len(client.messages) == pre_query_count
     human_msgs = [m for m in client.messages if isinstance(m, HumanMessage)]
-    assert any("[SYSTEM] Query cancelled" in m.content for m in human_msgs)
+    assert not any(m.content == "test" for m in human_msgs)
+    assert not any("[SYSTEM] Query cancelled" in m.content for m in human_msgs)
 
 
 def test_next_query_works_after_cancel(tmp_path):
-    """Session remains usable after a cancelled query."""
+    """Session remains usable after a cancelled query — clean rollback."""
     cancel_events_data = [
         (
             (),
@@ -240,10 +259,17 @@ def test_next_query_works_after_cancel(tmp_path):
     cancel_event.set()
 
     client = _make_client_with_stream_events(tmp_path, cancel_events_data)
+    # Graph returns empty state for rollback.
+    mock_state = Mock()
+    mock_state.values = {"messages": []}
+    client.graph.get_state = Mock(return_value=mock_state)
     client.graph.update_state = Mock()
 
-    # First query: cancelled.
+    # First query: cancelled — should rollback cleanly.
     list(client.query("first", stream=True, cancel_event=cancel_event))
+
+    # After cancel, messages should be empty (rolled back).
+    assert len(client.messages) == 0
 
     # Second query: normal (no cancel_event).
     normal_events = [

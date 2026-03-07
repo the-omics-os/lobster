@@ -316,6 +316,53 @@ curl -fsSL https://skills.lobsterbio.com | bash
 
 <br/>
 
+# Acknowledgements
+
+<table border="0" cellspacing="0" cellpadding="10" style="border: none; background: transparent;">
+  <tr>
+    <td style="border: none; background: transparent;">
+      <a href="https://github.com/celltype/cli">
+        <img src="https://img.shields.io/badge/celltype-cli-343a40?style=for-the-badge&logo=github&logoColor=white" alt="celltype/cli">
+      </a>
+    </td>
+    <td style="border: none; background: transparent; vertical-align: middle;">
+      Structural inspiration for the drug discovery agent package — CLI design patterns and domain decomposition.
+    </td>
+  </tr>
+  <tr>
+    <td style="border: none; background: transparent;">
+      <a href="https://github.com/GPTomics/bioSkills">
+        <img src="https://img.shields.io/badge/GPTomics-bioSkills-2d6a4f?style=for-the-badge&logo=github&logoColor=white" alt="bioSkills">
+      </a>
+    </td>
+    <td style="border: none; background: transparent; vertical-align: middle;">
+      Foundation for the <code>lobster-use</code> and <code>lobster-dev</code> skills — domain knowledge structure and skill distribution patterns.
+    </td>
+  </tr>
+  <tr>
+    <td style="border: none; background: transparent;">
+      <a href="https://github.com/assistant-ui/assistant-ui">
+        <img src="https://img.shields.io/badge/assistant--ui-assistant--ui-5c6bc0?style=for-the-badge&logo=react&logoColor=white" alt="assistant-ui">
+      </a>
+    </td>
+    <td style="border: none; background: transparent; vertical-align: middle;">
+      UI component architecture and streaming patterns used in the Omics-OS Cloud frontend.
+    </td>
+  </tr>
+  <tr>
+    <td style="border: none; background: transparent;">
+      <a href="https://github.com/charmbracelet">
+        <img src="https://img.shields.io/badge/Charm-Bracelet-e91e8c?style=for-the-badge&logo=go&logoColor=white" alt="charmbracelet">
+      </a>
+    </td>
+    <td style="border: none; background: transparent; vertical-align: middle;">
+      BubbleTea, Lipgloss, Glamour, and huh — the entire terminal UI stack powering <code>lobster chat</code>.
+    </td>
+  </tr>
+</table>
+
+<br/>
+
 <div align="center">
   <b>Multi-omics data infrastructure for foundation models &amp; biotech.</b><br/><br/>
   <a href="https://omics-os.com">Omics-OS</a> &nbsp;·&nbsp; <a href="https://lobsterbio.com">Lobster AI</a> &nbsp;·&nbsp; <a href="https://docs.omics-os.com">Docs</a>

@@ -833,10 +833,6 @@ def _handle_user_query(
                 _forward_stream_event(bridge, client, event, query_start)
 
             if cancelled:
-                bridge.send(
-                    "alert",
-                    {"level": "warning", "message": "Query cancelled"},
-                )
                 bridge.send("done", {"summary": "cancelled"})
                 duration = time.time() - query_start
                 bridge.send("status", {"text": f"Cancelled after {duration:.1f}s"})

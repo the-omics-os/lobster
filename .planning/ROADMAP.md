@@ -12,7 +12,7 @@ Incremental overhaul of the Go TUI from Charm v1 to v2, introducing typed conten
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Typed content block model + BioComp lifecycle fixes
+- [x] **Phase 1: Foundation** - Typed content block model + BioComp lifecycle fixes
 - [ ] **Phase 2: Charm v2 Migration** - Full framework migration from v1 to v2 (imports, key handling, huh removal)
 - [ ] **Phase 3: Rendering and Style** - Native tables, clean messages, code blocks, alerts, render cache, semantic style system
 - [ ] **Phase 4: Layout** - 4-layer layout system with dynamic footer for components
@@ -33,8 +33,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md -- Typed content block model (content.go, protocol handler updates, Content() helper)
-- [ ] 01-02-PLAN.md -- BioComp lifecycle fixes (imports, cancel, replacement, layout math, SetData/ChangeEvent, error boundary, stale guard)
+- [x] 01-01-PLAN.md -- Typed content block model (content.go, protocol handler updates, Content() helper)
+- [x] 01-02-PLAN.md -- BioComp lifecycle fixes (imports, cancel, replacement, layout math, SetData/ChangeEvent, error boundary, stale guard)
 
 ### Phase 2: Charm v2 Migration
 **Goal**: Entire TUI runs on Charm v2 packages with no v1 dependencies remaining
@@ -45,12 +45,12 @@ Plans:
   2. View() returns tea.View across all models (not string)
   3. Init wizard completes all 5 steps using bubbles v2 primitives (huh dependency removed from go.mod)
   4. All keyboard shortcuts work correctly with v2 KeyPressMsg (space, enter, esc, ctrl+c, arrow keys)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: API spike validating v2 assumptions (isolated test, color types, viewport behavior)
-- [ ] 02-02: Mechanical import migration + View() return type + color type updates
-- [ ] 02-03: Key handling rewrite + huh removal + init wizard rewrite with bubbles v2
+- [ ] 02-01-PLAN.md -- API spike validating v2 assumptions (View type, color types, KeyPressMsg, viewport, glamour coexistence)
+- [ ] 02-02-PLAN.md -- Mechanical import migration + View() return type + color type updates + KeyMsg->KeyPressMsg
+- [ ] 02-03-PLAN.md -- Init wizard rewrite with v2 state machine + forms.go rewrite + huh removal
 
 ### Phase 3: Rendering and Style
 **Goal**: Users see beautiful tables, clean flowing messages, syntax-highlighted code, and consistent visual styling
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/2 | Not started | - |
+| 1. Foundation | 2/2 | Complete | 2026-03-07 |
 | 2. Charm v2 Migration | 0/3 | Not started | - |
 | 3. Rendering and Style | 0/2 | Not started | - |
 | 4. Layout | 0/1 | Not started | - |

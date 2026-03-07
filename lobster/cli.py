@@ -214,11 +214,6 @@ _COMMAND_HISTORY_LOCK = threading.Lock()
 
 
 # ============================================================================
-# Queue Command Exceptions
-# ============================================================================
-# Note: QueueFileTypeNotSupported exception now imported from shared module
-# (lobster.cli_internal.commands)
-# ============================================================================
 # Progress Management
 # ============================================================================
 
@@ -323,14 +318,7 @@ def extract_available_commands() -> Dict[str, str]:
 def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     from lobster.cli_internal.commands.heavy.slash_commands import change_mode as _impl
     return _impl(new_mode, current_client)
-
-
-
-
-# =============================================================================
-# Agent Selection Helper Functions (CLI-01, CLI-02, CONF-07, CONF-08)
-# =============================================================================
-
+    
 
 # =============================================================================
 # Available Agent Packages (static registry for init flow)

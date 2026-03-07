@@ -769,6 +769,21 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeDone:
+		var dp protocol.DonePayload
+		_ = protocol.DecodePayload(msg.Message, &dp)
+
+		if dp.Summary == "cancelled" {
+			// Cancel: discard partial stream, don't append to chat history.
+			m.streamBuf.Reset()
+			m.pendingHandoffs = m.pendingHandoffs[:0]
+			m.isStreaming = false
+			m.isCanceling = false
+			m.toolFeed = m.toolFeed[:0]
+			m.recalculateViewportHeight()
+			m.rebuildViewportWithMode(true)
+			return m, waitForProtocolMsg(m.handler)
+		}
+
 		// Flush any remaining streamed text into typed blocks, then append
 		// buffered handoff lines that belong directly beneath the response.
 		m.flushStreamBuffer()

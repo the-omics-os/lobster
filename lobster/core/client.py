@@ -250,6 +250,9 @@ class AgentClient(BaseClient):
         Returns:
             Dictionary with response and metadata
         """
+        # Capture pre-query state so cancellation can cleanly rollback.
+        pre_query_msg_count = len(self.messages)
+
         # Add user message
         self.messages.append(HumanMessage(content=user_input))
 
@@ -264,7 +267,11 @@ class AgentClient(BaseClient):
         }
 
         if stream:
-            return self._stream_query(graph_input, config, cancel_event=cancel_event)
+            return self._stream_query(
+                graph_input, config,
+                cancel_event=cancel_event,
+                pre_query_msg_count=pre_query_msg_count,
+            )
         else:
             return self._run_query(graph_input, config)
 
@@ -378,7 +385,8 @@ class AgentClient(BaseClient):
             }
 
     def _stream_query(
-        self, graph_input: Dict, config: Dict, cancel_event=None
+        self, graph_input: Dict, config: Dict, cancel_event=None,
+        pre_query_msg_count: int | None = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Stream query execution with token-by-token text streaming.
@@ -603,9 +611,10 @@ class AgentClient(BaseClient):
                 else:
                     logger.debug(f"Streaming: unexpected event_type={event_type}")
 
-            # On cancellation: save partial state so the next query has context.
+            # On cancellation: rollback to pre-query state for a clean next turn.
             if was_cancelled:
-                self._save_cancelled_state(accumulated_text, config)
+                if pre_query_msg_count is not None:
+                    self._rollback_cancelled_query(config, pre_query_msg_count)
                 return
 
             # Check for lingering HITL interrupts that didn't appear in the
@@ -678,40 +687,44 @@ class AgentClient(BaseClient):
         }
         stream_input = Command(resume=response)
         if stream:
-            yield from self._stream_query(stream_input, config, cancel_event=cancel_event)
+            yield from self._stream_query(
+                stream_input, config,
+                cancel_event=cancel_event,
+                pre_query_msg_count=len(self.messages),
+            )
         else:
             yield self._run_query(stream_input, config)
 
-    def _save_cancelled_state(self, accumulated_text: str, config: Dict) -> None:
-        """Preserve partial progress after user cancellation.
+    def _rollback_cancelled_query(self, config: Dict, pre_query_msg_count: int) -> None:
+        """Roll back to pre-query state after user cancellation.
 
-        Writes accumulated AI text and a system cancellation marker to graph
-        state so the next query has context about what was interrupted.
+        Args:
+            config: LangGraph config with thread_id.
+            pre_query_msg_count: len(self.messages) BEFORE the query's
+                HumanMessage was appended (captured at query() entry).
         """
         try:
-            if accumulated_text:
-                self.graph.update_state(
-                    config, {"messages": [AIMessage(content=accumulated_text)]}
-                )
-                self.messages.append(AIMessage(content=accumulated_text))
-            self.graph.update_state(
-                config,
-                {
-                    "messages": [
-                        HumanMessage(
-                            content="[SYSTEM] Query cancelled by user. Previous operation was interrupted."
-                        )
+            # 1. Roll back in-memory messages to pre-query state.
+            self.messages = self.messages[:pre_query_msg_count]
+
+            # 2. Roll back graph state: remove all messages added during this query.
+            state = self.graph.get_state(config)
+            if state and state.values.get("messages"):
+                graph_msgs = state.values["messages"]
+                if len(graph_msgs) > pre_query_msg_count:
+                    from langchain_core.messages import RemoveMessage
+
+                    removals = [
+                        RemoveMessage(id=m.id)
+                        for m in graph_msgs[pre_query_msg_count:]
+                        if hasattr(m, "id") and m.id
                     ]
-                },
-            )
-            self.messages.append(
-                HumanMessage(
-                    content="[SYSTEM] Query cancelled by user. Previous operation was interrupted."
-                )
-            )
+                    if removals:
+                        self.graph.update_state(config, {"messages": removals})
+
             self._save_session_json()
         except Exception:
-            logger.debug("Failed to save cancelled state", exc_info=True)
+            logger.debug("Failed to rollback after cancel", exc_info=True)
 
     def _extract_response(self, events: List[Dict]) -> str | Dict[str, str]:
         """Extract the final response from events, expecting supervisor responses.

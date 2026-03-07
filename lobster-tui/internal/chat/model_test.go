@@ -1255,6 +1255,68 @@ func readSingleProtocolMessage(t *testing.T, buf *bytes.Buffer) protocol.Message
 }
 
 // ---------------------------------------------------------------------------
+// Cancel: clean rollback on done(summary=cancelled)
+// ---------------------------------------------------------------------------
+
+func TestDoneCancelledDiscardsStreamBufAndToolFeed(t *testing.T) {
+	m := newTestModel()
+	m.isStreaming = true
+	m.isCanceling = true
+	m.streamBuf.WriteString("partial AI response that should vanish")
+	m.pendingHandoffs = append(m.pendingHandoffs, ChatMessage{
+		Role: "assistant", Blocks: []ContentBlock{BlockText{Text: "handoff note"}},
+	})
+	m.toolFeed = append(m.toolFeed, ToolFeedEntry{
+		Name: "analyze_data", Event: "start",
+	})
+	// Pre-existing chat message that should survive.
+	m.messages = append(m.messages, ChatMessage{
+		Role: "user", Blocks: []ContentBlock{BlockText{Text: "prior turn"}},
+	})
+
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{
+		Summary: "cancelled",
+	}))
+	got := updated.(Model)
+
+	if got.streamBuf.Len() != 0 {
+		t.Fatalf("expected streamBuf to be reset, got %q", got.streamBuf.String())
+	}
+	if len(got.pendingHandoffs) != 0 {
+		t.Fatalf("expected pendingHandoffs cleared, got %d", len(got.pendingHandoffs))
+	}
+	if len(got.toolFeed) != 0 {
+		t.Fatalf("expected toolFeed cleared, got %d", len(got.toolFeed))
+	}
+	if got.isStreaming {
+		t.Fatal("expected isStreaming=false")
+	}
+	if got.isCanceling {
+		t.Fatal("expected isCanceling=false")
+	}
+	// Prior messages must survive — only streaming buffer is discarded.
+	if len(got.messages) != 1 || got.messages[0].Content() != "prior turn" {
+		t.Fatalf("expected prior message to survive, got %v", got.messages)
+	}
+}
+
+func TestDoneNormalStillFlushesStreamBuf(t *testing.T) {
+	m := newTestModel()
+	m.isStreaming = true
+	m.streamBuf.WriteString("final answer")
+
+	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{}))
+	got := updated.(Model)
+
+	if len(got.messages) != 1 {
+		t.Fatalf("expected one message flushed from streamBuf, got %d", len(got.messages))
+	}
+	if got.messages[0].Content() != "final answer" {
+		t.Fatalf("expected flushed content, got %q", got.messages[0].Content())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Cancel vs Quit tests (Phase 1: Query Cancellation)
 // ---------------------------------------------------------------------------
 
