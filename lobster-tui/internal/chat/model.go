@@ -31,9 +31,11 @@ import (
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/celltype"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/confirm"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/qcdash"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/textinput"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/threshold"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -583,8 +585,11 @@ func (m Model) View() string {
 	// Inline BioComp component (rendered as a block above the composer, non-interactive).
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "inline" {
 		comp := m.activeComponent.Component
-		inlineView := comp.View(m.width, m.height)
-		if inlineView != "" {
+		inlineView, panicked := safeView(comp, m.width, m.height)
+		if panicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
+			m.activeComponent = nil
+		} else if inlineView != "" {
 			b.WriteString(inlineView)
 			b.WriteByte('\n')
 		}
@@ -597,6 +602,7 @@ func (m Model) View() string {
 	}
 
 	// Input field (1 line) — replaced by overlay component or local confirm when active.
+	overlayRendered := false
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
 		comp := m.activeComponent.Component
 		overlayW, overlayH := biocomp.OverlaySize(m.width, m.height, "small")
@@ -615,11 +621,20 @@ func (m Model) View() string {
 			contentH = 1
 		}
 		helpBar := biocomp.RenderHelpBar(comp.KeyBindings(), contentW)
-		content := comp.View(contentW, contentH)
-		frame := biocomp.RenderFrame(comp.Name(), content, helpBar, overlayW, overlayH)
-		centered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, frame)
-		b.WriteString(centered)
-		b.WriteByte('\n')
+		content, viewPanicked := safeView(comp, contentW, contentH)
+		if viewPanicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
+			m.activeComponent = nil
+		} else {
+			frame := biocomp.RenderFrame(comp.Name(), content, helpBar, overlayW, overlayH)
+			centered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, frame)
+			b.WriteString(centered)
+			b.WriteByte('\n')
+			overlayRendered = true
+		}
+	}
+	if overlayRendered {
+		// Overlay was rendered; skip composer/confirm.
 	} else if m.pendingConfirm != nil {
 		// Local exit confirm only (not protocol components).
 		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
@@ -999,7 +1014,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	// Intercept keys for active BioComp overlay component.
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
-		result := m.activeComponent.Component.HandleMsg(msg)
+		result, panicked := safeHandleMsg(m.activeComponent.Component, msg)
+		if panicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "handleMsg_panic"})
+			m.activeComponent = nil
+			m.recalculateViewportHeight()
+			return m, nil
+		}
 		if result != nil {
 			m.sendComponentResponse(m.activeComponent.MsgID, result.Action, result.Data)
 			m.activeComponent = nil
@@ -2321,14 +2342,42 @@ func protocolTableDivider(widths []int) string {
 }
 
 // sendComponentResponse sends a component_response protocol message to Python.
+// The action parameter is always included in the Data map so Python can
+// distinguish submit, cancel, and error responses.
 func (m *Model) sendComponentResponse(msgID, action string, data map[string]any) {
 	if m.handler == nil {
 		return
 	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	data["action"] = action
 	_ = m.handler.SendTyped(protocol.TypeComponentResponse, protocol.ComponentResponsePayload{
 		ID:   msgID,
 		Data: data,
 	}, msgID)
+}
+
+// safeHandleMsg wraps comp.HandleMsg in a recover boundary so a panicking
+// component does not crash the entire TUI.
+func safeHandleMsg(comp biocomp.BioComponent, msg tea.Msg) (result *biocomp.ComponentResult, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+		}
+	}()
+	return comp.HandleMsg(msg), false
+}
+
+// safeView wraps comp.View in a recover boundary. Returns empty string on panic.
+func safeView(comp biocomp.BioComponent, w, h int) (content string, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			panicked = true
+			content = ""
+		}
+	}()
+	return comp.View(w, h), false
 }
 
 // handleConfirmKey handles key presses for the local exit confirm dialog.

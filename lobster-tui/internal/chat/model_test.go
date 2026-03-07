@@ -1453,8 +1453,11 @@ func TestComponentRenderUnknownFallsBackToTextInput(t *testing.T) {
 	m := newTestModel()
 	m.handler = protocol.NewHandler(strings.NewReader(""), &bytes.Buffer{})
 
+	// Use a genuinely unknown component name to test the fallback path.
+	// Previously this used "threshold_slider" which was accidentally
+	// unregistered due to missing blank imports (COMP-01 fix).
 	payload := protocol.ComponentRenderPayload{
-		Component:      "threshold_slider",
+		Component:      "totally_unknown_widget",
 		Data:           map[string]any{"label": "Adjust p-value"},
 		FallbackPrompt: "Adjust p-value (0.0-1.0, default: 0.05)",
 	}
