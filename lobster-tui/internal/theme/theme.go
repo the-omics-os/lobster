@@ -78,7 +78,25 @@ type Styles struct {
 
 	// Code / markdown
 	CodeBlock  lipgloss.Style
+	CodeLabel  lipgloss.Style
 	InlineCode lipgloss.Style
+
+	// Table
+	TableHeader  lipgloss.Style
+	TableRowEven lipgloss.Style
+	TableRowOdd  lipgloss.Style
+	TableBorder  lipgloss.Style
+
+	// Footer
+	FooterStatus         lipgloss.Style
+	FooterToolFeed       lipgloss.Style
+	FooterComponentFrame lipgloss.Style
+
+	// Chat (name/body tokens)
+	AgentName     lipgloss.Style
+	UserName      lipgloss.Style
+	MessageBody   lipgloss.Style
+	HandoffPrefix lipgloss.Style
 
 	// General
 	Bold   lipgloss.Style
@@ -137,24 +155,18 @@ func BuildStyles(c Colors) Styles {
 		Divider: lipgloss.NewStyle().
 			Foreground(c.TextDim),
 
-		// ---- Chat messages ------------------------------------------------
+		// ---- Chat messages (crush-style: no box borders) -----------------
 		UserMessage: lipgloss.NewStyle().
 			Foreground(c.Text).
-			Background(c.Surface).
-			Padding(0, 1).
-			MarginRight(1).
-			Border(lipgloss.RoundedBorder()).
+			PaddingLeft(1).
+			BorderLeft(true).
 			BorderForeground(c.Primary).
-			BorderStyle(lipgloss.RoundedBorder()),
+			MarginBottom(1),
 
 		AssistantMessage: lipgloss.NewStyle().
 			Foreground(c.Text).
-			Background(c.Overlay).
-			Padding(0, 1).
-			MarginRight(1).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(c.Accent1).
-			BorderStyle(lipgloss.RoundedBorder()),
+			PaddingLeft(2).
+			MarginBottom(1),
 
 		SystemMessage: lipgloss.NewStyle().
 			Foreground(c.TextMuted).
@@ -281,10 +293,63 @@ func BuildStyles(c Colors) Styles {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(c.Overlay),
 
+		CodeLabel: lipgloss.NewStyle().
+			Foreground(c.TextMuted).
+			Bold(true).
+			PaddingLeft(1),
+
 		InlineCode: lipgloss.NewStyle().
 			Background(c.Overlay).
 			Foreground(c.Accent2).
 			Padding(0, 1),
+
+		// ---- Table --------------------------------------------------------
+		TableHeader: lipgloss.NewStyle().
+			Foreground(c.Text).
+			Bold(true).
+			Padding(0, 1),
+
+		TableRowEven: lipgloss.NewStyle().
+			Foreground(c.Text).
+			Padding(0, 1),
+
+		TableRowOdd: lipgloss.NewStyle().
+			Foreground(c.TextMuted).
+			Padding(0, 1),
+
+		TableBorder: lipgloss.NewStyle().
+			Foreground(c.Overlay),
+
+		// ---- Footer -------------------------------------------------------
+		FooterStatus: lipgloss.NewStyle().
+			Foreground(c.TextMuted).
+			Padding(0, 1),
+
+		FooterToolFeed: lipgloss.NewStyle().
+			Foreground(c.TextDim).
+			PaddingLeft(2),
+
+		FooterComponentFrame: lipgloss.NewStyle().
+			Foreground(c.Text).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(c.Overlay).
+			Padding(0, 1),
+
+		// ---- Chat (name/body tokens) --------------------------------------
+		AgentName: lipgloss.NewStyle().
+			Foreground(c.Accent1).
+			Bold(true),
+
+		UserName: lipgloss.NewStyle().
+			Foreground(c.Primary).
+			Bold(true),
+
+		MessageBody: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		HandoffPrefix: lipgloss.NewStyle().
+			Foreground(c.Accent2).
+			Italic(true),
 
 		// ---- General ------------------------------------------------------
 		Bold: lipgloss.NewStyle().
@@ -417,8 +482,52 @@ func BuildCleanStyles(c Colors) Styles {
 		CodeBlock: lipgloss.NewStyle().
 			Foreground(c.Text),
 
+		CodeLabel: lipgloss.NewStyle().
+			Foreground(c.TextMuted).
+			Bold(true),
+
 		InlineCode: lipgloss.NewStyle().
 			Foreground(c.Accent2),
+
+		// ---- Table --------------------------------------------------------
+		TableHeader: lipgloss.NewStyle().
+			Foreground(c.Text).
+			Bold(true),
+
+		TableRowEven: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		TableRowOdd: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		TableBorder: lipgloss.NewStyle().
+			Foreground(c.Overlay),
+
+		// ---- Footer -------------------------------------------------------
+		FooterStatus: lipgloss.NewStyle().
+			Foreground(c.TextMuted),
+
+		FooterToolFeed: lipgloss.NewStyle().
+			Foreground(c.TextDim),
+
+		FooterComponentFrame: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		// ---- Chat (name/body tokens) --------------------------------------
+		AgentName: lipgloss.NewStyle().
+			Foreground(c.Accent1).
+			Bold(true),
+
+		UserName: lipgloss.NewStyle().
+			Foreground(c.Primary).
+			Bold(true),
+
+		MessageBody: lipgloss.NewStyle().
+			Foreground(c.Text),
+
+		HandoffPrefix: lipgloss.NewStyle().
+			Foreground(c.Accent2).
+			Italic(true),
 
 		// ---- General ------------------------------------------------------
 		Bold: lipgloss.NewStyle().
