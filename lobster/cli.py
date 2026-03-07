@@ -821,6 +821,15 @@ def init(
     openai_key: Optional[str] = typer.Option(
         None, "--openai-key", help="OpenAI API key (non-interactive mode)"
     ),
+    openrouter_key: Optional[str] = typer.Option(
+        None, "--openrouter-key", help="OpenRouter API key (non-interactive mode)"
+    ),
+    azure_endpoint: Optional[str] = typer.Option(
+        None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
+    ),
+    azure_credential: Optional[str] = typer.Option(
+        None, "--azure-credential", help="Azure AI API credential (non-interactive mode)"
+    ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
@@ -946,6 +955,11 @@ def init(
       lobster init --non-interactive \\
         --anthropic-key=sk-ant-xxx \\
         --cloud-key=cloud_xxx                        # CI/CD: With cloud access
+      lobster init --non-interactive \\
+        --openrouter-key=sk-or-xxx                   # CI/CD: OpenRouter (600+ models)
+      lobster init --non-interactive \\
+        --azure-endpoint=https://xxx.inference.ai.azure.com/ \\
+        --azure-credential=xxx                       # CI/CD: Azure AI
     """
     from lobster.cli_internal.commands.heavy.init_commands import init_impl
     init_impl(
@@ -953,6 +967,8 @@ def init(
         anthropic_key=anthropic_key, bedrock_access_key=bedrock_access_key,
         bedrock_secret_key=bedrock_secret_key, use_ollama=use_ollama,
         ollama_model=ollama_model, gemini_key=gemini_key, openai_key=openai_key,
+        openrouter_key=openrouter_key, azure_endpoint=azure_endpoint,
+        azure_credential=azure_credential,
         profile=profile, ncbi_key=ncbi_key, cloud_key=cloud_key,
         cloud_endpoint=cloud_endpoint, skip_ssl_test=skip_ssl_test,
         ssl_verify=ssl_verify, ssl_cert_path=ssl_cert_path, agents=agents,

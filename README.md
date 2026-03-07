@@ -1,14 +1,5 @@
 <div align="center">
-  <table border="0" cellspacing="0" cellpadding="0" style="border: none; background: transparent;">
-    <tr>
-      <td valign="middle" style="border: none; background: transparent;">
-        <img alt="Lobster AI Logo" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/lobster-logo.png" width="80">
-      </td>
-      <td valign="middle" align="left" style="border: none; background: transparent; padding-left: 18px;">
-        <b>Open-source multi-agent bioinformatics engine.<br/>Describe your analysis in natural language.</b>
-      </td>
-    </tr>
-  </table>
+  <img alt="Lobster AI Banner" src="https://raw.githubusercontent.com/the-omics-os/lobster/main/docs/assets/banner.png" width="700">
 </div>
 
 <br/>

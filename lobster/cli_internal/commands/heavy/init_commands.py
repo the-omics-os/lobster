@@ -1376,6 +1376,15 @@ def init_impl(
     openai_key: Optional[str] = typer.Option(
         None, "--openai-key", help="OpenAI API key (non-interactive mode)"
     ),
+    openrouter_key: Optional[str] = typer.Option(
+        None, "--openrouter-key", help="OpenRouter API key (non-interactive mode)"
+    ),
+    azure_endpoint: Optional[str] = typer.Option(
+        None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
+    ),
+    azure_credential: Optional[str] = typer.Option(
+        None, "--azure-credential", help="Azure AI API credential (non-interactive mode)"
+    ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
@@ -1501,6 +1510,11 @@ def init_impl(
       lobster init --non-interactive \\
         --anthropic-key=sk-ant-xxx \\
         --cloud-key=cloud_xxx                        # CI/CD: With cloud access
+      lobster init --non-interactive \\
+        --openrouter-key=sk-or-xxx                   # CI/CD: OpenRouter (600+ models)
+      lobster init --non-interactive \\
+        --azure-endpoint=https://xxx.inference.ai.azure.com/ \\
+        --azure-credential=xxx                       # CI/CD: Azure AI
     """
     import datetime
 
@@ -1625,10 +1639,13 @@ def init_impl(
         has_ollama = use_ollama
         has_gemini = gemini_key is not None
         has_openai = openai_key is not None
+        has_openrouter = openrouter_key is not None
+        has_azure = azure_endpoint is not None and azure_credential is not None
 
         # Validate at least one provider
         valid, error_msg = provider_setup.validate_provider_choice(
-            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai
+            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
+            has_openrouter=has_openrouter, has_azure=has_azure,
         )
         if not valid:
             console.print(f"[red]❌ Error: {error_msg}[/red]")
@@ -1641,11 +1658,16 @@ def init_impl(
             console.print("  • Ollama (Local): --use-ollama")
             console.print("  • Google Gemini: --gemini-key=xxx")
             console.print("  • OpenAI: --openai-key=xxx")
+            console.print("  • OpenRouter: --openrouter-key=xxx")
+            console.print(
+                "  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx"
+            )
             raise typer.Exit(1)
 
         # Warn if multiple providers
         priority_warning = provider_setup.get_provider_priority_warning(
-            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai
+            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
+            has_openrouter=has_openrouter, has_azure=has_azure,
         )
         if priority_warning:
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
@@ -1725,6 +1747,20 @@ def init_impl(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openai"
                 console.print("[green]✓ OpenAI provider configured[/green]")
+        elif has_openrouter:
+            config = provider_setup.create_openrouter_config(openrouter_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "openrouter"
+                console.print("[green]✓ OpenRouter provider configured[/green]")
+        elif has_azure:
+            config = provider_setup.create_azure_config(azure_endpoint, azure_credential)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "azure"
+                console.print("[green]✓ Azure AI provider configured[/green]")
 
         # Write profile configuration (only for Anthropic/Bedrock)
         if selected_profile:

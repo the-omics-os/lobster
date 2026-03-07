@@ -404,6 +404,8 @@ def validate_provider_choice(
     has_ollama: bool,
     has_gemini: bool = False,
     has_openai: bool = False,
+    has_openrouter: bool = False,
+    has_azure: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
     Validate that at least one provider is configured.
@@ -414,6 +416,8 @@ def validate_provider_choice(
         has_ollama: Whether Ollama is selected
         has_gemini: Whether Gemini API key is provided
         has_openai: Whether OpenAI API key is provided
+        has_openrouter: Whether OpenRouter API key is provided
+        has_azure: Whether Azure AI credentials are provided
 
     Returns:
         Tuple of (valid: bool, error_message: Optional[str])
@@ -424,6 +428,8 @@ def validate_provider_choice(
         and not has_ollama
         and not has_gemini
         and not has_openai
+        and not has_openrouter
+        and not has_azure
     ):
         return (
             False,
@@ -439,6 +445,8 @@ def get_provider_priority_warning(
     has_ollama: bool,
     has_gemini: bool = False,
     has_openai: bool = False,
+    has_openrouter: bool = False,
+    has_azure: bool = False,
 ) -> Optional[str]:
     """
     Get warning message if multiple providers are configured.
@@ -449,18 +457,21 @@ def get_provider_priority_warning(
         has_ollama: Whether Ollama is configured
         has_gemini: Whether Gemini is configured
         has_openai: Whether OpenAI is configured
+        has_openrouter: Whether OpenRouter is configured
+        has_azure: Whether Azure AI is configured
 
     Returns:
         Optional warning message if multiple providers detected
     """
     providers_count = sum(
-        [has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai]
+        [has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
+         has_openrouter, has_azure]
     )
 
     if providers_count <= 1:
         return None
 
-    # Return priority order message (Anthropic > Bedrock > Gemini > OpenAI > Ollama)
+    # Return priority order message
     if has_anthropic:
         return "Multiple providers specified. Using Claude API (highest priority)."
     elif has_bedrock:
@@ -469,7 +480,11 @@ def get_provider_priority_warning(
         return "Multiple providers specified. Using Gemini (third priority)."
     elif has_openai:
         return "Multiple providers specified. Using OpenAI (fourth priority)."
+    elif has_openrouter:
+        return "Multiple providers specified. Using OpenRouter (fifth priority)."
+    elif has_azure:
+        return "Multiple providers specified. Using Azure AI (sixth priority)."
     elif has_ollama:
-        return "Multiple providers specified. Using Ollama (fifth priority)."
+        return "Multiple providers specified. Using Ollama (seventh priority)."
 
     return None
