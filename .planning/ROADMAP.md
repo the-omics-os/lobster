@@ -65,7 +65,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md -- Semantic style expansion + native table rendering + crush-style messages + render cache
+- [x] 03-01-PLAN.md -- Semantic style expansion + native table rendering + crush-style messages + render cache
 - [ ] 03-02-PLAN.md -- Code block rendering with chroma + alert/handoff renderers + views.go wiring
 
 ### Phase 4: Layout
@@ -104,6 +104,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/2 | Complete | 2026-03-07 |
 | 2. Charm v2 Migration | 3/3 | Complete   | 2026-03-07 |
-| 3. Rendering and Style | 0/2 | Not started | - |
+| 3. Rendering and Style | 1/2 | In progress | - |
 | 4. Layout | 0/1 | Not started | - |
 | 5. Python Integration | 0/1 | Not started | - |

@@ -37,13 +37,13 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 ### Rendering
 
-- [ ] **REND-01**: Tables render via lipgloss/table with rounded borders, themed header/row styles
-- [ ] **REND-02**: Messages flow without box borders (crush-style, padding+margin only)
+- [x] **REND-01**: Tables render via lipgloss/table with rounded borders, themed header/row styles
+- [x] **REND-02**: Messages flow without box borders (crush-style, padding+margin only)
 - [ ] **REND-03**: Code blocks render with language labels and syntax highlighting
 - [ ] **REND-04**: Alert blocks render with colored severity indicators
 - [ ] **REND-05**: Agent handoff blocks render with from/to/reason formatting
-- [ ] **REND-06**: Width-keyed render cache for finalized messages (invalidate on width/theme change)
-- [ ] **REND-07**: Streaming messages are never cached
+- [x] **REND-06**: Width-keyed render cache for finalized messages (invalidate on width/theme change)
+- [x] **REND-07**: Streaming messages are never cached
 
 ### Layout
 
@@ -56,12 +56,12 @@ Requirements for the complete TUI overhaul. Each maps to roadmap phases.
 
 ### Style System
 
-- [ ] **STYL-01**: Expanded Styles struct with 40+ semantic tokens
-- [ ] **STYL-02**: Dedicated table styles (TableHeader, TableRowEven, TableRowOdd, TableBorder)
+- [x] **STYL-01**: Expanded Styles struct with 40+ semantic tokens
+- [x] **STYL-02**: Dedicated table styles (TableHeader, TableRowEven, TableRowOdd, TableBorder)
 - [ ] **STYL-03**: Dedicated alert styles (AlertSuccess, AlertWarning, AlertError, AlertInfo)
-- [ ] **STYL-04**: Dedicated code styles (CodeBlock, CodeLabel)
-- [ ] **STYL-05**: Dedicated footer styles (FooterStatus, FooterToolFeed, FooterComponentFrame)
-- [ ] **STYL-06**: Chat styles (AgentName, UserName, MessageBody, HandoffPrefix)
+- [x] **STYL-04**: Dedicated code styles (CodeBlock, CodeLabel)
+- [x] **STYL-05**: Dedicated footer styles (FooterStatus, FooterToolFeed, FooterComponentFrame)
+- [x] **STYL-06**: Chat styles (AgentName, UserName, MessageBody, HandoffPrefix)
 
 ### Python Integration
 
@@ -114,19 +114,19 @@ Deferred to future release. Tracked but not in current roadmap.
 | MIGR-05 | Phase 2 | Complete |
 | MIGR-06 | Phase 2 | Complete |
 | MIGR-07 | Phase 2 | Complete |
-| REND-01 | Phase 3 | Pending |
-| REND-02 | Phase 3 | Pending |
+| REND-01 | Phase 3 | Complete |
+| REND-02 | Phase 3 | Complete |
 | REND-03 | Phase 3 | Pending |
 | REND-04 | Phase 3 | Pending |
 | REND-05 | Phase 3 | Pending |
-| REND-06 | Phase 3 | Pending |
-| REND-07 | Phase 3 | Pending |
-| STYL-01 | Phase 3 | Pending |
-| STYL-02 | Phase 3 | Pending |
+| REND-06 | Phase 3 | Complete |
+| REND-07 | Phase 3 | Complete |
+| STYL-01 | Phase 3 | Complete |
+| STYL-02 | Phase 3 | Complete |
 | STYL-03 | Phase 3 | Pending |
-| STYL-04 | Phase 3 | Pending |
-| STYL-05 | Phase 3 | Pending |
-| STYL-06 | Phase 3 | Pending |
+| STYL-04 | Phase 3 | Complete |
+| STYL-05 | Phase 3 | Complete |
+| STYL-06 | Phase 3 | Complete |
 | LAYO-01 | Phase 4 | Pending |
 | LAYO-02 | Phase 4 | Pending |
 | LAYO-03 | Phase 4 | Pending |
@@ -142,4 +142,4 @@ Deferred to future release. Tracked but not in current roadmap.
 
 ---
 *Requirements defined: 2026-03-06*
-*Last updated: 2026-03-07 after 01-02-PLAN.md completion*
+*Last updated: 2026-03-07 after 03-01-PLAN.md completion*

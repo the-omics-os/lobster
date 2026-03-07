@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 02-03-PLAN.md (init wizard rewrite, huh removal) -- Phase 02 complete
-last_updated: "2026-03-07T04:48:02.562Z"
-last_activity: 2026-03-07 -- Completed 02-03-PLAN.md (init wizard rewrite, huh removal)
+status: in-progress
+stopped_at: Completed 03-01-PLAN.md (theme expansion + block renderers)
+last_updated: "2026-03-07T05:09:39Z"
+last_activity: 2026-03-07 -- Completed 03-01-PLAN.md (theme expansion + block renderers)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 55
+  total_plans: 9
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-06)
 
 **Core value:** The TUI renders structured protocol data beautifully and correctly -- typed content blocks survive to render time, components have correct lifecycle semantics, and the layout adapts dynamically.
-**Current focus:** Phase 2: Charm v2 Migration
+**Current focus:** Phase 3: Rendering and Style
 
 ## Current Position
 
-Phase: 2 of 5 (Charm v2 Migration) -- COMPLETE
-Plan: 3 of 3 in current phase (all done)
-Status: Phase 02 complete, Phase 03 next
-Last activity: 2026-03-07 -- Completed 02-03-PLAN.md (init wizard rewrite, huh removal)
+Phase: 3 of 5 (Rendering and Style)
+Plan: 1 of 2 in current phase (03-01 done, 03-02 next)
+Status: 03-01 complete -- theme expansion + block renderers
+Last activity: 2026-03-07 -- Completed 03-01-PLAN.md (theme expansion + block renderers)
 
-Progress: [######....] 55%
+Progress: [#######...] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 38min
-- Total execution time: 3.17 hours
+- Total plans completed: 6
+- Average duration: 33min
+- Total execution time: 3.27 hours
 
 **By Phase:**
 
@@ -45,10 +45,11 @@ Progress: [######....] 55%
 |-------|-------|-------|----------|
 | 01-foundation | 2 | 15min | 7.5min |
 | 02-charm-v2-migration | 3 | 146min | 49min |
+| 03-rendering-and-style | 1 | 6min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (6min), 02-02 (137min), 02-01 (3min), 01-02 (8min), 01-01 (7min)
-- Trend: 02-03 was fast (clean rewrite with established patterns)
+- Last 5 plans: 03-01 (6min), 02-03 (6min), 02-02 (137min), 02-01 (3min), 01-02 (8min)
+- Trend: Fast execution with TDD on well-scoped rendering tasks
 
 *Updated after each plan completion*
 
@@ -73,6 +74,9 @@ Recent decisions affecting current work:
 - Glamour v0.10 + lipgloss v2 coexist without module conflict
 - Wizard uses step-based state machine with sub-models (not sequential form runs)
 - Forms render inline in chat area (not via tea.Exec suspension)
+- Crush-style messages: UserMessage=border-left only, AssistantMessage=padding only (no box borders)
+- renderCache is per-message struct (not global map) -- simple, no eviction needed
+- Block renderer dispatch: renderBlock() type-switches ContentBlock to per-type renderers
 
 ### Pending Todos
 
@@ -87,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 02-03-PLAN.md (init wizard rewrite, huh removal) -- Phase 02 complete
+Stopped at: Completed 03-01-PLAN.md (theme expansion + block renderers)
 Resume file: None
