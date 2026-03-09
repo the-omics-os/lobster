@@ -1,6 +1,9 @@
-# === Planning (local only) ===
+# === Planning & scratchpads (local only) ===
 .planning/
 **/.planning/
+skills/anthropic_*.pdf
+skills/anthropic_*.md
+skills/scratchpad_*
 
 # === Python ===
 # Byte-compiled / optimized / DLL files
