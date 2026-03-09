@@ -27,9 +27,7 @@ const (
 	welcomeTitleText          = "Lobster AI"
 	welcomeTagline            = "The self-evolving agentic framework for bioinformatics"
 	welcomeSubTagline         = "on-prem • python native • open-source"
-	welcomeColorForegroundHex = "#f5f5f5"
-	welcomeColorMutedHex      = "#888888"
-	welcomeColorSubtleHex     = "#555555"
+	// Welcome colors now use theme tokens — see welcomeThemeColor* helpers below.
 )
 
 type welcomePhase int
@@ -131,10 +129,15 @@ func renderRuntimeSummary(m Model) string {
 	}
 	icon := providerIcon(provider)
 
+	providerLine := "   Provider: " + icon + " " + provider
+	if m.modelID != "" {
+		providerLine += "  ·  " + m.modelID
+	}
+
 	lines := []string{
 		m.styles.Muted.Render("└─ Compute: " + ram + " │ " + compute),
 		m.styles.Dimmed.Render("   Storage: " + storage + " (workspace)"),
-		m.styles.Muted.Render("   Provider: " + icon + " " + provider),
+		m.styles.Muted.Render(providerLine),
 	}
 	return strings.Join(lines, "\n")
 }
@@ -152,15 +155,15 @@ func renderInlineIntro(m Model) string {
 	titleLines := welcomeTitleLinesForWidth(m.width)
 	title := renderAnimatedWelcomeTitle(m, titleLines)
 	center := lipgloss.NewStyle().Width(m.width).MaxWidth(m.width).Align(lipgloss.Center)
-	tagline := center.Render(lipgloss.NewStyle().Foreground(lipgloss.Color(welcomeColorForegroundHex)).Render(welcomeTagline))
-	subTagline := center.Render(lipgloss.NewStyle().Foreground(lipgloss.Color(welcomeColorMutedHex)).Render(welcomeSubTagline))
+	tagline := center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.Text).Render(welcomeTagline))
+	subTagline := center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.TextMuted).Render(welcomeSubTagline))
 
 	lines := []string{center.Render(title), "", tagline, subTagline}
 	if m.width < 70 {
 		lines = []string{
 			center.Render(title),
 			"",
-			center.Render(lipgloss.NewStyle().Foreground(lipgloss.Color(welcomeColorMutedHex)).Render("on-prem | python native | open-source")),
+			center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.TextMuted).Render("on-prem | python native | open-source")),
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -284,11 +287,11 @@ func welcomeAnimationPhase(elapsed time.Duration) welcomePhase {
 func welcomeBaseColor(elapsed time.Duration) color.Color {
 	switch {
 	case elapsed < welcomeFadeStepDuration:
-		return lipgloss.Color(welcomeColorSubtleHex)
+		return theme.Current.Colors.TextDim
 	case elapsed < 2*welcomeFadeStepDuration:
-		return lipgloss.Color(welcomeColorMutedHex)
+		return theme.Current.Colors.TextMuted
 	default:
-		return lipgloss.Color(welcomeColorForegroundHex)
+		return theme.Current.Colors.Text
 	}
 }
 
@@ -340,7 +343,7 @@ func welcomeNucleotideColor(base rune) color.Color {
 	case 'G':
 		return lipgloss.Color("#eab308")
 	default:
-		return lipgloss.Color(welcomeColorForegroundHex)
+		return theme.Current.Colors.Text
 	}
 }
 

@@ -34,7 +34,7 @@ import logging
 import os
 import platform
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import Field
 
@@ -270,6 +270,11 @@ class GlobalProviderConfig(ProviderConfigBase):
         "http://localhost:11434", description="Default Ollama server URL"
     )
 
+    model_context_windows: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Context window overrides for arbitrary models (e.g., {'us.meta.llama3-1-70b-instruct-v1:0': 128000})",
+    )
+
     def save(self) -> None:
         """
         Save global configuration to user config directory.
@@ -377,6 +382,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.azure_default_model = None
         self.openrouter_default_model = None
         self.ollama_default_host = "http://localhost:11434"
+        self.model_context_windows = {}
         logger.info("Reset global config to defaults")
 
     @classmethod

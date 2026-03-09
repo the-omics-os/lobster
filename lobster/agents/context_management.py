@@ -147,8 +147,13 @@ def resolve_context_window(
 ) -> Optional[int]:
     """Best-effort resolution of context window from provider config.
 
-    Uses the same ConfigResolver + ProviderRegistry path as create_llm.
-    Returns None if resolution fails (caller should use DEFAULT_CONTEXT_WINDOW).
+    Priority:
+    1. Workspace model_context_windows override
+    2. Global model_context_windows override
+    3. Provider catalog (get_model_info — never returns None)
+
+    Returns None only if resolution completely fails (caller should use
+    DEFAULT_CONTEXT_WINDOW).
     """
     from lobster.config.providers import get_provider
 
@@ -172,6 +177,25 @@ def resolve_context_window(
                 model_id = None
         except Exception as e:
             logger.warning(f"Could not resolve provider from config: {e}")
+
+    # Check config-level context window overrides (highest priority)
+    if model_id:
+        try:
+            from lobster.config.workspace_config import WorkspaceProviderConfig
+            from lobster.config.global_config import GlobalProviderConfig
+
+            # Workspace override (highest priority)
+            if workspace_path:
+                ws_config = WorkspaceProviderConfig.load(workspace_path)
+                if model_id in ws_config.model_context_windows:
+                    return ws_config.model_context_windows[model_id]
+
+            # Global override
+            global_config = GlobalProviderConfig.load()
+            if model_id in global_config.model_context_windows:
+                return global_config.model_context_windows[model_id]
+        except Exception as e:
+            logger.debug(f"Could not check config context window overrides: {e}")
 
     if not provider_name:
         logger.warning("No provider available for context window resolution")

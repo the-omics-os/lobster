@@ -19,28 +19,10 @@ Usage:
 """
 
 import logging
-from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
-
-
-class LLMProvider(Enum):
-    """
-    Supported LLM providers.
-
-    Note: This enum is kept for backward compatibility. New code should use
-    the string provider names directly with ProviderRegistry.
-    """
-
-    ANTHROPIC_DIRECT = "anthropic"
-    BEDROCK_ANTHROPIC = "bedrock"
-    OLLAMA = "ollama"
-    GEMINI = "gemini"
-    AZURE = "azure"
-    OPENAI = "openai"
-    OPENROUTER = "openrouter"
 
 
 class LLMFactory:

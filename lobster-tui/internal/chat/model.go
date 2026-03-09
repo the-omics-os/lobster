@@ -187,6 +187,7 @@ type Model struct {
 	sessionID string
 	version   string
 	provider  string
+	modelID   string
 
 	// Glamour markdown renderer (lazily initialized, recreated on width change).
 	mdRenderer      *glamour.TermRenderer
@@ -288,6 +289,7 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 
 	version := resolveLobsterVersion(versionFallback)
 	provider := normalizeProviderName(os.Getenv("LOBSTER_TUI_PROVIDER"))
+	modelID := strings.TrimSpace(os.Getenv("LOBSTER_TUI_MODEL"))
 	workspacePath := os.Getenv("LOBSTER_TUI_WORKSPACE")
 	if workspacePath == "" {
 		wd, err := os.Getwd()
@@ -328,6 +330,7 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 		mouseCapture:            mouseCapture,
 		version:                 version,
 		provider:                provider,
+		modelID:                 modelID,
 		totalRAMGB:              ramGB,
 		computeTarget:           compute,
 		freeStorageGB:           freeGB,
@@ -805,6 +808,11 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			// Extract provider if present.
 			if strings.HasPrefix(text, "Provider: ") {
 				m.provider = normalizeProviderName(strings.TrimSpace(strings.TrimPrefix(text, "Provider: ")))
+				return m, waitForProtocolMsg(m.handler)
+			}
+			// Extract model if present (from _emit_provider_status or /config model).
+			if strings.HasPrefix(text, "Model: ") {
+				m.modelID = strings.TrimSpace(strings.TrimPrefix(text, "Model: "))
 				return m, waitForProtocolMsg(m.handler)
 			}
 
@@ -1780,21 +1788,24 @@ func (m Model) currentStatusLine() string {
 	}
 
 	if m.inlineFlowMode() {
+		modelLabel := m.modelLabel()
 		if strings.TrimSpace(statusText) == "" {
 			return joinStatusParts(
 				workerStatus,
+				modelLabel,
 				"inline flow: use terminal scrollback",
 				"Ctrl+G optional mouse capture",
 			)
 		}
-		return joinStatusParts(statusText, workerStatus, "inline flow via terminal scrollback")
+		return joinStatusParts(statusText, workerStatus, modelLabel, "inline flow via terminal scrollback")
 	}
 
 	mouseLabel := m.mouseModeLabel()
+	modelLabel := m.modelLabel()
 	if strings.TrimSpace(statusText) == "" {
-		return joinStatusParts(workerStatus, mouseLabel, "Ctrl+G toggles")
+		return joinStatusParts(workerStatus, modelLabel, mouseLabel, "Ctrl+G toggles")
 	}
-	return joinStatusParts(statusText, workerStatus, mouseLabel)
+	return joinStatusParts(statusText, workerStatus, modelLabel, mouseLabel)
 }
 
 func joinStatusParts(parts ...string) string {
@@ -1899,6 +1910,13 @@ func (m *Model) recordHandoff(task string, agent string) tea.Cmd {
 	}
 
 	return m.appendMessage(msg, false)
+}
+
+func (m Model) modelLabel() string {
+	if m.modelID == "" {
+		return ""
+	}
+	return m.styles.Muted.Render(m.modelID)
 }
 
 func (m Model) mouseModeLabel() string {

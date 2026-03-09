@@ -188,6 +188,11 @@ def apply_tui_init_result(
     if ollama_model and provider == "ollama":
         config_dict["ollama_model"] = ollama_model
 
+    # Model ID from wizard (applies to all providers)
+    model_id = (result.get("model_id") or "").strip()
+    if model_id:
+        config_dict["model_id"] = model_id
+
     # ------------------------------------------------------------------
     # Write files
     # ------------------------------------------------------------------

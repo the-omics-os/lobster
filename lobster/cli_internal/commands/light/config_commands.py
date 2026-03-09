@@ -883,46 +883,41 @@ def config_model_switch(
             output.print(f"[dim]{hint}[/dim]")
             return None
 
-        # Store in environment for this session
-        env_var_map = {
-            "ollama": "OLLAMA_DEFAULT_MODEL",
-            "anthropic": "ANTHROPIC_MODEL",
-            "bedrock": "BEDROCK_MODEL",
-        }
-        env_var = env_var_map.get(current_provider)
-        if env_var:
-            os.environ[env_var] = model_name
+        # Always persist to workspace config — env vars are not read by
+        # ConfigResolver and would be lost on next session
+        try:
+            config = WorkspaceProviderConfig.load(workspace_path)
+            config.set_model_for_provider(current_provider, model_name)
+            config.save(workspace_path)
+        except Exception as e:
+            output.print(f"[red]✗ Failed to save model config: {e}[/red]")
+            return None
+
+        # Update client's model override so the live TUI footer reflects the change
+        if hasattr(client, "model_override"):
+            client.model_override = model_name
 
         output.print(f"[green]✓ Switched to model: {model_name}[/green]")
         output.print(f"[dim]Provider: {current_provider}[/dim]")
 
         if not save:
-            output.print("[dim]This change is temporary (session only)[/dim]")
-            output.print(f"[dim]To persist: /config model {model_name} --save[/dim]")
-            return f"Switched to model {model_name} (runtime only)"
-
-        # Persist to workspace config
-        try:
-            config = WorkspaceProviderConfig.load(workspace_path)
-            config.set_model_for_provider(current_provider, model_name)
-            config.save(workspace_path)
-
             output.print(
-                f"[green]✓ Saved to workspace config ({current_provider}_model)[/green]"
+                f"[dim]Saved to workspace config ({current_provider}_model)[/dim]"
             )
-            output.print(
-                f"[dim]Config file: {workspace_path}/provider_config.json[/dim]"
-            )
-            output.print(
-                f"\n[dim]This model will be used for {current_provider} in this workspace[/dim]"
-            )
+            return f"Switched to model {model_name}"
 
-            return f"Switched to model {model_name} and saved to workspace"
+        # --save flag: already persisted above, just confirm
+        output.print(
+            f"[green]✓ Saved to workspace config ({current_provider}_model)[/green]"
+        )
+        output.print(
+            f"[dim]Config file: {workspace_path}/provider_config.json[/dim]"
+        )
+        output.print(
+            f"\n[dim]This model will be used for {current_provider} in this workspace[/dim]"
+        )
 
-        except Exception as e:
-            output.print(f"[red]✗ Failed to save configuration: {e}[/red]")
-            output.print("[dim]Check file permissions[/dim]")
-            return None
+        return f"Switched to model {model_name} and saved to workspace"
 
     except Exception as e:
         output.print(f"[red]✗ Failed to switch model: {str(e)}[/red]")

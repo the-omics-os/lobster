@@ -115,6 +115,11 @@ class WorkspaceProviderConfig(ProviderConfigBase):
 
     ollama_host: str = Field("http://localhost:11434", description="Ollama server URL")
 
+    model_context_windows: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Context window overrides for arbitrary models (e.g., {'my-custom-model': 32000})",
+    )
+
     per_agent_providers: Dict[str, str] = Field(
         default_factory=dict,
         description="Per-agent provider overrides (e.g., {'supervisor': 'ollama'})",
@@ -241,6 +246,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         self.openai_model = None
         self.openrouter_model = None
         self.ollama_host = "http://localhost:11434"
+        self.model_context_windows = {}
         self.per_agent_providers = {}
         self.per_agent_models = {}
         self.profile = "production"

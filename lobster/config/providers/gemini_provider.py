@@ -51,9 +51,11 @@ class GeminiProvider(ILLMProvider):
         >>> llm = provider.create_chat_model(models[0].name)
     """
 
+    _default_context_window = 1_000_000
+
     # Static model catalog - Gemini 3.0 models
     # Source: https://ai.google.dev/gemini-api/docs/pricing
-    MODELS = [
+    KNOWN_MODELS = [
         ModelInfo(
             name="gemini-3-pro-preview",
             display_name="Gemini 3 Pro",
@@ -146,7 +148,7 @@ class GeminiProvider(ILLMProvider):
             >>> for model in provider.list_models():
             ...     print(f"{model.display_name}: {model.description}")
         """
-        return self.MODELS.copy()
+        return self.KNOWN_MODELS.copy()
 
     def get_default_model(self) -> str:
         """
@@ -160,27 +162,10 @@ class GeminiProvider(ILLMProvider):
             >>> model_id = provider.get_default_model()
             >>> llm = provider.create_chat_model(model_id)
         """
-        for model in self.MODELS:
+        for model in self.KNOWN_MODELS:
             if model.is_default:
                 return model.name
-        return self.MODELS[0].name  # Fallback to first model
-
-    def validate_model(self, model_id: str) -> bool:
-        """
-        Check if a model ID is valid for Gemini.
-
-        Args:
-            model_id: Model identifier (e.g., "gemini-3-pro-preview")
-
-        Returns:
-            bool: True if model exists in catalog
-
-        Example:
-            >>> provider = GeminiProvider()
-            >>> if provider.validate_model("gemini-3-pro-preview"):
-            ...     llm = provider.create_chat_model("gemini-3-pro-preview")
-        """
-        return model_id in [m.name for m in self.MODELS]
+        return self.KNOWN_MODELS[0].name  # Fallback to first model
 
     def create_chat_model(
         self,
@@ -233,13 +218,6 @@ class GeminiProvider(ILLMProvider):
             cmd = get_install_command("gemini", is_extra=True)
             raise ImportError(
                 f"langchain-google-genai package not installed. " f"Install with: {cmd}"
-            )
-
-        # Validate model ID
-        if not self.validate_model(model_id):
-            logger.warning(
-                f"Model '{model_id}' not in Gemini catalog. "
-                f"Proceeding anyway (may fail at runtime)."
             )
 
         # Get API key (prefer kwarg, fallback to environment)

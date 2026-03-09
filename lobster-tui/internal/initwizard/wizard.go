@@ -40,6 +40,7 @@ type WizardResult struct {
 	NCBIKey                       string   `json:"ncbi_key"`
 	CloudKey                      string   `json:"cloud_key"`
 	OllamaModel                   string   `json:"ollama_model"`
+	ModelID                       string   `json:"model_id"`
 	SmartStandardizationEnabled   bool     `json:"smart_standardization_enabled"`
 	SmartStandardizationOpenAIKey string   `json:"smart_standardization_openai_key"`
 	Cancelled                     bool     `json:"cancelled"`
@@ -151,6 +152,48 @@ var curatedOllamaModels = []struct {
 	{Name: "qwen3:30b-a3b", Description: "Highest-quality curated option"},
 }
 
+// customModelSentinel is the value used for the "Other model" option.
+const customModelSentinel = "__custom_model__"
+
+// providerModels lists known models per cloud provider for the model selection step.
+// These mirror KNOWN_MODELS from the Python providers — UI catalog only.
+var providerModels = map[string][]struct {
+	Name        string
+	Description string
+	IsDefault   bool
+}{
+	providerAnthropic: {
+		{Name: "claude-sonnet-4-20250514", Description: "Claude Sonnet 4 — balanced speed & capability", IsDefault: true},
+		{Name: "claude-opus-4-20250514", Description: "Claude Opus 4 — most capable, complex reasoning"},
+		{Name: "claude-3-5-sonnet-20241022", Description: "Claude 3.5 Sonnet — previous generation"},
+		{Name: "claude-3-5-haiku-20241022", Description: "Claude 3.5 Haiku — fastest, high throughput"},
+	},
+	providerBedrock: {
+		{Name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", Description: "Claude Sonnet 4.5 — highest quality Sonnet", IsDefault: true},
+		{Name: "us.anthropic.claude-sonnet-4-20250514-v1:0", Description: "Claude Sonnet 4 — balanced quality & speed"},
+		{Name: "global.anthropic.claude-opus-4-5-20251101-v1:0", Description: "Claude Opus 4.5 — most capable"},
+	},
+	providerOpenAI: {
+		{Name: "gpt-4o", Description: "GPT-4o — most capable GPT model", IsDefault: true},
+		{Name: "gpt-4o-mini", Description: "GPT-4o Mini — fast and affordable"},
+		{Name: "o3-mini", Description: "o3 Mini — compact reasoning model"},
+	},
+	providerGemini: {
+		{Name: "gemini-3-pro-preview", Description: "Gemini 3 Pro — best balance of speed & capability", IsDefault: true},
+		{Name: "gemini-3-flash-preview", Description: "Gemini 3 Flash — fastest, free tier available"},
+	},
+	providerAzure: {
+		{Name: "gpt-4o", Description: "GPT-4o via Azure AI Foundry", IsDefault: true},
+		{Name: "deepseek-r1", Description: "DeepSeek R1 reasoning model"},
+		{Name: "phi-4", Description: "Microsoft Phi-4 small language model"},
+	},
+	providerOpenRouter: {
+		{Name: "anthropic/claude-sonnet-4-5", Description: "Claude Sonnet 4.5 via OpenRouter", IsDefault: true},
+		{Name: "openai/gpt-4o", Description: "GPT-4o via OpenRouter"},
+		{Name: "google/gemini-3-pro-preview", Description: "Gemini 3 Pro via OpenRouter"},
+	},
+}
+
 var smartStandardizationAgentLabels = map[string]string{
 	"metadata_assistant":     "Metadata Assistant",
 	"transcriptomics_expert": "Transcriptomics Expert",
@@ -168,6 +211,7 @@ const (
 	stepAgentPackages wizardStep = iota
 	stepProvider
 	stepAPIKey
+	stepModelSelect
 	stepProfile
 	stepOptionalKeys
 	stepDone
@@ -432,6 +476,11 @@ type WizardModel struct {
 	ollamaCustom    textinput.Model
 	ollamaIsCustom  bool
 
+	// Cloud provider model selection (shown after API key for non-Ollama)
+	modelSelect    singleSelectModel
+	modelCustom    textinput.Model
+	modelIsCustom  bool
+
 	// Step 4: Profile
 	profileSelect singleSelectModel
 
@@ -454,7 +503,8 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 	}
 	activeTheme := lobsterTheme.Current
 	if activeTheme == nil {
-		activeTheme = lobsterTheme.LobsterDark
+		_ = lobsterTheme.SetTheme(lobsterTheme.AutoDetect())
+		activeTheme = lobsterTheme.Current
 	}
 
 	m := WizardModel{
@@ -518,6 +568,8 @@ func (m WizardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateProvider(msg)
 	case stepAPIKey:
 		return m.updateAPIKey(msg)
+	case stepModelSelect:
+		return m.updateModelSelect(msg)
 	case stepProfile:
 		return m.updateProfile(msg)
 	case stepOptionalKeys:
@@ -537,6 +589,8 @@ func (m WizardModel) View() tea.View {
 		content = m.providerSelect.View(m.theme)
 	case stepAPIKey:
 		content = m.viewAPIKey()
+	case stepModelSelect:
+		content = m.viewModelSelect()
 	case stepProfile:
 		content = m.profileSelect.View(m.theme)
 	case stepOptionalKeys:
@@ -734,6 +788,47 @@ func (m *WizardModel) collectAPIKeys() {
 }
 
 func (m *WizardModel) advanceFromAPIKey() {
+	// Show model selection for providers with a known model catalog.
+	if models, ok := providerModels[m.result.Provider]; ok && len(models) > 0 {
+		m.initModelSelectStep(models)
+		m.step = stepModelSelect
+		return
+	}
+	m.advanceFromModelSelect()
+}
+
+func (m *WizardModel) initModelSelectStep(models []struct {
+	Name        string
+	Description string
+	IsDefault   bool
+}) {
+	items := make([]singleSelectItem, 0, len(models)+1)
+	defaultIdx := 0
+	for i, model := range models {
+		label := fmt.Sprintf("%-45s %s", model.Name, model.Description)
+		items = append(items, singleSelectItem{label: label, value: model.Name})
+		if model.IsDefault {
+			defaultIdx = i
+		}
+	}
+	items = append(items, singleSelectItem{
+		label: "Other model (enter custom ID)",
+		value: customModelSentinel,
+	})
+	m.modelSelect = singleSelectModel{
+		title:       "Default Model",
+		description: "Select the default model. You can change this later with /config model.",
+		items:       items,
+		cursor:      defaultIdx,
+	}
+	ti := textinput.New()
+	ti.Placeholder = models[defaultIdx].Name
+	ti.Focus()
+	m.modelCustom = ti
+	m.modelIsCustom = false
+}
+
+func (m *WizardModel) advanceFromModelSelect() {
 	if providersWithProfile[m.result.Provider] {
 		m.profileSelect = singleSelectModel{
 			title:       "Performance Profile",
@@ -797,6 +892,66 @@ func (m WizardModel) updateOllamaKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// ---------------------------------------------------------------------------
+// Step 3b: Model selection (non-Ollama providers)
+// ---------------------------------------------------------------------------
+
+func (m WizardModel) updateModelSelect(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.modelIsCustom {
+		km, ok := msg.(tea.KeyPressMsg)
+		if ok {
+			switch km.String() {
+			case "enter":
+				val := strings.TrimSpace(m.modelCustom.Value())
+				if val != "" {
+					m.result.ModelID = val
+				}
+				m.advanceFromModelSelect()
+				return m, textinput.Blink
+			case "esc":
+				m.modelIsCustom = false
+				return m, nil
+			}
+		}
+		var cmd tea.Cmd
+		m.modelCustom, cmd = m.modelCustom.Update(msg)
+		return m, cmd
+	}
+
+	var value string
+	var done, cancelled bool
+	m.modelSelect, value, done, cancelled = m.modelSelect.Update(msg)
+	if cancelled {
+		m.step = stepAPIKey
+		return m, nil
+	}
+	if done {
+		if value == customModelSentinel {
+			m.modelIsCustom = true
+			m.modelCustom.Focus()
+			return m, textinput.Blink
+		}
+		m.result.ModelID = strings.TrimSpace(value)
+		m.advanceFromModelSelect()
+		return m, textinput.Blink
+	}
+	return m, nil
+}
+
+func (m WizardModel) viewModelSelect() string {
+	if m.modelIsCustom {
+		titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
+		descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+		var sb strings.Builder
+		sb.WriteString(titleStyle.Render("Custom Model ID") + "\n")
+		sb.WriteString(descStyle.Render("Enter the model ID exactly as your provider expects it.") + "\n\n")
+		sb.WriteString(m.modelCustom.View() + "\n")
+		sb.WriteString("\n" + descStyle.Render("enter: confirm  esc: back"))
+		return sb.String()
+	}
+	return m.modelSelect.View(m.theme)
+}
+
 func (m WizardModel) viewAPIKey() string {
 	if m.result.Provider == providerOllama {
 		if m.ollamaIsCustom {
@@ -842,8 +997,13 @@ func (m WizardModel) updateProfile(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var done, cancelled bool
 	m.profileSelect, value, done, cancelled = m.profileSelect.Update(msg)
 	if cancelled {
-		m.step = stepAPIKey
-		m.initAPIKeyStep()
+		// Go back to model select if provider has a model catalog, else API key.
+		if _, ok := providerModels[m.result.Provider]; ok {
+			m.step = stepModelSelect
+		} else {
+			m.step = stepAPIKey
+			m.initAPIKeyStep()
+		}
 		return m, textinput.Blink
 	}
 	if done {
@@ -1066,6 +1226,10 @@ func (m WizardModel) finishWizard() (tea.Model, tea.Cmd) {
 	selectedPackages := m.agentSelect.Selected()
 	m.result.Agents = expandSelectedPackages(selectedPackages)
 	m.result.OllamaModel = strings.TrimSpace(m.result.OllamaModel)
+	// For Ollama, copy OllamaModel to ModelID so Python has one field to check.
+	if m.result.Provider == providerOllama && m.result.ModelID == "" && m.result.OllamaModel != "" {
+		m.result.ModelID = m.result.OllamaModel
+	}
 	m.result.Cancelled = false
 	m.done = true
 	m.step = stepDone

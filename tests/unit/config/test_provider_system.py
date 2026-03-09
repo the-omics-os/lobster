@@ -132,15 +132,19 @@ def test_anthropic_provider_get_default_model():
 
 
 def test_anthropic_provider_validate_model():
-    """Test Anthropic model validation."""
+    """Test Anthropic model validation — permissive (any non-empty string)."""
     provider = get_provider("anthropic")
 
-    # Valid model
+    # Known model
     assert provider.validate_model("claude-sonnet-4-20250514")
 
-    # Invalid model
-    assert not provider.validate_model("gpt-4")
-    assert not provider.validate_model("nonexistent-model")
+    # Unknown models — accepted (API validates, not us)
+    assert provider.validate_model("gpt-4")
+    assert provider.validate_model("claude-999-future")
+
+    # Empty/falsy — rejected
+    assert not provider.validate_model("")
+    assert not provider.validate_model(None)
 
 
 # =============================================================================
@@ -286,16 +290,16 @@ def test_gemini_provider_get_default_model():
 
 
 def test_gemini_provider_validate_model():
-    """Test Gemini model validation."""
+    """Test Gemini model validation — permissive (any non-empty string)."""
     provider = get_provider("gemini")
 
-    # Valid models
+    # Known models
     assert provider.validate_model("gemini-3-pro-preview")
     assert provider.validate_model("gemini-3-flash-preview")
 
-    # Invalid models
-    assert not provider.validate_model("gpt-4")
-    assert not provider.validate_model("claude-sonnet-4-20250514")
+    # Unknown models — accepted (API validates, not us)
+    assert provider.validate_model("gpt-4")
+    assert provider.validate_model("gemini-future-2027")
 
 
 def test_provider_registry_includes_gemini():
@@ -528,7 +532,7 @@ def test_openai_provider_get_default_model():
 
 
 def test_openai_provider_validate_model():
-    """Test OpenAI model validation."""
+    """Test OpenAI model validation — permissive (any non-empty string)."""
     provider = get_provider("openai")
 
     # Known models
@@ -537,9 +541,9 @@ def test_openai_provider_validate_model():
     assert provider.validate_model("o1")
     assert provider.validate_model("o3-mini")
 
-    # Unknown models
-    assert not provider.validate_model("claude-sonnet-4-20250514")
-    assert not provider.validate_model("nonexistent-model")
+    # Unknown models — accepted (API validates, not us)
+    assert provider.validate_model("claude-sonnet-4-20250514")
+    assert provider.validate_model("gpt-5-future")
 
 
 @pytest.mark.skipif(
@@ -936,16 +940,10 @@ def test_model_resolution_uses_provider_default(tmp_path):
 # =============================================================================
 
 
-def test_llm_provider_enum_still_exists():
-    """Test that LLMProvider enum exists for backward compat."""
-    from lobster.config.llm_factory import LLMProvider
-
-    assert LLMProvider.ANTHROPIC_DIRECT.value == "anthropic"
-    assert LLMProvider.BEDROCK_ANTHROPIC.value == "bedrock"
-    assert LLMProvider.OLLAMA.value == "ollama"
-    assert LLMProvider.GEMINI.value == "gemini"
-    assert LLMProvider.AZURE.value == "azure"
-    assert LLMProvider.OPENAI.value == "openai"
+def test_llm_provider_enum_removed():
+    """Test that LLMProvider enum has been removed (replaced by VALID_PROVIDERS)."""
+    with pytest.raises(ImportError):
+        from lobster.config.llm_factory import LLMProvider  # noqa: F401
 
 
 def test_create_llm_convenience_function():
@@ -955,3 +953,71 @@ def test_create_llm_convenience_function():
     # Should raise ConfigurationError without config
     with pytest.raises(ConfigurationError):
         create_llm(agent_name="test", model_params={})
+
+
+# =============================================================================
+# Dynamic Provider Architecture Tests
+# =============================================================================
+
+
+def test_get_model_info_never_returns_none():
+    """Test that get_model_info() returns ModelInfo for unknown models, never None."""
+    provider = get_provider("anthropic")
+
+    # Known model
+    info = provider.get_model_info("claude-sonnet-4-20250514")
+    assert info is not None
+    assert info.context_window == 200000
+
+    # Unknown model — should return ModelInfo with default context window
+    info = provider.get_model_info("claude-999-future")
+    assert info is not None
+    assert info.name == "claude-999-future"
+    assert info.context_window == 200_000
+    assert info.provider == "anthropic"
+
+
+def test_get_model_info_default_context_window_per_provider():
+    """Test that each provider returns its own default context window for unknown models."""
+    tests = [
+        ("anthropic", 200_000),
+        ("bedrock", 200_000),
+        ("openai", 128_000),
+        ("gemini", 1_000_000),
+        ("azure", 128_000),
+    ]
+    for provider_name, expected_window in tests:
+        provider = get_provider(provider_name)
+        info = provider.get_model_info("unknown-model-xyz")
+        assert info is not None, f"{provider_name} returned None for unknown model"
+        assert info.context_window == expected_window, (
+            f"{provider_name}: expected {expected_window}, got {info.context_window}"
+        )
+
+
+def test_model_context_windows_config_override(tmp_path):
+    """Test that model_context_windows in config overrides provider defaults."""
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+
+    workspace_path = tmp_path / ".lobster_workspace"
+    workspace_path.mkdir()
+
+    config = WorkspaceProviderConfig(
+        global_provider="bedrock",
+        model_context_windows={"us.meta.llama3-1-70b-instruct-v1:0": 131072},
+    )
+    config.save(workspace_path)
+
+    # Reload and verify
+    loaded = WorkspaceProviderConfig.load(workspace_path)
+    assert loaded.model_context_windows["us.meta.llama3-1-70b-instruct-v1:0"] == 131072
+
+
+def test_known_models_renamed():
+    """Test that cloud providers use KNOWN_MODELS attribute name."""
+    for provider_name in ["anthropic", "bedrock", "openai", "gemini", "azure"]:
+        provider = get_provider(provider_name)
+        assert hasattr(provider, "KNOWN_MODELS"), f"{provider_name} missing KNOWN_MODELS"
+        assert not hasattr(provider, "MODELS") or provider_name == "ollama", (
+            f"{provider_name} still has old MODELS attribute"
+        )

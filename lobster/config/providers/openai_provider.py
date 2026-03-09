@@ -49,9 +49,11 @@ class OpenAIProvider(ILLMProvider):
         >>> llm = provider.create_chat_model(models[0].name)
     """
 
+    _default_context_window = 128_000
+
     # Static model catalog with pricing
     # Source: https://openai.com/api/pricing/ (February 2026)
-    MODELS = [
+    KNOWN_MODELS = [
         ModelInfo(
             name="gpt-4o",
             display_name="GPT-4o",
@@ -174,7 +176,7 @@ class OpenAIProvider(ILLMProvider):
             >>> for model in provider.list_models():
             ...     print(f"{model.display_name}: ${model.input_cost_per_million}/M tokens")
         """
-        return self.MODELS.copy()
+        return self.KNOWN_MODELS.copy()
 
     def get_default_model(self) -> str:
         """
@@ -188,27 +190,10 @@ class OpenAIProvider(ILLMProvider):
             >>> model_id = provider.get_default_model()
             >>> llm = provider.create_chat_model(model_id)
         """
-        for model in self.MODELS:
+        for model in self.KNOWN_MODELS:
             if model.is_default:
                 return model.name
-        return self.MODELS[0].name  # Fallback to first model
-
-    def validate_model(self, model_id: str) -> bool:
-        """
-        Check if a model ID is valid for OpenAI.
-
-        Args:
-            model_id: Model identifier (e.g., "gpt-4o", "o1")
-
-        Returns:
-            bool: True if model exists in catalog
-
-        Example:
-            >>> provider = OpenAIProvider()
-            >>> if provider.validate_model("gpt-4o"):
-            ...     llm = provider.create_chat_model("gpt-4o")
-        """
-        return model_id in [m.name for m in self.MODELS]
+        return self.KNOWN_MODELS[0].name  # Fallback to first model
 
     def _is_reasoning_model(self, model_id: str) -> bool:
         """
@@ -223,7 +208,9 @@ class OpenAIProvider(ILLMProvider):
         Returns:
             bool: True if model is an o1/o3 reasoning model
         """
-        return model_id.startswith("o1") or model_id.startswith("o3")
+        # Reasoning model prefixes — update when OpenAI adds new o-series
+        # models, until LangChain exposes a capability flag
+        return model_id.startswith(("o1", "o3", "o4-mini"))
 
     def create_chat_model(
         self,
@@ -278,13 +265,6 @@ class OpenAIProvider(ILLMProvider):
             cmd = get_install_command("openai", is_extra=True)
             raise ImportError(
                 f"langchain-openai package not installed. " f"Install with: {cmd}"
-            )
-
-        # Validate model ID
-        if not self.validate_model(model_id):
-            logger.warning(
-                f"Model '{model_id}' not in OpenAI catalog. "
-                f"Proceeding anyway (may fail at runtime)."
             )
 
         # Get API key (prefer kwarg, fallback to environment)

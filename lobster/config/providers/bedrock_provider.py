@@ -45,13 +45,15 @@ class BedrockProvider(ILLMProvider):
         AWS_REGION: AWS region (optional, default: us-east-1)
 
     Attributes:
-        MODELS: Static catalog of Claude models available via Bedrock
+        KNOWN_MODELS: Static catalog of Claude models available via Bedrock
         DEFAULT_REGION: Default AWS region for Bedrock API
     """
 
+    _default_context_window = 200_000
+
     # Static model catalog (single source of truth for Bedrock models)
     # All cross-region IDs for maximum availability
-    MODELS = [
+    KNOWN_MODELS = [
         ModelInfo(
             name="us.anthropic.claude-sonnet-4-20250514-v1:0",
             display_name="Claude Sonnet 4 (Bedrock)",
@@ -141,7 +143,7 @@ class BedrockProvider(ILLMProvider):
             >>> for model in provider.list_models():
             ...     print(f"{model.name}: {model.description}")
         """
-        return self.MODELS.copy()
+        return self.KNOWN_MODELS.copy()
 
     def get_default_model(self) -> str:
         """
@@ -155,26 +157,10 @@ class BedrockProvider(ILLMProvider):
             >>> model_id = provider.get_default_model()
             >>> # "anthropic.claude-sonnet-4-20250514-v1:0"
         """
-        for model in self.MODELS:
+        for model in self.KNOWN_MODELS:
             if model.is_default:
                 return model.name
-        return self.MODELS[0].name  # Fallback to first model
-
-    def validate_model(self, model_id: str) -> bool:
-        """
-        Check if a model ID is valid for Bedrock.
-
-        Args:
-            model_id: Bedrock model identifier (e.g., "anthropic.claude-sonnet-4-20250514-v1:0")
-
-        Returns:
-            bool: True if model exists in catalog
-
-        Example:
-            >>> if provider.validate_model("anthropic.claude-sonnet-4-20250514-v1:0"):
-            ...     llm = provider.create_chat_model("anthropic.claude-sonnet-4-20250514-v1:0")
-        """
-        return model_id in [m.name for m in self.MODELS]
+        return self.KNOWN_MODELS[0].name  # Fallback to first model
 
     def create_chat_model(
         self,
@@ -233,13 +219,6 @@ class BedrockProvider(ILLMProvider):
             cmd = get_install_command("bedrock", is_extra=True)
             raise ImportError(
                 f"langchain-aws package not installed. " f"Install with: {cmd}"
-            )
-
-        # Validate model
-        if not self.validate_model(model_id):
-            logger.warning(
-                f"Model '{model_id}' not in catalog. "
-                f"Attempting to use anyway (may work in your region)."
             )
 
         # Check credentials

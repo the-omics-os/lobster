@@ -2691,17 +2691,15 @@ class AgentClient(BaseClient):
         Returns:
             Dictionary with success status and message
         """
-        from lobster.config.llm_factory import LLMFactory, LLMProvider
+        from lobster.config.constants import VALID_PROVIDERS
+        from lobster.config.llm_factory import LLMFactory
 
         try:
             # Validate provider
-            try:
-                LLMProvider(provider_name)  # Validates provider name
-            except ValueError:
-                valid_providers = ", ".join([p.value for p in LLMProvider])
+            if provider_name not in VALID_PROVIDERS:
                 return {
                     "success": False,
-                    "error": f"Invalid provider '{provider_name}'. Valid options: {valid_providers}",
+                    "error": f"Invalid provider '{provider_name}'. Valid options: {', '.join(VALID_PROVIDERS)}",
                 }
 
             # Check if provider is configured

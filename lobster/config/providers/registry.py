@@ -245,14 +245,14 @@ class ProviderRegistry:
 
         for provider in cls._providers.values():
             # Skip local providers (Ollama) - they have no cost and require network calls
-            # to list models. Cloud providers have static MODELS catalogs.
+            # to list models. Cloud providers have static KNOWN_MODELS catalogs.
             if provider.name == "ollama":
                 continue
 
             try:
-                # Use static MODELS attribute if available (avoids unnecessary calls)
-                if hasattr(provider, "MODELS"):
-                    models = provider.MODELS
+                # Use static KNOWN_MODELS attribute if available (avoids unnecessary calls)
+                if hasattr(provider, "KNOWN_MODELS"):
+                    models = provider.KNOWN_MODELS
                 else:
                     models = provider.list_models()
 

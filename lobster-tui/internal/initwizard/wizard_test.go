@@ -365,8 +365,16 @@ func TestWizardModelAnthropicShowsProfileStep(t *testing.T) {
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
+	if m.step != stepModelSelect {
+		t.Fatalf("expected stepModelSelect for anthropic, got %d", m.step)
+	}
+
+	// Accept default model selection.
+	result, _ = m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
+
 	if m.step != stepProfile {
-		t.Fatalf("expected stepProfile for anthropic, got %d", m.step)
+		t.Fatalf("expected stepProfile after model select for anthropic, got %d", m.step)
 	}
 }
 
@@ -397,9 +405,17 @@ func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
-	// Should skip profile and go to optional keys.
+	// Should go to model select (gemini has a model catalog).
+	if m.step != stepModelSelect {
+		t.Fatalf("expected stepModelSelect for gemini, got %d", m.step)
+	}
+
+	// Accept default model and should skip profile → optional keys.
+	result, _ = m.Update(makeKeyPress("enter"))
+	m = result.(WizardModel)
+
 	if m.step != stepOptionalKeys {
-		t.Fatalf("expected stepOptionalKeys for gemini (no profile), got %d", m.step)
+		t.Fatalf("expected stepOptionalKeys after model select for gemini, got %d", m.step)
 	}
 }
 

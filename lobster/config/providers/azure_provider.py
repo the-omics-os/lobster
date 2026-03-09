@@ -53,9 +53,11 @@ class AzureProvider(ILLMProvider):
         ...     llm = provider.create_chat_model("gpt-4o")
     """
 
+    _default_context_window = 128_000
+
     # Azure AI Foundry supported models
     # Source: Azure AI Model Catalog (January 2025)
-    MODELS = [
+    KNOWN_MODELS = [
         ModelInfo(
             name="gpt-4o",
             display_name="GPT-4o (Azure AI)",
@@ -208,7 +210,7 @@ class AzureProvider(ILLMProvider):
             >>> for model in provider.list_models():
             ...     print(f"{model.display_name}: ${model.input_cost_per_million}/M tokens")
         """
-        return self.MODELS.copy()
+        return self.KNOWN_MODELS.copy()
 
     def get_default_model(self) -> str:
         """
@@ -222,38 +224,10 @@ class AzureProvider(ILLMProvider):
             >>> model_id = provider.get_default_model()
             >>> llm = provider.create_chat_model(model_id)
         """
-        for model in self.MODELS:
+        for model in self.KNOWN_MODELS:
             if model.is_default:
                 return model.name
-        return self.MODELS[0].name  # Fallback to first model
-
-    def validate_model(self, model_id: str) -> bool:
-        """
-        Check if a model ID is valid for Azure AI.
-
-        Azure AI Foundry uses standard model names. We validate against
-        known models but allow unknown names for future compatibility.
-
-        Args:
-            model_id: Model identifier (e.g., "gpt-4o", "deepseek-r1")
-
-        Returns:
-            bool: True if model exists or is unknown (allows future models)
-
-        Example:
-            >>> provider = AzureProvider()
-            >>> if provider.validate_model("gpt-4o"):
-            ...     llm = provider.create_chat_model("gpt-4o")
-        """
-        known_models = {m.name for m in self.MODELS}
-        if model_id in known_models:
-            return True
-        # Allow unknown models (Azure may add new ones)
-        logger.warning(
-            f"Model '{model_id}' not in known Azure AI models. "
-            "Proceeding anyway (may work if deployed in your Azure account)."
-        )
-        return True
+        return self.KNOWN_MODELS[0].name  # Fallback to first model
 
     def create_chat_model(
         self,

@@ -869,6 +869,12 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
         if "ollama_host" in config_dict:
             workspace_config.ollama_host = config_dict["ollama_host"]
 
+        # Set model for the selected provider (from wizard model_id field)
+        if "model_id" in config_dict and config_dict["model_id"]:
+            provider = config_dict.get("provider", "")
+            if provider:
+                workspace_config.set_model_for_provider(provider, config_dict["model_id"])
+
         # Ensure workspace directory exists and save config
         workspace_path.mkdir(parents=True, exist_ok=True)
         workspace_config.save(workspace_path)
@@ -923,6 +929,12 @@ def _create_global_config(config_dict: Dict[str, Any]) -> Path:
 
         if "ollama_host" in config_dict:
             global_config.ollama_default_host = config_dict["ollama_host"]
+
+        # Set model for the selected provider (from wizard model_id field)
+        if "model_id" in config_dict and config_dict["model_id"]:
+            provider = config_dict.get("provider", "")
+            if provider:
+                global_config.set_model_for_provider(provider, config_dict["model_id"])
 
         global_config.save()
         config_path = GlobalProviderConfig.get_config_path()
@@ -1370,6 +1382,12 @@ def init_impl(
         "--ollama-model",
         help=f"Ollama model name (default: {provider_setup.DEFAULT_OLLAMA_MODEL}, non-interactive mode)",
     ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Default model ID for the selected provider (e.g., claude-sonnet-4-20250514, gpt-4o). Saved to workspace config.",
+    ),
     gemini_key: Optional[str] = typer.Option(
         None, "--gemini-key", help="Google API key (non-interactive mode)"
     ),
@@ -1770,6 +1788,15 @@ def init_impl(
             config_dict["profile"] = selected_profile
             console.print(f"[green]✓ Profile set to: {selected_profile}[/green]")
 
+        # Save model override (--model flag or --ollama-model for Ollama)
+        # Guard: model may be a typer.OptionInfo if init_impl is called directly
+        _model_str = model if isinstance(model, str) else None
+        _ollama_model_str = ollama_model if isinstance(ollama_model, str) else None
+        effective_model = _model_str or (_ollama_model_str if has_ollama else None)
+        if effective_model:
+            config_dict["model_id"] = effective_model
+            console.print(f"[green]✓ Default model: {effective_model}[/green]")
+
         if ncbi_key:
             env_lines.append("\n# Optional: Enhanced literature search")
             env_lines.append(f"NCBI_API_KEY={ncbi_key.strip()}")
@@ -1992,7 +2019,7 @@ def init_impl(
                     try:
                         from lobster.ui.bridge.go_tui_bridge import run_init_wizard
 
-                        _tui_result = run_init_wizard(_binary, theme="lobster-dark")
+                        _tui_result = run_init_wizard(_binary)
                         if _tui_result.get("cancelled", False):
                             console.print("[yellow]Setup cancelled.[/yellow]")
                             raise typer.Exit(0)

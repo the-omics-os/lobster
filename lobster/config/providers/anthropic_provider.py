@@ -48,9 +48,11 @@ class AnthropicProvider(ILLMProvider):
         >>> llm = provider.create_chat_model(models[0].name)
     """
 
+    _default_context_window = 200_000
+
     # Static model catalog with pricing
     # Source: https://www.anthropic.com/pricing (January 2025)
-    MODELS = [
+    KNOWN_MODELS = [
         ModelInfo(
             name="claude-sonnet-4-20250514",
             display_name="Claude Sonnet 4",
@@ -163,7 +165,7 @@ class AnthropicProvider(ILLMProvider):
             >>> for model in provider.list_models():
             ...     print(f"{model.display_name}: ${model.input_cost_per_million}/M tokens")
         """
-        return self.MODELS.copy()
+        return self.KNOWN_MODELS.copy()
 
     def get_default_model(self) -> str:
         """
@@ -177,27 +179,10 @@ class AnthropicProvider(ILLMProvider):
             >>> model_id = provider.get_default_model()
             >>> llm = provider.create_chat_model(model_id)
         """
-        for model in self.MODELS:
+        for model in self.KNOWN_MODELS:
             if model.is_default:
                 return model.name
-        return self.MODELS[0].name  # Fallback to first model
-
-    def validate_model(self, model_id: str) -> bool:
-        """
-        Check if a model ID is valid for Anthropic.
-
-        Args:
-            model_id: Model identifier (e.g., "claude-sonnet-4-20250514")
-
-        Returns:
-            bool: True if model exists in catalog
-
-        Example:
-            >>> provider = AnthropicProvider()
-            >>> if provider.validate_model("claude-sonnet-4-20250514"):
-            ...     llm = provider.create_chat_model("claude-sonnet-4-20250514")
-        """
-        return model_id in [m.name for m in self.MODELS]
+        return self.KNOWN_MODELS[0].name  # Fallback to first model
 
     def create_chat_model(
         self,
@@ -247,13 +232,6 @@ class AnthropicProvider(ILLMProvider):
             cmd = get_install_command("anthropic", is_extra=True)
             raise ImportError(
                 f"langchain-anthropic package not installed. " f"Install with: {cmd}"
-            )
-
-        # Validate model ID
-        if not self.validate_model(model_id):
-            logger.warning(
-                f"Model '{model_id}' not in Anthropic catalog. "
-                f"Proceeding anyway (may fail at runtime)."
             )
 
         # Get API key (prefer kwarg, fallback to environment)

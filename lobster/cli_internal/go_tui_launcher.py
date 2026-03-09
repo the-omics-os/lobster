@@ -441,9 +441,17 @@ def _resolve_active_provider_name(client: Any) -> str:
 
 
 def _emit_provider_status(bridge: _LightBridge, client: Any) -> None:
-    """Push the current provider into Go status state."""
+    """Push the current provider + model into Go status state."""
     provider_name = _resolve_active_provider_name(client) or "auto"
     bridge.send("status", {"text": f"Provider: {provider_name}"})
+
+    model_name = str(
+        getattr(client, "model_override", None)
+        or getattr(client, "model", None)
+        or ""
+    ).strip()
+    if model_name:
+        bridge.send("status", {"text": f"Model: {model_name}"})
 
 
 def _emit_startup_diagnostic(bridge: _LightBridge, diagnostic: StartupDiagnostic) -> None:
@@ -1075,7 +1083,7 @@ def launch_go_tui_chat(
     p2g_r, p2g_w = os.pipe()  # Python-to-Go
     g2p_r, g2p_w = os.pipe()  # Go-to-Python
 
-    theme_name = os.environ.get("LOBSTER_TUI_THEME", "lobster-dark").strip() or "lobster-dark"
+    theme_name = os.environ.get("LOBSTER_TUI_THEME", "").strip()
     inline_env = os.environ.get("LOBSTER_TUI_INLINE", "1").strip().lower()
     fullscreen_env = os.environ.get("LOBSTER_TUI_FULLSCREEN", "").strip().lower()
     inline_mode = inline_env not in {"0", "false", "no"}
@@ -1089,9 +1097,9 @@ def launch_go_tui_chat(
         str(p2g_r),
         "--proto-fd-out",
         str(g2p_w),
-        "--theme",
-        theme_name,
     ]
+    if theme_name:
+        cmd.extend(["--theme", theme_name])
     if inline_mode:
         cmd.append("--inline")
 
@@ -1099,6 +1107,7 @@ def launch_go_tui_chat(
         os.environ,
         workspace=workspace,
         provider=provider,
+        model=model,
         no_intro=no_intro,
     )
 
@@ -1296,6 +1305,7 @@ def _prepare_go_tui_chat_env(
     *,
     workspace: Optional[str] = None,
     provider: Optional[str] = None,
+    model: Optional[str] = None,
     no_intro: bool = False,
 ) -> Dict[str, str]:
     """Build the child environment for a Go TUI chat session."""
@@ -1303,6 +1313,8 @@ def _prepare_go_tui_chat_env(
     child_env["LOBSTER_TUI_PROVIDER"] = (
         provider or child_env.get("LOBSTER_TUI_PROVIDER", "auto")
     ).strip() or "auto"
+    if model:
+        child_env["LOBSTER_TUI_MODEL"] = model
     child_env["LOBSTER_TUI_WORKSPACE"] = str(workspace or Path.cwd())
     if not child_env.get("LOBSTER_TUI_APP_VERSION"):
         try:

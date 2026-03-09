@@ -815,6 +815,12 @@ def init(
         "--ollama-model",
         help="Ollama model name (default: llama3:8b-instruct, non-interactive mode)",
     ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Default model ID for the selected provider (e.g., claude-sonnet-4-20250514, gpt-4o). Saved to workspace config.",
+    ),
     gemini_key: Optional[str] = typer.Option(
         None, "--gemini-key", help="Google API key (non-interactive mode)"
     ),
@@ -966,7 +972,8 @@ def init(
         global_config=global_config, force=force, non_interactive=non_interactive,
         anthropic_key=anthropic_key, bedrock_access_key=bedrock_access_key,
         bedrock_secret_key=bedrock_secret_key, use_ollama=use_ollama,
-        ollama_model=ollama_model, gemini_key=gemini_key, openai_key=openai_key,
+        ollama_model=ollama_model, model=model,
+        gemini_key=gemini_key, openai_key=openai_key,
         openrouter_key=openrouter_key, azure_endpoint=azure_endpoint,
         azure_credential=azure_credential,
         profile=profile, ncbi_key=ncbi_key, cloud_key=cloud_key,

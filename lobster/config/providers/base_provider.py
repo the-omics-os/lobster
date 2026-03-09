@@ -197,37 +197,50 @@ class ILLMProvider(ABC):
         """
         pass
 
-    @abstractmethod
+    # Default context window for unknown models (subclasses should override)
+    _default_context_window: int = 200_000
+
     def validate_model(self, model_id: str) -> bool:
         """
         Check if a model ID is valid for this provider.
+
+        The default implementation accepts any non-empty string — the provider
+        API validates model IDs, not us. Subclasses (e.g., Ollama) may override
+        to check locally installed models.
 
         Args:
             model_id: Model identifier to validate
 
         Returns:
-            bool: True if model exists and is available
-
-        Example:
-            >>> if provider.validate_model("claude-sonnet-4-20250514"):
-            ...     llm = provider.create_chat_model("claude-sonnet-4-20250514")
+            bool: True if model_id is a non-empty string
         """
-        pass
+        return bool(model_id)
 
-    def get_model_info(self, model_id: str) -> Optional[ModelInfo]:
+    def get_model_info(self, model_id: str) -> ModelInfo:
         """
         Get detailed information about a specific model.
+
+        If the model is not in the known catalog, returns a ModelInfo with
+        the provider's default context window. Never returns None — this
+        ensures resolve_context_window() always gets a real value.
 
         Args:
             model_id: Model identifier
 
         Returns:
-            Optional[ModelInfo]: Model information or None if not found
+            ModelInfo: Model information (from catalog or synthesized default)
         """
         for model in self.list_models():
             if model.name == model_id:
                 return model
-        return None
+        # Unknown model — return sensible defaults
+        return ModelInfo(
+            name=model_id,
+            display_name=model_id,
+            description=f"Unknown model (not in {self.name} catalog)",
+            provider=self.name,
+            context_window=self._default_context_window,
+        )
 
     def get_model_names(self) -> List[str]:
         """
