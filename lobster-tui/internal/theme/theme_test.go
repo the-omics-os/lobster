@@ -80,7 +80,9 @@ func TestFooterStyles(t *testing.T) {
 	}
 }
 
-// TestChatStyles verifies chat group tokens exist and are non-zero.
+// TestChatStyles verifies chat group tokens that use accent/brand colors are
+// non-zero. MessageBody intentionally uses nil (terminal default) foreground
+// so it is excluded from the non-zero check.
 func TestChatStyles(t *testing.T) {
 	s := BuildStyles(LobsterDark.Colors)
 
@@ -90,7 +92,6 @@ func TestChatStyles(t *testing.T) {
 	}{
 		{"AgentName", s.AgentName},
 		{"UserName", s.UserName},
-		{"MessageBody", s.MessageBody},
 		{"HandoffPrefix", s.HandoffPrefix},
 	} {
 		if isZeroStyle(tc.style) {

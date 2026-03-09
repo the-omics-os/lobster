@@ -1,65 +1,54 @@
 // Package theme — Lobster-branded built-in themes.
+//
+// Text/Background colors are nil (terminal default) so the TUI inherits the
+// user's terminal foreground/background — always readable, zero detection.
+// Brand accent colors use hardcoded hex since they are foreground-only
+// decorations that are readable on any background.
 package theme
 
 import "charm.land/lipgloss/v2"
 
-// LobsterDark is the official Lobster AI dark theme.
-var LobsterDark = &Theme{
-	ID:          "lobster-dark",
-	Name:        "Lobster Dark",
-	Description: "Official Lobster AI dark theme",
+// LobsterDefault is the single adaptive theme. nil colors mean "use the
+// terminal's default", which guarantees contrast on any background.
+var LobsterDefault = &Theme{
+	ID:          "lobster-default",
+	Name:        "Lobster",
+	Description: "Adaptive Lobster AI theme (works on light and dark terminals)",
 	Author:      "Omics-OS",
-	Version:     "1.0.0",
+	Version:     "2.0.0",
 	Colors: Colors{
-		Primary:    lipgloss.Color("#e45c47"), // Lobster orange
-		Secondary:  lipgloss.Color("#CC2C18"),
-		Background: lipgloss.Color("#1a1a2e"),
-		Surface:    lipgloss.Color("#252538"),
-		Overlay:    lipgloss.Color("#2a2a40"),
-		Text:       lipgloss.Color("#FAFAFA"),
-		TextMuted:  lipgloss.Color("#888888"),
-		TextDim:    lipgloss.Color("#555555"),
-		Success:    lipgloss.Color("#28a745"),
-		Warning:    lipgloss.Color("#ffc107"),
-		Error:      lipgloss.Color("#dc3545"),
-		Info:       lipgloss.Color("#17a2b8"),
-		Accent1:    lipgloss.Color("#e45c47"),
-		Accent2:    lipgloss.Color("#FF6B4A"),
-		Accent3:    lipgloss.Color("#4CAF50"),
+		// Brand accents — hex, foreground-only (visible on any background).
+		Primary:   lipgloss.Color("#e45c47"), // Lobster orange
+		Secondary: lipgloss.Color("#CC2C18"),
+		Accent1:   lipgloss.Color("#e45c47"),
+		Accent2:   lipgloss.Color("#FF6B4A"),
+		Accent3:   lipgloss.Color("#4CAF50"),
+
+		// Structural — nil = terminal default (always contrasts with bg).
+		Text:       nil,                      // Terminal's default foreground
+		TextMuted:  lipgloss.ANSIColor(245),  // Mid-gray (#8a8a8a) — visible on both light & dark
+		TextDim:    lipgloss.ANSIColor(242),  // Darker gray (#6c6c6c) — subtle but readable
+		Background: nil,                      // Terminal's own background
+		Surface:    nil,                      // No forced surface color
+		Overlay:    lipgloss.ANSIColor(245),  // Mid-gray for borders/dividers
+
+		// Semantic status — hex, foreground-only.
+		Success: lipgloss.Color("#28a745"),
+		Warning: lipgloss.Color("#ffc107"),
+		Error:   lipgloss.Color("#dc3545"),
+		Info:    lipgloss.Color("#17a2b8"),
 	},
 }
 
-// LobsterLight is the official Lobster AI light theme.
-var LobsterLight = &Theme{
-	ID:          "lobster-light",
-	Name:        "Lobster Light",
-	Description: "Official Lobster AI light theme",
-	Author:      "Omics-OS",
-	Version:     "1.0.0",
-	Colors: Colors{
-		Primary:    lipgloss.Color("#CC2C18"), // Lobster red (darker for readability on white)
-		Secondary:  lipgloss.Color("#e45c47"),
-		Background: lipgloss.Color("#FFFFFF"),
-		Surface:    lipgloss.Color("#F5F5F5"),
-		Overlay:    lipgloss.Color("#EBEBEB"),
-		Text:       lipgloss.Color("#1a1a2e"),
-		TextMuted:  lipgloss.Color("#555555"),
-		TextDim:    lipgloss.Color("#999999"),
-		Success:    lipgloss.Color("#1e7e34"),
-		Warning:    lipgloss.Color("#856404"),
-		Error:      lipgloss.Color("#721c24"),
-		Info:       lipgloss.Color("#0c5460"),
-		Accent1:    lipgloss.Color("#CC2C18"),
-		Accent2:    lipgloss.Color("#e45c47"),
-		Accent3:    lipgloss.Color("#2d6a4f"),
-	},
-}
+// Legacy aliases for backward compatibility with --theme flag and env var.
+var LobsterDark = LobsterDefault
+var LobsterLight = LobsterDefault
 
-// init registers the built-in themes and activates the dark theme by default.
+// init registers the theme and sets it as current.
 func init() {
-	Register(LobsterDark)
-	Register(LobsterLight)
-	// Default to dark theme; overridden at startup via LOBSTER_TUI_THEME or
-	// the user's saved preference.
-	Current = LobsterDark
+	Register(LobsterDefault)
+	// Also register legacy IDs so --theme lobster-dark / lobster-light still work.
+	Available["lobster-dark"] = LobsterDefault
+	Available["lobster-light"] = LobsterDefault
+	Current = LobsterDefault
 }

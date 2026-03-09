@@ -130,12 +130,10 @@ func BuildStyles(c Colors) Styles {
 			BorderForeground(c.Overlay),
 
 		Footer: lipgloss.NewStyle().
-			Background(c.Surface).
 			Foreground(c.TextMuted).
 			Padding(0, 1),
 
 		StatusBar: lipgloss.NewStyle().
-			Background(c.Surface).
 			Foreground(c.Text).
 			Padding(0, 1).
 			BorderTop(true).
@@ -143,12 +141,10 @@ func BuildStyles(c Colors) Styles {
 			BorderForeground(c.Overlay),
 
 		Sidebar: lipgloss.NewStyle().
-			Background(c.Surface).
 			Foreground(c.Text).
 			Padding(1, 2),
 
 		MainPanel: lipgloss.NewStyle().
-			Background(c.Background).
 			Foreground(c.Text).
 			Padding(1, 2),
 
@@ -183,7 +179,6 @@ func BuildStyles(c Colors) Styles {
 
 		// ---- Input --------------------------------------------------------
 		InputField: lipgloss.NewStyle().
-			Background(c.Surface).
 			Foreground(c.Text).
 			Padding(0, 1).
 			Border(lipgloss.RoundedBorder()).
@@ -194,7 +189,6 @@ func BuildStyles(c Colors) Styles {
 			Bold(true),
 
 		FormContainer: lipgloss.NewStyle().
-			Background(c.Surface).
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(c.Overlay),
@@ -212,7 +206,6 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.Success).
 			Bold(true).
 			Padding(0, 1).
-			Background(c.Surface).
 			MarginRight(1).
 			BorderLeft(true).
 			BorderStyle(lipgloss.NormalBorder()).
@@ -222,7 +215,6 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.Warning).
 			Bold(true).
 			Padding(0, 1).
-			Background(c.Surface).
 			MarginRight(1).
 			BorderLeft(true).
 			BorderStyle(lipgloss.NormalBorder()).
@@ -232,7 +224,6 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.Error).
 			Bold(true).
 			Padding(0, 1).
-			Background(c.Surface).
 			MarginRight(1).
 			BorderLeft(true).
 			BorderStyle(lipgloss.NormalBorder()).
@@ -242,7 +233,6 @@ func BuildStyles(c Colors) Styles {
 			Foreground(c.Info).
 			Bold(true).
 			Padding(0, 1).
-			Background(c.Surface).
 			MarginRight(1).
 			BorderLeft(true).
 			BorderStyle(lipgloss.NormalBorder()).
@@ -287,7 +277,6 @@ func BuildStyles(c Colors) Styles {
 
 		// ---- Code / markdown ----------------------------------------------
 		CodeBlock: lipgloss.NewStyle().
-			Background(c.Surface).
 			Foreground(c.Text).
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
@@ -299,7 +288,6 @@ func BuildStyles(c Colors) Styles {
 			PaddingLeft(1),
 
 		InlineCode: lipgloss.NewStyle().
-			Background(c.Overlay).
 			Foreground(c.Accent2).
 			Padding(0, 1),
 
