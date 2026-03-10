@@ -53,7 +53,7 @@ func TestToggleLeftRight(t *testing.T) {
 	_ = c.Init(makeData("Test?", true))
 
 	// Toggle with left key.
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -62,7 +62,7 @@ func TestToggleLeftRight(t *testing.T) {
 	}
 
 	// Toggle with right key.
-	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
+	result, _ = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -71,7 +71,7 @@ func TestToggleLeftRight(t *testing.T) {
 	}
 
 	// Toggle with tab.
-	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyTab})
+	result, _ = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyTab})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -85,7 +85,7 @@ func TestSubmitEnter(t *testing.T) {
 	c := &ConfirmComponent{}
 	_ = c.Init(makeData("Proceed?", true))
 
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected non-nil result on enter")
 	}
@@ -103,7 +103,7 @@ func TestSubmitYKey(t *testing.T) {
 	c := &ConfirmComponent{}
 	_ = c.Init(makeData("Continue?", false))
 
-	result := c.HandleMsg(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if result == nil {
 		t.Fatal("expected non-nil result on y key")
 	}
@@ -120,7 +120,7 @@ func TestSubmitNKey(t *testing.T) {
 	c := &ConfirmComponent{}
 	_ = c.Init(makeData("Continue?", true))
 
-	result := c.HandleMsg(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	if result == nil {
 		t.Fatal("expected non-nil result on n key")
 	}
@@ -134,7 +134,7 @@ func TestCancelEsc(t *testing.T) {
 	c := &ConfirmComponent{}
 	_ = c.Init(makeData("Continue?", true))
 
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on esc")
 	}

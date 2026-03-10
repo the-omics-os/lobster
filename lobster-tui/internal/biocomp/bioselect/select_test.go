@@ -78,7 +78,7 @@ func TestNavigateDown(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A", "B", "C"}, 0))
 
-	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
+	result, _ := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -87,7 +87,7 @@ func TestNavigateDown(t *testing.T) {
 	}
 
 	// Navigate with j.
-	result = s.HandleMsg(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	result, _ = s.HandleMsg(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if result != nil {
 		t.Fatal("expected nil result during j navigation")
 	}
@@ -107,7 +107,7 @@ func TestNavigateUp(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A", "B", "C"}, 2))
 
-	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
+	result, _ := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -133,7 +133,7 @@ func TestSubmitEnter(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"Alpha", "Beta"}, 1))
 
-	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	result, _ := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected non-nil result on enter")
 	}
@@ -153,7 +153,7 @@ func TestNumberKeyDirectSelect(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A", "B", "C"}, 0))
 
-	result := s.HandleMsg(tea.KeyPressMsg{Code: '2', Text: "2"})
+	result, _ := s.HandleMsg(tea.KeyPressMsg{Code: '2', Text: "2"})
 	if result == nil {
 		t.Fatal("expected non-nil result on number key")
 	}
@@ -174,7 +174,7 @@ func TestNumberKeyIgnoredWhenMoreThan9Options(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", opts, 0))
 
-	result := s.HandleMsg(tea.KeyPressMsg{Code: '1', Text: "1"})
+	result, _ := s.HandleMsg(tea.KeyPressMsg{Code: '1', Text: "1"})
 	if result != nil {
 		t.Fatal("expected nil result when >9 options")
 	}
@@ -185,7 +185,7 @@ func TestCancelEsc(t *testing.T) {
 	s := &SelectComponent{}
 	_ = s.Init(makeData("Pick:", []string{"A"}, 0))
 
-	result := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	result, _ := s.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on esc")
 	}

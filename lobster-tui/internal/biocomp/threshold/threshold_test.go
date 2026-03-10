@@ -150,7 +150,7 @@ func TestThresholdClampMax(t *testing.T) {
 
 func TestThresholdSubmit(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.05})
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected result on enter")
 	}
@@ -165,7 +165,7 @@ func TestThresholdSubmit(t *testing.T) {
 
 func TestThresholdCancel(t *testing.T) {
 	c := newTestComponent(t, map[string]any{"default": 0.05})
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected result on esc")
 	}
@@ -263,5 +263,42 @@ func TestThresholdNameMode(t *testing.T) {
 	}
 	if c.Mode() != "overlay" {
 		t.Errorf("expected mode 'overlay', got %q", c.Mode())
+	}
+}
+
+func TestDecimalPlaces_ScientificNotation(t *testing.T) {
+	tests := []struct {
+		step float64
+		want int
+	}{
+		{0.01, 2},
+		{0.001, 3},
+		{0.000001, 6},  // 1e-06
+		{0.0005, 4},    // 5e-04
+		{1.0, 0},
+		{10.0, 0},
+		{0.1, 1},
+	}
+	for _, tt := range tests {
+		got := decimalPlaces(tt.step)
+		if got != tt.want {
+			t.Errorf("decimalPlaces(%g) = %d, want %d", tt.step, got, tt.want)
+		}
+	}
+}
+
+func TestThresholdNoChangeEventAtBoundary(t *testing.T) {
+	// At min, adjusting left should NOT set pendingChange.
+	c := newTestComponent(t, map[string]any{"default": 0.0})
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if evt := c.ChangeEvent(); evt != nil {
+		t.Error("expected nil change event when already at min boundary")
+	}
+
+	// At max, adjusting right should NOT set pendingChange.
+	c2 := newTestComponent(t, map[string]any{"default": 1.0})
+	c2.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
+	if evt := c2.ChangeEvent(); evt != nil {
+		t.Error("expected nil change event when already at max boundary")
 	}
 }

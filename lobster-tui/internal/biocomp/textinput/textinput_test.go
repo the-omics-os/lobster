@@ -54,7 +54,7 @@ func TestSubmitEnter(t *testing.T) {
 	c.HandleMsg(tea.KeyPressMsg{Code: 'H', Text: "H"})
 	c.HandleMsg(tea.KeyPressMsg{Code: 'i', Text: "i"})
 
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result == nil {
 		t.Fatal("expected non-nil result on enter")
 	}
@@ -76,7 +76,7 @@ func TestCancelEsc(t *testing.T) {
 	c := &TextInputComponent{}
 	_ = c.Init(makeData("Name?", ""))
 
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on esc")
 	}
