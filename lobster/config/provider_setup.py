@@ -305,6 +305,34 @@ def create_openrouter_config(api_key: str) -> ProviderConfig:
     )
 
 
+def create_omics_os_config(api_key: str) -> ProviderConfig:
+    """
+    Create configuration for Omics-OS Cloud gateway.
+
+    Args:
+        api_key: Omics-OS API key (format: omk_...)
+
+    Returns:
+        ProviderConfig with environment variables
+    """
+    if not api_key or not api_key.strip():
+        return ProviderConfig(
+            provider_type="omics-os",
+            env_vars={},
+            success=False,
+            message="API key cannot be empty",
+        )
+
+    return ProviderConfig(
+        provider_type="omics-os",
+        env_vars={
+            "LOBSTER_LLM_PROVIDER": "omics-os",
+            "OMICS_OS_API_KEY": api_key.strip(),
+        },
+        success=True,
+    )
+
+
 def create_azure_config(endpoint: str, credential: str) -> ProviderConfig:
     """
     Create configuration for Azure AI.

@@ -16,6 +16,7 @@ VALID_PROVIDERS: Final[List[str]] = [
     "azure",
     "openai",
     "openrouter",
+    "omics-os",
 ]
 
 # Valid agent configuration profiles
@@ -42,4 +43,5 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "azure": "Azure AI",
     "openai": "OpenAI",
     "openrouter": "OpenRouter (600+ models)",
+    "omics-os": "Omics-OS Cloud",
 }
