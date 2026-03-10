@@ -1,11 +1,17 @@
 package chat
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/glamour"
+
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
+
+var ansiRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func testStyles() theme.Styles {
 	return theme.BuildStyles(theme.LobsterDark.Colors)
@@ -41,6 +47,63 @@ func TestRenderBlockTable_Empty(t *testing.T) {
 	}
 }
 
+func TestRenderBlockTable_ContentFitsWithoutStretching(t *testing.T) {
+	s := testStyles()
+	b := BlockTable{
+		Headers: []string{"#", "Status", "Name"},
+		Rows: [][]string{
+			{"1", "Loaded", "rna_demo_reference"},
+			{"2", "Available", "atac_demo_layout_review"},
+		},
+	}
+
+	out := renderBlockTable(b, s, 120)
+
+	if w := renderedMaxLineWidth(out); w >= 120 {
+		t.Fatalf("expected compact table width below viewport, got %d", w)
+	}
+}
+
+func TestRenderBlockTable_WrapsWhenViewportIsNarrow(t *testing.T) {
+	s := testStyles()
+	b := BlockTable{
+		Headers: []string{"Command", "Description"},
+		Rows: [][]string{
+			{"/analysis-dash", "Rich analysis dashboard degraded to /plots plus /metadata in Go mode"},
+		},
+	}
+
+	out := renderBlockTable(b, s, 48)
+
+	if w := renderedMaxLineWidth(out); w > 48 {
+		t.Fatalf("expected table width to stay within viewport, got %d", w)
+	}
+}
+
+func TestRenderBlockTable_UsesColumnLayoutMetadata(t *testing.T) {
+	s := testStyles()
+	b := BlockTable{
+		Headers: []string{"#", "Dataset"},
+		Columns: []BlockTableColumn{
+			{Name: "#", Width: 4, Justify: "right", NoWrap: true},
+			{Name: "Dataset", MaxWidth: 18, Overflow: "ellipsis"},
+		},
+		Rows: [][]string{
+			{"1", "geo_gse247686_transcriptomics_single_cell_autosave"},
+		},
+	}
+
+	out := renderBlockTable(b, s, 40)
+	clean := ansiRegexp.ReplaceAllString(out, "")
+
+	if !strings.Contains(clean, "…") || strings.Contains(clean, "single_cell_autosave") {
+		t.Fatalf("expected dataset cell to be capped by metadata, got %q", clean)
+	}
+	if w := renderedMaxLineWidth(out); w > 40 {
+		t.Fatalf("expected metadata-aware table to stay within viewport, got %d", w)
+	}
+}
+
 func TestRenderBlockText_Plain(t *testing.T) {
 	s := testStyles()
 	b := BlockText{Text: "Hello world"}
@@ -58,6 +121,23 @@ func TestRenderBlockText_Glamour(t *testing.T) {
 	out := renderBlockText(b, s, 80, nil)
 	if !strings.Contains(out, "bold") {
 		t.Errorf("expected output to contain 'bold', got %q", out)
+	}
+}
+
+func TestRenderBlockText_PlainSkipsMarkdownRenderer(t *testing.T) {
+	s := testStyles()
+	renderer, err := glamour.NewTermRenderer(
+		glamour.WithAutoStyle(),
+		glamour.WithWordWrap(80),
+	)
+	if err != nil {
+		t.Fatalf("failed to build glamour renderer: %v", err)
+	}
+
+	b := BlockText{Text: "- research_agent", Markdown: false}
+	out := renderBlockText(b, s, 80, renderer)
+	if !strings.Contains(out, "research_agent") {
+		t.Fatalf("expected underscores to remain literal, got %q", out)
 	}
 }
 
@@ -163,6 +243,27 @@ func TestRenderBlockCode_WidthConstrained(t *testing.T) {
 	}
 }
 
+func TestRenderInlineAlert_WrappedWarningDoesNotLeakCSIFragments(t *testing.T) {
+	s := testStyles()
+	out := renderInlineAlert(
+		"warning",
+		"/analysis-dash renders Rich dashboard panels and is not available in Go TUI. Showing /metadata + /plots fallback.",
+		s,
+		60,
+	)
+
+	clean := ansiRegexp.ReplaceAllString(out, "")
+	if strings.Contains(clean, "[m[") || strings.Contains(clean, "[1;") {
+		t.Fatalf("expected wrapped alert without leaked CSI fragments, got %q", clean)
+	}
+	if !strings.Contains(clean, "WARNING") {
+		t.Fatalf("expected warning chip in output, got %q", clean)
+	}
+	if !strings.Contains(clean, "/metadata + /plots") || !strings.Contains(clean, "fallback.") {
+		t.Fatalf("expected wrapped alert body in output, got %q", clean)
+	}
+}
+
 func TestRenderBlockAlert_Error(t *testing.T) {
 	s := testStyles()
 	b := BlockAlert{Level: "error", Message: "Something failed"}
@@ -234,6 +335,17 @@ func TestRenderBlockHandoff_EmptyReason(t *testing.T) {
 	if !strings.Contains(out, "-->") {
 		t.Error("expected output to contain handoff arrow prefix")
 	}
+}
+
+func renderedMaxLineWidth(s string) int {
+	maxWidth := 0
+	for _, line := range strings.Split(s, "\n") {
+		clean := ansiRegexp.ReplaceAllString(line, "")
+		if w := lipgloss.Width(clean); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	return maxWidth
 }
 
 func TestCrushStyleMessages(t *testing.T) {

@@ -1626,7 +1626,19 @@ def _extract_argument(original_command: str, prefix: str) -> Optional[str]:
     return arg
 
 
-def _build_help_blocks() -> list[OutputBlock]:
+def _help_table_columns(*, protocol_friendly: bool = False) -> list[dict[str, object]]:
+    if not protocol_friendly:
+        return [{"name": "Command"}, {"name": "Description"}]
+
+    return [
+        {"name": "Command", "width": 32, "no_wrap": True, "overflow": "ellipsis"},
+        {"name": "Description", "max_width": 40, "overflow": "fold"},
+    ]
+
+
+def _build_help_blocks(*, protocol_friendly: bool = False) -> list[OutputBlock]:
+    table_columns = _help_table_columns(protocol_friendly=protocol_friendly)
+
     return [
         section_block(title="Quick Start"),
         section_block(body="Just ask what you want to do in natural language"),
@@ -1636,7 +1648,7 @@ def _build_help_blocks() -> list[OutputBlock]:
         section_block(body="Load data: /read <file> (supports *.h5ad, *.csv, etc.)"),
         table_block(
             title="Core Commands",
-            columns=[{"name": "Command"}, {"name": "Description"}],
+            columns=table_columns,
             rows=[
                 ["/session", "Current session status"],
                 ["/status", "Subscription tier & agents"],
@@ -1655,7 +1667,7 @@ def _build_help_blocks() -> list[OutputBlock]:
         ),
         table_block(
             title="Power Commands",
-            columns=[{"name": "Command"}, {"name": "Description"}],
+            columns=table_columns,
             rows=[
                 ["/workspace list", "List available datasets"],
                 ["/workspace load <name>", "Load data from workspace"],
@@ -1668,28 +1680,58 @@ def _build_help_blocks() -> list[OutputBlock]:
         ),
         table_block(
             title="Admin & UI Commands",
-            columns=[{"name": "Command"}, {"name": "Description"}],
+            columns=table_columns,
             rows=[
                 [
                     "/dashboard",
-                    "Classic/Textual dashboard (Go-safe fallback shown in Go mode)",
+                    "Classic dashboard; Go mode shows a fallback",
                 ],
                 [
                     "/status-panel",
-                    "Rich status dashboard (degraded to /status in Go mode)",
+                    "Status dashboard; Go mode shows /status",
                 ],
                 [
                     "/workspace-info",
-                    "Rich workspace dashboard (degraded to /workspace in Go mode)",
+                    "Workspace dashboard; Go mode shows /workspace",
                 ],
                 [
                     "/analysis-dash",
-                    "Rich analysis dashboard (degraded to /plots + /metadata in Go mode)",
+                    "Analysis dashboard; Go mode shows /metadata + /plots",
                 ],
-                ["/progress", "Rich progress monitor (degraded in Go mode)"],
+                ["/progress", "Progress monitor; Go mode shows a compact summary"],
             ],
         ),
         hint_block("Next step: use `/workspace list` or `/read <file>` to begin."),
+    ]
+
+
+def _build_query_help_blocks(*, protocol_friendly: bool = False) -> list[OutputBlock]:
+    return [
+        section_block(title="Query Mode Help"),
+        section_block(
+            body="`lobster query` runs one-shot questions and local slash commands without opening the interactive chat."
+        ),
+        table_block(
+            title="Query-Compatible Commands",
+            columns=_help_table_columns(protocol_friendly=protocol_friendly),
+            rows=[
+                ["/help", "Show this query-focused help"],
+                ["/status", "Installation, subscription, and agent summary"],
+                ["/data", "Current data summary"],
+                ["/workspace", "Workspace overview"],
+                ["/workspace list", "List datasets in the workspace"],
+                ["/workspace info <#>", "Show dataset details"],
+                ["/files", "List workspace files"],
+                ["/read <file>", "Inspect a file preview"],
+                ["/plots", "List generated plots"],
+                ["/metadata", "Metadata overview"],
+                ["/queue", "Queue status"],
+                ["/pipeline export", "Export an analysis notebook when provenance exists"],
+            ],
+        ),
+        hint_block(
+            "Use `lobster command \"/help\"` or `lobster chat` for the full interactive slash-command catalog."
+        ),
     ]
 
 
@@ -1935,7 +1977,10 @@ def _execute_command(
         return None
 
     if cmd == "/help":
-        _render_structured_output(output, _build_help_blocks())
+        _render_structured_output(
+            output,
+            _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
+        )
 
     elif cmd == "/data":
         return data_summary(client, output)
@@ -1949,7 +1994,10 @@ def _execute_command(
 
     elif cmd == "/status":
         try:
-            _render_structured_output(output, build_status_blocks())
+            _render_structured_output(
+                output,
+                build_status_blocks(compact=_is_protocol_output(output)),
+            )
         except Exception as e:
             output.print(f"Status info error: {e}", style="error")
 
@@ -2092,12 +2140,12 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/status-panel renders Rich dashboard panels and is not available in Go TUI.",
+                        "/status-panel renders Rich dashboard panels and is not available in Go TUI. Showing /status fallback.",
                         level="warning",
                     ),
-                    hint_block("Use /status instead."),
                 ],
             )
+            _render_structured_output(output, build_status_blocks(compact=True))
             return None
 
         # Show comprehensive system health dashboard (Rich panels)
@@ -2133,13 +2181,12 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/workspace-info renders Rich dashboard panels and is not available in Go TUI.",
+                        "/workspace-info renders Rich dashboard panels and is not available in Go TUI. Showing /workspace fallback.",
                         level="warning",
                     ),
-                    hint_block("Use /workspace or /files instead."),
                 ],
             )
-            return None
+            return workspace_status(client, output, compact=True)
 
         # Show detailed workspace overview
         try:
@@ -2174,12 +2221,13 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/analysis-dash renders Rich dashboard panels and is not available in Go TUI.",
+                        "/analysis-dash renders Rich dashboard panels and is not available in Go TUI. Showing /metadata + /plots fallback.",
                         level="warning",
                     ),
-                    hint_block("Use /plots and /metadata instead."),
                 ],
             )
+            metadata_overview(client, output)
+            plots_list(client, output)
             return None
 
         # Show analysis monitoring dashboard
@@ -2209,14 +2257,22 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
 
     elif cmd == "/progress":
         if _is_protocol_output(output):
+            progress_manager = get_multi_progress_manager()
+            active_count = progress_manager.get_active_operations_count()
             _render_structured_output(
                 output,
                 [
                     alert_block(
-                        "/progress renders Rich live panels and is not available in Go TUI.",
+                        "/progress renders Rich live panels and is not available in Go TUI. Showing compact summary.",
                         level="warning",
                     ),
-                    hint_block("Use command-family output and transcript history instead."),
+                    kv_block(
+                        [("Active Operations", str(active_count))],
+                        title="Progress Summary",
+                    ),
+                    hint_block(
+                        "Use transcript history and command-family output for detailed progress."
+                    ),
                 ],
             )
             return None
@@ -2380,7 +2436,7 @@ when they are started by agents or analysis workflows.
 
         # Default to showing status summary when no args (like /config and /queue)
         if len(parts) == 1:
-            return workspace_status(client, output)
+            return workspace_status(client, output, compact=_is_protocol_output(output))
 
         subcommand = parts[1]
 
@@ -2399,7 +2455,7 @@ when they are started by agents or analysis workflows.
             selector = _extract_argument(original_command, "/workspace remove")
             return workspace_remove(client, output, selector)
         elif subcommand == "status":
-            return workspace_status(client, output)
+            return workspace_status(client, output, compact=_is_protocol_output(output))
         elif subcommand == "save":
             force_save = "--force" in parts
             return _command_save(client, output, force=force_save)
@@ -2897,6 +2953,13 @@ def _dispatch_command(cmd_str: str, client, output):
     args = parts[2] if len(parts) > 2 else None
 
     # --- Data & files ---
+
+    if base == "help":
+        _render_structured_output(
+            output,
+            _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
+        )
+        return None
 
     if base == "data":
         return data_summary(client, output)
@@ -3420,7 +3483,13 @@ def deactivate_impl():
 
 
 
-def command_cmd_impl(cmd: str, workspace=None, session_id=None, json_output: bool = False):
+def command_cmd_impl(
+    cmd: str,
+    workspace=None,
+    session_id=None,
+    json_output: bool = False,
+    help_profile: str = "default",
+):
     """Execute workspace commands without an LLM session (extracted from cli.py)."""
     import json
     from pathlib import Path
@@ -3435,6 +3504,7 @@ def command_cmd_impl(cmd: str, workspace=None, session_id=None, json_output: boo
 
     # Strip leading / if user types it out of habit
     cmd_str = cmd.lstrip("/").strip()
+    base_cmd = cmd_str.split(None, 1)[0].lower() if cmd_str else ""
     if not cmd_str:
         if json_output:
             print(
@@ -3469,7 +3539,9 @@ def command_cmd_impl(cmd: str, workspace=None, session_id=None, json_output: boo
         if session_id and session_id != "latest":
             # Explicit session ID provided
             resolved_session_id = session_id
-        elif session_id == "latest" or session_id is None:
+        elif session_id == "latest" or (
+            session_id is None and base_cmd not in {"help"}
+        ):
             # Resolve most recent session when available
             sessions_dir = workspace_path / ".lobster" / "sessions"
 
@@ -3511,7 +3583,14 @@ def command_cmd_impl(cmd: str, workspace=None, session_id=None, json_output: boo
         else:
             runtime_output = output
 
-        result = _dispatch_command(cmd_str, cmd_client, runtime_output)
+        if base_cmd == "help" and help_profile == "query":
+            _render_structured_output(
+                runtime_output,
+                _build_query_help_blocks(protocol_friendly=_is_protocol_output(runtime_output)),
+            )
+            result = None
+        else:
+            result = _dispatch_command(cmd_str, cmd_client, runtime_output)
         success = result is not _UNKNOWN_COMMAND
 
         if json_output:

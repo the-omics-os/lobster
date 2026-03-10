@@ -32,6 +32,19 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Command",
+            "no_wrap": true,
+            "overflow": "ellipsis",
+            "width": 32
+          },
+          {
+            "max_width": 40,
+            "name": "Description",
+            "overflow": "fold"
+          }
+        ],
         "headers": [
           "Command",
           "Description"
@@ -101,6 +114,19 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Command",
+            "no_wrap": true,
+            "overflow": "ellipsis",
+            "width": 32
+          },
+          {
+            "max_width": 40,
+            "name": "Description",
+            "overflow": "fold"
+          }
+        ],
         "headers": [
           "Command",
           "Description"
@@ -115,11 +141,11 @@
             "Load data from workspace"
           ],
           [
-            "/queue clear ",
+            "/queue clear [download|all]",
             "Clear queue(s)"
           ],
           [
-            "/metadata clear ",
+            "/metadata clear [exports|all]",
             "Clear metadata"
           ],
           [
@@ -127,11 +153,11 @@
             "Inspect a modality"
           ],
           [
-            "/save ",
+            "/save [--force]",
             "Persist loaded modalities"
           ],
           [
-            "/restore ",
+            "/restore [pattern]",
             "Restore datasets from session cache"
           ]
         ]
@@ -146,6 +172,19 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Command",
+            "no_wrap": true,
+            "overflow": "ellipsis",
+            "width": 32
+          },
+          {
+            "max_width": 40,
+            "name": "Description",
+            "overflow": "fold"
+          }
+        ],
         "headers": [
           "Command",
           "Description"
@@ -153,23 +192,23 @@
         "rows": [
           [
             "/dashboard",
-            "Classic/Textual dashboard (Go-safe fallback shown in Go mode)"
+            "Classic dashboard; Go mode shows a fallback"
           ],
           [
             "/status-panel",
-            "Rich status dashboard (degraded to /status in Go mode)"
+            "Status dashboard; Go mode shows /status"
           ],
           [
             "/workspace-info",
-            "Rich workspace dashboard (degraded to /workspace in Go mode)"
+            "Workspace dashboard; Go mode shows /workspace"
           ],
           [
             "/analysis-dash",
-            "Rich analysis dashboard (degraded to /plots + /metadata in Go mode)"
+            "Analysis dashboard; Go mode shows /metadata + /plots"
           ],
           [
             "/progress",
-            "Rich progress monitor (degraded in Go mode)"
+            "Progress monitor; Go mode shows a compact summary"
           ]
         ]
       },

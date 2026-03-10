@@ -143,7 +143,12 @@ def _build_workspace_info_blocks(
 def _build_workspace_status_blocks(
     workspace_status_dict: dict,
     modality_detail_rows: list[tuple[str, list[list[str]]]],
+    *,
+    compact: bool = False,
+    available_dataset_count: Optional[int] = None,
 ) -> list[OutputBlock]:
+    max_visible_modalities = 12
+    max_detail_tables = 3
     workspace_path = workspace_status_dict.get("workspace_path", "N/A")
     modalities_count = workspace_status_dict.get("modalities_loaded", 0)
     provenance = (
@@ -160,6 +165,11 @@ def _build_workspace_status_blocks(
             columns=[{"name": "Field"}, {"name": "Value"}],
             rows=[
                 ["Workspace", workspace_path],
+                *(
+                    [["Datasets Available", str(available_dataset_count)]]
+                    if available_dataset_count is not None
+                    else []
+                ),
                 ["Modalities Loaded", str(modalities_count)],
                 ["Provenance", provenance],
                 ["MuData", mudata],
@@ -191,24 +201,64 @@ def _build_workspace_status_blocks(
                     display_path,
                 ]
             )
-        blocks.append(
-            table_block(
-                title="Directories",
-                columns=[
-                    {"name": "Directory", "style": "bold white"},
-                    {"name": "Files", "style": "cyan", "justify": "right"},
-                    {"name": "Size", "style": "green", "justify": "right"},
-                    {"name": "Path", "style": "grey70"},
-                ],
-                rows=dir_rows,
+        if compact:
+            preferred_dirs = {"Data", "Queues", "Metadata", "Exports"}
+            compact_dir_rows = [
+                row[:3]
+                for row in dir_rows
+                if row[0] in preferred_dirs or row[1] != "-" or row[2] != "0 B"
+            ]
+            if not compact_dir_rows:
+                compact_dir_rows = [row[:3] for row in dir_rows[:4]]
+            compact_dir_rows = compact_dir_rows[:4]
+            blocks.append(
+                table_block(
+                    title="Directories",
+                    columns=[
+                        {"name": "Directory", "style": "bold white"},
+                        {"name": "Files", "style": "cyan", "justify": "right", "width": 8},
+                        {"name": "Size", "style": "green", "justify": "right", "width": 10},
+                    ],
+                    rows=compact_dir_rows,
+                )
             )
-        )
+            if len(dir_rows) > len(compact_dir_rows):
+                blocks.append(
+                    hint_block(
+                        f"... and {len(dir_rows) - len(compact_dir_rows)} more workspace directories"
+                    )
+                )
+        else:
+            blocks.append(
+                table_block(
+                    title="Directories",
+                    columns=[
+                        {"name": "Directory", "style": "bold white"},
+                        {"name": "Files", "style": "cyan", "justify": "right"},
+                        {"name": "Size", "style": "green", "justify": "right"},
+                        {"name": "Path", "style": "grey70"},
+                    ],
+                    rows=dir_rows,
+                )
+            )
 
     modality_names = workspace_status_dict.get("modality_names", [])
     if modality_names:
-        blocks.append(list_block(modality_names, title="Loaded Modalities"))
+        visible_modalities = modality_names[:max_visible_modalities]
+        blocks.append(list_block(visible_modalities, title="Active Modalities" if compact else "Loaded Modalities"))
+        if len(modality_names) > max_visible_modalities:
+            remaining = len(modality_names) - max_visible_modalities
+            blocks.append(hint_block(f"... and {remaining} more loaded modalities"))
     else:
         blocks.append(hint_block("No modalities currently loaded"))
+
+    if compact:
+        blocks.append(
+            hint_block(
+                "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details."
+            )
+        )
+        return blocks
 
     backends = workspace_status_dict.get("registered_backends", [])
     adapters = workspace_status_dict.get("registered_adapters", [])
@@ -227,7 +277,8 @@ def _build_workspace_status_blocks(
 
     if modality_detail_rows:
         blocks.append(section_block(title="Modality Details"))
-        for modality_name, rows in modality_detail_rows:
+        visible_detail_rows = modality_detail_rows[:max_detail_tables]
+        for modality_name, rows in visible_detail_rows:
             blocks.append(
                 table_block(
                     title=modality_name,
@@ -236,6 +287,14 @@ def _build_workspace_status_blocks(
                         {"name": "Value", "style": "white"},
                     ],
                     rows=rows,
+                )
+            )
+        if len(modality_detail_rows) > max_detail_tables:
+            total = len(modality_detail_rows)
+            blocks.append(
+                hint_block(
+                    f"Showing {max_detail_tables} of {total} modalities. "
+                    "Use `/describe <modality>` or `/workspace info <name>` for the rest."
                 )
             )
 
@@ -850,7 +909,9 @@ def _get_directory_stats(dir_path: str) -> tuple:
         return 0, "-", True
 
 
-def workspace_status(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
+def workspace_status(
+    client: "AgentClient", output: OutputAdapter, *, compact: bool = False
+) -> Optional[str]:
     """
     Show workspace status and information.
 
@@ -865,11 +926,20 @@ def workspace_status(client: "AgentClient", output: OutputAdapter) -> Optional[s
     workspace_status_dict = {}
     if hasattr(client.data_manager, "get_workspace_status"):
         workspace_status_dict = client.data_manager.get_workspace_status()
+    available_dataset_count: Optional[int] = None
+    if compact and hasattr(client.data_manager, "get_available_datasets"):
+        try:
+            available_dataset_count = len(
+                client.data_manager.get_available_datasets(force_refresh=False)
+            )
+        except Exception:
+            available_dataset_count = None
+
     modality_detail_rows: list[tuple[str, list[list[str]]]] = []
     if hasattr(client.data_manager, "list_modalities"):
         modalities = client.data_manager.list_modalities()
 
-        if modalities:
+        if modalities and not compact:
             for modality_name in modalities:
                 try:
                     adata = client.data_manager.get_modality(modality_name)
@@ -920,6 +990,11 @@ def workspace_status(client: "AgentClient", output: OutputAdapter) -> Optional[s
 
     _render_blocks(
         output,
-        _build_workspace_status_blocks(workspace_status_dict, modality_detail_rows),
+        _build_workspace_status_blocks(
+            workspace_status_dict,
+            modality_detail_rows,
+            compact=compact,
+            available_dataset_count=available_dataset_count,
+        ),
     )
     return "Displayed workspace status and information"

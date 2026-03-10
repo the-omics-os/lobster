@@ -126,7 +126,11 @@ func TestHandleProtocol_TableCreatesBlockTable(t *testing.T) {
 
 	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeTable, protocol.TablePayload{
 		Headers: []string{"Gene", "LogFC"},
-		Rows:    [][]string{{"TP53", "2.1"}, {"BRCA1", "-1.5"}},
+		Columns: []protocol.TableColumn{
+			{Name: "Gene", MaxWidth: 12, Overflow: "ellipsis"},
+			{Name: "LogFC", Width: 8, Justify: "right", NoWrap: true},
+		},
+		Rows: [][]string{{"TP53", "2.1"}, {"BRCA1", "-1.5"}},
 	}))
 	m = updated.(Model)
 
@@ -139,6 +143,9 @@ func TestHandleProtocol_TableCreatesBlockTable(t *testing.T) {
 		if tb, ok := b.(BlockTable); ok {
 			if len(tb.Headers) != 2 || tb.Headers[0] != "Gene" {
 				t.Errorf("unexpected headers: %v", tb.Headers)
+			}
+			if len(tb.Columns) != 2 || tb.Columns[1].Width != 8 || tb.Columns[1].Justify != "right" {
+				t.Errorf("unexpected columns: %#v", tb.Columns)
 			}
 			if len(tb.Rows) != 2 || tb.Rows[0][0] != "TP53" {
 				t.Errorf("unexpected rows: %v", tb.Rows)
@@ -186,7 +193,8 @@ func TestStreamThenTable_BothBlocksPreserved(t *testing.T) {
 
 	// Simulate text streaming.
 	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeText, protocol.TextPayload{
-		Content: "Here are the results:\n",
+		Content:  "Here are the results:\n",
+		Markdown: true,
 	}))
 	m = updated.(Model)
 
@@ -212,6 +220,9 @@ func TestStreamThenTable_BothBlocksPreserved(t *testing.T) {
 	}
 	if !strings.Contains(bt.Text, "results") {
 		t.Errorf("block 0 text missing expected content: %q", bt.Text)
+	}
+	if !bt.Markdown {
+		t.Errorf("block 0 should preserve markdown mode")
 	}
 
 	// Second block should be the table.
@@ -248,5 +259,37 @@ func TestFlushBeforeTypedBlock(t *testing.T) {
 	}
 	if _, ok := last.Blocks[1].(BlockTable); !ok {
 		t.Errorf("block 1: want BlockTable, got %T", last.Blocks[1])
+	}
+}
+
+func TestAppendStreamTextFlushesWhenMarkdownModeChanges(t *testing.T) {
+	m := Model{
+		messages:  []ChatMessage{{Role: "assistant", Blocks: []ContentBlock{}}},
+		streamBuf: &strings.Builder{},
+	}
+
+	m.appendStreamText("plain", false)
+	m.appendStreamText("**bold**", true)
+	m.flushStreamBuffer()
+
+	last := m.messages[len(m.messages)-1]
+	if len(last.Blocks) != 2 {
+		t.Fatalf("expected 2 text blocks after markdown mode switch, got %d", len(last.Blocks))
+	}
+
+	first, ok := last.Blocks[0].(BlockText)
+	if !ok {
+		t.Fatalf("block 0: want BlockText, got %T", last.Blocks[0])
+	}
+	if first.Markdown {
+		t.Fatalf("block 0 should remain plain text")
+	}
+
+	second, ok := last.Blocks[1].(BlockText)
+	if !ok {
+		t.Fatalf("block 1: want BlockText, got %T", last.Blocks[1])
+	}
+	if !second.Markdown {
+		t.Fatalf("block 1 should preserve markdown mode")
 	}
 }

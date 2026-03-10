@@ -268,17 +268,30 @@ def query_impl(
     ),
 ):
     """
-    Send a single query to the agent system.
+    Send a single query, or run a local slash command when QUESTION starts with "/".
 
     Use --session-id to continue a previous conversation:
       lobster query "follow up question" --session-id latest
       lobster query "follow up question" --session-id session_20241208_150000
 
-    Use --json for machine-readable output (no Rich formatting):
+    Use --json for machine-readable query output:
       lobster query "analyze data" --json | jq .response
 
-    Agent reasoning is shown by default. Use --no-reasoning to disable.
+    Slash commands reuse the standalone `lobster command` path.
     """
+    stripped_question = question.strip()
+    if stripped_question.startswith("/"):
+        from lobster.cli_internal.commands.heavy.slash_commands import command_cmd_impl
+
+        command_cmd_impl(
+            cmd=stripped_question,
+            workspace=workspace,
+            session_id=session_id,
+            json_output=json_output,
+            help_profile="query",
+        )
+        return
+
     # In JSON mode, redirect Rich console to stderr so only JSON hits stdout
     if json_output:
         console.file = sys.stderr

@@ -517,7 +517,6 @@ def status() -> None:
     table.add_row("Utilization", f"{budget.get('utilization_pct', 0):.1f}%")
     table.add_row("", "")
     table.add_row("Max tokens/req", f"{limits.get('max_tokens_per_request', '?'):,}")
-    table.add_row("Rate limit", f"{limits.get('requests_per_minute', '?')} req/min")
 
     console.print(table)
 

@@ -231,6 +231,11 @@ func TestHandleProtocolTableCreatesBlockTable(t *testing.T) {
 
 	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeTable, protocol.TablePayload{
 		Headers: []string{"Setting", "Value", "Source"},
+		Columns: []protocol.TableColumn{
+			{Name: "Setting", Width: 12, NoWrap: true},
+			{Name: "Value", Width: 12},
+			{Name: "Source", MaxWidth: 24, Overflow: "ellipsis"},
+		},
 		Rows: [][]string{
 			{"Provider", "ollama", "global user config (~/.config/lobster/)"},
 			{"Profile", "production", "global user config"},
@@ -261,8 +266,28 @@ func TestHandleProtocolTableCreatesBlockTable(t *testing.T) {
 	if len(tb.Headers) != 3 || tb.Headers[0] != "Setting" {
 		t.Errorf("unexpected table headers: %v", tb.Headers)
 	}
+	if len(tb.Columns) != 3 || tb.Columns[0].Width != 12 || tb.Columns[2].MaxWidth != 24 {
+		t.Errorf("unexpected table columns: %#v", tb.Columns)
+	}
 	if len(tb.Rows) != 2 || tb.Rows[0][0] != "Provider" {
 		t.Errorf("unexpected table rows: %v", tb.Rows)
+	}
+}
+
+func TestRenderHelpUsesCompactBulletLayout(t *testing.T) {
+	m := newTestModel()
+
+	m.renderHelp()
+
+	if len(m.messages) == 0 {
+		t.Fatal("expected help message")
+	}
+	content := m.messages[len(m.messages)-1].Content()
+	if strings.Contains(content, "| Command | Description |") {
+		t.Fatalf("expected compact help without markdown tables, got %q", content)
+	}
+	if !strings.Contains(content, "/workspace list") {
+		t.Fatalf("expected compact help to include workflow commands, got %q", content)
 	}
 }
 
@@ -353,6 +378,37 @@ func TestClearParityLocalAndProtocolTargetsProduceEquivalentState(t *testing.T) 
 
 	assertEquivalentClearState(t, local, protocolOutput, "protocol target=output")
 	assertEquivalentClearState(t, local, protocolAll, "protocol target=all")
+}
+
+func TestDashboardCommandEchoesUserAndAppendsWarning(t *testing.T) {
+	m := newTestModel()
+	m.input.SetValue("/dashboard")
+
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 transcript messages, got %d", len(m.messages))
+	}
+	if got := m.messages[0].Role; got != "user" {
+		t.Fatalf("expected first message role=user, got %q", got)
+	}
+	if got := m.messages[0].Content(); got != "/dashboard" {
+		t.Fatalf("expected echoed dashboard command, got %q", got)
+	}
+	if got := m.messages[1].Role; got != "alert_warning" {
+		t.Fatalf("expected warning alert role, got %q", got)
+	}
+	alert, ok := m.messages[1].Blocks[0].(BlockAlert)
+	if !ok {
+		t.Fatalf("expected dashboard response to use BlockAlert, got %#v", m.messages[1].Blocks[0])
+	}
+	if alert.Level != "warning" {
+		t.Fatalf("expected warning alert level, got %q", alert.Level)
+	}
+	if !strings.Contains(alert.Message, "lobster chat --ui classic") {
+		t.Fatalf("expected dashboard warning to include classic UI hint, got %q", alert.Message)
+	}
 }
 
 func TestStreamingAppendDoesNotJumpWhenUserIsScrolledUp(t *testing.T) {
@@ -464,8 +520,8 @@ func TestInlinePrintMessagesCmdUsesTerminalPrintln(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected inline print command")
 	}
-	if got := fmt.Sprintf("%T", cmd()); got != "tea.printLineMessage" {
-		t.Fatalf("expected terminal print command, got %s", got)
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.sequenceMsg" {
+		t.Fatalf("expected inline print sequence command, got %s", got)
 	}
 }
 
@@ -516,8 +572,8 @@ func TestInlineFlowFirstPrintedMessageDetachesHeader(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected first printed message command")
 	}
-	if got := fmt.Sprintf("%T", cmd()); got != "tea.printLineMessage" {
-		t.Fatalf("expected print command for first message, got %s", got)
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.sequenceMsg" {
+		t.Fatalf("expected print sequence command for first message, got %s", got)
 	}
 	if !m.inlineBannerPrinted {
 		t.Fatal("expected inline banner to be marked as printed after first printed message")
@@ -529,6 +585,55 @@ func TestInlineFlowFirstPrintedMessageDetachesHeader(t *testing.T) {
 	}
 	if strings.Contains(view, "└─ Compute:") {
 		t.Fatalf("expected inline runtime summary to be hidden after first printed message, got:\n%s", view)
+	}
+}
+
+func TestInlineFlowViewKeepsPromptAfterHeaderDetaches(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.showIntro = false
+	m.provider = "omics-os"
+
+	cmd := m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("/help")}, false)
+	if cmd == nil {
+		t.Fatal("expected inline transcript print command")
+	}
+
+	view := m.View().Content
+	if strings.Contains(view, "● lobster") {
+		t.Fatalf("expected detached inline view to exclude header chrome, got:\n%s", view)
+	}
+	if !strings.Contains(view, m.inputPromptText()) {
+		t.Fatalf("expected detached inline view to keep the bottom prompt, got:\n%s", view)
+	}
+}
+
+func TestInlineFlowViewKeepsPromptWhileCommandRuns(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.showIntro = false
+	m.provider = "omics-os"
+	m.spinnerActive = true
+	m.spinnerLabel = "running command"
+
+	cmd := m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("/help")}, false)
+	if cmd == nil {
+		t.Fatal("expected inline transcript print command")
+	}
+
+	view := m.View().Content
+	if strings.Contains(view, "● lobster") {
+		t.Fatalf("expected running inline view to exclude header chrome, got:\n%s", view)
+	}
+	if !strings.Contains(view, m.inputPromptText()) {
+		t.Fatalf("expected running inline view to keep the bottom prompt, got:\n%s", view)
+	}
+	if !strings.Contains(view, "running command") {
+		t.Fatalf("expected spinner status to remain visible, got:\n%s", view)
 	}
 }
 
@@ -713,6 +818,126 @@ func TestApplyComposerStylesRemovesFocusedCursorBackground(t *testing.T) {
 	}
 }
 
+func TestInlineComposerRendersPlainPromptWhenEmpty(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+
+	got := m.renderComposer()
+	want := m.styles.InputPrompt.Render(m.inputPromptText())
+	if got != want {
+		t.Fatalf("expected plain inline prompt for empty composer, got %q want %q", got, want)
+	}
+}
+
+func TestInlineComposerKeepsPlainPromptWhileStreaming(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.isStreaming = true
+
+	got := m.renderComposer()
+	want := m.styles.InputPrompt.Render(m.inputPromptText())
+	if got != want {
+		t.Fatalf("expected plain inline prompt while streaming, got %q want %q", got, want)
+	}
+}
+
+func TestInlinePrintMessagesCmdSchedulesRedraw(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+
+	cmd := m.inlinePrintMessagesCmd([]ChatMessage{{
+		Role:   "assistant",
+		Blocks: textBlocks("hello"),
+	}})
+	if cmd == nil {
+		t.Fatal("expected inline print command")
+	}
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.sequenceMsg" {
+		t.Fatalf("expected inline print sequence command, got %s", got)
+	}
+}
+
+func TestInlinePrintCompleteSetsThenResetsRepaintPad(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+
+	updated, cmd := m.Update(inlinePrintComplete{})
+	m = updated.(Model)
+	if !m.inlineRepaintPad {
+		t.Fatal("expected inline repaint pad to turn on after inline print completion")
+	}
+	if cmd == nil {
+		t.Fatal("expected inline print completion to schedule a repaint reset")
+	}
+
+	updated, _ = m.Update(inlinePrintReset{})
+	m = updated.(Model)
+	if m.inlineRepaintPad {
+		t.Fatal("expected inline repaint pad to turn off after reset")
+	}
+}
+
+func TestInlineViewAddsTrailingSpacerWhenRepaintPadEnabled(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.inlineBannerPrinted = true
+	m.inlineRepaintPad = true
+
+	view := m.View().Content
+	if !strings.Contains(view, m.inputPromptText()) {
+		t.Fatalf("expected inline view to keep prompt visible, got:\n%s", view)
+	}
+	if !strings.HasSuffix(view, "\n") {
+		t.Fatalf("expected inline view to end with repaint spacer newline, got %q", view)
+	}
+}
+
+func TestInlineLayoutDoesNotReservePromptSpacerWithoutOutputAbove(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.showIntro = false
+	m.inlineBannerPrinted = true
+
+	got := m.layoutReservedRowsLegacy()
+	want := lineCount(m.renderComposer()) + lineCount(renderInlineStatusLine(m.currentStatusLine(), m.styles, m.width))
+	if got != want {
+		t.Fatalf("expected inline reserved rows without output above to be %d, got %d", want, got)
+	}
+}
+
+func TestInlineStatusLineWrapsToTerminalWidth(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.showIntro = false
+	m.inlineBannerPrinted = true
+	m.width = 36
+	m.height = 8
+	m.statusText = "running very long inline status"
+	m.modelID = "anthropic.claude-3-7-sonnet-20250219"
+
+	view := m.View().Content
+	if !strings.Contains(view, m.inputPromptText()) {
+		t.Fatalf("expected wrapped inline view to keep prompt visible, got:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if got := lipgloss.Width(line); got > m.width {
+			t.Fatalf("expected inline view line width <= %d, got %d for %q", m.width, got, line)
+		}
+	}
+}
+
 func TestKeyEnterSubmitsComposerInput(t *testing.T) {
 	m := newTestModel()
 	m.ready = true
@@ -841,6 +1066,50 @@ func TestCtrlNMovesInlineCompletionSelection(t *testing.T) {
 
 	if got := m.input.Value(); got != "/workspace-info" {
 		t.Fatalf("expected ctrl+n to select next suggestion, got %q", got)
+	}
+}
+
+func TestCtrlNMovesBeyondVisibleCompletionWindow(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/")
+	m.refreshSuggestions()
+
+	for i := 0; i < maxVisibleCompletionSuggestions; i++ {
+		updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+		m = updated.(Model)
+	}
+
+	if menu := m.renderCompletionMenu(); !strings.Contains(menu, "/plots") {
+		t.Fatalf("expected completion menu to scroll to /plots, got:\n%s", menu)
+	}
+
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "/plots" {
+		t.Fatalf("expected ctrl+n to reach sixth suggestion beyond visible menu, got %q", got)
+	}
+}
+
+func TestDownArrowMovesInlineCompletionSelection(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.input.SetValue("/")
+	m.refreshSuggestions()
+
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(Model)
+
+	updated, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(Model)
+
+	if got := m.input.Value(); got != "/help" {
+		t.Fatalf("expected down arrow to select next suggestion, got %q", got)
 	}
 }
 

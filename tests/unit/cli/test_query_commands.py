@@ -257,6 +257,45 @@ def test_display_streaming_response_delegates_to_shared_helper(monkeypatch):
     assert result == expected
 
 
+def test_query_impl_routes_slash_commands_to_local_command_path(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr(
+        query_commands,
+        "validate_startup_or_raise_startup_diagnostic",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("startup diagnostics should not run for slash commands")
+        ),
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.slash_commands.command_cmd_impl",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    query_commands.query_impl(
+        "/help",
+        workspace="workspace",
+        session_id="latest",
+        reasoning=False,
+        verbose=False,
+        debug=False,
+        output=None,
+        profile_timings=None,
+        provider=None,
+        model=None,
+        stream=False,
+        json_output=True,
+    )
+
+    assert captured == {
+        "cmd": "/help",
+        "workspace": "workspace",
+        "session_id": "latest",
+        "json_output": True,
+        "help_profile": "query",
+    }
+
+
 def test_resolve_session_continuation_prefers_session_directory_for_latest(tmp_path):
     workspace_path = tmp_path / ".lobster_workspace"
     session_dir = workspace_path / ".lobster" / "sessions" / "session_20260305_120000"

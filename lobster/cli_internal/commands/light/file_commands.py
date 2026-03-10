@@ -31,6 +31,9 @@ from lobster.cli_internal.utils.path_resolution import PathResolver
 # triggering heavy dependency loads (pandas/numpy) at module import time.
 # This keeps light commands fast (<300ms startup).
 
+_MAX_TEXT_PREVIEW_LINES = 120
+_MAX_TEXT_PREVIEW_CHARS = 20_000
+
 
 def build_read_usage_blocks() -> list[OutputBlock]:
     return [
@@ -43,6 +46,26 @@ def build_read_usage_blocks() -> list[OutputBlock]:
 
 def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
     output.render_blocks(blocks)
+
+
+def _build_text_preview(content: str) -> tuple[str, bool]:
+    """Cap large text dumps so inline chat stays readable."""
+    lines = content.splitlines()
+    truncated = False
+
+    if len(lines) > _MAX_TEXT_PREVIEW_LINES:
+        lines = lines[:_MAX_TEXT_PREVIEW_LINES]
+        truncated = True
+
+    preview = "\n".join(lines)
+    if content.endswith("\n") and preview:
+        preview += "\n"
+
+    if len(preview) > _MAX_TEXT_PREVIEW_CHARS:
+        preview = preview[:_MAX_TEXT_PREVIEW_CHARS].rstrip() + "\n"
+        truncated = True
+
+    return preview, truncated
 
 
 def file_read(
@@ -191,7 +214,7 @@ def file_read(
                         ".yml": "yaml",
                         ".sh": "bash",
                         ".bash": "bash",
-                        ".md": "markdown",
+                        ".md": "text",
                         ".txt": "text",
                         ".log": "text",
                         ".r": "r",
@@ -272,6 +295,7 @@ def file_read(
         try:
             content = file_path.read_text(encoding="utf-8")
             lines = content.splitlines()
+            preview, truncated = _build_text_preview(content)
 
             # Language detection
             ext = file_path.suffix.lower()
@@ -287,7 +311,7 @@ def file_read(
                 ".yml": "yaml",
                 ".sh": "bash",
                 ".bash": "bash",
-                ".md": "markdown",
+                ".md": "text",
                 ".txt": "text",
                 ".log": "text",
                 ".r": "r",
@@ -301,9 +325,17 @@ def file_read(
             output.render_blocks(
                 [
                     section_block(body=f"Contents: {file_path.name}"),
-                    code_block(content, language=language),
+                    code_block(preview, language=language),
                 ]
             )
+            if truncated:
+                output.render_blocks(
+                    [
+                        hint_block(
+                            f"Preview truncated for chat. Use `/open {file_path.name}` for the full file."
+                        )
+                    ]
+                )
 
             return f"Displayed text file '{filename}' ({file_description}, {len(lines)} lines)"
 

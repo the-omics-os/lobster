@@ -10,7 +10,31 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
-from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.cli_internal.commands.output_adapter import (
+    OutputAdapter,
+    hint_block,
+    section_block,
+)
+
+
+def _truncate_middle(text: str, max_length: int = 42) -> str:
+    """Keep long modality labels compact in narrow terminal tables."""
+    if len(text) <= max_length:
+        return text
+    available = max_length - 3
+    head = (available + 1) // 2
+    tail = available // 2
+    return f"{text[:head]}...{text[-tail:]}"
+
+
+def _compact_memory_label(memory: str) -> str:
+    """Drop redundant density suffixes from already-flagged summary rows."""
+    return (
+        memory.replace(" (sparse)", "")
+        .replace(" (dense)", "")
+        .replace("[float32]", "")
+        .strip()
+    )
 
 
 def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
@@ -131,16 +155,13 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     # Section 2: Individual Modality Details (if multiple modalities)
     # ========================================================================
     if summary.get("modalities"):
-        output.print(
-            "\n[bold red]🧬 Individual Modality Details[/bold red]\n", style="info"
-        )
+        output.render_blocks([section_block(title="Individual Modality Details")])
 
         modalities_table_data = {
             "title": None,
             "columns": [
                 {"name": "Modality", "style": "bold white"},
                 {"name": "Shape", "style": "white"},
-                {"name": "Type", "style": "cyan"},
                 {"name": "Memory", "style": "grey74"},
                 {"name": "Sparse", "style": "grey50"},
             ],
@@ -148,15 +169,13 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         }
 
         for mod_name, mod_info in summary["modalities"].items():
+            display_name = _truncate_middle(mod_name)
             if isinstance(mod_info, dict) and not mod_info.get("error"):
                 shape_str = f"{mod_info['shape'][0]} × {mod_info['shape'][1]}"
-                data_type = mod_info.get("data_type", "unknown")
-                memory = mod_info.get("memory_usage", "N/A")
+                memory = _compact_memory_label(mod_info.get("memory_usage", "N/A"))
                 sparse = "✓" if mod_info.get("is_sparse") else "✗"
 
-                modalities_table_data["rows"].append(
-                    [mod_name, shape_str, data_type, memory, sparse]
-                )
+                modalities_table_data["rows"].append([display_name, shape_str, memory, sparse])
             else:
                 # Handle error case
                 error_msg = (
@@ -166,15 +185,17 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
                 )
                 modalities_table_data["rows"].append(
                     [
-                        mod_name,
+                        display_name,
                         "Error",
                         error_msg[:20] + "..." if len(error_msg) > 20 else error_msg,
-                        "N/A",
                         "N/A",
                     ]
                 )
 
         output.print_table(modalities_table_data)
+        output.render_blocks(
+            [hint_block("Use `/describe <modality>` for a full modality inspection.")]
+        )
 
     # ========================================================================
     # Section 3: Detailed Metadata (if available)
@@ -184,7 +205,7 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         and client.data_manager.current_metadata
     ):
         metadata = client.data_manager.current_metadata
-        output.print("\n[bold red]📋 Detailed Metadata:[/bold red]\n", style="info")
+        output.render_blocks([section_block(title="Detailed Metadata")])
 
         metadata_table_data = {
             "title": None,

@@ -3187,6 +3187,7 @@ https://github.com/OmicsOS/lobster
             # --- H5AD files: existing h5py-based metadata extraction (unchanged) ---
             for h5ad_file in data_dir.glob("*.h5ad"):
                 try:
+                    is_autosave = h5ad_file.name.endswith("_autosave.h5ad")
                     import h5py
 
                     with h5py.File(h5ad_file, "r") as f:
@@ -3205,15 +3206,16 @@ https://github.com/OmicsOS/lobster
                             shape = (0, 0)
 
                         stat = h5ad_file.stat()
-                        datasets[h5ad_file.stem] = {
-                            "path": str(h5ad_file),
-                            "size_mb": stat.st_size / 1e6,
-                            "shape": shape,
-                            "modified": datetime.fromtimestamp(
-                                stat.st_mtime
-                            ).isoformat(),
-                            "type": "h5ad",
-                        }
+                        if not is_autosave:
+                            datasets[h5ad_file.stem] = {
+                                "path": str(h5ad_file),
+                                "size_mb": stat.st_size / 1e6,
+                                "shape": shape,
+                                "modified": datetime.fromtimestamp(
+                                    stat.st_mtime
+                                ).isoformat(),
+                                "type": "h5ad",
+                            }
                 except Exception as e:
                     is_autosave = h5ad_file.name.endswith("_autosave.h5ad")
                     if is_autosave:

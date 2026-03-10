@@ -25,8 +25,9 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/glamour"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/glamour"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/celltype"
@@ -109,6 +110,12 @@ type tipRotate struct{}
 // welcomeTick advances the inline startup logo animation.
 type welcomeTick struct{}
 
+// inlinePrintComplete forces a repaint after inline scrollback writes.
+type inlinePrintComplete struct{}
+
+// inlinePrintReset clears the temporary repaint spacer after one frame.
+type inlinePrintReset struct{}
+
 // protocolErr wraps an error read from the protocol handler's Errs() channel.
 type protocolErr struct{ err error }
 
@@ -159,9 +166,10 @@ type Model struct {
 	toolFeed        []ToolFeedEntry
 	modalities      []ModalityInfo
 
-	statusText  string
-	isStreaming bool
-	streamBuf   *strings.Builder
+	statusText        string
+	isStreaming       bool
+	streamBuf         *strings.Builder
+	streamBufMarkdown bool
 
 	// Spinner animation state.
 	spinnerActive bool
@@ -241,6 +249,7 @@ type Model struct {
 	inline              bool
 	inlineFlow          bool
 	inlineBannerPrinted bool
+	inlineRepaintPad    bool
 	mouseCapture        bool
 	quitting            bool
 	isCanceling         bool // Two-phase cancel: first Ctrl+C arms, second fires.
@@ -264,7 +273,7 @@ type protocolEOF struct{}
 // ActiveComponent tracks the currently displayed BioComp component.
 type ActiveComponent struct {
 	Component biocomp.BioComponent
-	MsgID     string    // correlation ID for protocol response
+	MsgID     string // correlation ID for protocol response
 	CreatedAt time.Time
 }
 
@@ -388,6 +397,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}, m.changeEventMsgID)
 			}
 			m.pendingChangeEvent = nil
+		}
+		return m, nil
+
+	case inlinePrintComplete:
+		if m.inlineFlowMode() {
+			// Keep a trailing spacer row alive long enough for at least one
+			// renderer flush after unmanaged scrollback prints. Inline user and
+			// assistant prints can land in the same render interval, so a plain
+			// toggle is not reliable.
+			m.inlineRepaintPad = true
+			return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+				return inlinePrintReset{}
+			})
+		}
+		return m, nil
+
+	case inlinePrintReset:
+		if m.inlineFlowMode() {
+			m.inlineRepaintPad = false
 		}
 		return m, nil
 
@@ -682,8 +710,7 @@ func (m Model) viewInline() tea.View {
 		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 		b.WriteByte('\n')
 	} else {
-		hasOutputAbove := strings.TrimSpace(vpView) != "" || tf != "" || m.progressActive
-		if hasOutputAbove {
+		if m.inlineHasPromptSpacer() {
 			b.WriteByte('\n')
 		}
 		if completionView != "" {
@@ -696,8 +723,11 @@ func (m Model) viewInline() tea.View {
 
 	// Status bar.
 	statusText := m.currentStatusLine()
-	if strings.TrimSpace(statusText) != "" {
-		b.WriteString(m.styles.Dimmed.Render(statusText))
+	if renderedStatus := renderInlineStatusLine(statusText, m.styles, m.width); renderedStatus != "" {
+		b.WriteString(renderedStatus)
+	}
+	if m.inlineRepaintPad {
+		b.WriteByte('\n')
 	}
 
 	v := tea.NewView(b.String())
@@ -718,7 +748,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.TextPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
-			m.streamBuf.WriteString(p.Content)
+			m.appendStreamText(p.Content, p.Markdown)
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
@@ -730,7 +760,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.MarkdownPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
-			m.streamBuf.WriteString(p.Content)
+			m.appendStreamText(p.Content, true)
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
@@ -790,6 +820,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		if dp.Summary == "cancelled" {
 			// Cancel: discard partial stream, don't append to chat history.
 			m.streamBuf.Reset()
+			m.streamBufMarkdown = false
 			m.pendingHandoffs = m.pendingHandoffs[:0]
 			m.isStreaming = false
 			m.isCanceling = false
@@ -1010,7 +1041,18 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil && len(p.Headers) > 0 {
 			m.isStreaming = true
 			m.flushStreamBuffer()
-			m.appendBlock(BlockTable{Headers: p.Headers, Rows: p.Rows})
+			columns := make([]BlockTableColumn, 0, len(p.Columns))
+			for _, col := range p.Columns {
+				columns = append(columns, BlockTableColumn{
+					Name:     col.Name,
+					Width:    col.Width,
+					MaxWidth: col.MaxWidth,
+					Justify:  col.Justify,
+					NoWrap:   col.NoWrap,
+					Overflow: col.Overflow,
+				})
+			}
+			m.appendBlock(BlockTable{Headers: p.Headers, Columns: columns, Rows: p.Rows})
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
@@ -1155,6 +1197,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if m.moveCompletionSelection(-1) {
 				return m, nil
 			}
+		case "down":
+			if m.moveCompletionSelection(1) {
+				return m, nil
+			}
+		case "up":
+			if m.moveCompletionSelection(-1) {
+				return m, nil
+			}
 		}
 	}
 
@@ -1229,14 +1279,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.pendingConfirmID = localExitConfirmID
 				return m, nil
 			case "dashboard":
+				userCmd := m.appendMessage(ChatMessage{
+					Role:   "user",
+					Blocks: textBlocks(val),
+				}, false)
 				printCmd := m.appendMessage(ChatMessage{
-					Role:   "system",
-					Blocks: textBlocks("Dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard."),
+					Role: "alert_warning",
+					Blocks: []ContentBlock{BlockAlert{
+						Level:   "warning",
+						Message: "/dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard.",
+					}},
 				}, false)
 				m.input.SetValue("")
 				m.recalculateViewportHeight()
 				cmd := m.refreshSuggestions()
-				return m, tea.Batch(cmd, printCmd)
+				return m, tea.Batch(cmd, userCmd, printCmd)
 			default:
 				// Forward to Python for handling.
 				if m.handler != nil {
@@ -1334,11 +1391,11 @@ func (m *Model) applySelectedCompletionSuggestion() bool {
 		return false
 	}
 
-	limit := m.visibleCompletionSuggestionCount()
-	if limit == 0 {
+	count := len(m.completionSuggestions)
+	if count == 0 {
 		return false
 	}
-	selected := clampIndex(m.completionMenuIndex, limit)
+	selected := clampIndex(m.completionMenuIndex, count)
 	input := m.input.Value()
 	value := m.completionSuggestions[selected]
 	if shouldAppendCompletionSpace(input, value) {
@@ -1374,15 +1431,15 @@ func shouldAppendCompletionSpace(input string, selected string) bool {
 }
 
 func (m *Model) syncCompletionMenuState(input string) {
-	limit := m.visibleCompletionSuggestionCount()
-	if limit == 0 {
+	count := len(m.completionSuggestions)
+	if count == 0 {
 		m.completionMenuIndex = 0
 		m.completionMenuInput = ""
 		return
 	}
 
 	if m.completionMenuInput != input {
-		if idx := suggestionIndex(m.completionSuggestions[:limit], input); idx >= 0 {
+		if idx := suggestionIndex(m.completionSuggestions, input); idx >= 0 {
 			m.completionMenuIndex = idx
 		} else {
 			m.completionMenuIndex = 0
@@ -1391,7 +1448,7 @@ func (m *Model) syncCompletionMenuState(input string) {
 		return
 	}
 
-	m.completionMenuIndex = clampIndex(m.completionMenuIndex, limit)
+	m.completionMenuIndex = clampIndex(m.completionMenuIndex, count)
 }
 
 func (m Model) visibleCompletionSuggestionCount() int {
@@ -1433,17 +1490,45 @@ func (m *Model) dismissCompletionMenu() {
 }
 
 func (m *Model) moveCompletionSelection(delta int) bool {
-	limit := m.visibleCompletionSuggestionCount()
-	if !m.completionMenuVisible() || limit == 0 {
+	count := len(m.completionSuggestions)
+	if !m.completionMenuVisible() || count == 0 {
 		return false
 	}
 
-	next := (m.completionMenuIndex + delta) % limit
+	next := (m.completionMenuIndex + delta) % count
 	if next < 0 {
-		next += limit
+		next += count
 	}
 	m.completionMenuIndex = next
 	return true
+}
+
+func completionMenuWindow(selected, count int) (start, end int) {
+	if count <= 0 {
+		return 0, 0
+	}
+
+	limit := count
+	if limit > maxVisibleCompletionSuggestions {
+		limit = maxVisibleCompletionSuggestions
+	}
+
+	selected = clampIndex(selected, count)
+	start = selected - limit + 1
+	if start < 0 {
+		start = 0
+	}
+
+	end = start + limit
+	if end > count {
+		end = count
+		start = end - limit
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	return start, end
 }
 
 func completionMenuAnchorIndex(input string) int {
@@ -1577,7 +1662,7 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	if !m.inlineFlowMode() && m.streamBuf.Len() > 0 {
 		partial := ChatMessage{
 			Role:        "assistant",
-			Blocks:      textBlocks(m.streamBuf.String()),
+			Blocks:      []ContentBlock{BlockText{Text: m.streamBuf.String(), Markdown: m.streamBufMarkdown}},
 			IsStreaming: true,
 		}
 		b.WriteString(renderMessage(partial, m.styles, m.width, renderer, m.inline))
@@ -1616,6 +1701,8 @@ func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
 		return nil
 	}
 
+	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
+
 	if !m.inlineBannerPrinted {
 		m.inlineBannerPrinted = true
 		header := strings.TrimSpace(renderHeader(*m))
@@ -1628,10 +1715,10 @@ func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
 			parts = append(parts, runtimeSummary)
 		}
 		parts = append(parts, renderedParts...)
-		return tea.Println(strings.Join(parts, "\n"))
+		return tea.Sequence(tea.Println(strings.Join(parts, "\n")), redrawCmd)
 	}
 
-	return tea.Println(strings.Join(renderedParts, "\n"))
+	return tea.Sequence(tea.Println(strings.Join(renderedParts, "\n")), redrawCmd)
 }
 
 func (m *Model) applyClearTarget(target string) {
@@ -1640,6 +1727,7 @@ func (m *Model) applyClearTarget(target string) {
 		m.messages = m.messages[:0]
 		m.pendingHandoffs = m.pendingHandoffs[:0]
 		m.streamBuf.Reset()
+		m.streamBufMarkdown = false
 		m.isStreaming = false
 		m.toolFeed = m.toolFeed[:0]
 		m.modalities = m.modalities[:0]
@@ -1658,24 +1746,29 @@ func (m *Model) applyClearTarget(target string) {
 
 // renderHelp appends a help message listing available commands.
 func (m *Model) renderHelp() {
-	help := `## Commands
-| Command | Description |
-| --- | --- |
-| /data | Current data summary |
-| /workspace | Workspace info |
-| /plots | List generated plots |
-| /tokens | Token usage & costs |
-| /read <file> | Load data file |
-| /pipeline export | Export as Jupyter notebook |
-| /clear | Clear screen |
-| /exit | Exit |
+	help := `## Quick Help
+Ask in natural language, or use a slash command:
 
-## Controls
-- Inline mode uses natural terminal scrollback for transcript reading
-- Fullscreen mode supports PgUp/PgDn transcript scrolling
-- Ctrl+G optionally toggles mouse capture
+- /workspace
+- /workspace list
+- /read <file>
+- /data
+- /plots
+- /tokens
+- /clear
+- /exit
 
-*Ask anything in natural language — Lobster routes to the right specialist agent.*`
+### Workflow
+- /workspace info <#> for dataset details
+- /describe <modality> for loaded modality inspection
+- /pipeline export for notebook export
+
+### Controls
+- Inline mode uses terminal scrollback
+- Fullscreen mode supports PgUp and PgDn
+- Ctrl+G toggles mouse capture
+
+Use ` + "`lobster command \"/help\"`" + ` for the full slash-command catalog.`
 
 	m.appendMessage(ChatMessage{
 		Role:   "assistant",
@@ -1799,6 +1892,18 @@ func lineCount(text string) int {
 	return strings.Count(text, "\n") + 1
 }
 
+func renderInlineStatusLine(text string, styles theme.Styles, width int) string {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return ""
+	}
+	rendered := styles.Dimmed.Render(trimmed)
+	if width < 1 {
+		return rendered
+	}
+	return strings.TrimRight(wordwrap.String(rendered, width), "\n")
+}
+
 func (m Model) shouldRenderStreamingTranscript() bool {
 	return !m.inlineFlowMode()
 }
@@ -1820,7 +1925,7 @@ func (m Model) currentStatusLine() string {
 		return joinStatusParts(statusText, workerStatus)
 	}
 	if m.completionMenuVisible() {
-		return joinStatusParts(statusText, workerStatus, "Tab accept", "Ctrl+N/Ctrl+P move", "Esc dismiss")
+		return joinStatusParts(statusText, workerStatus, "Tab accept", "↑/↓ or Ctrl+N/Ctrl+P move", "Esc dismiss")
 	}
 
 	if m.inlineFlowMode() {
@@ -1952,7 +2057,7 @@ func (m Model) modelLabel() string {
 	if m.modelID == "" {
 		return ""
 	}
-	return m.styles.Muted.Render(m.modelID)
+	return m.styles.Muted.Render(truncateMiddle(m.modelID, 24))
 }
 
 func (m Model) mouseModeLabel() string {
@@ -1960,6 +2065,15 @@ func (m Model) mouseModeLabel() string {
 		return "mouse: scroll"
 	}
 	return "mouse: select"
+}
+
+func (m Model) inlineHasPromptSpacer() bool {
+	if !m.inline {
+		return false
+	}
+	vpVisible := strings.TrimSpace(m.viewport.View()) != ""
+	toolFeedVisible := renderToolFeed(m.toolFeed, m.styles, m.width, true) != ""
+	return vpVisible || toolFeedVisible || m.progressActive
 }
 
 func mouseCaptureCmd(_ bool) tea.Cmd {
@@ -2016,8 +2130,8 @@ func (m Model) layoutReservedRowsLegacy() int {
 	} else if m.pendingConfirm != nil {
 		rows += lineCount(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 	} else {
-		if m.inline {
-			rows += 1 // reserve optional prompt spacer in inline mode
+		if m.inlineHasPromptSpacer() {
+			rows += 1
 		}
 		if completionView := m.renderCompletionMenu(); completionView != "" {
 			rows += lineCount(completionView)
@@ -2027,7 +2141,10 @@ func (m Model) layoutReservedRowsLegacy() int {
 
 	statusText := m.currentStatusLine()
 	if m.inline {
-		if strings.TrimSpace(statusText) != "" {
+		if renderedStatus := renderInlineStatusLine(statusText, m.styles, m.width); renderedStatus != "" {
+			rows += lineCount(renderedStatus)
+		}
+		if m.inlineRepaintPad {
 			rows += 1
 		}
 	} else {
@@ -2216,6 +2333,9 @@ func (m Model) renderComposer() string {
 	if !m.composerInitialized() {
 		return prompt
 	}
+	if m.inline && m.input.Value() == "" {
+		return prompt
+	}
 	view := m.input.View()
 	lines := strings.Split(view, "\n")
 	if len(lines) == 0 {
@@ -2243,8 +2363,12 @@ func (m Model) renderCompletionMenu() string {
 		return ""
 	}
 
-	limit := m.visibleCompletionSuggestionCount()
-	selected := clampIndex(m.completionMenuIndex, limit)
+	count := len(m.completionSuggestions)
+	if count == 0 {
+		return ""
+	}
+	selected := clampIndex(m.completionMenuIndex, count)
+	start, end := completionMenuWindow(selected, count)
 	promptWidth := lipgloss.Width(m.styles.InputPrompt.Render(m.inputPromptText()))
 	lineInfo := m.input.LineInfo()
 	anchorColumn := completionMenuAnchorIndex(m.input.Value()) - lineInfo.StartColumn
@@ -2270,11 +2394,11 @@ func (m Model) renderCompletionMenu() string {
 		Foreground(m.styles.InputPrompt.GetForeground()).
 		Bold(true)
 
-	lines := make([]string, 0, limit+1)
-	if extra := len(m.completionSuggestions) - limit; extra > 0 {
-		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf("+%d more", extra)))
+	lines := make([]string, 0, (end-start)+2)
+	if hiddenAbove := count - end; hiddenAbove > 0 {
+		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf("+%d more", hiddenAbove)))
 	}
-	for i := limit - 1; i >= 0; i-- {
+	for i := end - 1; i >= start; i-- {
 		label := truncateMiddle(m.completionSuggestions[i], menuWidth-2)
 		line := "  " + label
 		style := m.styles.Muted
@@ -2283,6 +2407,9 @@ func (m Model) renderCompletionMenu() string {
 			style = selectedStyle
 		}
 		lines = append(lines, indent+style.Render(line))
+	}
+	if hiddenBelow := start; hiddenBelow > 0 {
+		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf("+%d earlier", hiddenBelow)))
 	}
 
 	return strings.Join(lines, "\n")

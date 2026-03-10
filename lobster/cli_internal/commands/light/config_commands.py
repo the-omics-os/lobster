@@ -6,6 +6,7 @@ All commands accept OutputAdapter for UI-agnostic rendering.
 """
 
 import os
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -17,6 +18,7 @@ from lobster.cli_internal.commands.output_adapter import (
     OutputBlock,
     alert_block,
     hint_block,
+    kv_block,
     list_block,
     section_block,
     table_block,
@@ -25,6 +27,11 @@ from lobster.cli_internal.commands.output_adapter import (
 
 def _render_blocks(output: OutputAdapter, blocks: list[OutputBlock]) -> None:
     output.render_blocks(blocks)
+
+
+def _is_protocol_output(output: OutputAdapter) -> bool:
+    """Treat protocol adapters by interface/name so tests and shims use the compact path."""
+    return output.__class__.__name__ == "ProtocolOutputAdapter"
 
 
 def _print_table_or_empty(
@@ -150,6 +157,69 @@ def _print_config_model_command_reference(
     )
 
 
+def _truncate_middle(text: str, max_length: int) -> str:
+    """Shorten a long string while preserving both ends."""
+    if max_length <= 0 or len(text) <= max_length:
+        return text
+    if max_length <= 3:
+        return text[:max_length]
+    keep = max_length - 3
+    left = keep // 2
+    right = keep - left
+    return f"{text[:left]}...{text[-right:]}"
+
+
+def _summarize_names(names: list[str], *, limit: int = 3, max_length: int = 42) -> str:
+    """Return a compact preview of display names for table cells."""
+    if not names:
+        return "-"
+
+    shown = names[:limit]
+    summary = ", ".join(shown)
+    remaining = len(names) - len(shown)
+    if remaining > 0:
+        summary += f" (+{remaining} more)"
+    return _truncate_middle(summary, max_length)
+
+
+def _resolve_agent_composition_summary(
+    workspace_path: Path,
+) -> tuple[str, Optional[str], list[str], int, int]:
+    """Return compact agent-composition facts without rendering the full table."""
+    from lobster.config.agent_presets import expand_preset, get_preset_description
+    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+    from lobster.core.component_registry import component_registry
+
+    config = WorkspaceAgentConfig.load(workspace_path)
+    installed_agents = component_registry.list_agents()
+
+    if config.preset:
+        preset_agents = expand_preset(config.preset)
+        description = get_preset_description(config.preset)
+        if preset_agents:
+            config_source = f"Preset: {config.preset}"
+            config_detail = description or None
+            display_agents = preset_agents
+        else:
+            config_source = f"Preset: {config.preset} (invalid, using defaults)"
+            config_detail = None
+            display_agents = list(installed_agents.keys())
+    elif config.enabled_agents:
+        config_source = "Explicit agent list"
+        config_detail = f"{len(config.enabled_agents)} agents configured in config.toml"
+        display_agents = config.enabled_agents
+    else:
+        config_source = "Defaults"
+        config_detail = "All available agents enabled"
+        display_agents = list(installed_agents.keys())
+
+    installed_count = sum(
+        1 for agent_name in display_agents if agent_name in installed_agents
+    )
+    total_count = len(display_agents)
+    return config_source, config_detail, display_agents, installed_count, total_count
+
+
 def _build_agent_hierarchy(output: OutputAdapter, current_tier: str) -> None:
     """
     Display ASCII hierarchy of agent relationships.
@@ -220,51 +290,20 @@ def _build_agent_composition(
     Returns:
         Tuple of (config_source_description, installed_count, total_count)
     """
-    from lobster.config.agent_presets import expand_preset, get_preset_description
-    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
     from lobster.core.component_registry import component_registry
-
-    # Load workspace agent config
-    config = WorkspaceAgentConfig.load(workspace_path)
 
     # Get all installed agents from ComponentRegistry (single source of truth)
     installed_agents = component_registry.list_agents()
-
-    # Determine configuration source and get agent list to display
-    if config.preset:
-        # Using a preset
-        preset_agents = expand_preset(config.preset)
-        description = get_preset_description(config.preset)
-        if preset_agents:
-            config_source = f"preset: [bold cyan]{config.preset}[/bold cyan]"
-            config_detail = f"[dim]{description}[/dim]" if description else ""
-            display_agents = preset_agents
-        else:
-            # Invalid preset, fall back to defaults
-            config_source = f"preset: [red]{config.preset}[/red] [dim](invalid, using defaults)[/dim]"
-            config_detail = ""
-            display_agents = list(installed_agents.keys())
-    elif config.enabled_agents:
-        # Using explicit enabled list
-        config_source = "[bold cyan]explicit agent list[/bold cyan]"
-        config_detail = (
-            f"[dim]{len(config.enabled_agents)} agents configured in config.toml[/dim]"
-        )
-        display_agents = config.enabled_agents
-    else:
-        # Using defaults (all available agents)
-        config_source = "[bold cyan]defaults[/bold cyan]"
-        config_detail = (
-            "[dim]All available agents enabled (no config.toml or empty)[/dim]"
-        )
-        display_agents = list(installed_agents.keys())
+    config_source, config_detail, display_agents, _installed, _total = (
+        _resolve_agent_composition_summary(workspace_path)
+    )
 
     # Display configuration source
     output.print("\n[bold cyan]📦 Agent Composition[/bold cyan]")
     output.print("[dim]" + "-" * 96 + "[/dim]")
-    output.print(f"  Configuration: {config_source}")
+    output.print(f"  Configuration: [bold cyan]{config_source}[/bold cyan]")
     if config_detail:
-        output.print(f"  {config_detail}")
+        output.print(f"  [dim]{config_detail}[/dim]")
     output.print("")
 
     # Build agent table
@@ -338,10 +377,11 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     """
     Show current configuration including provider, profile, config files, and agent models.
 
-    Displays three tables:
+    Displays a compact configuration summary that fits the CLI TUI:
     1. Current Configuration (provider, profile)
     2. Configuration Files (workspace, global)
-    3. Agent Models (per-agent model configuration)
+    3. Agent model assignments grouped by resolved model/source
+    4. Agent configuration summary and focused follow-up commands
 
     Args:
         client: AgentClient instance
@@ -361,6 +401,7 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
 
     # Create resolver
     resolver = ConfigResolver(workspace_path=Path(client.workspace_path))
+    protocol_mode = _is_protocol_output(output)
 
     # Resolve provider and profile
     provider, p_source = resolver.resolve_provider(
@@ -423,8 +464,12 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             {"name": "Path", "style": "dim", "overflow": "ellipsis"},
         ],
         "rows": [
-            ["Workspace Config", workspace_status, workspace_path_str],
-            ["Global Config", global_status, global_path_str],
+            [
+                "Workspace Config",
+                workspace_status,
+                _truncate_middle(workspace_path_str, 56),
+            ],
+            ["Global Config", global_status, _truncate_middle(global_path_str, 56)],
         ],
     }
 
@@ -438,15 +483,18 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     provider_obj = get_provider(provider)
 
     agent_table_data = {
-        "title": "🤖 Agent Models",
+        "title": "🤖 Agent Model Assignments",
         "width": TABLE_WIDTH,
         "columns": [
-            {"name": "Agent", "style": "cyan"},
-            {"name": "Model", "style": "yellow"},
-            {"name": "Source", "style": "dim"},
+            {"name": "Model", "style": "yellow", "width": 28},
+            {"name": "Source", "style": "dim", "width": 26},
+            {"name": "#", "style": "white", "width": 4},
+            {"name": "Examples", "style": "cyan", "overflow": "fold"},
         ],
         "rows": [],
     }
+
+    model_groups: dict[tuple[str, str], list[str]] = defaultdict(list)
 
     # Show models for available agents
     for agent_name, agent_cfg in AGENT_REGISTRY.items():
@@ -472,30 +520,92 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
                     model_id = model_params.get("model_id", "unknown")
                     model_source = "profile config"
 
-            # Add row
-            agent_table_data["rows"].append(
-                [agent_cfg.display_name, model_id, model_source]
-            )
+            model_groups[(model_id, model_source)].append(agent_cfg.display_name)
         except Exception:
             # Skip agents with config errors
             continue
 
-    _print_table_or_empty(
+    for (model_id, model_source), display_names in sorted(
+        model_groups.items(),
+        key=lambda item: (-len(item[1]), item[0][0], item[0][1]),
+    ):
+        sorted_names = sorted(display_names)
+        agent_table_data["rows"].append(
+            [
+                _truncate_middle(model_id, 28),
+                _truncate_middle(model_source, 26),
+                str(len(sorted_names)),
+                _summarize_names(sorted_names),
+            ]
+        )
+
+    if protocol_mode:
+        agent_preview_rows = agent_table_data["rows"][:4]
+        if agent_preview_rows:
+            preview_table = dict(agent_table_data)
+            preview_table["rows"] = agent_preview_rows
+            output.print_table(preview_table)
+            if len(agent_table_data["rows"]) > len(agent_preview_rows):
+                _render_blocks(
+                    output,
+                    [
+                        hint_block(
+                            f"... and {len(agent_table_data['rows']) - len(agent_preview_rows)} more model groups"
+                        )
+                    ],
+                )
+        else:
+            _print_table_or_empty(
+                output,
+                agent_table_data,
+                "No agent-specific model resolution data is available for the current configuration.",
+            )
+    else:
+        _print_table_or_empty(
+            output,
+            agent_table_data,
+            "No agent-specific model resolution data is available for the current configuration.",
+        )
+
+    workspace_path = Path(client.workspace_path)
+    (
+        composition_source,
+        composition_detail,
+        _display_agents,
+        installed_count,
+        total_count,
+    ) = _resolve_agent_composition_summary(workspace_path)
+
+    summary_rows = [
+        ["Tier", current_tier.capitalize()],
+        ["Config source", composition_source],
+        ["Configured agents", str(total_count)],
+        ["Installed agents", f"{installed_count}/{total_count}"],
+        ["Distinct model configs", str(len(model_groups))],
+    ]
+    if composition_detail:
+        summary_rows.append(["Config detail", composition_detail])
+
+    _render_blocks(
         output,
-        agent_table_data,
-        "No agent-specific model resolution data is available for the current configuration.",
+        [
+            kv_block(summary_rows, title="Agent Configuration Summary"),
+            hint_block(
+                "Use /status for the full agent roster and /config model for provider model catalogs."
+            ),
+        ],
     )
 
-    # ========================================================================
-    # Agent Hierarchy (ASCII tree)
-    # ========================================================================
-    _build_agent_hierarchy(output, current_tier)
-
-    # ========================================================================
-    # Agent Composition (from config.toml)
-    # ========================================================================
-    workspace_path = Path(client.workspace_path)
-    _build_agent_composition(output, workspace_path, TABLE_WIDTH)
+    if protocol_mode:
+        _render_blocks(
+            output,
+            [
+                hint_block(
+                    "Use /config provider and /config model for focused follow-up commands."
+                )
+            ],
+        )
+        return f"Displayed configuration (provider: {provider}, profile: {profile})"
 
     # ========================================================================
     # Usage hints

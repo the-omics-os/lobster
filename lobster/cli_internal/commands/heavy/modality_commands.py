@@ -324,9 +324,16 @@ def modality_describe(
     """
     import numpy as np
     import pandas as pd
+    protocol_mode = output.__class__.__name__ == "ProtocolOutputAdapter"
+
+    def emit(message: str, style: Optional[str] = None) -> None:
+        if protocol_mode and style == "info":
+            output.print(message, style=None)
+            return
+        output.print(message, style=style)
 
     if not hasattr(client.data_manager, "list_modalities"):
-        output.print(
+        emit(
             "[grey50]Describe command not available (using legacy DataManager)[/grey50]",
             style="info",
         )
@@ -335,18 +342,18 @@ def modality_describe(
     # Check if modality_name provided
     if not modality_name:
         output.print("[red]Usage: /describe <modality_name>[/red]", style="error")
-        output.print("[dim]Available modalities:[/dim]", style="info")
+        emit("[dim]Available modalities:[/dim]", style="info")
         modalities = client.data_manager.list_modalities()
         for mod in modalities:
-            output.print(f"  • {mod}", style="info")
+            emit(f"  • {mod}", style="info")
         return None
 
     # Check if modality exists
     if modality_name not in client.data_manager.list_modalities():
         output.print(f"[red]Modality '{modality_name}' not found[/red]", style="error")
-        output.print("[dim]Available modalities:[/dim]", style="info")
+        emit("[dim]Available modalities:[/dim]", style="info")
         for mod in client.data_manager.list_modalities():
-            output.print(f"  • {mod}", style="info")
+            emit(f"  • {mod}", style="info")
         return None
 
     try:
@@ -354,17 +361,17 @@ def modality_describe(
         adata = client.data_manager.get_modality(modality_name)
 
         # Create main header
-        output.print("", style="info")
-        output.print(
+        emit("", style="info")
+        emit(
             f"[bold orange1]🧬 Modality: {modality_name}[/bold orange1]", style="info"
         )
-        output.print("━" * 60, style="info")
+        emit("━" * 60, style="info")
 
         # ====================================================================
         # Basic Information
         # ====================================================================
         matrix_info = _get_matrix_info(adata.X)
-        output.print("\n[bold white]📊 Basic Information[/bold white]", style="info")
+        emit("\n[bold white]📊 Basic Information[/bold white]", style="info")
 
         basic_table_data = {
             "title": None,
@@ -398,8 +405,8 @@ def modality_describe(
         # ====================================================================
         # Data Matrix (X) Preview
         # ====================================================================
-        output.print("\n[bold white]📈 Data Matrix (X)[/bold white]", style="info")
-        output.print("[grey70]Preview (first 5×5 cells):[/grey70]", style="info")
+        emit("\n[bold white]📈 Data Matrix (X)[/bold white]", style="info")
+        emit("[grey70]Preview (first 5×5 cells):[/grey70]", style="info")
         x_preview = _format_data_preview(adata.X)
         output.print_table(x_preview)
 
@@ -407,7 +414,7 @@ def modality_describe(
         # Observations (obs)
         # ====================================================================
         if not adata.obs.empty:
-            output.print(
+            emit(
                 f"\n[bold white]🔬 Observations (obs) - {adata.n_obs:,} cells[/bold white]",
                 style="info",
             )
@@ -418,19 +425,19 @@ def modality_describe(
                 dtype = str(adata.obs[col].dtype)
                 obs_info.append(f"{col} ({dtype})")
 
-            output.print(
+            emit(
                 f"[grey70]Columns ({len(adata.obs.columns)}):[/grey70] {', '.join(obs_info[:5])}",
                 style="info",
             )
             if len(obs_info) > 5:
-                output.print(
+                emit(
                     f"[grey50]... and {len(obs_info) - 5} more columns[/grey50]",
                     style="info",
                 )
 
             # Preview table
             if len(adata.obs) > 0:
-                output.print("[grey70]Preview:[/grey70]", style="info")
+                emit("[grey70]Preview:[/grey70]", style="info")
                 obs_preview = _format_dataframe_preview(adata.obs)
                 output.print_table(obs_preview)
 
@@ -438,7 +445,7 @@ def modality_describe(
         # Variables (var)
         # ====================================================================
         if not adata.var.empty:
-            output.print(
+            emit(
                 f"\n[bold white]🧪 Variables (var) - {adata.n_vars:,} features[/bold white]",
                 style="info",
             )
@@ -449,74 +456,74 @@ def modality_describe(
                 dtype = str(adata.var[col].dtype)
                 var_info.append(f"{col} ({dtype})")
 
-            output.print(
+            emit(
                 f"[grey70]Columns ({len(adata.var.columns)}):[/grey70] {', '.join(var_info[:5])}",
                 style="info",
             )
             if len(var_info) > 5:
-                output.print(
+                emit(
                     f"[grey50]... and {len(var_info) - 5} more columns[/grey50]",
                     style="info",
                 )
 
             # Preview table
             if len(adata.var) > 0:
-                output.print("[grey70]Preview:[/grey70]", style="info")
+                emit("[grey70]Preview:[/grey70]", style="info")
                 var_preview = _format_dataframe_preview(adata.var)
                 output.print_table(var_preview)
 
         # ====================================================================
         # Additional Data Structures
         # ====================================================================
-        output.print(
+        emit(
             "\n[bold white]📦 Additional Data Structures[/bold white]", style="info"
         )
 
         # Layers
         if adata.layers:
-            output.print(f"\n[cyan]Layers ({len(adata.layers)}):[/cyan]", style="info")
+            emit(f"\n[cyan]Layers ({len(adata.layers)}):[/cyan]", style="info")
             for layer_name, layer_data in adata.layers.items():
                 layer_info = _get_matrix_info(layer_data)
-                output.print(
+                emit(
                     f"  • {layer_name}: {layer_info['shape'][0]}×{layer_info['shape'][1]} {layer_info['dtype']}",
                     style="info",
                 )
 
         # Obsm (observation matrices)
         if adata.obsm:
-            output.print("\n[cyan]Observation Matrices (obsm):[/cyan]", style="info")
+            emit("\n[cyan]Observation Matrices (obsm):[/cyan]", style="info")
             obsm_table = _format_array_info(dict(adata.obsm))
             if obsm_table:
                 output.print_table(obsm_table)
 
         # Varm (variable matrices)
         if adata.varm:
-            output.print("\n[cyan]Variable Matrices (varm):[/cyan]", style="info")
+            emit("\n[cyan]Variable Matrices (varm):[/cyan]", style="info")
             varm_table = _format_array_info(dict(adata.varm))
             if varm_table:
                 output.print_table(varm_table)
 
         # Obsp (observation pairwise)
         if adata.obsp:
-            output.print("\n[cyan]Observation Pairwise (obsp):[/cyan]", style="info")
+            emit("\n[cyan]Observation Pairwise (obsp):[/cyan]", style="info")
             for key in adata.obsp.keys():
                 matrix = adata.obsp[key]
-                output.print(
+                emit(
                     f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info"
                 )
 
         # Varp (variable pairwise)
         if adata.varp:
-            output.print("\n[cyan]Variable Pairwise (varp):[/cyan]", style="info")
+            emit("\n[cyan]Variable Pairwise (varp):[/cyan]", style="info")
             for key in adata.varp.keys():
                 matrix = adata.varp[key]
-                output.print(
+                emit(
                     f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info"
                 )
 
         # Unstructured data (uns)
         if adata.uns:
-            output.print("\n[cyan]Unstructured Data (uns):[/cyan]", style="info")
+            emit("\n[cyan]Unstructured Data (uns):[/cyan]", style="info")
             uns_items = []
             for key, value in adata.uns.items():
                 if isinstance(value, dict):
@@ -532,9 +539,9 @@ def modality_describe(
                     uns_items.append(f"{key} ({type_name})")
 
             for item in uns_items[:10]:
-                output.print(f"  • {item}", style="info")
+                emit(f"  • {item}", style="info")
             if len(uns_items) > 10:
-                output.print(
+                emit(
                     f"[grey50]  ... and {len(uns_items) - 10} more items[/grey50]",
                     style="info",
                 )
@@ -547,7 +554,7 @@ def modality_describe(
             and modality_name in client.data_manager.metadata_store
         ):
             metadata = client.data_manager.metadata_store[modality_name]
-            output.print("\n[bold white]📋 Metadata[/bold white]", style="info")
+            emit("\n[bold white]📋 Metadata[/bold white]", style="info")
 
             meta_table_data = {
                 "title": None,
@@ -570,7 +577,7 @@ def modality_describe(
             if meta_table_data["rows"]:
                 output.print_table(meta_table_data)
 
-        output.print("", style="info")
+        emit("", style="info")
         return f"Described modality: {modality_name}"
 
     except Exception as e:

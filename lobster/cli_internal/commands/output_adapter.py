@@ -10,19 +10,69 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import re
-from typing import Any, Dict, Iterable, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 
-_RICH_TAG_RE = re.compile(r"\[/?[^\]]+\]")
+_RICH_TAG_RE = re.compile(r"\[([^\[\]]+)\]")
 _ALERT_STYLES = {"error", "warning", "success", "info"}
 
 
 def _strip_markup(text: str) -> str:
-    return _RICH_TAG_RE.sub("", text)
+    matches = list(_RICH_TAG_RE.finditer(text))
+    if not matches:
+        return text
+
+    removable: set[int] = set()
+    open_stack: list[int] = []
+
+    for idx, match in enumerate(matches):
+        raw_tag = match.group(1).strip()
+        if not raw_tag:
+            continue
+
+        if raw_tag == "/":
+            if open_stack:
+                removable.add(open_stack.pop())
+                removable.add(idx)
+            continue
+
+        if raw_tag.startswith("/"):
+            closing_tag = raw_tag[1:].strip()
+            if not closing_tag:
+                if open_stack:
+                    removable.add(open_stack.pop())
+                    removable.add(idx)
+                continue
+
+            for stack_idx in range(len(open_stack) - 1, -1, -1):
+                open_idx = open_stack[stack_idx]
+                if matches[open_idx].group(1).strip() == closing_tag:
+                    removable.add(open_idx)
+                    removable.add(idx)
+                    del open_stack[stack_idx]
+                    break
+            continue
+
+        open_stack.append(idx)
+
+    if not removable:
+        return text
+
+    parts: list[str] = []
+    cursor = 0
+    for idx, match in enumerate(matches):
+        if idx not in removable:
+            continue
+        start, end = match.span()
+        parts.append(text[cursor:start])
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -290,7 +340,7 @@ class ConsoleOutputAdapter(OutputAdapter):
             )
 
         for row in table_data.get("rows", []):
-            table.add_row(*[str(cell) for cell in row])
+            table.add_row(*[escape(str(cell)) for cell in row])
 
         self.console.print(table)
 
@@ -560,12 +610,36 @@ class DashboardOutputAdapter(OutputAdapter):
 class ProtocolOutputAdapter(OutputAdapter):
     """OutputAdapter that emits protocol messages to the Go TUI."""
 
-    def __init__(self, send_fn):
+    def __init__(
+        self,
+        send_fn,
+        *,
+        confirm_fn: Optional[Callable[[str], bool]] = None,
+        prompt_fn: Optional[Callable[[str, str], str]] = None,
+    ):
         self._send = send_fn
+        self._confirm_fn = confirm_fn
+        self._prompt_fn = prompt_fn
 
     def render_blocks(self, blocks: Sequence[OutputBlock]) -> None:
         for block in blocks:
             self._render_block(block)
+
+    @staticmethod
+    def _table_payload_columns(columns: Sequence[Dict[str, Any]]) -> list[Dict[str, Any]]:
+        payload_columns: list[Dict[str, Any]] = []
+        for col in columns:
+            payload_col: Dict[str, Any] = {
+                "name": _strip_markup(str(col.get("name", ""))),
+            }
+            for key in ("width", "max_width", "justify", "overflow"):
+                value = col.get(key)
+                if value is not None:
+                    payload_col[key] = value
+            if "no_wrap" in col:
+                payload_col["no_wrap"] = bool(col.get("no_wrap"))
+            payload_columns.append(payload_col)
+        return payload_columns
 
     def _render_block(self, block: OutputBlock) -> None:
         data = block.data
@@ -582,13 +656,15 @@ class ProtocolOutputAdapter(OutputAdapter):
             title = data.get("title")
             if title:
                 self._send("text", {"content": _strip_markup(title) + "\n"})
+            columns = [
+                {"name": _strip_markup(data.get("key_label", "Field"))},
+                {"name": _strip_markup(data.get("value_label", "Value"))},
+            ]
             self._send(
                 "table",
                 {
-                    "headers": [
-                        _strip_markup(data.get("key_label", "Field")),
-                        _strip_markup(data.get("value_label", "Value")),
-                    ],
+                    "headers": [column["name"] for column in columns],
+                    "columns": columns,
                     "rows": [
                         [_strip_markup(str(cell)) for cell in row]
                         for row in data.get("rows", [])
@@ -598,10 +674,8 @@ class ProtocolOutputAdapter(OutputAdapter):
             return
 
         if block.kind == "table":
-            headers = [
-                _strip_markup(str(col.get("name", "")))
-                for col in data.get("columns", [])
-            ]
+            payload_columns = self._table_payload_columns(data.get("columns", []))
+            headers = [col["name"] for col in payload_columns]
             rows = [
                 [_strip_markup(str(cell)) for cell in row]
                 for row in data.get("rows", [])
@@ -609,7 +683,10 @@ class ProtocolOutputAdapter(OutputAdapter):
             title = data.get("title")
             if title:
                 self._send("text", {"content": _strip_markup(title) + "\n"})
-            self._send("table", {"headers": headers, "rows": rows})
+            payload = {"headers": headers, "rows": rows}
+            if payload_columns:
+                payload["columns"] = payload_columns
+            self._send("table", payload)
             return
 
         if block.kind == "list":
@@ -658,7 +735,11 @@ class ProtocolOutputAdapter(OutputAdapter):
         raise ValueError(f"Unsupported output block kind: {block.kind}")
 
     def confirm(self, question: str) -> bool:
+        if self._confirm_fn is not None:
+            return bool(self._confirm_fn(question))
         return False
 
     def prompt(self, question: str, default: str = "") -> str:
+        if self._prompt_fn is not None:
+            return str(self._prompt_fn(question, default))
         return default

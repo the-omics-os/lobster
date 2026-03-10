@@ -492,6 +492,61 @@ def _await_startup_diagnostic_ack(bridge: _LightBridge) -> None:
             and str(event.get("id", "") or "") == _STARTUP_DIAGNOSTIC_CONFIRM_ID
         ):
             return
+        if (
+            msg_type == "component_response"
+            and str(event.get("id", "") or "") == _STARTUP_DIAGNOSTIC_CONFIRM_ID
+        ):
+            return
+
+
+def _await_confirm_response(bridge: _LightBridge, msg_id: str) -> bool:
+    """Block until the Go TUI resolves a confirm component."""
+    while True:
+        event = bridge.recv_event(timeout=300)
+        if event is None:
+            return False
+
+        msg_type = str(event.get("type", "") or "")
+        event_id = str(event.get("id", "") or "")
+
+        if msg_type == "quit":
+            return False
+
+        if msg_type == "confirm_response" and event_id == msg_id:
+            payload = event.get("payload", {})
+            return bool(payload.get("confirm", False))
+
+        if msg_type == "component_response" and event_id == msg_id:
+            payload = event.get("payload", {})
+            data = payload.get("data", payload)
+            if not isinstance(data, dict):
+                return False
+            if data.get("action") == "cancel":
+                return False
+            return bool(data.get("confirmed", False))
+
+
+def _protocol_confirm(
+    bridge: _LightBridge,
+    question: str,
+    *,
+    title: str = "Confirm",
+    default: bool = False,
+) -> bool:
+    """Render a confirm component in Go TUI slash-command flows."""
+    msg_id = str(uuid.uuid4())
+    bridge.send(
+        "component_render",
+        {
+            "component": "confirm",
+            "data": {
+                "question": question,
+                "default": default,
+            },
+        },
+        msg_id=msg_id,
+    )
+    return _await_confirm_response(bridge, msg_id)
 
 
 def _build_go_tui_exit_footer_lines(client: Any) -> List[str]:
@@ -939,7 +994,7 @@ def _forward_stream_event(
     """Forward a single stream event to the Go TUI."""
     etype = event["type"]
     if etype == "content_delta":
-        bridge.send("text", {"content": event["delta"]})
+        bridge.send("text", {"content": event["delta"], "markdown": True})
     elif etype == "agent_change":
         bridge.send(
             "agent_transition",
@@ -1008,7 +1063,10 @@ def _handle_slash_command(
 
     try:
         from lobster.cli_internal.commands.output_adapter import ProtocolOutputAdapter
-        output = ProtocolOutputAdapter(bridge.send)
+        output = ProtocolOutputAdapter(
+            bridge.send,
+            confirm_fn=lambda question: _protocol_confirm(bridge, question),
+        )
 
         from lobster.cli_internal.commands.heavy.slash_commands import _execute_command
         from lobster.cli_internal.commands.heavy.session_infra import (
