@@ -260,6 +260,7 @@ type Model struct {
 	computeTarget string
 	freeStorageGB int
 	promptCostUSD float64
+	activeTurn    activeTurnKind
 }
 
 // protocolMsg wraps a protocol.Message as a tea.Msg.
@@ -269,6 +270,14 @@ type protocolMsg struct {
 
 // protocolEOF signals that the protocol channel was closed (Python exited).
 type protocolEOF struct{}
+
+type activeTurnKind uint8
+
+const (
+	activeTurnNone activeTurnKind = iota
+	activeTurnChat
+	activeTurnSlashCommand
+)
 
 // ActiveComponent tracks the currently displayed BioComp component.
 type ActiveComponent struct {
@@ -823,6 +832,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			m.streamBufMarkdown = false
 			m.pendingHandoffs = m.pendingHandoffs[:0]
 			m.isStreaming = false
+			m.activeTurn = activeTurnNone
 			m.isCanceling = false
 			m.toolFeed = m.toolFeed[:0]
 			m.recalculateViewportHeight()
@@ -856,6 +866,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			m.pendingHandoffs = m.pendingHandoffs[:0]
 		}
 		m.isStreaming = false
+		m.activeTurn = activeTurnNone
 		m.isCanceling = false
 		m.rebuildViewportWithMode(true)
 		printCmd := m.inlinePrintMessagesCmd(toPrint)
@@ -1296,6 +1307,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmd, userCmd, printCmd)
 			default:
 				// Forward to Python for handling.
+				m.activeTurn = activeTurnSlashCommand
 				if m.handler != nil {
 					_ = m.handler.SendTyped(protocol.TypeSlashCommand, protocol.SlashCommandPayload{
 						Command: cmd,
@@ -1304,6 +1316,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else {
+			m.activeTurn = activeTurnChat
 			if m.handler != nil {
 				_ = m.handler.SendTyped(protocol.TypeInput, protocol.InputPayload{
 					Content: val,
@@ -1656,10 +1669,9 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 			}
 		}
 	}
-	// Append in-progress streaming text only in framed transcript mode.
-	// Inline flow mode prints finalized messages to terminal scrollback;
-	// rendering partial stream text here causes visual duplication/noise.
-	if !m.inlineFlowMode() && m.streamBuf.Len() > 0 {
+	// Append in-progress streaming text when the active turn expects a live
+	// transcript. Inline flow keeps slash-command output on terminal scrollback.
+	if m.shouldRenderStreamingTranscript() && m.streamBuf.Len() > 0 {
 		partial := ChatMessage{
 			Role:        "assistant",
 			Blocks:      []ContentBlock{BlockText{Text: m.streamBuf.String(), Markdown: m.streamBufMarkdown}},
@@ -1729,6 +1741,7 @@ func (m *Model) applyClearTarget(target string) {
 		m.streamBuf.Reset()
 		m.streamBufMarkdown = false
 		m.isStreaming = false
+		m.activeTurn = activeTurnNone
 		m.toolFeed = m.toolFeed[:0]
 		m.modalities = m.modalities[:0]
 		m.progressActive = false
@@ -1905,7 +1918,10 @@ func renderInlineStatusLine(text string, styles theme.Styles, width int) string 
 }
 
 func (m Model) shouldRenderStreamingTranscript() bool {
-	return !m.inlineFlowMode()
+	if !m.inlineFlowMode() {
+		return true
+	}
+	return m.activeTurn == activeTurnChat
 }
 
 func (m Model) currentStatusLine() string {
@@ -1930,6 +1946,10 @@ func (m Model) currentStatusLine() string {
 
 	if m.inlineFlowMode() {
 		modelLabel := m.modelLabel()
+		guidance := "inline flow via terminal scrollback"
+		if m.isStreaming && m.activeTurn == activeTurnChat {
+			guidance = "inline flow: live response + terminal scrollback"
+		}
 		if strings.TrimSpace(statusText) == "" {
 			return joinStatusParts(
 				workerStatus,
@@ -1938,7 +1958,7 @@ func (m Model) currentStatusLine() string {
 				"Ctrl+G optional mouse capture",
 			)
 		}
-		return joinStatusParts(statusText, workerStatus, modelLabel, "inline flow via terminal scrollback")
+		return joinStatusParts(statusText, workerStatus, modelLabel, guidance)
 	}
 
 	mouseLabel := m.mouseModeLabel()

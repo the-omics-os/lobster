@@ -475,10 +475,30 @@ func TestInlineFlowModeDoesNotRenderArchivedTranscriptInFrame(t *testing.T) {
 	}
 }
 
-func TestInlineFlowViewportHidesActiveStream(t *testing.T) {
+func TestInlineFlowViewportShowsActiveChatStream(t *testing.T) {
 	m := newTestModel()
 	m.inline = true
 	m.inlineFlow = true
+	m.activeTurn = activeTurnChat
+	m.messages = append(m.messages, ChatMessage{Role: "assistant", Blocks: textBlocks("older output")})
+	m.streamBuf.WriteString("live output")
+
+	m.rebuildViewport()
+
+	view := m.viewport.View()
+	if !strings.Contains(view, "live output") {
+		t.Fatalf("expected inline viewport to render active chat stream, got:\n%s", view)
+	}
+	if strings.Contains(view, "older output") {
+		t.Fatalf("expected archived transcript to stay out of inline frame, got:\n%s", view)
+	}
+}
+
+func TestInlineFlowViewportHidesActiveSlashStream(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.activeTurn = activeTurnSlashCommand
 	m.messages = append(m.messages, ChatMessage{Role: "assistant", Blocks: textBlocks("older output")})
 	m.streamBuf.WriteString("live output")
 
@@ -486,7 +506,7 @@ func TestInlineFlowViewportHidesActiveStream(t *testing.T) {
 
 	view := m.viewport.View()
 	if strings.TrimSpace(view) != "" {
-		t.Fatalf("expected inline viewport to suppress partial stream content, got:\n%s", view)
+		t.Fatalf("expected inline viewport to suppress slash-command stream content, got:\n%s", view)
 	}
 }
 
@@ -998,6 +1018,61 @@ func TestInlineFlowStatusCopyEmphasizesTerminalScrollback(t *testing.T) {
 	got := m.currentStatusLine()
 	if !strings.Contains(got, "inline flow") || !strings.Contains(got, "terminal scrollback") {
 		t.Fatalf("expected inline flow status guidance, got %q", got)
+	}
+}
+
+func TestInlineFlowStatusMentionsLiveResponseWhileChatStreaming(t *testing.T) {
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.ready = true
+	m.isStreaming = true
+	m.activeTurn = activeTurnChat
+	m.statusText = "thinking"
+
+	got := m.currentStatusLine()
+	if !strings.Contains(got, "live response") {
+		t.Fatalf("expected inline chat streaming guidance, got %q", got)
+	}
+}
+
+func TestEnterTracksActiveTurnForChatInput(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.input.SetValue("hello lobster")
+
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	got := updated.(Model)
+
+	if got.activeTurn != activeTurnChat {
+		t.Fatalf("expected active chat turn, got %v", got.activeTurn)
+	}
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeInput {
+		t.Fatalf("expected %q message, got %q", protocol.TypeInput, msg.Type)
+	}
+}
+
+func TestEnterTracksActiveTurnForSlashCommand(t *testing.T) {
+	var out bytes.Buffer
+	m := newTestModel()
+	m.inline = true
+	m.inlineFlow = true
+	m.handler = protocol.NewHandler(strings.NewReader(""), &out)
+	m.input.SetValue("/help")
+
+	updated, _ := m.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	got := updated.(Model)
+
+	if got.activeTurn != activeTurnSlashCommand {
+		t.Fatalf("expected active slash-command turn, got %v", got.activeTurn)
+	}
+	msg := readSingleProtocolMessage(t, &out)
+	if msg.Type != protocol.TypeSlashCommand {
+		t.Fatalf("expected %q message, got %q", protocol.TypeSlashCommand, msg.Type)
 	}
 }
 
@@ -1543,6 +1618,7 @@ func TestDoneCancelledDiscardsStreamBufAndToolFeed(t *testing.T) {
 func TestDoneNormalStillFlushesStreamBuf(t *testing.T) {
 	m := newTestModel()
 	m.isStreaming = true
+	m.activeTurn = activeTurnChat
 	m.streamBuf.WriteString("final answer")
 
 	updated, _ := m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{}))
@@ -1553,6 +1629,9 @@ func TestDoneNormalStillFlushesStreamBuf(t *testing.T) {
 	}
 	if got.messages[0].Content() != "final answer" {
 		t.Fatalf("expected flushed content, got %q", got.messages[0].Content())
+	}
+	if got.activeTurn != activeTurnNone {
+		t.Fatalf("expected active turn to reset after done, got %v", got.activeTurn)
 	}
 }
 
