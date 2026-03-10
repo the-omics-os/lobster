@@ -17,12 +17,76 @@ description: |
 
   ASSUMES: Lobster is installed and configured. For setup issues, tell user to
   run `lobster config-test` and fix any errors before proceeding.
+required_binaries:
+  - lobster
+  - python3
+primary_credential: LLM_PROVIDER_API_KEY
+required_env_vars:
+  - name: ANTHROPIC_API_KEY
+    required: one_of_provider
+    description: Anthropic Claude API key
+  - name: GOOGLE_API_KEY
+    required: one_of_provider
+    description: Google Gemini API key
+  - name: OPENAI_API_KEY
+    required: one_of_provider
+    description: OpenAI API key
+  - name: OPENROUTER_API_KEY
+    required: one_of_provider
+    description: OpenRouter API key (600+ models)
+  - name: AWS_ACCESS_KEY_ID
+    required: one_of_provider
+    description: AWS Bedrock access key (must be paired with AWS_SECRET_ACCESS_KEY)
+  - name: AWS_SECRET_ACCESS_KEY
+    required: one_of_provider
+    description: AWS Bedrock secret key (must be paired with AWS_ACCESS_KEY_ID)
+  - name: AZURE_AI_ENDPOINT
+    required: one_of_provider
+    description: Azure AI endpoint URL (must be paired with AZURE_AI_CREDENTIAL)
+  - name: AZURE_AI_CREDENTIAL
+    required: one_of_provider
+    description: Azure AI API credential (must be paired with AZURE_AI_ENDPOINT)
+  - name: NCBI_API_KEY
+    required: false
+    description: NCBI API key for faster PubMed/GEO access (recommended)
+credential_note: |
+  Exactly ONE LLM provider is required (not all). Choose one provider and set
+  only that provider's env var(s). Paired credentials (AWS, Azure) must both be set.
+declared_writes:
+  - .lobster_workspace/                        # Workspace data, session state, outputs
+  - .lobster_workspace/.env                    # Provider credential (workspace-scoped, mode 0600)
+  - .lobster_workspace/provider_config.json    # Provider selection config
+  - ~/.config/lobster/credentials.env          # ONLY if --global flag is used (not default)
+  - ~/.config/lobster/providers.json           # ONLY if --global flag is used (not default)
+network_access:
+  - docs.omics-os.com                          # On-demand documentation fetches
+  - LLM provider API endpoint                  # Whichever single provider is configured
+  - eutils.ncbi.nlm.nih.gov                   # PubMed/GEO search (Research Agent only)
+  - ftp.ncbi.nlm.nih.gov                      # GEO/SRA dataset downloads (Data Expert only)
+  - www.ebi.ac.uk                              # PRIDE/MetaboLights (Research Agent only)
+source:
+  github: https://github.com/the-omics-os/lobster
+  pypi: https://pypi.org/project/lobster-ai/
+always: false
 ---
 
 # Lobster AI Usage Guide
 
 Lobster AI is a multi-agent bioinformatics platform. Users describe analyses in natural
 language -- Lobster routes to 22 specialist agents across 10 packages automatically.
+
+## Requirements
+
+- **Binaries**: `lobster` CLI (`pip install lobster-ai`), Python 3.12+
+- **Credential**: Exactly ONE LLM provider key as env var (not all — pick one):
+  - `ANTHROPIC_API_KEY` | `GOOGLE_API_KEY` | `OPENAI_API_KEY` | `OPENROUTER_API_KEY`
+  - `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (Bedrock — both required)
+  - `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL` (Azure — both required)
+  - Ollama: no key needed (local models)
+- **Optional**: `NCBI_API_KEY` for faster PubMed/GEO
+- **Writes**: `.lobster_workspace/` (data, credentials in `.env` mode 0600, outputs)
+- **Global config** (`--global` flag, NOT default): `~/.config/lobster/` — avoid unless needed
+- **Network**: LLM provider API + public bio databases (GEO, SRA, PRIDE, MetaboLights)
 
 ## Docs Discovery
 
