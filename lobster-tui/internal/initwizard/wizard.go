@@ -43,6 +43,7 @@ type WizardResult struct {
 	ModelID                       string   `json:"model_id"`
 	SmartStandardizationEnabled   bool     `json:"smart_standardization_enabled"`
 	SmartStandardizationOpenAIKey string   `json:"smart_standardization_openai_key"`
+	OAuthAuthenticated            bool     `json:"oauth_authenticated"`
 	Cancelled                     bool     `json:"cancelled"`
 }
 
@@ -57,6 +58,7 @@ const (
 	providerGemini     = "gemini"
 	providerAzure      = "azure"
 	providerOpenAI     = "openai"
+	providerOmicsOS    = "omics-os"
 	providerOpenRouter = "openrouter"
 	customOllamaModel  = "__custom_ollama_model__"
 	defaultOllamaModel = "gpt-oss:20b"
@@ -484,6 +486,12 @@ type WizardModel struct {
 	// Step 4: Profile
 	profileSelect singleSelectModel
 
+	// OAuth browser login state (Omics-OS Cloud)
+	oauthCancel    chan struct{}
+	oauthWaiting   bool
+	oauthAuthURL   string // full auth URL for fallback display
+	oauthLastError string // last failure reason for display
+
 	// Step 5: Optional keys
 	optionalSub    optionalKeySubStep
 	ncbiConfirm    confirmModel
@@ -543,6 +551,7 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 		title:       "LLM Provider",
 		description: "Select the provider for Lobster AI.",
 		items: []singleSelectItem{
+			{label: "Omics-OS Cloud      -- Managed Bedrock, login via browser", value: providerOmicsOS},
 			{label: "Anthropic (Claude)  -- Quick testing, development", value: providerAnthropic},
 			{label: "AWS Bedrock         -- Production, enterprise use", value: providerBedrock},
 			{label: "Ollama (Local)      -- Privacy, zero cost, offline", value: providerOllama},
@@ -632,6 +641,11 @@ func (m WizardModel) updateProvider(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if done {
 		m.result.Provider = value
+		// Reset OAuth state when provider actually changes.
+		m.oauthWaiting = false
+		m.oauthLastError = ""
+		m.oauthAuthURL = ""
+		m.result.OAuthAuthenticated = false
 		m.initAPIKeyStep()
 		m.step = stepAPIKey
 		return m, textinput.Blink
@@ -718,6 +732,14 @@ func (m *WizardModel) initAPIKeyStep() {
 		m.apiKeyInputs = []textinput.Model{ti}
 		m.apiKeyLabels = []string{"OpenRouter API Key"}
 
+	case providerOmicsOS:
+		ti := textinput.New()
+		ti.Placeholder = "omk_... (optional — press Enter to login via browser instead)"
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"Omics-OS API Key (or press Enter for browser login)"}
+
 	default:
 		ti := textinput.New()
 		ti.EchoMode = textinput.EchoPassword
@@ -732,6 +754,48 @@ func (m WizardModel) updateAPIKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateOllamaKey(msg)
 	}
 
+	// Handle OAuth async messages when waiting for browser login.
+	if m.oauthWaiting {
+		switch msg := msg.(type) {
+		case oauthSucceededMsg:
+			m.oauthWaiting = false
+			m.oauthLastError = ""
+			close(m.oauthCancel)
+			// Save credentials now (after UI accepts, not inside tea.Cmd).
+			if err := saveOAuthCredentials(msg); err != nil {
+				m.oauthLastError = "Failed to save credentials: " + err.Error()
+				if len(m.apiKeyInputs) > 0 {
+					m.apiKeyInputs[m.apiKeyFocusIdx].Focus()
+				}
+				return m, textinput.Blink
+			}
+			m.result.OAuthAuthenticated = true
+			// Email is NOT in the browser callback — Python postprocessing
+			// validates the token against the gateway and enriches credentials.
+			m.advanceFromAPIKey()
+			return m, nil
+		case oauthFailedMsg:
+			m.oauthWaiting = false
+			close(m.oauthCancel)
+			m.oauthLastError = msg.Reason
+			// Refocus the text input for manual key paste.
+			if len(m.apiKeyInputs) > 0 {
+				m.apiKeyInputs[m.apiKeyFocusIdx].Focus()
+			}
+			return m, textinput.Blink
+		case tea.KeyPressMsg:
+			if msg.String() == "esc" || msg.String() == "ctrl+c" {
+				close(m.oauthCancel)
+				m.oauthWaiting = false
+				m.step = stepProvider
+				return m, nil
+			}
+			return m, nil // Ignore other keys while waiting.
+		default:
+			return m, nil
+		}
+	}
+
 	km, ok := msg.(tea.KeyPressMsg)
 	if ok {
 		switch km.String() {
@@ -744,6 +808,28 @@ func (m WizardModel) updateAPIKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Submit all inputs.
 			m.collectAPIKeys()
+
+			// Omics-OS with empty key → start browser OAuth.
+			// Skip if already authenticated (back-navigation guard).
+			if m.result.Provider == providerOmicsOS && strings.TrimSpace(m.result.APIKey) == "" {
+				if m.result.OAuthAuthenticated {
+					m.advanceFromAPIKey()
+					return m, textinput.Blink
+				}
+				// Pre-bind port and generate state in main goroutine so the
+				// auth URL is available for display immediately.
+				params, reason := prepareOAuthFlow()
+				if params == nil {
+					m.oauthLastError = reason
+					return m, textinput.Blink
+				}
+				m.oauthCancel = make(chan struct{})
+				m.oauthWaiting = true
+				m.oauthLastError = ""
+				m.oauthAuthURL = params.AuthURL
+				return m, startOAuthFlow(params, m.oauthCancel)
+			}
+
 			m.advanceFromAPIKey()
 			return m, textinput.Blink
 		case "tab":
@@ -953,6 +1039,21 @@ func (m WizardModel) viewModelSelect() string {
 }
 
 func (m WizardModel) viewAPIKey() string {
+	if m.oauthWaiting {
+		titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
+		descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
+		accentStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2)
+		var sb strings.Builder
+		sb.WriteString(titleStyle.Render("Omics-OS Cloud Login") + "\n\n")
+		sb.WriteString(accentStyle.Render("◐") + " Waiting for browser login...\n\n")
+		if m.oauthAuthURL != "" {
+			sb.WriteString(descStyle.Render("If the browser didn't open, visit:") + "\n")
+			sb.WriteString(descStyle.Render(m.oauthAuthURL) + "\n\n")
+		}
+		sb.WriteString(descStyle.Render("esc: cancel"))
+		return sb.String()
+	}
+
 	if m.result.Provider == providerOllama {
 		if m.ollamaIsCustom {
 			titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
@@ -973,7 +1074,14 @@ func (m WizardModel) viewAPIKey() string {
 	focusIndicator := lipgloss.NewStyle().Foreground(m.theme.Colors.Success)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("API Keys") + "\n\n")
+	sb.WriteString(titleStyle.Render("API Keys") + "\n")
+
+	// Show OAuth failure hint when returning from failed browser login.
+	if m.oauthLastError != "" && m.result.Provider == providerOmicsOS {
+		warnStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Warning)
+		sb.WriteString(warnStyle.Render("Browser login failed: "+m.oauthLastError+". Paste a key instead.") + "\n")
+	}
+	sb.WriteString("\n")
 
 	for i, label := range m.apiKeyLabels {
 		indicator := "  "
@@ -1081,7 +1189,12 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ncbiInput.Focus()
 				return m, textinput.Blink
 			}
-			m.optionalSub = subStepCloudConfirm
+			// Skip cloud key when already authenticated via Omics-OS Cloud.
+			if m.result.Provider == providerOmicsOS {
+				m.optionalSub = subStepSmartStdConfirm
+			} else {
+				m.optionalSub = subStepCloudConfirm
+			}
 		}
 		return m, nil
 
@@ -1091,7 +1204,12 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch km.String() {
 			case "enter":
 				m.result.NCBIKey = m.ncbiInput.Value()
-				m.optionalSub = subStepCloudConfirm
+				// Skip cloud key when already authenticated via Omics-OS Cloud.
+				if m.result.Provider == providerOmicsOS {
+					m.optionalSub = subStepSmartStdConfirm
+				} else {
+					m.optionalSub = subStepCloudConfirm
+				}
 				return m, nil
 			case "esc":
 				m.optionalSub = subStepNCBIConfirm
@@ -1140,7 +1258,12 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var done, cancelled bool
 		m.smartStdConfirm, done, cancelled = m.smartStdConfirm.Update(msg)
 		if cancelled {
-			m.optionalSub = subStepCloudConfirm
+			// Go back to NCBI when omics-os (cloud step is skipped).
+			if m.result.Provider == providerOmicsOS {
+				m.optionalSub = subStepNCBIConfirm
+			} else {
+				m.optionalSub = subStepCloudConfirm
+			}
 			return m, nil
 		}
 		if done {

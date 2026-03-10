@@ -152,14 +152,15 @@ type layoutMockComponent struct {
 	mode string
 }
 
-func (c *layoutMockComponent) Init(_ json.RawMessage) error                  { return nil }
-func (c *layoutMockComponent) HandleMsg(_ tea.Msg) *biocomp.ComponentResult  { return nil }
-func (c *layoutMockComponent) View(w, h int) string                          { return "mock content" }
-func (c *layoutMockComponent) SetData(_ json.RawMessage) error               { return nil }
-func (c *layoutMockComponent) Name() string                                  { return c.name }
-func (c *layoutMockComponent) Mode() string                                  { return c.mode }
-func (c *layoutMockComponent) KeyBindings() []key.Binding                    { return nil }
-func (c *layoutMockComponent) ChangeEvent() map[string]any                   { return nil }
+func (c *layoutMockComponent) Init(_ json.RawMessage) error                          { return nil }
+func (c *layoutMockComponent) InitCmd() tea.Cmd                                      { return nil }
+func (c *layoutMockComponent) HandleMsg(_ tea.Msg) (*biocomp.ComponentResult, tea.Cmd) { return nil, nil }
+func (c *layoutMockComponent) View(w, h int) string                                  { return "mock content" }
+func (c *layoutMockComponent) SetData(_ json.RawMessage) error                       { return nil }
+func (c *layoutMockComponent) Name() string                                          { return c.name }
+func (c *layoutMockComponent) Mode() string                                          { return c.mode }
+func (c *layoutMockComponent) KeyBindings() []key.Binding                            { return nil }
+func (c *layoutMockComponent) ChangeEvent() map[string]any                           { return nil }
 
 func TestFooterComponentExpand(t *testing.T) {
 	m := testModel(40, 80)

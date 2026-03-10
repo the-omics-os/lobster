@@ -14,7 +14,8 @@ type ContentBlock interface {
 
 // BlockText holds plain or markdown text.
 type BlockText struct {
-	Text string
+	Text     string
+	Markdown bool
 }
 
 func (BlockText) blockType() string { return "text" }
@@ -28,8 +29,18 @@ type BlockCode struct {
 func (BlockCode) blockType() string { return "code" }
 
 // BlockTable holds structured table data (headers + rows).
+type BlockTableColumn struct {
+	Name     string
+	Width    int
+	MaxWidth int
+	Justify  string
+	NoWrap   bool
+	Overflow string
+}
+
 type BlockTable struct {
 	Headers []string
+	Columns []BlockTableColumn
 	Rows    [][]string
 }
 
@@ -119,13 +130,22 @@ func textBlocks(s string) []ContentBlock {
 // flushStreamBuffer converts any accumulated streaming text in streamBuf into
 // a BlockText and appends it to the last assistant message. If the buffer is
 // empty, this is a no-op.
+func (m *Model) appendStreamText(text string, markdown bool) {
+	if m.streamBuf.Len() > 0 && m.streamBufMarkdown != markdown {
+		m.flushStreamBuffer()
+	}
+	m.streamBufMarkdown = markdown
+	m.streamBuf.WriteString(text)
+}
+
 func (m *Model) flushStreamBuffer() {
 	if m.streamBuf.Len() == 0 {
 		return
 	}
 	text := m.streamBuf.String()
 	m.streamBuf.Reset()
-	m.appendBlock(BlockText{Text: text})
+	m.appendBlock(BlockText{Text: text, Markdown: m.streamBufMarkdown})
+	m.streamBufMarkdown = false
 }
 
 // collectLastAssistantMessage returns a single-element slice containing the

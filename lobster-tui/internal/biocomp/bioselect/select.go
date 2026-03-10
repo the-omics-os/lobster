@@ -54,19 +54,19 @@ func (s *SelectComponent) Init(data json.RawMessage) error {
 	return nil
 }
 
-func (s *SelectComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
+func (s *SelectComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	switch km.String() {
 	case "up", "k":
 		s.moveUp()
-		return nil
+		return nil, nil
 	case "down", "j":
 		s.moveDown()
-		return nil
+		return nil, nil
 	case "enter":
 		return &biocomp.ComponentResult{
 			Action: "submit",
@@ -74,12 +74,12 @@ func (s *SelectComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
 				"selected": s.options[s.cursor],
 				"index":    s.cursor,
 			},
-		}
+		}, nil
 	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{},
-		}
+		}, nil
 	default:
 		// Number keys 1-9 for direct selection.
 		if km.Text != "" && len([]rune(km.Text)) == 1 {
@@ -94,12 +94,12 @@ func (s *SelectComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
 							"selected": s.options[idx],
 							"index":    idx,
 						},
-					}
+					}, nil
 				}
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func (s *SelectComponent) moveUp() {
@@ -187,8 +187,9 @@ func (s *SelectComponent) SetData(data json.RawMessage) error {
 	return nil
 }
 
-func (s *SelectComponent) Name() string { return "select" }
-func (s *SelectComponent) Mode() string { return "overlay" }
+func (s *SelectComponent) InitCmd() tea.Cmd { return nil }
+func (s *SelectComponent) Name() string     { return "select" }
+func (s *SelectComponent) Mode() string     { return "overlay" }
 
 func (s *SelectComponent) KeyBindings() []key.Binding {
 	return []key.Binding{

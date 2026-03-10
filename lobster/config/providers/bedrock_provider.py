@@ -172,9 +172,6 @@ class BedrockProvider(ILLMProvider):
         """
         Create a ChatBedrockConverse instance.
 
-        Extracted from llm_factory.py lines 290-340 with proper parameter handling
-        and AWS credential management.
-
         Args:
             model_id: Bedrock model ID (e.g., "anthropic.claude-sonnet-4-20250514-v1:0")
             temperature: Sampling temperature (0.0-2.0, default: 1.0)
@@ -183,7 +180,8 @@ class BedrockProvider(ILLMProvider):
                 - region_name: AWS region (default: us-east-1)
                 - aws_access_key_id: Override AWS access key
                 - aws_secret_access_key: Override AWS secret key
-                - additional_model_request_fields: Extended thinking config (passed to ChatBedrockConverse)
+                - additional_model_request_fields: Extended thinking config
+                - thinking: Extended thinking config (auto-wrapped)
 
         Returns:
             ChatBedrockConverse: LangChain chat model instance
@@ -191,34 +189,16 @@ class BedrockProvider(ILLMProvider):
         Raises:
             ImportError: If langchain-aws not installed
             ValueError: If model_id is invalid or credentials missing
-
-        Example:
-            >>> provider = BedrockProvider()
-            >>> llm = provider.create_chat_model(
-            ...     "anthropic.claude-sonnet-4-20250514-v1:0",
-            ...     temperature=0.7,
-            ...     max_tokens=8192,
-            ...     region_name="us-west-2"
-            ... )
-
-            >>> # With extended thinking (AWS Bedrock feature)
-            >>> llm = provider.create_chat_model(
-            ...     "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-            ...     temperature=1.0,
-            ...     additional_model_request_fields={
-            ...         "thinking": {"type": "enabled", "budget_tokens": 5000}
-            ...     }
-            ... )
         """
         # Import check
         try:
-            from langchain_aws import ChatBedrockConverse
+            from langchain_aws import ChatBedrockConverse  # noqa: F401
         except ImportError:
             from lobster.core.component_registry import get_install_command
 
             cmd = get_install_command("bedrock", is_extra=True)
             raise ImportError(
-                f"langchain-aws package not installed. " f"Install with: {cmd}"
+                f"langchain-aws package not installed. Install with: {cmd}"
             )
 
         # Check credentials
@@ -228,69 +208,60 @@ class BedrockProvider(ILLMProvider):
                 "Set AWS_BEDROCK_ACCESS_KEY and AWS_BEDROCK_SECRET_ACCESS_KEY."
             )
 
-        # Build parameters (extracted from llm_factory.py)
-        bedrock_params = {
-            "model_id": model_id,
-            "temperature": temperature,
-        }
+        from lobster.config.providers.bedrock_builder import build_bedrock_converse
 
-        # Add region (from kwargs or environment or default)
-        region = kwargs.pop("region_name", None)
-        if not region:
-            region = os.environ.get("AWS_REGION", self.DEFAULT_REGION)
-        bedrock_params["region_name"] = region
-
-        # Add AWS credentials (from kwargs or environment)
+        region = kwargs.pop("region_name", None) or os.environ.get(
+            "AWS_REGION", self.DEFAULT_REGION
+        )
         aws_access_key = kwargs.pop("aws_access_key_id", None) or os.environ.get(
             "AWS_BEDROCK_ACCESS_KEY"
         )
-        aws_secret_key = kwargs.pop("aws_secret_access_key", None) or os.environ.get(
-            "AWS_BEDROCK_SECRET_ACCESS_KEY"
-        )
+        aws_secret_key = kwargs.pop(
+            "aws_secret_access_key", None
+        ) or os.environ.get("AWS_BEDROCK_SECRET_ACCESS_KEY")
 
-        if aws_access_key and aws_secret_key:
-            bedrock_params["aws_access_key_id"] = aws_access_key
-            bedrock_params["aws_secret_access_key"] = aws_secret_key
-        else:
+        if not (aws_access_key and aws_secret_key):
             raise ValueError(
                 "AWS credentials required but not found. "
                 "Set AWS_BEDROCK_ACCESS_KEY and AWS_BEDROCK_SECRET_ACCESS_KEY."
             )
 
         # Handle thinking parameter specially for ChatBedrockConverse
-        # ChatBedrockConverse expects thinking nested in additional_model_request_fields
         if "thinking" in kwargs:
             thinking_config = kwargs.pop("thinking")
-            # Wrap thinking in additional_model_request_fields if not already wrapped
-            if "additional_model_request_fields" not in bedrock_params:
-                bedrock_params["additional_model_request_fields"] = {}
-            bedrock_params["additional_model_request_fields"][
-                "thinking"
-            ] = thinking_config
+            additional = kwargs.get("additional_model_request_fields", {}) or {}
+            additional["thinking"] = thinking_config
+            kwargs["additional_model_request_fields"] = additional
 
-        # Pass through any remaining kwargs
-        bedrock_params.update(kwargs)
-
-        # Set generous timeouts for multi-tool agent turns
+        # Generous timeouts for multi-tool agent turns
         # Default boto3 read_timeout (60s) is too short when agents make
         # multiple external API calls (Open Targets, ChEMBL, PubChem) in one turn
         try:
             from botocore.config import Config as BotoConfig
 
-            bedrock_params["config"] = BotoConfig(
+            boto_config = BotoConfig(
                 read_timeout=600,
                 connect_timeout=10,
                 retries={"max_attempts": 3},
             )
         except ImportError:
-            pass  # botocore should always be available with langchain-aws
+            boto_config = None
 
         logger.debug(
             f"Creating ChatBedrockConverse with model={model_id}, "
             f"region={region}, temperature={temperature}"
         )
 
-        return ChatBedrockConverse(**bedrock_params)
+        return build_bedrock_converse(
+            model_id=model_id,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            region_name=region,
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            config=boto_config,
+            **kwargs,
+        )
 
     def get_configuration_help(self) -> str:
         """

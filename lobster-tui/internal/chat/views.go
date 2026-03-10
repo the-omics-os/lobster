@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/glamour"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/glamour"
+	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
@@ -24,9 +25,9 @@ var welcomeTitleASCII = []string{
 var welcomeNucleotides = []rune{'A', 'T', 'C', 'G'}
 
 const (
-	welcomeTitleText          = "Lobster AI"
-	welcomeTagline            = "The self-evolving agentic framework for bioinformatics"
-	welcomeSubTagline         = "on-prem • python native • open-source"
+	welcomeTitleText  = "Lobster AI"
+	welcomeTagline    = "The self-evolving agentic framework for bioinformatics"
+	welcomeSubTagline = "on-prem • python native • open-source"
 	// Welcome colors now use theme tokens — see welcomeThemeColor* helpers below.
 )
 
@@ -753,78 +754,32 @@ func renderStatusBar(text string, styles theme.Styles, width int) string {
 // renderAlert renders a colored alert box based on severity level.
 func renderAlert(level string, message string, styles theme.Styles, width int) string {
 	contentWidth := clampRenderWidth(width, 8)
-
-	var style lipgloss.Style
-	var icon string
-	var chip string
-
-	switch level {
-	case "error":
-		style = styles.AlertError
-		icon = "✖"
-		chip = "ERROR"
-	case "warning":
-		style = styles.AlertWarning
-		icon = "⚠"
-		chip = "WARNING"
-	case "success":
-		style = styles.AlertSuccess
-		icon = "✓"
-		chip = "SUCCESS"
-	default: // "info" and anything else
-		style = styles.AlertInfo
-		icon = "ℹ"
-		chip = "INFO"
-	}
-
-	title, body := parseAlertContent(message)
-	if strings.EqualFold(title, chip) || strings.EqualFold(title, level) {
-		title = ""
-	}
-	if body == "" {
-		body = strings.TrimSpace(message)
-	}
-
-	chipStyle := lipgloss.NewStyle().
-		Foreground(style.GetForeground()).
-		Bold(true)
-	header := chipStyle.Render(icon + " " + chip)
-	if title != "" {
-		header += " " + styles.Bold.Render(title)
-	}
-	if strings.TrimSpace(body) != "" {
-		if title != "" {
-			body = "  " + styles.Muted.Render(strings.TrimSpace(body))
-			return style.Width(contentWidth).Render(header + "\n" + body)
-		}
-		header += ": " + strings.TrimSpace(body)
-	}
-	return style.Width(contentWidth).Render(header)
+	style, icon, chip := alertStyleParts(level, styles)
+	return renderWrappedAlert(style, level, icon, chip, message, contentWidth)
 }
 
 func renderInlineAlert(level string, message string, styles theme.Styles, width int) string {
 	contentWidth := clampRenderWidth(width, 2)
-	var style lipgloss.Style
-	var icon string
-	var chip string
+	style, icon, chip := alertStyleParts(level, styles)
+	return renderWrappedAlert(style, level, icon, chip, message, contentWidth)
+}
 
+func alertStyleParts(level string, styles theme.Styles) (lipgloss.Style, string, string) {
 	switch level {
 	case "error":
-		style = styles.AlertError
-		icon = "✖"
-		chip = "ERROR"
+		return styles.AlertError, "✖", "ERROR"
 	case "warning":
-		style = styles.AlertWarning
-		icon = "⚠"
-		chip = "WARNING"
+		return styles.AlertWarning, "⚠", "WARNING"
 	case "success":
-		style = styles.AlertSuccess
-		icon = "✓"
-		chip = "SUCCESS"
+		return styles.AlertSuccess, "✓", "SUCCESS"
 	default:
-		style = styles.AlertInfo
-		icon = "ℹ"
-		chip = "INFO"
+		return styles.AlertInfo, "ℹ", "INFO"
+	}
+}
+
+func renderWrappedAlert(style lipgloss.Style, level, icon, chip, message string, contentWidth int) string {
+	if contentWidth < 1 {
+		contentWidth = 1
 	}
 
 	title, body := parseAlertContent(message)
@@ -835,20 +790,49 @@ func renderInlineAlert(level string, message string, styles theme.Styles, width 
 		body = strings.TrimSpace(message)
 	}
 
-	chipStyle := lipgloss.NewStyle().
-		Foreground(style.GetForeground()).
-		Bold(true)
-	header := chipStyle.Render(icon + " " + chip)
+	lines := make([]string, 0, 4)
+	header := icon + " " + chip
 	if title != "" {
-		header += " " + styles.Bold.Render(title)
+		header += " " + title
 	}
-	if strings.TrimSpace(body) != "" {
-		if title != "" {
-			return lipgloss.NewStyle().Width(contentWidth).Render(header + "\n  " + styles.Muted.Render(strings.TrimSpace(body)))
-		}
+	if title == "" && strings.TrimSpace(body) != "" {
 		header += ": " + strings.TrimSpace(body)
+		lines = append(lines, wrapAlertText(header, contentWidth, "")...)
+	} else {
+		lines = append(lines, wrapAlertText(header, contentWidth, "")...)
+		if strings.TrimSpace(body) != "" {
+			lines = append(lines, wrapAlertText(body, contentWidth, "  ")...)
+		}
 	}
-	return lipgloss.NewStyle().Width(contentWidth).Render(header)
+
+	if len(lines) == 0 {
+		lines = []string{icon + " " + chip}
+	}
+
+	rendered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		rendered = append(rendered, style.Width(contentWidth).Render(line))
+	}
+	return strings.Join(rendered, "\n")
+}
+
+func wrapAlertText(text string, width int, indent string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+
+	available := width - lipgloss.Width(indent)
+	if available < 1 {
+		available = 1
+	}
+
+	wrapped := strings.TrimRight(wordwrap.String(text, available), "\n")
+	parts := strings.Split(wrapped, "\n")
+	for i, part := range parts {
+		parts[i] = indent + part
+	}
+	return parts
 }
 
 func parseAlertContent(message string) (title, body string) {

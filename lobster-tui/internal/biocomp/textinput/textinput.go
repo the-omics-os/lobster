@@ -30,6 +30,7 @@ type TextInputComponent struct {
 	question  string
 	multiline bool
 	input     textinput.Model
+	initCmd   tea.Cmd
 }
 
 func (t *TextInputComponent) Init(data json.RawMessage) error {
@@ -45,14 +46,20 @@ func (t *TextInputComponent) Init(data json.RawMessage) error {
 
 	t.input = textinput.New()
 	t.input.Placeholder = d.Placeholder
-	t.input.Focus()
+	t.initCmd = t.input.Focus()
 	t.input.CharLimit = 1024
 	t.input.SetWidth(40) // default, adjusted in View
 
 	return nil
 }
 
-func (t *TextInputComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
+func (t *TextInputComponent) InitCmd() tea.Cmd {
+	cmd := t.initCmd
+	t.initCmd = nil
+	return cmd
+}
+
+func (t *TextInputComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	km, ok := msg.(tea.KeyPressMsg)
 	if ok {
 		switch km.String() {
@@ -60,22 +67,19 @@ func (t *TextInputComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
 			return &biocomp.ComponentResult{
 				Action: "submit",
 				Data:   map[string]any{"answer": t.input.Value()},
-			}
+			}, nil
 		case "esc":
 			return &biocomp.ComponentResult{
 				Action: "cancel",
 				Data:   map[string]any{},
-			}
+			}, nil
 		}
 	}
 
 	// Forward all other messages to the bubbles textinput model.
 	var cmd tea.Cmd
 	t.input, cmd = t.input.Update(msg)
-	// We discard cmd here since BioComponent.HandleMsg does not return tea.Cmd.
-	// The textinput blink cursor will not animate, which is acceptable for overlay use.
-	_ = cmd
-	return nil
+	return nil, cmd
 }
 
 func (t *TextInputComponent) View(width, height int) string {

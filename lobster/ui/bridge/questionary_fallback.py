@@ -41,6 +41,7 @@ _CUSTOM_OLLAMA_MODEL = "__custom_ollama_model__"
 _DEFAULT_OLLAMA_MODEL = "gpt-oss:20b"
 
 _PROVIDER_CHOICES = [
+    {"name": "Omics-OS Cloud          — managed Bedrock, login via browser", "value": "omics-os"},
     {"name": "Claude API (Anthropic)  — quick testing, development",    "value": "anthropic"},
     {"name": "AWS Bedrock             — production, enterprise",         "value": "bedrock"},
     {"name": "Ollama (local)          — privacy, zero cost, offline",    "value": "ollama"},
@@ -177,27 +178,75 @@ def run_questionary_init() -> dict:
         result["agents"] = _normalize_selected_agents(selected_pkgs)
 
         # ------------------------------------------------------------------ #
-        # Step 2 — Provider selection                                         #
+        # Step 1.5 — Omics-OS Cloud pre-question                             #
         # ------------------------------------------------------------------ #
-        provider = questionary.select(
-            "Select your LLM provider:",
+        use_cloud = questionary.select(
+            "How would you like to connect to an LLM?",
             choices=[
-                questionary.Choice(c["name"], value=c["value"])
-                for c in _PROVIDER_CHOICES
+                questionary.Choice(
+                    "Omics-OS Cloud   — managed Bedrock, login via browser",
+                    value="omics-os",
+                ),
+                questionary.Choice(
+                    "Bring your own   — Anthropic, OpenAI, Ollama, etc.",
+                    value="byok",
+                ),
             ],
-            default=_PROVIDER_CHOICES[0]["value"],
+            default="omics-os",
         ).ask()
 
-        if provider is None:
+        if use_cloud is None:
             result["cancelled"] = True
             return result
 
-        result["provider"] = provider
+        if use_cloud == "omics-os":
+            result["provider"] = "omics-os"
+            # Try browser login
+            try:
+                from lobster.cli_internal.commands.light.cloud_commands import (
+                    attempt_login_for_init,
+                )
+                success = attempt_login_for_init()
+            except Exception:
+                success = False
+
+            if not success:
+                key = questionary.password(
+                    "Enter your Omics-OS API key (from app.omics-os.com/settings/api-keys):"
+                ).ask()
+                if key is None:
+                    result["cancelled"] = True
+                    return result
+                result["api_key"] = key.strip()
+            # Skip directly to NCBI step (step 5)
+            provider = "omics-os"
+        else:
+            # -------------------------------------------------------------- #
+            # Step 2 — Provider selection                                     #
+            # -------------------------------------------------------------- #
+            provider = questionary.select(
+                "Select your LLM provider:",
+                choices=[
+                    questionary.Choice(c["name"], value=c["value"])
+                    for c in _PROVIDER_CHOICES
+                    if c["value"] != "omics-os"
+                ],
+                default="anthropic",
+            ).ask()
+
+            if provider is None:
+                result["cancelled"] = True
+                return result
+
+            result["provider"] = provider
 
         # ------------------------------------------------------------------ #
         # Step 3 — API key(s)                                                 #
         # ------------------------------------------------------------------ #
-        if provider == "anthropic":
+        if provider == "omics-os":
+            pass  # Already handled above
+
+        elif provider == "anthropic":
             key = questionary.password(
                 "Enter your Claude API key (https://console.anthropic.com):"
             ).ask()
@@ -324,23 +373,24 @@ def run_questionary_init() -> dict:
             result["ncbi_key"] = ncbi.strip()
 
         # ------------------------------------------------------------------ #
-        # Step 6 — Optional Cloud key                                        #
+        # Step 6 — Optional Cloud key (skip when already via Omics-OS Cloud) #
         # ------------------------------------------------------------------ #
-        add_cloud = questionary.confirm(
-            "Add a Lobster Cloud API key? (enables premium tier, optional)",
-            default=False,
-        ).ask()
+        if provider != "omics-os":
+            add_cloud = questionary.confirm(
+                "Add an Omics-OS Cloud API key? (enables premium tier, optional)",
+                default=False,
+            ).ask()
 
-        if add_cloud is None:
-            result["cancelled"] = True
-            return result
-
-        if add_cloud:
-            ckey = questionary.password("Enter your Lobster Cloud API key:").ask()
-            if ckey is None:
+            if add_cloud is None:
                 result["cancelled"] = True
                 return result
-            result["cloud_key"] = ckey.strip()
+
+            if add_cloud:
+                ckey = questionary.password("Enter your Lobster Cloud API key:").ask()
+                if ckey is None:
+                    result["cancelled"] = True
+                    return result
+                result["cloud_key"] = ckey.strip()
 
         # ------------------------------------------------------------------ #
         # Step 7 — Smart Standardization / vector search                     #

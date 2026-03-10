@@ -168,7 +168,7 @@ def _get_matrix_info(matrix) -> Dict[str, Any]:
     return info
 
 
-def build_status_blocks() -> List[OutputBlock]:
+def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
     """
     Build structured status blocks for console, JSON, and protocol adapters.
 
@@ -257,25 +257,43 @@ def build_status_blocks() -> List[OutputBlock]:
     blocks.append(kv_block(tier_rows, title="Subscription"))
 
     package_rows = []
+    package_counts = {"installed": 0, "development": 0, "missing": 0}
     for pkg_name, version in packages.items():
         if version == "missing":
             status_str = "Missing"
+            package_counts["missing"] += 1
         elif version == "dev":
             status_str = "Development"
+            package_counts["development"] += 1
         else:
             status_str = "Installed"
+            package_counts["installed"] += 1
         package_rows.append([pkg_name, version, status_str])
-    blocks.append(
-        table_block(
-            [
-                {"name": "Package"},
-                {"name": "Version"},
-                {"name": "Status"},
-            ],
-            package_rows,
-            title="Installed Packages",
+    if compact:
+        blocks.append(
+            kv_block(
+                [
+                    ("Installed Packages", str(package_counts["installed"])),
+                    ("Development Packages", str(package_counts["development"])),
+                    ("Missing Packages", str(package_counts["missing"])),
+                    ("Available Agents", str(len(available))),
+                    ("Premium Agents", str(len(restricted))),
+                ],
+                title="Runtime Summary",
+            )
         )
-    )
+    else:
+        blocks.append(
+            table_block(
+                [
+                    {"name": "Package"},
+                    {"name": "Version"},
+                    {"name": "Status"},
+                ],
+                package_rows,
+                title="Installed Packages",
+            )
+        )
 
     capabilities = []
     try:
@@ -308,6 +326,17 @@ def build_status_blocks() -> List[OutputBlock]:
                 docling_cmd,
             )
         )
+    if compact:
+        capability_items = [
+            f"{label}: {status} ({details})"
+            for status, label, details in capabilities
+        ]
+        blocks.append(list_block(capability_items, title="Optional Capabilities"))
+        blocks.append(
+            hint_block("Use `lobster status` for the full package and agent roster.")
+        )
+        return blocks
+
     blocks.append(
         table_block(
             [
@@ -321,20 +350,36 @@ def build_status_blocks() -> List[OutputBlock]:
     )
 
     if available:
+        available_names = sorted(available)
+        available_preview = available_names[:6] if compact else available_names
         blocks.append(
             list_block(
-                sorted(available),
+                available_preview,
                 title=f"Available Agents ({len(available)})",
             )
         )
+        if compact and len(available_names) > len(available_preview):
+            blocks.append(
+                hint_block(
+                    f"... and {len(available_names) - len(available_preview)} more available agents"
+                )
+            )
 
     if restricted:
+        restricted_names = sorted(restricted)
+        restricted_preview = restricted_names[:4] if compact else restricted_names
         blocks.append(
             list_block(
-                sorted(restricted),
+                restricted_preview,
                 title=f"Premium Agents ({len(restricted)})",
             )
         )
+        if compact and len(restricted_names) > len(restricted_preview):
+            blocks.append(
+                hint_block(
+                    f"... and {len(restricted_names) - len(restricted_preview)} more premium agents"
+                )
+            )
         blocks.append(
             hint_block(
                 f"Upgrade to Premium to unlock {len(restricted)} additional agents. Visit https://omics-os.com/pricing or run 'lobster activate <code>'."
@@ -343,7 +388,15 @@ def build_status_blocks() -> List[OutputBlock]:
 
     features = entitlement.get("features", [])
     if features:
-        blocks.append(list_block([str(feature) for feature in features], title="Enabled Features"))
+        feature_items = [str(feature) for feature in features]
+        feature_preview = feature_items[:6] if compact else feature_items
+        blocks.append(list_block(feature_preview, title="Enabled Features"))
+        if compact and len(feature_items) > len(feature_preview):
+            blocks.append(
+                hint_block(
+                    f"... and {len(feature_items) - len(feature_preview)} more enabled features"
+                )
+            )
 
     return blocks
 

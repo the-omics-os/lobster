@@ -36,7 +36,7 @@ class GoTUIBridge:
         binary_path: str,
         *,
         mode: str = "chat",
-        theme: str = "lobster-dark",
+        theme: str = "",
         debug: bool = False,
     ):
         self.binary_path = str(Path(binary_path))
@@ -70,9 +70,9 @@ class GoTUIBridge:
             str(p2g_r),
             "--proto-fd-out",
             str(g2p_w),
-            "--theme",
-            self.theme,
         ]
+        if self.theme:
+            cmd.extend(["--theme", self.theme])
 
         stderr_pipe = subprocess.PIPE
         try:
@@ -239,7 +239,7 @@ class GoTUIBridge:
 
 
 
-def run_init_wizard(binary_path: str, *, theme: str = "lobster-dark", timeout: int = 300) -> dict:
+def run_init_wizard(binary_path: str, *, theme: str = "", timeout: int = 300) -> dict:
     """Run one-shot Go init wizard and parse its JSON result file.
 
     The Go wizard needs the real terminal for interactive rendering, so the
@@ -250,7 +250,9 @@ def run_init_wizard(binary_path: str, *, theme: str = "lobster-dark", timeout: i
     ) as result_file:
         result_path = result_file.name
 
-    cmd = [binary_path, "init", "--theme", theme, "--result-file", result_path]
+    cmd = [binary_path, "init", "--result-file", result_path]
+    if theme:
+        cmd.extend(["--theme", theme])
     try:
         proc = subprocess.run(
             cmd,

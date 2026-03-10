@@ -157,7 +157,8 @@ const (
 
 // TextPayload carries a streamed text chunk.
 type TextPayload struct {
-	Content string `json:"content"`
+	Content  string `json:"content"`
+	Markdown bool   `json:"markdown,omitempty"`
 }
 
 // MarkdownPayload carries a complete markdown block.
@@ -172,9 +173,19 @@ type CodePayload struct {
 }
 
 // TablePayload carries tabular data.
+type TableColumn struct {
+	Name     string `json:"name"`
+	Width    int    `json:"width,omitempty"`
+	MaxWidth int    `json:"max_width,omitempty"`
+	Justify  string `json:"justify,omitempty"`
+	NoWrap   bool   `json:"no_wrap,omitempty"`
+	Overflow string `json:"overflow,omitempty"`
+}
+
 type TablePayload struct {
-	Headers []string   `json:"headers"`
-	Rows    [][]string `json:"rows"`
+	Headers []string      `json:"headers"`
+	Columns []TableColumn `json:"columns,omitempty"`
+	Rows    [][]string    `json:"rows"`
 }
 
 // FormField describes a single field in a form request.

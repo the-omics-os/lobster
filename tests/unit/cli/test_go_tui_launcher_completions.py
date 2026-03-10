@@ -208,8 +208,9 @@ def test_handle_slash_command_refreshes_provider_status_after_execution(
             return "ollama", "runtime"
 
     class _StubProtocolOutputAdapter:
-        def __init__(self, emit):
+        def __init__(self, emit, **kwargs):
             self.emit = emit
+            self.kwargs = kwargs
 
     executed = {}
 
@@ -246,8 +247,9 @@ def test_handle_slash_command_refreshes_provider_status_after_execution(
 
 def test_handle_slash_command_writes_command_history_on_summary(tmp_path, monkeypatch):
     class _StubProtocolOutputAdapter:
-        def __init__(self, emit):
+        def __init__(self, emit, **kwargs):
             self.emit = emit
+            self.kwargs = kwargs
 
     history = {}
 
@@ -289,8 +291,9 @@ def test_handle_slash_command_writes_command_history_on_summary(tmp_path, monkey
 
 def test_handle_slash_command_writes_error_history_on_failure(tmp_path, monkeypatch):
     class _StubProtocolOutputAdapter:
-        def __init__(self, emit):
+        def __init__(self, emit, **kwargs):
             self.emit = emit
+            self.kwargs = kwargs
 
     history = {}
 
@@ -385,7 +388,7 @@ def test_handle_user_query_maps_context_compaction_to_info_alert(monkeypatch):
         },
         "",
     ) in bridge.calls
-    assert ("text", {"content": "done"}, "") in bridge.calls
+    assert ("text", {"content": "done", "markdown": True}, "") in bridge.calls
     assert ("done", {"summary": ""}, "") in bridge.calls
 
 
@@ -562,6 +565,66 @@ def test_await_startup_diagnostic_ack_waits_for_confirm_response():
     ]
 
 
+def test_await_startup_diagnostic_ack_accepts_component_response():
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "component_response",
+                "id": go_tui_launcher._STARTUP_DIAGNOSTIC_CONFIRM_ID,
+                "payload": {"data": {"confirmed": True, "action": "submit"}},
+            }
+        ]
+    )
+
+    go_tui_launcher._await_startup_diagnostic_ack(bridge)
+
+    assert bridge.calls == [
+        (
+            "confirm",
+            {
+                "title": "Startup failed",
+                "message": "Press Enter to exit.",
+                "default": True,
+            },
+            go_tui_launcher._STARTUP_DIAGNOSTIC_CONFIRM_ID,
+        )
+    ]
+
+
+def test_protocol_confirm_sends_component_render_and_returns_confirmation():
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "component_response",
+                "id": "confirm-123",
+                "payload": {"data": {"confirmed": True, "action": "submit"}},
+            }
+        ]
+    )
+
+    original_uuid4 = go_tui_launcher.uuid.uuid4
+    go_tui_launcher.uuid.uuid4 = lambda: "confirm-123"
+    try:
+        result = go_tui_launcher._protocol_confirm(bridge, "Clear queue?")
+    finally:
+        go_tui_launcher.uuid.uuid4 = original_uuid4
+
+    assert result is True
+    assert bridge.calls == [
+        (
+            "component_render",
+            {
+                "component": "confirm",
+                "data": {
+                    "question": "Clear queue?",
+                    "default": False,
+                },
+            },
+            "confirm-123",
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Phase 3: HITL interrupt → component_render → response → resume
 # ---------------------------------------------------------------------------
@@ -627,7 +690,10 @@ def test_handle_user_query_interrupt_renders_component_and_resumes(monkeypatch):
 
     # Verify done was sent.
     done_calls = [c for c in bridge.calls if c[0] == "done"]
-    assert len(done_calls) == 1
+    assert done_calls == [
+        ("done", {"summary": "interrupt"}, ""),
+        ("done", {"summary": ""}, ""),
+    ]
 
 
 def test_handle_interrupt_quit_returns_none():

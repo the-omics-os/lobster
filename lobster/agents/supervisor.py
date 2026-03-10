@@ -23,6 +23,7 @@ def create_supervisor_prompt(
     data_manager: DataManagerV2,
     config: Optional[SupervisorConfig] = None,
     active_agents: Optional[List[str]] = None,
+    interactive: bool = True,
 ) -> str:
     """Create dynamic supervisor prompt based on system state and configuration.
 
@@ -30,6 +31,8 @@ def create_supervisor_prompt(
         data_manager: DataManagerV2 instance for data context
         config: Optional supervisor configuration (uses defaults if None)
         active_agents: Optional list of active agent names (auto-discovers if None)
+        interactive: Whether running in interactive mode. When False, HITL
+            prompts are replaced with best-judgment instructions.
 
     Returns:
         str: Dynamically generated supervisor prompt
@@ -46,7 +49,7 @@ def create_supervisor_prompt(
         _build_cognitive_protocol(),
         _build_agent_directory(active_agents, config),
         _build_orchestration_principles(),
-        _build_response_behavior(config),
+        _build_response_behavior(config, interactive=interactive),
         _build_agent_result_memory(),
     ]
 
@@ -207,28 +210,40 @@ RESPONSE QUALITY:
 </Orchestration Principles>"""
 
 
-def _build_response_behavior(config: SupervisorConfig) -> str:
+def _build_response_behavior(config: SupervisorConfig, interactive: bool = True) -> str:
     """Build config-driven response rules, one line per rule."""
     rules = ["<Response Behavior>"]
 
-    if config.ask_clarification_questions:
+    if not interactive:
+        # Non-interactive (query) mode: no HITL, no confirmations
         rules.append(
-            f"- Ask up to {config.max_clarification_questions} clarifying questions only when essential. If unambiguous, summarize intent and proceed."
+            "- You are in NON-INTERACTIVE (single-query) mode. You CANNOT ask the user questions or request confirmation."
+        )
+        rules.append(
+            "- Make your best judgment on ambiguous requests. Proceed autonomously with reasonable defaults."
+        )
+        rules.append(
+            "- Skip download confirmations and metadata previews — proceed directly."
         )
     else:
-        rules.append(
-            "- Proceed with best interpretation without clarification questions unless absolutely necessary."
-        )
+        if config.ask_clarification_questions:
+            rules.append(
+                f"- Ask up to {config.max_clarification_questions} clarifying questions only when essential. If unambiguous, summarize intent and proceed."
+            )
+        else:
+            rules.append(
+                "- Proceed with best interpretation without clarification questions unless absolutely necessary."
+            )
 
-    if config.require_download_confirmation:
-        rules.append(
-            "- Confirm with the user before initiating downloads (unless ADMIN SUPERUSER)."
-        )
+        if config.require_download_confirmation:
+            rules.append(
+                "- Confirm with the user before initiating downloads (unless ADMIN SUPERUSER)."
+            )
 
-    if config.require_metadata_preview:
-        rules.append(
-            "- Fetch metadata preview first and confirm before downloading datasets (unless ADMIN SUPERUSER)."
-        )
+        if config.require_metadata_preview:
+            rules.append(
+                "- Fetch metadata preview first and confirm before downloading datasets (unless ADMIN SUPERUSER)."
+            )
 
     if config.summarize_expert_output:
         rules.append(

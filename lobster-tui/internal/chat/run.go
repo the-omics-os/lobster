@@ -58,7 +58,9 @@ func Run(fdIn, fdOut int, themeName string, version string, inline bool) error {
 	}
 	activeTheme := theme.Current
 	if activeTheme == nil {
-		activeTheme = theme.LobsterDark
+		// Shouldn't happen — init() always sets Current — but guard anyway.
+		_ = theme.SetTheme(theme.AutoDetect())
+		activeTheme = theme.Current
 	}
 
 	// ---- BubbleTea model ----------------------------------------------------

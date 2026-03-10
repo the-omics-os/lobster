@@ -3,8 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
+import lobster.cli_internal.commands.heavy.display_helpers as display_helpers
 import lobster.cli_internal.commands.heavy.slash_commands as slash_commands
 from lobster.cli_internal.commands.output_adapter import (
+    hint_block,
     kv_block,
     list_block,
     section_block,
@@ -566,6 +568,46 @@ def test_read_command_protocol_mode_renders_text_file_contents(tmp_path, monkeyp
     ]
 
 
+def test_read_command_protocol_mode_truncates_large_text_preview(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+    monkeypatch.setattr(slash_commands, "current_directory", tmp_path)
+    long_file = tmp_path / "guide.md"
+    long_content = "".join(f"line {idx:03d}\n" for idx in range(130))
+    long_file.write_text(long_content, encoding="utf-8")
+
+    summary = slash_commands._execute_command(
+        "/read guide.md",
+        client,
+        original_command="/read guide.md",
+        output=output,
+    )
+
+    assert summary == "Displayed text file 'guide.md' (Text file, 130 lines)"
+    assert output.messages[0] == (
+        "table",
+        {
+            "title": "File",
+            "columns": [{"name": "Field"}, {"name": "Value"}],
+            "rows": [
+                ["Name", "guide.md"],
+                ["Path", str(long_file)],
+                ["Type", "Text file"],
+            ],
+        },
+    )
+    assert output.messages[1] == (None, "Contents: guide.md")
+    preview = output.messages[2]
+    assert preview[0] == "code"
+    assert preview[1] == "text"
+    assert "line 119" in preview[2]
+    assert "line 120" not in preview[2]
+    assert output.messages[3] == (
+        "dim",
+        "Preview truncated for chat. Use `/open guide.md` for the full file.",
+    )
+
+
 def test_read_command_protocol_mode_handles_glob_miss_with_structured_output(tmp_path, monkeypatch):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
@@ -682,6 +724,7 @@ def test_workspace_status_protocol_mode_renders_structured_blocks(tmp_path):
             "columns": [{"name": "Field"}, {"name": "Value"}],
             "rows": [
                 ["Workspace", str(tmp_path)],
+                ["Datasets Available", "1"],
                 ["Modalities Loaded", "0"],
                 ["Provenance", "Enabled"],
                 ["MuData", "Not installed"],
@@ -691,19 +734,72 @@ def test_workspace_status_protocol_mode_renders_structured_blocks(tmp_path):
     )
     assert output.messages[2][0] == "table"
     assert output.messages[2][1]["title"] == "Directories"
+    assert output.messages[2][1]["columns"] == [
+        {"name": "Directory", "style": "bold white"},
+        {"name": "Files", "style": "cyan", "justify": "right", "width": 8},
+        {"name": "Size", "style": "green", "justify": "right", "width": 10},
+    ]
     assert output.messages[3] == ("dim", "No modalities currently loaded")
     assert output.messages[4] == (
-        "table",
-        {
-            "title": "System Capabilities",
-            "columns": [{"name": "Field"}, {"name": "Value"}],
-            "rows": [
-                ["Backends", "h5ad"],
-                ["Adapters", "transcriptomics"],
-            ],
-            "width": None,
-        },
+        "dim",
+        "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details.",
     )
+
+
+def test_workspace_status_protocol_mode_uses_compact_active_modality_list(tmp_path):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+    modality_names = [f"modality_{idx}" for idx in range(5)]
+
+    client.data_manager.get_workspace_status = lambda: {
+        "workspace_path": str(tmp_path),
+        "modalities_loaded": len(modality_names),
+        "provenance_enabled": True,
+        "mudata_available": False,
+        "directories": {
+            "data": str(tmp_path / "data"),
+            "exports": str(tmp_path / "exports"),
+        },
+        "registered_backends": ["h5ad"],
+        "registered_adapters": ["transcriptomics"],
+        "modality_names": modality_names,
+    }
+    client.data_manager.list_modalities = lambda: modality_names
+    client.data_manager.get_modality = lambda _name: SimpleNamespace(
+        n_obs=128,
+        n_vars=64,
+        obs=SimpleNamespace(columns=["cell_type", "batch"]),
+        var=SimpleNamespace(columns=["gene_name"]),
+        layers={"counts": object()},
+        obsm={"X_umap": object()},
+        varm={},
+        uns={"neighbors": object()},
+    )
+
+    summary = slash_commands._execute_command(
+        "/workspace",
+        client,
+        original_command="/workspace",
+        output=output,
+    )
+
+    assert summary == "Displayed workspace status and information"
+    assert (None, "Active Modalities") in output.messages
+    assert any(
+        message[0] is None and "modality_0" in message[1] and "modality_4" in message[1]
+        for message in output.messages
+    )
+    assert all(
+        not (
+            message[0] == "table"
+            and message[1].get("title") in modality_names
+        )
+        for message in output.messages
+    )
+    assert (
+        "dim",
+        "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details.",
+    ) in output.messages
 
 
 def test_workspace_info_protocol_mode_renders_dataset_table(tmp_path):
@@ -758,6 +854,66 @@ def test_workspace_load_protocol_mode_renders_loaded_dataset(tmp_path):
         (None, "Loading dataset: geo_gse12345_rna..."),
         (None, "Loaded dataset: geo_gse12345_rna (12.5 MB)"),
     ]
+
+
+def test_data_command_protocol_mode_compacts_long_modality_labels(tmp_path):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+    long_name = "geo_gse247686_transcriptomics_single_cell_autosave"
+
+    client.data_manager.has_data = lambda: True
+    client.data_manager.get_data_summary = lambda: {
+        "status": "2 modalities loaded",
+        "total_obs": 999,
+        "total_vars": 888,
+        "modalities": {
+            long_name: {
+                "shape": (30197, 10),
+                "data_type": "ndarray",
+                "memory_usage": "1.15 MB (dense)",
+                "is_sparse": False,
+            },
+            "rna_reference": {
+                "shape": (128, 64),
+                "data_type": "csr_matrix",
+                "memory_usage": "0.12 MB (sparse)",
+                "is_sparse": True,
+            },
+        },
+    }
+    client.data_manager.current_metadata = {}
+
+    summary = slash_commands._execute_command(
+        "/data",
+        client,
+        original_command="/data",
+        output=output,
+    )
+
+    assert summary == "Displayed data summary (2 modalities)"
+    assert output.messages[0] == (
+        "table",
+        {
+            "title": "🦞 Current Data Summary",
+            "columns": [
+                {"name": "Property", "style": "bold grey93"},
+                {"name": "Value", "style": "white"},
+            ],
+            "rows": [
+                ["Status", "2 modalities loaded"],
+                ["Total Shape", "999 × 888"],
+            ],
+        },
+    )
+    assert output.messages[1] == (None, "Individual Modality Details")
+    detail_rows = output.messages[2][1]["rows"]
+    assert detail_rows[0][0] != long_name
+    assert "..." in detail_rows[0][0]
+    assert detail_rows[0][2] == "1.15 MB"
+    assert output.messages[3] == (
+        "dim",
+        "Use `/describe <modality>` for a full modality inspection.",
+    )
 
 
 def test_workspace_load_protocol_mode_renders_file_load(tmp_path, monkeypatch):
@@ -1796,51 +1952,330 @@ def test_config_model_protocol_mode_renders_structured_output(tmp_path, monkeypa
     assert output.messages[2][1]["title"] == "Model Commands"
 
 
-@pytest.mark.parametrize(
-    ("command", "warning_message", "hint_message"),
-    [
-        (
-            "/status-panel",
-            "/status-panel renders Rich dashboard panels and is not available in Go TUI.",
-            "Use /status instead.",
+def test_config_show_protocol_mode_groups_agent_model_assignments(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    class _FakeResolver:
+        def __init__(self, workspace_path: Path | None = None):
+            self.workspace_path = workspace_path
+
+        def resolve_provider(self, runtime_override=None):
+            _ = runtime_override
+            return ("omics-os", "workspace config")
+
+        def resolve_profile(self):
+            return ("production", "workspace config")
+
+        def resolve_model(self, agent_name=None, runtime_override=None, provider=None):
+            _ = runtime_override, provider
+            mapping = {
+                "genomics_expert": (
+                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "provider default (omics-os)",
+                ),
+                "research_agent": (
+                    "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+                    "provider default (omics-os)",
+                ),
+                "visualization_expert_agent": (
+                    "us.anthropic.claude-opus-4-1-20260112-v1:0",
+                    "workspace override",
+                ),
+            }
+            return mapping[agent_name]
+
+    class _FakeSettings:
+        def get_agent_llm_params(self, _agent_name):
+            return {}
+
+    class _FakeProvider:
+        def get_default_model(self):
+            return "provider-default-model"
+
+    fake_agent_registry = {
+        "genomics_expert": SimpleNamespace(display_name="Genomics Expert"),
+        "research_agent": SimpleNamespace(display_name="Research Agent"),
+        "visualization_expert_agent": SimpleNamespace(
+            display_name="Visualization Expert"
         ),
-        (
-            "/workspace-info",
-            "/workspace-info renders Rich dashboard panels and is not available in Go TUI.",
-            "Use /workspace or /files instead.",
-        ),
-        (
-            "/analysis-dash",
-            "/analysis-dash renders Rich dashboard panels and is not available in Go TUI.",
-            "Use /plots and /metadata instead.",
-        ),
-        (
-            "/progress",
-            "/progress renders Rich live panels and is not available in Go TUI.",
-            "Use command-family output and transcript history instead.",
-        ),
-    ],
-)
-def test_degraded_admin_protocol_mode_uses_structured_output(
-    tmp_path,
-    command,
-    warning_message,
-    hint_message,
-):
+    }
+
+    class _FakeWorkspaceProviderConfig:
+        @staticmethod
+        def exists(_workspace_path):
+            return True
+
+    class _FakeWorkspaceAgentConfig:
+        @staticmethod
+        def load(_workspace_path):
+            return SimpleNamespace(
+                preset=None,
+                enabled_agents=[
+                    "genomics_expert",
+                    "research_agent",
+                    "visualization_expert_agent",
+                ],
+            )
+
+    import lobster.config.agent_registry as agent_registry
+    import lobster.config.global_config as global_config
+    import lobster.config.settings as settings_mod
+    import lobster.config.subscription_tiers as subscription_tiers
+    import lobster.config.workspace_agent_config as workspace_agent_config
+    import lobster.config.workspace_config as workspace_config
+    import lobster.config.providers as providers
+    import lobster.core.component_registry as component_registry_mod
+    import lobster.core.config_resolver as config_resolver
+    import lobster.core.license_manager as license_manager
+
+    monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
+    monkeypatch.setattr(settings_mod, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(providers, "get_provider", lambda _provider_name: _FakeProvider())
+    monkeypatch.setattr(license_manager, "get_current_tier", lambda: "free")
+    monkeypatch.setattr(
+        subscription_tiers, "is_agent_available", lambda _agent_name, _tier: True
+    )
+    monkeypatch.setattr(agent_registry, "AGENT_REGISTRY", fake_agent_registry)
+    monkeypatch.setattr(
+        workspace_config, "WorkspaceProviderConfig", _FakeWorkspaceProviderConfig
+    )
+    monkeypatch.setattr(
+        workspace_agent_config, "WorkspaceAgentConfig", _FakeWorkspaceAgentConfig
+    )
+    monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / ".config")
+    monkeypatch.setattr(
+        component_registry_mod.component_registry,
+        "list_agents",
+        lambda: {
+            agent_name: SimpleNamespace(
+                display_name=cfg.display_name, tier_requirement="free"
+            )
+            for agent_name, cfg in fake_agent_registry.items()
+        },
+    )
+
+    summary = slash_commands._execute_command(
+        "/config",
+        client,
+        original_command="/config",
+        output=output,
+    )
+
+    assert summary == "Displayed configuration (provider: omics-os, profile: production)"
+    assert output.messages[0][0] == "table"
+    assert output.messages[0][1]["title"] == "⚙️  Current Configuration"
+    assert output.messages[1][0] == "table"
+    assert output.messages[1][1]["title"] == "📁 Configuration Files"
+    assert output.messages[2][0] == "table"
+    assert output.messages[2][1]["title"] == "🤖 Agent Model Assignments"
+    assert output.messages[2][1]["rows"] == [
+        [
+            "us.anthropic...20250929-v1:0",
+            "provider de...t (omics-os)",
+            "2",
+            "Genomics Expert, Research Agent",
+        ],
+        [
+            "us.anthropic...20260112-v1:0",
+            "workspace override",
+            "1",
+            "Visualization Expert",
+        ],
+    ]
+    assert output.messages[3][0] == "table"
+    assert output.messages[3][1]["title"] == "Agent Configuration Summary"
+    assert ["Config source", "Explicit agent list"] in output.messages[3][1]["rows"]
+    assert ["Distinct model configs", "2"] in output.messages[3][1]["rows"]
+    assert output.messages[4] == (
+        "dim",
+        "Use /status for the full agent roster and /config model for provider model catalogs.",
+    )
+    assert output.messages[5] == (
+        "dim",
+        "Use /config provider and /config model for focused follow-up commands.",
+    )
+    assert all(message[1] != "🔀 Agent Hierarchy" for message in output.messages)
+    assert all(message[1] != "📦 Agent Composition" for message in output.messages)
+
+
+def test_build_status_blocks_compact_omits_long_agent_lists(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("LOBSTER_LLM_PROVIDER=omics-os\n")
+
+    import lobster.core.license_manager as license_manager
+    import lobster.core.plugin_loader as plugin_loader
+    import lobster.config.agent_registry as agent_registry
+    import lobster.config.subscription_tiers as subscription_tiers
+
+    monkeypatch.setattr(
+        license_manager,
+        "get_entitlement_status",
+        lambda: {
+            "tier": "free",
+            "tier_display": "Free",
+            "source": "default",
+            "features": ["local_only", "community_support"],
+        },
+    )
+    monkeypatch.setattr(
+        plugin_loader,
+        "get_installed_packages",
+        lambda: {"lobster-ai": "1.0.0", "omics": "dev"},
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "get_worker_agents",
+        lambda: {
+            "research_agent": object(),
+            "genomics_expert": object(),
+            "visualization_expert_agent": object(),
+        },
+    )
+    monkeypatch.setattr(
+        subscription_tiers,
+        "is_agent_available",
+        lambda agent_name, _tier: agent_name != "visualization_expert_agent",
+    )
+
+    blocks = display_helpers.build_status_blocks(compact=True)
+    titles = [block.data.get("title") for block in blocks if block.kind in {"list", "table", "kv", "section"}]
+
+    assert "Runtime Summary" in titles
+    assert "Optional Capabilities" in titles
+    assert "Available Agents (2)" not in titles
+    assert "Premium Agents (1)" not in titles
+    assert "Enabled Features" not in titles
+
+
+def test_status_panel_protocol_mode_renders_status_fallback(tmp_path):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
     summary = slash_commands._execute_command(
-        command,
+        "/status-panel",
         client,
-        original_command=command,
+        original_command="/status-panel",
+        output=output,
+    )
+
+    assert summary is None
+    assert output.messages[0] == (
+        "warning",
+        "/status-panel renders Rich dashboard panels and is not available in Go TUI. Showing /status fallback.",
+    )
+    assert output.messages[1] == (None, "Lobster Status")
+    assert any(
+        message[0] == "table" and message[1]["title"] == "Initialization"
+        for message in output.messages
+    )
+
+
+def test_workspace_info_protocol_mode_renders_workspace_fallback(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    monkeypatch.setattr(
+        slash_commands,
+        "workspace_status",
+        lambda _client, _output, compact=False: _output.render_blocks(
+            [section_block(title="Workspace Status"), hint_block("workspace fallback")]
+        ),
+    )
+
+    summary = slash_commands._execute_command(
+        "/workspace-info",
+        client,
+        original_command="/workspace-info",
         output=output,
     )
 
     assert summary is None
     assert output.messages == [
-        ("warning", warning_message),
-        ("dim", hint_message),
+        (
+            "warning",
+            "/workspace-info renders Rich dashboard panels and is not available in Go TUI. Showing /workspace fallback.",
+        ),
+        (None, "Workspace Status"),
+        ("dim", "workspace fallback"),
+    ]
+
+
+def test_analysis_dash_protocol_mode_renders_metadata_and_plots_fallback(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    monkeypatch.setattr(
+        slash_commands,
+        "metadata_overview",
+        lambda _client, _output: _output.render_blocks(
+            [section_block(title="Metadata Overview"), hint_block("metadata fallback")]
+        ),
+    )
+    monkeypatch.setattr(
+        slash_commands,
+        "plots_list",
+        lambda _client, _output: _output.render_blocks(
+            [section_block(title="Plots"), hint_block("plots fallback")]
+        ),
+    )
+
+    summary = slash_commands._execute_command(
+        "/analysis-dash",
+        client,
+        original_command="/analysis-dash",
+        output=output,
+    )
+
+    assert summary is None
+    assert output.messages == [
+        (
+            "warning",
+            "/analysis-dash renders Rich dashboard panels and is not available in Go TUI. Showing /metadata + /plots fallback.",
+        ),
+        (None, "Metadata Overview"),
+        ("dim", "metadata fallback"),
+        (None, "Plots"),
+        ("dim", "plots fallback"),
+    ]
+
+
+def test_progress_protocol_mode_renders_compact_summary(tmp_path, monkeypatch):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    class _FakeProgressManager:
+        def get_active_operations_count(self):
+            return 3
+
+    monkeypatch.setattr(
+        slash_commands,
+        "get_multi_progress_manager",
+        lambda: _FakeProgressManager(),
+    )
+
+    summary = slash_commands._execute_command(
+        "/progress",
+        client,
+        original_command="/progress",
+        output=output,
+    )
+
+    assert summary is None
+    assert output.messages == [
+        (
+            "warning",
+            "/progress renders Rich live panels and is not available in Go TUI. Showing compact summary.",
+        ),
+        (
+            "table",
+            {
+                "title": "Progress Summary",
+                "columns": [{"name": "Field"}, {"name": "Value"}],
+                "rows": [["Active Operations", "3"]],
+            },
+        ),
+        ("dim", "Use transcript history and command-family output for detailed progress."),
     ]
 
 
@@ -1880,6 +2315,29 @@ def test_config_model_accepts_direct_model_name(tmp_path, monkeypatch):
     )
 
     assert summary == "model:sonnet-4:save=False"
+
+
+def test_status_protocol_mode_uses_compact_status_blocks(tmp_path):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    summary = slash_commands._execute_command(
+        "/status",
+        client,
+        original_command="/status",
+        output=output,
+    )
+
+    assert summary is None
+    titles = [
+        message[1]["title"]
+        for message in output.messages
+        if message[0] == "table"
+    ]
+    assert "Initialization" in titles
+    assert "Subscription" in titles
+    assert "Runtime Summary" in titles
+    assert "Installed Packages" not in titles
 
 
 def test_config_model_accepts_direct_model_name_with_save(tmp_path, monkeypatch):
@@ -2006,6 +2464,38 @@ def test_pipeline_run_protocol_mode_renders_structured_output(tmp_path):
             },
         ),
     ]
+
+
+def test_help_protocol_mode_uses_narrow_table_metadata(tmp_path):
+    output = ProtocolOutputAdapter()
+    client = _DummyClient(tmp_path)
+
+    summary = slash_commands._execute_command(
+        "/help",
+        client,
+        original_command="/help",
+        output=output,
+    )
+
+    assert summary is None
+
+    help_tables = [
+        payload
+        for kind, payload in output.messages
+        if kind == "table" and payload.get("title") == "Admin & UI Commands"
+    ]
+    assert len(help_tables) == 1
+
+    admin_table = help_tables[0]
+    assert admin_table["columns"] == [
+        {"name": "Command", "width": 32, "no_wrap": True, "overflow": "ellipsis"},
+        {"name": "Description", "max_width": 40, "overflow": "fold"},
+    ]
+    assert ["/status-panel", "Status dashboard; Go mode shows /status"] in admin_table["rows"]
+    assert [
+        "/analysis-dash",
+        "Analysis dashboard; Go mode shows /metadata + /plots",
+    ] in admin_table["rows"]
 
 
 def test_pipeline_info_protocol_mode_renders_structured_output(tmp_path):
@@ -2197,11 +2687,11 @@ def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(tmp
 def test_status_command_protocol_mode_resolves_provider_and_model(tmp_path, monkeypatch):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
+    captured = {}
 
-    monkeypatch.setattr(
-        slash_commands,
-        "build_status_blocks",
-        lambda: [
+    def _fake_status_blocks(compact=False):
+        captured["compact"] = compact
+        return [
             section_block(title="Lobster Status"),
             kv_block(
                 [
@@ -2217,7 +2707,12 @@ def test_status_command_protocol_mode_resolves_provider_and_model(tmp_path, monk
                 title="Installed Packages",
             ),
             list_block(["research_agent"], title="Available Agents (1)"),
-        ],
+        ]
+
+    monkeypatch.setattr(
+        slash_commands,
+        "build_status_blocks",
+        _fake_status_blocks,
     )
 
     summary = slash_commands._execute_command(
@@ -2228,6 +2723,7 @@ def test_status_command_protocol_mode_resolves_provider_and_model(tmp_path, monk
     )
 
     assert summary is None
+    assert captured["compact"] is True
     assert output.messages == [
         (None, "Lobster Status"),
         (

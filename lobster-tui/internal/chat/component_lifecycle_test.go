@@ -44,12 +44,12 @@ func (m *mockComponent) Init(data json.RawMessage) error {
 	m.initCalls++
 	return m.initErr
 }
-func (m *mockComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
+func (m *mockComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	m.handleCalls++
 	if m.handlePanic {
 		panic("mock HandleMsg panic")
 	}
-	return m.handleResult
+	return m.handleResult, nil
 }
 func (m *mockComponent) View(w, h int) string {
 	m.viewCalls++
@@ -62,8 +62,9 @@ func (m *mockComponent) SetData(data json.RawMessage) error {
 	m.setDataCalls = append(m.setDataCalls, data)
 	return nil
 }
-func (m *mockComponent) Name() string                { return m.name }
-func (m *mockComponent) Mode() string                { return m.mode }
+func (m *mockComponent) InitCmd() tea.Cmd             { return nil }
+func (m *mockComponent) Name() string                 { return m.name }
+func (m *mockComponent) Mode() string                 { return m.mode }
 func (m *mockComponent) KeyBindings() []key.Binding   { return nil }
 func (m *mockComponent) ChangeEvent() map[string]any  { return m.changeEvent }
 

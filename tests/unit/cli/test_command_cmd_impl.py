@@ -1,3 +1,5 @@
+import json
+
 import typer
 import pytest
 
@@ -177,3 +179,71 @@ def test_metadata_command_impl_clear_uses_adapter_messages(monkeypatch, tmp_path
             "info",
         ),
     ]
+
+
+def test_command_cmd_impl_help_skips_auto_session_resolution(
+    tmp_path, monkeypatch, capsys
+):
+    captured = {}
+    sessions_dir = tmp_path / ".lobster" / "sessions" / "session_recent"
+    sessions_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=True: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra.CommandClient",
+        lambda workspace_path, session_id=None: captured.setdefault(
+            "client", _StubCommandClient(workspace_path, session_id)
+        ),
+    )
+
+    slash_commands.command_cmd_impl(
+        cmd="/help",
+        workspace=tmp_path,
+        session_id=None,
+        json_output=True,
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert captured["client"].session_id is None
+    assert payload["success"] is True
+    assert any(
+        block.get("title") == "Core Commands"
+        for block in payload["data"]["blocks"]
+        if block["kind"] == "table"
+    )
+
+
+def test_command_cmd_impl_query_help_profile_renders_query_subset(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=True: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.session_infra.CommandClient",
+        _StubCommandClient,
+    )
+
+    slash_commands.command_cmd_impl(
+        cmd="/help",
+        workspace=tmp_path,
+        session_id=None,
+        json_output=True,
+        help_profile="query",
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    titles = [
+        block.get("title")
+        for block in payload["data"]["blocks"]
+        if block["kind"] == "table"
+    ]
+
+    assert payload["success"] is True
+    assert titles == ["Query-Compatible Commands"]
+    assert all(title != "Admin & UI Commands" for title in titles)

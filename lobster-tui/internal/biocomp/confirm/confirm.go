@@ -42,38 +42,38 @@ func (c *ConfirmComponent) Init(data json.RawMessage) error {
 	return nil
 }
 
-func (c *ConfirmComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
+func (c *ConfirmComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	switch km.String() {
 	case "left", "right", "tab":
 		c.selected = !c.selected
-		return nil
+		return nil, nil
 	case "enter":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data:   map[string]any{"confirmed": c.selected},
-		}
+		}, nil
 	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{"confirmed": false},
-		}
+		}, nil
 	case "y", "Y":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data:   map[string]any{"confirmed": true},
-		}
+		}, nil
 	case "n", "N":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data:   map[string]any{"confirmed": false},
-		}
+		}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (c *ConfirmComponent) View(width, height int) string {
@@ -119,8 +119,9 @@ func (c *ConfirmComponent) SetData(data json.RawMessage) error {
 	return nil
 }
 
-func (c *ConfirmComponent) Name() string { return "confirm" }
-func (c *ConfirmComponent) Mode() string { return "overlay" }
+func (c *ConfirmComponent) InitCmd() tea.Cmd { return nil }
+func (c *ConfirmComponent) Name() string     { return "confirm" }
+func (c *ConfirmComponent) Mode() string     { return "overlay" }
 
 func (c *ConfirmComponent) KeyBindings() []key.Binding {
 	return []key.Binding{

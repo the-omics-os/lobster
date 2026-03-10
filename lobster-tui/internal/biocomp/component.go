@@ -25,9 +25,15 @@ type BioComponent interface {
 	// Init validates the JSON payload and initializes component state.
 	Init(data json.RawMessage) error
 
+	// InitCmd returns a one-shot tea.Cmd that should be executed after Init
+	// completes (e.g. cursor blink starter). Returns nil if none needed.
+	// The returned cmd is cleared after the first call.
+	InitCmd() tea.Cmd
+
 	// HandleMsg processes a BubbleTea message. Returns non-nil ComponentResult
-	// when the user submits or cancels. Returns nil while still interacting.
-	HandleMsg(msg tea.Msg) *ComponentResult
+	// when the user submits or cancels. Returns (nil, cmd) while still interacting.
+	// The tea.Cmd enables Bubbles widgets (cursor blink, timers, animations).
+	HandleMsg(msg tea.Msg) (*ComponentResult, tea.Cmd)
 
 	// View renders the component content (inside the overlay frame).
 	View(width, height int) string

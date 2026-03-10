@@ -1137,6 +1137,40 @@ def _postprocess_tui_init_result(
     from lobster.ui.bridge.init_adapter import apply_tui_init_result
 
     normalized_result = dict(result)
+
+    # Handle Omics-OS Cloud authentication.
+    provider_name = (normalized_result.get("provider") or "").strip().lower()
+    api_key = (normalized_result.get("api_key") or "").strip()
+    oauth_done = normalized_result.get("oauth_authenticated", False)
+
+    if provider_name == "omics-os" and not api_key:
+        if oauth_done:
+            # Go TUI saved raw tokens to credentials.json. Validate against
+            # the gateway to enrich with email/tier/user_id (matching the
+            # Python browser login flow in cloud_commands.py).
+            _validate_oauth_credentials()
+        else:
+            from lobster.cli_internal.commands.light.cloud_commands import (
+                attempt_login_for_init,
+            )
+
+            success = attempt_login_for_init()
+            if not success:
+                console.print(
+                    "[yellow]Browser login did not complete. "
+                    "You can paste an API key instead.[/yellow]"
+                )
+                api_key = Prompt.ask(
+                    "[bold white]Enter your Omics-OS API key (omk_...)[/bold white]",
+                    default="",
+                )
+                if api_key.strip():
+                    normalized_result["api_key"] = api_key.strip()
+                else:
+                    console.print(
+                        "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
+                    )
+
     normalized_agents = _normalize_selected_agents(normalized_result.get("agents") or [])
     if normalized_agents:
         normalized_agents = _check_and_prompt_install_packages(
@@ -1163,6 +1197,51 @@ def _postprocess_tui_init_result(
             _install_smart_standardization_dependencies()
 
     return normalized_result
+
+
+def _validate_oauth_credentials() -> None:
+    """Validate Go TUI OAuth tokens against the gateway and enrich credentials.
+
+    The Go TUI saves raw tokens (access_token, id_token) to credentials.json
+    but cannot call the gateway to get email/tier/user_id. This function
+    mirrors what the Python browser login does after receiving tokens.
+    """
+    try:
+        from lobster.config.credentials import get_api_key, get_endpoint, load_credentials, save_credentials
+
+        token = get_api_key()
+        if not token:
+            console.print("[yellow]OAuth tokens found but could not be loaded.[/yellow]")
+            return
+
+        endpoint = get_endpoint()
+
+        from lobster.cli_internal.commands.light.cloud_commands import _validate_credentials
+        data = _validate_credentials(endpoint, token, token_type="token")
+        if data is None:
+            console.print(
+                "[yellow]Token validation failed. "
+                "Run 'lobster cloud login' to re-authenticate.[/yellow]"
+            )
+            return
+
+        # Enrich the existing credentials with gateway data.
+        creds = load_credentials() or {}
+        creds["user_id"] = data.get("user_id", "")
+        creds["email"] = data.get("email", "")
+        creds["tier"] = data.get("tier", "free")
+        save_credentials(creds)
+
+        email = data.get("email", "")
+        tier = data.get("tier", "free")
+        console.print(f"[green]Authenticated as {email} (tier: {tier})[/green]")
+
+    except Exception as exc:
+        logger.debug(f"OAuth validation failed: {exc}")
+        console.print(
+            "[yellow]Could not validate OAuth tokens. "
+            "Run 'lobster cloud login' if issues persist.[/yellow]"
+        )
 
 
 def _download_ontology_databases() -> bool:
@@ -2178,48 +2257,101 @@ def init_impl(
     # === END AGENT SELECTION ===
 
     try:
-        # Provider selection
-        console.print("[bold white]Select your LLM provider:[/bold white]")
-        console.print(
-            "  [cyan]1[/cyan] - Claude API (Anthropic) - Quick testing, development"
-        )
-        console.print("  [cyan]2[/cyan] - AWS Bedrock - Production, enterprise use")
-        console.print("  [cyan]3[/cyan] - Ollama (Local) - Privacy, zero cost, offline")
-        console.print(
-            "  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support"
-        )
-        console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
-        console.print("  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models")
-        console.print(
-            "  [cyan]7[/cyan] - OpenRouter - 600+ models via one API key (Claude, GPT-4o, Llama, DeepSeek, ...)"
-        )
-        console.print()
-
-        provider = Prompt.ask(
-            "[bold white]Choose provider[/bold white]",
-            choices=["1", "2", "3", "4", "5", "6", "7"],
-            default="1",
-        )
-
-        # Auto-install provider package if missing (B1)
-        provider_map = {
-            "1": "anthropic",
-            "2": "bedrock",
-            "3": "ollama",
-            "4": "gemini",
-            "5": "azure",
-            "6": "openai",
-            "7": "openrouter",
-        }
-        if not skip_extras and not _in_uv_tool:
-            _ensure_provider_installed(provider_map[provider])
-
         env_lines = []
         env_lines.append("# Lobster AI Configuration")
         env_lines.append("# Generated by lobster init\n")
 
         # Initialize structured config dict for workspace config
         config_dict = {}
+
+        # === Omics-OS Cloud pre-question ===
+        console.print("[bold white]How would you like to connect to an LLM?[/bold white]")
+        console.print(
+            "  [cyan]1[/cyan] - Omics-OS Cloud - No API keys needed, login via browser"
+        )
+        console.print(
+            "  [cyan]2[/cyan] - Bring your own API key (Anthropic, OpenAI, Ollama, etc.)"
+        )
+        console.print()
+
+        llm_choice = Prompt.ask(
+            "[bold white]Choose[/bold white]",
+            choices=["1", "2"],
+            default="1",
+        )
+
+        _omics_os_cloud_selected = False
+        if llm_choice == "1":
+            # Omics-OS Cloud: try browser login, fall back to API key
+            from lobster.cli_internal.commands.light.cloud_commands import (
+                attempt_login_for_init,
+            )
+
+            success = attempt_login_for_init()
+            if success:
+                config_dict["provider"] = "omics-os"
+                env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
+                console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
+                _omics_os_cloud_selected = True
+            else:
+                console.print(
+                    "\n[yellow]Browser login did not complete. "
+                    "You can paste an API key instead.[/yellow]"
+                )
+                api_key = Prompt.ask(
+                    "[bold white]Enter your Omics-OS API key (omk_...) or press Enter to choose another provider[/bold white]",
+                    default="",
+                )
+                if api_key.strip():
+                    config = provider_setup.create_omics_os_config(api_key)
+                    if config.success:
+                        for key, value in config.env_vars.items():
+                            env_lines.append(f"{key}={value}")
+                        config_dict["provider"] = "omics-os"
+                        console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
+                        _omics_os_cloud_selected = True
+                    else:
+                        console.print(f"[red]❌ {config.message}[/red]")
+                # If still not selected, fall through to provider selection
+
+        if not _omics_os_cloud_selected:
+            # Provider selection
+            console.print("\n[bold white]Select your LLM provider:[/bold white]")
+            console.print(
+                "  [cyan]1[/cyan] - Claude API (Anthropic) - Quick testing, development"
+            )
+            console.print("  [cyan]2[/cyan] - AWS Bedrock - Production, enterprise use")
+            console.print("  [cyan]3[/cyan] - Ollama (Local) - Privacy, zero cost, offline")
+            console.print(
+                "  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support"
+            )
+            console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
+            console.print("  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models")
+            console.print(
+                "  [cyan]7[/cyan] - OpenRouter - 600+ models via one API key (Claude, GPT-4o, Llama, DeepSeek, ...)"
+            )
+            console.print()
+
+            provider = Prompt.ask(
+                "[bold white]Choose provider[/bold white]",
+                choices=["1", "2", "3", "4", "5", "6", "7"],
+                default="1",
+            )
+
+            # Auto-install provider package if missing (B1)
+            provider_map = {
+                "1": "anthropic",
+                "2": "bedrock",
+                "3": "ollama",
+                "4": "gemini",
+                "5": "azure",
+                "6": "openai",
+                "7": "openrouter",
+            }
+            if not skip_extras and not _in_uv_tool:
+                _ensure_provider_installed(provider_map[provider])
+        else:
+            provider = "cloud"  # sentinel — skips all provider-specific blocks below
 
         if provider == "1":
             # Claude API setup

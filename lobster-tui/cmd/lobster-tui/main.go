@@ -53,20 +53,20 @@ Commands:
   help     Show this help message
 
 Flags for init:
-  --theme <name>        Theme to use (lobster-dark, lobster-light). Default: lobster-dark
+  --theme <name>        Theme to use (lobster-dark, lobster-light). Default: auto-detect
   --result-file <path>  Write wizard result JSON to a file instead of stdout
 
 Flags for chat:
   --proto-fd-in <fd>   File descriptor for protocol input (required)
   --proto-fd-out <fd>  File descriptor for protocol output (required)
-  --theme <name>       Theme to use (lobster-dark, lobster-light). Default: lobster-dark
+  --theme <name>       Theme to use (lobster-dark, lobster-light). Default: auto-detect
   --inline             Run in inline mode (no alternate screen, cleaner rendering)
 `, Version)
 }
 
 // runInit parses the flags for the init subcommand and launches the wizard.
 func runInit(args []string) {
-	themeName := "lobster-dark"
+	themeName := ""
 	resultFile := ""
 
 	// Parse --theme flag from args.
@@ -105,7 +105,7 @@ func runInit(args []string) {
 
 // runChat parses the flags for the chat subcommand and launches the session.
 func runChat(args []string) {
-	themeName := "lobster-dark"
+	themeName := ""
 	fdIn := -1
 	fdOut := -1
 	inline := false

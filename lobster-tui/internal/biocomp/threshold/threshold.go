@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -55,37 +56,37 @@ func (c *ThresholdSliderComponent) Init(data json.RawMessage) error {
 	return nil
 }
 
-func (c *ThresholdSliderComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
+func (c *ThresholdSliderComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	switch km.String() {
 	case "right":
 		c.adjustValue(c.data.Step)
-		return nil
+		return nil, nil
 	case "left":
 		c.adjustValue(-c.data.Step)
-		return nil
+		return nil, nil
 	case "shift+right":
 		c.adjustValue(10 * c.data.Step)
-		return nil
+		return nil, nil
 	case "shift+left":
 		c.adjustValue(-10 * c.data.Step)
-		return nil
+		return nil, nil
 	case "enter":
 		return &biocomp.ComponentResult{
 			Action: "submit",
 			Data:   map[string]any{"value": roundTo(c.value, c.precision)},
-		}
+		}, nil
 	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{"value": roundTo(c.value, c.precision)},
-		}
+		}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (c *ThresholdSliderComponent) View(width, height int) string {
@@ -184,8 +185,9 @@ func (c *ThresholdSliderComponent) SetData(data json.RawMessage) error {
 	return nil
 }
 
-func (c *ThresholdSliderComponent) Name() string { return "threshold_slider" }
-func (c *ThresholdSliderComponent) Mode() string { return "overlay" }
+func (c *ThresholdSliderComponent) InitCmd() tea.Cmd { return nil }
+func (c *ThresholdSliderComponent) Name() string     { return "threshold_slider" }
+func (c *ThresholdSliderComponent) Mode() string     { return "overlay" }
 
 func (c *ThresholdSliderComponent) KeyBindings() []key.Binding {
 	return []key.Binding{
@@ -205,9 +207,13 @@ func (c *ThresholdSliderComponent) ChangeEvent() map[string]any {
 }
 
 // adjustValue changes the current value by delta, clamped to [min, max].
+// Only sets pendingChange if the value actually changed.
 func (c *ThresholdSliderComponent) adjustValue(delta float64) {
+	old := c.value
 	c.value = clamp(c.value+delta, c.data.Min, c.data.Max)
-	c.pendingChange = true
+	if c.value != old {
+		c.pendingChange = true
+	}
 }
 
 // clamp restricts v to [lo, hi].
@@ -222,8 +228,25 @@ func clamp(v, lo, hi float64) float64 {
 }
 
 // decimalPlaces returns the number of decimal places in a float step value.
+// Handles scientific notation (e.g. 1e-06 → 6 decimal places).
 func decimalPlaces(step float64) int {
+	if step >= 1 {
+		return 0
+	}
 	s := fmt.Sprintf("%g", step)
+	// Handle scientific notation: 1e-06 means 6 decimal places.
+	if eIdx := strings.Index(s, "e-"); eIdx >= 0 {
+		exp, err := strconv.Atoi(s[eIdx+2:])
+		if err == nil {
+			mantissa := s[:eIdx]
+			dotIdx := strings.IndexByte(mantissa, '.')
+			mantissaDecimals := 0
+			if dotIdx >= 0 {
+				mantissaDecimals = len(mantissa) - dotIdx - 1
+			}
+			return exp + mantissaDecimals
+		}
+	}
 	idx := strings.IndexByte(s, '.')
 	if idx < 0 {
 		return 0

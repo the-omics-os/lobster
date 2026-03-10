@@ -454,7 +454,7 @@ def _create_agents_single_pass(
                         )
                     )
                 else:
-                    logger.warning(
+                    logger.debug(
                         f"Child '{child_name}' not enabled, skipping delegation tool"
                     )
 
@@ -538,6 +538,7 @@ def _build_supervisor_tools(
     data_manager: DataManagerV2,
     store,
     llm=None,
+    interactive: bool = True,
 ) -> Tuple[List, List[str]]:
     """Build all supervisor tools: handoff, workspace, code execution, and todo.
 
@@ -548,6 +549,7 @@ def _build_supervisor_tools(
         data_manager: DataManagerV2 for workspace/code tools
         store: Optional InMemoryStore for dual-write
         llm: Optional supervisor LLM for ask_user component selection
+        interactive: Whether running in interactive mode. When False, ask_user is excluded.
 
     Returns:
         (all_supervisor_tools, supervisor_accessible_names):
@@ -567,10 +569,6 @@ def _build_supervisor_tools(
             is_supervisor_accessible = agent_config.supervisor_accessible
 
         if is_supervisor_accessible:
-            # Use agent's own handoff_tool_description for routing signal.
-            # Small models (8B-20B) rely on tool descriptions for selection —
-            # they cannot cross-reference a separate Agent Directory block.
-            # Rich descriptions with domain keywords enable pattern matching.
             desc = agent_config.handoff_tool_description or (
                 f"Delegate task to {agent_config.display_name}."
             )
@@ -606,19 +604,24 @@ def _build_supervisor_tools(
     # Todo tools for planning
     write_todos, read_todos = create_todo_tools()
 
-    from lobster.tools.user_interaction import create_ask_user_tool
-
-    ask_user = create_ask_user_tool(llm=llm)
-
-    all_supervisor_tools = agent_tools + [
+    utility_tools = [
         list_available_modalities,
         get_content_from_workspace,
         delete_from_workspace,
         write_todos,
         read_todos,
         execute_custom_code,
-        ask_user,
     ]
+
+    # Only include ask_user in interactive mode (chat).
+    # In non-interactive mode (query), the supervisor must use best-judgment.
+    if interactive:
+        from lobster.tools.user_interaction import create_ask_user_tool
+
+        ask_user = create_ask_user_tool(llm=llm)
+        utility_tools.append(ask_user)
+
+    all_supervisor_tools = agent_tools + utility_tools
 
     logger.debug(f"Supervisor-accessible agents: {supervisor_accessible_names}")
     logger.debug(
@@ -683,6 +686,7 @@ def create_bioinformatics_graph(
     config: Optional["WorkspaceAgentConfig"] = None,
     enabled_agents: Optional[List[str]] = None,
     aquadif_monitor=None,
+    interactive: bool = True,
 ) -> Tuple:
     """Create the bioinformatics multi-agent graph using langgraph_supervisor.
 
@@ -793,6 +797,7 @@ def create_bioinformatics_graph(
         data_manager=data_manager,
         store=store,
         llm=supervisor_model,
+        interactive=interactive,
     )
 
     # Create supervisor prompt with active agents list
@@ -800,6 +805,7 @@ def create_bioinformatics_graph(
         data_manager=data_manager,
         config=supervisor_config,
         active_agents=supervisor_accessible_names,
+        interactive=interactive,
     )
 
     # ==========================================================================

@@ -136,6 +136,7 @@ from lobster.cli_internal.commands import (
     workspace_status,
 )
 from lobster.cli_internal.commands.light.agent_commands import agents_app
+from lobster.cli_internal.commands.light.cloud_commands import cloud_app
 from lobster.cli_internal.commands.light.scaffold_commands import scaffold_app
 from lobster.cli_internal.commands.light.validate_commands import validate_app
 from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
@@ -386,6 +387,9 @@ def config_callback(
 
 # Register agents subcommand group
 app.add_typer(agents_app, name="agents")
+
+# Register cloud subcommand group
+app.add_typer(cloud_app, name="cloud")
 
 # Register scaffold subcommand group
 app.add_typer(scaffold_app, name="scaffold")
@@ -1239,28 +1243,29 @@ def dashboard_command(
 def query(
     question: str,
     workspace: Optional[Path] = typer.Option(None, "--workspace", "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"),
+        help="Workspace directory. Defaults to ./.lobster_workspace or LOBSTER_WORKSPACE."),
     session_id: Optional[str] = typer.Option(None, "--session-id", "-s",
-        help="Session ID to continue (use 'latest' for most recent session in workspace)"),
+        help="Continue a saved session. Use 'latest' for the most recent one."),
     reasoning: bool = typer.Option(False, "--reasoning", is_flag=True,
-        help="Show agent reasoning and thinking process"),
+        help="Show agent reasoning."),
     verbose: bool = typer.Option(False, "--verbose", "-v",
-        help="Show detailed tool usage and agent activity"),
+        help="Show agent and tool trace details."),
     debug: bool = typer.Option(False, "--debug", "-d",
-        help="Enable debug mode with detailed logging"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o"),
+        help="Enable debug logging."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o",
+        help="Write the final answer to a file."),
     profile_timings: Optional[bool] = typer.Option(None, "--profile-timings/--no-profile-timings",
-        help="Enable timing diagnostics for data manager operations"),
+        help="Show data-manager timing diagnostics."),
     provider: Optional[str] = typer.Option(None, "--provider", "-p",
-        help="LLM provider to use (bedrock, anthropic, ollama). Overrides auto-detection."),
+        help="Provider override. Uses the configured provider when omitted."),
     model: Optional[str] = typer.Option(None, "--model", "-m",
-        help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct). Overrides configuration."),
+        help="Model override. Uses the configured model when omitted."),
     stream: bool = typer.Option(False, "--stream/--no-stream",
-        help="Enable real-time text streaming (default: off for query mode)"),
+        help="Stream text as it arrives. Disabled automatically in trace mode."),
     json_output: bool = typer.Option(False, "--json", "-j", is_flag=True,
-        help="Output result as JSON for programmatic consumption. Suppresses all Rich formatting."),
+        help="Emit JSON only on stdout."),
 ):
-    """Send a single query to the agent system."""
+    """Send a single query, or run a local slash command when QUESTION starts with '/'."""
     from lobster.cli_internal.commands.heavy.query_commands import query_impl
     query_impl(
         question=question, workspace=workspace, session_id=session_id,

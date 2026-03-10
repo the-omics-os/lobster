@@ -70,11 +70,11 @@ func TestCellTypeNavigation(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Down twice.
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
-	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
+	result, _ = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -83,7 +83,7 @@ func TestCellTypeNavigation(t *testing.T) {
 	}
 
 	// Up once.
-	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
+	result, _ = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyUp})
 	if result != nil {
 		t.Fatal("expected nil result during navigation")
 	}
@@ -107,7 +107,7 @@ func TestCellTypeEditMode(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Enter edit mode on cluster 0.
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if result != nil {
 		t.Fatal("expected nil result when entering edit mode")
 	}
@@ -124,7 +124,7 @@ func TestCellTypeEditMode(t *testing.T) {
 	}
 
 	// Esc exits edit mode.
-	result = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	result, _ = c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result != nil {
 		t.Fatal("expected nil result when exiting edit mode via Esc")
 	}
@@ -153,7 +153,7 @@ func TestCellTypeTabAcceptNext(t *testing.T) {
 	}
 
 	// Tab moves to next cluster and enters edit mode there.
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyTab})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyTab})
 	if result != nil {
 		t.Fatal("expected nil result on Tab")
 	}
@@ -183,7 +183,7 @@ func TestCellTypeSubmit(t *testing.T) {
 	// Cluster 1 already has prefilled "Monocytes".
 
 	// Submit via Ctrl+S.
-	result := c.HandleMsg(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	if result == nil {
 		t.Fatal("expected non-nil result on Ctrl+S")
 	}
@@ -211,7 +211,7 @@ func TestCellTypeCancel(t *testing.T) {
 	c := initComponent(t, sampleClusters())
 
 	// Esc when not editing should cancel.
-	result := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	result, _ := c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if result == nil {
 		t.Fatal("expected non-nil result on Esc")
 	}
@@ -256,7 +256,7 @@ func TestCellTypeProgress(t *testing.T) {
 		t.Fatalf("expected 1 labeled initially, got %d", c.labeledCount())
 	}
 
-	// Label cluster 0.
+	// Label cluster 0. (discard second return value — no cmd assertions needed)
 	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEnter}) // edit cluster 0
 	for _, r := range "T cells" {
 		c.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})

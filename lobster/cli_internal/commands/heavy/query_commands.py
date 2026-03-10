@@ -268,17 +268,30 @@ def query_impl(
     ),
 ):
     """
-    Send a single query to the agent system.
+    Send a single query, or run a local slash command when QUESTION starts with "/".
 
     Use --session-id to continue a previous conversation:
       lobster query "follow up question" --session-id latest
       lobster query "follow up question" --session-id session_20241208_150000
 
-    Use --json for machine-readable output (no Rich formatting):
+    Use --json for machine-readable query output:
       lobster query "analyze data" --json | jq .response
 
-    Agent reasoning is shown by default. Use --no-reasoning to disable.
+    Slash commands reuse the standalone `lobster command` path.
     """
+    stripped_question = question.strip()
+    if stripped_question.startswith("/"):
+        from lobster.cli_internal.commands.heavy.slash_commands import command_cmd_impl
+
+        command_cmd_impl(
+            cmd=stripped_question,
+            workspace=workspace,
+            session_id=session_id,
+            json_output=json_output,
+            help_profile="query",
+        )
+        return
+
     # In JSON mode, redirect Rich console to stderr so only JSON hits stdout
     if json_output:
         console.file = sys.stderr
@@ -341,6 +354,7 @@ def query_impl(
                 console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
 
     # Initialize client with custom session_id if new session
+    # Non-interactive: excludes ask_user tool and adjusts supervisor prompt
     client = init_client(
         workspace,
         reasoning,
@@ -350,6 +364,7 @@ def query_impl(
         provider,
         model,
         session_id_for_client,
+        interactive=False,
     )
 
     # Load session if found
@@ -438,9 +453,25 @@ def query_impl(
                 verbose=verbose,
             )
     else:
-        console.print(
-            f"[bold red on white] ⚠️  Error [/bold red on white] [red]{result['error']}[/red]"
-        )
+        error_msg = result.get("error", "Unknown error")
+        if "rate limit" in error_msg.lower() or "RateLimitError" in error_msg:
+            from rich.panel import Panel
+
+            console.print(Panel(
+                "[bold]Too many API requests in a short window.[/bold]\n\n"
+                "This can happen when multiple browser tabs are open on app.omics-os.com "
+                "(each tab polls the API).\n\n"
+                "[bold]What to do:[/bold]\n"
+                "  \u2022 Wait 10-15 seconds and retry\n"
+                "  \u2022 Close extra browser tabs on app.omics-os.com\n"
+                "  \u2022 Run: [bold]lobster cloud status[/bold]",
+                title="\U0001f6ab Rate Limited",
+                border_style="yellow",
+            ))
+        else:
+            console.print(
+                f"[bold red on white] \u26a0\ufe0f  Error [/bold red on white] [red]{error_msg}[/red]"
+            )
 
     _maybe_print_timings(client, "Query")
 
