@@ -644,6 +644,7 @@ def init_client(
     provider_override: Optional[str] = None,
     model_override: Optional[str] = None,
     session_id: Optional[str] = None,
+    interactive: bool = True,
 ) -> "AgentClient":
     """Initialize a client and render startup diagnostics via the Rich console."""
     import typer
@@ -658,6 +659,7 @@ def init_client(
             provider_override=provider_override,
             model_override=model_override,
             session_id=session_id,
+            interactive=interactive,
         )
     except StartupDiagnosticError as exc:
         render_startup_diagnostic_rich(console, exc.diagnostic)
@@ -726,6 +728,7 @@ def _create_local_agent_client(
     callbacks: list[Any],
     provider_override: Optional[str],
     model_override: Optional[str],
+    interactive: bool = True,
 ) -> "AgentClient":
     from lobster.core.client import AgentClient
 
@@ -737,6 +740,7 @@ def _create_local_agent_client(
         custom_callbacks=callbacks,
         provider_override=provider_override,
         model_override=model_override,
+        interactive=interactive,
     )
 
 
@@ -749,6 +753,7 @@ def init_client_or_raise_startup_diagnostic(
     provider_override: Optional[str] = None,
     model_override: Optional[str] = None,
     session_id: Optional[str] = None,
+    interactive: bool = True,
 ) -> "AgentClient":
     """Initialize either local or cloud client, raising structured diagnostics."""
     from lobster.core.config_resolver import ConfigurationError
@@ -940,6 +945,7 @@ def init_client_or_raise_startup_diagnostic(
             callbacks=callbacks,
             provider_override=provider_override,
             model_override=model_override,
+            interactive=interactive,
         )
     except (ImportError, ValueError, ConfigurationError) as exc:
         raise_startup_diagnostic(

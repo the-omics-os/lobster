@@ -45,6 +45,7 @@ _PROVIDER_ENV_KEYS: Dict[str, list[str]] = {
     "azure":      ["AZURE_AI_ENDPOINT", "AZURE_AI_CREDENTIAL"],
     "openai":     ["OPENAI_API_KEY"],
     "openrouter": ["OPENROUTER_API_KEY"],
+    "omics-os":   ["OMICS_OS_API_KEY"],
 }
 
 # Providers that support the LOBSTER_PROFILE env var
@@ -145,6 +146,12 @@ def apply_tui_init_result(
     elif provider == "openrouter":
         if api_key:
             env_lines.append(f"OPENROUTER_API_KEY={api_key}")
+
+    elif provider == "omics-os":
+        if api_key:
+            env_lines.append(f"OMICS_OS_API_KEY={api_key}")
+        # If no api_key, user authenticated via browser (credentials.json)
+        env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
 
     # Profile (Anthropic / Bedrock only)
     effective_profile = profile if provider in _PROFILE_PROVIDERS else ""
