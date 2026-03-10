@@ -63,16 +63,16 @@ func (c *CellTypeSelectorComponent) Init(data json.RawMessage) error {
 	return nil
 }
 
-func (c *CellTypeSelectorComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
+func (c *CellTypeSelectorComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	km, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		// Forward non-key messages to active textinput if editing.
 		if c.editingIndex >= 0 && c.editingIndex < len(c.inputs) {
 			var cmd tea.Cmd
 			c.inputs[c.editingIndex], cmd = c.inputs[c.editingIndex].Update(msg)
-			_ = cmd
+			return nil, cmd
 		}
-		return nil
+		return nil, nil
 	}
 
 	// When editing a textinput, most keys go to the input.
@@ -83,35 +83,35 @@ func (c *CellTypeSelectorComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentRes
 }
 
 // handleNavMode processes keys when not editing any textinput.
-func (c *CellTypeSelectorComponent) handleNavMode(km tea.KeyPressMsg) *biocomp.ComponentResult {
+func (c *CellTypeSelectorComponent) handleNavMode(km tea.KeyPressMsg) (*biocomp.ComponentResult, tea.Cmd) {
 	switch km.String() {
 	case "up", "k":
 		c.moveUp()
-		return nil
+		return nil, nil
 	case "down", "j":
 		c.moveDown()
-		return nil
+		return nil, nil
 	case "enter":
-		c.enterEditMode()
-		return nil
+		cmd := c.enterEditMode()
+		return nil, cmd
 	case "esc":
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{},
-		}
+		}, nil
 	case "ctrl+s":
-		return c.submitAll()
+		return c.submitAll(), nil
 	}
-	return nil
+	return nil, nil
 }
 
 // handleEditMode processes keys when a textinput is focused.
-func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyPressMsg) *biocomp.ComponentResult {
+func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyPressMsg) (*biocomp.ComponentResult, tea.Cmd) {
 	switch km.String() {
 	case "esc":
 		// Exit edit mode, keep text.
 		c.exitEditMode()
-		return nil
+		return nil, nil
 	case "tab":
 		// Accept current input and move to next cluster.
 		c.exitEditMode()
@@ -119,36 +119,36 @@ func (c *CellTypeSelectorComponent) handleEditMode(km tea.KeyPressMsg) *biocomp.
 			c.cursor++
 			c.adjustOffset()
 		}
-		c.enterEditMode()
-		return nil
+		cmd := c.enterEditMode()
+		return nil, cmd
 	case "ctrl+s":
 		c.exitEditMode()
-		return c.submitAll()
+		return c.submitAll(), nil
 	case "enter":
 		// Accept current input. On the last cluster, auto-submit.
 		// On non-last clusters, move to the next one (like tab).
 		c.exitEditMode()
 		if c.cursor >= len(c.clusters)-1 {
-			return c.submitAll()
+			return c.submitAll(), nil
 		}
 		c.cursor++
 		c.adjustOffset()
-		c.enterEditMode()
-		return nil
+		cmd := c.enterEditMode()
+		return nil, cmd
 	default:
 		// Forward to the active textinput.
 		var cmd tea.Cmd
 		c.inputs[c.editingIndex], cmd = c.inputs[c.editingIndex].Update(km)
-		_ = cmd
-		return nil
+		return nil, cmd
 	}
 }
 
-func (c *CellTypeSelectorComponent) enterEditMode() {
+func (c *CellTypeSelectorComponent) enterEditMode() tea.Cmd {
 	if c.cursor >= 0 && c.cursor < len(c.inputs) {
 		c.editingIndex = c.cursor
-		c.inputs[c.editingIndex].Focus()
+		return c.inputs[c.editingIndex].Focus()
 	}
+	return nil
 }
 
 func (c *CellTypeSelectorComponent) exitEditMode() {
@@ -327,8 +327,9 @@ func (c *CellTypeSelectorComponent) SetData(data json.RawMessage) error {
 	return nil
 }
 
-func (c *CellTypeSelectorComponent) Name() string { return "cell_type_selector" }
-func (c *CellTypeSelectorComponent) Mode() string { return "overlay" }
+func (c *CellTypeSelectorComponent) InitCmd() tea.Cmd { return nil }
+func (c *CellTypeSelectorComponent) Name() string     { return "cell_type_selector" }
+func (c *CellTypeSelectorComponent) Mode() string     { return "overlay" }
 
 func (c *CellTypeSelectorComponent) KeyBindings() []key.Binding {
 	return []key.Binding{

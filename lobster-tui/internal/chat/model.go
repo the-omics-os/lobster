@@ -531,7 +531,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Height: m.height,
 		}, "")
 
+		// Forward resize to active overlay component so it can adapt.
+		if m.activeComponent != nil {
+			_, cmd, panicked := safeHandleMsg(m.activeComponent.Component, msg)
+			if panicked {
+				m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "handleMsg_panic"})
+				m.activeComponent = nil
+				m.pendingChangeEvent = nil
+				m.changeDebounceActive = false
+				m.recalculateViewportHeight()
+			} else if cmd != nil {
+				return m, cmd
+			}
+		}
 		return m, nil
+	}
+
+	// Forward non-key messages to active overlay component (cursor blink, timers).
+	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
+		result, cmd, panicked := safeHandleMsg(m.activeComponent.Component, msg)
+		if panicked {
+			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "handleMsg_panic"})
+			m.activeComponent = nil
+			m.pendingChangeEvent = nil
+			m.changeDebounceActive = false
+			m.recalculateViewportHeight()
+		} else if result != nil {
+			m.sendComponentResponse(m.activeComponent.MsgID, result.Action, result.Data)
+			m.activeComponent = nil
+			m.pendingChangeEvent = nil
+			m.changeDebounceActive = false
+			m.recalculateViewportHeight()
+			return m, cmd
+		} else if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	// Forward unhandled messages to sub-models.
@@ -1065,10 +1099,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Intercept keys for active BioComp overlay component.
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" {
-		result, panicked := safeHandleMsg(m.activeComponent.Component, msg)
+		result, cmd, panicked := safeHandleMsg(m.activeComponent.Component, msg)
 		if panicked {
 			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "handleMsg_panic"})
 			m.activeComponent = nil
+			m.pendingChangeEvent = nil
+			m.changeDebounceActive = false
 			m.recalculateViewportHeight()
 			return m, nil
 		}
@@ -1078,7 +1114,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.pendingChangeEvent = nil
 			m.changeDebounceActive = false
 			m.recalculateViewportHeight()
-			return m, nil
+			return m, cmd
 		}
 		// COMP-05: Poll ChangeEvent after HandleMsg when result is nil
 		// (user still interacting). Debounce at 50ms to avoid flooding.
@@ -1087,12 +1123,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.changeEventMsgID = m.activeComponent.MsgID
 			if !m.changeDebounceActive {
 				m.changeDebounceActive = true
-				return m, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+				return m, tea.Batch(cmd, tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
 					return changeEventTick{}
-				})
+				}))
 			}
 		}
-		return m, nil
+		return m, cmd
 	}
 
 	// Intercept keys for pending LOCAL confirm dialog (exit/quit only).
@@ -2307,13 +2343,14 @@ func (m *Model) sendComponentResponse(msgID, action string, data map[string]any)
 
 // safeHandleMsg wraps comp.HandleMsg in a recover boundary so a panicking
 // component does not crash the entire TUI.
-func safeHandleMsg(comp biocomp.BioComponent, msg tea.Msg) (result *biocomp.ComponentResult, panicked bool) {
+func safeHandleMsg(comp biocomp.BioComponent, msg tea.Msg) (result *biocomp.ComponentResult, cmd tea.Cmd, panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			panicked = true
 		}
 	}()
-	return comp.HandleMsg(msg), false
+	result, cmd = comp.HandleMsg(msg)
+	return result, cmd, false
 }
 
 // safeView wraps comp.View in a recover boundary. Returns empty string on panic.
@@ -2412,6 +2449,11 @@ func (m Model) handleComponentRender(p protocol.ComponentRenderPayload, msgID st
 		CreatedAt: time.Now(),
 	}
 	m.recalculateViewportHeight()
+
+	// Deliver any post-init command (e.g. cursor blink starter).
+	if initCmd := comp.InitCmd(); initCmd != nil {
+		return m, tea.Batch(initCmd, waitForProtocolMsg(m.handler))
+	}
 	return m, waitForProtocolMsg(m.handler)
 }
 

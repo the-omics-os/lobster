@@ -51,8 +51,8 @@ func (c *QCDashboardComponent) Init(data json.RawMessage) error {
 }
 
 // HandleMsg always returns nil — QCDashboard is non-interactive.
-func (c *QCDashboardComponent) HandleMsg(msg tea.Msg) *biocomp.ComponentResult {
-	return nil
+func (c *QCDashboardComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
+	return nil, nil
 }
 
 // View renders the QC dashboard as a compact bordered block with colored bars.
@@ -198,6 +198,7 @@ func (c *QCDashboardComponent) SetData(data json.RawMessage) error {
 	return nil
 }
 
+func (c *QCDashboardComponent) InitCmd() tea.Cmd            { return nil }
 func (c *QCDashboardComponent) Name() string                { return "qc_dashboard" }
 func (c *QCDashboardComponent) Mode() string                { return "inline" }
 func (c *QCDashboardComponent) KeyBindings() []key.Binding  { return nil }
