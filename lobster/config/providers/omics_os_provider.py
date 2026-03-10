@@ -35,6 +35,14 @@ class BudgetExhaustedError(Exception):
         self.upgrade_url = upgrade_url
 
 
+class RateLimitError(Exception):
+    """Raised when the gateway rate limit is exceeded after retries."""
+
+    def __init__(self, message: str, retry_after_seconds: Optional[float] = None):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
 # Friendly name -> canonical Bedrock model ID
 _MODEL_ALIASES = {
     "claude-sonnet-4-5-20250514": "us.anthropic.claude-sonnet-4-5-20250929-v1:0",

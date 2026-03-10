@@ -172,6 +172,18 @@ class GatewayBedrockClient:
                     operation_name="Converse",
                 ) from e
 
+        if last_exc and "429" in str(last_exc):
+            from lobster.config.providers.omics_os_provider import RateLimitError
+
+            raise RateLimitError(
+                "Rate limit exceeded. Too many API requests in a short window.\n"
+                "This can happen when multiple browser tabs are open on app.omics-os.com.\n\n"
+                "What to do:\n"
+                "  \u2022 Wait 10-15 seconds and retry\n"
+                "  \u2022 Close extra browser tabs on app.omics-os.com\n"
+                "  \u2022 Run: lobster cloud status",
+                retry_after_seconds=10.0,
+            )
         raise last_exc or RuntimeError("Max retries exceeded")
 
     def converse_stream(self, **kwargs) -> dict:
@@ -236,4 +248,16 @@ class GatewayBedrockClient:
                     operation_name="ConverseStream",
                 ) from e
 
+        if last_exc and "429" in str(last_exc):
+            from lobster.config.providers.omics_os_provider import RateLimitError
+
+            raise RateLimitError(
+                "Rate limit exceeded. Too many API requests in a short window.\n"
+                "This can happen when multiple browser tabs are open on app.omics-os.com.\n\n"
+                "What to do:\n"
+                "  \u2022 Wait 10-15 seconds and retry\n"
+                "  \u2022 Close extra browser tabs on app.omics-os.com\n"
+                "  \u2022 Run: lobster cloud status",
+                retry_after_seconds=10.0,
+            )
         raise last_exc or RuntimeError("Max retries exceeded")

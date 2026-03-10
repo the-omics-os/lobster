@@ -11,6 +11,7 @@ Commands:
 
 import logging
 import sys
+import time
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -154,9 +155,16 @@ def _browser_login() -> None:
     server_error: list = []
 
     class CallbackHandler(BaseHTTPRequestHandler):
+        def _send_cors_headers(self):
+            self.send_header("Access-Control-Allow-Origin", endpoint)
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+
         def do_POST(self):
             if self.path != "/callback":
                 self.send_response(404)
+                self._send_cors_headers()
                 self.end_headers()
                 return
 
@@ -164,6 +172,7 @@ def _browser_login() -> None:
             content_type = self.headers.get("Content-Type", "")
             if "application/json" not in content_type:
                 self.send_response(415)
+                self._send_cors_headers()
                 self.end_headers()
                 return
 
@@ -175,11 +184,13 @@ def _browser_login() -> None:
                 # Verify state parameter (CSRF protection)
                 if tokens.get("state") != state:
                     self.send_response(403)
+                    self._send_cors_headers()
                     self.end_headers()
                     return
 
                 received_tokens.update(tokens)
                 self.send_response(200)
+                self._send_cors_headers()
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
                 self.wfile.write(
@@ -189,11 +200,12 @@ def _browser_login() -> None:
             except (ValueError, _json.JSONDecodeError) as e:
                 server_error.append(str(e))
                 self.send_response(400)
+                self._send_cors_headers()
                 self.end_headers()
 
         def do_OPTIONS(self):
-            # No CORS headers needed — browser callback page uses same-origin fetch to localhost
             self.send_response(204)
+            self._send_cors_headers()
             self.end_headers()
 
         def log_message(self, format, *args):
@@ -217,22 +229,29 @@ def _browser_login() -> None:
     except Exception:
         console.print("[yellow]Could not open browser automatically.[/yellow]")
 
-    # Wait for callback in a thread with timeout
+    # Serve until we receive tokens or timeout.
+    # Browser sends OPTIONS preflight + POST — need to handle multiple requests.
     done_event = threading.Event()
 
-    def serve_once():
-        server.handle_request()
-        done_event.set()
+    def serve_until_done():
+        while not done_event.is_set():
+            server.handle_request()
 
-    server_thread = threading.Thread(target=serve_once, daemon=True)
+    server_thread = threading.Thread(target=serve_until_done, daemon=True)
     server_thread.start()
 
     console.print("[dim]Waiting for browser authentication (timeout: 120s)...[/dim]")
-    done_event.wait(timeout=120)
+
+    # Poll for tokens with overall timeout
+    deadline = time.monotonic() + 120
+    while not received_tokens and time.monotonic() < deadline:
+        time.sleep(0.2)
+
+    done_event.set()
     server.server_close()
 
     if not received_tokens or "access_token" not in received_tokens:
-        if not done_event.is_set():
+        if time.monotonic() >= deadline:
             console.print("[yellow]Browser login timed out.[/yellow]")
         else:
             console.print("[yellow]Did not receive valid tokens from browser.[/yellow]")
@@ -301,14 +320,22 @@ def attempt_login_for_init() -> bool:
     received_tokens: dict = {}
 
     class _CallbackHandler(BaseHTTPRequestHandler):
+        def _send_cors_headers(self):
+            self.send_header("Access-Control-Allow-Origin", endpoint)
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+
         def do_POST(self):
             if self.path != "/callback":
                 self.send_response(404)
+                self._send_cors_headers()
                 self.end_headers()
                 return
             content_type = self.headers.get("Content-Type", "")
             if "application/json" not in content_type:
                 self.send_response(415)
+                self._send_cors_headers()
                 self.end_headers()
                 return
             content_length = int(self.headers.get("Content-Length", 0))
@@ -317,10 +344,12 @@ def attempt_login_for_init() -> bool:
                 tokens = _json.loads(body)
                 if tokens.get("state") != state:
                     self.send_response(403)
+                    self._send_cors_headers()
                     self.end_headers()
                     return
                 received_tokens.update(tokens)
                 self.send_response(200)
+                self._send_cors_headers()
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
                 self.wfile.write(
@@ -329,10 +358,12 @@ def attempt_login_for_init() -> bool:
                 )
             except (ValueError, _json.JSONDecodeError):
                 self.send_response(400)
+                self._send_cors_headers()
                 self.end_headers()
 
         def do_OPTIONS(self):
             self.send_response(204)
+            self._send_cors_headers()
             self.end_headers()
 
         def log_message(self, format, *args):
@@ -356,19 +387,24 @@ def attempt_login_for_init() -> bool:
 
     done_event = threading.Event()
 
-    def _serve_once():
-        server.handle_request()
-        done_event.set()
+    def _serve_until_done():
+        while not done_event.is_set():
+            server.handle_request()
 
-    server_thread = threading.Thread(target=_serve_once, daemon=True)
+    server_thread = threading.Thread(target=_serve_until_done, daemon=True)
     server_thread.start()
 
     console.print("[dim]Waiting for browser authentication (timeout: 120s)...[/dim]")
-    done_event.wait(timeout=120)
+
+    deadline = time.monotonic() + 120
+    while not received_tokens and time.monotonic() < deadline:
+        time.sleep(0.2)
+
+    done_event.set()
     server.server_close()
 
     if not received_tokens or "access_token" not in received_tokens:
-        if not done_event.is_set():
+        if time.monotonic() >= deadline:
             console.print("[yellow]Browser login timed out.[/yellow]")
         return False
 

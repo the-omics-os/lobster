@@ -966,13 +966,24 @@ def _forward_stream_event(
             },
         )
     elif etype == "error":
-        bridge.send(
-            "alert",
-            {
-                "level": "error",
-                "message": str(event.get("error", "Unknown error")),
-            },
-        )
+        error_msg = str(event.get("error", "Unknown error"))
+        if event.get("is_rate_limit") or "rate limit" in error_msg.lower():
+            bridge.send(
+                "alert",
+                {
+                    "level": "warning",
+                    "title": "Rate Limited",
+                    "message": error_msg,
+                },
+            )
+        else:
+            bridge.send(
+                "alert",
+                {
+                    "level": "error",
+                    "message": error_msg,
+                },
+            )
         bridge.send("spinner", {"active": False})
 
 

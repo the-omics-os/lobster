@@ -360,6 +360,34 @@ class TestGatewayBedrockClient:
         assert headers["Authorization"] == "Bearer my_token"
         assert headers["X-Omics-Gateway-Contract"] == "bedrock-converse-v1"
 
+    def test_converse_raises_rate_limit_after_retries(self):
+        """After max retries on 429, should raise RateLimitError."""
+        from unittest.mock import patch, MagicMock
+        from lobster.config.providers.gateway_bedrock_client import GatewayBedrockClient
+        from lobster.config.providers.omics_os_provider import RateLimitError
+
+        client = GatewayBedrockClient(
+            endpoint="https://example.com",
+            token_fn=lambda: "tok",
+        )
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        mock_resp.text = "Rate limit exceeded"
+
+        with patch("httpx.Client") as mock_client_cls, \
+             patch("lobster.config.providers.gateway_bedrock_client.time.sleep"):
+            mock_http = MagicMock()
+            mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_http)
+            mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
+            mock_http.post.return_value = mock_resp
+
+            with pytest.raises(RateLimitError, match="(?i)rate limit"):
+                client.converse(
+                    modelId="test-model",
+                    messages=[{"role": "user", "content": [{"text": "hi"}]}],
+                )
+
 
 class TestStubBedrockControlClient:
     """Tests for the StubBedrockControlClient."""
@@ -396,6 +424,23 @@ class TestBudgetExhaustedError:
         assert str(err) == "Budget exhausted"
         assert err.usage["spent_usd"] == 2.00
         assert err.upgrade_url is not None
+
+
+class TestRateLimitError:
+    """Tests for RateLimitError."""
+
+    def test_basic(self):
+        from lobster.config.providers.omics_os_provider import RateLimitError
+
+        err = RateLimitError("Rate limit exceeded", retry_after_seconds=10.0)
+        assert str(err) == "Rate limit exceeded"
+        assert err.retry_after_seconds == 10.0
+
+    def test_default_retry_after(self):
+        from lobster.config.providers.omics_os_provider import RateLimitError
+
+        err = RateLimitError("Rate limit exceeded")
+        assert err.retry_after_seconds is None
 
 
 # ---------------------------------------------------------------------------

@@ -120,6 +120,7 @@ class AgentClient(BaseClient):
         manual_model_params: Optional[Dict[str, Any]] = None,
         provider_override: Optional[str] = None,
         model_override: Optional[str] = None,
+        interactive: bool = True,
     ):
         """
         Initialize the agent client with DataManagerV2.
@@ -135,12 +136,15 @@ class AgentClient(BaseClient):
             manual_model_params: Manual model parameter overrides
             provider_override: Optional explicit provider name (e.g., "bedrock", "anthropic", "ollama", "gemini")
             model_override: Optional explicit model name (e.g., "llama3:70b-instruct", "claude-4-sonnet")
+            interactive: Whether running in interactive mode (chat). When False (query mode),
+                HITL tools like ask_user are excluded and the supervisor uses best-judgment.
         """
         # Set up session
         self.session_id = (
             session_id or f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         )
         self.enable_reasoning = enable_reasoning
+        self.interactive = interactive
 
         # Set up workspace using centralized resolver
         self.workspace_path = resolve_workspace(
@@ -226,6 +230,7 @@ class AgentClient(BaseClient):
             workspace_path=self.workspace_path,  # Use resolved workspace path (always set)
             config=agent_config,  # Phase 5: filter agents based on config.toml
             aquadif_monitor=self.aquadif_monitor,  # AQUADIF monitoring wiring
+            interactive=self.interactive,
         )
 
         # Conversation state
@@ -300,6 +305,23 @@ class AgentClient(BaseClient):
                 input=graph_input, config=config, stream_mode="updates"
             ):
                 events.append(event)
+
+                # Safety net: detect HITL interrupts in non-interactive mode
+                if "__interrupt__" in event and not self.interactive:
+                    logger.warning(
+                        "HITL interrupt fired in non-interactive mode — "
+                        "returning error (ask_user should not be available)"
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            "The agent needed user clarification but is running "
+                            "in non-interactive (query) mode. Re-run in "
+                            "'lobster chat' for interactive sessions, or "
+                            "provide more detail in your query."
+                        ),
+                        "session_id": self.session_id,
+                    }
 
                 # Track which agent is responding
                 if event:
@@ -566,6 +588,20 @@ class AgentClient(BaseClient):
                     if isinstance(chunk, dict):
                         # HITL interrupt detection (Phase 2).
                         if "__interrupt__" in chunk:
+                            if not self.interactive:
+                                logger.warning(
+                                    "HITL interrupt fired in non-interactive streaming mode"
+                                )
+                                yield {
+                                    "type": "error",
+                                    "error": (
+                                        "The agent needed user clarification but is running "
+                                        "in non-interactive (query) mode. Re-run in "
+                                        "'lobster chat' for interactive sessions, or "
+                                        "provide more detail in your query."
+                                    ),
+                                }
+                                return
                             for interrupt_obj in chunk["__interrupt__"]:
                                 yield {
                                     "type": "interrupt",
@@ -661,9 +697,12 @@ class AgentClient(BaseClient):
             }
 
         except Exception as e:
+            is_rate_limit = "RateLimitError" in type(e).__name__ or "rate limit" in str(e).lower()
             yield {
                 "type": "error",
                 "error": str(e),
+                "error_type": type(e).__name__,
+                "is_rate_limit": is_rate_limit,
                 "session_id": self.session_id,
                 "timestamp": datetime.now().isoformat(),
             }
@@ -2735,6 +2774,7 @@ class AgentClient(BaseClient):
                     provider_override=provider_name,
                     workspace_path=self.workspace_path,  # Use resolved workspace path (always set)
                     config=agent_config,
+                    interactive=self.interactive,
                 )
 
                 logger.info(f"Successfully switched to provider: {provider_name}")
@@ -2754,6 +2794,7 @@ class AgentClient(BaseClient):
                     provider_override=old_provider,
                     workspace_path=self.workspace_path,  # Use resolved workspace path (always set)
                     config=agent_config,
+                    interactive=self.interactive,
                 )
                 return {
                     "success": False,
