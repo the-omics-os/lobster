@@ -676,8 +676,14 @@ class ProteomicsVisualizationService:
                         line=dict(width=0.5, color="black"),
                     ),
                     text=protein_names,
+                    customdata=list(
+                        zip(
+                            range(len(df)),
+                            [str(name) for name in protein_names],
+                        )
+                    ),
                     hovertemplate=(
-                        "Protein: %{text}<br>"
+                        "Protein: %{customdata[1]}<br>"
                         f"{fold_change_col}: %{{x:.2f}}<br>"
                         f"-log10({pvalue_col}): %{{y:.2f}}<br>"
                         "<extra></extra>"
@@ -690,6 +696,7 @@ class ProteomicsVisualizationService:
             if highlight_proteins:
                 highlight_mask = protein_names.isin(highlight_proteins)
                 if highlight_mask.any():
+                    highlight_indices = np.where(highlight_mask)[0]
                     fig.add_trace(
                         go.Scatter(
                             x=df.loc[highlight_mask, fold_change_col],
@@ -701,6 +708,15 @@ class ProteomicsVisualizationService:
                                 line=dict(width=2, color="black"),
                             ),
                             text=protein_names[highlight_mask],
+                            customdata=list(
+                                zip(
+                                    highlight_indices.tolist(),
+                                    [
+                                        str(name)
+                                        for name in protein_names[highlight_mask]
+                                    ],
+                                )
+                            ),
                             textposition="top center",
                             name="Highlighted Proteins",
                             showlegend=True,
@@ -916,8 +932,14 @@ class ProteomicsVisualizationService:
                 mode="markers+text",
                 text=node_text,
                 textposition="middle center",
-                hovertemplate="Protein: %{text}<br>Connections: %{customdata}<extra></extra>",
-                customdata=[G.degree(node) for node in G.nodes()],
+                customdata=list(
+                    zip(
+                        range(len(list(G.nodes()))),
+                        node_text,
+                        [G.degree(node) for node in G.nodes()],
+                    )
+                ),
+                hovertemplate="Protein: %{customdata[1]}<br>Connections: %{customdata[2]}<extra></extra>",
                 marker=dict(
                     size=10,
                     color=node_colors,
@@ -1059,14 +1081,20 @@ class ProteomicsVisualizationService:
                         ),
                         text=df["overlap_count"],
                         textposition="middle center",
+                        customdata=list(
+                            zip(
+                                range(len(df)),
+                                df["pathway_name"].tolist(),
+                                df["p_value"].tolist(),
+                            )
+                        ),
                         hovertemplate=(
                             "Pathway: %{y}<br>"
                             "Enrichment Ratio: %{x:.2f}<br>"
-                            "P-value: %{customdata:.2e}<br>"
+                            "P-value: %{customdata[2]:.2e}<br>"
                             "Overlapping Proteins: %{text}<br>"
                             "<extra></extra>"
                         ),
-                        customdata=df["p_value"],
                     )
                 )
 
@@ -1085,13 +1113,19 @@ class ProteomicsVisualizationService:
                             showscale=True,
                             colorbar=dict(title="Enrichment Ratio"),
                         ),
+                        customdata=list(
+                            zip(
+                                range(len(df)),
+                                df["pathway_name"].tolist(),
+                                df["enrichment_ratio"].tolist(),
+                            )
+                        ),
                         hovertemplate=(
                             "Pathway: %{y}<br>"
                             "-log10(p-value): %{x:.2f}<br>"
-                            "Enrichment Ratio: %{customdata:.2f}<br>"
+                            "Enrichment Ratio: %{customdata[2]:.2f}<br>"
                             "<extra></extra>"
                         ),
-                        customdata=df["enrichment_ratio"],
                     )
                 )
 

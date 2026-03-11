@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-structural-viz"
-version = "1.1.406"
+version = "1.1.407"
 description = "Protein structure visualization agent for Lobster AI - 3D structural biology and PyMOL integration"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"

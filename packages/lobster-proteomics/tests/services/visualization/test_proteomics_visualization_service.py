@@ -942,6 +942,128 @@ class TestIntegrationScenarios:
 
 
 # ===============================================================================
+# Customdata Selection Contract Tests
+# ===============================================================================
+
+
+class TestCustomdataSelectionContract:
+    """Verify all interactive traces embed customdata tuples for frontend selection.
+
+    Contract: customdata[0] = global index (int), customdata[1] = identifier (str).
+    Network traces add customdata[2] = degree (int).
+    Pathway traces add customdata[2] = extra metric (float).
+    """
+
+    def test_volcano_main_trace_customdata(self, service, mock_adata_with_de_results):
+        """Volcano main trace must have [int, str] customdata tuples."""
+        fig, _ = service.create_volcano_plot(mock_adata_with_de_results)
+
+        trace = fig.data[0]
+        assert trace.customdata is not None, "Main trace missing customdata"
+        assert len(trace.customdata) > 0
+
+        for entry in trace.customdata:
+            assert isinstance(
+                entry, (list, tuple)
+            ), f"Expected tuple, got {type(entry)}"
+            assert len(entry) == 2, f"Expected 2 elements, got {len(entry)}"
+            assert isinstance(
+                entry[0], (int, np.integer)
+            ), f"Index must be int, got {type(entry[0])}"
+            assert isinstance(
+                entry[1], str
+            ), f"Identifier must be str, got {type(entry[1])}"
+
+    def test_volcano_highlight_trace_customdata(
+        self, service, mock_adata_with_de_results
+    ):
+        """Volcano highlight trace must have [int, str] customdata tuples."""
+        # Use protein names that exist in the DE results
+        de_results = mock_adata_with_de_results.uns["differential_expression"][
+            "results"
+        ]
+        highlight = [r["protein"] for r in de_results[:3]]
+
+        fig, _ = service.create_volcano_plot(
+            mock_adata_with_de_results, highlight_proteins=highlight
+        )
+
+        # Highlight trace is the second trace (index 1)
+        assert len(fig.data) >= 2, "Expected highlight trace as second trace"
+        highlight_trace = fig.data[1]
+        assert (
+            highlight_trace.customdata is not None
+        ), "Highlight trace missing customdata"
+
+        for entry in highlight_trace.customdata:
+            assert isinstance(entry, (list, tuple))
+            assert len(entry) == 2
+            assert isinstance(entry[0], (int, np.integer))
+            assert isinstance(entry[1], str)
+
+    def test_network_node_trace_customdata(self, service, mock_adata_with_correlations):
+        """Network node trace must have [int, str, int] customdata tuples."""
+        fig, stats = service.create_protein_correlation_network(
+            mock_adata_with_correlations
+        )
+
+        if stats["n_nodes"] == 0:
+            pytest.skip("No nodes in network — cannot verify customdata")
+
+        # Node trace is the last trace (edges come first)
+        node_trace = fig.data[-1]
+        assert node_trace.customdata is not None, "Node trace missing customdata"
+
+        for entry in node_trace.customdata:
+            assert isinstance(entry, (list, tuple))
+            assert len(entry) == 3, f"Expected 3 elements, got {len(entry)}"
+            assert isinstance(entry[0], (int, np.integer))
+            assert isinstance(entry[1], str)
+            assert isinstance(entry[2], (int, np.integer))
+
+    def test_pathway_bubble_customdata(self, service, mock_adata_with_pathway_results):
+        """Pathway bubble trace must have [int, str, float] customdata tuples."""
+        fig, _ = service.create_pathway_enrichment_plot(
+            mock_adata_with_pathway_results, plot_type="bubble"
+        )
+
+        trace = fig.data[0]
+        assert trace.customdata is not None, "Bubble trace missing customdata"
+
+        for entry in trace.customdata:
+            assert isinstance(entry, (list, tuple))
+            assert len(entry) == 3
+            assert isinstance(entry[0], (int, np.integer))
+            assert isinstance(entry[1], str)
+            assert isinstance(entry[2], (int, float, np.floating))
+
+    def test_pathway_bar_customdata(self, service, mock_adata_with_pathway_results):
+        """Pathway bar trace must have [int, str, float] customdata tuples."""
+        fig, _ = service.create_pathway_enrichment_plot(
+            mock_adata_with_pathway_results, plot_type="bar"
+        )
+
+        trace = fig.data[0]
+        assert trace.customdata is not None, "Bar trace missing customdata"
+
+        for entry in trace.customdata:
+            assert isinstance(entry, (list, tuple))
+            assert len(entry) == 3
+            assert isinstance(entry[0], (int, np.integer))
+            assert isinstance(entry[1], str)
+            assert isinstance(entry[2], (int, float, np.floating))
+
+    def test_volcano_customdata_indices_are_sequential(
+        self, service, mock_adata_with_de_results
+    ):
+        """Volcano customdata indices must be 0..N-1 matching DataFrame rows."""
+        fig, _ = service.create_volcano_plot(mock_adata_with_de_results)
+
+        indices = [entry[0] for entry in fig.data[0].customdata]
+        assert indices == list(range(len(indices))), "Indices must be sequential 0..N-1"
+
+
+# ===============================================================================
 # Performance and Memory Tests
 # ===============================================================================
 
