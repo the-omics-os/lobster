@@ -337,7 +337,21 @@ class CustomCodeExecutionService:
                     adata = convert_arrow_to_standard(adata)
                 except Exception:
                     pass
-                adata.write_h5ad(modality_path)
+                # Strip uns keys that commonly cause h5py serialization
+                # failures (provenance may contain DataFrames, Categoricals,
+                # or other complex objects that h5py can't write).
+                import copy as _copy
+
+                adata_fallback = adata.copy()
+                adata_fallback.uns = {}
+                for k, v in adata.uns.items():
+                    try:
+                        # Test-serialize: only keep keys that are simple types
+                        if isinstance(v, (str, int, float, bool, list, dict)):
+                            adata_fallback.uns[k] = _copy.deepcopy(v)
+                    except Exception:
+                        logger.debug(f"Stripping uns['{k}'] from fallback write")
+                adata_fallback.write_h5ad(modality_path)
 
         # Step 2.5: Resolve workspace_key paths (Bug fix - Gemini Option C)
         resolved_paths = {}

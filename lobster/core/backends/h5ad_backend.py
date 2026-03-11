@@ -232,11 +232,38 @@ class H5ADBackend(BaseBackend):
                     )
                     continue
 
+                # Step 2.5: Handle categorical columns BEFORE numeric checks.
+                # np.issubdtype() crashes on CategoricalDtype (and other pandas
+                # extension dtypes) — must be handled first.
+                if hasattr(df[col], "cat"):
+                    categories = df[col].cat.categories
+                    if not all(isinstance(cat, str) for cat in categories):
+                        df[col] = (
+                            df[col]
+                            .map(lambda x: str(x) if x is not None else "NA")
+                            .astype("category")
+                        )
+                        logger.debug(
+                            f"Sanitized column '{col}' - converted categorical to string categories"
+                        )
+                    # Categorical columns with string categories are already
+                    # H5AD-safe — skip remaining steps.
+                    continue
+
                 # Step 3: Handle None/NaN in numeric columns
+                # Guard: np.issubdtype() cannot handle pandas extension dtypes
+                # (CategoricalDtype, ArrowDtype, etc.).  Use try/except as a
+                # safety net beyond the explicit categorical check above.
                 if df[col].isna().any():
-                    if np.issubdtype(df[col].dtype, np.number):
-                        # Numeric column with NaN - fill with 0 or keep as NaN
-                        # Keep NaN for numeric columns (HDF5 can handle numeric NaN)
+                    is_numeric = False
+                    try:
+                        is_numeric = np.issubdtype(df[col].dtype, np.number)
+                    except TypeError:
+                        # Extension dtype that numpy can't interpret — treat
+                        # as non-numeric (will be caught by later steps).
+                        pass
+                    if is_numeric:
+                        # Numeric column with NaN - keep as NaN (HDF5 handles it)
                         pass
                     else:
                         # Object dtype with None - convert None to "NA"
@@ -285,20 +312,6 @@ class H5ADBackend(BaseBackend):
                                     logger.debug(
                                         f"Sanitized column '{col}' - non-string object type '{first_type}' converted to string"
                                     )
-
-                # Step 5: Handle categorical columns with non-string categories
-                if hasattr(df[col], "cat"):
-                    # Check if categories contain non-strings
-                    categories = df[col].cat.categories
-                    if not all(isinstance(cat, str) for cat in categories):
-                        df[col] = (
-                            df[col]
-                            .map(lambda x: str(x) if x is not None else "NA")
-                            .astype("category")
-                        )
-                        logger.debug(
-                            f"Sanitized column '{col}' - converted categorical to string categories"
-                        )
 
             # Drop columns that are entirely None/NaN
             if columns_to_drop:
