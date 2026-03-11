@@ -872,6 +872,32 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                     response += _format_workspace_item(item)
 
                 response += truncation_msg
+
+                # --- Plot Manager summary (appended to overview) ---
+                # Surfaces generated plots so the supervisor knows child
+                # agents already created visualizations and doesn't retry.
+                try:
+                    if hasattr(data_manager, "plot_manager"):
+                        pm = data_manager.plot_manager
+                        if pm.latest_plots:
+                            response += f"\n## Plots ({len(pm.latest_plots)})\n\n"
+                            for p in pm.latest_plots[-10:]:  # last 10
+                                src = p.get("source", "unknown")
+                                title = p.get("original_title", p.get("title", "Untitled"))
+                                plot_type = (
+                                    p.get("dataset_info", {}).get("plot_type", "")
+                                )
+                                response += f"- 📊 **{title}** (id={p['id']}, source={src})"
+                                if plot_type:
+                                    response += f" [{plot_type}]"
+                                response += "\n"
+                            response += (
+                                "\n*Plots are auto-delivered to the frontend. "
+                                "Do NOT recreate plots that already appear above.*\n"
+                            )
+                except Exception as e:
+                    logger.debug(f"Plot summary skipped: {e}")
+
                 return response
 
             # Handle exports workspace retrieval mode (flexible filename matching)
