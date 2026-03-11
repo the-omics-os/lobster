@@ -127,13 +127,14 @@ def test_noninteractive_preset_selection_filters_unpublished_agents(
         init_commands,
         "AVAILABLE_AGENT_PACKAGES",
         [
-            ("lobster-research", "Research", ["research_agent"], True),
-            ("lobster-metadata", "Metadata", ["metadata_assistant"], False),
+            ("lobster-research", "Research", ["research_agent"], True, False),
+            ("lobster-metadata", "Metadata", ["metadata_assistant"], False, True),
             (
                 "lobster-transcriptomics",
                 "Transcriptomics",
                 ["annotation_expert"],
                 True,
+                False,
             ),
         ],
     )

@@ -1,11 +1,12 @@
 // Package initwizard provides the interactive init wizard for lobster-tui.
 //
-// The wizard collects configuration in five steps:
-//  1. Agent package selection (MultiSelect)
-//  2. Provider selection (Select)
-//  3. API key entry (Input, provider-specific)
+// The wizard collects configuration in six steps:
+//  1. Provider selection (Select)
+//  2. API key entry (Input, provider-specific)
+//  3. Model selection — cloud providers only (Select + custom input)
 //  4. Profile selection — Anthropic and Bedrock only (Select)
-//  5. Optional keys — NCBI and Omics-OS Cloud (Confirm + Input)
+//  5. Agent package selection (MultiSelect)
+//  6. Optional keys — NCBI and Omics-OS Cloud (Confirm + Input)
 //
 // On completion, a single JSON object is written to stdout and the process
 // exits 0. On user cancellation, {"cancelled":true} is written and the
@@ -210,11 +211,11 @@ var smartStandardizationAgentLabels = map[string]string{
 type wizardStep int
 
 const (
-	stepAgentPackages wizardStep = iota
-	stepProvider
+	stepProvider wizardStep = iota
 	stepAPIKey
 	stepModelSelect
 	stepProfile
+	stepAgentPackages
 	stepOptionalKeys
 	stepDone
 )
@@ -516,7 +517,7 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 	}
 
 	m := WizardModel{
-		step:       stepAgentPackages,
+		step:       stepProvider,
 		theme:      activeTheme,
 		resultPath: resultPath,
 	}
@@ -611,24 +612,35 @@ func (m WizardModel) View() tea.View {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1: Agent packages
+// Step 5: Agent packages (after provider/model/profile)
 // ---------------------------------------------------------------------------
 
 func (m WizardModel) updateAgentPackages(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var done, cancelled bool
 	m.agentSelect, done, cancelled = m.agentSelect.Update(msg)
 	if cancelled {
-		return m.cancel()
+		// Go back to the previous step: profile if applicable, else model select, else API key.
+		if providersWithProfile[m.result.Provider] {
+			m.step = stepProfile
+		} else if _, ok := providerModels[m.result.Provider]; ok {
+			m.step = stepModelSelect
+		} else {
+			m.step = stepAPIKey
+			m.initAPIKeyStep()
+		}
+		return m, textinput.Blink
 	}
 	if done {
 		m.result.Agents = nil // populated at output time
-		m.step = stepProvider
+		m.initOptionalKeys()
+		m.step = stepOptionalKeys
+		return m, textinput.Blink
 	}
 	return m, nil
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: Provider
+// Step 1: Provider (first step — cancel exits wizard)
 // ---------------------------------------------------------------------------
 
 func (m WizardModel) updateProvider(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -636,8 +648,7 @@ func (m WizardModel) updateProvider(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var done, cancelled bool
 	m.providerSelect, value, done, cancelled = m.providerSelect.Update(msg)
 	if cancelled {
-		m.step = stepAgentPackages
-		return m, nil
+		return m.cancel()
 	}
 	if done {
 		m.result.Provider = value
@@ -654,7 +665,7 @@ func (m WizardModel) updateProvider(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: API key(s)
+// Step 2: API key(s)
 // ---------------------------------------------------------------------------
 
 func (m *WizardModel) initAPIKeyStep() {
@@ -929,8 +940,7 @@ func (m *WizardModel) advanceFromModelSelect() {
 		}
 		m.step = stepProfile
 	} else {
-		m.initOptionalKeys()
-		m.step = stepOptionalKeys
+		m.step = stepAgentPackages
 	}
 }
 
@@ -1097,7 +1107,7 @@ func (m WizardModel) viewAPIKey() string {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Profile
+// Step 4: Profile (Anthropic / Bedrock only)
 // ---------------------------------------------------------------------------
 
 func (m WizardModel) updateProfile(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1116,15 +1126,14 @@ func (m WizardModel) updateProfile(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if done {
 		m.result.Profile = value
-		m.initOptionalKeys()
-		m.step = stepOptionalKeys
+		m.step = stepAgentPackages
 		return m, textinput.Blink
 	}
 	return m, nil
 }
 
 // ---------------------------------------------------------------------------
-// Step 5: Optional keys
+// Step 6: Optional keys
 // ---------------------------------------------------------------------------
 
 func (m *WizardModel) initOptionalKeys() {
@@ -1174,13 +1183,8 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var done, cancelled bool
 		m.ncbiConfirm, done, cancelled = m.ncbiConfirm.Update(msg)
 		if cancelled {
-			// Go back to previous step.
-			if providersWithProfile[m.result.Provider] {
-				m.step = stepProfile
-			} else {
-				m.step = stepAPIKey
-				m.initAPIKeyStep()
-			}
+			// Go back to agent packages (the step immediately before optional keys).
+			m.step = stepAgentPackages
 			return m, textinput.Blink
 		}
 		if done {

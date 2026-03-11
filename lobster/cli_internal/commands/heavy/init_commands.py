@@ -726,36 +726,6 @@ def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str
 
 
 
-# Map provider choice -> pip package name
-_PROVIDER_PACKAGES = {
-    "anthropic": "langchain-anthropic",
-    "bedrock": "langchain-aws",
-    "ollama": "langchain-ollama",
-    "gemini": "langchain-google-genai",
-    "azure": "langchain-azure-ai",
-    "openai": "langchain-openai",
-    "openrouter": "langchain-openai",
-}
-
-# Map provider choice -> Python import module name
-_PROVIDER_IMPORT_NAMES = {
-    "anthropic": "langchain_anthropic",
-    "bedrock": "langchain_aws",
-    "ollama": "langchain_ollama",
-    "gemini": "langchain_google_genai",
-    "azure": "langchain_azure_ai",
-    "openai": "langchain_openai",
-    "openrouter": "langchain_openai",
-}
-
-# Agents whose workflows benefit from Smart Standardization
-_SMART_STD_AGENTS = {
-    "metadata_assistant",
-    "transcriptomics_expert",
-    "annotation_expert",
-    "proteomics_expert",
-}
-
 _SMART_STD_AGENT_DISPLAY = {
     "metadata_assistant": "Metadata Assistant",
     "transcriptomics_expert": "Transcriptomics Expert",
@@ -2242,19 +2212,8 @@ def init_impl(
             "\n  any new packages will be installed after setup completes.[/dim]\n"
         )
 
-    # === AGENT SELECTION (BEFORE PROVIDER SETUP - CONF-07) ===
-    # Resolve workspace path for agent config
     workspace_path = Path.cwd() / ".lobster_workspace"
     workspace_path.mkdir(parents=True, exist_ok=True)
-
-    # Interactive agent selection (Manual or Automatic)
-    selected_agents, preset_name = _perform_agent_selection_interactive(workspace_path)
-
-    # Save agent config BEFORE provider setup
-    if selected_agents:
-        _save_agent_config(selected_agents, workspace_path, preset_name)
-    console.print()
-    # === END AGENT SELECTION ===
 
     try:
         env_lines = []
@@ -2264,25 +2223,50 @@ def init_impl(
         # Initialize structured config dict for workspace config
         config_dict = {}
 
-        # === Omics-OS Cloud pre-question ===
-        console.print("[bold white]How would you like to connect to an LLM?[/bold white]")
+        # ================================================================== #
+        # Step 1 — Provider selection (unified list)                          #
+        # ================================================================== #
+        console.print("[bold white]Select your LLM provider:[/bold white]")
         console.print(
-            "  [cyan]1[/cyan] - Omics-OS Cloud - No API keys needed, login via browser"
+            "  [cyan]1[/cyan] - Omics-OS Cloud          — managed, login via browser"
         )
         console.print(
-            "  [cyan]2[/cyan] - Bring your own API key (Anthropic, OpenAI, Ollama, etc.)"
+            "  [cyan]2[/cyan] - Claude API (Anthropic)  — direct access to Claude models"
+        )
+        console.print("  [cyan]3[/cyan] - AWS Bedrock             — production, enterprise")
+        console.print("  [cyan]4[/cyan] - Ollama (local)          — privacy, zero cost, offline")
+        console.print(
+            "  [cyan]5[/cyan] - Google Gemini           — Gemini models + thinking"
+        )
+        console.print("  [cyan]6[/cyan] - Azure AI                — enterprise Azure deployments")
+        console.print("  [cyan]7[/cyan] - OpenAI                  — GPT-4o, o-series reasoning")
+        console.print(
+            "  [cyan]8[/cyan] - OpenRouter              — 600+ models via one API key"
         )
         console.print()
 
-        llm_choice = Prompt.ask(
-            "[bold white]Choose[/bold white]",
-            choices=["1", "2"],
+        provider = Prompt.ask(
+            "[bold white]Choose provider[/bold white]",
+            choices=["1", "2", "3", "4", "5", "6", "7", "8"],
             default="1",
         )
 
-        _omics_os_cloud_selected = False
-        if llm_choice == "1":
-            # Omics-OS Cloud: try browser login, fall back to API key
+        provider_map = {
+            "1": "omics-os",
+            "2": "anthropic",
+            "3": "bedrock",
+            "4": "ollama",
+            "5": "gemini",
+            "6": "azure",
+            "7": "openai",
+            "8": "openrouter",
+        }
+        provider_name = provider_map[provider]
+
+        # ================================================================== #
+        # Step 2 — Credentials (provider-specific)                            #
+        # ================================================================== #
+        if provider_name == "omics-os":
             from lobster.cli_internal.commands.light.cloud_commands import (
                 attempt_login_for_init,
             )
@@ -2292,14 +2276,13 @@ def init_impl(
                 config_dict["provider"] = "omics-os"
                 env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
                 console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
-                _omics_os_cloud_selected = True
             else:
                 console.print(
                     "\n[yellow]Browser login did not complete. "
                     "You can paste an API key instead.[/yellow]"
                 )
                 api_key = Prompt.ask(
-                    "[bold white]Enter your Omics-OS API key (omk_...) or press Enter to choose another provider[/bold white]",
+                    "[bold white]Enter your Omics-OS API key (omk_...)[/bold white]",
                     default="",
                 )
                 if api_key.strip():
@@ -2309,225 +2292,116 @@ def init_impl(
                             env_lines.append(f"{key}={value}")
                         config_dict["provider"] = "omics-os"
                         console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
-                        _omics_os_cloud_selected = True
                     else:
                         console.print(f"[red]❌ {config.message}[/red]")
-                # If still not selected, fall through to provider selection
+                        raise typer.Exit(1)
+                else:
+                    console.print(
+                        "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
+                    )
+                    config_dict["provider"] = "omics-os"
+                    env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
 
-        if not _omics_os_cloud_selected:
-            # Provider selection
-            console.print("\n[bold white]Select your LLM provider:[/bold white]")
-            console.print(
-                "  [cyan]1[/cyan] - Claude API (Anthropic) - Quick testing, development"
-            )
-            console.print("  [cyan]2[/cyan] - AWS Bedrock - Production, enterprise use")
-            console.print("  [cyan]3[/cyan] - Ollama (Local) - Privacy, zero cost, offline")
-            console.print(
-                "  [cyan]4[/cyan] - Google Gemini - Latest models with thinking support"
-            )
-            console.print("  [cyan]5[/cyan] - Azure AI - Enterprise Azure deployments")
-            console.print("  [cyan]6[/cyan] - OpenAI - GPT-4o, o1 reasoning models")
-            console.print(
-                "  [cyan]7[/cyan] - OpenRouter - 600+ models via one API key (Claude, GPT-4o, Llama, DeepSeek, ...)"
-            )
-            console.print()
-
-            provider = Prompt.ask(
-                "[bold white]Choose provider[/bold white]",
-                choices=["1", "2", "3", "4", "5", "6", "7"],
-                default="1",
-            )
-
-            # Auto-install provider package if missing (B1)
-            provider_map = {
-                "1": "anthropic",
-                "2": "bedrock",
-                "3": "ollama",
-                "4": "gemini",
-                "5": "azure",
-                "6": "openai",
-                "7": "openrouter",
-            }
-            if not skip_extras and not _in_uv_tool:
-                _ensure_provider_installed(provider_map[provider])
-        else:
-            provider = "cloud"  # sentinel — skips all provider-specific blocks below
-
-        if provider == "1":
-            # Claude API setup
+        elif provider_name == "anthropic":
             console.print("\n[bold white]🔑 Claude API Configuration[/bold white]")
             console.print(
                 "Get your API key from: [link]https://console.anthropic.com/[/link]\n"
             )
-
             api_key = Prompt.ask(
                 "[bold white]Enter your Claude API key[/bold white]", password=True
             )
-
             if not api_key.strip():
                 console.print("[red]❌ API key cannot be empty[/red]")
                 raise typer.Exit(1)
-
             env_lines.append(f"ANTHROPIC_API_KEY={api_key.strip()}")
             config_dict["provider"] = "anthropic"
 
-        elif provider == "2":
-            # AWS Bedrock setup
+        elif provider_name == "bedrock":
             console.print("\n[bold white]🔑 AWS Bedrock Configuration[/bold white]")
             console.print(
                 "You'll need AWS access key and secret key with Bedrock permissions.\n"
             )
-
             access_key = Prompt.ask(
                 "[bold white]Enter your AWS access key[/bold white]", password=True
             )
             secret_key = Prompt.ask(
                 "[bold white]Enter your AWS secret key[/bold white]", password=True
             )
-
             if not access_key.strip() or not secret_key.strip():
                 console.print("[red]❌ AWS credentials cannot be empty[/red]")
                 raise typer.Exit(1)
-
             env_lines.append(f"AWS_BEDROCK_ACCESS_KEY={access_key.strip()}")
             env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={secret_key.strip()}")
             config_dict["provider"] = "bedrock"
 
-        elif provider == "3":  # provider == "3"
-            # Ollama (local LLM) setup using provider_setup module
+        elif provider_name == "ollama":
             console.print(
                 "\n[bold white]🏠 Ollama (Local LLM) Configuration[/bold white]"
             )
             console.print("Ollama runs models locally - no API keys needed!\n")
-
-            # Get Ollama status
             ollama_status = provider_setup.get_ollama_status()
 
             if not ollama_status.installed:
-                # Ollama not installed - show instructions
                 console.print(
                     "[yellow]⚠️  Ollama is not installed on this system.[/yellow]"
                 )
-                console.print()
-                console.print("[bold white]To install Ollama:[/bold white]")
                 install_instructions = provider_setup.get_ollama_install_instructions()
                 console.print(f"  • macOS/Linux: {install_instructions['macos_linux']}")
                 console.print(f"  • Windows: {install_instructions['windows']}")
                 console.print()
-
                 install_later = Confirm.ask(
                     "Configure for Ollama anyway? (you can install it later)",
                     default=True,
                 )
-
                 if not install_later:
                     console.print(
                         "[yellow]Please install Ollama first, then run 'lobster init' again[/yellow]"
                     )
                     raise typer.Exit(0)
 
-                # User wants to configure anyway
-                config = provider_setup.create_ollama_config()
-                for key, value in config.env_vars.items():
-                    env_lines.append(f"{key}={value}")
-                env_lines.append(
-                    "# Install Ollama: curl -fsSL https://ollama.com/install.sh | sh"
+            model_name = None
+            if ollama_status.running and ollama_status.models:
+                console.print("[green]✓ Ollama is installed and running[/green]")
+                console.print("\n[bold white]Available models:[/bold white]")
+                for m in ollama_status.models[:5]:
+                    console.print(f"  • {m}")
+                if len(ollama_status.models) > 5:
+                    console.print(f"  ... and {len(ollama_status.models) - 5} more")
+                console.print()
+                use_custom = Confirm.ask(
+                    f"Specify a model? (default: {provider_setup.DEFAULT_OLLAMA_MODEL})",
+                    default=False,
                 )
-                env_lines.append(
-                    f"# Then run: ollama pull {provider_setup.DEFAULT_OLLAMA_MODEL}"
-                )
-                config_dict["provider"] = "ollama"
-                console.print(
-                    "[green]✓ Ollama provider configured (install Ollama to use)[/green]"
-                )
-
+                if use_custom:
+                    model_name = Prompt.ask(
+                        "[bold white]Enter model name[/bold white]",
+                        default=provider_setup.DEFAULT_OLLAMA_MODEL,
+                    )
             else:
-                # Ollama is installed
-                console.print("[green]✓ Ollama is installed[/green]")
-                if ollama_status.version:
-                    console.print(f"[dim]  Version: {ollama_status.version}[/dim]")
+                if ollama_status.installed:
+                    console.print("[green]✓ Ollama is installed[/green]")
+                    if not ollama_status.running:
+                        console.print("[yellow]⚠️  Ollama server is not running. Start with: ollama serve[/yellow]")
 
-                if not ollama_status.running:
-                    console.print("[yellow]⚠️  Ollama server is not running[/yellow]")
-                    console.print("Start it with: ollama serve")
-                    console.print()
+            config = provider_setup.create_ollama_config(model_name=model_name)
+            for key, value in config.env_vars.items():
+                env_lines.append(f"{key}={value}")
+            config_dict["provider"] = "ollama"
+            if model_name:
+                config_dict["ollama_model"] = model_name
+            console.print("[green]✓ Ollama provider configured[/green]")
 
-                # Show available models if any
-                if ollama_status.running and ollama_status.models:
-                    console.print("\n[bold white]Available models:[/bold white]")
-                    for model in ollama_status.models[:5]:  # Show first 5
-                        console.print(f"  • {model}")
-                    if len(ollama_status.models) > 5:
-                        console.print(f"  ... and {len(ollama_status.models) - 5} more")
-                    console.print()
-
-                    # Ask which model to use
-                    use_custom_model = Confirm.ask(
-                        f"Specify a model? (default: {provider_setup.DEFAULT_OLLAMA_MODEL})",
-                        default=False,
-                    )
-
-                    if use_custom_model:
-                        model_name = Prompt.ask(
-                            "[bold white]Enter model name[/bold white]",
-                            default=provider_setup.DEFAULT_OLLAMA_MODEL,
-                        )
-                        config = provider_setup.create_ollama_config(
-                            model_name=model_name
-                        )
-                        config_dict["ollama_model"] = model_name
-                    else:
-                        config = provider_setup.create_ollama_config()
-
-                    for key, value in config.env_vars.items():
-                        env_lines.append(f"{key}={value}")
-
-                    config_dict["provider"] = "ollama"
-
-                else:
-                    # No models available - show recommendations
-                    console.print(
-                        "\n[yellow]No models found. Pull a model first:[/yellow]"
-                    )
-                    recommended = provider_setup.get_recommended_models()
-                    for model_info in recommended:
-                        console.print(
-                            f"  ollama pull {model_info['name']}  # {model_info['description']}"
-                        )
-                    console.print()
-
-                    proceed = Confirm.ask("Configure for Ollama anyway?", default=True)
-
-                    if not proceed:
-                        console.print(
-                            "[yellow]Setup cancelled. Pull a model first, then run 'lobster init'[/yellow]"
-                        )
-                        raise typer.Exit(0)
-
-                    # Configure anyway
-                    config = provider_setup.create_ollama_config()
-                    for key, value in config.env_vars.items():
-                        env_lines.append(f"{key}={value}")
-
-                    config_dict["provider"] = "ollama"
-
-                console.print("[green]✓ Ollama provider configured[/green]")
-
-        elif provider == "4":
-            # Google Gemini setup
+        elif provider_name == "gemini":
             console.print("\n[bold white]🔑 Google Gemini Configuration[/bold white]")
             console.print(
                 "Get your API key from: [link]https://aistudio.google.com/apikey[/link]\n"
             )
-
             api_key = Prompt.ask(
                 "[bold white]Enter your Google API key[/bold white]", password=True
             )
-
             if not api_key.strip():
                 console.print("[red]❌ API key cannot be empty[/red]")
                 raise typer.Exit(1)
-
             config = provider_setup.create_gemini_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
@@ -2535,15 +2409,9 @@ def init_impl(
                 config_dict["provider"] = "gemini"
                 console.print("[green]✓ Gemini provider configured[/green]")
 
-        elif provider == "5":
-            # Azure AI setup
+        elif provider_name == "azure":
             console.print("\n[bold white]🔑 Azure AI Configuration[/bold white]")
             console.print("You'll need Azure AI Foundry endpoint and API credential.\n")
-            console.print("Get these from: [link]https://ai.azure.com/[/link]")
-            console.print("1. Create/open an Azure AI project")
-            console.print("2. Deploy a model (e.g., gpt-4o, deepseek-r1)")
-            console.print("3. Copy endpoint URL and API key from deployment\n")
-
             endpoint = Prompt.ask(
                 "[bold white]Enter your Azure AI endpoint[/bold white]",
                 default="https://your-project.inference.ai.azure.com/",
@@ -2552,13 +2420,11 @@ def init_impl(
                 "[bold white]Enter your Azure API credential[/bold white]",
                 password=True,
             )
-
             if not endpoint.strip() or not credential.strip():
                 console.print(
                     "[red]❌ Azure endpoint and credential cannot be empty[/red]"
                 )
                 raise typer.Exit(1)
-
             config = provider_setup.create_azure_config(endpoint, credential)
             if config.success:
                 for key, value in config.env_vars.items():
@@ -2569,21 +2435,17 @@ def init_impl(
                 console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
                 raise typer.Exit(1)
 
-        elif provider == "6":
-            # OpenAI setup
+        elif provider_name == "openai":
             console.print("\n[bold white]🔑 OpenAI Configuration[/bold white]")
             console.print(
                 "Get your API key from: [link]https://platform.openai.com/api-keys[/link]\n"
             )
-
             api_key = Prompt.ask(
                 "[bold white]Enter your OpenAI API key[/bold white]", password=True
             )
-
             if not api_key.strip():
                 console.print("[red]❌ API key cannot be empty[/red]")
                 raise typer.Exit(1)
-
             config = provider_setup.create_openai_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
@@ -2591,53 +2453,35 @@ def init_impl(
                 config_dict["provider"] = "openai"
                 console.print("[green]✓ OpenAI provider configured[/green]")
 
-        elif provider == "7":
-            # OpenRouter setup
+        elif provider_name == "openrouter":
             console.print("\n[bold white]🔀 OpenRouter Configuration[/bold white]")
-            console.print(
-                "OpenRouter gives you access to 600+ models via a single API key.\n"
-                "Browse models at: [link]https://openrouter.ai/models[/link]\n"
-            )
             console.print(
                 "Get your API key from: [link]https://openrouter.ai/keys[/link]\n"
             )
-
             api_key = Prompt.ask(
                 "[bold white]Enter your OpenRouter API key[/bold white]", password=True
             )
-
             if not api_key.strip():
                 console.print("[red]❌ API key cannot be empty[/red]")
                 raise typer.Exit(1)
-
             config = provider_setup.create_openrouter_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openrouter"
                 console.print("[green]✓ OpenRouter provider configured[/green]")
-
-                # Optional: prompt for default model
-                console.print(
-                    "\n[dim]Default model: anthropic/claude-sonnet-4-5[/dim]"
-                )
-                console.print(
-                    "[dim]You can override per-workspace in provider_config.json[/dim]"
-                )
-                custom_model = Prompt.ask(
-                    "[bold white]Default model (press Enter to use default)[/bold white]",
-                    default="anthropic/claude-sonnet-4-5",
-                )
-                if custom_model.strip() and custom_model.strip() != "anthropic/claude-sonnet-4-5":
-                    config_dict["model"] = custom_model.strip()
-                    console.print(f"[green]✓ Default model set to: {custom_model.strip()}[/green]")
             else:
                 console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
                 raise typer.Exit(1)
 
-        # Profile selection (only for Anthropic/Bedrock providers)
-        profile_to_write = None
-        if provider in ["1", "2"]:  # Anthropic or Bedrock
+        # Auto-install provider package if missing
+        if not skip_extras and not _in_uv_tool and provider_name not in ("omics-os", "ollama"):
+            _ensure_provider_installed(provider_name)
+
+        # ================================================================== #
+        # Step 3 — Profile selection (Anthropic / Bedrock only)               #
+        # ================================================================== #
+        if provider_name in ("anthropic", "bedrock"):
             console.print("\n[bold white]⚙️  Agent Configuration Profile[/bold white]")
             console.print("Choose which Claude models to use for analysis:")
             console.print()
@@ -2652,13 +2496,6 @@ def init_impl(
             )
             console.print(
                 "  [cyan]4[/cyan] - Max          (Opus 4.5 supervisor - most capable, most expensive)"
-            )
-            console.print()
-            console.print(
-                "[dim]💡 Tip: Development profile is great for testing, Production for real analysis[/dim]"
-            )
-            console.print(
-                "[dim]   You can change this later by editing .env or using the --profile flag[/dim]"
             )
             console.print()
 
@@ -2682,287 +2519,79 @@ def init_impl(
             config_dict["profile"] = profile_to_write
             console.print(f"[green]✓ Profile set to: {profile_to_write}[/green]")
 
-        elif provider in ["3", "4", "5", "6", "7"]:  # Ollama, Gemini, Azure, OpenAI, or OpenRouter
-            # No profile needed - these providers use their own models
-            console.print(
-                "[dim]ℹ️  Note: Profile configuration not applicable for this provider[/dim]"
-            )
+        # ================================================================== #
+        # Step 4 — Agent selection                                            #
+        # ================================================================== #
+        selected_agents, preset_name = _perform_agent_selection_interactive(workspace_path)
+        if selected_agents:
+            _save_agent_config(selected_agents, workspace_path, preset_name)
+        console.print()
 
-        # Optional NCBI key(s) - supports multiple for parallelization
-        console.print("\n[bold white]📚 NCBI API Key(s) (Optional)[/bold white]")
-        console.print("Enhances literature search capabilities (10 req/sec per key).")
-        console.print(
-            "Multiple keys enable parallel processing for large publication batches."
+        # ================================================================== #
+        # Step 5 — Optional NCBI key (single)                                #
+        # ================================================================== #
+        add_ncbi = Confirm.ask(
+            "Add an NCBI API key? (enhances literature search, optional)",
+            default=False,
         )
-        console.print(
-            "Get key from: [link]https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/[/link]\n"
-        )
-
-        add_ncbi = Confirm.ask("Add NCBI API key?", default=False)
 
         if add_ncbi:
-            ncbi_keys = []
-            key_count = 0
-
-            # First key (primary - NCBI_API_KEY)
-            ncbi_key = Prompt.ask(
+            ncbi_key_val = Prompt.ask(
                 "[bold white]Enter your NCBI API key[/bold white]", password=True
             )
-            if ncbi_key.strip():
-                ncbi_keys.append(("NCBI_API_KEY", ncbi_key.strip()))
-                key_count += 1
+            if ncbi_key_val.strip():
+                env_lines.append("\n# NCBI API key for literature search")
+                env_lines.append(f"NCBI_API_KEY={ncbi_key_val.strip()}")
+                console.print("[green]✓ NCBI API key configured[/green]")
 
-                # Ask for additional keys
-                while True:
-                    add_another = Confirm.ask(
-                        f"Add another NCBI API key? ({key_count} added)",
-                        default=False,
-                    )
-                    if not add_another:
-                        break
-
-                    additional_key = Prompt.ask(
-                        f"[bold white]Enter NCBI API key #{key_count + 1}[/bold white]",
-                        password=True,
-                    )
-                    if additional_key.strip():
-                        # Additional keys use NCBI_API_KEY_1, NCBI_API_KEY_2, etc.
-                        ncbi_keys.append(
-                            (f"NCBI_API_KEY_{key_count}", additional_key.strip())
-                        )
-                        key_count += 1
-                    else:
-                        console.print("[yellow]Empty key skipped[/yellow]")
-
-            # Write all NCBI keys to env
-            if ncbi_keys:
-                env_lines.append("\n# NCBI API keys for literature search")
-                if len(ncbi_keys) > 1:
-                    env_lines.append(
-                        "# Multiple keys enable parallel processing (10 req/sec each)"
-                    )
-                for key_name, key_value in ncbi_keys:
-                    env_lines.append(f"{key_name}={key_value}")
-                console.print(
-                    f"[green]✓ Added {len(ncbi_keys)} NCBI API key(s)[/green]"
+        # ================================================================== #
+        # Step 6 — Optional Cloud key (skip if Omics-OS)                      #
+        # ================================================================== #
+        if provider_name != "omics-os":
+            add_cloud = Confirm.ask(
+                "Add an Omics-OS Cloud API key? (enables premium tier, optional)",
+                default=False,
+            )
+            if add_cloud:
+                cloud_key_val = Prompt.ask(
+                    "[bold white]Enter your Omics-OS Cloud API key[/bold white]",
+                    password=True,
                 )
+                if cloud_key_val.strip():
+                    env_lines.append("\n# Lobster Cloud configuration")
+                    env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key_val.strip()}")
+                    console.print("[green]✓ Cloud API key configured[/green]")
 
-        # Optional Premium/Cloud configuration
-        # First check if license is already activated
-        existing_license = None
-        try:
-            from lobster.core.license_manager import load_entitlement
-
-            entitlement = load_entitlement()
-            if entitlement.get("tier") != "free" and entitlement.get("source") in [
-                "license_file",
-                "cloud_key",
-            ]:
-                existing_license = entitlement
-        except Exception:
-            pass  # No license or error loading
-
-        if existing_license and not force:
-            # License already activated - show status and skip prompt (unless --force)
-            tier = existing_license.get("tier", "premium").title()
-            tier_emoji = {"premium": "⭐", "enterprise": "🏢"}.get(
-                existing_license.get("tier"), "⭐"
-            )
-            console.print(f"\n[bold white]{tier_emoji} Premium Features[/bold white]")
-            console.print(f"[green]✓ License already activated: {tier} tier[/green]")
-            console.print(f"[dim]Source: {existing_license.get('source')}[/dim]")
-
-            # Show installed custom packages if any
-            try:
-                from lobster.core.plugin_loader import get_installed_packages
-
-                packages = get_installed_packages()
-                custom_pkgs = [p for p in packages.keys() if "lobster-custom-" in p]
-                if custom_pkgs:
-                    console.print(
-                        f"[dim]Custom packages: {', '.join(custom_pkgs)}[/dim]"
-                    )
-            except Exception:
-                pass
-
-            console.print()
-            console.print(
-                f"[dim]Your {tier} license is preserved. Use [bold]lobster init --force[/bold] to reconfigure.[/dim]"
-            )
-            console.print()
-            # Skip premium configuration since already activated
-            premium_choice = "1"  # Set to skip
-        else:
-            # No license OR force flag used - show options
-            if existing_license and force:
-                console.print(
-                    "\n[yellow]⚠️  Existing license detected but --force flag used[/yellow]"
-                )
-                tier = existing_license.get("tier", "premium").title()
-                console.print(
-                    f"[dim]Current: {tier} tier from {existing_license.get('source')}[/dim]"
-                )
-                console.print()
-
-            console.print("[bold white]⭐ Premium Features (Optional)[/bold white]")
-            console.print("Unlock advanced agents and cloud processing capabilities.")
-            console.print("Options:")
-            console.print(
-                "  [cyan]1[/cyan] - Skip (stay on Free tier)"
-                + (
-                    " [yellow](will preserve existing license)[/yellow]"
-                    if existing_license and force
-                    else ""
-                )
-            )
-            console.print("  [cyan]2[/cyan] - I have an activation code")
-            console.print("  [cyan]3[/cyan] - I have a cloud API key")
-            console.print()
-
-            premium_choice = Prompt.ask(
-                "[bold white]Choose option[/bold white]",
-                choices=["1", "2", "3"],
-                default="1",
-            )
-
-        if premium_choice == "2":
-            # Activation code - activate license immediately
-            console.print("\n[bold white]🔑 License Activation[/bold white]")
-            console.print(
-                "Enter your activation code from Omics-OS to unlock premium features.\n"
-            )
-            activation_code = Prompt.ask(
-                "[bold white]Enter activation code[/bold white]", password=False
-            )
-
-            if activation_code.strip():
-                console.print("[dim]Contacting license server...[/dim]")
-                try:
-                    from lobster.core.license_manager import activate_license
-
-                    result = activate_license(activation_code.strip())
-
-                    if result.get("success"):
-                        entitlement = result.get("entitlement", {})
-                        tier = entitlement.get("tier", "premium").title()
-                        console.print(
-                            f"[green]✓ License activated: {tier} tier[/green]"
-                        )
-                        # Note: License is stored in ~/.lobster/license.json, not .env
-                    else:
-                        error = result.get("error", "Unknown error")
-                        console.print(
-                            f"[yellow]⚠️  Activation failed: {error}[/yellow]"
-                        )
-                        console.print(
-                            "[dim]You can retry later with: lobster activate <code>[/dim]"
-                        )
-                except Exception as e:
-                    console.print(f"[yellow]⚠️  Activation error: {e}[/yellow]")
-                    console.print(
-                        "[dim]You can retry later with: lobster activate <code>[/dim]"
-                    )
-
-        elif premium_choice == "3":
-            # Cloud API key - store in .env
-            console.print("\n[bold white]🌩️  Cloud API Key[/bold white]")
-            console.print("Enter your Lobster Cloud API key for cloud processing.\n")
-            cloud_key = Prompt.ask(
-                "[bold white]Enter your cloud API key[/bold white]", password=True
-            )
-
-            if cloud_key.strip():
-                env_lines.append("\n# Lobster Cloud configuration")
-                env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key.strip()}")
-                console.print("[green]✓ Cloud API key configured[/green]")
-
-                # Optional: custom endpoint
-                custom_endpoint = Confirm.ask(
-                    "Configure custom cloud endpoint?", default=False
-                )
-                if custom_endpoint:
-                    endpoint = Prompt.ask(
-                        "[bold white]Enter endpoint URL[/bold white]",
-                        default="https://api.lobster.omics-os.com",
-                    )
-                    env_lines.append(f"LOBSTER_ENDPOINT={endpoint.strip()}")
-
-        # === OPTIONAL PACKAGE INSTALLATION (B2-B5) ===
+        # ================================================================== #
+        # Step 7 — Smart Standardization (if not uv tool env)                 #
+        # ================================================================== #
         if not skip_extras and not _in_uv_tool:
-            # Standard venv — install directly via pip/uv pip
-            # B2: Document Intelligence (docling)
-            if not skip_docling:
-                _prompt_docling_install()
-
-            # B3: Smart Standardization (replaces old vector search prompt)
             smart_std_lines = _prompt_smart_standardization(
                 selected_agents=selected_agents,
             )
             env_lines.extend(smart_std_lines)
 
-            # B4: Extended data access packages (silent, small)
-            _install_extended_data()
-
-            # B5: TUI support
-            _ensure_tui_installed()
-        # === END OPTIONAL PACKAGE INSTALLATION ===
-
-        # Test SSL connectivity (interactive mode)
-        if not skip_ssl_test:
-            from lobster.config.ssl_setup import (
-                prompt_ssl_fix,
-                test_ssl_connectivity,
-            )
-
-            console.print()
-            console.print("[dim]Testing connectivity to NCBI databases...[/dim]")
-            success, is_ssl_error, error_msg = test_ssl_connectivity(timeout=10)
-
-            if is_ssl_error:
-                # Prompt user for SSL fix
-                ssl_env_line = prompt_ssl_fix(console, error_msg)
-                if ssl_env_line:
-                    env_lines.append("\n# SSL/HTTPS configuration")
-                    env_lines.append(ssl_env_line)
-            elif success:
-                console.print("[green]✓ NCBI connectivity: OK[/green]")
-            else:
-                # Non-SSL network error
-                console.print(
-                    f"[yellow]⚠️  Network test failed (non-SSL): {error_msg[:60]}[/yellow]"
-                )
-                console.print("[dim]You can still continue (may work later)[/dim]")
-
-        # Save configuration based on mode
+        # ================================================================== #
+        # Save configuration                                                  #
+        # ================================================================== #
         console.print()
         if global_config:
-            # Global mode: save provider config AND credentials
             try:
                 from lobster.config.global_config import save_global_credentials
 
-                # Extract credentials and settings from env_lines
                 credentials = {}
                 for line in env_lines:
                     if "=" in line and not line.startswith("#"):
                         key, _, value = line.partition("=")
                         key = key.strip()
-                        # Save API keys and SSL settings
                         if any(
-                            cred_key in key
-                            for cred_key in [
-                                "API_KEY",
-                                "ACCESS_KEY",
-                                "SECRET_KEY",
-                                "CLOUD_KEY",
-                                "LOBSTER_SSL",  # SSL settings (LOBSTER_SSL_VERIFY, LOBSTER_SSL_CERT_PATH)
-                            ]
+                            tok in key
+                            for tok in ["API_KEY", "ACCESS_KEY", "SECRET_KEY", "CLOUD_KEY"]
                         ):
                             credentials[key] = value.strip()
 
-                # Save provider config
                 global_config_path = _create_global_config(config_dict)
 
-                # Save credentials to credentials.env (with secure permissions)
                 credentials_path = None
                 if credentials:
                     credentials_path = save_global_credentials(credentials)
@@ -2980,13 +2609,10 @@ def init_impl(
                 console.print(f"[red]❌ Failed to write global config: {str(e)}[/red]")
                 raise typer.Exit(1)
         else:
-            # Workspace mode: write both .env and workspace config
             with open(env_path, "w") as f:
                 f.write("\n".join(env_lines))
                 f.write("\n")
 
-            # Create workspace config from structured config_dict
-            workspace_path = Path.cwd() / ".lobster_workspace"
             _create_workspace_config(config_dict, workspace_path)
 
             success_message = "[bold green]✅ Configuration saved![/bold green]\n\n"
@@ -3005,7 +2631,6 @@ def init_impl(
 
         # In uv tool env, offer to run `uv tool install` for new packages
         if _in_uv_tool:
-            # Check if user wants Smart Standardization (can't pip install in uv tool env)
             _want_vector_search = False
             if not skip_extras and _is_vector_search_backend_available():
                 try:
@@ -3021,7 +2646,7 @@ def init_impl(
                 _print_vector_backend_unavailable()
 
             _uv_tool_env_handoff(
-                provider_name=provider_map.get(provider),
+                provider_name=provider_name,
                 selected_agents=selected_agents,
                 skip_extras=skip_extras,
                 include_vector_search=_want_vector_search,

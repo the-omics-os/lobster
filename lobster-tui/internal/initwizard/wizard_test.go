@@ -231,24 +231,17 @@ func TestConfirmModelCancel(t *testing.T) {
 	}
 }
 
-func TestWizardModelStep1To2(t *testing.T) {
+func TestWizardStartsAtProvider(t *testing.T) {
 	m := NewWizardModel("", "")
-	if m.step != stepAgentPackages {
-		t.Fatalf("expected stepAgentPackages, got %d", m.step)
-	}
-
-	// Default packages are pre-selected, so enter should advance.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
 	if m.step != stepProvider {
-		t.Fatalf("expected stepProvider after enter, got %d", m.step)
+		t.Fatalf("expected stepProvider as initial step, got %d", m.step)
 	}
 }
 
 func TestWizardModelCancellation(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Esc on step 1 should cancel entirely.
+	// Esc on step 1 (provider) should cancel entirely.
 	result, _ := m.Update(makeKeyPress("esc"))
 	m = result.(WizardModel)
 	if m.step != stepDone {
@@ -263,33 +256,11 @@ func TestWizardModelCancellation(t *testing.T) {
 	}
 }
 
-func TestWizardModelProviderBackNavigation(t *testing.T) {
-	m := NewWizardModel("", "")
-
-	// Advance to step 2.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-	if m.step != stepProvider {
-		t.Fatalf("expected stepProvider, got %d", m.step)
-	}
-
-	// Esc should go back to step 1.
-	result, _ = m.Update(makeKeyPress("esc"))
-	m = result.(WizardModel)
-	if m.step != stepAgentPackages {
-		t.Fatalf("expected stepAgentPackages after esc, got %d", m.step)
-	}
-}
-
 func TestWizardModelProviderSelectionInitializesAPIStep(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Advance to step 2.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Select Anthropic (index 1 — Omics-OS Cloud is at 0).
-	result, _ = m.Update(makeKeyPress("down"))
+	result, _ := m.Update(makeKeyPress("down"))
 	m = result.(WizardModel)
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
@@ -308,12 +279,8 @@ func TestWizardModelProviderSelectionInitializesAPIStep(t *testing.T) {
 func TestWizardModelBedrockHasTwoKeyInputs(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Advance to provider.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Move to Bedrock (index 2 — Omics-OS Cloud is at 0, Anthropic at 1).
-	result, _ = m.Update(makeKeyPress("down"))
+	result, _ := m.Update(makeKeyPress("down"))
 	m = result.(WizardModel)
 	result, _ = m.Update(makeKeyPress("down"))
 	m = result.(WizardModel)
@@ -331,16 +298,12 @@ func TestWizardModelBedrockHasTwoKeyInputs(t *testing.T) {
 func TestWizardModelOllamaUsesSelect(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Advance to provider.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Move to Ollama (index 3 — Omics-OS Cloud at 0, Anthropic at 1, Bedrock at 2).
 	for i := 0; i < 3; i++ {
-		result, _ = m.Update(makeKeyPress("down"))
+		result, _ := m.Update(makeKeyPress("down"))
 		m = result.(WizardModel)
 	}
-	result, _ = m.Update(makeKeyPress("enter"))
+	result, _ := m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	if m.result.Provider != providerOllama {
@@ -355,12 +318,10 @@ func TestWizardModelOllamaUsesSelect(t *testing.T) {
 func TestWizardModelAnthropicShowsProfileStep(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2 -> 3
-	result, _ := m.Update(makeKeyPress("enter"))
+	// Select Anthropic (index 1).
+	result, _ := m.Update(makeKeyPress("down"))
 	m = result.(WizardModel)
-	result, _ = m.Update(makeKeyPress("down"))  // skip Omics-OS Cloud
-	m = result.(WizardModel)
-	result, _ = m.Update(makeKeyPress("enter")) // anthropic
+	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Type something in API key and submit.
@@ -387,16 +348,12 @@ func TestWizardModelAnthropicShowsProfileStep(t *testing.T) {
 func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Select Gemini (index 4 — Omics-OS Cloud at 0).
 	for i := 0; i < 4; i++ {
-		result, _ = m.Update(makeKeyPress("down"))
+		result, _ := m.Update(makeKeyPress("down"))
 		m = result.(WizardModel)
 	}
-	result, _ = m.Update(makeKeyPress("enter"))
+	result, _ := m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	if m.result.Provider != providerGemini {
@@ -416,24 +373,20 @@ func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
 		t.Fatalf("expected stepModelSelect for gemini, got %d", m.step)
 	}
 
-	// Accept default model and should skip profile → optional keys.
+	// Accept default model and should skip profile → agent packages.
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
-	if m.step != stepOptionalKeys {
-		t.Fatalf("expected stepOptionalKeys after model select for gemini, got %d", m.step)
+	if m.step != stepAgentPackages {
+		t.Fatalf("expected stepAgentPackages after model select for gemini (non-profile), got %d", m.step)
 	}
 }
 
 func TestOAuthStartedWithEmptyKey(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Select Omics-OS Cloud (index 0).
-	result, _ = m.Update(makeKeyPress("enter"))
+	result, _ := m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	if m.step != stepAPIKey {
@@ -458,10 +411,8 @@ func TestOAuthStartedWithEmptyKey(t *testing.T) {
 func TestOAuthSucceededAdvancesStep(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2 -> select omics-os -> stepAPIKey.
+	// Select omics-os -> stepAPIKey.
 	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate OAuth waiting state.
@@ -481,19 +432,17 @@ func TestOAuthSucceededAdvancesStep(t *testing.T) {
 	if !m.result.OAuthAuthenticated {
 		t.Fatal("expected OAuthAuthenticated=true")
 	}
-	// Omics-OS has no model catalog and no profile, so should go to optional keys.
-	if m.step != stepOptionalKeys {
-		t.Fatalf("expected stepOptionalKeys after OAuth success, got %d", m.step)
+	// Omics-OS has no model catalog and no profile, so should go to agent packages.
+	if m.step != stepAgentPackages {
+		t.Fatalf("expected stepAgentPackages after OAuth success, got %d", m.step)
 	}
 }
 
 func TestOAuthFailedRefocusesInput(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2 -> select omics-os -> stepAPIKey.
+	// Select omics-os -> stepAPIKey.
 	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate OAuth waiting state.
@@ -515,10 +464,8 @@ func TestOAuthFailedRefocusesInput(t *testing.T) {
 func TestEscDuringOAuthCancels(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2 -> select omics-os -> stepAPIKey.
+	// Select omics-os -> stepAPIKey.
 	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate OAuth waiting state.
@@ -558,12 +505,8 @@ func TestCloudKeySkippedForOmicsOS(t *testing.T) {
 func TestNonOmicsEmptyKeyDoesNotTriggerOAuth(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Step 1 -> 2.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Select Anthropic (index 1).
-	result, _ = m.Update(makeKeyPress("down"))
+	result, _ := m.Update(makeKeyPress("down"))
 	m = result.(WizardModel)
 	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
@@ -614,12 +557,8 @@ func TestCloudKeySkippedForOmicsOSAfterNCBIYes(t *testing.T) {
 func TestOAuthFieldsResetOnProviderChange(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Advance to provider step.
-	result, _ := m.Update(makeKeyPress("enter"))
-	m = result.(WizardModel)
-
 	// Select omics-os (index 0) to get to API key step.
-	result, _ = m.Update(makeKeyPress("enter"))
+	result, _ := m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
 	// Simulate having authenticated via OAuth.
@@ -658,9 +597,13 @@ func TestOAuthSurvivesBackNavFromOptionalKeys(t *testing.T) {
 	m.initOptionalKeys()
 	m.step = stepOptionalKeys
 
-	// Back out from NCBI confirm to API key step.
+	// Back out from NCBI confirm to agent packages step.
 	result, _ := m.Update(makeKeyPress("esc"))
 	m = result.(WizardModel)
+
+	if m.step != stepAgentPackages {
+		t.Fatalf("expected stepAgentPackages after back-nav from optional keys, got %d", m.step)
+	}
 
 	// OAuthAuthenticated should survive back-navigation (not reset).
 	if !m.result.OAuthAuthenticated {
