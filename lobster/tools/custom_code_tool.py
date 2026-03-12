@@ -489,6 +489,7 @@ def _format_response(
         "persisted": persist,
         "new_modality_name": stats.get("new_modality_name"),
         "write_back_error": stats.get("write_back_error"),
+        "captured_plots": stats.get("captured_plots", 0),
         "post_processor_message": post_processor_msg,
     }
 

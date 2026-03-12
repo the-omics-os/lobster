@@ -361,6 +361,7 @@ PTM-specific DE, kinase activity inference, and protein interaction network quer
 7. **Run find_differential_proteins BEFORE downstream tools** (pathway, kinase, STRING all require DE results)
 8. **For differential PTM analysis, both PTM and protein modalities must be loaded** -- import both before running run_differential_ptm_analysis
 9. **STRING API requires internet** -- warn user if network unavailable or queries fail
+10. **NEVER use execute_custom_code for plotting** -- your built-in tools auto-generate volcano and pathway plots. Custom code plots bypass the plot delivery pipeline and will NOT appear on the user's canvas or in the app.
 </Important_Rules>
 
 <Response_Format>

@@ -428,6 +428,43 @@ class CustomCodeExecutionService:
                     except Exception:
                         pass
 
+        # Step 4b: Read plot manifest and register captured Plotly figures
+        captured_plot_count = 0
+        manifest_path = Path(self.data_manager.workspace_path) / ".plot_manifest.json"
+        if manifest_path.exists():
+            try:
+                with open(manifest_path) as mf:
+                    plot_manifest = json.load(mf)
+                for entry in plot_manifest:
+                    json_path = Path(entry.get("json_path", ""))
+                    if json_path.exists():
+                        try:
+                            import plotly.io as pio
+
+                            fig = pio.from_json(json_path.read_text())
+                            self.data_manager.plot_manager.add_plot(
+                                plot=fig,
+                                title=entry.get("title", "Custom Code Plot"),
+                                source="execute_custom_code",
+                                dataset_info={
+                                    "plot_type": "custom",
+                                    "var_name": entry.get("var_name", ""),
+                                },
+                            )
+                            captured_plot_count += 1
+                            # Clean up JSON (HTML stays for user access)
+                            json_path.unlink(missing_ok=True)
+                        except Exception as pe:
+                            logger.warning(f"Could not register captured plot: {pe}")
+                if captured_plot_count > 0:
+                    # Save all captured plots to workspace as HTML + PNG
+                    self.data_manager.plot_manager.save_plots_to_workspace()
+                    logger.info(f"Auto-captured {captured_plot_count} Plotly figure(s) from custom code")
+            except Exception as me:
+                logger.warning(f"Could not read plot manifest: {me}")
+            finally:
+                manifest_path.unlink(missing_ok=True)
+
         # Strip sentinel lines from stdout (LLM shouldn't see internal signals)
         if stdout_output:
             stdout_output = "\n".join(
@@ -435,6 +472,7 @@ class CustomCodeExecutionService:
                 for line in stdout_output.splitlines()
                 if "__LOBSTER_ADATA_MODIFIED__" not in line
                 and "__LOBSTER_CHANGES__:" not in line
+                and "__LOBSTER_PLOT_CAPTURED__:" not in line
             )
 
         # Step 4b: Save large outputs to files (DeepAgents pattern)
@@ -494,6 +532,7 @@ class CustomCodeExecutionService:
             "error": str(exec_error) if exec_error else None,
             "new_modality_name": new_modality_name,
             "write_back_error": write_back_error,
+            "captured_plots": captured_plot_count,
         }
 
         # Step 5: Generate IR (always, but mark as non-exportable if persist=False)
@@ -944,8 +983,57 @@ if _lobster_fp is not None and adata is not None:
 
 """
 
-        # Add result extraction code
+        # Add Plotly figure auto-capture epilogue
+        # Scans all local variables for Plotly Figure objects, saves as HTML + JSON manifest
+        # so the parent process can register them with plot_manager
         full_script += """
+# === PLOTLY AUTO-CAPTURE ===
+# Detect any Plotly figures created by user code and save them to workspace/plots/
+# Parent process reads the manifest to register with plot_manager
+try:
+    import plotly.graph_objects as _go
+    import plotly.io as _pio
+    _plot_manifest = []
+    _plots_dir = WORKSPACE / 'plots'
+    _plots_dir.mkdir(exist_ok=True)
+    # Scan all local variables for Plotly Figure objects
+    for _var_name, _var_value in list(locals().items()):
+        if _var_name.startswith('_') or _var_name in ('WORKSPACE', 'OUTPUT_DIR'):
+            continue
+        if isinstance(_var_value, _go.Figure):
+            _safe_name = ''.join(c for c in _var_name if c.isalnum() or c in '_-').rstrip()
+            _html_path = _plots_dir / f'auto_{_safe_name}.html'
+            _json_path = _plots_dir / f'auto_{_safe_name}.json'
+            try:
+                _pio.write_html(_var_value, str(_html_path))
+                # Save figure JSON for parent process to reconstruct
+                with open(_json_path, 'w') as _f:
+                    _f.write(_pio.to_json(_var_value))
+                _title = ''
+                if hasattr(_var_value, 'layout') and hasattr(_var_value.layout, 'title'):
+                    _t = _var_value.layout.title
+                    if hasattr(_t, 'text') and _t.text:
+                        _title = _t.text
+                _plot_manifest.append({
+                    'var_name': _var_name,
+                    'title': _title or _var_name,
+                    'html_path': str(_html_path),
+                    'json_path': str(_json_path),
+                })
+                print(f"__LOBSTER_PLOT_CAPTURED__:{_var_name}")
+            except Exception as _pe:
+                print(f"Warning: could not capture plot '{_var_name}': {_pe}")
+    if _plot_manifest:
+        _manifest_path = WORKSPACE / '.plot_manifest.json'
+        with open(_manifest_path, 'w') as _mf:
+            import json as _json_mod
+            _json_mod.dump(_plot_manifest, _mf)
+except ImportError:
+    pass  # plotly not installed — no figures to capture
+except Exception as _auto_err:
+    print(f"Warning: plot auto-capture failed: {_auto_err}")
+# === END PLOTLY AUTO-CAPTURE ===
+
 # Extract result and write to temp file for parent process
 import json
 if 'result' in dir() and result is not None:
