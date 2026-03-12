@@ -492,8 +492,21 @@ You can now analyze this dataset using the appropriate analysis tools.
             return response
 
         except Exception as e:
-            logger.error(f"Error getting modality details: {e}")
-            return f"Error getting modality details: {str(e)}"
+            logger.error(f"Error getting modality details for '{modality_name}': {e}", exc_info=True)
+            try:
+                available = data_manager.list_modalities()
+            except Exception:
+                available = "(unavailable)"
+            if isinstance(available, list) and modality_name not in available:
+                return (
+                    f"Error: Modality '{modality_name}' not found. "
+                    f"Available modalities: {available[:15] if available else '(none)'}"
+                )
+            return (
+                f"Error getting modality details for '{modality_name}': {str(e)}\n"
+                f"The modality exists but inspection failed. "
+                f"Try list_available_modalities() for a summary."
+            )
 
     get_modality_details.metadata = {"categories": ["UTILITY"], "provenance": False}
     get_modality_details.tags = ["UTILITY"]
@@ -649,8 +662,18 @@ You can now analyze this dataset using the appropriate analysis tools.
             return response
 
         except Exception as e:
-            logger.error(f"Error loading modality {modality_name}: {e}")
-            return f"Error loading modality: {str(e)}"
+            logger.error(f"Error loading modality {modality_name}: {e}", exc_info=True)
+            try:
+                available = data_manager.list_modalities()
+            except Exception:
+                available = "(unavailable)"
+            return (
+                f"Error loading modality: {str(e)}\n"
+                f"Parameters: file_path='{file_path}', adapter='{adapter}', dataset_type='{dataset_type}'\n"
+                f"Existing modalities: {available[:15] if isinstance(available, list) else available if available else '(none)'}\n"
+                f"Hints: verify file exists with list_files or glob_files. "
+                f"Check adapter name with get_adapter_info()."
+            )
 
     load_modality.metadata = {"categories": ["IMPORT"], "provenance": True}
     load_modality.tags = ["IMPORT"]
@@ -862,8 +885,20 @@ Strategy: {statistics["strategy_used"]}
 To save, run again with save_to_file=True"""
 
         except Exception as e:
-            logger.error(f"Error concatenating samples: {e}")
-            return f"Error concatenating samples: {str(e)}"
+            logger.error(f"Error concatenating samples: {e}", exc_info=True)
+            try:
+                available = data_manager.list_modalities()
+            except Exception:
+                available = "(unavailable)"
+            samples_str = str(sample_modalities) if sample_modalities else "(auto-detect failed or not provided)"
+            output_str = output_modality_name if output_modality_name else "(not yet determined)"
+            return (
+                f"Error concatenating samples: {str(e)}\n"
+                f"Parameters: sample_modalities={samples_str}, "
+                f"output_name='{output_str}', geo_id={geo_id}\n"
+                f"Available modalities: {available[:15] if isinstance(available, list) else available if available else '(none)'}\n"
+                f"Hint: verify sample modalities exist with list_available_modalities()."
+            )
 
     concatenate_samples.metadata = {"categories": ["PREPROCESS"], "provenance": True}
     concatenate_samples.tags = ["PREPROCESS"]

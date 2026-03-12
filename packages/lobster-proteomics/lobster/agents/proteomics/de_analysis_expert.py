@@ -314,6 +314,7 @@ def de_analysis_expert(
             )
 
             # Auto-generate volcano plot as side-effect
+            _volcano_fig = None
             try:
                 from lobster.services.visualization.proteomics_visualization_service import (
                     ProteomicsVisualizationService,
@@ -345,7 +346,7 @@ def de_analysis_expert(
                         for name in de_df[protein_col]
                     ]
 
-                    fig, plot_stats = viz_service.create_volcano_plot(
+                    _volcano_fig, plot_stats = viz_service.create_volcano_plot(
                         adata_de,
                         comparison_results=de_list,
                         fc_threshold=(
@@ -356,14 +357,14 @@ def de_analysis_expert(
 
                     # Patch customdata with global indices on main trace
                     if (
-                        fig.data
-                        and hasattr(fig.data[0], "customdata")
-                        and fig.data[0].customdata is not None
+                        _volcano_fig.data
+                        and hasattr(_volcano_fig.data[0], "customdata")
+                        and _volcano_fig.data[0].customdata is not None
                     ):
                         protein_names = [
-                            str(entry[1]) for entry in fig.data[0].customdata
+                            str(entry[1]) for entry in _volcano_fig.data[0].customdata
                         ]
-                        fig.data[0].customdata = list(
+                        _volcano_fig.data[0].customdata = list(
                             zip(
                                 [
                                     var_name_to_idx.get(name, idx)
@@ -374,13 +375,18 @@ def de_analysis_expert(
                                 protein_names,
                             )
                         )
+            except Exception as viz_err:
+                logger.warning(f"Volcano figure creation failed: {viz_err}")
+                response += "\n**Volcano plot**: figure creation failed, use visualization tools manually"
 
-                    # Register with plot_manager so it reaches the frontend
+            # Register + save plot (separate try/except so registration errors are visible)
+            if _volcano_fig is not None:
+                try:
                     import uuid as _uuid
 
                     plot_id = str(_uuid.uuid4())[:8]
                     data_manager.plot_manager.add_plot(
-                        plot=fig,
+                        plot=_volcano_fig,
                         title=f"Volcano Plot — {de_stats.get('n_significant_proteins', 0)} significant proteins",
                         source="proteomics_de_analysis_expert",
                         dataset_info={
@@ -390,10 +396,12 @@ def de_analysis_expert(
                             "n_significant": de_stats.get("n_significant_proteins", 0),
                         },
                     )
+                    # Save HTML + PNG to workspace (same pattern as visualization_expert)
+                    data_manager.plot_manager.save_plots_to_workspace()
                     response += f"\n**Volcano plot generated**: plot_id={plot_id}"
-            except Exception as viz_err:
-                logger.warning(f"Auto-volcano plot failed (non-blocking): {viz_err}")
-                response += "\n**Volcano plot**: auto-generation failed, use visualization tools manually"
+                except Exception as reg_err:
+                    logger.error(f"PLOT REGISTRATION FAILED for volcano: {reg_err}", exc_info=True)
+                    response += f"\n**Volcano plot**: registration failed ({reg_err})"
 
             # Sample size warning
             if min_group is not None and min_group < 6:
@@ -413,9 +421,54 @@ def de_analysis_expert(
             logger.error(
                 f"Error in differential protein expression analysis: {e}\n{tb}"
             )
-            return (
-                f"Error in differential expression analysis: {str(e)}\nTraceback:\n{tb}"
+
+            # Build enriched error with all in-scope variables for agent recovery
+            _loc = locals()
+            parts = [f"Error in find_differential_proteins: {e}"]
+
+            # Parameters (always bound)
+            _det = _loc.get("detected_platform", "N/A")
+            _meth = _loc.get("method") or "N/A"
+            parts.append(
+                f"Parameters: modality='{modality_name}', group_column='{group_column}', "
+                f"platform={_det}, method={_meth}, fdr={fdr_threshold}, "
+                f"fc={fold_change_threshold}"
             )
+
+            # Available obs columns (the #1 recovery signal)
+            _adata = _loc.get("adata")
+            if _adata is not None:
+                try:
+                    cols = list(_adata.obs.columns)
+                    if len(cols) > 20:
+                        cols = cols[:20] + [f"... ({len(_adata.obs.columns)} total)"]
+                    parts.append(f"Available obs columns: {cols}")
+                except Exception:
+                    parts.append("Available obs columns: <could not read>")
+
+                # Group distribution if the column exists
+                try:
+                    if group_column in _adata.obs.columns:
+                        vc = _adata.obs[group_column].value_counts()
+                        if len(vc) > 10:
+                            vc = vc.head(10)
+                        parts.append(f"Group distribution ({group_column}): {vc.to_dict()}")
+                    else:
+                        parts.append(
+                            f"Group distribution: column '{group_column}' NOT in obs"
+                        )
+                except Exception:
+                    parts.append("Group distribution: <could not read>")
+
+                # Shape for context
+                try:
+                    parts.append(f"Data shape: {_adata.shape[0]} obs x {_adata.shape[1]} vars")
+                except Exception:
+                    pass
+            else:
+                parts.append("adata: not loaded (modality retrieval may have failed)")
+
+            return "\n".join(parts)
 
     find_differential_proteins.metadata = {
         "categories": ["ANALYZE"],
@@ -875,6 +928,7 @@ def de_analysis_expert(
             )
 
             # Auto-generate pathway enrichment plot as side-effect
+            _pathway_fig = None
             try:
                 from lobster.services.visualization.proteomics_visualization_service import (
                     ProteomicsVisualizationService,
@@ -924,33 +978,41 @@ def de_analysis_expert(
                         # Store normalized results back for the viz service
                         normalized_results = pw_df.to_dict("records")
 
-                        fig, plot_stats = viz_service.create_pathway_enrichment_plot(
+                        _pathway_fig, plot_stats = viz_service.create_pathway_enrichment_plot(
                             adata_enriched,
                             enrichment_results=normalized_results,
                             plot_type="bubble",
                             top_n=20,
                         )
-
-                        import uuid as _uuid
-
-                        plot_id = str(_uuid.uuid4())[:8]
-                        data_manager.plot_manager.add_plot(
-                            plot=fig,
-                            title=f"Pathway Enrichment — {enrich_stats.get('n_significant_terms', 0)} significant terms",
-                            source="proteomics_de_analysis_expert",
-                            dataset_info={
-                                "plot_id": plot_id,
-                                "modality_name": enriched_name,
-                                "plot_type": "pathway_enrichment",
-                                "n_significant": enrich_stats.get(
-                                    "n_significant_terms", 0
-                                ),
-                            },
-                        )
-                        response += f"\n**Pathway enrichment plot generated**: plot_id={plot_id}"
             except Exception as viz_err:
-                logger.warning(f"Auto-pathway plot failed (non-blocking): {viz_err}")
-                response += "\n**Pathway plot**: auto-generation failed, use visualization tools manually"
+                logger.warning(f"Pathway figure creation failed: {viz_err}")
+                response += "\n**Pathway plot**: figure creation failed, use visualization tools manually"
+
+            # Register + save plot (separate try/except so registration errors are visible)
+            if _pathway_fig is not None:
+                try:
+                    import uuid as _uuid
+
+                    plot_id = str(_uuid.uuid4())[:8]
+                    data_manager.plot_manager.add_plot(
+                        plot=_pathway_fig,
+                        title=f"Pathway Enrichment — {enrich_stats.get('n_significant_terms', 0)} significant terms",
+                        source="proteomics_de_analysis_expert",
+                        dataset_info={
+                            "plot_id": plot_id,
+                            "modality_name": enriched_name,
+                            "plot_type": "pathway_enrichment",
+                            "n_significant": enrich_stats.get(
+                                "n_significant_terms", 0
+                            ),
+                        },
+                    )
+                    # Save HTML + PNG to workspace (same pattern as visualization_expert)
+                    data_manager.plot_manager.save_plots_to_workspace()
+                    response += f"\n**Pathway enrichment plot generated**: plot_id={plot_id}"
+                except Exception as reg_err:
+                    logger.error(f"PLOT REGISTRATION FAILED for pathway: {reg_err}", exc_info=True)
+                    response += f"\n**Pathway plot**: registration failed ({reg_err})"
 
             return response
 
