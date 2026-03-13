@@ -1,17 +1,27 @@
-import React, { useRef, useCallback, useEffect } from "react";
+import React, { useRef, useCallback, useEffect, useState } from "react";
 import { Box, useInput, useStdout } from "ink";
 import { ScrollView, type ScrollViewRef } from "ink-scroll-view";
+import { Scrollbar } from "./Scrollbar.js";
 
 const PAGE_SIZE = 10;
 
-export function ChatViewport({ children }: { children: React.ReactNode }) {
+export interface ChatViewportProps {
+  children: React.ReactNode;
+  /** Viewport height from useLayout. Falls back to terminal-based calc. */
+  viewportHeight?: number;
+}
+
+export function ChatViewport({ children, viewportHeight: heightProp }: ChatViewportProps) {
   const scrollRef = useRef<ScrollViewRef>(null);
   const { stdout } = useStdout();
 
-  // Reserve space for header (3 lines: border+content+border) and composer (3 lines: border+content+border)
-  const headerHeight = 3;
-  const composerHeight = 3;
-  const viewportHeight = (stdout?.rows ?? 24) - headerHeight - composerHeight;
+  // Fallback height calculation when layout hook isn't wired yet
+  const fallbackHeight = (stdout?.rows ?? 24) - 6;
+  const viewportHeight = heightProp ?? fallbackHeight;
+
+  // Track scroll state for scrollbar
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
 
   useInput((input, key) => {
     if (key.pageUp) {
@@ -22,8 +32,16 @@ export function ChatViewport({ children }: { children: React.ReactNode }) {
   });
 
   // Auto-scroll to bottom when content changes
-  const handleContentHeightChange = useCallback(() => {
-    scrollRef.current?.scrollToBottom();
+  const handleContentHeightChange = useCallback(
+    (height: number) => {
+      setContentHeight(height);
+      scrollRef.current?.scrollToBottom();
+    },
+    [],
+  );
+
+  const handleScroll = useCallback((offset: number) => {
+    setScrollOffset(offset);
   }, []);
 
   // Handle terminal resize
@@ -36,14 +54,22 @@ export function ChatViewport({ children }: { children: React.ReactNode }) {
   }, [stdout]);
 
   return (
-    <Box height={viewportHeight} flexDirection="column">
-      <ScrollView
-        ref={scrollRef}
-        flexGrow={1}
-        onContentHeightChange={handleContentHeightChange}
-      >
-        {children}
-      </ScrollView>
+    <Box height={viewportHeight} flexDirection="row">
+      <Box flexGrow={1} flexDirection="column">
+        <ScrollView
+          ref={scrollRef}
+          flexGrow={1}
+          onContentHeightChange={handleContentHeightChange}
+          onScroll={handleScroll}
+        >
+          {children}
+        </ScrollView>
+      </Box>
+      <Scrollbar
+        viewportHeight={viewportHeight}
+        contentHeight={contentHeight}
+        scrollOffset={scrollOffset}
+      />
     </Box>
   );
 }
