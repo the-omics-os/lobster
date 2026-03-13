@@ -1,6 +1,6 @@
 import React from "react";
 import { useStdout } from "ink";
-import { ToolCallPrimitive } from "@assistant-ui/react-ink";
+import { ToolCallFallback } from "@assistant-ui/react-ink";
 import type {
   ToolCallMessagePart,
   ToolCallMessagePartStatus,
@@ -23,7 +23,7 @@ function inferStatus(part: ToolCallMessagePart): ToolCallMessagePartStatus {
 
 /**
  * Generic tool call renderer with terminal-width-aware truncation.
- * Wraps the built-in ToolCallPrimitive.Fallback with adaptive max lines.
+ * Wraps the built-in ToolCallFallback with adaptive max lines.
  */
 export function ToolCallRenderer({ part }: ToolCallRendererProps) {
   const { stdout } = useStdout();
@@ -34,7 +34,7 @@ export function ToolCallRenderer({ part }: ToolCallRendererProps) {
   const maxResultLines = columns >= 120 ? 15 : columns >= 80 ? 10 : 5;
 
   return (
-    <ToolCallPrimitive.Fallback
+    <ToolCallFallback
       type="tool-call"
       status={inferStatus(part)}
       toolName={part.toolName}

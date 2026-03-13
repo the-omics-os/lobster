@@ -1,26 +1,31 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { ThreadPrimitive } from "@assistant-ui/react-ink";
+import { ThreadRoot, ThreadEmpty, ThreadMessages } from "@assistant-ui/react-ink";
 import { ChatViewport } from "./ChatViewport.js";
 import { UserMessage } from "./UserMessage.js";
 import { AssistantMessage } from "./AssistantMessage.js";
 
-export function Thread() {
+interface ThreadProps {
+  /** Viewport height from layout engine. Falls back to terminal-based calc. */
+  viewportHeight?: number;
+}
+
+export function Thread({ viewportHeight }: ThreadProps) {
   return (
-    <ThreadPrimitive.Root>
-      <ChatViewport>
-        <ThreadPrimitive.Empty>
+    <ThreadRoot>
+      <ChatViewport viewportHeight={viewportHeight}>
+        <ThreadEmpty>
           <Box>
             <Text dimColor>No messages yet. Start a conversation!</Text>
           </Box>
-        </ThreadPrimitive.Empty>
-        <ThreadPrimitive.Messages
+        </ThreadEmpty>
+        <ThreadMessages
           components={{
             UserMessage,
             AssistantMessage,
           }}
         />
       </ChatViewport>
-    </ThreadPrimitive.Root>
+    </ThreadRoot>
   );
 }

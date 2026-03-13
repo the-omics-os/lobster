@@ -5,15 +5,20 @@
     "": {
       "name": "lobster-chat",
       "dependencies": {
+        "@assistant-ui/core": "^0.1.5",
         "@assistant-ui/react-data-stream": "^0.12.6",
-        "@assistant-ui/react-ink": "^0.0.4",
+        "@assistant-ui/react-ink": "file:/tmp/assistant-ui-react-ink-0.0.4.tgz",
         "@assistant-ui/react-ink-markdown": "^0.0.3",
+        "@assistant-ui/store": "^0.2.2",
+        "@assistant-ui/tap": "^0.5.2",
         "@inkjs/ui": "^2.0.0",
+        "assistant-stream": "^0.3.5",
         "ink": "^6.8.0",
         "ink-scroll-view": "^0.3.6",
         "ink-spinner": "^5.0.0",
         "ink-table": "^3.1.0",
         "react": "^19.0.0",
+        "zustand": "^5.0.11",
       },
       "devDependencies": {
         "@types/react": "^19.0.0",
@@ -34,7 +39,7 @@
 
     "@assistant-ui/react-data-stream": ["@assistant-ui/react-data-stream@0.12.6", "", { "dependencies": { "@ai-sdk/provider": "^3.0.8", "assistant-stream": "^0.3.4" }, "peerDependencies": { "@assistant-ui/react": "^0.12.15", "@types/react": "*", "react": "^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-dtHik/bUyBf4Po19N7twHjudOuaQSUck063xzQWDNe/ODXXqiP0rx2zvNDyo9F9F3E7qik5aq8RVKPoHiVKUgg=="],
 
-    "@assistant-ui/react-ink": ["@assistant-ui/react-ink@0.0.4", "", { "dependencies": { "@assistant-ui/core": "^0.1.5", "@assistant-ui/store": "^0.2.2", "@assistant-ui/tap": "^0.5.2", "assistant-stream": "^0.3.5", "ink-spinner": "^5.0.0", "zustand": "^5.0.11" }, "peerDependencies": { "@types/react": "*", "ink": ">=4", "react": "^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-ZIwUZvf1mANJfvkDU6K4GA9ZYw0rix9s3yAA0NZoo5Sw5rEdU7lBJipfAHgdz/7vHr+i5024y6FUkL9NkmQB9A=="],
+    "@assistant-ui/react-ink": ["@assistant-ui/react-ink@/tmp/assistant-ui-react-ink-0.0.4.tgz", { "dependencies": { "@assistant-ui/core": "^0.1.5", "@assistant-ui/store": "^0.2.2", "@assistant-ui/tap": "^0.5.2", "assistant-stream": "^0.3.5", "ink-spinner": "^5.0.0", "zustand": "^5.0.11" }, "peerDependencies": { "@types/react": "*", "ink": ">=4", "react": "^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-AQkUyLcs8kybHCJ/LZSu+JBtg00OOMupL/Mgcb4/6ZlIXJdpguRgsme0Z/GoAT75VACdoQdwp6NrA08vP4fEQA=="],
 
     "@assistant-ui/react-ink-markdown": ["@assistant-ui/react-ink-markdown@0.0.3", "", { "dependencies": { "@assistant-ui/core": "^0.1.5", "@assistant-ui/store": "^0.2.2", "markdansi": "^0.2.1" }, "peerDependencies": { "@assistant-ui/react-ink": "^0.0.4", "@types/react": "*", "ink": ">=4", "react": "^18 || ^19", "shiki": ">=4" }, "optionalPeers": ["@assistant-ui/react-ink", "@types/react", "shiki"] }, "sha512-PVlSxMfGjcAMziiZiI8KCkQNkCyWKRbeMVKSkBQcpw0a5gkuBgPjEcX4hneclhHCClLKW6vy7uF89XuiNqKXNQ=="],
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { MessagePrimitive } from "@assistant-ui/react-ink";
+import { MessageRoot, MessageParts } from "@assistant-ui/react-ink";
 import { MarkdownText } from "@assistant-ui/react-ink-markdown";
 import { ChainOfThought } from "./ChainOfThought.js";
 import { theme } from "../theme.js";
@@ -11,13 +11,13 @@ function TextPart({ text }: { text: string }) {
 
 export function AssistantMessage() {
   return (
-    <MessagePrimitive.Root>
+    <MessageRoot>
       <Box flexDirection="column" marginY={0}>
         <Text bold color={theme.accent1}>
           Lobster:
         </Text>
         <Box marginLeft={2} flexDirection="column">
-          <MessagePrimitive.Parts
+          <MessageParts
             components={{
               Text: TextPart,
               ChainOfThought,
@@ -25,6 +25,6 @@ export function AssistantMessage() {
           />
         </Box>
       </Box>
-    </MessagePrimitive.Root>
+    </MessageRoot>
   );
 }
