@@ -2126,8 +2126,10 @@ def init_impl(
         if not _tui_handled and ui_mode == "auto":
             try:
                 from lobster.ui.bridge.questionary_fallback import run_questionary_init
+                from lobster.ui.wizard.manifest import build_init_manifest
 
-                _q_result = run_questionary_init()
+                _q_manifest = build_init_manifest()
+                _q_result = run_questionary_init(_q_manifest)
                 if _q_result.get("cancelled", False):
                     console.print("[yellow]Setup cancelled.[/yellow]")
                     raise typer.Exit(0)
