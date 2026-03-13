@@ -100,19 +100,27 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
     Translates LangGraph streaming events from ``client.query(stream=True)``
     into the ui-message-stream SSE protocol consumed by @assistant-ui/react.
 
+    State patch events use ``{"type": "data", "data": {"name": key, "data": value}}``
+    so the frontend's ``processStatePatch(data.name, data.data)`` works correctly.
+    Keys match stateHandlers.ts: plots, modalities, active_agent, agent_status,
+    activity_events, token_usage, session_title.
+
     LangGraph event mapping:
       content_delta  -> text-delta  (supervisor text, user-visible)
-      agent_content  -> data        (specialist activity, state patch)
-      agent_change   -> data        (active_agent state patch)
-      tool_execution -> tool-call-begin / tool-result (from ProtocolCallbackHandler)
-      complete       -> data        (token_usage, duration)
+      agent_content  -> data        (activity_events state patch)
+      agent_change   -> data        (active_agent + agent_status state patches)
+      tool_execution -> data        (activity_events: tool_start / tool_complete)
+      complete       -> data        (token_usage state patch)
       error          -> text-delta  (inline error) + finish(error)
       interrupt      -> data        (HITL interrupt payload)
-      context_compaction -> data    (compaction notice)
+      context_compaction -> data    (activity_events: compaction notice)
     """
 
     client: Any = None  # Set after heavy imports
     _tool_event_queue: Optional[queue_mod.Queue] = None  # Shared tool event queue
+    _event_counter: int = 0  # SSE event ID counter for reconnection
+    _session_id: str = ""  # Set by launch_ink_chat
+    _init_error: Optional[str] = None  # Stores init failure message
 
     def log_message(self, format: str, *args: Any) -> None:
         # Suppress default HTTP logging
@@ -125,12 +133,47 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
-    def do_POST(self) -> None:
-        if not self.path.endswith("/chat/stream"):
-            self.send_response(404)
-            self.end_headers()
-            return
+    # ------------------------------------------------------------------
+    # GET endpoints
+    # ------------------------------------------------------------------
 
+    def do_GET(self) -> None:
+        if self.path == "/bootstrap":
+            self._handle_bootstrap()
+        elif self.path == "/config/flags":
+            self._send_json(self._feature_flags())
+        elif self.path == "/config/templates":
+            self._send_json({"templates": []})
+        elif self.path == "/resources":
+            self._send_json({"resources": []})
+        elif self.path.endswith("/messages"):
+            self._send_json({"messages": []})
+        else:
+            self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+    # ------------------------------------------------------------------
+    # POST endpoints
+    # ------------------------------------------------------------------
+
+    def do_POST(self) -> None:
+        if self.path.endswith("/chat/stream"):
+            self._handle_chat_stream()
+        elif self.path.endswith("/sessions"):
+            self._send_json({"session_id": _DataStreamHandler._session_id})
+        elif self.path.startswith("/sessions/") and "/commands/" in self.path:
+            self._handle_slash_command()
+        else:
+            self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+    # ------------------------------------------------------------------
+    # Endpoint handlers
+    # ------------------------------------------------------------------
+
+    def _handle_chat_stream(self) -> None:
         content_length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(content_length)) if content_length > 0 else {}
         messages = body.get("messages", [])
@@ -147,6 +190,43 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def _handle_bootstrap(self) -> None:
+        self._send_json({
+            "flags": self._feature_flags(),
+            "templates": [],
+            "resources": [],
+            "session": {"session_id": _DataStreamHandler._session_id},
+        })
+
+    def _handle_slash_command(self) -> None:
+        parts = self.path.split("/commands/")
+        cmd = parts[-1] if len(parts) > 1 else ""
+        self._send_json({"result": f"Command /{cmd} not available in local mode"})
+
+    @staticmethod
+    def _feature_flags() -> dict:
+        return {
+            "projects_datasets": False,
+            "session_state_read": False,
+            "session_state_write": False,
+            "message_ddb_primary": False,
+            "curated_agent_store": False,
+            "playground": False,
+        }
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _send_json(self, data: dict) -> None:
+        body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _stream_response(self, messages: list) -> None:
         """Stream LangGraph agent response as SSE events."""
         message_id = f"msg_{uuid.uuid4().hex[:8]}"
@@ -154,10 +234,11 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         self._send_sse({"type": "start", "messageId": message_id})
 
         if self.client is None:
+            error_msg = _DataStreamHandler._init_error or "Agent client not initialized"
             self._send_sse(
                 {
                     "type": "text-delta",
-                    "textDelta": "Error: Agent client not initialized. Please wait for startup to complete.",
+                    "textDelta": f"Error: {error_msg}\n\nPlease check your configuration with 'lobster init'.",
                 }
             )
             self._send_sse({"type": "finish", "finishReason": "error"})
@@ -227,17 +308,15 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                     yield {"type": "text-delta", "textDelta": delta}
 
             elif etype == "agent_content":
-                # Specialist agent text — emit as state patch so the
-                # frontend can display it in an activity lane
+                # Specialist agent text — emit as activity event
                 delta = event.get("delta", "")
                 source = event.get("source", "specialist")
                 if delta:
                     yield {
                         "type": "data",
                         "data": {
-                            "kind": "agent_content",
-                            "agent": source,
-                            "delta": delta,
+                            "name": "activity_events",
+                            "data": [{"type": "agent_content", "agent": source, "delta": delta}],
                         },
                     }
 
@@ -248,27 +327,33 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                     active_agent = agent_name
                     yield {
                         "type": "data",
-                        "data": {
-                            "kind": "agent_change",
-                            "active_agent": agent_name,
-                            "status": status,
-                        },
+                        "data": {"name": "active_agent", "data": agent_name},
+                    }
+                    yield {
+                        "type": "data",
+                        "data": {"name": "agent_status", "data": status},
                     }
 
             elif etype == "complete":
-                # Final completion — emit token usage and duration as data
+                # Final completion — emit token usage and session title
                 token_usage = event.get("token_usage", {})
                 duration = event.get("duration", 0)
+                if duration:
+                    token_usage["duration"] = duration
                 yield {
                     "type": "data",
-                    "data": {
-                        "kind": "complete",
-                        "active_agent": "supervisor",
-                        "token_usage": token_usage,
-                        "duration": duration,
-                        "session_id": event.get("session_id", ""),
-                    },
+                    "data": {"name": "token_usage", "data": token_usage},
                 }
+                yield {
+                    "type": "data",
+                    "data": {"name": "active_agent", "data": "supervisor"},
+                }
+                session_title = event.get("session_title", "")
+                if session_title:
+                    yield {
+                        "type": "data",
+                        "data": {"name": "session_title", "data": session_title},
+                    }
 
             elif etype == "error":
                 error_msg = str(event.get("error", "Unknown error"))
@@ -281,21 +366,23 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                     yield {
                         "type": "data",
                         "data": {
-                            "kind": "error",
-                            "error_type": "rate_limit",
-                            "message": error_msg,
+                            "name": "activity_events",
+                            "data": [{"type": "error", "error_type": "rate_limit", "message": error_msg}],
                         },
                     }
 
             elif etype == "interrupt":
-                # HITL interrupt — emit as data so the frontend can
-                # render an interactive component
+                # HITL interrupt — emit as activity event so the
+                # frontend can render an interactive component
                 yield {
                     "type": "data",
                     "data": {
-                        "kind": "interrupt",
-                        "interrupt_data": event.get("data", {}),
-                        "interrupt_id": event.get("interrupt_id"),
+                        "name": "activity_events",
+                        "data": [{
+                            "type": "interrupt",
+                            "interrupt_data": event.get("data", {}),
+                            "interrupt_id": event.get("interrupt_id"),
+                        }],
                     },
                 }
 
@@ -303,11 +390,14 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                 yield {
                     "type": "data",
                     "data": {
-                        "kind": "context_compaction",
-                        "agent": event.get("agent", ""),
-                        "before_count": event.get("before_count"),
-                        "after_count": event.get("after_count"),
-                        "budget_tokens": event.get("budget_tokens"),
+                        "name": "activity_events",
+                        "data": [{
+                            "type": "context_compaction",
+                            "agent": event.get("agent", ""),
+                            "before_count": event.get("before_count"),
+                            "after_count": event.get("after_count"),
+                            "budget_tokens": event.get("budget_tokens"),
+                        }],
                     },
                 }
 
@@ -338,37 +428,40 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
 
                 if status == "running":
                     yield {
-                        "type": "tool-call-begin",
-                        "toolCallId": tool_call_id,
-                        "toolName": tool_name,
+                        "type": "data",
+                        "data": {
+                            "name": "activity_events",
+                            "data": [{"type": "tool_start", "tool": tool_name, "id": tool_call_id}],
+                        },
                     }
                 elif status in ("complete", "error"):
-                    summary = payload.get("summary", "")
                     duration_ms = payload.get("duration_ms")
-                    result_text = summary
+                    evt: Dict[str, Any] = {
+                        "type": "tool_complete",
+                        "tool": tool_name,
+                        "id": tool_call_id,
+                    }
                     if duration_ms is not None:
-                        result_text = f"{summary} ({duration_ms / 1000:.1f}s)" if summary else f"{duration_ms / 1000:.1f}s"
+                        evt["duration_ms"] = duration_ms
+                    if status == "error":
+                        evt["error"] = True
                     yield {
-                        "type": "tool-result",
-                        "toolCallId": tool_call_id,
-                        "result": result_text or ("error" if status == "error" else "done"),
+                        "type": "data",
+                        "data": {"name": "activity_events", "data": [evt]},
                     }
 
             elif msg_type == "agent_transition":
-                yield {
-                    "type": "data",
-                    "data": {
-                        "kind": "agent_transition",
-                        "from": payload.get("from", ""),
-                        "to": payload.get("to", ""),
-                        "reason": payload.get("reason", ""),
-                        "status": payload.get("status", ""),
-                    },
-                }
+                to_agent = payload.get("to", "")
+                if to_agent:
+                    yield {
+                        "type": "data",
+                        "data": {"name": "active_agent", "data": to_agent},
+                    }
 
     def _send_sse(self, data: dict) -> None:
-        line = f"data: {json.dumps(data)}\n\n"
-        self.wfile.write(line.encode())
+        _DataStreamHandler._event_counter += 1
+        self.wfile.write(f"id: {_DataStreamHandler._event_counter}\n".encode())
+        self.wfile.write(f"data: {json.dumps(data)}\n\n".encode())
         self.wfile.flush()
 
     def _send_done(self) -> None:
@@ -408,6 +501,9 @@ def launch_ink_chat(
     sid = session_id or uuid.uuid4().hex[:12]
     api_url = f"http://127.0.0.1:{port}"
 
+    # Store session ID for handler access
+    _DataStreamHandler._session_id = sid
+
     handler = partial(_DataStreamHandler)
     server = HTTPServer(("127.0.0.1", port), handler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -424,6 +520,18 @@ def launch_ink_chat(
         stdout=sys.stdout,
         stderr=subprocess.PIPE if debug else subprocess.DEVNULL,
     )
+
+    # Drain stderr in a background thread to prevent pipe deadlock
+    if debug:
+        def _drain_stderr(p: subprocess.Popen) -> None:
+            assert p.stderr is not None
+            for line in p.stderr:
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="replace")
+                logger.debug("TUI stderr: %s", line.rstrip())
+
+        stderr_thread = threading.Thread(target=_drain_stderr, args=(proc,), daemon=True)
+        stderr_thread.start()
 
     # Heavy imports happen here, while TUI is already displaying
     try:
@@ -468,6 +576,7 @@ def launch_ink_chat(
         logger.debug("Agent client initialized, handler wired")
     except Exception as exc:
         logger.error("Failed to initialize agent client: %s", exc)
+        _DataStreamHandler._init_error = str(exc)
 
     # Wait for TUI to exit
     try:
