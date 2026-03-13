@@ -1,9 +1,12 @@
 import React, { useCallback, useState, useEffect } from "react";
 import { Box, Text } from "ink";
+import Spinner from "ink-spinner";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { useSlashCommands } from "./hooks/useSlashCommands.js";
+import { useConnectionStatus } from "./hooks/useConnectionStatus.js";
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
 import { Composer } from "./components/Composer.js";
@@ -29,6 +32,7 @@ export function App({ config }: { config: AppConfig }) {
   }, [runtime]);
   const cancelState = useCancelHandler(handleCancel);
   const slashCmds = useSlashCommands(appState, config, sessionId);
+  const connection = useConnectionStatus();
 
   const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -73,51 +77,68 @@ export function App({ config }: { config: AppConfig }) {
   }, [slashCmds.exitRequested]);
 
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <ConfirmPromptUI />
-      <SelectPromptUI />
-      <TextInputPromptUI />
-      <ThresholdSliderUI />
-      <CellTypeSelectorUI />
-      <QCDashboardUI />
-      <Box flexDirection="column">
-        <Header
-          agentName={appState.activeAgent ?? undefined}
-          sessionTitle={appState.sessionTitle ?? undefined}
-          sessionId={sessionId}
-        />
-        {showTemplates ? (
-          <TemplateSelector
-            templates={templates}
-            onSelect={handleTemplateSelect}
-            onDismiss={handleTemplateDismiss}
+    <ErrorBoundary>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <ConfirmPromptUI />
+        <SelectPromptUI />
+        <TextInputPromptUI />
+        <ThresholdSliderUI />
+        <CellTypeSelectorUI />
+        <QCDashboardUI />
+        <Box flexDirection="column">
+          <Header
+            agentName={appState.activeAgent ?? undefined}
+            sessionTitle={appState.sessionTitle ?? undefined}
+            sessionId={sessionId}
           />
-        ) : (
-          <>
-            <Thread />
-            {slashCmds.loading && (
-              <Box paddingX={1}>
-                <Text color="yellow">Running command...</Text>
-              </Box>
-            )}
-            {slashCmds.commandOutput && (
-              <Box paddingX={1} marginY={1}>
-                <Text color="gray">{slashCmds.commandOutput}</Text>
-              </Box>
-            )}
-            <Composer onIntercept={slashCmds.handleInput} />
-          </>
-        )}
-        {cancelState.showWarning && (
-          <Text color="yellow">Press Ctrl+C again to cancel</Text>
-        )}
-        <ActivityFeed events={appState.activityEvents} />
-        <StatusBar
-          appState={appState}
-          sessionId={sessionId}
-          flags={flags}
-        />
-      </Box>
-    </AssistantRuntimeProvider>
+          {connection.state === "reconnecting" && (
+            <Box paddingX={1}>
+              <Text color="yellow">
+                <Spinner type="line" />{" "}
+                Reconnecting... (attempt {connection.retryCount})
+              </Text>
+            </Box>
+          )}
+          {connection.state === "error" && (
+            <Box paddingX={1}>
+              <Text color="red">
+                Connection lost: {connection.error ?? "unknown error"}
+              </Text>
+            </Box>
+          )}
+          {showTemplates ? (
+            <TemplateSelector
+              templates={templates}
+              onSelect={handleTemplateSelect}
+              onDismiss={handleTemplateDismiss}
+            />
+          ) : (
+            <>
+              <Thread />
+              {slashCmds.loading && (
+                <Box paddingX={1}>
+                  <Text color="yellow">Running command...</Text>
+                </Box>
+              )}
+              {slashCmds.commandOutput && (
+                <Box paddingX={1} marginY={1}>
+                  <Text color="gray">{slashCmds.commandOutput}</Text>
+                </Box>
+              )}
+              <Composer onIntercept={slashCmds.handleInput} />
+            </>
+          )}
+          {cancelState.showWarning && (
+            <Text color="yellow">Press Ctrl+C again to cancel</Text>
+          )}
+          <ActivityFeed events={appState.activityEvents} />
+          <StatusBar
+            appState={appState}
+            sessionId={sessionId}
+            flags={flags}
+          />
+        </Box>
+      </AssistantRuntimeProvider>
+    </ErrorBoundary>
   );
 }
