@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import React from "react";
 import { render } from "ink";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { parseArgs } from "util";
 import { resolveConfig } from "./config.js";
 import { App } from "./App.js";
@@ -14,11 +14,13 @@ const { values, positionals } = parseArgs({
   options: {
     "api-url": { type: "string" },
     "session-id": { type: "string" },
+    resume: { type: "string" },
     token: { type: "string" },
     cloud: { type: "boolean", default: false },
     query: { type: "boolean", default: false },
     init: { type: "boolean", default: false },
     "manifest-file": { type: "string" },
+    "result-file": { type: "string" },
     help: { type: "boolean", short: "h", default: false },
   },
   strict: true,
@@ -35,11 +37,13 @@ Usage:
 Options:
   --api-url <url>           Backend API URL (default: http://localhost:8000)
   --session-id <id>         Resume an existing session
+  --resume <id>             Alias for --session-id (reconnect after disconnect)
   --token <token>           Authentication token for cloud mode
   --cloud                   Connect to Omics-OS Cloud (app.omics-os.com)
   --query                   Non-interactive: send message, print response, exit
   --init                    Run the init wizard
   --manifest-file <path>    Path to wizard manifest JSON file
+  --result-file <path>      Write init wizard result JSON to a file
   -h, --help                Show this help message
 
 Non-interactive mode:
@@ -50,6 +54,7 @@ Non-interactive mode:
 
 if (values.init) {
   const manifestPath = values["manifest-file"];
+  const resultFile = values["result-file"];
   if (!manifestPath) {
     console.error("Error: --init requires --manifest-file <path>");
     process.exit(1);
@@ -64,7 +69,17 @@ if (values.init) {
   }
 
   function handleWizardComplete(result: WizardResult) {
-    process.stdout.write(JSON.stringify(result) + "\n");
+    const payload = JSON.stringify(result) + "\n";
+    if (resultFile) {
+      try {
+        writeFileSync(resultFile, payload, "utf-8");
+      } catch (e) {
+        console.error(`Error writing result file: ${e}`);
+        process.exit(1);
+      }
+    } else {
+      process.stdout.write(payload);
+    }
     process.exit(0);
   }
 
@@ -72,7 +87,7 @@ if (values.init) {
 } else if (values.query) {
   const config = resolveConfig({
     apiUrl: values["api-url"],
-    sessionId: values["session-id"],
+    sessionId: values["session-id"] ?? values.resume,
     token: values.token,
     cloud: values.cloud,
   });
@@ -89,7 +104,7 @@ if (values.init) {
 } else {
   const config = resolveConfig({
     apiUrl: values["api-url"],
-    sessionId: values["session-id"],
+    sessionId: values["session-id"] ?? values.resume,
     token: values.token,
     cloud: values.cloud,
   });

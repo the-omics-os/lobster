@@ -11,6 +11,7 @@ import {
   processStatePatch,
   type AppState,
 } from "../utils/stateHandlers.js";
+import { useSSEReconnect, loadLastEventId } from "./useSSEReconnect.js";
 
 export function useRuntime(config: AppConfig) {
   const [sessionId, setSessionId] = useState<string | undefined>(
@@ -21,6 +22,8 @@ export function useRuntime(config: AppConfig) {
   >(undefined);
   const [appState, setAppState] = useState<AppState>(createInitialState);
   const appStateRef = useRef(appState);
+
+  const sse = useSSEReconnect(sessionId);
 
   // Resolve session ID on mount
   useEffect(() => {
@@ -37,9 +40,14 @@ export function useRuntime(config: AppConfig) {
     });
   }, [sessionId]);
 
-  // State patch handler (protocol §1.3)
+  // State patch handler (protocol §1.3) + SSE event ID tracking
   const onData = useCallback(
-    (data: { type: string; name: string; data: unknown }) => {
+    (data: { type: string; name: string; data: unknown; id?: string }) => {
+      // Track SSE event IDs for reconnection (protocol §5.2)
+      if (data.id) {
+        sse.trackEventId(data.id);
+      }
+
       const result = processStatePatch(data.name, data.data);
       if (result) {
         setAppState((prev) => {
@@ -49,10 +57,14 @@ export function useRuntime(config: AppConfig) {
         });
       }
     },
-    []
+    [sse.trackEventId],
   );
 
-  const headers = authHeaders(config);
+  // Build headers: auth + Last-Event-ID for reconnection
+  const headers: Record<string, string> = {
+    ...authHeaders(config),
+    ...sse.reconnectHeaders(),
+  };
 
   const api = `${config.apiUrl}/sessions/${sessionId ?? "pending"}/chat/stream`;
 
@@ -63,5 +75,5 @@ export function useRuntime(config: AppConfig) {
     onData,
   });
 
-  return { runtime, appState, sessionId };
+  return { runtime, appState, sessionId, sse };
 }

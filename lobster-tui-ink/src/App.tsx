@@ -5,7 +5,6 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { useSlashCommands } from "./hooks/useSlashCommands.js";
-import { useConnectionStatus } from "./hooks/useConnectionStatus.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
@@ -26,13 +25,12 @@ import { fetchFeatureFlags, type FeatureFlags } from "./api/featureFlags.js";
 import { fetchTemplates, type PromptTemplate } from "./api/templates.js";
 
 export function App({ config }: { config: AppConfig }) {
-  const { runtime, appState, sessionId } = useRuntime(config);
+  const { runtime, appState, sessionId, sse } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
   }, [runtime]);
   const cancelState = useCancelHandler(handleCancel);
   const slashCmds = useSlashCommands(appState, config, sessionId);
-  const connection = useConnectionStatus();
 
   const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -69,6 +67,18 @@ export function App({ config }: { config: AppConfig }) {
     setShowTemplates(false);
   }, []);
 
+  // Handle degraded mode exit (protocol §5.5: > 2min with 3 failed retries)
+  useEffect(() => {
+    if (sse.degradedLevel === "exit" && sessionId) {
+      console.log(
+        `\nSession ${sessionId} may still be running server-side.\n` +
+        `Resume: lobster cloud chat --resume ${sessionId}\n` +
+        `View:   app.omics-os.com/sessions/${sessionId}\n`,
+      );
+      process.exit(1);
+    }
+  }, [sse.degradedLevel, sessionId]);
+
   // Handle /exit
   useEffect(() => {
     if (slashCmds.exitRequested) {
@@ -91,18 +101,18 @@ export function App({ config }: { config: AppConfig }) {
             sessionTitle={appState.sessionTitle ?? undefined}
             sessionId={sessionId}
           />
-          {connection.state === "reconnecting" && (
+          {sse.degradedLevel === "reconnecting" && (
             <Box paddingX={1}>
               <Text color="yellow">
                 <Spinner type="line" />{" "}
-                Reconnecting... (attempt {connection.retryCount})
+                Reconnecting... (attempt {sse.retryCount})
               </Text>
             </Box>
           )}
-          {connection.state === "error" && (
+          {sse.degradedLevel === "lost" && (
             <Box paddingX={1}>
               <Text color="red">
-                Connection lost: {connection.error ?? "unknown error"}
+                Connection lost. Retrying... (Ctrl+C to exit)
               </Text>
             </Box>
           )}
