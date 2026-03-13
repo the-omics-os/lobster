@@ -138,7 +138,14 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
     # ------------------------------------------------------------------
 
     def do_GET(self) -> None:
-        if self.path == "/bootstrap":
+        if self.path == "/health":
+            ready = _DataStreamHandler.client is not None
+            error = _DataStreamHandler._init_error
+            self._send_json({
+                "ready": ready,
+                "error": error,
+            })
+        elif self.path == "/bootstrap":
             self._handle_bootstrap()
         elif self.path == "/config/flags":
             self._send_json(self._feature_flags())

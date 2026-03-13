@@ -29,6 +29,43 @@ import type { Resource } from "./api/resources.js";
 import { fetchBootstrap } from "./api/bootstrap.js";
 
 export function App({ config }: { config: AppConfig }) {
+  const [backendReady, setBackendReady] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  // Poll /health until backend agent is initialized
+  useEffect(() => {
+    if (config.isCloud) {
+      // Cloud mode — backend is always ready
+      setBackendReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        try {
+          const resp = await fetch(`${config.apiUrl}/health`);
+          if (resp.ok) {
+            const data = (await resp.json()) as { ready: boolean; error: string | null };
+            if (data.ready) {
+              setBackendReady(true);
+              return;
+            }
+            if (data.error) {
+              setBackendError(data.error);
+              return;
+            }
+          }
+        } catch {
+          // Server not ready yet — keep polling
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [config.apiUrl, config.isCloud]);
+
   const { runtime, appState, sessionId, sse, clearThread } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
@@ -49,8 +86,9 @@ export function App({ config }: { config: AppConfig }) {
     activityEventCount: Math.min(activityEventCount, 5),
   });
 
-  // Bootstrap: single fetch for flags, resources, and templates
+  // Bootstrap: single fetch for flags, resources, and templates (after backend ready)
   useEffect(() => {
+    if (!backendReady) return;
     fetchBootstrap(config).then((bootstrap) => {
       setFlags(bootstrap.flags);
       setResources(bootstrap.resources);
@@ -59,7 +97,7 @@ export function App({ config }: { config: AppConfig }) {
         setShowTemplates(true);
       }
     });
-  }, [config.apiUrl]);
+  }, [config.apiUrl, backendReady]);
 
   const handleTemplateSelect = useCallback(
     (text: string) => {
@@ -102,6 +140,25 @@ export function App({ config }: { config: AppConfig }) {
       slashCmds.resetClear();
     }
   }, [slashCmds.clearRequested, clearThread, slashCmds.resetClear]);
+
+  // Loading gate — show spinner until backend is ready
+  if (!backendReady) {
+    return (
+      <Box flexDirection="column" paddingX={1} paddingY={1}>
+        <Header />
+        {backendError ? (
+          <Box flexDirection="column" marginTop={1}>
+            <Text color={theme.error}>Failed to initialize agent: {backendError}</Text>
+            <Text dimColor>Run &apos;lobster init&apos; to reconfigure.</Text>
+          </Box>
+        ) : (
+          <Box marginTop={1} gap={1}>
+            <BrailleSpinner label="Loading agent..." color={theme.primary} />
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   return (
     <ErrorBoundary>

@@ -917,7 +917,7 @@ def init(
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+        help="UI mode for interactive init: auto (Ink TUI > Go TUI > questionary), ink (require Ink), go (require Go TUI)",
     ),
 ):
     """
