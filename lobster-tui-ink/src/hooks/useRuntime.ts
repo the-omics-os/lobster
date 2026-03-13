@@ -2,13 +2,13 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
 import type { ThreadMessageLike } from "@assistant-ui/react-ink";
 import type { AppConfig } from "../config.js";
+import { authHeaders } from "../config.js";
 import { hydrateMessages } from "../utils/hydration.js";
 import {
   createInitialState,
   applyStatePatch,
   processStatePatch,
   type AppState,
-  type StateKey,
 } from "../utils/stateHandlers.js";
 
 export function useRuntime(config: AppConfig) {
@@ -43,10 +43,7 @@ export function useRuntime(config: AppConfig) {
     []
   );
 
-  const headers: Record<string, string> = {};
-  if (config.token) {
-    headers["Authorization"] = `Bearer ${config.token}`;
-  }
+  const headers = authHeaders(config);
 
   const runtime = useDataStreamRuntime({
     api: `${config.apiUrl}/sessions/${config.sessionId ?? "new"}/chat/stream`,

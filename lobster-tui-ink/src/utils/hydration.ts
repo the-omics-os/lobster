@@ -8,6 +8,7 @@
 import type { ThreadMessageLike } from "@assistant-ui/react-ink";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import type { AppConfig } from "../config.js";
+import { authHeaders } from "../config.js";
 
 /** Raw message from the REST API (durable envelope). */
 interface DurableMessage {
@@ -51,10 +52,8 @@ export async function hydrateMessages(
   const url = `${config.apiUrl}/sessions/${sessionId}/messages`;
   const headers: Record<string, string> = {
     Accept: "application/json",
+    ...authHeaders(config),
   };
-  if (config.token) {
-    headers["Authorization"] = `Bearer ${config.token}`;
-  }
 
   try {
     const resp = await fetch(url, { headers });
