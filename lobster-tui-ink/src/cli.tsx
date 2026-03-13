@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
+import React from "react";
+import { render } from "ink";
 import { parseArgs } from "util";
+import { resolveConfig } from "./config.js";
+import { App } from "./App.js";
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -28,11 +32,11 @@ Options:
   process.exit(0);
 }
 
-const apiUrl = values["api-url"] ?? (values.cloud ? "https://app.omics-os.com/api/v1" : "http://localhost:8000");
-const sessionId = values["session-id"];
-const token = values.token;
+const config = resolveConfig({
+  apiUrl: values["api-url"],
+  sessionId: values["session-id"],
+  token: values.token,
+  cloud: values.cloud,
+});
 
-console.log(`lobster-chat v0.1.0`);
-console.log(`API: ${apiUrl}`);
-if (sessionId) console.log(`Session: ${sessionId}`);
-console.log("(App shell not yet wired — see Step 1.2)");
+render(<App config={config} />);
