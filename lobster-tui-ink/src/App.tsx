@@ -1,7 +1,8 @@
-import React from "react";
-import { Box } from "ink";
+import React, { useCallback } from "react";
+import { Box, Text } from "ink";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { useRuntime } from "./hooks/useRuntime.js";
+import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
 import { Composer } from "./components/Composer.js";
@@ -11,6 +12,10 @@ import type { AppConfig } from "./config.js";
 
 export function App({ config }: { config: AppConfig }) {
   const { runtime, appState } = useRuntime(config);
+  const handleCancel = useCallback(() => {
+    runtime.thread.cancelRun();
+  }, [runtime]);
+  const cancelState = useCancelHandler(handleCancel);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -22,6 +27,9 @@ export function App({ config }: { config: AppConfig }) {
         />
         <Thread />
         <Composer />
+        {cancelState.showWarning && (
+          <Text color="yellow">Press Ctrl+C again to cancel</Text>
+        )}
         <ActivityFeed events={appState.activityEvents} />
         <StatusBar
           appState={appState}
