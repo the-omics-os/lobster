@@ -1127,20 +1127,29 @@ def _maybe_launch_ink_chat_ui(
     model: Optional[str],
     debug: bool,
 ) -> bool:
-    """Launch Ink chat UI when requested, else return False."""
-    if ui_mode not in ("ink",):
+    """Launch Ink chat UI when requested or in auto mode, else return False.
+
+    In auto mode: tries bootstrap (download-on-first-run) but returns False
+    silently if unavailable so the Go TUI / classic fallback chain continues.
+    In explicit ink mode: errors if binary not found.
+    """
+    if ui_mode not in ("auto", "ink"):
         return False
     if not os.isatty(0):
-        _raise_cli_error("Error: Ink TUI requires an interactive terminal (stdin is not a TTY)")
+        if ui_mode == "ink":
+            _raise_cli_error("Error: Ink TUI requires an interactive terminal (stdin is not a TTY)")
+        return False
 
-    from lobster.cli_internal.ink_launcher import find_ink_binary, launch_ink_chat
+    from lobster.cli_internal.ink_bootstrap import find_or_download_ink_binary
+    from lobster.cli_internal.ink_launcher import launch_ink_chat
 
-    binary = find_ink_binary()
+    binary = find_or_download_ink_binary()
     if not binary:
-        _raise_cli_error(
-            "Error: lobster-chat binary not found. "
-            "Build with: cd lobster-tui-ink && bun run build"
-        )
+        if ui_mode == "ink":
+            _raise_cli_error(
+                "Error: lobster-chat binary not found and download failed. "
+                "Build with: cd lobster-tui-ink && bun run build"
+            )
         return False
 
     try:
@@ -1153,8 +1162,12 @@ def _maybe_launch_ink_chat_ui(
         )
         return True
     except Exception as exc:
+        if ui_mode == "ink":
+            import sys
+            print(f"\033[31mError:\033[0m Ink TUI failed: {exc}", file=sys.stderr)
+            return False
         import sys
-        print(f"\033[33mNote:\033[0m Ink TUI failed ({exc}), falling back to classic mode.", file=sys.stderr)
+        print(f"\033[33mNote:\033[0m Ink TUI failed ({exc}), trying Go TUI...", file=sys.stderr)
         return False
 
 
