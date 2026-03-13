@@ -23,12 +23,13 @@ import {
   QCDashboardUI,
 } from "./components/HITL/index.js";
 import type { AppConfig } from "./config.js";
-import { fetchFeatureFlags, type FeatureFlags } from "./api/featureFlags.js";
-import { fetchTemplates, type PromptTemplate } from "./api/templates.js";
-import { fetchResources, type Resource } from "./api/resources.js";
+import type { FeatureFlags } from "./api/featureFlags.js";
+import type { PromptTemplate } from "./api/templates.js";
+import type { Resource } from "./api/resources.js";
+import { fetchBootstrap } from "./api/bootstrap.js";
 
 export function App({ config }: { config: AppConfig }) {
-  const { runtime, appState, sessionId, sse } = useRuntime(config);
+  const { runtime, appState, sessionId, sse, clearThread } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
   }, [runtime]);
@@ -48,22 +49,17 @@ export function App({ config }: { config: AppConfig }) {
     activityEventCount: Math.min(activityEventCount, 5),
   });
 
-  // Fetch feature flags + resources on startup
+  // Bootstrap: single fetch for flags, resources, and templates
   useEffect(() => {
-    fetchFeatureFlags(config).then(setFlags);
-    fetchResources(config).then(setResources);
-  }, [config.apiUrl]);
-
-  // Fetch templates on new session (no --session-id)
-  useEffect(() => {
-    if (config.sessionId) return;
-    fetchTemplates(config).then((tpls) => {
-      if (tpls.length > 0) {
-        setTemplates(tpls);
+    fetchBootstrap(config).then((bootstrap) => {
+      setFlags(bootstrap.flags);
+      setResources(bootstrap.resources);
+      if (!config.sessionId && bootstrap.templates.length > 0) {
+        setTemplates(bootstrap.templates);
         setShowTemplates(true);
       }
     });
-  }, [config.apiUrl, config.sessionId]);
+  }, [config.apiUrl]);
 
   const handleTemplateSelect = useCallback(
     (text: string) => {
@@ -98,6 +94,14 @@ export function App({ config }: { config: AppConfig }) {
       process.exit(0);
     }
   }, [slashCmds.exitRequested]);
+
+  // Handle /clear — reset thread and app state
+  useEffect(() => {
+    if (slashCmds.clearRequested) {
+      clearThread();
+      slashCmds.resetClear();
+    }
+  }, [slashCmds.clearRequested, clearThread, slashCmds.resetClear]);
 
   return (
     <ErrorBoundary>

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/cli.tsx",
-    "build": "bun build --compile --minify --target=bun ./src/cli.tsx --outfile dist/lobster-chat",
+    "build": "bun build --compile --target=bun ./src/cli.tsx --outfile dist/lobster-chat",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

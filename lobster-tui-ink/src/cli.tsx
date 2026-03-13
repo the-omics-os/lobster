@@ -5,7 +5,6 @@ import { readFileSync, writeFileSync } from "fs";
 import { parseArgs } from "util";
 import { resolveConfig } from "./config.js";
 import { App } from "./App.js";
-import { runQuery } from "./query.js";
 import { InitWizard } from "./wizard/InitWizard.js";
 import type { WizardManifest, WizardResult } from "./wizard/types.js";
 
@@ -17,7 +16,6 @@ const { values, positionals } = parseArgs({
     resume: { type: "string" },
     token: { type: "string" },
     cloud: { type: "boolean", default: false },
-    query: { type: "boolean", default: false },
     init: { type: "boolean", default: false },
     "manifest-file": { type: "string" },
     "result-file": { type: "string" },
@@ -32,7 +30,6 @@ if (values.help) {
 
 Usage:
   lobster-chat [options]
-  lobster-chat --query "your request"
 
 Options:
   --api-url <url>           Backend API URL (default: http://localhost:8000)
@@ -40,15 +37,13 @@ Options:
   --resume <id>             Alias for --session-id (reconnect after disconnect)
   --token <token>           Authentication token for cloud mode
   --cloud                   Connect to Omics-OS Cloud (app.omics-os.com)
-  --query                   Non-interactive: send message, print response, exit
   --init                    Run the init wizard
   --manifest-file <path>    Path to wizard manifest JSON file
   --result-file <path>      Write init wizard result JSON to a file
   -h, --help                Show this help message
 
-Non-interactive mode:
-  lobster-chat --query "Run QC on my RNA-seq data"
-  lobster-chat --query --session-id abc123 "Continue analysis"`);
+Non-interactive queries:
+  Use "lobster query" instead (runs directly in Python).`);
   process.exit(0);
 }
 
@@ -84,23 +79,6 @@ if (values.init) {
   }
 
   render(<InitWizard manifest={manifest} onComplete={handleWizardComplete} />);
-} else if (values.query) {
-  const config = resolveConfig({
-    apiUrl: values["api-url"],
-    sessionId: values["session-id"] ?? values.resume,
-    token: values.token,
-    cloud: values.cloud,
-  });
-
-  const message = positionals.join(" ").trim();
-
-  if (!message) {
-    console.error("Error: --query requires a message as positional argument");
-    console.error('Usage: lobster-chat --query "your request"');
-    process.exit(1);
-  }
-
-  await runQuery(config, message);
 } else {
   const config = resolveConfig({
     apiUrl: values["api-url"],

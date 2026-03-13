@@ -75,5 +75,13 @@ export function useRuntime(config: AppConfig) {
     onData,
   });
 
-  return { runtime, appState, sessionId, sse };
+  /** Clear thread messages and reset app state (for /clear). */
+  const clearThread = useCallback(() => {
+    setAppState(createInitialState);
+    setInitialMessages(undefined);
+    // Request a new session so old messages don't rehydrate
+    resolveSessionId({ ...config, sessionId: undefined }).then(setSessionId);
+  }, [config]);
+
+  return { runtime, appState, sessionId, sse, clearThread };
 }
