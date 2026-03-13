@@ -6,6 +6,7 @@ import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
 import { Composer } from "./components/Composer.js";
 import { StatusBar } from "./components/StatusBar.js";
+import { ActivityFeed } from "./components/ActivityFeed.js";
 import type { AppConfig } from "./config.js";
 
 export function App({ config }: { config: AppConfig }) {
@@ -21,6 +22,7 @@ export function App({ config }: { config: AppConfig }) {
         />
         <Thread />
         <Composer />
+        <ActivityFeed events={appState.activityEvents} />
         <StatusBar
           appState={appState}
           sessionId={config.sessionId}
