@@ -62,4 +62,8 @@ export interface WizardResult {
   selectedPackages: string[];
   provider: string;
   credentials: Record<string, string>;
+  model: string | null;
+  profile: string | null;
+  optionalKeys: Record<string, string>;
+  smartStandardization: boolean;
 }
