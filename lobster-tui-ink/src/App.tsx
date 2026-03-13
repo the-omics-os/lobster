@@ -5,6 +5,7 @@ import { useRuntime } from "./hooks/useRuntime.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
 import { Composer } from "./components/Composer.js";
+import { StatusBar } from "./components/StatusBar.js";
 import type { AppConfig } from "./config.js";
 
 export function App({ config }: { config: AppConfig }) {
@@ -20,6 +21,10 @@ export function App({ config }: { config: AppConfig }) {
         />
         <Thread />
         <Composer />
+        <StatusBar
+          appState={appState}
+          sessionId={config.sessionId}
+        />
       </Box>
     </AssistantRuntimeProvider>
   );
