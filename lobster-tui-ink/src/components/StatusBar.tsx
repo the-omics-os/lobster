@@ -2,18 +2,20 @@ import React from "react";
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
 import type { AppState } from "../utils/stateHandlers.js";
+import type { FeatureFlags } from "../api/featureFlags.js";
 
 interface StatusBarProps {
   appState: AppState;
   sessionId?: string;
   isStreaming?: boolean;
+  flags?: FeatureFlags;
 }
 
 /**
  * Bottom-pinned status bar showing active agent, session ID, and token usage.
  * Updates from aui-state: patches (active_agent, token_usage).
  */
-export function StatusBar({ appState, sessionId, isStreaming }: StatusBarProps) {
+export function StatusBar({ appState, sessionId, isStreaming, flags }: StatusBarProps) {
   const { activeAgent, tokenUsage } = appState;
 
   const tokenDisplay =
