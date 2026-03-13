@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/cli.tsx",
-    "build": "bun build --compile --minify --bytecode ./src/cli.tsx --outfile dist/lobster-chat",
+    "build": "bun build --compile --minify --target=bun ./src/cli.tsx --outfile dist/lobster-chat",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,7 +21,8 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "typescript": "^5.8.0",
-    "bun-types": "^1.3.0"
+    "bun-types": "^1.3.0",
+    "react-devtools-core": "^7.0.1",
+    "typescript": "^5.8.0"
   }
 }
