@@ -528,3 +528,53 @@ def logout() -> None:
 
     clear_credentials()
     console.print("Logged out of Omics-OS Cloud.")
+
+
+@cloud_app.command()
+def chat(
+    session_id: Optional[str] = typer.Option(
+        None, "--session-id", "-s", help="Resume an existing cloud session"
+    ),
+    token: Optional[str] = typer.Option(
+        None, "--token", help="Override stored auth token"
+    ),
+    endpoint: Optional[str] = typer.Option(
+        None, "--endpoint", help="Custom cloud API endpoint"
+    ),
+) -> None:
+    """Start an interactive cloud chat session (Ink TUI, direct connection)."""
+    import os
+    import shutil
+    import subprocess
+
+    from lobster.cli_internal.ink_launcher import find_ink_binary
+
+    binary = find_ink_binary()
+    if not binary:
+        console.print(
+            "[red]Error:[/red] lobster-chat binary not found.\n"
+            "Build with: cd lobster-tui-ink && bun run build"
+        )
+        raise typer.Exit(1)
+
+    if not os.isatty(0):
+        console.print("[red]Error:[/red] Cloud chat requires an interactive terminal.")
+        raise typer.Exit(1)
+
+    api_url = endpoint or "https://app.omics-os.com/api/v1"
+
+    cmd = [binary, "--cloud", f"--api-url={api_url}"]
+    if session_id:
+        cmd.append(f"--session-id={session_id}")
+    if token:
+        cmd.append(f"--token={token}")
+
+    proc = subprocess.Popen(cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+    try:
+        proc.wait()
+    except KeyboardInterrupt:
+        import signal
+
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=5)
+    raise typer.Exit(proc.returncode or 0)
