@@ -2,7 +2,11 @@ import React from "react";
 import { Box, Text } from "ink";
 import { MessagePrimitive } from "@assistant-ui/react-ink";
 import { MarkdownText } from "@assistant-ui/react-ink-markdown";
-import { ToolCallRenderer } from "./ToolRenderers/ToolCallRenderer.js";
+import { ChainOfThought } from "./ChainOfThought.js";
+
+function TextPart({ text }: { text: string }) {
+  return <MarkdownText text={text} />;
+}
 
 export function AssistantMessage() {
   return (
@@ -11,12 +15,12 @@ export function AssistantMessage() {
         <Text bold color="magenta">
           Lobster:
         </Text>
-        <Box marginLeft={2}>
-          <MessagePrimitive.Content
-            renderText={({ part }) => <MarkdownText text={part.text} />}
-            renderToolCall={({ part, index }) => (
-              <ToolCallRenderer part={part} index={index} />
-            )}
+        <Box marginLeft={2} flexDirection="column">
+          <MessagePrimitive.Parts
+            components={{
+              Text: TextPart,
+              ChainOfThought,
+            }}
           />
         </Box>
       </Box>
