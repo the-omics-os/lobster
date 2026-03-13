@@ -8,6 +8,7 @@ import { apiFetch } from "../api/apiClient.js";
 import type { AppState } from "../utils/stateHandlers.js";
 import { isFeatureEnabled } from "../api/featureFlags.js";
 import { listProjects } from "../api/projects.js";
+import { listAgents, getAgentInfo } from "../api/agents.js";
 
 export interface CommandResult {
   type: "output" | "action";
@@ -74,7 +75,7 @@ const NATIVE_COMMANDS: CommandDef[] = [
     name: "help",
     description: "Show available commands",
     handler: (_args, _ctx) => {
-      const all = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS];
+      const all = ALL_COMMANDS;
       const lines = [
         "Available commands:",
         "",
@@ -188,7 +189,78 @@ const PROJECT_COMMANDS: CommandDef[] = [
   },
 ];
 
-const ALL_COMMANDS = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS, ...PROJECT_COMMANDS];
+const AGENT_COMMANDS: CommandDef[] = [
+  {
+    name: "agents",
+    description: "Browse curated agents",
+    bridged: true,
+    handler: async (_args, ctx) => {
+      if (!isFeatureEnabled("curated_agent_store")) {
+        return { type: "output", text: "Agent store feature is not enabled." };
+      }
+      try {
+        const agents = await listAgents(ctx.config);
+        if (agents.length === 0) {
+          return { type: "output", text: "No curated agents found." };
+        }
+        const lines = [
+          "Curated agents:",
+          "",
+          ...agents.map(
+            (a) =>
+              `  ${a.name.padEnd(28)} v${a.version.padEnd(8)} ${a.description ?? ""}`,
+          ),
+          "",
+          "Use /agent-info <name> for details.",
+        ];
+        return { type: "output", text: lines.join("\n") };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { type: "output", text: `Error: ${msg}` };
+      }
+    },
+  },
+  {
+    name: "agent-info",
+    description: "Show agent details",
+    bridged: true,
+    handler: async (args, ctx) => {
+      if (!isFeatureEnabled("curated_agent_store")) {
+        return { type: "output", text: "Agent store feature is not enabled." };
+      }
+      if (!args) {
+        return { type: "output", text: "Usage: /agent-info <agent_name>" };
+      }
+      try {
+        const agent = await getAgentInfo(ctx.config, args.trim());
+        if (!agent) {
+          return { type: "output", text: `Agent "${args.trim()}" not found.` };
+        }
+        const lines = [
+          `${agent.name} v${agent.version}`,
+          "",
+          agent.description ?? "(no description)",
+        ];
+        if (agent.author) lines.push(`Author: ${agent.author}`);
+        if (agent.capabilities && agent.capabilities.length > 0) {
+          lines.push("", "Capabilities:");
+          for (const cap of agent.capabilities) {
+            lines.push(`  - ${cap}`);
+          }
+        }
+        if (agent.tools && agent.tools.length > 0) {
+          lines.push("", `Tools: ${agent.tools.join(", ")}`);
+        }
+        return { type: "output", text: lines.join("\n") };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { type: "output", text: `Error: ${msg}` };
+      }
+    },
+  },
+];
+
+const ALL_COMMANDS = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS, ...PROJECT_COMMANDS, ...AGENT_COMMANDS];
 
 /** POST a slash command to backend and format the response. */
 async function bridgedPost(
