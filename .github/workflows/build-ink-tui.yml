@@ -1,0 +1,112 @@
+# Build Ink TUI binaries for all platforms
+#
+# Produces lobster-chat binaries via `bun build --compile` for 6 targets.
+# Triggered on tags matching chat-ui/v* or manually.
+# Uploads binaries + SHA256 checksums to GitHub Releases.
+
+name: Build Ink TUI
+
+on:
+  push:
+    tags:
+      - 'chat-ui/v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string (e.g. 0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            os: macos-latest
+            bun_target: bun-darwin-arm64
+            binary: lobster-chat-darwin-arm64
+          - target: darwin-x64
+            os: macos-13
+            bun_target: bun-darwin-x64
+            binary: lobster-chat-darwin-x64
+          - target: linux-x64
+            os: ubuntu-latest
+            bun_target: bun-linux-x64
+            binary: lobster-chat-linux-x64
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            bun_target: bun-linux-arm64
+            binary: lobster-chat-linux-arm64
+          - target: windows-x64
+            os: windows-latest
+            bun_target: bun-windows-x64
+            binary: lobster-chat-windows-x64.exe
+          - target: windows-arm64
+            os: windows-latest
+            bun_target: bun-windows-arm64
+            binary: lobster-chat-windows-arm64.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: lobster-tui-ink
+        run: bun install --frozen-lockfile
+
+      - name: Build binary
+        working-directory: lobster-tui-ink
+        run: |
+          bun build --compile --minify \
+            --target=${{ matrix.bun_target }} \
+            ./src/cli.tsx \
+            --outfile dist/${{ matrix.binary }}
+
+      - name: Sign macOS binary
+        if: startsWith(matrix.target, 'darwin')
+        run: codesign --deep --force --sign - lobster-tui-ink/dist/${{ matrix.binary }}
+
+      - name: Generate SHA256 checksum
+        shell: bash
+        working-directory: lobster-tui-ink/dist
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            certutil -hashfile ${{ matrix.binary }} SHA256 | head -2 | tail -1 > ${{ matrix.binary }}.sha256
+          else
+            shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary }}
+          path: |
+            lobster-tui-ink/dist/${{ matrix.binary }}
+            lobster-tui-ink/dist/${{ matrix.binary }}.sha256
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
