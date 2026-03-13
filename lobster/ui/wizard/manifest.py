@@ -15,8 +15,11 @@ Each ProviderDef declares `model_selection` to fix the Bedrock double-prompt bug
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -125,3 +128,181 @@ class WizardManifest:
             ],
             ollama_status=OllamaStatus(**raw.get("ollama_status", {})),
         )
+
+
+# -- Provider metadata (model_selection + credentials + display names) --
+
+_MODEL_SELECTION: dict[str, Literal["explicit", "profile", "local", "managed"]] = {
+    "anthropic": "profile",
+    "bedrock": "profile",
+    "ollama": "local",
+    "gemini": "explicit",
+    "azure": "explicit",
+    "openai": "explicit",
+    "openrouter": "explicit",
+    "omics-os": "managed",
+}
+
+_PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
+    "anthropic": ("Anthropic", "Claude models via Anthropic API"),
+    "bedrock": ("AWS Bedrock", "Claude models via AWS Bedrock"),
+    "ollama": ("Ollama", "Local models via Ollama"),
+    "gemini": ("Google Gemini", "Gemini models via Google AI"),
+    "azure": ("Azure AI", "Models via Azure AI"),
+    "openai": ("OpenAI", "GPT models via OpenAI API"),
+    "openrouter": ("OpenRouter", "Multi-provider model proxy"),
+    "omics-os": ("Omics-OS Cloud", "Managed models via Omics-OS"),
+}
+
+_PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
+    "anthropic": [
+        CredentialField(key="ANTHROPIC_API_KEY", label="Anthropic API Key"),
+    ],
+    "bedrock": [
+        CredentialField(
+            key="AWS_ACCESS_KEY_ID", label="AWS Access Key ID", secret=False
+        ),
+        CredentialField(key="AWS_SECRET_ACCESS_KEY", label="AWS Secret Access Key"),
+        CredentialField(
+            key="AWS_DEFAULT_REGION",
+            label="AWS Region",
+            secret=False,
+            required=False,
+        ),
+    ],
+    "ollama": [],  # No credentials needed
+    "gemini": [
+        CredentialField(key="GOOGLE_API_KEY", label="Google API Key"),
+    ],
+    "azure": [
+        CredentialField(key="AZURE_OPENAI_API_KEY", label="Azure OpenAI API Key"),
+        CredentialField(
+            key="AZURE_OPENAI_ENDPOINT",
+            label="Azure OpenAI Endpoint",
+            secret=False,
+        ),
+    ],
+    "openai": [
+        CredentialField(key="OPENAI_API_KEY", label="OpenAI API Key"),
+    ],
+    "openrouter": [
+        CredentialField(key="OPENROUTER_API_KEY", label="OpenRouter API Key"),
+    ],
+    "omics-os": [
+        CredentialField(key="OMICS_OS_API_KEY", label="Omics-OS API Key"),
+    ],
+}
+
+_PROFILE_DESCRIPTIONS: dict[str, tuple[str, str, bool]] = {
+    "development": ("Development", "Sonnet 4 — fastest, most affordable", False),
+    "production": (
+        "Production",
+        "Sonnet 4 + Sonnet 4.5 supervisor [recommended]",
+        True,
+    ),
+    "performance": ("Performance", "Sonnet 4.5 — highest quality", False),
+    "max": ("Max", "Opus 4.5 supervisor — most capable, most expensive", False),
+    "hybrid": ("Hybrid", "Mixed model tiers per agent", False),
+}
+
+
+def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
+    """Build a WizardManifest from authoritative sources.
+
+    Reads VALID_PROVIDERS, provider KNOWN_MODELS, VALID_PROFILES,
+    and AVAILABLE_AGENT_PACKAGES to construct the single manifest.
+    """
+    from lobster.cli_internal.commands.heavy.init_commands import (
+        AVAILABLE_AGENT_PACKAGES,
+    )
+    from lobster.config.constants import VALID_PROFILES, VALID_PROVIDERS
+    from lobster.config.providers.registry import ProviderRegistry
+
+    # Build provider definitions
+    providers: list[ProviderDef] = []
+    for name in VALID_PROVIDERS:
+        display, desc = _PROVIDER_DISPLAY.get(name, (name.title(), ""))
+        model_sel = _MODEL_SELECTION.get(name, "explicit")
+        creds = _PROVIDER_CREDENTIALS.get(name, [])
+
+        # Get models from provider's KNOWN_MODELS
+        models: list[ModelDef] = []
+        if model_sel == "explicit":
+            provider = ProviderRegistry.get(name)
+            if provider and hasattr(provider, "KNOWN_MODELS"):
+                for mi in provider.KNOWN_MODELS:
+                    models.append(
+                        ModelDef(
+                            name=mi.name,
+                            display_name=mi.display_name,
+                            description=getattr(mi, "description", ""),
+                            is_default=getattr(mi, "is_default", False),
+                            context_window=getattr(mi, "context_window", 0),
+                            input_cost_per_million=getattr(
+                                mi, "input_cost_per_million", 0.0
+                            ),
+                            output_cost_per_million=getattr(
+                                mi, "output_cost_per_million", 0.0
+                            ),
+                        )
+                    )
+
+        # Get profiles for profile-based providers
+        profiles: list[ProfileDef] = []
+        if model_sel == "profile":
+            for pname in VALID_PROFILES:
+                if pname in _PROFILE_DESCRIPTIONS:
+                    pdisp, pdesc, pdefault = _PROFILE_DESCRIPTIONS[pname]
+                    profiles.append(
+                        ProfileDef(
+                            name=pname,
+                            display_name=pdisp,
+                            description=pdesc,
+                            is_default=pdefault,
+                        )
+                    )
+
+        providers.append(
+            ProviderDef(
+                name=name,
+                display_name=display,
+                description=desc,
+                model_selection=model_sel,
+                credentials=creds,
+                models=models,
+                profiles=profiles,
+            )
+        )
+
+    # Build agent packages
+    agent_packages: list[AgentPackageDef] = [
+        AgentPackageDef(
+            package_name=pkg[0],
+            description=pkg[1],
+            agents=list(pkg[2]),
+            published=pkg[3],
+            experimental=pkg[4],
+        )
+        for pkg in AVAILABLE_AGENT_PACKAGES
+    ]
+
+    # Detect Ollama
+    ollama = OllamaStatus()
+    if detect_ollama:
+        try:
+            from lobster.config.providers.ollama_provider import OllamaProvider
+
+            op = OllamaProvider()
+            if op.is_available():
+                ollama.available = True
+                known = op.get_available_models()
+                ollama.models = [m.name for m in known]
+        except Exception as e:
+            ollama.error = str(e)
+            logger.debug(f"Ollama detection failed: {e}")
+
+    return WizardManifest(
+        providers=providers,
+        agent_packages=agent_packages,
+        ollama_status=ollama,
+    )
