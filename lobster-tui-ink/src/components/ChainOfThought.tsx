@@ -1,10 +1,8 @@
 import React from "react";
 import { Box, Text } from "ink";
-import {
-  ChainOfThoughtPrimitive,
-  ToolCallPrimitive,
-} from "@assistant-ui/react-ink";
+import { ChainOfThoughtPrimitive } from "@assistant-ui/react-ink";
 import { useAuiState } from "@assistant-ui/store";
+import { ToolRouter } from "./ToolRenderers/ToolRouter.js";
 
 function ReasoningPart({ text }: { text: string }) {
   return (
@@ -33,7 +31,7 @@ export function ChainOfThought() {
         components={{
           Reasoning: ReasoningPart,
           tools: {
-            Fallback: ToolCallPrimitive.Fallback,
+            Fallback: ToolRouter,
           },
         }}
       />
