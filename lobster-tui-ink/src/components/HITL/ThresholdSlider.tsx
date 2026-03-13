@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
 import { makeAssistantToolUI } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface ThresholdArgs {
   title?: string;
@@ -37,8 +38,8 @@ function SliderBar({
 
   return (
     <Text>
-      <Text color="cyan">{"█".repeat(filled)}</Text>
-      <Text color="gray">{"░".repeat(empty)}</Text>
+      <Text color={theme.info}>{"█".repeat(filled)}</Text>
+      <Text color={theme.textMuted}>{"░".repeat(empty)}</Text>
     </Text>
   );
 }
@@ -76,7 +77,7 @@ export const ThresholdSliderUI = makeAssistantToolUI<ThresholdArgs, number>({
     if (status.type !== "requires-action") {
       return (
         <Box>
-          <Text color="gray">
+          <Text color={theme.textMuted}>
             {args.title ?? "Threshold"}: {status.type === "complete" ? "set" : "..."}
           </Text>
         </Box>
@@ -87,7 +88,7 @@ export const ThresholdSliderUI = makeAssistantToolUI<ThresholdArgs, number>({
 
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text bold color="yellow">
+        <Text bold color={theme.warning}>
           {args.title ?? "Set threshold"}
         </Text>
         {args.message && <Text>{args.message}</Text>}
@@ -100,7 +101,7 @@ export const ThresholdSliderUI = makeAssistantToolUI<ThresholdArgs, number>({
             {args.unit ? ` ${args.unit}` : ""}
           </Text>
         </Box>
-        <Text color="gray">
+        <Text color={theme.textMuted}>
           {"<"}/{">"} to adjust, Enter to confirm (range: {min}–{max})
         </Text>
       </Box>

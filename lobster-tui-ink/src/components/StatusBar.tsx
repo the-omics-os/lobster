@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
+import { BrailleSpinner } from "./BrailleSpinner.js";
+import { theme } from "../theme.js";
 import type { AppState } from "../utils/stateHandlers.js";
 import type { FeatureFlags } from "../api/featureFlags.js";
 
@@ -26,20 +27,18 @@ export function StatusBar({ appState, sessionId, isStreaming, flags }: StatusBar
   return (
     <Box
       borderStyle="single"
-      borderColor="gray"
+      borderColor={theme.textMuted}
       paddingX={1}
       justifyContent="space-between"
     >
       <Box gap={1}>
         {isStreaming ? (
-          <Text color="yellow">
-            <Spinner type="line" />
-          </Text>
+          <BrailleSpinner color={theme.warning} />
         ) : (
-          <Text color="green">●</Text>
+          <Text color={theme.success}>●</Text>
         )}
         {activeAgent ? (
-          <Text color="cyan">{activeAgent}</Text>
+          <Text color={theme.accent1}>{activeAgent}</Text>
         ) : (
           <Text dimColor>idle</Text>
         )}

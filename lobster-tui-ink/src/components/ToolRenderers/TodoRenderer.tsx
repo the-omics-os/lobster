@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface TodoItem {
   task: string;
@@ -28,8 +29,8 @@ export function TodoRenderer({ result, isError }: ToolCallMessagePartProps) {
     <Box flexDirection="column">
       {items.map((item, i) => (
         <Box key={i} gap={1}>
-          <Text color={item.done ? "green" : "yellow"}>
-            {item.done ? "[x]" : "[ ]"}
+          <Text color={item.done ? theme.success : theme.warning}>
+            {item.done ? "\u2713" : "\u25CB"}
           </Text>
           <Text>{item.task ?? String(item)}</Text>
         </Box>

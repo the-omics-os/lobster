@@ -1,10 +1,12 @@
 import React, { useCallback, useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import Spinner from "ink-spinner";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
+import { BrailleSpinner } from "./components/BrailleSpinner.js";
+import { theme } from "./theme.js";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { useSlashCommands } from "./hooks/useSlashCommands.js";
+import { useLayout } from "./hooks/useLayout.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
@@ -37,6 +39,14 @@ export function App({ config }: { config: AppConfig }) {
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
+
+  // 4-layer layout engine
+  const activityEventCount = appState.activityEvents?.length ?? 0;
+  const layout = useLayout({
+    inputLineCount: 1,
+    completionMenuOpen: false,
+    activityEventCount: Math.min(activityEventCount, 5),
+  });
 
   // Fetch feature flags + resources on startup
   useEffect(() => {
@@ -98,58 +108,72 @@ export function App({ config }: { config: AppConfig }) {
         <ThresholdSliderUI />
         <CellTypeSelectorUI />
         <QCDashboardUI />
-        <Box flexDirection="column">
-          <Header
-            agentName={appState.activeAgent ?? undefined}
-            sessionTitle={appState.sessionTitle ?? undefined}
-            sessionId={sessionId}
-          />
+        <Box flexDirection="column" height={layout.rows}>
+          {/* Layer 1: Header (fixed) */}
+          <Box height={layout.headerRows} flexShrink={0}>
+            <Header
+              agentName={appState.activeAgent ?? undefined}
+              sessionTitle={appState.sessionTitle ?? undefined}
+              sessionId={sessionId}
+            />
+          </Box>
+
+          {/* Connection status banners (overlay into viewport space) */}
           {sse.degradedLevel === "reconnecting" && (
             <Box paddingX={1}>
-              <Text color="yellow">
-                <Spinner type="line" />{" "}
-                Reconnecting... (attempt {sse.retryCount})
-              </Text>
+              <BrailleSpinner label={`Reconnecting... (attempt ${sse.retryCount})`} color={theme.warning} />
             </Box>
           )}
           {sse.degradedLevel === "lost" && (
             <Box paddingX={1}>
-              <Text color="red">
+              <Text color={theme.error}>
                 Connection lost. Retrying... (Ctrl+C to exit)
               </Text>
             </Box>
           )}
+
+          {/* Layer 2: Viewport (flex) */}
           {showTemplates ? (
-            <TemplateSelector
-              templates={templates}
-              onSelect={handleTemplateSelect}
-              onDismiss={handleTemplateDismiss}
-            />
+            <Box height={layout.viewportRows} flexShrink={0}>
+              <TemplateSelector
+                templates={templates}
+                onSelect={handleTemplateSelect}
+                onDismiss={handleTemplateDismiss}
+              />
+            </Box>
           ) : (
             <>
-              <Thread />
+              <Thread viewportHeight={layout.viewportRows} />
               {slashCmds.loading && (
                 <Box paddingX={1}>
-                  <Text color="yellow">Running command...</Text>
+                  <Text color={theme.warning}>Running command...</Text>
                 </Box>
               )}
               {slashCmds.commandOutput && (
                 <Box paddingX={1} marginY={1}>
-                  <Text color="gray">{slashCmds.commandOutput}</Text>
+                  <Text color={theme.textMuted}>{slashCmds.commandOutput}</Text>
                 </Box>
               )}
-              <Composer onIntercept={slashCmds.handleInput} resources={resources} />
             </>
           )}
-          {cancelState.showWarning && (
-            <Text color="yellow">Press Ctrl+C again to cancel</Text>
-          )}
-          <ActivityFeed events={appState.activityEvents} />
-          <StatusBar
-            appState={appState}
-            sessionId={sessionId}
-            flags={flags}
-          />
+
+          {/* Layer 3: Input (dynamic) */}
+          <Box flexShrink={0}>
+            <Composer onIntercept={slashCmds.handleInput} resources={resources} />
+          </Box>
+
+          {/* Layer 4: Footer (fixed) */}
+          <Box flexDirection="column" flexShrink={0}>
+            {cancelState.showWarning && (
+              <Text color={theme.warning}>Press Ctrl+C again to cancel</Text>
+            )}
+            <ActivityFeed events={appState.activityEvents} />
+            <StatusBar
+              appState={appState}
+              sessionId={sessionId}
+              flags={flags}
+            />
+          </Box>
         </Box>
       </AssistantRuntimeProvider>
     </ErrorBoundary>

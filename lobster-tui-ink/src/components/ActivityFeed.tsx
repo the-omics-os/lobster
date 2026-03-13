@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { theme } from "../theme.js";
 
 interface ActivityEvent {
   type: string;
@@ -40,29 +41,36 @@ function ActivityEventLine({ event }: { event: ActivityEvent }) {
   switch (event.type) {
     case "tool_start":
       return (
-        <Text dimColor>
-          [{event.agent ?? "?"}] {event.tool_name}...
+        <Text>
+          <Text color={theme.warning} bold>{"● "}</Text>
+          <Text dimColor>[{event.agent ?? "?"}] {event.tool_name}...</Text>
         </Text>
       );
     case "tool_complete":
       return (
-        <Text dimColor>
-          [{event.agent ?? "?"}] {event.tool_name} (
-          {event.duration_ms ?? 0}ms)
+        <Text>
+          <Text color={theme.success} bold>{"✓ "}</Text>
+          <Text dimColor>[{event.agent ?? "?"}] {event.tool_name} ({event.duration_ms ?? 0}ms)</Text>
         </Text>
       );
     case "tool_error":
       return (
-        <Text color="red">
-          [{event.agent ?? "?"}] {event.tool_name} failed
-          {event.error ? `: ${event.error}` : ""}
+        <Text>
+          <Text color={theme.error} bold>{"✗ "}</Text>
+          <Text color={theme.error}>
+            [{event.agent ?? "?"}] {event.tool_name} failed
+            {event.error ? `: ${event.error}` : ""}
+          </Text>
         </Text>
       );
     case "agent_handoff":
       return (
-        <Text color="cyan">
-          → Delegating to {event.to_agent}
-          {event.task_description ? `: ${event.task_description}` : ""}
+        <Text>
+          <Text color={theme.accent2} italic>{"→ "}</Text>
+          <Text color={theme.accent2} italic>
+            Delegating to {event.to_agent}
+            {event.task_description ? `: ${event.task_description}` : ""}
+          </Text>
         </Text>
       );
     default:

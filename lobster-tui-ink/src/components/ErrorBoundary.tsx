@@ -4,6 +4,7 @@
  */
 import React, { Component } from "react";
 import { Box, Text } from "ink";
+import { theme } from "../theme.js";
 
 interface Props {
   children: React.ReactNode;
@@ -27,10 +28,10 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <Box flexDirection="column" paddingX={1} marginY={1}>
-          <Text bold color="red">
+          <Text bold color={theme.error}>
             Something went wrong
           </Text>
-          <Text color="red">{this.state.error.message}</Text>
+          <Text color={theme.error}>{this.state.error.message}</Text>
           <Text dimColor>The app is still running. Try sending a new message.</Text>
         </Box>
       );

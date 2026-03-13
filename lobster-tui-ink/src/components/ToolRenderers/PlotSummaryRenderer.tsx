@@ -5,6 +5,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface PlotlyTrace {
   type?: string;
@@ -104,8 +105,8 @@ export function PlotSummaryRenderer(props: ToolCallMessagePartProps) {
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box gap={1}>
-        <Text color={status === "complete" ? "green" : "yellow"}>
-          {status === "complete" ? "📊" : "⏳"}
+        <Text color={status === "complete" ? theme.success : theme.warning}>
+          {status === "complete" ? "\u2713" : "\u23F3"}
         </Text>
         <Text>{summary}</Text>
       </Box>

@@ -7,6 +7,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { makeAssistantToolUI } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface QCMetric {
   sample: string;
@@ -42,7 +43,7 @@ export const QCDashboardUI = makeAssistantToolUI<QCDashboardArgs, null>({
 
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text bold color="cyan">
+        <Text bold color={theme.info}>
           {args.title ?? "QC Dashboard"}
         </Text>
 
@@ -57,7 +58,7 @@ export const QCDashboardUI = makeAssistantToolUI<QCDashboardArgs, null>({
             {"Status".padEnd(colWidths.status)}
           </Text>
         </Box>
-        <Text color="gray">{"─".repeat(64)}</Text>
+        <Text color={theme.textMuted}>{"\u2500".repeat(64)}</Text>
 
         {/* Data rows */}
         {metrics.map((m) => {
@@ -72,14 +73,14 @@ export const QCDashboardUI = makeAssistantToolUI<QCDashboardArgs, null>({
               <Text
                 color={
                   m.mito_pct !== undefined && m.mito_pct > 0.2
-                    ? "red"
+                    ? theme.error
                     : undefined
                 }
               >
                 {formatPct(m.mito_pct).padEnd(colWidths.mito)}
               </Text>
               <Text>{(m.doublet_score?.toFixed(3) ?? "-").padEnd(colWidths.doublet)}</Text>
-              <Text color={pass ? "green" : "red"}>
+              <Text color={pass ? theme.success : theme.error}>
                 {pass ? "PASS" : "FAIL"}
               </Text>
             </Box>
@@ -87,7 +88,7 @@ export const QCDashboardUI = makeAssistantToolUI<QCDashboardArgs, null>({
         })}
 
         {metrics.length === 0 && (
-          <Text color="gray">Waiting for QC metrics...</Text>
+          <Text color={theme.textMuted}>Waiting for QC metrics...</Text>
         )}
       </Box>
     );

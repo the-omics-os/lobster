@@ -8,6 +8,7 @@ import React, { useCallback } from "react";
 import { Box, Text } from "ink";
 import { TextInput } from "@inkjs/ui";
 import type { PromptTemplate } from "../api/templates.js";
+import { theme } from "../theme.js";
 
 const CATEGORY_LABELS: Record<string, string> = {
   omics: "Omics",
@@ -53,7 +54,7 @@ export function TemplateSelector({
 
   return (
     <Box flexDirection="column" paddingX={1} marginBottom={1}>
-      <Text bold color="cyan">
+      <Text bold color={theme.info}>
         Choose a template or type freely:
       </Text>
       <Text> </Text>
@@ -64,7 +65,7 @@ export function TemplateSelector({
           </Text>
           {items.map(({ index, tpl }) => (
             <Text key={tpl.id}>
-              <Text color="yellow">{`  ${String(index).padStart(2)} `}</Text>
+              <Text color={theme.warning}>{`  ${String(index).padStart(2)} `}</Text>
               <Text>{tpl.title}</Text>
             </Text>
           ))}

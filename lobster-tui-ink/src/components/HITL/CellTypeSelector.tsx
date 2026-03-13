@@ -8,6 +8,7 @@ import React, { useState, useCallback } from "react";
 import { Box, Text } from "ink";
 import { TextInput } from "@inkjs/ui";
 import { makeAssistantToolUI } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface Cluster {
   cluster_id: string | number;
@@ -52,7 +53,7 @@ export const CellTypeSelectorUI = makeAssistantToolUI<
     if (status.type !== "requires-action") {
       return (
         <Box>
-          <Text color="gray">
+          <Text color={theme.textMuted}>
             Cell type annotation: {status.type === "complete" ? "done" : "..."}
           </Text>
         </Box>
@@ -61,11 +62,11 @@ export const CellTypeSelectorUI = makeAssistantToolUI<
 
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text bold color="yellow">
+        <Text bold color={theme.warning}>
           {args.title ?? "Assign cell type labels"}
         </Text>
         {args.message && <Text>{args.message}</Text>}
-        <Text color="gray">
+        <Text color={theme.textMuted}>
           ({currentIdx + 1}/{clusters.length}) Type label, Enter to advance
         </Text>
 
@@ -78,15 +79,15 @@ export const CellTypeSelectorUI = makeAssistantToolUI<
 
             return (
               <Box key={key} gap={1}>
-                <Text color={isActive ? "cyan" : label ? "green" : "gray"}>
+                <Text color={isActive ? theme.info : label ? theme.success : theme.textMuted}>
                   {isActive ? ">" : " "}
                 </Text>
                 <Text bold={isActive}>
                   C{key}
                 </Text>
-                <Text color="gray">({cluster.size})</Text>
-                {markers && <Text color="gray">[{markers}]</Text>}
-                {label && <Text color="green">{label}</Text>}
+                <Text color={theme.textMuted}>({cluster.size})</Text>
+                {markers && <Text color={theme.textMuted}>[{markers}]</Text>}
+                {label && <Text color={theme.success}>{label}</Text>}
                 {isActive && !label && (
                   <TextInput
                     placeholder="cell type..."

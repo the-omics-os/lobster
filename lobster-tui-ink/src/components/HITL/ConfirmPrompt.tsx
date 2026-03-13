@@ -8,6 +8,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { ConfirmInput } from "@inkjs/ui";
 import { makeAssistantToolUI } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface ConfirmArgs {
   message?: string;
@@ -20,7 +21,7 @@ export const ConfirmPromptUI = makeAssistantToolUI<ConfirmArgs, boolean>({
     if (status.type !== "requires-action") {
       return (
         <Box>
-          <Text color="gray">
+          <Text color={theme.textMuted}>
             {args.title ?? "Confirm"}: {status.type === "complete" ? "answered" : "..."}
           </Text>
         </Box>
@@ -29,7 +30,7 @@ export const ConfirmPromptUI = makeAssistantToolUI<ConfirmArgs, boolean>({
 
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text bold color="yellow">
+        <Text bold color={theme.warning}>
           {args.title ?? "Confirmation required"}
         </Text>
         {args.message && <Text>{args.message}</Text>}

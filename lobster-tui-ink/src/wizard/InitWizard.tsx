@@ -13,6 +13,7 @@ import type {
   ProviderDef,
   CredentialField,
 } from "./types.js";
+import { theme } from "../theme.js";
 
 type WizardStep =
   | "packages"
@@ -128,7 +129,7 @@ export function InitWizard({ manifest, onComplete }: InitWizardProps) {
   return (
     <Box flexDirection="column" paddingX={1}>
       <Box marginBottom={1}>
-        <Text bold color="red">
+        <Text bold color={theme.primary}>
           Lobster AI
         </Text>
         <Text> — Setup Wizard</Text>
@@ -172,7 +173,7 @@ function StepIndicator({ current }: { current: number }) {
       {STEPS.map((s, i) => (
         <Text
           key={s}
-          color={i === current ? "cyan" : i < current ? "green" : "gray"}
+          color={i === current ? theme.info : i < current ? theme.success : theme.textMuted}
           bold={i === current}
         >
           {i < current ? "\u2713" : i === current ? "\u25CF" : "\u25CB"}{" "}
@@ -204,7 +205,7 @@ function PackageStep({
   return (
     <Box flexDirection="column">
       <Text bold>Select agent packages to install:</Text>
-      <Text color="gray">Space to toggle, Enter to confirm</Text>
+      <Text color={theme.textMuted}>Space to toggle, Enter to confirm</Text>
       <Box marginTop={1}>
         <MultiSelect
           options={options}
@@ -281,7 +282,7 @@ function CredentialStep({
   return (
     <Box flexDirection="column">
       <Text bold>Enter credentials for {provider.display_name}:</Text>
-      <Text color="gray">
+      <Text color={theme.textMuted}>
         ({fieldIndex + 1}/{allFields.length}){" "}
         {!currentField.required && "[optional \u2014 Enter to skip] "}
       </Text>
@@ -300,7 +301,7 @@ function CredentialStep({
         )}
       </Box>
       {currentField.help_url && (
-        <Text color="gray" dimColor>
+        <Text color={theme.textMuted} dimColor>
           Get key: {currentField.help_url}
         </Text>
       )}
@@ -389,7 +390,7 @@ function LocalModelStep({
   if (!manifest.ollama_status.available) {
     return (
       <Box flexDirection="column">
-        <Text color="yellow">
+        <Text color={theme.warning}>
           Ollama not detected. Enter a model name manually:
         </Text>
         <Box marginTop={1}>
@@ -424,7 +425,7 @@ function LocalModelStep({
   return (
     <Box flexDirection="column">
       <Text bold>Select local Ollama model:</Text>
-      <Text color="gray">
+      <Text color={theme.textMuted}>
         {ollamaModels.length} model{ollamaModels.length !== 1 ? "s" : ""}{" "}
         detected
       </Text>
@@ -481,7 +482,7 @@ function OptionalKeysStep({
     return (
       <Box flexDirection="column">
         <Text bold>Enable smart standardization?</Text>
-        <Text color="gray">
+        <Text color={theme.textMuted}>
           Automatically standardize column names and data formats (Y/n)
         </Text>
         <Box marginTop={1}>
@@ -501,7 +502,7 @@ function OptionalKeysStep({
   return (
     <Box flexDirection="column">
       <Text bold>Optional configuration:</Text>
-      <Text color="gray">
+      <Text color={theme.textMuted}>
         ({fieldIndex + 1}/{OPTIONAL_KEYS.length}) Press Enter to skip
       </Text>
       <Box marginTop={1}>

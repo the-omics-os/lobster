@@ -6,6 +6,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
 import { DataTable } from "../DataTable.js";
+import { theme } from "../../theme.js";
 
 function extractTableData(
   result: unknown,
@@ -44,7 +45,7 @@ export function DataTablePreviewRenderer(props: ToolCallMessagePartProps) {
   if (status !== "complete") {
     return (
       <Box gap={1}>
-        <Text color="yellow">⏳</Text>
+        <Text color={theme.warning}>{"\u23F3"}</Text>
         <Text dimColor>{toolName}...</Text>
       </Box>
     );
@@ -55,7 +56,7 @@ export function DataTablePreviewRenderer(props: ToolCallMessagePartProps) {
   if (!tableData) {
     return (
       <Box gap={1}>
-        <Text color="green">✓</Text>
+        <Text color={theme.success}>{"\u2713"}</Text>
         <Text dimColor>{toolName}</Text>
       </Box>
     );

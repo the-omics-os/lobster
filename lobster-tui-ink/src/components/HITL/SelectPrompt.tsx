@@ -8,6 +8,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { Select } from "@inkjs/ui";
 import { makeAssistantToolUI } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface SelectOption {
   label: string;
@@ -26,7 +27,7 @@ export const SelectPromptUI = makeAssistantToolUI<SelectArgs, string>({
     if (status.type !== "requires-action") {
       return (
         <Box>
-          <Text color="gray">
+          <Text color={theme.textMuted}>
             {args.title ?? "Select"}: {status.type === "complete" ? "answered" : "..."}
           </Text>
         </Box>
@@ -41,7 +42,7 @@ export const SelectPromptUI = makeAssistantToolUI<SelectArgs, string>({
 
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text bold color="yellow">
+        <Text bold color={theme.warning}>
           {args.title ?? "Selection required"}
         </Text>
         {args.message && <Text>{args.message}</Text>}

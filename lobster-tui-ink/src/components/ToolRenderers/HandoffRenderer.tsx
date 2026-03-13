@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 const HANDOFF_PATTERN = /^handoff_to_(.+)$/;
 const TRANSFER_BACK_PATTERN = /^transfer_back_to_(.+)$/;
@@ -33,12 +34,12 @@ export function HandoffRenderer(props: ToolCallMessagePartProps) {
 
   return (
     <Box gap={1}>
-      <Text color={isReturn ? "blue" : "cyan"}>
-        {isReturn ? "<-" : "->"}
+      <Text color={isReturn ? theme.info : theme.accent2}>
+        {isReturn ? "\u2190" : "\u2192"}
       </Text>
       <Text>
         {isReturn ? "Returning to " : "Delegating to "}
-        <Text bold color={isReturn ? "blue" : "cyan"}>
+        <Text bold color={isReturn ? theme.info : theme.accent2}>
           {displayName}
         </Text>
         {reason ? <Text dimColor> — {reason}</Text> : null}

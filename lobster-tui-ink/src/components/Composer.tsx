@@ -5,6 +5,7 @@ import { useAssistantRuntime } from "@assistant-ui/react-ink";
 import { getCommandNames } from "../commands/dispatcher.js";
 import { useHistory } from "../hooks/useHistory.js";
 import { filterResources, type Resource } from "../api/resources.js";
+import { theme } from "../theme.js";
 
 interface ComposerProps {
   /** Intercept input before sending to runtime. Return true if handled. */
@@ -95,7 +96,7 @@ export function Composer({ onIntercept, resources }: ComposerProps) {
   );
 
   return (
-    <Box borderStyle="single" borderColor="gray">
+    <Box borderStyle="single" borderColor={theme.textMuted}>
       <Text dimColor>{"> "}</Text>
       <TextInput
         key={key}

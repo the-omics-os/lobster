@@ -1,5 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
+import { theme } from "../theme.js";
 
 export interface HeaderProps {
   agentName?: string;
@@ -12,15 +13,15 @@ export function Header({ agentName, sessionTitle, sessionId }: HeaderProps) {
     sessionTitle ?? (sessionId ? truncate(sessionId, 12) : undefined);
 
   return (
-    <Box borderStyle="single" borderColor="red" paddingX={1}>
-      <Text bold color="red">
+    <Box borderStyle="single" borderColor={theme.primary} paddingX={1}>
+      <Text bold color={theme.primary}>
         Lobster AI
       </Text>
       {agentName && (
         <Text>
           {"  "}
           <Text dimColor>[</Text>
-          <Text color="yellow">{agentName}</Text>
+          <Text color={theme.accent2}>{agentName}</Text>
           <Text dimColor>]</Text>
         </Text>
       )}

@@ -7,6 +7,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { TextInput } from "@inkjs/ui";
 import { makeAssistantToolUI } from "@assistant-ui/react-ink";
+import { theme } from "../../theme.js";
 
 interface TextInputArgs {
   message?: string;
@@ -21,7 +22,7 @@ export const TextInputPromptUI = makeAssistantToolUI<TextInputArgs, string>({
     if (status.type !== "requires-action") {
       return (
         <Box>
-          <Text color="gray">
+          <Text color={theme.textMuted}>
             {args.title ?? "Input"}: {status.type === "complete" ? "answered" : "..."}
           </Text>
         </Box>
@@ -30,7 +31,7 @@ export const TextInputPromptUI = makeAssistantToolUI<TextInputArgs, string>({
 
     return (
       <Box flexDirection="column" marginY={1}>
-        <Text bold color="yellow">
+        <Text bold color={theme.warning}>
           {args.title ?? "Input required"}
         </Text>
         {args.message && <Text>{args.message}</Text>}

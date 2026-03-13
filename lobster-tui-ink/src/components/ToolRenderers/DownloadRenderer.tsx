@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
 import { ProgressBar, IndeterminateSpinner } from "../Progress.js";
+import { theme } from "../../theme.js";
 
 /**
  * Renders download progress with file name.
@@ -17,8 +18,8 @@ export function DownloadRenderer({
   if (isError) {
     return (
       <Box gap={1}>
-        <Text color="red">[x]</Text>
-        <Text color="red">Download failed: {String(fileName)}</Text>
+        <Text color={theme.error}>{"\u2716"}</Text>
+        <Text color={theme.error}>Download failed: {String(fileName)}</Text>
       </Box>
     );
   }
@@ -26,7 +27,7 @@ export function DownloadRenderer({
   if (result !== undefined) {
     return (
       <Box gap={1}>
-        <Text color="green">[+]</Text>
+        <Text color={theme.success}>{"\u2713"}</Text>
         <Text>Downloaded: <Text bold>{String(fileName)}</Text></Text>
       </Box>
     );
