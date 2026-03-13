@@ -4,11 +4,13 @@ import { HandoffRenderer, isHandoffTool } from "./HandoffRenderer.js";
 import { ModalityRenderer } from "./ModalityRenderer.js";
 import { TodoRenderer } from "./TodoRenderer.js";
 import { DownloadRenderer } from "./DownloadRenderer.js";
+import { PlotSummaryRenderer } from "./PlotSummaryRenderer.js";
 import { ToolCallRenderer } from "./ToolCallRenderer.js";
 
 const MODALITY_TOOLS = ["load_modality", "get_modality_info"];
 const TODO_TOOLS = ["write_todos"];
 const DOWNLOAD_TOOLS = ["execute_download_from_queue", "download_file"];
+const PLOT_TOOLS = ["create_plot", "generate_plot", "create_figure"];
 
 /**
  * Routes tool calls to specialized renderers based on tool name patterns.
@@ -28,6 +30,9 @@ export function ToolRouter(props: ToolCallMessagePartProps) {
   }
   if (DOWNLOAD_TOOLS.includes(toolName)) {
     return <DownloadRenderer {...props} />;
+  }
+  if (PLOT_TOOLS.includes(toolName)) {
+    return <PlotSummaryRenderer {...props} />;
   }
   return <ToolCallRenderer part={props} index={0} />;
 }
