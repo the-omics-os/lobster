@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import { TextInput } from "@inkjs/ui";
 import { useAssistantRuntime } from "@assistant-ui/react-ink";
 import { getCommandNames } from "../commands/dispatcher.js";
+import { useHistory } from "../hooks/useHistory.js";
 
 interface ComposerProps {
   /** Intercept input before sending to runtime. Return true if handled. */
@@ -14,6 +15,27 @@ export function Composer({ onIntercept }: ComposerProps) {
   const threadRuntime = runtime.thread;
   const [key, setKey] = useState(0);
   const [currentInput, setCurrentInput] = useState("");
+  const [defaultValue, setDefaultValue] = useState("");
+  const history = useHistory();
+
+  // Arrow-up/down for history navigation
+  useInput((_input, k) => {
+    if (k.upArrow) {
+      const entry = history.up(currentInput);
+      if (entry !== undefined) {
+        setDefaultValue(entry);
+        setCurrentInput(entry);
+        setKey((prev) => prev + 1);
+      }
+    } else if (k.downArrow) {
+      const entry = history.down();
+      if (entry !== undefined) {
+        setDefaultValue(entry);
+        setCurrentInput(entry);
+        setKey((prev) => prev + 1);
+      }
+    }
+  });
 
   // Build suggestions: when input starts with /, suggest command names
   const suggestions = useMemo(() => {
@@ -33,9 +55,12 @@ export function Composer({ onIntercept }: ComposerProps) {
       const trimmed = value.trim();
       if (!trimmed) return;
 
+      history.push(trimmed);
+
       if (onIntercept && onIntercept(trimmed)) {
         setKey((k) => k + 1);
         setCurrentInput("");
+        setDefaultValue("");
         return;
       }
 
@@ -45,8 +70,9 @@ export function Composer({ onIntercept }: ComposerProps) {
       });
       setKey((k) => k + 1);
       setCurrentInput("");
+      setDefaultValue("");
     },
-    [onIntercept, threadRuntime],
+    [onIntercept, threadRuntime, history],
   );
 
   return (
@@ -54,6 +80,7 @@ export function Composer({ onIntercept }: ComposerProps) {
       <Text dimColor>{"> "}</Text>
       <TextInput
         key={key}
+        defaultValue={defaultValue}
         placeholder="Type a message or /help..."
         suggestions={suggestions}
         onChange={handleChange}
