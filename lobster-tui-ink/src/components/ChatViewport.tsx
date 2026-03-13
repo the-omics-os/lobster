@@ -8,8 +8,8 @@ export function ChatViewport({ children }: { children: React.ReactNode }) {
   const scrollRef = useRef<ScrollViewRef>(null);
   const { stdout } = useStdout();
 
-  // Reserve space for header (2 lines) and composer (3 lines)
-  const headerHeight = 0; // will be added in Step 1.6
+  // Reserve space for header (3 lines: border+content+border) and composer (3 lines: border+content+border)
+  const headerHeight = 3;
   const composerHeight = 3;
   const viewportHeight = (stdout?.rows ?? 24) - headerHeight - composerHeight;
 
