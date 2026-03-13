@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import { MessagePrimitive } from "@assistant-ui/react-ink";
 import { MarkdownText } from "@assistant-ui/react-ink-markdown";
+import { ToolCallRenderer } from "./ToolRenderers/ToolCallRenderer.js";
 
 export function AssistantMessage() {
   return (
@@ -13,6 +14,9 @@ export function AssistantMessage() {
         <Box marginLeft={2}>
           <MessagePrimitive.Content
             renderText={({ part }) => <MarkdownText text={part.text} />}
+            renderToolCall={({ part, index }) => (
+              <ToolCallRenderer part={part} index={index} />
+            )}
           />
         </Box>
       </Box>
