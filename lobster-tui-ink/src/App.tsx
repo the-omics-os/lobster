@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
+import { useSlashCommands } from "./hooks/useSlashCommands.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
 import { Composer } from "./components/Composer.js";
@@ -27,6 +28,7 @@ export function App({ config }: { config: AppConfig }) {
     runtime.thread.cancelRun();
   }, [runtime]);
   const cancelState = useCancelHandler(handleCancel);
+  const slashCmds = useSlashCommands(appState);
 
   const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -39,7 +41,7 @@ export function App({ config }: { config: AppConfig }) {
 
   // Fetch templates on new session (no --session-id)
   useEffect(() => {
-    if (config.sessionId) return; // resuming existing session
+    if (config.sessionId) return;
     fetchTemplates(config).then((tpls) => {
       if (tpls.length > 0) {
         setTemplates(tpls);
@@ -51,7 +53,6 @@ export function App({ config }: { config: AppConfig }) {
   const handleTemplateSelect = useCallback(
     (text: string) => {
       setShowTemplates(false);
-      // Send selected text as the first message
       runtime.thread.append({
         role: "user",
         content: [{ type: "text", text }],
@@ -63,6 +64,13 @@ export function App({ config }: { config: AppConfig }) {
   const handleTemplateDismiss = useCallback(() => {
     setShowTemplates(false);
   }, []);
+
+  // Handle /exit
+  useEffect(() => {
+    if (slashCmds.exitRequested) {
+      process.exit(0);
+    }
+  }, [slashCmds.exitRequested]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -87,7 +95,12 @@ export function App({ config }: { config: AppConfig }) {
         ) : (
           <>
             <Thread />
-            <Composer />
+            {slashCmds.commandOutput && (
+              <Box paddingX={1} marginY={1}>
+                <Text color="gray">{slashCmds.commandOutput}</Text>
+              </Box>
+            )}
+            <Composer onIntercept={slashCmds.handleInput} />
           </>
         )}
         {cancelState.showWarning && (
