@@ -8,12 +8,16 @@ import { Composer } from "./components/Composer.js";
 import type { AppConfig } from "./config.js";
 
 export function App({ config }: { config: AppConfig }) {
-  const runtime = useRuntime(config);
+  const { runtime, appState } = useRuntime(config);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <Box flexDirection="column">
-        <Header sessionId={config.sessionId} />
+        <Header
+          agentName={appState.activeAgent ?? undefined}
+          sessionTitle={appState.sessionTitle ?? undefined}
+          sessionId={config.sessionId}
+        />
         <Thread />
         <Composer />
       </Box>
