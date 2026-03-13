@@ -1,15 +1,33 @@
 import React from "react";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
 import { HandoffRenderer, isHandoffTool } from "./HandoffRenderer.js";
+import { ModalityRenderer } from "./ModalityRenderer.js";
+import { TodoRenderer } from "./TodoRenderer.js";
+import { DownloadRenderer } from "./DownloadRenderer.js";
 import { ToolCallRenderer } from "./ToolCallRenderer.js";
+
+const MODALITY_TOOLS = ["load_modality", "get_modality_info"];
+const TODO_TOOLS = ["write_todos"];
+const DOWNLOAD_TOOLS = ["execute_download_from_queue", "download_file"];
 
 /**
  * Routes tool calls to specialized renderers based on tool name patterns.
  * Used as the tools.Fallback in ChainOfThought.Parts.
  */
 export function ToolRouter(props: ToolCallMessagePartProps) {
-  if (isHandoffTool(props.toolName)) {
+  const { toolName } = props;
+
+  if (isHandoffTool(toolName)) {
     return <HandoffRenderer {...props} />;
+  }
+  if (MODALITY_TOOLS.includes(toolName)) {
+    return <ModalityRenderer {...props} />;
+  }
+  if (TODO_TOOLS.includes(toolName)) {
+    return <TodoRenderer {...props} />;
+  }
+  if (DOWNLOAD_TOOLS.includes(toolName)) {
+    return <DownloadRenderer {...props} />;
   }
   return <ToolCallRenderer part={props} index={0} />;
 }
