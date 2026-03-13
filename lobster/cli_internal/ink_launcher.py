@@ -11,6 +11,7 @@ Architecture:
 The server implements the ui-message-stream protocol (SSE with JSON payloads),
 the same format consumed by the Cloud web app.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Binary discovery
 # ---------------------------------------------------------------------------
 
+
 def find_ink_binary() -> Optional[str]:
     """Locate the lobster-chat binary.
 
@@ -49,7 +51,12 @@ def find_ink_binary() -> Optional[str]:
         return env
 
     # Dev build in monorepo
-    dev_path = Path(__file__).resolve().parents[2] / "lobster-tui-ink" / "dist" / "lobster-chat"
+    dev_path = (
+        Path(__file__).resolve().parents[2]
+        / "lobster-tui-ink"
+        / "dist"
+        / "lobster-chat"
+    )
     if dev_path.is_file():
         return str(dev_path)
 
@@ -69,6 +76,7 @@ def find_ink_binary() -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Local DataStream HTTP server
 # ---------------------------------------------------------------------------
+
 
 def _find_free_port() -> int:
     """Find a random available port."""
@@ -122,10 +130,12 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         self._send_sse({"type": "start", "messageId": message_id})
 
         if self.client is None:
-            self._send_sse({
-                "type": "text-delta",
-                "textDelta": "Error: Agent client not initialized. Please wait for startup to complete.",
-            })
+            self._send_sse(
+                {
+                    "type": "text-delta",
+                    "textDelta": "Error: Agent client not initialized. Please wait for startup to complete.",
+                }
+            )
             self._send_sse({"type": "finish", "finishReason": "error"})
             self._send_done()
             return
@@ -139,10 +149,12 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                 self._send_sse(chunk)
         except Exception as exc:
             logger.exception("Agent error")
-            self._send_sse({
-                "type": "text-delta",
-                "textDelta": f"\n\nError: {exc}",
-            })
+            self._send_sse(
+                {
+                    "type": "text-delta",
+                    "textDelta": f"\n\nError: {exc}",
+                }
+            )
 
         self._send_sse({"type": "finish", "finishReason": "stop"})
         self._send_done()
@@ -154,7 +166,10 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         Currently yields a placeholder response.
         """
         yield {"type": "text-delta", "textDelta": f"Received: {user_message}\n\n"}
-        yield {"type": "text-delta", "textDelta": "(Local DataStream server running — agent wiring pending)"}
+        yield {
+            "type": "text-delta",
+            "textDelta": "(Local DataStream server running — agent wiring pending)",
+        }
 
     def _send_sse(self, data: dict) -> None:
         line = f"data: {json.dumps(data)}\n\n"
@@ -169,6 +184,7 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 # Launcher
 # ---------------------------------------------------------------------------
+
 
 def launch_ink_chat(
     *,
@@ -241,3 +257,102 @@ def launch_ink_chat(
         proc.wait(timeout=5)
     finally:
         server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Init wizard launcher
+# ---------------------------------------------------------------------------
+
+
+def run_ink_init_wizard() -> dict:
+    """Launch the Ink TUI init wizard and return the result dict.
+
+    1. Find lobster-chat binary
+    2. Build WizardManifest and write to temp file
+    3. Run lobster-chat --init --manifest-file=<path>
+    4. Read JSON result from stdout
+    5. Convert WizardResult → legacy dict format for apply_tui_init_result()
+
+    Raises:
+        ImportError: if binary not found
+        RuntimeError: if wizard fails
+    """
+    import tempfile
+
+    binary = find_ink_binary()
+    if binary is None:
+        raise ImportError("lobster-chat binary not found")
+
+    from lobster.ui.wizard.manifest import build_init_manifest
+
+    manifest = build_init_manifest()
+    manifest_json = manifest.to_json()
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(manifest_json)
+        manifest_path = f.name
+
+    try:
+        proc = subprocess.run(
+            [binary, "--init", f"--manifest-file={manifest_path}"],
+            stdin=sys.stdin,
+            capture_output=True,
+            text=True,
+        )
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.strip() if proc.stderr else "unknown error"
+            raise RuntimeError(
+                f"Ink wizard exited with code {proc.returncode}: {stderr}"
+            )
+
+        stdout = proc.stdout.strip()
+        if not stdout:
+            return {"cancelled": True}
+
+        result = json.loads(stdout)
+        return _convert_ink_result_to_legacy(result)
+
+    finally:
+        os.unlink(manifest_path)
+
+
+def _convert_ink_result_to_legacy(ink_result: dict) -> dict:
+    """Convert Ink WizardResult to the legacy dict format expected by _postprocess_tui_init_result."""
+    legacy = {
+        "provider": ink_result.get("provider", ""),
+        "api_key": "",
+        "api_key_secondary": "",
+        "profile": ink_result.get("profile") or "",
+        "agents": ink_result.get("selectedPackages", []),
+        "ncbi_key": ink_result.get("optionalKeys", {}).get("NCBI_API_KEY", ""),
+        "cloud_key": ink_result.get("optionalKeys", {}).get("OMICS_OS_CLOUD_KEY", ""),
+        "ollama_model": "",
+        "model_id": ink_result.get("model") or "",
+        "smart_standardization_enabled": ink_result.get("smartStandardization", False),
+        "smart_standardization_openai_key": "",
+        "cancelled": False,
+    }
+
+    creds = ink_result.get("credentials", {})
+    provider = ink_result.get("provider", "")
+
+    # Map credentials to legacy api_key/api_key_secondary
+    if provider == "anthropic":
+        legacy["api_key"] = creds.get("ANTHROPIC_API_KEY", "")
+    elif provider == "bedrock":
+        legacy["api_key"] = creds.get("AWS_ACCESS_KEY_ID", "")
+        legacy["api_key_secondary"] = creds.get("AWS_SECRET_ACCESS_KEY", "")
+    elif provider == "gemini":
+        legacy["api_key"] = creds.get("GOOGLE_API_KEY", "")
+    elif provider == "azure":
+        legacy["api_key"] = creds.get("AZURE_OPENAI_API_KEY", "")
+        legacy["api_key_secondary"] = creds.get("AZURE_OPENAI_ENDPOINT", "")
+    elif provider == "openai":
+        legacy["api_key"] = creds.get("OPENAI_API_KEY", "")
+    elif provider == "openrouter":
+        legacy["api_key"] = creds.get("OPENROUTER_API_KEY", "")
+    elif provider == "omics-os":
+        legacy["api_key"] = creds.get("OMICS_OS_API_KEY", "")
+
+    return legacy

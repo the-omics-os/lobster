@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 console_manager = get_console_manager()
 console = console_manager.console
 
+
 def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     """
     Change the operation mode and reinitialize client with the new configuration.
@@ -164,7 +165,9 @@ _DEFAULT_TUI_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
 
 def _get_init_package_agents_map() -> dict[str, list[str]]:
     """Return package -> agents mapping for init selection UIs."""
-    return {pkg_name: list(agents) for pkg_name, _, agents, _, _ in AVAILABLE_AGENT_PACKAGES}
+    return {
+        pkg_name: list(agents) for pkg_name, _, agents, _, _ in AVAILABLE_AGENT_PACKAGES
+    }
 
 
 def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
@@ -193,7 +196,13 @@ def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
 def _get_tui_agent_package_choices() -> list[tuple[str, str, list[str]]]:
     """Return published init package choices for Go/questionary UIs."""
     choices: list[tuple[str, str, list[str]]] = []
-    for pkg_name, description, agents, published, _experimental in AVAILABLE_AGENT_PACKAGES:
+    for (
+        pkg_name,
+        description,
+        agents,
+        published,
+        _experimental,
+    ) in AVAILABLE_AGENT_PACKAGES:
         if not published:
             continue
         choices.append((pkg_name, description, list(agents)))
@@ -502,15 +511,14 @@ def _check_and_prompt_install_packages(
         elif prompt_for_install:
             console.print("[dim]Skipping package installation for now[/dim]")
         else:
-            console.print("[dim]Skipping package installation in non-interactive mode[/dim]")
+            console.print(
+                "[dim]Skipping package installation in non-interactive mode[/dim]"
+            )
 
-    unresolved = [
-        agent for agent in normalized_agents if agent not in confirmed_names
-    ]
+    unresolved = [agent for agent in normalized_agents if agent not in confirmed_names]
     if unresolved:
         console.print(
-            "\n[yellow]Skipping uninstalled agents:[/yellow] "
-            + ", ".join(unresolved)
+            "\n[yellow]Skipping uninstalled agents:[/yellow] " + ", ".join(unresolved)
         )
 
     # Avoid immediate same-process registry reload here. In development installs we
@@ -625,7 +633,9 @@ def _filter_unpublished_preset_agents(
     from lobster.core.component_registry import AGENT_TO_PACKAGE
 
     published_packages = {
-        pkg_name for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES if published
+        pkg_name
+        for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES
+        if published
     }
 
     filtered: list[str] = []
@@ -679,7 +689,9 @@ def _build_uv_tool_init_command(
             extras.append("vector-search")
 
     published_packages = {
-        pkg_name for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES if published
+        pkg_name
+        for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES
+        if published
     }
     installed_packages = set()
     if info:
@@ -723,9 +735,6 @@ def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str
     return selected, None
 
 
-
-
-
 _SMART_STD_AGENT_DISPLAY = {
     "metadata_assistant": "Metadata Assistant",
     "transcriptomics_expert": "Transcriptomics Expert",
@@ -763,7 +772,9 @@ def _print_vector_backend_unavailable() -> None:
     )
 
 
-def _get_smart_standardization_beneficiaries(selected_agents: list[str] | None) -> list[str]:
+def _get_smart_standardization_beneficiaries(
+    selected_agents: list[str] | None,
+) -> list[str]:
     """Return display names for selected agents that benefit from embeddings."""
     beneficiaries: list[str] = []
     for agent in _normalize_selected_agents(selected_agents or []):
@@ -786,7 +797,9 @@ def _install_smart_standardization_dependencies() -> None:
     if s1 and s2:
         console.print("  [green]✓[/green] Dependencies installed")
     else:
-        console.print(f"  [yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]")
+        console.print(
+            f"  [yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]"
+        )
         return
 
     console.print(
@@ -798,6 +811,7 @@ def _install_smart_standardization_dependencies() -> None:
         console.print(
             "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
         )
+
 
 def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """
@@ -843,7 +857,9 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
         if "model_id" in config_dict and config_dict["model_id"]:
             provider = config_dict.get("provider", "")
             if provider:
-                workspace_config.set_model_for_provider(provider, config_dict["model_id"])
+                workspace_config.set_model_for_provider(
+                    provider, config_dict["model_id"]
+                )
 
         # Ensure workspace directory exists and save config
         workspace_path.mkdir(parents=True, exist_ok=True)
@@ -1081,17 +1097,13 @@ def _prompt_docling_install() -> None:
             console.print("  [green]✓[/green] Docling installed")
         else:
             docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
-            console.print(
-                f"  [yellow]⚠ Install manually: {docling_cmd}[/yellow]"
-            )
+            console.print(f"  [yellow]⚠ Install manually: {docling_cmd}[/yellow]")
     else:
         from lobster.core.component_registry import get_install_command
         from rich.markup import escape as rich_escape
 
         docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
-        console.print(
-            f"  [dim]Skipped. Install later: {docling_cmd}[/dim]"
-        )
+        console.print(f"  [dim]Skipped. Install later: {docling_cmd}[/dim]")
 
 
 def _postprocess_tui_init_result(
@@ -1141,7 +1153,9 @@ def _postprocess_tui_init_result(
                         "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
                     )
 
-    normalized_agents = _normalize_selected_agents(normalized_result.get("agents") or [])
+    normalized_agents = _normalize_selected_agents(
+        normalized_result.get("agents") or []
+    )
     if normalized_agents:
         normalized_agents = _check_and_prompt_install_packages(
             normalized_agents, workspace_path
@@ -1177,16 +1191,26 @@ def _validate_oauth_credentials() -> None:
     mirrors what the Python browser login does after receiving tokens.
     """
     try:
-        from lobster.config.credentials import get_api_key, get_endpoint, load_credentials, save_credentials
+        from lobster.config.credentials import (
+            get_api_key,
+            get_endpoint,
+            load_credentials,
+            save_credentials,
+        )
 
         token = get_api_key()
         if not token:
-            console.print("[yellow]OAuth tokens found but could not be loaded.[/yellow]")
+            console.print(
+                "[yellow]OAuth tokens found but could not be loaded.[/yellow]"
+            )
             return
 
         endpoint = get_endpoint()
 
-        from lobster.cli_internal.commands.light.cloud_commands import _validate_credentials
+        from lobster.cli_internal.commands.light.cloud_commands import (
+            _validate_credentials,
+        )
+
         data = _validate_credentials(endpoint, token, token_type="token")
         if data is None:
             console.print(
@@ -1391,8 +1415,6 @@ def _ensure_tui_installed() -> None:
         console.print("  [green]✓[/green] textual installed")
 
 
-
-
 def init_impl(
     global_config: bool = typer.Option(
         False,
@@ -1450,7 +1472,9 @@ def init_impl(
         None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
     ),
     azure_credential: Optional[str] = typer.Option(
-        None, "--azure-credential", help="Azure AI API credential (non-interactive mode)"
+        None,
+        "--azure-credential",
+        help="Azure AI API credential (non-interactive mode)",
     ),
     profile: Optional[str] = typer.Option(
         None,
@@ -1529,7 +1553,7 @@ def init_impl(
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+        help="UI mode for interactive init: auto (Ink TUI > Go TUI > questionary), ink (require Ink), go (require Go TUI)",
     ),
 ):
     """
@@ -1711,8 +1735,13 @@ def init_impl(
 
         # Validate at least one provider
         valid, error_msg = provider_setup.validate_provider_choice(
-            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
-            has_openrouter=has_openrouter, has_azure=has_azure,
+            has_anthropic,
+            has_bedrock,
+            has_ollama,
+            has_gemini,
+            has_openai,
+            has_openrouter=has_openrouter,
+            has_azure=has_azure,
         )
         if not valid:
             console.print(f"[red]❌ Error: {error_msg}[/red]")
@@ -1726,15 +1755,18 @@ def init_impl(
             console.print("  • Google Gemini: --gemini-key=xxx")
             console.print("  • OpenAI: --openai-key=xxx")
             console.print("  • OpenRouter: --openrouter-key=xxx")
-            console.print(
-                "  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx"
-            )
+            console.print("  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx")
             raise typer.Exit(1)
 
         # Warn if multiple providers
         priority_warning = provider_setup.get_provider_priority_warning(
-            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
-            has_openrouter=has_openrouter, has_azure=has_azure,
+            has_anthropic,
+            has_bedrock,
+            has_ollama,
+            has_gemini,
+            has_openai,
+            has_openrouter=has_openrouter,
+            has_azure=has_azure,
         )
         if priority_warning:
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
@@ -1822,7 +1854,9 @@ def init_impl(
                 config_dict["provider"] = "openrouter"
                 console.print("[green]✓ OpenRouter provider configured[/green]")
         elif has_azure:
-            config = provider_setup.create_azure_config(azure_endpoint, azure_credential)
+            config = provider_setup.create_azure_config(
+                azure_endpoint, azure_credential
+            )
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
@@ -1951,7 +1985,9 @@ def init_impl(
                     s1, _ = _uv_pip_install("chromadb>=1.0.0")
                     s2, _ = _uv_pip_install("openai>=1.0.0")
                     if s1 and s2:
-                        console.print("[green]✓ Smart Standardization installed[/green]")
+                        console.print(
+                            "[green]✓ Smart Standardization installed[/green]"
+                        )
                         env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
                     else:
                         console.print(
@@ -2049,17 +2085,72 @@ def init_impl(
 
     # Interactive mode: run wizard
     # =========================================================================
-    # === TRY GO TUI / QUESTIONARY FIRST (ui_mode: auto | go | classic) ===
-    # The Go binary and the questionary fallback both return the same JSON dict,
-    # so a single apply_tui_init_result() call handles both paths.
-    # The classic Rich-prompt flow further below is used when neither is
-    # available (or when --ui classic is passed explicitly).
+    # === TRY INK TUI > GO TUI > QUESTIONARY (ui_mode: auto | ink | go)    ===
+    # All wizard paths return the same JSON dict, processed by                 #
+    # _postprocess_tui_init_result().                                          #
     # =========================================================================
-    if ui_mode != "classic" and not non_interactive:
+    if not non_interactive:
         _tui_handled = False
 
+        def _finish_wizard_result(wiz_result: dict) -> None:
+            """Common post-processing for all wizard paths."""
+            _ws_path = Path.cwd() / ".lobster_workspace"
+            _ev_path = Path.cwd() / ".env"
+            wiz_result = _postprocess_tui_init_result(
+                wiz_result,
+                workspace_path=_ws_path,
+                env_path=_ev_path,
+                global_config=global_config,
+                skip_extras=skip_extras,
+            )
+            console.print(
+                "[bold green]Configuration saved![/bold green] "
+                "Run [bold]lobster chat[/bold] to start analyzing."
+            )
+            from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
+
+            if _is_uv():
+                _uv_tool_env_handoff(
+                    provider_name=(wiz_result.get("provider") or "").strip().lower()
+                    or None,
+                    selected_agents=wiz_result.get("agents") or [],
+                    skip_extras=skip_extras,
+                    include_vector_search=bool(
+                        wiz_result.get("smart_standardization_enabled")
+                    )
+                    and not skip_extras,
+                )
+
+        # ---- Try Ink TUI (new default) ----
+        if ui_mode in ("auto", "ink"):
+            try:
+                from lobster.cli_internal.ink_launcher import run_ink_init_wizard
+
+                _ink_result = run_ink_init_wizard()
+                if _ink_result.get("cancelled", False):
+                    console.print("[yellow]Setup cancelled.[/yellow]")
+                    raise typer.Exit(0)
+                _finish_wizard_result(_ink_result)
+                _tui_handled = True
+            except typer.Exit:
+                raise
+            except ImportError:
+                if ui_mode == "ink":
+                    console.print(
+                        "[red]Ink TUI binary not found. "
+                        "Install lobster-ai-tui or use --ui auto.[/red]"
+                    )
+                    raise typer.Exit(1)
+            except Exception as _ink_exc:
+                if ui_mode == "ink":
+                    console.print(f"[red]Ink TUI init failed: {_ink_exc}[/red]")
+                    raise typer.Exit(1)
+                console.print(
+                    f"[dim]Ink TUI unavailable ({_ink_exc}), falling back.[/dim]"
+                )
+
         # ---- Try Go TUI ----
-        if ui_mode in ("auto", "go"):
+        if not _tui_handled and ui_mode in ("auto", "go"):
             try:
                 from lobster.ui.bridge.binary_finder import find_tui_binary
 
@@ -2072,36 +2163,7 @@ def init_impl(
                         if _tui_result.get("cancelled", False):
                             console.print("[yellow]Setup cancelled.[/yellow]")
                             raise typer.Exit(0)
-
-                        _ws_path = Path.cwd() / ".lobster_workspace"
-                        _ev_path = Path.cwd() / ".env"
-                        _tui_result = _postprocess_tui_init_result(
-                            _tui_result,
-                            workspace_path=_ws_path,
-                            env_path=_ev_path,
-                            global_config=global_config,
-                            skip_extras=skip_extras,
-                        )
-
-                        console.print(
-                            "[bold green]Configuration saved![/bold green] "
-                            "Run [bold]lobster chat[/bold] to start analyzing."
-                        )
-                        from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
-
-                        if _is_uv():
-                            _uv_tool_env_handoff(
-                                provider_name=(_tui_result.get("provider") or "")
-                                .strip()
-                                .lower()
-                                or None,
-                                selected_agents=_tui_result.get("agents") or [],
-                                skip_extras=skip_extras,
-                                include_vector_search=bool(
-                                    _tui_result.get("smart_standardization_enabled")
-                                )
-                                and not skip_extras,
-                            )
+                        _finish_wizard_result(_tui_result)
                         _tui_handled = True
                     except typer.Exit:
                         raise
@@ -2113,16 +2175,17 @@ def init_impl(
                             f"[dim]Go TUI unavailable ({_go_exc}), falling back.[/dim]"
                         )
                 elif ui_mode == "go":
-                    # --ui go was explicitly requested but binary not found
                     console.print(
                         "[red]lobster-tui binary not found. "
-                        "Install it or use --ui classic.[/red]"
+                        "Install it or use --ui auto.[/red]"
                     )
                     raise typer.Exit(1)
             except ImportError as _ie:
-                console.print(f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]")
+                console.print(
+                    f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]"
+                )
 
-        # ---- Try questionary fallback (auto mode only, when Go TUI was unavailable) ----
+        # ---- Try questionary fallback ----
         if not _tui_handled and ui_mode == "auto":
             try:
                 from lobster.ui.bridge.questionary_fallback import run_questionary_init
@@ -2133,530 +2196,21 @@ def init_impl(
                 if _q_result.get("cancelled", False):
                     console.print("[yellow]Setup cancelled.[/yellow]")
                     raise typer.Exit(0)
-
-                _ws_path = Path.cwd() / ".lobster_workspace"
-                _ev_path = Path.cwd() / ".env"
-                _q_result = _postprocess_tui_init_result(
-                    _q_result,
-                    workspace_path=_ws_path,
-                    env_path=_ev_path,
-                    global_config=global_config,
-                    skip_extras=skip_extras,
-                )
-
-                console.print(
-                    "[bold green]Configuration saved![/bold green] "
-                    "Run [bold]lobster chat[/bold] to start analyzing."
-                )
-                from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
-
-                if _is_uv():
-                    _uv_tool_env_handoff(
-                        provider_name=(_q_result.get("provider") or "").strip().lower()
-                        or None,
-                        selected_agents=_q_result.get("agents") or [],
-                        skip_extras=skip_extras,
-                        include_vector_search=bool(
-                            _q_result.get("smart_standardization_enabled")
-                        )
-                        and not skip_extras,
-                    )
+                _finish_wizard_result(_q_result)
                 _tui_handled = True
             except typer.Exit:
                 raise
             except ImportError:
-                # questionary not installed — fall through to classic Rich prompts silently
                 pass
             except Exception as _q_exc:
-                console.print(
-                    f"[dim]Questionary wizard failed ({_q_exc}), falling back to classic mode.[/dim]"
-                )
+                console.print(f"[dim]Questionary wizard failed ({_q_exc}).[/dim]")
 
         if _tui_handled:
             raise typer.Exit(0)
-    # === END GO TUI / QUESTIONARY PATH ===
 
-    console.print("\n")
-    if global_config:
-        from lobster.config.global_config import get_global_credentials_path
-
-        creds_path = get_global_credentials_path()
+        # No wizard UI available
         console.print(
-            Panel.fit(
-                "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
-                "Let's set up your [cyan]global[/cyan] provider defaults.\n"
-                f"Config: [cyan]{config_path}[/cyan]\n"
-                f"Credentials: [cyan]{creds_path}[/cyan]\n\n"
-                "[dim]These defaults apply to all workspaces without their own config.[/dim]",
-                border_style="bright_blue",
-                padding=(1, 2),
-            )
+            "[red]No interactive wizard available. "
+            "Install questionary (`pip install questionary`) or use --non-interactive mode.[/red]"
         )
-    else:
-        console.print(
-            Panel.fit(
-                "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
-                "Let's set up your API keys.\n"
-                "This wizard will create a [cyan].env[/cyan] file in your current directory.",
-                border_style="bright_blue",
-                padding=(1, 2),
-            )
-        )
-    console.print()
-
-    # Detect uv tool env early so we can adjust messaging
-    from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv_tool_env
-
-    _in_uv_tool = _is_uv_tool_env()
-    if _in_uv_tool:
-        console.print(
-            "[dim]  Detected uv tool installation. API keys will be configured here;"
-            "\n  any new packages will be installed after setup completes.[/dim]\n"
-        )
-
-    workspace_path = Path.cwd() / ".lobster_workspace"
-    workspace_path.mkdir(parents=True, exist_ok=True)
-
-    try:
-        env_lines = []
-        env_lines.append("# Lobster AI Configuration")
-        env_lines.append("# Generated by lobster init\n")
-
-        # Initialize structured config dict for workspace config
-        config_dict = {}
-
-        # ================================================================== #
-        # Step 1 — Provider selection (unified list)                          #
-        # ================================================================== #
-        console.print("[bold white]Select your LLM provider:[/bold white]")
-        console.print(
-            "  [cyan]1[/cyan] - Omics-OS Cloud          — managed, login via browser"
-        )
-        console.print(
-            "  [cyan]2[/cyan] - Claude API (Anthropic)  — direct access to Claude models"
-        )
-        console.print("  [cyan]3[/cyan] - AWS Bedrock             — production, enterprise")
-        console.print("  [cyan]4[/cyan] - Ollama (local)          — privacy, zero cost, offline")
-        console.print(
-            "  [cyan]5[/cyan] - Google Gemini           — Gemini models + thinking"
-        )
-        console.print("  [cyan]6[/cyan] - Azure AI                — enterprise Azure deployments")
-        console.print("  [cyan]7[/cyan] - OpenAI                  — GPT-4o, o-series reasoning")
-        console.print(
-            "  [cyan]8[/cyan] - OpenRouter              — 600+ models via one API key"
-        )
-        console.print()
-
-        provider = Prompt.ask(
-            "[bold white]Choose provider[/bold white]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8"],
-            default="1",
-        )
-
-        provider_map = {
-            "1": "omics-os",
-            "2": "anthropic",
-            "3": "bedrock",
-            "4": "ollama",
-            "5": "gemini",
-            "6": "azure",
-            "7": "openai",
-            "8": "openrouter",
-        }
-        provider_name = provider_map[provider]
-
-        # ================================================================== #
-        # Step 2 — Credentials (provider-specific)                            #
-        # ================================================================== #
-        if provider_name == "omics-os":
-            from lobster.cli_internal.commands.light.cloud_commands import (
-                attempt_login_for_init,
-            )
-
-            success = attempt_login_for_init()
-            if success:
-                config_dict["provider"] = "omics-os"
-                env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
-                console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
-            else:
-                console.print(
-                    "\n[yellow]Browser login did not complete. "
-                    "You can paste an API key instead.[/yellow]"
-                )
-                api_key = Prompt.ask(
-                    "[bold white]Enter your Omics-OS API key (omk_...)[/bold white]",
-                    default="",
-                )
-                if api_key.strip():
-                    config = provider_setup.create_omics_os_config(api_key)
-                    if config.success:
-                        for key, value in config.env_vars.items():
-                            env_lines.append(f"{key}={value}")
-                        config_dict["provider"] = "omics-os"
-                        console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
-                    else:
-                        console.print(f"[red]❌ {config.message}[/red]")
-                        raise typer.Exit(1)
-                else:
-                    console.print(
-                        "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
-                    )
-                    config_dict["provider"] = "omics-os"
-                    env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
-
-        elif provider_name == "anthropic":
-            console.print("\n[bold white]🔑 Claude API Configuration[/bold white]")
-            console.print(
-                "Get your API key from: [link]https://console.anthropic.com/[/link]\n"
-            )
-            api_key = Prompt.ask(
-                "[bold white]Enter your Claude API key[/bold white]", password=True
-            )
-            if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
-                raise typer.Exit(1)
-            env_lines.append(f"ANTHROPIC_API_KEY={api_key.strip()}")
-            config_dict["provider"] = "anthropic"
-
-        elif provider_name == "bedrock":
-            console.print("\n[bold white]🔑 AWS Bedrock Configuration[/bold white]")
-            console.print(
-                "You'll need AWS access key and secret key with Bedrock permissions.\n"
-            )
-            access_key = Prompt.ask(
-                "[bold white]Enter your AWS access key[/bold white]", password=True
-            )
-            secret_key = Prompt.ask(
-                "[bold white]Enter your AWS secret key[/bold white]", password=True
-            )
-            if not access_key.strip() or not secret_key.strip():
-                console.print("[red]❌ AWS credentials cannot be empty[/red]")
-                raise typer.Exit(1)
-            env_lines.append(f"AWS_BEDROCK_ACCESS_KEY={access_key.strip()}")
-            env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={secret_key.strip()}")
-            config_dict["provider"] = "bedrock"
-
-        elif provider_name == "ollama":
-            console.print(
-                "\n[bold white]🏠 Ollama (Local LLM) Configuration[/bold white]"
-            )
-            console.print("Ollama runs models locally - no API keys needed!\n")
-            ollama_status = provider_setup.get_ollama_status()
-
-            if not ollama_status.installed:
-                console.print(
-                    "[yellow]⚠️  Ollama is not installed on this system.[/yellow]"
-                )
-                install_instructions = provider_setup.get_ollama_install_instructions()
-                console.print(f"  • macOS/Linux: {install_instructions['macos_linux']}")
-                console.print(f"  • Windows: {install_instructions['windows']}")
-                console.print()
-                install_later = Confirm.ask(
-                    "Configure for Ollama anyway? (you can install it later)",
-                    default=True,
-                )
-                if not install_later:
-                    console.print(
-                        "[yellow]Please install Ollama first, then run 'lobster init' again[/yellow]"
-                    )
-                    raise typer.Exit(0)
-
-            model_name = None
-            if ollama_status.running and ollama_status.models:
-                console.print("[green]✓ Ollama is installed and running[/green]")
-                console.print("\n[bold white]Available models:[/bold white]")
-                for m in ollama_status.models[:5]:
-                    console.print(f"  • {m}")
-                if len(ollama_status.models) > 5:
-                    console.print(f"  ... and {len(ollama_status.models) - 5} more")
-                console.print()
-                use_custom = Confirm.ask(
-                    f"Specify a model? (default: {provider_setup.DEFAULT_OLLAMA_MODEL})",
-                    default=False,
-                )
-                if use_custom:
-                    model_name = Prompt.ask(
-                        "[bold white]Enter model name[/bold white]",
-                        default=provider_setup.DEFAULT_OLLAMA_MODEL,
-                    )
-            else:
-                if ollama_status.installed:
-                    console.print("[green]✓ Ollama is installed[/green]")
-                    if not ollama_status.running:
-                        console.print("[yellow]⚠️  Ollama server is not running. Start with: ollama serve[/yellow]")
-
-            config = provider_setup.create_ollama_config(model_name=model_name)
-            for key, value in config.env_vars.items():
-                env_lines.append(f"{key}={value}")
-            config_dict["provider"] = "ollama"
-            if model_name:
-                config_dict["ollama_model"] = model_name
-            console.print("[green]✓ Ollama provider configured[/green]")
-
-        elif provider_name == "gemini":
-            console.print("\n[bold white]🔑 Google Gemini Configuration[/bold white]")
-            console.print(
-                "Get your API key from: [link]https://aistudio.google.com/apikey[/link]\n"
-            )
-            api_key = Prompt.ask(
-                "[bold white]Enter your Google API key[/bold white]", password=True
-            )
-            if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
-                raise typer.Exit(1)
-            config = provider_setup.create_gemini_config(api_key)
-            if config.success:
-                for key, value in config.env_vars.items():
-                    env_lines.append(f"{key}={value}")
-                config_dict["provider"] = "gemini"
-                console.print("[green]✓ Gemini provider configured[/green]")
-
-        elif provider_name == "azure":
-            console.print("\n[bold white]🔑 Azure AI Configuration[/bold white]")
-            console.print("You'll need Azure AI Foundry endpoint and API credential.\n")
-            endpoint = Prompt.ask(
-                "[bold white]Enter your Azure AI endpoint[/bold white]",
-                default="https://your-project.inference.ai.azure.com/",
-            )
-            credential = Prompt.ask(
-                "[bold white]Enter your Azure API credential[/bold white]",
-                password=True,
-            )
-            if not endpoint.strip() or not credential.strip():
-                console.print(
-                    "[red]❌ Azure endpoint and credential cannot be empty[/red]"
-                )
-                raise typer.Exit(1)
-            config = provider_setup.create_azure_config(endpoint, credential)
-            if config.success:
-                for key, value in config.env_vars.items():
-                    env_lines.append(f"{key}={value}")
-                config_dict["provider"] = "azure"
-                console.print("[green]✓ Azure AI provider configured[/green]")
-            else:
-                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
-                raise typer.Exit(1)
-
-        elif provider_name == "openai":
-            console.print("\n[bold white]🔑 OpenAI Configuration[/bold white]")
-            console.print(
-                "Get your API key from: [link]https://platform.openai.com/api-keys[/link]\n"
-            )
-            api_key = Prompt.ask(
-                "[bold white]Enter your OpenAI API key[/bold white]", password=True
-            )
-            if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
-                raise typer.Exit(1)
-            config = provider_setup.create_openai_config(api_key)
-            if config.success:
-                for key, value in config.env_vars.items():
-                    env_lines.append(f"{key}={value}")
-                config_dict["provider"] = "openai"
-                console.print("[green]✓ OpenAI provider configured[/green]")
-
-        elif provider_name == "openrouter":
-            console.print("\n[bold white]🔀 OpenRouter Configuration[/bold white]")
-            console.print(
-                "Get your API key from: [link]https://openrouter.ai/keys[/link]\n"
-            )
-            api_key = Prompt.ask(
-                "[bold white]Enter your OpenRouter API key[/bold white]", password=True
-            )
-            if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
-                raise typer.Exit(1)
-            config = provider_setup.create_openrouter_config(api_key)
-            if config.success:
-                for key, value in config.env_vars.items():
-                    env_lines.append(f"{key}={value}")
-                config_dict["provider"] = "openrouter"
-                console.print("[green]✓ OpenRouter provider configured[/green]")
-            else:
-                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
-                raise typer.Exit(1)
-
-        # Auto-install provider package if missing
-        if not skip_extras and not _in_uv_tool and provider_name not in ("omics-os", "ollama"):
-            _ensure_provider_installed(provider_name)
-
-        # ================================================================== #
-        # Step 3 — Profile selection (Anthropic / Bedrock only)               #
-        # ================================================================== #
-        if provider_name in ("anthropic", "bedrock"):
-            console.print("\n[bold white]⚙️  Agent Configuration Profile[/bold white]")
-            console.print("Choose which Claude models to use for analysis:")
-            console.print()
-            console.print(
-                "  [cyan]1[/cyan] - Development  (Sonnet 4 - fastest, most affordable)"
-            )
-            console.print(
-                "  [cyan]2[/cyan] - Production   (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]"
-            )
-            console.print(
-                "  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality)"
-            )
-            console.print(
-                "  [cyan]4[/cyan] - Max          (Opus 4.5 supervisor - most capable, most expensive)"
-            )
-            console.print()
-
-            profile_choice = Prompt.ask(
-                "[bold white]Choose profile[/bold white]",
-                choices=["1", "2", "3", "4"],
-                default="2",
-            )
-
-            profile_map = {
-                "1": "development",
-                "2": "production",
-                "3": "performance",
-                "4": "max",
-            }
-            profile_to_write = profile_map[profile_choice]
-
-            env_lines.append("\n# Agent Configuration Profile")
-            env_lines.append("# Determines which Claude models are used for analysis")
-            env_lines.append(f"LOBSTER_PROFILE={profile_to_write}")
-            config_dict["profile"] = profile_to_write
-            console.print(f"[green]✓ Profile set to: {profile_to_write}[/green]")
-
-        # ================================================================== #
-        # Step 4 — Agent selection                                            #
-        # ================================================================== #
-        selected_agents, preset_name = _perform_agent_selection_interactive(workspace_path)
-        if selected_agents:
-            _save_agent_config(selected_agents, workspace_path, preset_name)
-        console.print()
-
-        # ================================================================== #
-        # Step 5 — Optional NCBI key (single)                                #
-        # ================================================================== #
-        add_ncbi = Confirm.ask(
-            "Add an NCBI API key? (enhances literature search, optional)",
-            default=False,
-        )
-
-        if add_ncbi:
-            ncbi_key_val = Prompt.ask(
-                "[bold white]Enter your NCBI API key[/bold white]", password=True
-            )
-            if ncbi_key_val.strip():
-                env_lines.append("\n# NCBI API key for literature search")
-                env_lines.append(f"NCBI_API_KEY={ncbi_key_val.strip()}")
-                console.print("[green]✓ NCBI API key configured[/green]")
-
-        # ================================================================== #
-        # Step 6 — Optional Cloud key (skip if Omics-OS)                      #
-        # ================================================================== #
-        if provider_name != "omics-os":
-            add_cloud = Confirm.ask(
-                "Add an Omics-OS Cloud API key? (enables premium tier, optional)",
-                default=False,
-            )
-            if add_cloud:
-                cloud_key_val = Prompt.ask(
-                    "[bold white]Enter your Omics-OS Cloud API key[/bold white]",
-                    password=True,
-                )
-                if cloud_key_val.strip():
-                    env_lines.append("\n# Lobster Cloud configuration")
-                    env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key_val.strip()}")
-                    console.print("[green]✓ Cloud API key configured[/green]")
-
-        # ================================================================== #
-        # Step 7 — Smart Standardization (if not uv tool env)                 #
-        # ================================================================== #
-        if not skip_extras and not _in_uv_tool:
-            smart_std_lines = _prompt_smart_standardization(
-                selected_agents=selected_agents,
-            )
-            env_lines.extend(smart_std_lines)
-
-        # ================================================================== #
-        # Save configuration                                                  #
-        # ================================================================== #
-        console.print()
-        if global_config:
-            try:
-                from lobster.config.global_config import save_global_credentials
-
-                credentials = {}
-                for line in env_lines:
-                    if "=" in line and not line.startswith("#"):
-                        key, _, value = line.partition("=")
-                        key = key.strip()
-                        if any(
-                            tok in key
-                            for tok in ["API_KEY", "ACCESS_KEY", "SECRET_KEY", "CLOUD_KEY"]
-                        ):
-                            credentials[key] = value.strip()
-
-                global_config_path = _create_global_config(config_dict)
-
-                credentials_path = None
-                if credentials:
-                    credentials_path = save_global_credentials(credentials)
-
-                success_message = (
-                    "[bold green]✅ Global configuration saved![/bold green]\n\n"
-                )
-                success_message += f"Config: [cyan]{global_config_path}[/cyan]\n"
-                if credentials_path:
-                    success_message += f"Credentials: [cyan]{credentials_path}[/cyan] [dim](secure: mode 0o600)[/dim]\n"
-                if backup_path:
-                    success_message += f"Backup: [cyan]{backup_path}[/cyan]\n"
-                success_message += f"\n[bold white]Next step:[/bold white] Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!"
-            except Exception as e:
-                console.print(f"[red]❌ Failed to write global config: {str(e)}[/red]")
-                raise typer.Exit(1)
-        else:
-            with open(env_path, "w") as f:
-                f.write("\n".join(env_lines))
-                f.write("\n")
-
-            _create_workspace_config(config_dict, workspace_path)
-
-            success_message = "[bold green]✅ Configuration saved![/bold green]\n\n"
-            success_message += f"Environment: [cyan]{env_path}[/cyan]\n"
-            success_message += (
-                f"Workspace:   [cyan]{workspace_path / 'provider_config.json'}[/cyan]\n"
-            )
-            if backup_path:
-                success_message += f"Backup: [cyan]{backup_path}[/cyan]\n\n"
-            else:
-                success_message += "\n"
-            success_message += f"[bold white]Next step:[/bold white] Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!"
-
-        console.print(Panel.fit(success_message, border_style="green"))
-        console.print()
-
-        # In uv tool env, offer to run `uv tool install` for new packages
-        if _in_uv_tool:
-            _want_vector_search = False
-            if not skip_extras and _is_vector_search_backend_available():
-                try:
-                    import chromadb  # noqa: F401
-                except ImportError:
-                    _vs_choice = Prompt.ask(
-                        "\n  Include Smart Standardization (ontology matching, OpenAI embeddings)?",
-                        choices=["y", "n"],
-                        default="n",
-                    )
-                    _want_vector_search = _vs_choice == "y"
-            elif not skip_extras:
-                _print_vector_backend_unavailable()
-
-            _uv_tool_env_handoff(
-                provider_name=provider_name,
-                selected_agents=selected_agents,
-                skip_extras=skip_extras,
-                include_vector_search=_want_vector_search,
-            )
-
-    except KeyboardInterrupt:
-        console.print("\n[yellow]⚠️  Configuration cancelled[/yellow]")
-        raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"\n[red]❌ Configuration failed: {str(e)}[/red]")
         raise typer.Exit(1)
