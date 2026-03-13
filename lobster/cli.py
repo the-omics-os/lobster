@@ -1270,7 +1270,10 @@ def chat(
     ):
         return
 
-    # Classic Rich terminal path (heavy imports happen here).
+    # Classic Rich terminal path — final fallback.
+    if ui_mode == "auto":
+        import sys
+        print("\033[33mNote:\033[0m Using classic Rich terminal (Ink and Go TUI unavailable).", file=sys.stderr)
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
     chat_impl(workspace=workspace, session_id=session_id, reasoning=reasoning,
         verbose=verbose, debug=debug, profile_timings=profile_timings,
