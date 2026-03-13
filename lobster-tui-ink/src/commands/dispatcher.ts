@@ -6,6 +6,8 @@
 import type { AppConfig } from "../config.js";
 import { apiFetch } from "../api/apiClient.js";
 import type { AppState } from "../utils/stateHandlers.js";
+import { isFeatureEnabled } from "../api/featureFlags.js";
+import { listProjects } from "../api/projects.js";
 
 export interface CommandResult {
   type: "output" | "action";
@@ -121,7 +123,72 @@ const NATIVE_COMMANDS: CommandDef[] = [
   },
 ];
 
-const ALL_COMMANDS = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS];
+const PROJECT_COMMANDS: CommandDef[] = [
+  {
+    name: "projects",
+    description: "List cloud projects",
+    bridged: true,
+    handler: async (_args, ctx) => {
+      if (!isFeatureEnabled("projects_datasets")) {
+        return { type: "output", text: "Projects feature is not enabled." };
+      }
+      try {
+        const projects = await listProjects(ctx.config);
+        if (projects.length === 0) {
+          return { type: "output", text: "No projects found." };
+        }
+        const lines = [
+          "Projects:",
+          "",
+          ...projects.map(
+            (p) =>
+              `  ${p.name.padEnd(24)} ${String(p.dataset_count ?? 0).padStart(3)} datasets  ${p.id}`,
+          ),
+        ];
+        return { type: "output", text: lines.join("\n") };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { type: "output", text: `Error: ${msg}` };
+      }
+    },
+  },
+  {
+    name: "datasets",
+    description: "List datasets in a project",
+    bridged: true,
+    handler: async (args, ctx) => {
+      if (!isFeatureEnabled("projects_datasets")) {
+        return { type: "output", text: "Projects feature is not enabled." };
+      }
+      if (!args) {
+        return { type: "output", text: "Usage: /datasets <project_id>" };
+      }
+      try {
+        const data = await apiFetch<{ datasets: Array<{ id: string; name: string; file_count?: number }> }>(
+          ctx.config,
+          `/projects/${args}/datasets`,
+        );
+        const datasets = data.datasets ?? [];
+        if (datasets.length === 0) {
+          return { type: "output", text: "No datasets found." };
+        }
+        const lines = [
+          "Datasets:",
+          "",
+          ...datasets.map(
+            (d) => `  ${d.name.padEnd(24)} ${String(d.file_count ?? 0).padStart(3)} files  ${d.id}`,
+          ),
+        ];
+        return { type: "output", text: lines.join("\n") };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { type: "output", text: `Error: ${msg}` };
+      }
+    },
+  },
+];
+
+const ALL_COMMANDS = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS, ...PROJECT_COMMANDS];
 
 /** POST a slash command to backend and format the response. */
 async function bridgedPost(
