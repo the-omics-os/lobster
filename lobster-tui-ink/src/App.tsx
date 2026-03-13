@@ -11,7 +11,7 @@ import { ActivityFeed } from "./components/ActivityFeed.js";
 import type { AppConfig } from "./config.js";
 
 export function App({ config }: { config: AppConfig }) {
-  const { runtime, appState } = useRuntime(config);
+  const { runtime, appState, sessionId } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
   }, [runtime]);
@@ -23,7 +23,7 @@ export function App({ config }: { config: AppConfig }) {
         <Header
           agentName={appState.activeAgent ?? undefined}
           sessionTitle={appState.sessionTitle ?? undefined}
-          sessionId={config.sessionId}
+          sessionId={sessionId}
         />
         <Thread />
         <Composer />
@@ -33,7 +33,7 @@ export function App({ config }: { config: AppConfig }) {
         <ActivityFeed events={appState.activityEvents} />
         <StatusBar
           appState={appState}
-          sessionId={config.sessionId}
+          sessionId={sessionId}
         />
       </Box>
     </AssistantRuntimeProvider>
