@@ -1079,6 +1079,14 @@ def _maybe_launch_go_chat_ui(
     stream: bool,
 ) -> bool:
     """Launch Go chat UI when requested and supported, else return False."""
+    if ui_mode == "go":
+        import sys
+        print(
+            "\033[33mDeprecation:\033[0m --ui go is deprecated. "
+            "The Go TUI will be removed in a future release. "
+            "Use --ui ink (default) or --ui classic instead.",
+            file=sys.stderr,
+        )
     _ensure_go_chat_tty(ui_mode)
     if not _should_try_go_chat_ui(ui_mode, reasoning, verbose):
         return False
