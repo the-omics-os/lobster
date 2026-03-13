@@ -12,6 +12,9 @@ import {
   ConfirmPromptUI,
   SelectPromptUI,
   TextInputPromptUI,
+  ThresholdSliderUI,
+  CellTypeSelectorUI,
+  QCDashboardUI,
 } from "./components/HITL/index.js";
 import type { AppConfig } from "./config.js";
 
@@ -27,6 +30,9 @@ export function App({ config }: { config: AppConfig }) {
       <ConfirmPromptUI />
       <SelectPromptUI />
       <TextInputPromptUI />
+      <ThresholdSliderUI />
+      <CellTypeSelectorUI />
+      <QCDashboardUI />
       <Box flexDirection="column">
         <Header
           agentName={appState.activeAgent ?? undefined}
