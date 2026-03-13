@@ -997,9 +997,9 @@ def _display_streaming_response(client, user_input: str, console: Console) -> Di
 
 def _validate_chat_ui_mode(ui_mode: str) -> None:
     """Validate `lobster chat --ui` values early with CLI-friendly errors."""
-    if ui_mode in {"auto", "go", "classic"}:
+    if ui_mode in {"auto", "go", "ink", "classic"}:
         return
-    _raise_cli_error(f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, classic, go")
+    _raise_cli_error(f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, ink, classic, go")
 
 
 def _raise_cli_error(message: str) -> None:
@@ -1118,6 +1118,46 @@ def _maybe_launch_go_chat_ui(
         )
         return False
 
+def _maybe_launch_ink_chat_ui(
+    *,
+    ui_mode: str,
+    workspace: Optional[Path],
+    session_id: Optional[str],
+    provider: Optional[str],
+    model: Optional[str],
+    debug: bool,
+) -> bool:
+    """Launch Ink chat UI when requested, else return False."""
+    if ui_mode not in ("ink",):
+        return False
+    if not os.isatty(0):
+        _raise_cli_error("Error: Ink TUI requires an interactive terminal (stdin is not a TTY)")
+
+    from lobster.cli_internal.ink_launcher import find_ink_binary, launch_ink_chat
+
+    binary = find_ink_binary()
+    if not binary:
+        _raise_cli_error(
+            "Error: lobster-chat binary not found. "
+            "Build with: cd lobster-tui-ink && bun run build"
+        )
+        return False
+
+    try:
+        launch_ink_chat(
+            workspace=str(workspace) if workspace else None,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+            debug=debug,
+        )
+        return True
+    except Exception as exc:
+        import sys
+        print(f"\033[33mNote:\033[0m Ink TUI failed ({exc}), falling back to classic mode.", file=sys.stderr)
+        return False
+
+
 @app.command()
 def chat(
     workspace: Optional[Path] = typer.Option(
@@ -1171,7 +1211,7 @@ def chat(
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode: auto (Go TUI if available), go (require Go TUI), classic (Rich terminal)",
+        help="UI mode: auto (Go TUI if available), ink (React Ink), go (Go TUI), classic (Rich terminal)",
     ),
     classic: bool = typer.Option(
         False,
@@ -1193,6 +1233,15 @@ def chat(
     if classic:
         ui_mode = "classic"
     _validate_chat_ui_mode(ui_mode)
+    if _maybe_launch_ink_chat_ui(
+        ui_mode=ui_mode,
+        workspace=workspace,
+        session_id=session_id,
+        provider=provider,
+        model=model,
+        debug=debug,
+    ):
+        return
     if _maybe_launch_go_chat_ui(
         ui_mode=ui_mode,
         workspace=workspace,
