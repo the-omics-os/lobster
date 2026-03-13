@@ -28,7 +28,7 @@ export function App({ config }: { config: AppConfig }) {
     runtime.thread.cancelRun();
   }, [runtime]);
   const cancelState = useCancelHandler(handleCancel);
-  const slashCmds = useSlashCommands(appState);
+  const slashCmds = useSlashCommands(appState, config, sessionId);
 
   const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -95,6 +95,11 @@ export function App({ config }: { config: AppConfig }) {
         ) : (
           <>
             <Thread />
+            {slashCmds.loading && (
+              <Box paddingX={1}>
+                <Text color="yellow">Running command...</Text>
+              </Box>
+            )}
             {slashCmds.commandOutput && (
               <Box paddingX={1} marginY={1}>
                 <Text color="gray">{slashCmds.commandOutput}</Text>

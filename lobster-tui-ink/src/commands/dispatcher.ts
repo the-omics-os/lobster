@@ -1,8 +1,10 @@
 /**
- * Slash command dispatcher — routes /commands to native handlers.
- * Native commands execute client-side without backend calls.
+ * Slash command dispatcher — routes /commands to native or bridged handlers.
+ * Native commands execute client-side. Bridged commands POST to backend.
  */
 
+import type { AppConfig } from "../config.js";
+import { apiFetch } from "../api/apiClient.js";
 import type { AppState } from "../utils/stateHandlers.js";
 
 export interface CommandResult {
@@ -14,26 +16,71 @@ export interface CommandResult {
 export interface CommandDef {
   name: string;
   description: string;
-  handler: (args: string, state: AppState) => CommandResult;
+  bridged?: boolean;
+  handler: (args: string, ctx: CommandContext) => CommandResult | Promise<CommandResult>;
 }
+
+export interface CommandContext {
+  state: AppState;
+  config: AppConfig;
+  sessionId?: string;
+}
+
+const BRIDGED_COMMANDS: CommandDef[] = [
+  {
+    name: "files",
+    description: "List workspace files",
+    bridged: true,
+    handler: async (_args, ctx) => bridgedPost(ctx, "/files"),
+  },
+  {
+    name: "pipeline",
+    description: "Show pipeline status",
+    bridged: true,
+    handler: async (_args, ctx) => bridgedPost(ctx, "/pipeline"),
+  },
+  {
+    name: "status",
+    description: "Show agent status",
+    bridged: true,
+    handler: async (_args, ctx) => bridgedPost(ctx, "/status"),
+  },
+  {
+    name: "tokens",
+    description: "Show token usage",
+    bridged: true,
+    handler: (_args, ctx) => {
+      const usage = ctx.state.tokenUsage;
+      if (!usage) {
+        return { type: "output", text: "No token usage data available." };
+      }
+      const prompt = usage.promptTokens ?? 0;
+      const completion = usage.completionTokens ?? 0;
+      const lines = [
+        "Token usage:",
+        `  Prompt:     ${prompt.toLocaleString()}`,
+        `  Completion: ${completion.toLocaleString()}`,
+        `  Total:      ${(prompt + completion).toLocaleString()}`,
+      ];
+      return { type: "output", text: lines.join("\n") };
+    },
+  },
+];
 
 const NATIVE_COMMANDS: CommandDef[] = [
   {
     name: "help",
     description: "Show available commands",
-    handler: (_args, _state) => {
+    handler: (_args, _ctx) => {
+      const all = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS];
       const lines = [
         "Available commands:",
         "",
-        ...NATIVE_COMMANDS.map(
-          (c) => `  /${c.name.padEnd(12)} ${c.description}`,
+        ...all.map(
+          (c) => `  /${c.name.padEnd(12)} ${c.description}${c.bridged ? " *" : ""}`,
         ),
         "",
-        "Bridged commands (sent to backend):",
-        "  /files        List workspace files",
-        "  /pipeline     Show pipeline status",
-        "  /status       Show agent status",
-        "  /tokens       Show token usage",
+        "* = sent to backend",
       ];
       return { type: "output", text: lines.join("\n") };
     },
@@ -56,11 +103,11 @@ const NATIVE_COMMANDS: CommandDef[] = [
   {
     name: "data",
     description: "Show loaded modalities",
-    handler: (_args, state) => {
-      if (state.modalities.length === 0) {
+    handler: (_args, ctx) => {
+      if (ctx.state.modalities.length === 0) {
         return { type: "output", text: "No modalities loaded." };
       }
-      const lines = state.modalities.map((m, i) => {
+      const lines = ctx.state.modalities.map((m, i) => {
         const mod = m as Record<string, unknown>;
         const name = mod.name ?? mod.type ?? `modality-${i + 1}`;
         const samples = mod.sample_count ?? mod.samples ?? "?";
@@ -74,30 +121,59 @@ const NATIVE_COMMANDS: CommandDef[] = [
   },
 ];
 
-/** Parse input and dispatch if it's a slash command. Returns null if not a command. */
+const ALL_COMMANDS = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS];
+
+/** POST a slash command to backend and format the response. */
+async function bridgedPost(
+  ctx: CommandContext,
+  endpoint: string,
+): Promise<CommandResult> {
+  try {
+    const sessionPath = ctx.sessionId
+      ? `/sessions/${ctx.sessionId}/commands${endpoint}`
+      : `/commands${endpoint}`;
+    const data = await apiFetch<Record<string, unknown>>(
+      ctx.config,
+      sessionPath,
+    );
+    // Format response as readable text
+    const text =
+      typeof data === "string"
+        ? data
+        : JSON.stringify(data, null, 2);
+    return { type: "output", text };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { type: "output", text: `Error: ${msg}` };
+  }
+}
+
+/** Parse and dispatch a slash command. Returns null if not a command. */
 export function dispatchCommand(
   input: string,
-  state: AppState,
-): CommandResult | null {
+  ctx: CommandContext,
+): CommandResult | Promise<CommandResult> | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return null;
 
   const spaceIdx = trimmed.indexOf(" ");
-  const name = (spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx)).toLowerCase();
+  const name = (
+    spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx)
+  ).toLowerCase();
   const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
 
-  const cmd = NATIVE_COMMANDS.find((c) => c.name === name);
+  const cmd = ALL_COMMANDS.find((c) => c.name === name);
   if (!cmd) return null;
 
-  return cmd.handler(args, state);
+  return cmd.handler(args, ctx);
 }
 
-/** Check if input looks like a slash command (starts with /). */
+/** Check if input starts with /. */
 export function isSlashCommand(input: string): boolean {
   return input.trim().startsWith("/");
 }
 
 /** Get all command names for autocomplete. */
 export function getCommandNames(): string[] {
-  return NATIVE_COMMANDS.map((c) => c.name);
+  return ALL_COMMANDS.map((c) => c.name);
 }
