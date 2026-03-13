@@ -3,6 +3,7 @@ import { Box } from "ink";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { Thread } from "./components/Thread.js";
+import { Composer } from "./components/Composer.js";
 import type { AppConfig } from "./config.js";
 
 export function App({ config }: { config: AppConfig }) {
@@ -12,6 +13,7 @@ export function App({ config }: { config: AppConfig }) {
     <AssistantRuntimeProvider runtime={runtime}>
       <Box flexDirection="column">
         <Thread />
+        <Composer />
       </Box>
     </AssistantRuntimeProvider>
   );
