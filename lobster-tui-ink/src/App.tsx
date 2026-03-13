@@ -23,6 +23,7 @@ import {
 import type { AppConfig } from "./config.js";
 import { fetchFeatureFlags, type FeatureFlags } from "./api/featureFlags.js";
 import { fetchTemplates, type PromptTemplate } from "./api/templates.js";
+import { fetchResources, type Resource } from "./api/resources.js";
 
 export function App({ config }: { config: AppConfig }) {
   const { runtime, appState, sessionId, sse } = useRuntime(config);
@@ -35,10 +36,12 @@ export function App({ config }: { config: AppConfig }) {
   const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [resources, setResources] = useState<Resource[]>([]);
 
-  // Fetch feature flags on startup
+  // Fetch feature flags + resources on startup
   useEffect(() => {
     fetchFeatureFlags(config).then(setFlags);
+    fetchResources(config).then(setResources);
   }, [config.apiUrl]);
 
   // Fetch templates on new session (no --session-id)
@@ -135,7 +138,7 @@ export function App({ config }: { config: AppConfig }) {
                   <Text color="gray">{slashCmds.commandOutput}</Text>
                 </Box>
               )}
-              <Composer onIntercept={slashCmds.handleInput} />
+              <Composer onIntercept={slashCmds.handleInput} resources={resources} />
             </>
           )}
           {cancelState.showWarning && (

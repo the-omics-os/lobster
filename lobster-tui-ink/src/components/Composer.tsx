@@ -4,13 +4,16 @@ import { TextInput } from "@inkjs/ui";
 import { useAssistantRuntime } from "@assistant-ui/react-ink";
 import { getCommandNames } from "../commands/dispatcher.js";
 import { useHistory } from "../hooks/useHistory.js";
+import { filterResources, type Resource } from "../api/resources.js";
 
 interface ComposerProps {
   /** Intercept input before sending to runtime. Return true if handled. */
   onIntercept?: (input: string) => boolean;
+  /** Resources catalog for @mention autocomplete. */
+  resources?: Resource[];
 }
 
-export function Composer({ onIntercept }: ComposerProps) {
+export function Composer({ onIntercept, resources }: ComposerProps) {
   const runtime = useAssistantRuntime();
   const threadRuntime = runtime.thread;
   const [key, setKey] = useState(0);
@@ -37,14 +40,30 @@ export function Composer({ onIntercept }: ComposerProps) {
     }
   });
 
-  // Build suggestions: when input starts with /, suggest command names
+  // Build suggestions: / commands or @resource mentions
   const suggestions = useMemo(() => {
-    if (!currentInput.startsWith("/")) return undefined;
-    const partial = currentInput.slice(1).toLowerCase();
-    return getCommandNames()
-      .filter((name) => name.startsWith(partial))
-      .map((name) => `/${name}`);
-  }, [currentInput]);
+    if (currentInput.startsWith("/")) {
+      const partial = currentInput.slice(1).toLowerCase();
+      return getCommandNames()
+        .filter((name) => name.startsWith(partial))
+        .map((name) => `/${name}`);
+    }
+
+    // Check for @mention: find the last @ in the input
+    const atIdx = currentInput.lastIndexOf("@");
+    if (atIdx >= 0 && resources && resources.length > 0) {
+      const prefix = currentInput.slice(atIdx + 1);
+      if (prefix.length > 0 && !prefix.includes(" ")) {
+        const matches = filterResources(resources, prefix);
+        return matches.slice(0, 10).map((r) => {
+          const before = currentInput.slice(0, atIdx);
+          return `${before}@${r.id}`;
+        });
+      }
+    }
+
+    return undefined;
+  }, [currentInput, resources]);
 
   const handleChange = useCallback((value: string) => {
     setCurrentInput(value);
