@@ -1,17 +1,29 @@
 import React from "react";
 import { Box, Text } from "ink";
-import { MessageRoot, MessageContent } from "@assistant-ui/react-ink";
-import { theme } from "../theme.js";
+import { MessagePrimitive } from "@assistant-ui/react-ink";
+import { useTheme } from "../hooks/useTheme.js";
 
 export function UserMessage() {
+  const theme = useTheme();
+
   return (
-    <MessageRoot>
-      <Box marginY={0} borderStyle="single" borderLeft borderTop={false} borderRight={false} borderBottom={false} borderColor={theme.primary} paddingLeft={1}>
+    <MessagePrimitive.Root>
+      <Box
+        flexDirection="column"
+        marginBottom={1}
+        borderStyle="single"
+        borderLeft
+        borderTop={false}
+        borderRight={false}
+        borderBottom={false}
+        borderColor={theme.primary}
+        paddingLeft={1}
+      >
         <Text bold color={theme.primary}>
-          You:{" "}
+          You
         </Text>
-        <MessageContent />
+        <MessagePrimitive.Content />
       </Box>
-    </MessageRoot>
+    </MessagePrimitive.Root>
   );
 }

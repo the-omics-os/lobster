@@ -1,27 +1,25 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
-import type { ThreadMessageLike } from "@assistant-ui/react-ink";
 import type { AppConfig } from "../config.js";
 import { authHeaders } from "../config.js";
 import { hydrateMessages } from "../utils/hydration.js";
 import { resolveSessionId } from "../api/sessions.js";
 import {
-  createInitialState,
-  applyStatePatch,
   processStatePatch,
-  type AppState,
 } from "../utils/stateHandlers.js";
-import { useSSEReconnect, loadLastEventId } from "./useSSEReconnect.js";
+import { useSSEReconnect } from "./useSSEReconnect.js";
+import {
+  applyAppStatePatch,
+  createAppStateStore,
+  resetAppStateStore,
+} from "../utils/appStateStore.js";
 
 export function useRuntime(config: AppConfig) {
   const [sessionId, setSessionId] = useState<string | undefined>(
     config.sessionId
   );
-  const [initialMessages, setInitialMessages] = useState<
-    ThreadMessageLike[] | undefined
-  >(undefined);
-  const [appState, setAppState] = useState<AppState>(createInitialState);
-  const appStateRef = useRef(appState);
+  const appStateStoreRef = useRef(createAppStateStore());
+  const appStateStore = appStateStoreRef.current;
 
   const sse = useSSEReconnect(sessionId);
 
@@ -29,16 +27,6 @@ export function useRuntime(config: AppConfig) {
   useEffect(() => {
     resolveSessionId(config).then(setSessionId);
   }, [config.apiUrl, config.sessionId]);
-
-  // Hydrate message history when resuming a session
-  useEffect(() => {
-    if (!sessionId) return;
-    hydrateMessages(config, sessionId).then((msgs) => {
-      if (msgs.length > 0) {
-        setInitialMessages(msgs);
-      }
-    });
-  }, [sessionId]);
 
   // State patch handler (protocol §1.3) + SSE event ID tracking
   const onData = useCallback(
@@ -50,14 +38,10 @@ export function useRuntime(config: AppConfig) {
 
       const result = processStatePatch(data.name, data.data);
       if (result) {
-        setAppState((prev) => {
-          const next = applyStatePatch(prev, result.key, result.data);
-          appStateRef.current = next;
-          return next;
-        });
+        applyAppStatePatch(appStateStore, result.key, result.data);
       }
     },
-    [sse.trackEventId],
+    [appStateStore, sse.trackEventId],
   );
 
   // Build headers: auth + Last-Event-ID for reconnection
@@ -71,17 +55,26 @@ export function useRuntime(config: AppConfig) {
   const runtime = useDataStreamRuntime({
     api,
     headers: Object.keys(headers).length > 0 ? headers : undefined,
-    initialMessages,
     onData,
   });
 
+  // Hydrate message history when resuming a session (deferred via runtime.thread.reset)
+  useEffect(() => {
+    if (!sessionId) return;
+    hydrateMessages(config, sessionId).then((msgs) => {
+      if (msgs.length > 0) {
+        runtime.thread.reset(msgs);
+      }
+    });
+  }, [sessionId]);
+
   /** Clear thread messages and reset app state (for /clear). */
   const clearThread = useCallback(() => {
-    setAppState(createInitialState);
-    setInitialMessages(undefined);
+    resetAppStateStore(appStateStore);
+    runtime.thread.reset();
     // Request a new session so old messages don't rehydrate
     resolveSessionId({ ...config, sessionId: undefined }).then(setSessionId);
-  }, [config]);
+  }, [appStateStore, config, runtime]);
 
-  return { runtime, appState, sessionId, sse, clearThread };
+  return { runtime, appStateStore, sessionId, sse, clearThread };
 }

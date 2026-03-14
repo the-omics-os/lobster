@@ -27,7 +27,7 @@ interface IndeterminateSpinnerProps {
 export function IndeterminateSpinner({ label }: IndeterminateSpinnerProps) {
   return (
     <Box gap={1}>
-      <BrailleSpinner label={label} />
+      <BrailleSpinner label={label} animated={false} />
     </Box>
   );
 }

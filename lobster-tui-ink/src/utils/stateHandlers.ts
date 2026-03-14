@@ -18,6 +18,8 @@ const SUPPORTED_VERSIONS: Record<string, number> = {
   active_agent: 1,
   agent_status: 1,
   activity_events: 1,
+  progress: 1,
+  alerts: 1,
   token_usage: 1,
   session_title: 1,
 };
@@ -34,13 +36,47 @@ interface StatePatch {
 /** Callback type for state updates. */
 export type StateUpdateCallback = (key: StateKey, data: unknown) => void;
 
+export interface ActivityEvent {
+  type: string;
+  agent?: string;
+  from_agent?: string;
+  to_agent?: string;
+  tool?: string;
+  tool_name?: string;
+  id?: string;
+  tool_call_id?: string;
+  duration_ms?: number;
+  error?: boolean | string;
+  summary?: string;
+  message?: string;
+  task_description?: string;
+  kind?: string;
+  status?: string;
+}
+
+export interface ProgressEntry {
+  id: string;
+  label: string;
+  current: number;
+  total: number;
+  done: boolean;
+}
+
+export interface AlertEvent {
+  level: "success" | "warning" | "error" | "info";
+  title?: string;
+  message: string;
+}
+
 /** Accumulated state from patches. */
 export interface AppState {
   plots: unknown[];
   modalities: unknown[];
   activeAgent: string | null;
   agentStatus: string | null;
-  activityEvents: unknown[];
+  activityEvents: ActivityEvent[];
+  progress: Record<string, ProgressEntry>;
+  alerts: AlertEvent[];
   tokenUsage: { promptTokens?: number; completionTokens?: number } | null;
   sessionTitle: string | null;
 }
@@ -52,9 +88,158 @@ export function createInitialState(): AppState {
     activeAgent: null,
     agentStatus: null,
     activityEvents: [],
+    progress: {},
+    alerts: [],
     tokenUsage: null,
     sessionTitle: null,
   };
+}
+
+const ACTIVITY_EVENT_LIMIT = 25;
+const ALERT_EVENT_LIMIT = 8;
+
+function asArray<T>(value: unknown): T[] {
+  if (Array.isArray(value)) {
+    return value as T[];
+  }
+  if (value === null || value === undefined) {
+    return [];
+  }
+  return [value as T];
+}
+
+function eventToolKey(event: ActivityEvent) {
+  return event.tool_call_id ?? event.id ?? null;
+}
+
+function isToolTerminalEvent(event: ActivityEvent) {
+  return event.type === "tool_complete" || event.type === "tool_error";
+}
+
+function appendActivityEvents(
+  current: ActivityEvent[],
+  data: unknown,
+): ActivityEvent[] {
+  const next = [...current];
+
+  for (const rawEvent of asArray<ActivityEvent>(data)) {
+    if (!rawEvent || typeof rawEvent !== "object") {
+      continue;
+    }
+
+    const event = rawEvent as ActivityEvent;
+    const toolKey = eventToolKey(event);
+
+    if (toolKey && isToolTerminalEvent(event)) {
+      const existingIndex = next.findIndex(
+        (candidate) => eventToolKey(candidate) === toolKey,
+      );
+      if (existingIndex >= 0) {
+        next[existingIndex] = {
+          ...next[existingIndex],
+          ...event,
+        };
+        continue;
+      }
+    }
+
+    next.push(event);
+  }
+
+  return next.slice(-ACTIVITY_EVENT_LIMIT);
+}
+
+function normalizeProgressEntries(data: unknown): ProgressEntry[] {
+  const rawEntries: Record<string, unknown>[] = Array.isArray(data)
+    ? (data as Record<string, unknown>[])
+    : data && typeof data === "object"
+      ? Object.entries(data as Record<string, unknown>).map(([id, value]) => ({
+          id,
+          ...(value && typeof value === "object" ? (value as Record<string, unknown>) : {}),
+        }))
+      : asArray<Record<string, unknown>>(data);
+
+  return rawEntries
+    .filter((entry) => !!entry && typeof entry === "object")
+    .map((entry, index) => {
+      const label =
+        typeof entry.label === "string" && entry.label.trim().length > 0
+          ? entry.label
+          : `Progress ${index + 1}`;
+      const id =
+        typeof entry.id === "string" && entry.id.trim().length > 0
+          ? entry.id
+          : label;
+
+      return {
+        id,
+        label,
+        current:
+          typeof entry.current === "number" && Number.isFinite(entry.current)
+            ? entry.current
+            : 0,
+        total:
+          typeof entry.total === "number" && Number.isFinite(entry.total)
+            ? entry.total
+            : -1,
+        done: Boolean(entry.done),
+      } satisfies ProgressEntry;
+    });
+}
+
+function mergeProgressState(
+  current: Record<string, ProgressEntry>,
+  data: unknown,
+): Record<string, ProgressEntry> {
+  const next = { ...current };
+
+  for (const entry of normalizeProgressEntries(data)) {
+    if (entry.done) {
+      delete next[entry.id];
+      continue;
+    }
+    next[entry.id] = entry;
+  }
+
+  return next;
+}
+
+function appendAlerts(current: AlertEvent[], data: unknown): AlertEvent[] {
+  const next = [...current];
+
+  for (const rawAlert of asArray<Record<string, unknown>>(data)) {
+    if (!rawAlert || typeof rawAlert !== "object") {
+      continue;
+    }
+
+    const level =
+      rawAlert.level === "success" ||
+      rawAlert.level === "warning" ||
+      rawAlert.level === "error" ||
+      rawAlert.level === "info"
+        ? rawAlert.level
+        : "info";
+
+    const message =
+      typeof rawAlert.message === "string" && rawAlert.message.length > 0
+        ? rawAlert.message
+        : "";
+
+    if (!message) {
+      continue;
+    }
+
+    next.push({
+      level,
+      title:
+        typeof rawAlert.title === "string" && rawAlert.title.length > 0
+          ? rawAlert.title
+          : undefined,
+      message,
+    });
+  }
+
+  return next.slice(-ALERT_EVENT_LIMIT);
 }
 
 /**
@@ -103,7 +288,17 @@ export function applyStatePatch(
     case "activity_events":
       return {
         ...state,
-        activityEvents: Array.isArray(data) ? data : [data],
+        activityEvents: appendActivityEvents(state.activityEvents, data),
+      };
+    case "progress":
+      return {
+        ...state,
+        progress: mergeProgressState(state.progress, data),
+      };
+    case "alerts":
+      return {
+        ...state,
+        alerts: appendAlerts(state.alerts, data),
       };
     case "token_usage":
       return {

@@ -85,12 +85,15 @@ def _resolve_safe_path(workspace_path: Path, relative_path: str) -> Path:
     Raises:
         ValueError: If path escapes workspace boundary
     """
-    # Normalize: strip leading slashes to treat as relative
-    clean = relative_path.lstrip("/")
-    resolved = (workspace_path / clean).resolve()
+    input_path = Path(relative_path).expanduser()
+    resolved = (
+        input_path.resolve()
+        if input_path.is_absolute()
+        else (workspace_path / input_path).resolve()
+    )
     workspace_resolved = workspace_path.resolve()
 
-    if not str(resolved).startswith(str(workspace_resolved)):
+    if resolved != workspace_resolved and workspace_resolved not in resolved.parents:
         raise ValueError(
             f"Path '{relative_path}' resolves outside workspace boundary. "
             f"All paths must be relative to the workspace directory."

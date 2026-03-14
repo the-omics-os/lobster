@@ -9,6 +9,12 @@ import type { ThreadMessageLike } from "@assistant-ui/react-ink";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import type { AppConfig } from "../config.js";
 import { authHeaders } from "../config.js";
+import type {
+  AlertBlockData,
+  CodeBlockData,
+  RichTableColumn,
+  RichTableData,
+} from "./richBlocks.js";
 
 /** Raw message from the REST API (durable envelope). */
 interface DurableMessage {
@@ -27,6 +33,15 @@ interface DurableMessage {
 interface ContentBlock {
   type: string;
   text?: string;
+  title?: string;
+  language?: string;
+  code?: string;
+  content?: string;
+  headers?: string[];
+  rows?: string[][];
+  columns?: Array<Record<string, unknown>>;
+  message?: string;
+  level?: string;
   tool_call_id?: string;
   tool_name?: string;
   args?: Record<string, unknown>;
@@ -139,6 +154,9 @@ function convertToThreadMessageLike(msg: DurableMessage): ThreadMessageLike {
 
 type MessagePart =
   | { readonly type: "text"; readonly text: string }
+  | { readonly type: "data-code"; readonly data: CodeBlockData }
+  | { readonly type: "data-table"; readonly data: RichTableData }
+  | { readonly type: "data-alert"; readonly data: AlertBlockData }
   | {
       readonly type: "tool-call";
       readonly toolCallId: string;
@@ -152,7 +170,99 @@ function blockToPart(block: ContentBlock): MessagePart | null {
   switch (block.type) {
     case "text":
       return { type: "text", text: block.text ?? "" };
+    case "code": {
+      const code = block.code ?? block.content ?? block.text ?? "";
+      if (!code) {
+        return null;
+      }
+      return {
+        type: "data-code",
+        data: {
+          title: block.title,
+          language: block.language,
+          code,
+        },
+      };
+    }
+    case "table": {
+      const headers = Array.isArray(block.headers) ? block.headers.map(String) : [];
+      const rows = Array.isArray(block.rows)
+        ? block.rows.map((row) => (Array.isArray(row) ? row.map(String) : []))
+        : [];
+      const columns = Array.isArray(block.columns)
+        ? block.columns
+            .filter((column): column is Record<string, unknown> => !!column && typeof column === "object")
+            .map<RichTableColumn>((column) => ({
+              name: String(column.name ?? ""),
+              width:
+                typeof column.width === "number" && Number.isFinite(column.width)
+                  ? column.width
+                  : undefined,
+              maxWidth:
+                typeof column.max_width === "number" && Number.isFinite(column.max_width)
+                  ? column.max_width
+                  : typeof column.maxWidth === "number" && Number.isFinite(column.maxWidth)
+                    ? column.maxWidth
+                    : undefined,
+              justify:
+                column.justify === "left" ||
+                column.justify === "right" ||
+                column.justify === "center"
+                  ? column.justify
+                  : undefined,
+              noWrap:
+                typeof column.no_wrap === "boolean"
+                  ? column.no_wrap
+                  : typeof column.noWrap === "boolean"
+                    ? column.noWrap
+                    : undefined,
+              overflow:
+                column.overflow === "crop" || column.overflow === "ellipsis"
+                  ? column.overflow
+                  : undefined,
+            }))
+            .filter((column) => column.name.length > 0)
+        : [];
+
+      const normalizedHeaders =
+        headers.length > 0 ? headers : columns.map((column) => column.name);
+      if (normalizedHeaders.length === 0 || rows.length === 0) {
+        return null;
+      }
+
+      return {
+        type: "data-table",
+        data: {
+          title: block.title,
+          headers: normalizedHeaders,
+          rows,
+          columns: columns.length > 0 ? columns : undefined,
+        },
+      };
+    }
+    case "alert": {
+      const message = block.message ?? block.text ?? block.content ?? "";
+      if (!message) {
+        return null;
+      }
+      const level =
+        block.level === "success" ||
+        block.level === "warning" ||
+        block.level === "error" ||
+        block.level === "info"
+          ? block.level
+          : "info";
+      return {
+        type: "data-alert",
+        data: {
+          level,
+          title: block.title,
+          message,
+        },
+      };
+    }
     case "tool_call":
+    case "tool-call":
       return {
         type: "tool-call",
         toolCallId: block.tool_call_id ?? "",

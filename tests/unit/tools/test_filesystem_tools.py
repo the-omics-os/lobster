@@ -123,6 +123,23 @@ class TestReadFile:
         result = tools["read_file"].invoke({"path": "../../etc/passwd"})
         assert "Error" in result or "outside" in result.lower()
 
+    def test_read_absolute_path_inside_workspace(self, workspace):
+        from lobster.tools.filesystem_tools import create_filesystem_tools
+
+        target = workspace / "data" / "counts.csv"
+        tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
+        result = tools["read_file"].invoke({"path": str(target)})
+        assert "TP53" in result
+
+    def test_read_absolute_path_outside_workspace_blocked(self, workspace):
+        from lobster.tools.filesystem_tools import create_filesystem_tools
+
+        outside = workspace.parent / "outside.txt"
+        outside.write_text("not in workspace")
+        tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
+        result = tools["read_file"].invoke({"path": str(outside)})
+        assert "Error" in result or "outside" in result.lower()
+
 
 class TestWriteFile:
     """Test write_file tool."""

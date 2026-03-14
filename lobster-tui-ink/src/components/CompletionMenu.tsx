@@ -1,12 +1,13 @@
 /**
  * Styled completion overlay for slash commands and @mentions.
  *
- * Renders above the Composer as a floating list with keyboard navigation.
- * Max 5 visible items with overflow indicators.
+ * Renders above the Composer as a floating list with keyboard navigation
+ * managed by the parent composer.
  */
 
-import React, { useState, useCallback, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
+import React from "react";
+import { Box, Text } from "ink";
+import { useTheme } from "../hooks/useTheme.js";
 
 export interface CompletionItem {
   /** Display label */
@@ -20,83 +21,100 @@ export interface CompletionItem {
 export interface CompletionMenuProps {
   /** Items to display */
   items: CompletionItem[];
-  /** Called when an item is accepted (Tab/Enter) */
-  onAccept: (item: CompletionItem) => void;
-  /** Called when the menu is dismissed (Esc) */
-  onDismiss: () => void;
+  /** Selected item index */
+  selectedIndex: number;
   /** Whether the menu is visible */
   visible: boolean;
+  /** Horizontal anchor aligned to the active completion token */
+  anchorColumn?: number;
   /** Max visible items before overflow indicators appear. Default: 5 */
   maxVisible?: number;
 }
 
-const MAX_DEFAULT = 5;
+export const MAX_VISIBLE_COMPLETION_ITEMS = 5;
+
+function clampIndex(index: number, count: number) {
+  if (count <= 0) return 0;
+  if (index < 0) return 0;
+  if (index >= count) return count - 1;
+  return index;
+}
+
+export function getCompletionWindow(
+  selectedIndex: number,
+  itemCount: number,
+  maxVisible = MAX_VISIBLE_COMPLETION_ITEMS,
+) {
+  if (itemCount <= 0) {
+    return { start: 0, end: 0 };
+  }
+
+  const limit = Math.min(itemCount, maxVisible);
+  const selected = clampIndex(selectedIndex, itemCount);
+  let start = selected - limit + 1;
+  if (start < 0) {
+    start = 0;
+  }
+
+  let end = start + limit;
+  if (end > itemCount) {
+    end = itemCount;
+    start = Math.max(0, end - limit);
+  }
+
+  return { start, end };
+}
+
+export function getCompletionMenuRowCount(
+  itemCount: number,
+  selectedIndex: number,
+  maxVisible = MAX_VISIBLE_COMPLETION_ITEMS,
+) {
+  if (itemCount <= 0) {
+    return 0;
+  }
+
+  const { start, end } = getCompletionWindow(selectedIndex, itemCount, maxVisible);
+  const hiddenAbove = itemCount - end;
+  const hiddenBelow = start;
+
+  return (end - start) + (hiddenAbove > 0 ? 1 : 0) + (hiddenBelow > 0 ? 1 : 0);
+}
 
 export function CompletionMenu({
   items,
-  onAccept,
-  onDismiss,
+  selectedIndex,
   visible,
-  maxVisible = MAX_DEFAULT,
+  anchorColumn = 0,
+  maxVisible = MAX_VISIBLE_COMPLETION_ITEMS,
 }: CompletionMenuProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-
-  // Reset selection when items change
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [items]);
-
-  useInput(
-    (input, key) => {
-      if (!visible || items.length === 0) return;
-
-      if (key.upArrow) {
-        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : items.length - 1));
-      } else if (key.downArrow) {
-        setSelectedIndex((prev) => (prev < items.length - 1 ? prev + 1 : 0));
-      } else if (key.tab || key.return) {
-        const item = items[selectedIndex];
-        if (item) onAccept(item);
-      } else if (key.escape) {
-        onDismiss();
-      }
-    },
-    { isActive: visible },
-  );
+  const theme = useTheme();
 
   if (!visible || items.length === 0) return null;
 
-  // Calculate visible window
   const total = items.length;
-  const windowSize = Math.min(total, maxVisible);
-
-  // Center the window around the selected index
-  let windowStart: number;
-  if (total <= maxVisible) {
-    windowStart = 0;
-  } else {
-    const half = Math.floor(windowSize / 2);
-    windowStart = Math.max(0, Math.min(selectedIndex - half, total - windowSize));
-  }
-  const windowEnd = windowStart + windowSize;
-
-  const earlierCount = windowStart;
-  const laterCount = total - windowEnd;
+  const selected = clampIndex(selectedIndex, total);
+  const { start, end } = getCompletionWindow(selected, total, maxVisible);
+  const hiddenAbove = total - end;
+  const hiddenBelow = start;
+  const paddingLeft = Math.max(0, anchorColumn);
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      {earlierCount > 0 && (
-        <Text dimColor>{`  +${earlierCount} earlier`}</Text>
+    <Box flexDirection="column">
+      {hiddenAbove > 0 && (
+        <Box paddingLeft={paddingLeft}>
+          <Text dimColor>{`  +${hiddenAbove} more`}</Text>
+        </Box>
       )}
-      {items.slice(windowStart, windowEnd).map((item, i) => {
-        const globalIndex = windowStart + i;
-        const isSelected = globalIndex === selectedIndex;
+      {Array.from({ length: end - start }, (_, offset) => end - 1 - offset).map((itemIndex) => {
+        const item = items[itemIndex]!;
+        const isSelected = itemIndex === selected;
         return (
-          <Box key={item.value + globalIndex}>
-            <Text color={isSelected ? "red" : undefined} bold={isSelected}>
+          <Box key={`${item.value}:${itemIndex}`} paddingLeft={paddingLeft}>
+            <Text color={isSelected ? theme.primary : theme.textMuted} bold={isSelected}>
               {isSelected ? "\u203A " : "\u00B7 "}
             </Text>
-            <Text color={isSelected ? "red" : undefined} bold={isSelected}>
+            <Text color={isSelected ? theme.primary : undefined} bold={isSelected}>
               {item.label}
             </Text>
             {item.description && (
@@ -105,8 +123,10 @@ export function CompletionMenu({
           </Box>
         );
       })}
-      {laterCount > 0 && (
-        <Text dimColor>{`  +${laterCount} more`}</Text>
+      {hiddenBelow > 0 && (
+        <Box paddingLeft={paddingLeft}>
+          <Text dimColor>{`  +${hiddenBelow} earlier`}</Text>
+        </Box>
       )}
     </Box>
   );

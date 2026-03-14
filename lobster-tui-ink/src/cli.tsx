@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { parseArgs } from "util";
 import { resolveConfig } from "./config.js";
 import { App } from "./App.js";
+import { ThemeProvider } from "./hooks/useTheme.js";
 import { InitWizard } from "./wizard/InitWizard.js";
 import type { WizardManifest, WizardResult } from "./wizard/types.js";
 
@@ -14,6 +15,7 @@ const { values, positionals } = parseArgs({
     "api-url": { type: "string" },
     "session-id": { type: "string" },
     resume: { type: "string" },
+    "resume-session": { type: "boolean", default: false },
     token: { type: "string" },
     cloud: { type: "boolean", default: false },
     init: { type: "boolean", default: false },
@@ -78,14 +80,27 @@ if (values.init) {
     process.exit(0);
   }
 
-  render(<InitWizard manifest={manifest} onComplete={handleWizardComplete} />);
+  render(
+    <ThemeProvider>
+      <InitWizard manifest={manifest} onComplete={handleWizardComplete} />
+    </ThemeProvider>,
+  );
 } else {
+  if (values.token) {
+    console.error("Warning: --token passes secrets via CLI args (visible in ps). Use LOBSTER_TOKEN env var instead.");
+  }
+
   const config = resolveConfig({
     apiUrl: values["api-url"],
     sessionId: values["session-id"] ?? values.resume,
     token: values.token,
     cloud: values.cloud,
+    isResume: values["resume-session"] || Boolean(values.resume),
   });
 
-  render(<App config={config} />);
+  render(
+    <ThemeProvider>
+      <App config={config} />
+    </ThemeProvider>,
+  );
 }

@@ -1,0 +1,15 @@
+{
+  "global_provider": "bedrock",
+  "anthropic_model": null,
+  "bedrock_model": null,
+  "ollama_model": null,
+  "gemini_model": null,
+  "azure_model": null,
+  "openai_model": null,
+  "openrouter_model": null,
+  "ollama_host": "http://localhost:11434",
+  "model_context_windows": {},
+  "per_agent_providers": {},
+  "per_agent_models": {},
+  "profile": "performance"
+}

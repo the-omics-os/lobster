@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect } from "react";
 import { Text } from "ink";
-import { theme } from "../theme.js";
+import { useTheme } from "../hooks/useTheme.js";
 
 const FRAMES = ["\u280B", "\u2819", "\u2839", "\u2838", "\u283C", "\u2834", "\u2826", "\u2827", "\u2807", "\u280F"];
 const INTERVAL_MS = 80;
@@ -27,22 +27,28 @@ interface BrailleSpinnerProps {
   showTips?: boolean;
   /** Override spinner color (defaults to theme.warning). */
   color?: string;
+  /** Disable animation to avoid whole-screen repaint churn in live shells. */
+  animated?: boolean;
 }
 
 export function BrailleSpinner({
   label,
   showTips = false,
-  color = theme.warning,
+  color,
+  animated = true,
 }: BrailleSpinnerProps) {
+  const theme = useTheme();
+  const spinnerColor = color ?? theme.warning;
   const [frameIdx, setFrameIdx] = useState(0);
   const [tipIdx, setTipIdx] = useState(0);
 
   useEffect(() => {
+    if (!animated) return;
     const id = setInterval(() => {
       setFrameIdx((i) => (i + 1) % FRAMES.length);
     }, INTERVAL_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [animated]);
 
   useEffect(() => {
     if (!showTips) return;
@@ -54,10 +60,10 @@ export function BrailleSpinner({
 
   return (
     <Text>
-      <Text color={color}>{FRAMES[frameIdx]}</Text>
+      <Text color={spinnerColor}>{FRAMES[animated ? frameIdx : 0]}</Text>
       {label ? <Text> {label}</Text> : null}
       {showTips ? (
-        <Text color={theme.textMuted}>{`  \u{1F4A1} ${TIPS[tipIdx]}`}</Text>
+        <Text color={theme.textMuted}>{`  Tip: ${TIPS[tipIdx]}`}</Text>
       ) : null}
     </Text>
   );

@@ -80,7 +80,7 @@ class ProtocolCallbackHandler(BaseCallbackHandler):
                 "agent_transition",
                 {
                     "from": from_agent,
-                    "to": from_agent,
+                    "to": "supervisor",
                     "reason": "return",
                     "kind": "activity",
                     "status": "complete",

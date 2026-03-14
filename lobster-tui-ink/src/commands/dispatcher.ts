@@ -9,10 +9,42 @@ import type { AppState } from "../utils/stateHandlers.js";
 import { isFeatureEnabled } from "../api/featureFlags.js";
 import { listProjects } from "../api/projects.js";
 import { listAgents, getAgentInfo } from "../api/agents.js";
+import {
+  PARITY_COMMANDS,
+  getGroupSubcommands,
+  getNestedSubcommands,
+  getParityCommand,
+  isGroupedCommand,
+} from "./subcommands.js";
+
+export interface CommandOutputBlock {
+  kind: string;
+  title?: string;
+  body?: string;
+  style?: string;
+  message?: string;
+  level?: string;
+  columns?: Array<Record<string, unknown>>;
+  rows?: string[][];
+  width?: number;
+  items?: string[];
+  ordered?: boolean;
+  code?: string;
+  language?: string;
+  key_label?: string;
+  value_label?: string;
+}
+
+export interface CommandOutputPayload {
+  command?: string;
+  summary?: string;
+  blocks: CommandOutputBlock[];
+}
 
 export interface CommandResult {
   type: "output" | "action";
   text?: string;
+  output?: CommandOutputPayload;
   action?: "clear" | "exit";
 }
 
@@ -23,69 +55,45 @@ export interface CommandDef {
   handler: (args: string, ctx: CommandContext) => CommandResult | Promise<CommandResult>;
 }
 
+export interface CommandCompletion {
+  name: string;
+  description: string;
+}
+
 export interface CommandContext {
   state: AppState;
   config: AppConfig;
   sessionId?: string;
 }
 
-const BRIDGED_COMMANDS: CommandDef[] = [
-  {
-    name: "files",
-    description: "List workspace files",
-    bridged: true,
-    handler: async (_args, ctx) => bridgedPost(ctx, "/files"),
-  },
-  {
-    name: "pipeline",
-    description: "Show pipeline status",
-    bridged: true,
-    handler: async (_args, ctx) => bridgedPost(ctx, "/pipeline"),
-  },
-  {
-    name: "status",
-    description: "Show agent status",
-    bridged: true,
-    handler: async (_args, ctx) => bridgedPost(ctx, "/status"),
-  },
-  {
-    name: "tokens",
-    description: "Show token usage",
-    bridged: true,
-    handler: (_args, ctx) => {
-      const usage = ctx.state.tokenUsage;
-      if (!usage) {
-        return { type: "output", text: "No token usage data available." };
-      }
-      const prompt = usage.promptTokens ?? 0;
-      const completion = usage.completionTokens ?? 0;
-      const lines = [
-        "Token usage:",
-        `  Prompt:     ${prompt.toLocaleString()}`,
-        `  Completion: ${completion.toLocaleString()}`,
-        `  Total:      ${(prompt + completion).toLocaleString()}`,
-      ];
-      return { type: "output", text: lines.join("\n") };
-    },
-  },
-];
+interface BridgedCommandRequest {
+  pathSegments: string[];
+  args: string;
+}
 
 const NATIVE_COMMANDS: CommandDef[] = [
   {
     name: "help",
     description: "Show available commands",
-    handler: (_args, _ctx) => {
-      const all = ALL_COMMANDS;
+    handler: () => {
       const lines = [
         "Available commands:",
         "",
-        ...all.map(
-          (c) => `  /${c.name.padEnd(12)} ${c.description}${c.bridged ? " *" : ""}`,
+        ...HELP_COMMANDS.map(
+          (command) =>
+            `  /${command.name.padEnd(14)} ${command.description}${command.bridged ? " *" : ""}`,
         ),
         "",
         "* = sent to backend",
+        "Composer: Enter sends. Alt+Enter inserts a newline.",
+        "Shift+Enter also inserts a newline when the terminal reports it.",
       ];
-      return { type: "output", text: lines.join("\n") };
+      return {
+        type: "output",
+        output: {
+          blocks: [{ kind: "section", body: lines.join("\n") }],
+        },
+      };
     },
   },
   {
@@ -103,25 +111,6 @@ const NATIVE_COMMANDS: CommandDef[] = [
     description: "Exit the application",
     handler: () => ({ type: "action", action: "exit" }),
   },
-  {
-    name: "data",
-    description: "Show loaded modalities",
-    handler: (_args, ctx) => {
-      if (ctx.state.modalities.length === 0) {
-        return { type: "output", text: "No modalities loaded." };
-      }
-      const lines = ctx.state.modalities.map((m, i) => {
-        const mod = m as Record<string, unknown>;
-        const name = mod.name ?? mod.type ?? `modality-${i + 1}`;
-        const samples = mod.sample_count ?? mod.samples ?? "?";
-        return `  ${String(i + 1).padStart(2)}. ${name} (${samples} samples)`;
-      });
-      return {
-        type: "output",
-        text: `Loaded modalities:\n${lines.join("\n")}`,
-      };
-    },
-  },
 ];
 
 const PROJECT_COMMANDS: CommandDef[] = [
@@ -131,25 +120,24 @@ const PROJECT_COMMANDS: CommandDef[] = [
     bridged: true,
     handler: async (_args, ctx) => {
       if (!isFeatureEnabled("projects_datasets")) {
-        return { type: "output", text: "Projects feature is not enabled." };
+        return buildTextResult("Projects feature is not enabled.");
       }
       try {
         const projects = await listProjects(ctx.config);
         if (projects.length === 0) {
-          return { type: "output", text: "No projects found." };
+          return buildTextResult("No projects found.");
         }
         const lines = [
           "Projects:",
           "",
           ...projects.map(
-            (p) =>
-              `  ${p.name.padEnd(24)} ${String(p.dataset_count ?? 0).padStart(3)} datasets  ${p.id}`,
+            (project) =>
+              `  ${project.name.padEnd(24)} ${String(project.dataset_count ?? 0).padStart(3)} datasets  ${project.id}`,
           ),
         ];
-        return { type: "output", text: lines.join("\n") };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { type: "output", text: `Error: ${msg}` };
+        return buildTextResult(lines.join("\n"));
+      } catch (error) {
+        return buildTextResult(asErrorMessage(error));
       }
     },
   },
@@ -159,31 +147,30 @@ const PROJECT_COMMANDS: CommandDef[] = [
     bridged: true,
     handler: async (args, ctx) => {
       if (!isFeatureEnabled("projects_datasets")) {
-        return { type: "output", text: "Projects feature is not enabled." };
+        return buildTextResult("Projects feature is not enabled.");
       }
       if (!args) {
-        return { type: "output", text: "Usage: /datasets <project_id>" };
+        return buildTextResult("Usage: /datasets <project_id>");
       }
       try {
-        const data = await apiFetch<{ datasets: Array<{ id: string; name: string; file_count?: number }> }>(
-          ctx.config,
-          `/projects/${args}/datasets`,
-        );
+        const data = await apiFetch<{
+          datasets: Array<{ id: string; name: string; file_count?: number }>;
+        }>(ctx.config, `/projects/${args}/datasets`);
         const datasets = data.datasets ?? [];
         if (datasets.length === 0) {
-          return { type: "output", text: "No datasets found." };
+          return buildTextResult("No datasets found.");
         }
         const lines = [
           "Datasets:",
           "",
           ...datasets.map(
-            (d) => `  ${d.name.padEnd(24)} ${String(d.file_count ?? 0).padStart(3)} files  ${d.id}`,
+            (dataset) =>
+              `  ${dataset.name.padEnd(24)} ${String(dataset.file_count ?? 0).padStart(3)} files  ${dataset.id}`,
           ),
         ];
-        return { type: "output", text: lines.join("\n") };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { type: "output", text: `Error: ${msg}` };
+        return buildTextResult(lines.join("\n"));
+      } catch (error) {
+        return buildTextResult(asErrorMessage(error));
       }
     },
   },
@@ -196,27 +183,26 @@ const AGENT_COMMANDS: CommandDef[] = [
     bridged: true,
     handler: async (_args, ctx) => {
       if (!isFeatureEnabled("curated_agent_store")) {
-        return { type: "output", text: "Agent store feature is not enabled." };
+        return buildTextResult("Agent store feature is not enabled.");
       }
       try {
         const agents = await listAgents(ctx.config);
         if (agents.length === 0) {
-          return { type: "output", text: "No curated agents found." };
+          return buildTextResult("No curated agents found.");
         }
         const lines = [
           "Curated agents:",
           "",
           ...agents.map(
-            (a) =>
-              `  ${a.name.padEnd(28)} v${a.version.padEnd(8)} ${a.description ?? ""}`,
+            (agent) =>
+              `  ${agent.name.padEnd(28)} v${agent.version.padEnd(8)} ${agent.description ?? ""}`,
           ),
           "",
           "Use /agent-info <name> for details.",
         ];
-        return { type: "output", text: lines.join("\n") };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { type: "output", text: `Error: ${msg}` };
+        return buildTextResult(lines.join("\n"));
+      } catch (error) {
+        return buildTextResult(asErrorMessage(error));
       }
     },
   },
@@ -226,15 +212,15 @@ const AGENT_COMMANDS: CommandDef[] = [
     bridged: true,
     handler: async (args, ctx) => {
       if (!isFeatureEnabled("curated_agent_store")) {
-        return { type: "output", text: "Agent store feature is not enabled." };
+        return buildTextResult("Agent store feature is not enabled.");
       }
       if (!args) {
-        return { type: "output", text: "Usage: /agent-info <agent_name>" };
+        return buildTextResult("Usage: /agent-info <agent_name>");
       }
       try {
         const agent = await getAgentInfo(ctx.config, args.trim());
         if (!agent) {
-          return { type: "output", text: `Agent "${args.trim()}" not found.` };
+          return buildTextResult(`Agent "${args.trim()}" not found.`);
         }
         const lines = [
           `${agent.name} v${agent.version}`,
@@ -244,50 +230,168 @@ const AGENT_COMMANDS: CommandDef[] = [
         if (agent.author) lines.push(`Author: ${agent.author}`);
         if (agent.capabilities && agent.capabilities.length > 0) {
           lines.push("", "Capabilities:");
-          for (const cap of agent.capabilities) {
-            lines.push(`  - ${cap}`);
+          for (const capability of agent.capabilities) {
+            lines.push(`  - ${capability}`);
           }
         }
         if (agent.tools && agent.tools.length > 0) {
           lines.push("", `Tools: ${agent.tools.join(", ")}`);
         }
-        return { type: "output", text: lines.join("\n") };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return { type: "output", text: `Error: ${msg}` };
+        return buildTextResult(lines.join("\n"));
+      } catch (error) {
+        return buildTextResult(asErrorMessage(error));
       }
     },
   },
 ];
 
-const ALL_COMMANDS = [...NATIVE_COMMANDS, ...BRIDGED_COMMANDS, ...PROJECT_COMMANDS, ...AGENT_COMMANDS];
+const BRIDGED_HELP_COMMANDS = PARITY_COMMANDS.filter(
+  (command) => !["help", "clear", "exit"].includes(command.name),
+).map((command) => ({ ...command, bridged: true }));
 
-/** POST a slash command to backend and format the response. */
+const HELP_COMMANDS = [
+  ...NATIVE_COMMANDS,
+  ...BRIDGED_HELP_COMMANDS,
+  ...PROJECT_COMMANDS,
+  ...AGENT_COMMANDS,
+];
+
+function asErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Error: ${message}`;
+}
+
+function buildTextResult(text: string): CommandResult {
+  return {
+    type: "output",
+    output: {
+      blocks: [{ kind: "section", body: text }],
+    },
+    text,
+  };
+}
+
+function normalizeCommandOutput(data: unknown): CommandOutputPayload {
+  if (typeof data === "string") {
+    return { blocks: [{ kind: "section", body: data }] };
+  }
+
+  if (!data || typeof data !== "object") {
+    return {
+      blocks: [
+        {
+          kind: "code",
+          code: JSON.stringify(data, null, 2),
+          language: "json",
+        },
+      ],
+    };
+  }
+
+  const record = data as Record<string, unknown>;
+  if (Array.isArray(record.blocks)) {
+    return {
+      command: typeof record.command === "string" ? record.command : undefined,
+      summary: typeof record.summary === "string" ? record.summary : undefined,
+      blocks: record.blocks as CommandOutputBlock[],
+    };
+  }
+
+  if (typeof record.result === "string") {
+    return { blocks: [{ kind: "section", body: record.result }] };
+  }
+
+  if (typeof record.error === "string") {
+    return {
+      blocks: [{ kind: "alert", level: "error", message: record.error }],
+    };
+  }
+
+  return {
+    blocks: [
+      {
+        kind: "code",
+        code: JSON.stringify(record, null, 2),
+        language: "json",
+      },
+    ],
+  };
+}
+
 async function bridgedPost(
   ctx: CommandContext,
-  endpoint: string,
+  request: BridgedCommandRequest,
 ): Promise<CommandResult> {
   try {
+    const endpoint = request.pathSegments.join("/");
     const sessionPath = ctx.sessionId
-      ? `/sessions/${ctx.sessionId}/commands${endpoint}`
-      : `/commands${endpoint}`;
-    const data = await apiFetch<Record<string, unknown>>(
-      ctx.config,
-      sessionPath,
-    );
-    // Format response as readable text
-    const text =
-      typeof data === "string"
-        ? data
-        : JSON.stringify(data, null, 2);
-    return { type: "output", text };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return { type: "output", text: `Error: ${msg}` };
+      ? `/sessions/${ctx.sessionId}/commands/${endpoint}`
+      : `/commands/${endpoint}`;
+    const data = await apiFetch<Record<string, unknown>>(ctx.config, sessionPath, {
+      method: "POST",
+      body: request.args ? { args: request.args } : {},
+      timeoutMs: 15000,
+    });
+    const output = normalizeCommandOutput(data);
+    return { type: "output", output, text: outputToText(output) };
+  } catch (error) {
+    const message = asErrorMessage(error);
+    return {
+      type: "output",
+      output: {
+        blocks: [{ kind: "alert", level: "error", message }],
+      },
+      text: message,
+    };
   }
 }
 
-/** Parse and dispatch a slash command. Returns null if not a command. */
+function tokenizeArgs(input: string) {
+  return input.trim().split(/\s+/).filter(Boolean);
+}
+
+function buildBridgedRequest(input: string): BridgedCommandRequest | null {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/")) return null;
+
+  const rawArgs = trimmed.slice(1).trim();
+  const tokens = tokenizeArgs(rawArgs);
+  const topLevel = tokens[0]?.toLowerCase();
+  if (!topLevel || !getParityCommand(topLevel)) {
+    return null;
+  }
+
+  if (!isGroupedCommand(topLevel)) {
+    return {
+      pathSegments: [topLevel],
+      args: rawArgs.slice(topLevel.length).trim(),
+    };
+  }
+
+  const secondToken = tokens[1]?.toLowerCase();
+  const matchedSubcommand = secondToken
+    ? getGroupSubcommands(topLevel).find((subcommand) => subcommand.name === secondToken)
+    : undefined;
+
+  if (!matchedSubcommand) {
+    return {
+      pathSegments: [topLevel],
+      args: rawArgs.slice(topLevel.length).trim(),
+    };
+  }
+
+  const args = rawArgs
+    .slice(topLevel.length)
+    .trim()
+    .slice((secondToken ?? matchedSubcommand.name).length)
+    .trim();
+
+  return {
+    pathSegments: [topLevel, matchedSubcommand.name],
+    args,
+  };
+}
+
 export function dispatchCommand(
   input: string,
   ctx: CommandContext,
@@ -301,18 +405,102 @@ export function dispatchCommand(
   ).toLowerCase();
   const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
 
-  const cmd = ALL_COMMANDS.find((c) => c.name === name);
-  if (!cmd) return null;
+  const custom = [...NATIVE_COMMANDS, ...PROJECT_COMMANDS, ...AGENT_COMMANDS].find(
+    (command) => command.name === name,
+  );
+  if (custom) {
+    return custom.handler(args, ctx);
+  }
 
-  return cmd.handler(args, ctx);
+  const bridgedRequest = buildBridgedRequest(trimmed);
+  if (bridgedRequest) {
+    return bridgedPost(ctx, bridgedRequest);
+  }
+
+  if (getParityCommand(name)) {
+    return bridgedPost(ctx, {
+      pathSegments: [name],
+      args,
+    });
+  }
+
+  return null;
 }
 
-/** Check if input starts with /. */
 export function isSlashCommand(input: string): boolean {
   return input.trim().startsWith("/");
 }
 
-/** Get all command names for autocomplete. */
 export function getCommandNames(): string[] {
-  return ALL_COMMANDS.map((c) => c.name);
+  return HELP_COMMANDS.map((command) => command.name);
+}
+
+export function getCommandCompletions(): CommandCompletion[] {
+  return HELP_COMMANDS.map(({ name, description }) => ({ name, description }));
+}
+
+export function getSubcommandCompletions(group: string): CommandCompletion[] {
+  return getGroupSubcommands(group).map(({ name, description }) => ({
+    name,
+    description,
+  }));
+}
+
+export function getNestedCommandCompletions(path: string): CommandCompletion[] {
+  return getNestedSubcommands(path).map((name) => ({
+    name,
+    description: "",
+  }));
+}
+
+export function hasNestedCompletions(topLevel: string, subcommand: string) {
+  return getNestedSubcommands(`${topLevel} ${subcommand}`).length > 0;
+}
+
+export function getParityCommandNames(): string[] {
+  return PARITY_COMMANDS.map((command) => command.name);
+}
+
+export function isGroupedParityCommand(name: string) {
+  return isGroupedCommand(name);
+}
+
+export function getParityCommandDefinition(name: string) {
+  return getParityCommand(name);
+}
+
+export function parseCommandTokens(input: string) {
+  const trimmed = input.trimStart();
+  if (!trimmed.startsWith("/")) {
+    return [];
+  }
+
+  return trimmed.slice(1).split(/\s+/).filter(Boolean);
+}
+
+export function outputToText(output: CommandOutputPayload): string {
+  return output.blocks
+    .map((block) => {
+      if (block.kind === "section") {
+        return [block.title, block.body].filter(Boolean).join("\n");
+      }
+      if (block.kind === "alert") {
+        return [block.title, block.message].filter(Boolean).join(": ");
+      }
+      if (block.kind === "hint") {
+        return [block.title, block.message].filter(Boolean).join("\n");
+      }
+      if (block.kind === "list") {
+        return (block.items ?? []).map((item) => `- ${item}`).join("\n");
+      }
+      if (block.kind === "kv" || block.kind === "table") {
+        return JSON.stringify(block.rows ?? [], null, 2);
+      }
+      if (block.kind === "code") {
+        return block.code ?? "";
+      }
+      return JSON.stringify(block, null, 2);
+    })
+    .filter(Boolean)
+    .join("\n\n");
 }

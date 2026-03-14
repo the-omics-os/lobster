@@ -6,7 +6,7 @@
  */
 import React from "react";
 import { Box, Text } from "ink";
-import { theme } from "../theme.js";
+import { useTheme } from "../hooks/useTheme.js";
 
 const BAR_WIDTH = 30;
 const FILLED_CHAR = "\u28FF";  // braille full block
@@ -23,8 +23,10 @@ interface BrailleProgressBarProps {
 export function BrailleProgressBar({
   label,
   value,
-  color = theme.accent3,
+  color,
 }: BrailleProgressBarProps) {
+  const theme = useTheme();
+  const barColor = color ?? theme.accent3;
   const clamped = Math.max(0, Math.min(1, value));
   const filled = Math.round(clamped * BAR_WIDTH);
   const empty = BAR_WIDTH - filled;
@@ -34,7 +36,7 @@ export function BrailleProgressBar({
     <Box gap={1}>
       <Text color={theme.textMuted}>{label}</Text>
       <Text>
-        <Text color={color}>{FILLED_CHAR.repeat(filled)}</Text>
+        <Text color={barColor}>{FILLED_CHAR.repeat(filled)}</Text>
         <Text color={theme.textDim}>{EMPTY_CHAR.repeat(empty)}</Text>
       </Text>
       <Text>{pct}%</Text>

@@ -23,13 +23,20 @@ function loadHistory(): string[] {
   }
 }
 
+const SENSITIVE_PATTERNS = [/^omk_/, /^eyJ/, /^sk-/, /^Bearer\s/i];
+
+export function isLikelySensitive(value: string): boolean {
+  return SENSITIVE_PATTERNS.some((re) => re.test(value.trim()));
+}
+
 function saveHistory(entries: string[]) {
   try {
     const dir = dirname(HISTORY_PATH);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    const trimmed = entries.slice(-MAX_ENTRIES);
+    const safe = entries.filter((e) => !isLikelySensitive(e));
+    const trimmed = safe.slice(-MAX_ENTRIES);
     writeFileSync(HISTORY_PATH, trimmed.join("\n") + "\n");
   } catch {
     // Silently fail on write errors

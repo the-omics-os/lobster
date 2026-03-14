@@ -5,8 +5,8 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react-ink";
-import { DataTable } from "../DataTable.js";
-import { theme } from "../../theme.js";
+import { RichTable } from "../RichTable.js";
+import { useTheme } from "../../hooks/useTheme.js";
 
 function extractTableData(
   result: unknown,
@@ -39,6 +39,7 @@ function extractTableData(
 }
 
 export function DataTablePreviewRenderer(props: ToolCallMessagePartProps) {
+  const theme = useTheme();
   const { toolName, result } = props;
   const status = result !== undefined ? "complete" : "running";
 
@@ -64,7 +65,11 @@ export function DataTablePreviewRenderer(props: ToolCallMessagePartProps) {
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <DataTable data={tableData} title={toolName} />
+      <RichTable
+        title={toolName}
+        headers={Object.keys(tableData[0] ?? {})}
+        rows={tableData.map((row) => Object.keys(tableData[0] ?? {}).map((key) => String(row[key] ?? "")))}
+      />
       <Text dimColor>Press 'o' to open full table in browser</Text>
     </Box>
   );

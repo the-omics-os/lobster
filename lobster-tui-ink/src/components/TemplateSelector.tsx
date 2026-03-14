@@ -8,7 +8,7 @@ import React, { useCallback } from "react";
 import { Box, Text } from "ink";
 import { TextInput } from "@inkjs/ui";
 import type { PromptTemplate } from "../api/templates.js";
-import { theme } from "../theme.js";
+import { useTheme } from "../hooks/useTheme.js";
 
 const CATEGORY_LABELS: Record<string, string> = {
   omics: "Omics",
@@ -27,6 +27,8 @@ export function TemplateSelector({
   templates,
   onSelect,
 }: TemplateSelectorProps) {
+  const theme = useTheme();
+
   const handleSubmit = useCallback(
     (value: string) => {
       const trimmed = value.trim();

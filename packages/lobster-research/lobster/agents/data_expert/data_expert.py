@@ -51,6 +51,7 @@ from lobster.agents.data_expert.state import DataExpertState
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.core.runtime.workspace import WORKSPACE_FOLDER_NAME
 from lobster.core.schemas.download_queue import DownloadStatus, ValidationStatus
 
 # Service imports
@@ -80,6 +81,35 @@ def _normalize_download_strategy_name(strategy_name: Optional[str]) -> Optional[
         return None
 
     return normalized
+
+
+def _resolve_filesystem_root(
+    data_manager: DataManagerV2,
+    workspace_path: Optional[Path],
+) -> Optional[Path]:
+    """Return the human-facing file root for agent file tools.
+
+    Lobster stores runtime/session state in ``.lobster_workspace``, but chat
+    users expect file tools and delegated agents to operate on the enclosing
+    worktree/project root. When the resolved workspace points at the storage
+    directory, expose its parent as the file root instead.
+    """
+    candidate = workspace_path or getattr(data_manager, "workspace_path", None)
+    if candidate is None:
+        return None
+
+    resolved = Path(candidate).resolve()
+    if resolved.name == WORKSPACE_FOLDER_NAME and resolved.parent != resolved:
+        return resolved.parent
+    return resolved
+
+
+def _resolve_relative_file_argument(file_root: Optional[Path], file_path: str) -> str:
+    """Resolve relative user file inputs against the agent file root."""
+    file_path_obj = Path(file_path)
+    if file_root is None or file_path_obj.is_absolute():
+        return file_path
+    return str((file_root / file_path_obj).resolve())
 
 
 def data_expert(
@@ -626,9 +656,12 @@ You can now analyze this dataset using the appropriate analysis tools.
             dataset_type: Source type ("custom", "geo", "local")
         """
         try:
+            resolved_file_path = _resolve_relative_file_argument(
+                fs_workspace, file_path
+            )
             adata, stats, ir = modality_service.load_modality(
                 modality_name=modality_name,
-                file_path=file_path,
+                file_path=resolved_file_path,
                 adapter=adapter,
                 dataset_type=dataset_type,
                 validate=True,
@@ -639,7 +672,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                 tool_name="load_modality",
                 parameters={
                     "modality_name": modality_name,
-                    "file_path": file_path,
+                    "file_path": resolved_file_path,
                     "adapter": adapter,
                     "dataset_type": dataset_type,
                 },
@@ -669,7 +702,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                 available = "(unavailable)"
             return (
                 f"Error loading modality: {str(e)}\n"
-                f"Parameters: file_path='{file_path}', adapter='{adapter}', dataset_type='{dataset_type}'\n"
+                f"Parameters: file_path='{resolved_file_path if 'resolved_file_path' in locals() else file_path}', adapter='{adapter}', dataset_type='{dataset_type}'\n"
                 f"Existing modalities: {available[:15] if isinstance(available, list) else available if available else '(none)'}\n"
                 f"Hints: verify file exists with list_files or glob_files. "
                 f"Check adapter name with get_adapter_info()."
@@ -1113,7 +1146,7 @@ To save, run again with save_to_file=True"""
     #         return f"❌ Unexpected error: {str(e)}"
 
     # Create filesystem tools for file-level operations (DeepAgent-inspired)
-    fs_workspace = workspace_path or data_manager.workspace_path
+    fs_workspace = _resolve_filesystem_root(data_manager, workspace_path)
     filesystem_tools = create_filesystem_tools(workspace_path=fs_workspace) if fs_workspace else []
 
     base_tools = [

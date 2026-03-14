@@ -1,13 +1,11 @@
 /**
- * SSE reconnection with Last-Event-ID support and degraded mode (protocol §5).
+ * SSE reconnection with Last-Event-ID support (protocol §5).
  *
  * Tracks the last event ID from the SSE stream. On disconnect, sends
- * Last-Event-ID header for ring buffer replay. Falls back to REST
- * hydration on cache miss (404). Implements tiered degraded mode:
- *   < 5s:       silent reconnect
- *   5-30s:      "Reconnecting..." spinner
- *   30s-2min:   "Connection lost" warning
- *   > 2min:     Print resume instructions and exit
+ * Last-Event-ID header for ring buffer replay.
+ *
+ * writeResumeState is debounced: in-memory update is immediate,
+ * disk flush happens after 2s of inactivity (max 1 write/2sec vs 15-30/sec).
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -15,13 +13,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 
-export type DegradedLevel = "none" | "silent" | "reconnecting" | "lost" | "exit";
+export type DegradedLevel = "none" | "reconnecting" | "lost" | "exit";
 
 interface SSEReconnectState {
   lastEventId: string | null;
   degradedLevel: DegradedLevel;
   retryCount: number;
-  disconnectedAt: number | null;
 }
 
 interface ResumeEntry {
@@ -32,7 +29,7 @@ interface ResumeEntry {
 }
 
 const SESSIONS_PATH = join(homedir(), ".config", "omics-os", "sessions.json");
-const MAX_RETRIES = 3;
+const DEBOUNCE_MS = 2000;
 
 /** Read persisted session resume state. */
 function readResumeState(): Record<string, ResumeEntry> {
@@ -45,7 +42,7 @@ function readResumeState(): Record<string, ResumeEntry> {
 }
 
 /** Persist session resume state. */
-function writeResumeState(sessionId: string, entry: ResumeEntry): void {
+function writeResumeStateToDisk(sessionId: string, entry: ResumeEntry): void {
   try {
     const dir = dirname(SESSIONS_PATH);
     mkdirSync(dir, { recursive: true });
@@ -68,81 +65,44 @@ export function useSSEReconnect(sessionId: string | undefined) {
     lastEventId: null,
     degradedLevel: "none",
     retryCount: 0,
-    disconnectedAt: null,
   });
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
-  // Track an SSE event ID from the stream
+  // Debounce disk writes: store pending entry in ref, flush after 2s idle
+  const pendingEntryRef = useRef<ResumeEntry | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const flush = useCallback(() => {
+    if (pendingEntryRef.current && sessionId) {
+      writeResumeStateToDisk(sessionId, pendingEntryRef.current);
+      pendingEntryRef.current = null;
+    }
+  }, [sessionId]);
+
+  // Flush on unmount
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+      flush();
+    };
+  }, [flush]);
+
+  // Track an SSE event ID from the stream (in-memory immediate, disk debounced)
   const trackEventId = useCallback(
     (eventId: string) => {
       setState((prev) => ({ ...prev, lastEventId: eventId }));
       if (sessionId) {
-        writeResumeState(sessionId, {
+        pendingEntryRef.current = {
           session_id: sessionId,
           last_event_id: eventId,
           last_message_index: 0,
           updated_at: new Date().toISOString(),
-        });
+        };
+        if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = setTimeout(flush, DEBOUNCE_MS);
       }
     },
-    [sessionId],
+    [sessionId, flush],
   );
-
-  // Called when connection is lost
-  const onDisconnect = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      disconnectedAt: prev.disconnectedAt ?? Date.now(),
-      degradedLevel: "silent",
-      retryCount: prev.retryCount + 1,
-    }));
-  }, []);
-
-  // Called when connection is restored
-  const onReconnected = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = undefined;
-    }
-    setState((prev) => ({
-      ...prev,
-      degradedLevel: "none",
-      retryCount: 0,
-      disconnectedAt: null,
-    }));
-  }, []);
-
-  // Update degraded level based on elapsed time
-  useEffect(() => {
-    if (state.disconnectedAt === null) return;
-
-    const tick = () => {
-      const elapsed = Date.now() - (state.disconnectedAt ?? Date.now());
-
-      if (state.retryCount > MAX_RETRIES && elapsed > 120_000) {
-        setState((prev) => ({ ...prev, degradedLevel: "exit" }));
-        return;
-      }
-
-      if (elapsed < 5_000) {
-        setState((prev) => ({ ...prev, degradedLevel: "silent" }));
-      } else if (elapsed < 30_000) {
-        setState((prev) => ({ ...prev, degradedLevel: "reconnecting" }));
-      } else {
-        setState((prev) => ({ ...prev, degradedLevel: "lost" }));
-      }
-    };
-
-    tick();
-    intervalRef.current = setInterval(tick, 1000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = undefined;
-      }
-    };
-  }, [state.disconnectedAt, state.retryCount]);
 
   // Build reconnect headers with Last-Event-ID
   const reconnectHeaders = useCallback((): Record<string, string> => {
@@ -157,8 +117,6 @@ export function useSSEReconnect(sessionId: string | undefined) {
     degradedLevel: state.degradedLevel,
     retryCount: state.retryCount,
     trackEventId,
-    onDisconnect,
-    onReconnected,
     reconnectHeaders,
   };
 }

@@ -21,6 +21,7 @@ export interface AppConfig {
   token?: string;
   authType: AuthType;
   isCloud: boolean;
+  isResume: boolean;
 }
 
 interface StoredCredentials {
@@ -63,11 +64,25 @@ export function resolveConfig(args: {
   sessionId?: string;
   token?: string;
   cloud?: boolean;
+  isResume?: boolean;
 }): AppConfig {
   const isCloud = args.cloud ?? false;
   const apiUrl = args.apiUrl ?? (isCloud ? CLOUD_API_BASE : LOCAL_API_BASE);
+  const isResume = args.isResume ?? false;
 
-  // Token priority: CLI flag > stored credentials > none
+  // Token priority: env var > CLI flag > stored credentials > none
+  const envToken = process.env.LOBSTER_TOKEN;
+  if (envToken) {
+    return {
+      apiUrl,
+      sessionId: args.sessionId,
+      token: envToken,
+      authType: detectAuthType(envToken),
+      isCloud,
+      isResume,
+    };
+  }
+
   if (args.token) {
     return {
       apiUrl,
@@ -75,6 +90,7 @@ export function resolveConfig(args: {
       token: args.token,
       authType: detectAuthType(args.token),
       isCloud,
+      isResume,
     };
   }
 
@@ -87,6 +103,7 @@ export function resolveConfig(args: {
         token: stored.token,
         authType: stored.authType,
         isCloud,
+        isResume,
       };
     }
   }
@@ -96,6 +113,7 @@ export function resolveConfig(args: {
     sessionId: args.sessionId,
     authType: "none",
     isCloud,
+    isResume,
   };
 }
 
