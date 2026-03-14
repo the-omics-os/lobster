@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import { Box, Text } from "ink";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { BrailleSpinner } from "./components/BrailleSpinner.js";
@@ -25,10 +25,10 @@ import {
   QCDashboardUI,
 } from "./components/HITL/index.js";
 import type { AppConfig } from "./config.js";
-import type { FeatureFlags } from "./api/featureFlags.js";
 import type { PromptTemplate } from "./api/templates.js";
 import type { Resource } from "./api/resources.js";
-import { fetchBootstrap } from "./api/bootstrap.js";
+import { fetchBootstrap, type RuntimeInfo } from "./api/bootstrap.js";
+import { createFooterStateStore } from "./utils/footerStateStore.js";
 
 export function App({ config }: { config: AppConfig }) {
   const theme = useTheme();
@@ -75,19 +75,21 @@ export function App({ config }: { config: AppConfig }) {
   }, [runtime]);
   const cancelState = useCancelHandler(handleCancel);
   const slashCmds = useSlashCommands(appStateStore, config, sessionId);
+  const footerStateStoreRef = useRef(createFooterStateStore());
+  const footerStateStore = footerStateStoreRef.current;
 
-  const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
+  const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | undefined>();
 
   // Bootstrap: single fetch for flags, resources, and templates (after backend ready)
   useEffect(() => {
     if (!backendReady) return;
     fetchBootstrap(config).catch(() => {}).then((bootstrap) => {
       if (!bootstrap) return;
-      setFlags(bootstrap.flags);
       setResources(bootstrap.resources);
+      setRuntimeInfo(bootstrap.runtime);
       if (!config.sessionId && bootstrap.templates.length > 0) {
         setTemplates(bootstrap.templates);
         setShowTemplates(true);
@@ -193,6 +195,7 @@ export function App({ config }: { config: AppConfig }) {
             onSubmit={slashCmds.dismissOutput}
             resources={resources}
             appStateStore={appStateStore}
+            footerStateStore={footerStateStore}
           />
         )}
 
@@ -202,8 +205,10 @@ export function App({ config }: { config: AppConfig }) {
         )}
         <StatusBar
           appStateStore={appStateStore}
+          footerStateStore={footerStateStore}
           sessionId={sessionId}
-          flags={flags}
+          runtimeInfo={runtimeInfo}
+          isCloud={config.isCloud}
         />
       </AssistantRuntimeProvider>
     </ErrorBoundary>

@@ -42,6 +42,34 @@ from urllib.parse import unquote
 logger = logging.getLogger(__name__)
 
 
+def _resolve_active_provider_name(client: Any) -> str:
+    """Resolve the active provider name for local clients, if available."""
+    runtime_override = str(
+        getattr(client, "provider_override", None) or ""
+    ).strip()
+
+    if hasattr(client, "data_manager"):
+        workspace_path = getattr(client, "workspace_path", None)
+        if workspace_path:
+            try:
+                from lobster.core.config_resolver import ConfigResolver
+
+                resolver = ConfigResolver(workspace_path=Path(workspace_path))
+                provider_name, _ = resolver.resolve_provider(
+                    runtime_override=runtime_override or None
+                )
+                resolved = str(provider_name or "").strip()
+                if resolved:
+                    return resolved
+            except Exception:
+                pass
+
+    fallback = runtime_override or str(
+        getattr(client, "provider", None) or ""
+    ).strip()
+    return fallback
+
+
 def _log_slash_history_async(client: Any, command: str, summary: str) -> None:
     """Record slash-command history without blocking the HTTP response."""
 
@@ -144,6 +172,8 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
     _event_counter: int = 0  # SSE event ID counter for reconnection
     _session_id: str = ""  # Set by launch_ink_chat
     _init_error: Optional[str] = None  # Stores init failure message
+    _runtime_provider: str = ""
+    _runtime_model: str = ""
 
     def log_message(self, format: str, *args: Any) -> None:
         # Suppress default HTTP logging
@@ -250,6 +280,11 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
             "templates": [],
             "resources": [],
             "session": {"session_id": _DataStreamHandler._session_id},
+            "runtime": {
+                "provider": _DataStreamHandler._runtime_provider,
+                "model": _DataStreamHandler._runtime_model,
+                "mode": "local",
+            },
         })
 
     def _handle_slash_command(self) -> None:
@@ -708,6 +743,12 @@ def launch_ink_chat(
 
         # Wire the client into the handler
         _DataStreamHandler.client = client
+        _DataStreamHandler._runtime_provider = _resolve_active_provider_name(client)
+        _DataStreamHandler._runtime_model = str(
+            getattr(client, "model_override", None)
+            or getattr(client, "model", None)
+            or ""
+        ).strip()
         logger.debug("Agent client initialized, handler wired")
     except Exception as exc:
         logger.error("Failed to initialize agent client: %s", exc)

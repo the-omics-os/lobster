@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { Box, Text, useInput } from "ink";
 import { useAssistantRuntime, useAuiState } from "@assistant-ui/react-ink";
 import { useStore } from "zustand";
@@ -15,6 +15,11 @@ import { filterResources, type Resource } from "../api/resources.js";
 import type { AppState } from "../utils/stateHandlers.js";
 import type { AppStateStore } from "../utils/appStateStore.js";
 import { clearRunActivity } from "../utils/appStateStore.js";
+import {
+  resetFooterState,
+  setFooterState,
+  type FooterStateStore,
+} from "../utils/footerStateStore.js";
 import { useTheme } from "../hooks/useTheme.js";
 import {
   CompletionMenu,
@@ -31,6 +36,8 @@ interface ComposerProps {
   resources?: Resource[];
   /** App state store for dynamic slash-command completions. */
   appStateStore: AppStateStore;
+  /** Footer interaction state store for contextual status hints. */
+  footerStateStore: FooterStateStore;
   /** Notify parent layout engine when composer height changes. */
   onLayoutChange?: (state: ComposerLayoutState) => void;
 }
@@ -255,6 +262,7 @@ export function Composer({
   onSubmit,
   resources,
   appStateStore,
+  footerStateStore,
   onLayoutChange,
 }: ComposerProps) {
   const theme = useTheme();
@@ -320,6 +328,20 @@ export function Composer({
       completionMenuRows,
     });
   }, [completionMenuRows, inputLineCount, onLayoutChange]);
+
+  useLayoutEffect(() => {
+    setFooterState(footerStateStore, {
+      completionVisible,
+      inputBlocked,
+      multiline: normalizeInput(value).includes("\n"),
+    });
+  }, [completionVisible, footerStateStore, inputBlocked, value]);
+
+  useEffect(() => {
+    return () => {
+      resetFooterState(footerStateStore);
+    };
+  }, [footerStateStore]);
 
   const setCursorPosition = useCallback((nextPos: number) => {
     cursorPosRef.current = nextPos;

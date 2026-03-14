@@ -9,10 +9,17 @@ import { fetchFeatureFlags, type FeatureFlags } from "./featureFlags.js";
 import { fetchTemplates, type PromptTemplate } from "./templates.js";
 import { fetchResources, type Resource } from "./resources.js";
 
+export interface RuntimeInfo {
+  provider?: string;
+  model?: string;
+  mode?: "local" | "cloud" | string;
+}
+
 export interface BootstrapData {
   flags: FeatureFlags;
   resources: Resource[];
   templates: PromptTemplate[];
+  runtime?: RuntimeInfo;
 }
 
 /** Fetch bootstrap data. Tries /bootstrap first, falls back to 3 separate fetches. */
