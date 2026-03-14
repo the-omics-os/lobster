@@ -33,6 +33,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from dataclasses import dataclass
 from functools import partial
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -40,6 +41,69 @@ from typing import Any, Dict, Optional
 from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _PythonTerminalQuarantine:
+    """Mute Python-owned terminal output while the Ink UI owns the screen."""
+
+    devnull_fd: int
+    stdout_dup_fd: int
+    stderr_dup_fd: int
+    logging_disable_level: int
+
+    @classmethod
+    def activate(cls) -> "_PythonTerminalQuarantine":
+        stdout_fd = 1
+        stderr_fd = 2
+
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        try:
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        previous_disable = logging.root.manager.disable
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        stdout_dup_fd = os.dup(stdout_fd)
+        stderr_dup_fd = os.dup(stderr_fd)
+
+        try:
+            os.dup2(devnull_fd, stdout_fd)
+            os.dup2(devnull_fd, stderr_fd)
+            logging.disable(logging.CRITICAL)
+        except Exception:
+            for fd in (stdout_dup_fd, stderr_dup_fd, devnull_fd):
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+            raise
+
+        return cls(
+            devnull_fd=devnull_fd,
+            stdout_dup_fd=stdout_dup_fd,
+            stderr_dup_fd=stderr_dup_fd,
+            logging_disable_level=previous_disable,
+        )
+
+    def restore(self) -> None:
+        stdout_fd = 1
+        stderr_fd = 2
+
+        try:
+            os.dup2(self.stdout_dup_fd, stdout_fd)
+            os.dup2(self.stderr_dup_fd, stderr_fd)
+        finally:
+            for fd in (self.stdout_dup_fd, self.stderr_dup_fd, self.devnull_fd):
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+            logging.disable(self.logging_disable_level)
 
 
 def _resolve_active_provider_name(client: Any) -> str:
@@ -690,6 +754,8 @@ def launch_ink_chat(
         stdout=sys.stdout,
         stderr=subprocess.PIPE if debug else subprocess.DEVNULL,
     )
+    terminal_quarantine: Optional[_PythonTerminalQuarantine] = None
+    terminal_quarantine = _PythonTerminalQuarantine.activate()
 
     # Drain stderr in a background thread to prevent pipe deadlock
     if debug:
@@ -761,6 +827,8 @@ def launch_ink_chat(
         proc.send_signal(signal.SIGTERM)
         proc.wait(timeout=5)
     finally:
+        if terminal_quarantine is not None:
+            terminal_quarantine.restore()
         server.shutdown()
         # Reset Go TUI active flag so Rich output works again
         try:

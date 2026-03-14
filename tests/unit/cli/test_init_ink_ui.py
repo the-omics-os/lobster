@@ -1,15 +1,38 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from lobster.cli_internal.ink_launcher import run_ink_init_wizard
+from lobster.cli_internal.ink_launcher import (
+    _PythonTerminalQuarantine,
+    run_ink_init_wizard,
+)
 
 
 class _FakeManifest:
     def to_json(self) -> str:
         return "{}"
+
+
+def test_python_terminal_quarantine_suppresses_stdout_and_stderr(capfd):
+    quarantine = _PythonTerminalQuarantine.activate()
+    try:
+        os.write(1, b"hidden-stdout\n")
+        os.write(2, b"hidden-stderr\n")
+    finally:
+        quarantine.restore()
+
+    os.write(1, b"visible-stdout\n")
+    os.write(2, b"visible-stderr\n")
+
+    captured = capfd.readouterr()
+    combined = captured.out + captured.err
+    assert "hidden-stdout" not in combined
+    assert "hidden-stderr" not in combined
+    assert "visible-stdout" in captured.out
+    assert "visible-stderr" in captured.err
 
 
 def test_run_ink_init_wizard_reads_result_file_without_capture(monkeypatch):
