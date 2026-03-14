@@ -60,6 +60,24 @@ function compactEvents(events: ActivityEvent[]) {
       }
     }
 
+    if (event.type === "agent_handoff" || event.type === "agent_transition") {
+      const existingIndex = compacted.findIndex(
+        (candidate) =>
+          (candidate.type === "agent_handoff" || candidate.type === "agent_transition") &&
+          candidate.from_agent === event.from_agent &&
+          candidate.to_agent === event.to_agent &&
+          candidate.status === event.status,
+      );
+      if (existingIndex >= 0) {
+        const existing = compacted[existingIndex]!;
+        compacted[existingIndex] =
+          event.task_description && !existing.task_description
+            ? { ...existing, ...event }
+            : existing;
+        continue;
+      }
+    }
+
     compacted.push(event);
   }
 

@@ -37,8 +37,29 @@ from functools import partial
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import unquote
 
 logger = logging.getLogger(__name__)
+
+
+def _log_slash_history_async(client: Any, command: str, summary: str) -> None:
+    """Record slash-command history without blocking the HTTP response."""
+
+    def _worker() -> None:
+        try:
+            from lobster.cli_internal.commands.heavy.session_infra import (
+                _add_command_to_history,
+            )
+
+            _add_command_to_history(client, command, summary)
+        except Exception:
+            logger.exception("Failed to record Ink slash command history")
+
+    threading.Thread(
+        target=_worker,
+        name="ink-slash-history",
+        daemon=True,
+    ).start()
 
 
 # ---------------------------------------------------------------------------
@@ -100,10 +121,12 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
     Translates LangGraph streaming events from ``client.query(stream=True)``
     into the ui-message-stream SSE protocol consumed by @assistant-ui/react.
 
-    State patch events use ``{"type": "data", "data": {"name": key, "data": value}}``
-    so the frontend's ``processStatePatch(data.name, data.data)`` works correctly.
-    Keys match stateHandlers.ts: plots, modalities, active_agent, agent_status,
-    activity_events, token_usage, session_title.
+    State patch events use transient ``data-*`` chunks, for example
+    ``{"type": "data-activity_events", "data": [...], "transient": true}``,
+    so assistant-ui dispatches them through ``onData`` without polluting the
+    visible assistant message content. Keys match stateHandlers.ts: plots,
+    modalities, active_agent, agent_status, activity_events, token_usage,
+    session_title.
 
     LangGraph event mapping:
       content_delta  -> text-delta  (supervisor text, user-visible)
@@ -126,12 +149,28 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         # Suppress default HTTP logging
         pass
 
+    @staticmethod
+    def _state_chunk(name: str, data: Any, *, transient: bool = True) -> dict:
+        return {
+            "type": f"data-{name}",
+            "data": data,
+            "transient": transient,
+        }
+
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            logger.debug("Ink client disconnected during request handling")
+
     def do_OPTIONS(self) -> None:
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Connection", "close")
         self.end_headers()
+        self.close_connection = True
 
     # ------------------------------------------------------------------
     # GET endpoints
@@ -158,7 +197,9 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "close")
             self.end_headers()
+            self.close_connection = True
 
     # ------------------------------------------------------------------
     # POST endpoints
@@ -174,7 +215,9 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "close")
             self.end_headers()
+            self.close_connection = True
 
     # ------------------------------------------------------------------
     # Endpoint handlers
@@ -188,7 +231,7 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
@@ -196,6 +239,10 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
             self._stream_response(messages)
         except (BrokenPipeError, ConnectionResetError):
             pass
+        finally:
+            # The launcher uses a single-threaded HTTPServer, so each request must
+            # close promptly after completion instead of idling on keep-alive.
+            self.close_connection = True
 
     def _handle_bootstrap(self) -> None:
         self._send_json({
@@ -206,9 +253,70 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_slash_command(self) -> None:
-        parts = self.path.split("/commands/")
-        cmd = parts[-1] if len(parts) > 1 else ""
-        self._send_json({"result": f"Command /{cmd} not available in local mode"})
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(content_length)) if content_length > 0 else {}
+        args = str(body.get("args", "")).strip()
+
+        parts = self.path.split("/commands/", 1)
+        command_path = unquote(parts[-1] if len(parts) > 1 else "").strip("/")
+        command_tokens = [token for token in command_path.split("/") if token]
+
+        if not command_tokens:
+            self._send_json({
+                "blocks": [{
+                    "kind": "alert",
+                    "level": "error",
+                    "message": "No slash command was provided.",
+                }],
+            })
+            return
+
+        if self.client is None:
+            self._send_json({
+                "blocks": [{
+                    "kind": "alert",
+                    "level": "error",
+                    "message": _DataStreamHandler._init_error or "Agent client not initialized.",
+                }],
+            })
+            return
+
+        normalized_command = "/" + " ".join(token.lower() for token in command_tokens)
+        original_command = "/" + " ".join(command_tokens)
+        if args:
+            normalized_command = f"{normalized_command} {args}"
+            original_command = f"{original_command} {args}"
+
+        try:
+            from lobster.cli_internal.commands import JsonOutputAdapter
+            from lobster.cli_internal.commands.heavy.slash_commands import _execute_command
+
+            output = JsonOutputAdapter()
+            summary = _execute_command(
+                normalized_command,
+                self.client,
+                original_command=original_command,
+                output=output,
+            )
+            if summary:
+                _log_slash_history_async(self.client, original_command, summary)
+
+            payload = output.to_dict()
+            payload["command"] = original_command
+            if summary:
+                payload["summary"] = summary
+            self._send_json(payload)
+        except Exception as exc:
+            logger.exception("Failed to execute Ink slash command")
+            self._send_json({
+                "command": original_command,
+                "error": str(exc),
+                "blocks": [{
+                    "kind": "alert",
+                    "level": "error",
+                    "message": str(exc),
+                }],
+            })
 
     @staticmethod
     def _feature_flags() -> dict:
@@ -231,8 +339,10 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
+        self.close_connection = True
 
     def _stream_response(self, messages: list) -> None:
         """Stream LangGraph agent response as SSE events."""
@@ -319,27 +429,33 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                 delta = event.get("delta", "")
                 source = event.get("source", "specialist")
                 if delta:
-                    yield {
-                        "type": "data",
-                        "data": {
-                            "name": "activity_events",
-                            "data": [{"type": "agent_content", "agent": source, "delta": delta}],
-                        },
-                    }
+                    yield self._state_chunk(
+                        "activity_events",
+                        [{"type": "agent_content", "agent": source, "delta": delta}],
+                    )
 
             elif etype == "agent_change":
                 agent_name = event.get("agent", "")
                 status = event.get("status", "working")
                 if agent_name:
+                    previous_agent = active_agent
                     active_agent = agent_name
-                    yield {
-                        "type": "data",
-                        "data": {"name": "active_agent", "data": agent_name},
-                    }
-                    yield {
-                        "type": "data",
-                        "data": {"name": "agent_status", "data": status},
-                    }
+                    yield self._state_chunk("active_agent", agent_name)
+                    yield self._state_chunk("agent_status", status)
+                    if agent_name != previous_agent:
+                        yield self._state_chunk(
+                            "activity_events",
+                            [{
+                                "type": "agent_transition",
+                                "from_agent": previous_agent,
+                                "to_agent": agent_name,
+                                "status": "complete"
+                                if agent_name == "supervisor"
+                                else status,
+                                "task_description": event.get("reason")
+                                or event.get("task_description"),
+                            }],
+                        )
 
             elif etype == "complete":
                 # Final completion — emit token usage and session title
@@ -347,20 +463,11 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                 duration = event.get("duration", 0)
                 if duration:
                     token_usage["duration"] = duration
-                yield {
-                    "type": "data",
-                    "data": {"name": "token_usage", "data": token_usage},
-                }
-                yield {
-                    "type": "data",
-                    "data": {"name": "active_agent", "data": "supervisor"},
-                }
+                yield self._state_chunk("token_usage", token_usage)
+                yield self._state_chunk("active_agent", "supervisor")
                 session_title = event.get("session_title", "")
                 if session_title:
-                    yield {
-                        "type": "data",
-                        "data": {"name": "session_title", "data": session_title},
-                    }
+                    yield self._state_chunk("session_title", session_title)
 
             elif etype == "error":
                 error_msg = str(event.get("error", "Unknown error"))
@@ -370,43 +477,34 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                     "textDelta": f"\n\nError: {error_msg}",
                 }
                 if is_rate_limit:
-                    yield {
-                        "type": "data",
-                        "data": {
-                            "name": "activity_events",
-                            "data": [{"type": "error", "error_type": "rate_limit", "message": error_msg}],
-                        },
-                    }
+                    yield self._state_chunk(
+                        "activity_events",
+                        [{"type": "error", "error_type": "rate_limit", "message": error_msg}],
+                    )
 
             elif etype == "interrupt":
                 # HITL interrupt — emit as activity event so the
                 # frontend can render an interactive component
-                yield {
-                    "type": "data",
-                    "data": {
-                        "name": "activity_events",
-                        "data": [{
-                            "type": "interrupt",
-                            "interrupt_data": event.get("data", {}),
-                            "interrupt_id": event.get("interrupt_id"),
-                        }],
-                    },
-                }
+                yield self._state_chunk(
+                    "activity_events",
+                    [{
+                        "type": "interrupt",
+                        "interrupt_data": event.get("data", {}),
+                        "interrupt_id": event.get("interrupt_id"),
+                    }],
+                )
 
             elif etype == "context_compaction":
-                yield {
-                    "type": "data",
-                    "data": {
-                        "name": "activity_events",
-                        "data": [{
-                            "type": "context_compaction",
-                            "agent": event.get("agent", ""),
-                            "before_count": event.get("before_count"),
-                            "after_count": event.get("after_count"),
-                            "budget_tokens": event.get("budget_tokens"),
-                        }],
-                    },
-                }
+                yield self._state_chunk(
+                    "activity_events",
+                    [{
+                        "type": "context_compaction",
+                        "agent": event.get("agent", ""),
+                        "before_count": event.get("before_count"),
+                        "after_count": event.get("after_count"),
+                        "budget_tokens": event.get("budget_tokens"),
+                    }],
+                )
 
         # Drain any remaining tool events after stream completes
         yield from self._drain_tool_events()
@@ -432,38 +530,66 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
                 status = payload.get("status", "")
                 tool_name = payload.get("tool", payload.get("tool_name", ""))
                 tool_call_id = payload.get("tool_call_id", "") or f"tc_{uuid.uuid4().hex[:8]}"
+                agent = payload.get("agent", "")
 
                 if status == "running":
-                    yield {
-                        "type": "data",
-                        "data": {
-                            "name": "activity_events",
-                            "data": [{"type": "tool_start", "tool": tool_name, "id": tool_call_id}],
-                        },
-                    }
+                    yield self._state_chunk(
+                        "activity_events",
+                        [{
+                            "type": "tool_start",
+                            "tool_name": tool_name,
+                            "tool_call_id": tool_call_id,
+                            "agent": agent,
+                        }],
+                    )
                 elif status in ("complete", "error"):
                     duration_ms = payload.get("duration_ms")
                     evt: Dict[str, Any] = {
-                        "type": "tool_complete",
-                        "tool": tool_name,
-                        "id": tool_call_id,
+                        "type": "tool_error" if status == "error" else "tool_complete",
+                        "tool_name": tool_name,
+                        "tool_call_id": tool_call_id,
+                        "agent": agent,
                     }
                     if duration_ms is not None:
                         evt["duration_ms"] = duration_ms
+                    summary = payload.get("summary")
+                    if summary:
+                        evt["summary"] = summary
                     if status == "error":
-                        evt["error"] = True
-                    yield {
-                        "type": "data",
-                        "data": {"name": "activity_events", "data": [evt]},
-                    }
+                        evt["error"] = payload.get("summary") or True
+                    yield self._state_chunk("activity_events", [evt])
 
             elif msg_type == "agent_transition":
+                from_agent = payload.get("from", "")
                 to_agent = payload.get("to", "")
                 if to_agent:
-                    yield {
-                        "type": "data",
-                        "data": {"name": "active_agent", "data": to_agent},
-                    }
+                    yield self._state_chunk("active_agent", to_agent)
+                    yield self._state_chunk(
+                        "activity_events",
+                        [{
+                            "type": "agent_handoff",
+                            "from_agent": from_agent,
+                            "to_agent": to_agent,
+                            "task_description": payload.get("reason"),
+                            "kind": payload.get("kind"),
+                            "status": payload.get("status"),
+                        }],
+                    )
+
+            elif msg_type == "progress":
+                label = str(payload.get("label", "")).strip()
+                if label:
+                    yield self._state_chunk(
+                        "progress",
+                        {
+                            label: {
+                                "label": label,
+                                "current": payload.get("current", 0),
+                                "total": payload.get("total", -1),
+                                "done": payload.get("done", False),
+                            },
+                        },
+                    )
 
     def _send_sse(self, data: dict) -> None:
         _DataStreamHandler._event_counter += 1
@@ -520,6 +646,8 @@ def launch_ink_chat(
 
     # Spawn the TUI binary
     cmd = [binary, f"--api-url={api_url}", f"--session-id={sid}"]
+    if session_id:
+        cmd.append("--resume-session")
 
     proc = subprocess.Popen(
         cmd,
