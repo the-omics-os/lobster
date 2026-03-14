@@ -21,6 +21,8 @@ in any package. This enables Python's implicit namespace package merging.
 | `lobster-genomics` | genomics_expert | GWAS, variant annotation, VCF/PLINK |
 | `lobster-visualization` | visualization_expert | Single-cell and general visualizations |
 | `lobster-ml` | machine_learning_expert | ML data preparation and export |
+| `lobster-metabolomics` | metabolomics_expert | Metabolomics data analysis |
+| `lobster-drug-discovery` | drug_discovery_expert, cheminformatics_expert, clinical_dev_expert, pharmacogenomics_expert | Drug discovery and cheminformatics |
 | `lobster-metadata` | metadata_assistant | Sample ID mapping, schema standardization |
 | `lobster-structural-viz` | protein_structure_visualization_expert | PDB fetching and ChimeraX visualization |
 
@@ -97,7 +99,7 @@ from langchain_core.tools import tool
 To work with workspace packages:
 
 ```bash
-cd /Users/tyo/omics-os/lobster
+cd lobster
 uv sync                      # Install all packages
 uv sync --package lobster-ai # Install core only
 ```
