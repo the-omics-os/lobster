@@ -5,6 +5,7 @@ import { BrailleSpinner } from "./components/BrailleSpinner.js";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { useSlashCommands } from "./hooks/useSlashCommands.js";
+import { useTerminalSize } from "./hooks/useTerminalSize.js";
 import { useTheme } from "./hooks/useTheme.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Header } from "./components/Header.js";
@@ -32,6 +33,7 @@ import { createFooterStateStore } from "./utils/footerStateStore.js";
 
 export function App({ config }: { config: AppConfig }) {
   const theme = useTheme();
+  const { rows } = useTerminalSize();
   const [backendReady, setBackendReady] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
 
@@ -150,66 +152,73 @@ export function App({ config }: { config: AppConfig }) {
   return (
     <ErrorBoundary>
       <AssistantRuntimeProvider runtime={runtime}>
-        <ConfirmPromptUI />
-        <SelectPromptUI />
-        <TextInputPromptUI />
-        <ThresholdSliderUI />
-        <CellTypeSelectorUI />
-        <QCDashboardUI />
-        {/* Header — printed once at start */}
-        <Header
-          appStateStore={appStateStore}
-          sessionId={sessionId}
-        />
-
-        {/* Messages — <Static> completed + live streaming (inside Thread) */}
-        {showTemplates ? (
-          <TemplateSelector
-            templates={templates}
-            onSelect={handleTemplateSelect}
-            onDismiss={handleTemplateDismiss}
-          />
-        ) : (
-          <>
-            <Thread />
-            {slashCmds.loading && (
-              <Box>
-                <Text color={theme.warning}>Running command...</Text>
-              </Box>
-            )}
-            {slashCmds.commandOutput && (
-              <Box flexDirection="column">
-                <CommandOutput output={slashCmds.commandOutput} />
-              </Box>
-            )}
-            <ActivityFeed appStateStore={appStateStore} />
-          </>
-        )}
-
-        <Alerts appStateStore={appStateStore} />
-
-        {/* Composer — live area (re-renders in place) */}
-        {!showTemplates && (
-          <Composer
-            onIntercept={slashCmds.handleInput}
-            onSubmit={slashCmds.dismissOutput}
-            resources={resources}
+        <Box flexDirection="column" minHeight={rows}>
+          <ConfirmPromptUI />
+          <SelectPromptUI />
+          <TextInputPromptUI />
+          <ThresholdSliderUI />
+          <CellTypeSelectorUI />
+          <QCDashboardUI />
+          <Header
             appStateStore={appStateStore}
-            footerStateStore={footerStateStore}
+            sessionId={sessionId}
           />
-        )}
 
-        {/* Footer — live area */}
-        {cancelState.showWarning && (
-          <Text color={theme.warning}>Press Ctrl+C again to cancel</Text>
-        )}
-        <StatusBar
-          appStateStore={appStateStore}
-          footerStateStore={footerStateStore}
-          sessionId={sessionId}
-          runtimeInfo={runtimeInfo}
-          isCloud={config.isCloud}
-        />
+          <Box flexDirection="column" flexGrow={1}>
+            {showTemplates ? (
+              <TemplateSelector
+                templates={templates}
+                onSelect={handleTemplateSelect}
+                onDismiss={handleTemplateDismiss}
+              />
+            ) : (
+              <>
+                <Thread />
+                {slashCmds.loading && (
+                  <Box>
+                    <Text color={theme.warning}>Running command...</Text>
+                  </Box>
+                )}
+                {slashCmds.commandOutput && (
+                  <Box flexDirection="column">
+                    <CommandOutput output={slashCmds.commandOutput} />
+                  </Box>
+                )}
+                <ActivityFeed appStateStore={appStateStore} />
+              </>
+            )}
+            <Box flexGrow={1} />
+          </Box>
+
+          <Alerts appStateStore={appStateStore} />
+
+          {!showTemplates && (
+            <Box marginTop={1}>
+              <Composer
+                onIntercept={slashCmds.handleInput}
+                onSubmit={slashCmds.dismissOutput}
+                resources={resources}
+                appStateStore={appStateStore}
+                footerStateStore={footerStateStore}
+              />
+            </Box>
+          )}
+
+          {cancelState.showWarning && (
+            <Box marginTop={1}>
+              <Text color={theme.warning}>Press Ctrl+C again to cancel</Text>
+            </Box>
+          )}
+          <Box marginTop={1}>
+            <StatusBar
+              appStateStore={appStateStore}
+              footerStateStore={footerStateStore}
+              sessionId={sessionId}
+              runtimeInfo={runtimeInfo}
+              isCloud={config.isCloud}
+            />
+          </Box>
+        </Box>
       </AssistantRuntimeProvider>
     </ErrorBoundary>
   );
