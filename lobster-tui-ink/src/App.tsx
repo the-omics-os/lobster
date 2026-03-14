@@ -2,18 +2,20 @@ import React, { useCallback, useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { BrailleSpinner } from "./components/BrailleSpinner.js";
-import { theme } from "./theme.js";
 import { useRuntime } from "./hooks/useRuntime.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { useSlashCommands } from "./hooks/useSlashCommands.js";
-import { useLayout } from "./hooks/useLayout.js";
+import { useTheme } from "./hooks/useTheme.js";
 import { ErrorBoundary } from "./components/ErrorBoundary.js";
 import { Header } from "./components/Header.js";
 import { Thread } from "./components/Thread.js";
 import { Composer } from "./components/Composer.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { ActivityFeed } from "./components/ActivityFeed.js";
+import { Alerts } from "./components/Alerts.js";
 import { TemplateSelector } from "./components/TemplateSelector.js";
+import { WelcomeAnimation } from "./components/WelcomeAnimation.js";
+import { CommandOutput } from "./components/CommandOutput.js";
 import {
   ConfirmPromptUI,
   SelectPromptUI,
@@ -29,6 +31,7 @@ import type { Resource } from "./api/resources.js";
 import { fetchBootstrap } from "./api/bootstrap.js";
 
 export function App({ config }: { config: AppConfig }) {
+  const theme = useTheme();
   const [backendReady, setBackendReady] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
 
@@ -66,37 +69,30 @@ export function App({ config }: { config: AppConfig }) {
     return () => { cancelled = true; };
   }, [config.apiUrl, config.isCloud]);
 
-  const { runtime, appState, sessionId, sse, clearThread } = useRuntime(config);
+  const { runtime, appStateStore, sessionId, clearThread } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
   }, [runtime]);
   const cancelState = useCancelHandler(handleCancel);
-  const slashCmds = useSlashCommands(appState, config, sessionId);
+  const slashCmds = useSlashCommands(appStateStore, config, sessionId);
 
   const [flags, setFlags] = useState<FeatureFlags | undefined>();
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
 
-  // 4-layer layout engine
-  const activityEventCount = appState.activityEvents?.length ?? 0;
-  const layout = useLayout({
-    inputLineCount: 1,
-    completionMenuOpen: false,
-    activityEventCount: Math.min(activityEventCount, 5),
-  });
-
   // Bootstrap: single fetch for flags, resources, and templates (after backend ready)
   useEffect(() => {
     if (!backendReady) return;
-    fetchBootstrap(config).then((bootstrap) => {
+    fetchBootstrap(config).catch(() => {}).then((bootstrap) => {
+      if (!bootstrap) return;
       setFlags(bootstrap.flags);
       setResources(bootstrap.resources);
       if (!config.sessionId && bootstrap.templates.length > 0) {
         setTemplates(bootstrap.templates);
         setShowTemplates(true);
       }
-    });
+    }).catch(() => {});
   }, [config.apiUrl, backendReady]);
 
   const handleTemplateSelect = useCallback(
@@ -114,18 +110,6 @@ export function App({ config }: { config: AppConfig }) {
     setShowTemplates(false);
   }, []);
 
-  // Handle degraded mode exit (protocol §5.5: > 2min with 3 failed retries)
-  useEffect(() => {
-    if (sse.degradedLevel === "exit" && sessionId) {
-      console.log(
-        `\nSession ${sessionId} may still be running server-side.\n` +
-        `Resume: lobster cloud chat --resume ${sessionId}\n` +
-        `View:   app.omics-os.com/sessions/${sessionId}\n`,
-      );
-      process.exit(1);
-    }
-  }, [sse.degradedLevel, sessionId]);
-
   // Handle /exit
   useEffect(() => {
     if (slashCmds.exitRequested) {
@@ -133,9 +117,10 @@ export function App({ config }: { config: AppConfig }) {
     }
   }, [slashCmds.exitRequested]);
 
-  // Handle /clear — reset thread and app state
+  // Handle /clear — wipe terminal scrollback + reset thread and app state
   useEffect(() => {
     if (slashCmds.clearRequested) {
+      process.stdout.write("\x1b[2J\x1b[3J\x1b[H");
       clearThread();
       slashCmds.resetClear();
     }
@@ -145,14 +130,14 @@ export function App({ config }: { config: AppConfig }) {
   if (!backendReady) {
     return (
       <Box flexDirection="column" paddingX={1} paddingY={1}>
-        <Header />
         {backendError ? (
           <Box flexDirection="column" marginTop={1}>
             <Text color={theme.error}>Failed to initialize agent: {backendError}</Text>
             <Text dimColor>Run &apos;lobster init&apos; to reconfigure.</Text>
           </Box>
         ) : (
-          <Box marginTop={1} gap={1}>
+          <Box flexDirection="column" marginTop={1} gap={1}>
+            {!config.isResume ? <WelcomeAnimation /> : null}
             <BrailleSpinner label="Loading agent..." color={theme.primary} />
           </Box>
         )}
@@ -169,73 +154,57 @@ export function App({ config }: { config: AppConfig }) {
         <ThresholdSliderUI />
         <CellTypeSelectorUI />
         <QCDashboardUI />
-        <Box flexDirection="column" height={layout.rows}>
-          {/* Layer 1: Header (fixed) */}
-          <Box height={layout.headerRows} flexShrink={0}>
-            <Header
-              agentName={appState.activeAgent ?? undefined}
-              sessionTitle={appState.sessionTitle ?? undefined}
-              sessionId={sessionId}
-            />
-          </Box>
+        {/* Header — printed once at start */}
+        <Header
+          appStateStore={appStateStore}
+          sessionId={sessionId}
+        />
 
-          {/* Connection status banners (overlay into viewport space) */}
-          {sse.degradedLevel === "reconnecting" && (
-            <Box paddingX={1}>
-              <BrailleSpinner label={`Reconnecting... (attempt ${sse.retryCount})`} color={theme.warning} />
-            </Box>
-          )}
-          {sse.degradedLevel === "lost" && (
-            <Box paddingX={1}>
-              <Text color={theme.error}>
-                Connection lost. Retrying... (Ctrl+C to exit)
-              </Text>
-            </Box>
-          )}
-
-          {/* Layer 2: Viewport (flex) */}
-          {showTemplates ? (
-            <Box height={layout.viewportRows} flexShrink={0}>
-              <TemplateSelector
-                templates={templates}
-                onSelect={handleTemplateSelect}
-                onDismiss={handleTemplateDismiss}
-              />
-            </Box>
-          ) : (
-            <>
-              <Thread viewportHeight={layout.viewportRows} />
-              {slashCmds.loading && (
-                <Box paddingX={1}>
-                  <Text color={theme.warning}>Running command...</Text>
-                </Box>
-              )}
-              {slashCmds.commandOutput && (
-                <Box paddingX={1} marginY={1}>
-                  <Text color={theme.textMuted}>{slashCmds.commandOutput}</Text>
-                </Box>
-              )}
-            </>
-          )}
-
-          {/* Layer 3: Input (dynamic) */}
-          <Box flexShrink={0}>
-            <Composer onIntercept={slashCmds.handleInput} resources={resources} />
-          </Box>
-
-          {/* Layer 4: Footer (fixed) */}
-          <Box flexDirection="column" flexShrink={0}>
-            {cancelState.showWarning && (
-              <Text color={theme.warning}>Press Ctrl+C again to cancel</Text>
+        {/* Messages — <Static> completed + live streaming (inside Thread) */}
+        {showTemplates ? (
+          <TemplateSelector
+            templates={templates}
+            onSelect={handleTemplateSelect}
+            onDismiss={handleTemplateDismiss}
+          />
+        ) : (
+          <>
+            <Thread />
+            {slashCmds.loading && (
+              <Box>
+                <Text color={theme.warning}>Running command...</Text>
+              </Box>
             )}
-            <ActivityFeed events={appState.activityEvents} />
-            <StatusBar
-              appState={appState}
-              sessionId={sessionId}
-              flags={flags}
-            />
-          </Box>
-        </Box>
+            {slashCmds.commandOutput && (
+              <Box flexDirection="column">
+                <CommandOutput output={slashCmds.commandOutput} />
+              </Box>
+            )}
+            <ActivityFeed appStateStore={appStateStore} />
+          </>
+        )}
+
+        <Alerts appStateStore={appStateStore} />
+
+        {/* Composer — live area (re-renders in place) */}
+        {!showTemplates && (
+          <Composer
+            onIntercept={slashCmds.handleInput}
+            onSubmit={slashCmds.dismissOutput}
+            resources={resources}
+            appStateStore={appStateStore}
+          />
+        )}
+
+        {/* Footer — live area */}
+        {cancelState.showWarning && (
+          <Text color={theme.warning}>Press Ctrl+C again to cancel</Text>
+        )}
+        <StatusBar
+          appStateStore={appStateStore}
+          sessionId={sessionId}
+          flags={flags}
+        />
       </AssistantRuntimeProvider>
     </ErrorBoundary>
   );
