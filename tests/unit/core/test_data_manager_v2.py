@@ -222,7 +222,9 @@ class TestDataManagerV2Initialization:
             patch(
                 "lobster.core.runtime.data_manager.TranscriptomicsAdapter"
             ) as mock_transcriptomics,
-            patch("lobster.core.runtime.data_manager.ProteomicsAdapter") as mock_proteomics,
+            patch(
+                "lobster.core.runtime.data_manager.ProteomicsAdapter"
+            ) as mock_proteomics,
             patch("lobster.core.runtime.data_manager.H5ADBackend"),
         ):
             dm = DataManagerV2(workspace_path=temp_workspace, auto_scan=False)
@@ -690,7 +692,9 @@ class TestQualityValidation:
         mock_adapter.get_quality_metrics.return_value = {"test": "metrics"}
 
         # Mock BaseAdapter import to avoid abstract class instantiation
-        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
+        with patch(
+            "lobster.core.runtime.data_manager.BaseAdapter"
+        ) as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance.get_quality_metrics.return_value = {"basic": "metrics"}
@@ -721,7 +725,9 @@ class TestQualityValidation:
             config=SMALL_DATASET_CONFIG
         )
 
-        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
+        with patch(
+            "lobster.core.runtime.data_manager.BaseAdapter"
+        ) as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance.get_quality_metrics.return_value = {"basic": "metrics"}
@@ -757,7 +763,9 @@ class TestQualityValidation:
         mock_adapter.validate.return_value = validation_result
 
         # Mock BaseAdapter import to avoid abstract class instantiation
-        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
+        with patch(
+            "lobster.core.runtime.data_manager.BaseAdapter"
+        ) as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance._validate_basic_structure.return_value = Mock(
@@ -783,7 +791,9 @@ class TestQualityValidation:
             config=SMALL_DATASET_CONFIG
         )
 
-        with patch("lobster.core.runtime.data_manager.BaseAdapter") as mock_base_adapter:
+        with patch(
+            "lobster.core.runtime.data_manager.BaseAdapter"
+        ) as mock_base_adapter:
             mock_base_instance = Mock()
             mock_base_adapter.return_value = mock_base_instance
             mock_base_instance._validate_basic_structure.return_value = Mock(
@@ -1518,7 +1528,7 @@ class TestExportDocumentation:
 
         assert retrieved is not None
         assert retrieved["metadata"] == test_metadata
-        assert retrieved["validation"]["validated"] is True
+        assert retrieved["validation_result"]["validated"] is True
         assert "fetch_timestamp" in retrieved
 
     def test_get_stored_metadata_not_found(self, temp_workspace):
@@ -1790,13 +1800,13 @@ class TestGEOMetadataStorage:
             stored_by="test_function",
             modality_detection=modality_detection,
             strategy_config=strategy_config,
-            validation=validation_info,
+            validation_result=validation_info,
         )
 
         # Verify all optional fields are stored
         assert entry["modality_detection"] == modality_detection
         assert entry["strategy_config"] == strategy_config
-        assert entry["validation"] == validation_info
+        assert entry["validation_result"] == validation_info
 
     def test_store_geo_metadata_overwrites_existing(self, temp_workspace):
         """Test that storing metadata overwrites existing entry."""

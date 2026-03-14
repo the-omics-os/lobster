@@ -1287,6 +1287,33 @@ class TestStreamingProtocol:
         # Last agent_change should be "complete"
         assert agent_changes[-1]["status"] == "complete"
 
+    def test_streaming_specialist_fallback_when_no_node_name(self):
+        """When langgraph_node is empty, agent change falls back to 'specialist'."""
+        events = [
+            (
+                ("supervisor:abc", "unknown_agent:def"),
+                "messages",
+                (
+                    AIMessage(content="Working...", id="msg-1"),
+                    {"langgraph_node": ""},  # empty node name
+                ),
+            ),
+            (
+                ("supervisor:abc",),
+                "messages",
+                (
+                    AIMessage(content="Done.", id="msg-2"),
+                    {"langgraph_node": "supervisor"},
+                ),
+            ),
+        ]
+        client = self._make_client(events)
+        result = list(client.query("test", stream=True))
+
+        agent_changes = [e for e in result if e["type"] == "agent_change"]
+        assert len(agent_changes) >= 1
+        assert agent_changes[0]["agent"] == "specialist"
+
     def test_streaming_dedup_prevents_double_emission(self):
         """Complete messages with same ID as already-streamed chunks are not re-emitted."""
         events = [
@@ -1472,6 +1499,7 @@ class TestStreamingProtocol:
         deltas = [e for e in result if e["type"] == "content_delta"]
         assert len(deltas) == 1
         assert deltas[0]["delta"] == "Has content."
+
 
 # ===============================================================================
 # Integration-style Tests for Client Interactions

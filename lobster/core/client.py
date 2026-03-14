@@ -45,7 +45,7 @@ def _detect_speaker_transition(message_chunk: Any) -> Optional[str]:
             if not name:
                 continue
             if name.startswith("handoff_to_"):
-                return name[len("handoff_to_"):]
+                return name[len("handoff_to_") :]
             if name.startswith("transfer_back_to_"):
                 return "supervisor"
     return None
@@ -71,6 +71,8 @@ def _is_main_agent_namespace(namespace: Any) -> bool:
     if len(ns_key) == 1 and str(ns_key[0]).startswith("supervisor"):
         return True
     return False
+
+
 from lobster.config.settings import MODEL_PRICING
 from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
@@ -273,7 +275,8 @@ class AgentClient(BaseClient):
 
         if stream:
             return self._stream_query(
-                graph_input, config,
+                graph_input,
+                config,
                 cancel_event=cancel_event,
                 pre_query_msg_count=pre_query_msg_count,
             )
@@ -407,7 +410,10 @@ class AgentClient(BaseClient):
             }
 
     def _stream_query(
-        self, graph_input: Dict, config: Dict, cancel_event=None,
+        self,
+        graph_input: Dict,
+        config: Dict,
+        cancel_event=None,
         pre_query_msg_count: int | None = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
@@ -521,14 +527,15 @@ class AgentClient(BaseClient):
 
                     # Resolve source.  Namespace is ground truth
                     # (empty = supervisor, non-empty = sub-agent).
-                    # Tool-call tracking gives the specific agent name.
+                    # Tool-call tracking gives the specific agent name;
+                    # fall back to langgraph_node when no handoff was seen.
                     is_main = _is_main_agent_namespace(namespace)
                     if is_main:
                         source = "supervisor"
                     elif active_speaker != "supervisor":
                         source = active_speaker
                     else:
-                        source = "specialist"
+                        source = node_name or "specialist"
 
                     # Emit agent change events for specialist agents
                     if source != "supervisor" and source != last_agent:
@@ -605,7 +612,9 @@ class AgentClient(BaseClient):
                             for interrupt_obj in chunk["__interrupt__"]:
                                 yield {
                                     "type": "interrupt",
-                                    "data": getattr(interrupt_obj, "value", interrupt_obj),
+                                    "data": getattr(
+                                        interrupt_obj, "value", interrupt_obj
+                                    ),
                                     "interrupt_id": getattr(interrupt_obj, "id", None),
                                 }
                             return  # Stream ends at interrupt checkpoint.
@@ -697,7 +706,9 @@ class AgentClient(BaseClient):
             }
 
         except Exception as e:
-            is_rate_limit = "RateLimitError" in type(e).__name__ or "rate limit" in str(e).lower()
+            is_rate_limit = (
+                "RateLimitError" in type(e).__name__ or "rate limit" in str(e).lower()
+            )
             yield {
                 "type": "error",
                 "error": str(e),
@@ -727,7 +738,8 @@ class AgentClient(BaseClient):
         stream_input = Command(resume=response)
         if stream:
             yield from self._stream_query(
-                stream_input, config,
+                stream_input,
+                config,
                 cancel_event=cancel_event,
                 pre_query_msg_count=len(self.messages),
             )

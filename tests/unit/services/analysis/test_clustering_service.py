@@ -833,7 +833,9 @@ def test_unknown_algorithm_raises_error(clustering_service, small_adata):
         )
 
 
-def test_louvain_missing_package_raises_error(clustering_service, small_adata, monkeypatch):
+def test_louvain_missing_package_raises_error(
+    clustering_service, small_adata, monkeypatch
+):
     """Test clear error when louvain package is not installed."""
     # Simulate missing louvain by making sc.tl.louvain raise AttributeError
     monkeypatch.delattr(sc.tl, "louvain", raising=False)

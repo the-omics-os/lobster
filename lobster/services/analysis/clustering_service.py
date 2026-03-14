@@ -933,7 +933,8 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                     for cluster, count in cluster_counts.items()
                 },
                 "has_umap": "X_umap" in adata_clustered.obsm,
-                "has_marker_genes": "rank_genes_groups" in adata_clustered.uns,
+                "has_marker_genes": "names"
+                in adata_clustered.uns.get("rank_genes_groups", {}),
             }
 
             # Add multi-resolution info if available
@@ -975,14 +976,12 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 clustering_stats["n_batches"] = len(batch_counts)
 
             # Add marker gene information if available
-            if (
-                "rank_genes_groups" in adata_clustered.uns
-                and "marker_genes" not in skip_steps
-            ):
+            rgg = adata_clustered.uns.get("rank_genes_groups", {})
+            if "names" in rgg and "marker_genes" not in skip_steps:
                 marker_genes = {}
                 for cluster in adata_clustered.obs[cluster_col].unique():
-                    genes = adata_clustered.uns["rank_genes_groups"]["names"][cluster]
-                    scores = adata_clustered.uns["rank_genes_groups"]["scores"][cluster]
+                    genes = rgg["names"][cluster]
+                    scores = rgg["scores"][cluster]
                     marker_genes[str(cluster)] = [
                         {"gene": str(gene), "score": float(score)}
                         for gene, score in zip(genes[:10], scores[:10])
@@ -1189,7 +1188,9 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 update_interval=10,
                 show_elapsed=True,
             ):
-                self._run_clustering_algorithm(adata, resolution, key_added=algorithm, algorithm=algorithm)
+                self._run_clustering_algorithm(
+                    adata, resolution, key_added=algorithm, algorithm=algorithm
+                )
 
             self._update_progress(f"{algorithm.capitalize()} clustering completed")
             cluster_col = algorithm
@@ -1479,7 +1480,9 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                     update_interval=10,
                     show_elapsed=True,
                 ):
-                    self._run_clustering_algorithm(adata_selected, res, key_added=key_name, algorithm=algorithm)
+                    self._run_clustering_algorithm(
+                        adata_selected, res, key_added=key_name, algorithm=algorithm
+                    )
 
                 # Track cluster counts for this resolution
                 n_clusters = adata_selected.obs[key_name].nunique()
@@ -1585,15 +1588,23 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             # Wrap the slow marker gene operation with progress updates
             operation_name = f"Finding marker genes using {method}"
 
-            with with_periodic_progress(
-                operation_name,
-                self._create_progress_callback(),
-                update_interval=15,
-                show_elapsed=True,
-            ):
-                sc.tl.rank_genes_groups(adata, cluster_col, method=method)
+            try:
+                with with_periodic_progress(
+                    operation_name,
+                    self._create_progress_callback(),
+                    update_interval=15,
+                    show_elapsed=True,
+                ):
+                    sc.tl.rank_genes_groups(adata, cluster_col, method=method)
 
-            self._update_progress("Marker genes identified")
+                self._update_progress("Marker genes identified")
+            except ValueError as e:
+                # High resolution clustering can produce singleton clusters (1 cell each),
+                # for which rank_genes_groups cannot compute statistics. Skip gracefully.
+                logger.warning(
+                    f"Skipping marker gene identification: {e}. "
+                    "This is expected when high resolution produces singleton clusters."
+                )
         else:
             logger.info("Skipping marker gene identification (demo mode)")
 
@@ -2450,7 +2461,9 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
                 logger.info(
                     f"Running {algorithm} sub-clustering at resolution {res} (key: {key_name})"
                 )
-                self._run_clustering_algorithm(adata_subset, res, key_added=key_name, algorithm=algorithm)
+                self._run_clustering_algorithm(
+                    adata_subset, res, key_added=key_name, algorithm=algorithm
+                )
 
                 # Convert categorical to string to allow new categories
                 adata_subset.obs[key_name] = adata_subset.obs[key_name].astype(str)

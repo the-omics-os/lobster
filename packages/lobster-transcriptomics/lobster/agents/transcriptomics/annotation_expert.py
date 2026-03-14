@@ -152,7 +152,7 @@ def annotation_expert(
     def annotate_cell_types_auto(
         modality_name: str,
         cluster_key: str,
-        reference_markers: dict = None,
+        reference_markers: dict[str, list[str]] | None = None,
         save_result: bool = True,
     ) -> str:
         """
@@ -311,7 +311,7 @@ def annotation_expert(
     @tool
     def manually_annotate_clusters(
         modality_name: str,
-        annotations: dict,
+        annotations: dict[str, str],
         cluster_key: str,
         save_result: bool = True,
     ) -> str:
@@ -1225,7 +1225,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
     @tool
     def score_gene_set(
         modality_name: str,
-        gene_list: list,
+        gene_list: list[str],
         score_name: str = "gene_set_score",
         ctrl_size: int = 50,
         use_raw: bool = False,

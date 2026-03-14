@@ -948,7 +948,7 @@ stability_selected = stability_freq > 0.6""",
     def evaluate_biomarker_panel(
         modality_name: str,
         target_column: str,
-        proteins: list = None,
+        proteins: list[str] | None = None,
         n_outer_folds: int = 5,
         n_inner_folds: int = 3,
         classifier: str = "logistic",
@@ -1312,7 +1312,7 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
     @tool
     def extract_hub_proteins(
         modality_name: str,
-        module_colors: list = None,
+        module_colors: list[str] | None = None,
         kme_threshold: float = 0.7,
         top_n: int = 10,
     ) -> str:
