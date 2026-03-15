@@ -21,10 +21,11 @@ Communication with the Go binary uses a JSON-lines protocol over inherited
 file-descriptor pipes.  Each message is a single JSON object terminated by
 ``\\n``.  See ``_make_message`` and ``_LightBridge`` for details.
 """
+
 from __future__ import annotations
 
-import json
 import inspect
+import json
 import logging
 import os
 import queue
@@ -120,6 +121,7 @@ class _PythonTerminalQuarantine:
                 except Exception:
                     pass
             logging.disable(self.logging_disable_level)
+
 
 # ---------------------------------------------------------------------------
 # Protocol constants
@@ -413,9 +415,7 @@ def _safe_minimal_token_summary(client: Any) -> str:
 
 def _resolve_active_provider_name(client: Any) -> str:
     """Resolve the active provider name for local clients, if available."""
-    runtime_override = str(
-        getattr(client, "provider_override", None) or ""
-    ).strip()
+    runtime_override = str(getattr(client, "provider_override", None) or "").strip()
 
     # Only local AgentClient instances have a resolver-backed provider choice.
     if hasattr(client, "data_manager"):
@@ -434,9 +434,7 @@ def _resolve_active_provider_name(client: Any) -> str:
             except Exception:
                 pass
 
-    fallback = runtime_override or str(
-        getattr(client, "provider", None) or ""
-    ).strip()
+    fallback = runtime_override or str(getattr(client, "provider", None) or "").strip()
     return fallback
 
 
@@ -446,15 +444,15 @@ def _emit_provider_status(bridge: _LightBridge, client: Any) -> None:
     bridge.send("status", {"text": f"Provider: {provider_name}"})
 
     model_name = str(
-        getattr(client, "model_override", None)
-        or getattr(client, "model", None)
-        or ""
+        getattr(client, "model_override", None) or getattr(client, "model", None) or ""
     ).strip()
     if model_name:
         bridge.send("status", {"text": f"Model: {model_name}"})
 
 
-def _emit_startup_diagnostic(bridge: _LightBridge, diagnostic: StartupDiagnostic) -> None:
+def _emit_startup_diagnostic(
+    bridge: _LightBridge, diagnostic: StartupDiagnostic
+) -> None:
     """Render a fatal startup diagnostic through the Go protocol surface."""
     bridge.send("spinner", {"active": False})
     bridge.send(
@@ -563,9 +561,7 @@ def _build_go_tui_exit_footer_lines(client: Any) -> List[str]:
 
     provider_name = _resolve_active_provider_name(client)
     model_name = str(
-        getattr(client, "model_override", None)
-        or getattr(client, "model", None)
-        or ""
+        getattr(client, "model_override", None) or getattr(client, "model", None) or ""
     ).strip()
     runtime_parts: List[str] = []
     if provider_name:
@@ -764,10 +760,10 @@ def _resolve_go_chat_session_target(
     if not session_id:
         return None, None
 
-    from lobster.core.workspace import resolve_workspace
     from lobster.cli_internal.commands.heavy.session_infra import (
         resolve_session_continuation,
     )
+    from lobster.core.workspace import resolve_workspace
 
     workspace_path = resolve_workspace(explicit_path=workspace, create=True)
     (
@@ -796,7 +792,9 @@ def _maybe_restore_go_session_transcript(
         load_result = client.load_session(session_file_to_load)
         messages_loaded = load_result.get("messages_loaded", 0)
         if messages_loaded:
-            bridge.send("status", {"text": f"Loaded {messages_loaded} previous messages"})
+            bridge.send(
+                "status", {"text": f"Loaded {messages_loaded} previous messages"}
+            )
     except Exception as exc:
         bridge.send(
             "alert",
@@ -878,7 +876,9 @@ def _handle_user_query(
         while True:
             # Build the stream: first iteration uses query(), subsequent use resume.
             if is_first:
-                stream_source = client.query(text, stream=True, cancel_event=cancel_event)
+                stream_source = client.query(
+                    text, stream=True, cancel_event=cancel_event
+                )
                 is_first = False
             # else: stream_source was set by the resume path below.
 
@@ -926,9 +926,7 @@ def _handle_user_query(
             # Continue the while loop to process the resumed stream.
 
     except KeyboardInterrupt:
-        bridge.send(
-            "alert", {"level": "warning", "message": "Query interrupted"}
-        )
+        bridge.send("alert", {"level": "warning", "message": "Query interrupted"})
         bridge.send("spinner", {"active": False})
     except Exception as exc:
         bridge.send("alert", {"level": "error", "message": f"Error: {exc}"})
@@ -974,7 +972,9 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
                 }
             # component_response → check action before accepting.
             data = payload.get("data", payload)
-            action = data.get("action", "submit") if isinstance(data, dict) else "submit"
+            action = (
+                data.get("action", "submit") if isinstance(data, dict) else "submit"
+            )
             if action in ("cancel", "error"):
                 # Component was cancelled or failed to render — don't resume
                 # the graph with garbage data.
@@ -1063,15 +1063,16 @@ def _handle_slash_command(
 
     try:
         from lobster.cli_internal.commands.output_adapter import ProtocolOutputAdapter
+
         output = ProtocolOutputAdapter(
             bridge.send,
             confirm_fn=lambda question: _protocol_confirm(bridge, question),
         )
 
-        from lobster.cli_internal.commands.heavy.slash_commands import _execute_command
         from lobster.cli_internal.commands.heavy.session_infra import (
             _add_command_to_history,
         )
+        from lobster.cli_internal.commands.heavy.slash_commands import _execute_command
 
         command_summary = _execute_command(
             full_cmd,
@@ -1231,9 +1232,7 @@ def launch_go_tui_chat(
         # -----------------------------------------------------------------
         # 3. Tell the TUI to show a loading spinner
         # -----------------------------------------------------------------
-        bridge.send(
-            "spinner", {"active": True, "label": "Initializing agents"}
-        )
+        bridge.send("spinner", {"active": True, "label": "Initializing agents"})
 
         # -----------------------------------------------------------------
         # 4. Start heartbeat thread
@@ -1292,9 +1291,11 @@ def launch_go_tui_chat(
         proto_callback = ProtocolCallbackHandler(
             emit_event=lambda msg_type, payload: bridge.send(
                 msg_type,
-                _normalize_tool_payload(payload)
-                if msg_type == "tool_execution"
-                else payload,
+                (
+                    _normalize_tool_payload(payload)
+                    if msg_type == "tool_execution"
+                    else payload
+                ),
             )
         )
         client.callbacks.append(proto_callback)

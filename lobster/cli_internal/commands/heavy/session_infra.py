@@ -27,8 +27,8 @@ from lobster.cli_internal.commands.output_adapter import (
 )
 from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
-    render_startup_diagnostic_rich,
     raise_startup_diagnostic,
+    render_startup_diagnostic_rich,
 )
 from lobster.ui.console_manager import get_console_manager
 
@@ -821,9 +821,7 @@ def init_client_or_raise_startup_diagnostic(
                             _startup_console_print(
                                 f"[red]Cloud connection failed after {max_retries} attempts: {error_msg}[/red]"
                             )
-                            raise Exception(
-                                f"Connection test failed: {error_msg}"
-                            )
+                            raise Exception(f"Connection test failed: {error_msg}")
 
                 except Exception as e:
                     if "timeout" in str(e).lower():

@@ -439,14 +439,21 @@ class OpenRouterProvider(ILLMProvider):
                 timeout=5.0,
             )
             if response.status_code == 401:
-                return False, "Invalid API key — check your OPENROUTER_API_KEY at https://openrouter.ai/keys"
+                return (
+                    False,
+                    "Invalid API key — check your OPENROUTER_API_KEY at https://openrouter.ai/keys",
+                )
             response.raise_for_status()
             data = response.json().get("data", {})
 
             limit = data.get("limit")
             limit_remaining = data.get("limit_remaining")
 
-            if limit is not None and limit_remaining is not None and limit_remaining <= 0:
+            if (
+                limit is not None
+                and limit_remaining is not None
+                and limit_remaining <= 0
+            ):
                 return False, (
                     f"Insufficient credits: ${limit_remaining:.4f} remaining of ${limit:.2f} limit. "
                     "Add credits at https://openrouter.ai/credits"

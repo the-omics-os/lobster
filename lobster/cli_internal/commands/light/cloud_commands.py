@@ -41,7 +41,9 @@ def _is_secure_endpoint(endpoint: str) -> bool:
     return False
 
 
-def _validate_credentials(endpoint: str, token: str, token_type: str = "API key") -> Optional[dict]:
+def _validate_credentials(
+    endpoint: str, token: str, token_type: str = "API key"
+) -> Optional[dict]:
     """Validate credentials against the gateway. Returns usage data or None on failure."""
     import httpx
 
@@ -66,7 +68,9 @@ def _validate_credentials(endpoint: str, token: str, token_type: str = "API key"
         return None
 
     if resp.status_code != 200:
-        console.print(f"[red]Unexpected response ({resp.status_code}): {resp.text}[/red]")
+        console.print(
+            f"[red]Unexpected response ({resp.status_code}): {resp.text}[/red]"
+        )
         return None
 
     return resp.json()
@@ -214,7 +218,9 @@ def _browser_login() -> None:
     try:
         server = HTTPServer(("127.0.0.1", port), CallbackHandler)
     except OSError:
-        console.print("[yellow]Could not start local server. Falling back to API key login.[/yellow]")
+        console.print(
+            "[yellow]Could not start local server. Falling back to API key login.[/yellow]"
+        )
         _api_key_login(None)
         return
 
@@ -264,7 +270,9 @@ def _browser_login() -> None:
     # Validate the token
     data = _validate_credentials(endpoint, access_token)
     if data is None:
-        console.print("[yellow]Token validation failed. Falling back to API key login.[/yellow]")
+        console.print(
+            "[yellow]Token validation failed. Falling back to API key login.[/yellow]"
+        )
         _api_key_login(None)
         return
 

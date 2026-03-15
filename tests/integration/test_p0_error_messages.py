@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def dm_with_proteomics(tmp_path):
     """Create a DataManagerV2 with proteomics test data pre-loaded."""
@@ -70,6 +71,7 @@ def dm_with_proteomics(tmp_path):
 # Direct tool invocation via real factories
 # ---------------------------------------------------------------------------
 
+
 def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
     """
     Call an agent factory, intercept the tools list before agent creation,
@@ -80,11 +82,12 @@ def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
     captured_tools = []
 
     import langgraph.prebuilt
+
     original_cra = langgraph.prebuilt.create_react_agent
 
     def interceptor(*args, **kwargs):
         tools = kwargs.get("tools", args[1] if len(args) > 1 else [])
-        if hasattr(tools, 'tools_by_name'):
+        if hasattr(tools, "tools_by_name"):
             # It's a ToolNode
             captured_tools.extend(tools.tools_by_name.values())
         elif isinstance(tools, (list, tuple)):
@@ -94,11 +97,11 @@ def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
 
     langgraph.prebuilt.create_react_agent = interceptor
     # Also patch the module-level import in the factory module
-    import lobster.agents.proteomics.de_analysis_expert as de_mod
     import lobster.agents.data_expert.data_expert as data_mod
+    import lobster.agents.proteomics.de_analysis_expert as de_mod
 
-    orig_de = getattr(de_mod, 'create_react_agent', None)
-    orig_data = getattr(data_mod, 'create_react_agent', None)
+    orig_de = getattr(de_mod, "create_react_agent", None)
+    orig_data = getattr(data_mod, "create_react_agent", None)
     de_mod.create_react_agent = interceptor
     data_mod.create_react_agent = interceptor
 
@@ -124,18 +127,21 @@ def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
 def _get_proteomics_de_tool(dm, tool_name):
     """Get a tool from the proteomics DE factory."""
     from lobster.agents.proteomics.de_analysis_expert import de_analysis_expert
+
     return _extract_tool(de_analysis_expert, dm, tool_name)
 
 
 def _get_data_expert_tool(dm, tool_name):
     """Get a tool from the data_expert factory."""
     from lobster.agents.data_expert.data_expert import data_expert
+
     return _extract_tool(data_expert, dm, tool_name)
 
 
 # ===========================================================================
 # TEST 1: find_differential_proteins — demo failure scenario
 # ===========================================================================
+
 
 class TestFindDifferentialProteins:
     """Tests the exact error path that caused the Emory demo failure."""
@@ -145,10 +151,12 @@ class TestFindDifferentialProteins:
         dm, _, _ = dm_with_proteomics
         tool = _get_proteomics_de_tool(dm, "find_differential_proteins")
 
-        result = tool.invoke({
-            "modality_name": "test_proteomics",
-            "group_column": "treatment_group",  # WRONG — actual is "condition"
-        })
+        result = tool.invoke(
+            {
+                "modality_name": "test_proteomics",
+                "group_column": "treatment_group",  # WRONG — actual is "condition"
+            }
+        )
 
         print("\n" + "=" * 60)
         print("SCENARIO: Wrong group column (Emory demo failure)")
@@ -162,18 +170,21 @@ class TestFindDifferentialProteins:
         assert "treatment_group" in result, "Must echo the bad column name"
         assert "test_proteomics" in result, "Must include modality name"
         # Must explicitly indicate the column is missing
-        assert "NOT in obs" in result or "not found" in result.lower(), \
-            "Must indicate column is not in obs"
+        assert (
+            "NOT in obs" in result or "not found" in result.lower()
+        ), "Must indicate column is not in obs"
 
     def test_nonexistent_modality(self, dm_with_proteomics):
         """Modality doesn't exist — must list available ones."""
         dm, _, _ = dm_with_proteomics
         tool = _get_proteomics_de_tool(dm, "find_differential_proteins")
 
-        result = tool.invoke({
-            "modality_name": "nonexistent",
-            "group_column": "condition",
-        })
+        result = tool.invoke(
+            {
+                "modality_name": "nonexistent",
+                "group_column": "condition",
+            }
+        )
 
         print("\n" + "=" * 60)
         print("SCENARIO: Nonexistent modality")
@@ -189,6 +200,7 @@ class TestFindDifferentialProteins:
 # TEST 2: load_modality
 # ===========================================================================
 
+
 class TestLoadModality:
 
     def test_wrong_file_path(self, dm_with_proteomics):
@@ -196,11 +208,13 @@ class TestLoadModality:
         dm, _, _ = dm_with_proteomics
         tool = _get_data_expert_tool(dm, "load_modality")
 
-        result = tool.invoke({
-            "modality_name": "my_data",
-            "file_path": "/nonexistent/path/data.h5ad",
-            "adapter": "10x_h5ad",
-        })
+        result = tool.invoke(
+            {
+                "modality_name": "my_data",
+                "file_path": "/nonexistent/path/data.h5ad",
+                "adapter": "10x_h5ad",
+            }
+        )
 
         print("\n" + "=" * 60)
         print("SCENARIO: Wrong file path")
@@ -210,19 +224,22 @@ class TestLoadModality:
 
         assert "/nonexistent/path/data.h5ad" in result, "Must echo file_path"
         assert "10x_h5ad" in result, "Must echo adapter"
-        assert "list_files" in result or "glob_files" in result, \
-            "Must suggest file discovery tools"
+        assert (
+            "list_files" in result or "glob_files" in result
+        ), "Must suggest file discovery tools"
 
     def test_wrong_adapter(self, dm_with_proteomics):
         """File exists but adapter is wrong."""
         dm, _, h5ad_path = dm_with_proteomics
         tool = _get_data_expert_tool(dm, "load_modality")
 
-        result = tool.invoke({
-            "modality_name": "my_data",
-            "file_path": str(h5ad_path),
-            "adapter": "totally_wrong_adapter",
-        })
+        result = tool.invoke(
+            {
+                "modality_name": "my_data",
+                "file_path": str(h5ad_path),
+                "adapter": "totally_wrong_adapter",
+            }
+        )
 
         print("\n" + "=" * 60)
         print("SCENARIO: Wrong adapter")
@@ -237,6 +254,7 @@ class TestLoadModality:
 # ===========================================================================
 # TEST 3: get_modality_details
 # ===========================================================================
+
 
 class TestGetModalityDetails:
 
@@ -261,6 +279,7 @@ class TestGetModalityDetails:
 # TEST 4: concatenate_samples
 # ===========================================================================
 
+
 class TestConcatenateSamples:
 
     def test_nonexistent_samples(self, dm_with_proteomics):
@@ -268,9 +287,11 @@ class TestConcatenateSamples:
         dm, _, _ = dm_with_proteomics
         tool = _get_data_expert_tool(dm, "concatenate_samples")
 
-        result = tool.invoke({
-            "sample_modalities": ["sample_1", "sample_2", "sample_3"],
-        })
+        result = tool.invoke(
+            {
+                "sample_modalities": ["sample_1", "sample_2", "sample_3"],
+            }
+        )
 
         print("\n" + "=" * 60)
         print("SCENARIO: Nonexistent sample modalities")

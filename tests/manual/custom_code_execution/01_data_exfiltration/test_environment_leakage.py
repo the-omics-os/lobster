@@ -22,7 +22,10 @@ import pytest
 
 try:
     from lobster.core.data_manager_v2 import DataManagerV2
-    from lobster.services.execution import CodeExecutionError, CustomCodeExecutionService
+    from lobster.services.execution import (
+        CodeExecutionError,
+        CustomCodeExecutionService,
+    )
 except ImportError:
     pytest.skip("Required modules not available", allow_module_level=True)
 

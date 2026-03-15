@@ -1060,7 +1060,9 @@ class MetadataFetcher:
             self.service._data_expert_assistant = DataExpertAssistant()
 
         # Call LLM to detect modality
-        modality_result = self.service._data_expert_assistant.detect_modality(metadata, geo_id)
+        modality_result = self.service._data_expert_assistant.detect_modality(
+            metadata, geo_id
+        )
 
         if modality_result is None:
             # LLM analysis failed - fall back to permissive mode with warning

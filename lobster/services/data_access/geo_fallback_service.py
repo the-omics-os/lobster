@@ -20,9 +20,10 @@ except ImportError:
 
 # Import helper modules for fallback functionality
 
+from lobster.services.data_access.geo.soft_download import pre_download_soft_file
+
 # Import the main service classes and enums
 from lobster.services.data_access.geo_service import GEODataSource, GEOResult
-from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 

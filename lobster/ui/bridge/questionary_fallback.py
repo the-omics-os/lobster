@@ -30,18 +30,18 @@ logger = logging.getLogger(__name__)
 
 # Same field names the Go wizard returns.
 _EMPTY_RESULT: dict = {
-    "provider":           "",
-    "api_key":            "",
-    "api_key_secondary":  "",
-    "profile":            "",
-    "agents":             [],
-    "ncbi_key":           "",
-    "cloud_key":          "",
-    "ollama_model":       "",
-    "model_id":           "",
+    "provider": "",
+    "api_key": "",
+    "api_key_secondary": "",
+    "profile": "",
+    "agents": [],
+    "ncbi_key": "",
+    "cloud_key": "",
+    "ollama_model": "",
+    "model_id": "",
     "smart_standardization_enabled": False,
     "smart_standardization_openai_key": "",
-    "cancelled":          False,
+    "cancelled": False,
 }
 
 _CUSTOM_MODEL_SENTINEL = "__custom_model__"
@@ -53,14 +53,29 @@ _DEFAULT_OLLAMA_MODEL = "gpt-oss:20b"
 # ---------------------------------------------------------------------------
 
 _PROVIDER_CHOICES = [
-    {"name": "Omics-OS Cloud          — managed, login via browser",       "value": "omics-os"},
-    {"name": "Claude API (Anthropic)  — direct access to Claude models",   "value": "anthropic"},
-    {"name": "AWS Bedrock             — production, enterprise",           "value": "bedrock"},
-    {"name": "Ollama (local)          — privacy, zero cost, offline",      "value": "ollama"},
-    {"name": "Google Gemini           — Gemini models + thinking",         "value": "gemini"},
-    {"name": "Azure AI                — enterprise Azure deployments",     "value": "azure"},
-    {"name": "OpenAI                  — GPT-4o, o-series reasoning",       "value": "openai"},
-    {"name": "OpenRouter              — 600+ models via one API key",      "value": "openrouter"},
+    {
+        "name": "Omics-OS Cloud          — managed, login via browser",
+        "value": "omics-os",
+    },
+    {
+        "name": "Claude API (Anthropic)  — direct access to Claude models",
+        "value": "anthropic",
+    },
+    {"name": "AWS Bedrock             — production, enterprise", "value": "bedrock"},
+    {
+        "name": "Ollama (local)          — privacy, zero cost, offline",
+        "value": "ollama",
+    },
+    {"name": "Google Gemini           — Gemini models + thinking", "value": "gemini"},
+    {
+        "name": "Azure AI                — enterprise Azure deployments",
+        "value": "azure",
+    },
+    {"name": "OpenAI                  — GPT-4o, o-series reasoning", "value": "openai"},
+    {
+        "name": "OpenRouter              — 600+ models via one API key",
+        "value": "openrouter",
+    },
 ]
 
 # Curated model catalogs per provider.  Keep in sync with
@@ -70,42 +85,87 @@ _PROVIDER_CHOICES = [
 _PROVIDER_MODELS: dict[str, list[tuple[str, str, bool]]] = {
     # (model_id, description, is_default)
     "anthropic": [
-        ("claude-sonnet-4-20250514",    "Claude Sonnet 4 — balanced speed & capability",     True),
-        ("claude-opus-4-20250514",      "Claude Opus 4 — most capable, complex reasoning",   False),
-        ("claude-3-5-sonnet-20241022",  "Claude 3.5 Sonnet — previous generation",           False),
-        ("claude-3-5-haiku-20241022",   "Claude 3.5 Haiku — fastest, high throughput",       False),
+        (
+            "claude-sonnet-4-20250514",
+            "Claude Sonnet 4 — balanced speed & capability",
+            True,
+        ),
+        (
+            "claude-opus-4-20250514",
+            "Claude Opus 4 — most capable, complex reasoning",
+            False,
+        ),
+        (
+            "claude-3-5-sonnet-20241022",
+            "Claude 3.5 Sonnet — previous generation",
+            False,
+        ),
+        (
+            "claude-3-5-haiku-20241022",
+            "Claude 3.5 Haiku — fastest, high throughput",
+            False,
+        ),
     ],
     "bedrock": [
-        ("us.anthropic.claude-sonnet-4-5-20250929-v1:0",     "Claude Sonnet 4.5 — highest quality Sonnet",  True),
-        ("us.anthropic.claude-sonnet-4-20250514-v1:0",       "Claude Sonnet 4 — balanced quality & speed",  False),
-        ("global.anthropic.claude-opus-4-5-20251101-v1:0",   "Claude Opus 4.5 — most capable",              False),
+        (
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "Claude Sonnet 4.5 — highest quality Sonnet",
+            True,
+        ),
+        (
+            "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "Claude Sonnet 4 — balanced quality & speed",
+            False,
+        ),
+        (
+            "global.anthropic.claude-opus-4-5-20251101-v1:0",
+            "Claude Opus 4.5 — most capable",
+            False,
+        ),
     ],
     "openai": [
-        ("gpt-4o",      "GPT-4o — most capable GPT model",      True),
-        ("gpt-4o-mini", "GPT-4o Mini — fast and affordable",     False),
-        ("o3-mini",     "o3 Mini — compact reasoning model",     False),
+        ("gpt-4o", "GPT-4o — most capable GPT model", True),
+        ("gpt-4o-mini", "GPT-4o Mini — fast and affordable", False),
+        ("o3-mini", "o3 Mini — compact reasoning model", False),
     ],
     "gemini": [
-        ("gemini-3-pro-preview",   "Gemini 3 Pro — best balance of speed & capability",  True),
-        ("gemini-3-flash-preview", "Gemini 3 Flash — fastest, free tier available",       False),
+        (
+            "gemini-3-pro-preview",
+            "Gemini 3 Pro — best balance of speed & capability",
+            True,
+        ),
+        (
+            "gemini-3-flash-preview",
+            "Gemini 3 Flash — fastest, free tier available",
+            False,
+        ),
     ],
     "azure": [
-        ("gpt-4o",      "GPT-4o via Azure AI Foundry",            True),
-        ("deepseek-r1", "DeepSeek R1 reasoning model",            False),
-        ("phi-4",       "Microsoft Phi-4 small language model",    False),
+        ("gpt-4o", "GPT-4o via Azure AI Foundry", True),
+        ("deepseek-r1", "DeepSeek R1 reasoning model", False),
+        ("phi-4", "Microsoft Phi-4 small language model", False),
     ],
     "openrouter": [
-        ("anthropic/claude-sonnet-4-5", "Claude Sonnet 4.5 via OpenRouter",  True),
-        ("openai/gpt-4o",              "GPT-4o via OpenRouter",              False),
-        ("google/gemini-3-pro-preview", "Gemini 3 Pro via OpenRouter",       False),
+        ("anthropic/claude-sonnet-4-5", "Claude Sonnet 4.5 via OpenRouter", True),
+        ("openai/gpt-4o", "GPT-4o via OpenRouter", False),
+        ("google/gemini-3-pro-preview", "Gemini 3 Pro via OpenRouter", False),
     ],
 }
 
 _PROFILE_CHOICES = [
-    {"name": "development   (Sonnet 4 — fastest, most affordable)",               "value": "development"},
-    {"name": "production    (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]",    "value": "production"},
-    {"name": "performance   (Sonnet 4.5 — highest quality)",                      "value": "performance"},
-    {"name": "max           (Opus 4.5 supervisor — most capable, most expensive)", "value": "max"},
+    {
+        "name": "development   (Sonnet 4 — fastest, most affordable)",
+        "value": "development",
+    },
+    {
+        "name": "production    (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]",
+        "value": "production",
+    },
+    {"name": "performance   (Sonnet 4.5 — highest quality)", "value": "performance"},
+    {
+        "name": "max           (Opus 4.5 supervisor — most capable, most expensive)",
+        "value": "max",
+    },
 ]
 
 # Providers that support the profile selection step
@@ -115,6 +175,7 @@ _PROFILE_PROVIDERS = {"anthropic", "bedrock"}
 # ---------------------------------------------------------------------------
 # Choice builders
 # ---------------------------------------------------------------------------
+
 
 def _build_agent_choices(questionary) -> list:
     from lobster.cli_internal.commands.heavy.init_commands import (
@@ -176,9 +237,7 @@ def _build_ollama_prompt(status) -> str:
             "https://ollama.com/download or `curl -fsSL https://ollama.com/install.sh | sh`."
         )
     if not status.running:
-        return (
-            "Choose an Ollama model. Ollama is installed but not running; start it with `ollama serve`."
-        )
+        return "Choose an Ollama model. Ollama is installed but not running; start it with `ollama serve`."
     if status.models:
         return "Choose an Ollama model. Detected local models are listed first."
     return "Choose an Ollama model. No local models were detected yet, so curated options are shown."
@@ -219,7 +278,10 @@ def _build_ollama_choices(questionary, status) -> tuple[list, str]:
         seen.add(model_name)
 
     choices.append(
-        questionary.Choice("Other model               Type a custom model name", value=_CUSTOM_OLLAMA_MODEL)
+        questionary.Choice(
+            "Other model               Type a custom model name",
+            value=_CUSTOM_OLLAMA_MODEL,
+        )
     )
 
     if default_value not in seen:
@@ -232,6 +294,7 @@ def _build_ollama_choices(questionary, status) -> tuple[list, str]:
 # Cancellation helper
 # ---------------------------------------------------------------------------
 
+
 def _cancelled(result: dict) -> dict:
     result["cancelled"] = True
     return result
@@ -240,6 +303,7 @@ def _cancelled(result: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Main wizard
 # ---------------------------------------------------------------------------
+
 
 def run_questionary_init() -> dict:
     """Run questionary-based init wizard.
@@ -252,6 +316,7 @@ def run_questionary_init() -> dict:
             this as cancellation and check ``result["cancelled"]``).
     """
     import questionary  # intentional — caller catches ImportError
+
     from lobster.cli_internal.commands.heavy.init_commands import (
         _get_smart_standardization_beneficiaries,
         _normalize_selected_agents,
@@ -286,6 +351,7 @@ def run_questionary_init() -> dict:
                 from lobster.cli_internal.commands.light.cloud_commands import (
                     attempt_login_for_init,
                 )
+
                 success = attempt_login_for_init()
             except Exception:
                 success = False
@@ -313,7 +379,7 @@ def run_questionary_init() -> dict:
             secret = questionary.password("Enter your AWS secret key:").ask()
             if secret is None:
                 return _cancelled(result)
-            result["api_key"]           = access.strip()
+            result["api_key"] = access.strip()
             result["api_key_secondary"] = secret.strip()
 
         elif provider == "ollama":
@@ -352,12 +418,10 @@ def run_questionary_init() -> dict:
             ).ask()
             if endpoint is None:
                 return _cancelled(result)
-            credential = questionary.password(
-                "Enter your Azure API credential:"
-            ).ask()
+            credential = questionary.password("Enter your Azure API credential:").ask()
             if credential is None:
                 return _cancelled(result)
-            result["api_key"]           = credential.strip()
+            result["api_key"] = credential.strip()
             result["api_key_secondary"] = endpoint.strip()
 
         elif provider == "openai":
@@ -471,9 +535,7 @@ def run_questionary_init() -> dict:
         # Step 8 — Smart Standardization / vector search                      #
         # ================================================================== #
         beneficiaries = _get_smart_standardization_beneficiaries(result["agents"])
-        smart_std_prompt = (
-            "Enable Smart Standardization / vector search? (OpenAI embeddings + ontology matching, optional)"
-        )
+        smart_std_prompt = "Enable Smart Standardization / vector search? (OpenAI embeddings + ontology matching, optional)"
         if beneficiaries:
             smart_std_prompt = (
                 "Enable Smart Standardization / vector search? Helpful for "

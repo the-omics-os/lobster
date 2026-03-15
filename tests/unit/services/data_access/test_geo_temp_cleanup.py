@@ -25,7 +25,9 @@ def geo_service(tmp_path):
         return service
 
 
-def _create_valid_tar(tar_path: Path, filename: str = "data.txt", content: str = "data"):
+def _create_valid_tar(
+    tar_path: Path, filename: str = "data.txt", content: str = "data"
+):
     """Create a minimal valid tar file."""
     tmp_file = tar_path.parent / filename
     tmp_file.write_text(content)
@@ -45,7 +47,9 @@ class TestTempCleanupOnFailure:
         (extract_dir / "some_file.txt").write_text("data")
 
         # Mock download to raise an exception
-        geo_service.geo_downloader.download_file.side_effect = RuntimeError("Network error")
+        geo_service.geo_downloader.download_file.side_effect = RuntimeError(
+            "Network error"
+        )
 
         result = geo_service._process_tar_file(
             f"https://ftp.ncbi.nlm.nih.gov/{gse_id}_RAW.tar", gse_id
@@ -69,7 +73,9 @@ class TestTempCleanupOnFailure:
 
         # Patch tarfile.open to raise after extract_dir.mkdir runs
         # (extract_dir is created by mkdir(exist_ok=True) BEFORE tarfile.open)
-        with patch("lobster.services.data_access.geo.archive_processing.tarfile.open") as mock_tar:
+        with patch(
+            "lobster.services.data_access.geo.archive_processing.tarfile.open"
+        ) as mock_tar:
             mock_tar.side_effect = OSError("Disk full during extraction")
             result = geo_service._process_tar_file(
                 f"https://ftp.ncbi.nlm.nih.gov/{gse_id}_RAW.tar", gse_id
@@ -128,7 +134,9 @@ class TestCleanupGracefulHandling:
         # Do NOT create any dirs
 
         # Mock download to raise so we hit the exception path
-        geo_service.geo_downloader.download_file.side_effect = RuntimeError("Network error")
+        geo_service.geo_downloader.download_file.side_effect = RuntimeError(
+            "Network error"
+        )
 
         # Should not raise even though dirs don't exist
         result = geo_service._process_tar_file(

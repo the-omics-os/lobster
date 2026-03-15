@@ -883,11 +883,15 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
                             response += f"\n## Plots ({len(pm.latest_plots)})\n\n"
                             for p in pm.latest_plots[-10:]:  # last 10
                                 src = p.get("source", "unknown")
-                                title = p.get("original_title", p.get("title", "Untitled"))
-                                plot_type = (
-                                    p.get("dataset_info", {}).get("plot_type", "")
+                                title = p.get(
+                                    "original_title", p.get("title", "Untitled")
                                 )
-                                response += f"- 📊 **{title}** (id={p['id']}, source={src})"
+                                plot_type = p.get("dataset_info", {}).get(
+                                    "plot_type", ""
+                                )
+                                response += (
+                                    f"- 📊 **{title}** (id={p['id']}, source={src})"
+                                )
                                 if plot_type:
                                     response += f" [{plot_type}]"
                                 response += "\n"

@@ -201,9 +201,7 @@ class GatewayBedrockClient:
         for attempt in range(self._MAX_RETRIES):
             try:
                 # Use a persistent client for streaming
-                http = httpx.Client(
-                    timeout=httpx.Timeout(self._timeout, connect=10.0)
-                )
+                http = httpx.Client(timeout=httpx.Timeout(self._timeout, connect=10.0))
                 resp = http.send(
                     http.build_request("POST", url, json=kwargs, headers=headers),
                     stream=True,

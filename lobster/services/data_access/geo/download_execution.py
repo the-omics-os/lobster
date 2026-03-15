@@ -30,8 +30,8 @@ from lobster.services.data_access.geo.helpers import (
     _is_data_valid,
     _score_expression_file,
 )
-from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.services.data_access.geo.parser import ParseResult
+from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.services.data_access.geo.strategy import (
     PipelineType,
     _is_null_value,
@@ -83,7 +83,9 @@ class DownloadExecutor:
             # Check if metadata already exists (should be fetched first)
             if clean_geo_id not in self.service.data_manager.metadata_store:
                 logger.debug(f"Metadata not found, fetching first for {clean_geo_id}")
-                metadata, validation_result = self.service.fetch_metadata_only(clean_geo_id)
+                metadata, validation_result = self.service.fetch_metadata_only(
+                    clean_geo_id
+                )
                 if metadata is None:
                     return f"Failed to fetch metadata for {clean_geo_id}"
 
@@ -140,9 +142,9 @@ class DownloadExecutor:
 
             # Determine appropriate adapter based on data characteristics and metadata
             if not enhanced_metadata.get("data_type", None):
-                cached_metadata = self.service.data_manager.metadata_store[clean_geo_id][
-                    "metadata"
-                ]
+                cached_metadata = self.service.data_manager.metadata_store[
+                    clean_geo_id
+                ]["metadata"]
                 self.service._determine_data_type_from_metadata(cached_metadata)
 
             n_obs, n_vars = geo_result.data.shape
@@ -164,9 +166,11 @@ class DownloadExecutor:
                         not metadata_for_detection
                         and clean_geo_id in self.service.data_manager.metadata_store
                     ):
-                        metadata_for_detection = self.service.data_manager.metadata_store[
-                            clean_geo_id
-                        ].get("metadata", {})
+                        metadata_for_detection = (
+                            self.service.data_manager.metadata_store[clean_geo_id].get(
+                                "metadata", {}
+                            )
+                        )
 
                     # Use LLM-based modality detection
                     modality_result = assistant.detect_modality(
@@ -301,7 +305,9 @@ class DownloadExecutor:
 
             # Save to workspace
             save_path = f"{modality_name}_raw.h5ad"
-            saved_file = self.service.data_manager.save_modality(modality_name, save_path)
+            saved_file = self.service.data_manager.save_modality(
+                modality_name, save_path
+            )
 
             # Check if this was a multi-modal dataset and log exclusions
             multimodal_info = None
@@ -416,7 +422,9 @@ Multi-Modal Dataset Detected:
         try:
             # Step 1: Ensure metadata exists
             if clean_geo_id not in self.service.data_manager.metadata_store:
-                metadata, validation_result = self.service.fetch_metadata_only(clean_geo_id)
+                metadata, validation_result = self.service.fetch_metadata_only(
+                    clean_geo_id
+                )
                 if metadata is None:
                     return GEOResult(
                         success=False,
@@ -425,7 +433,9 @@ Multi-Modal Dataset Detected:
                     )
 
             # Step 2: Get metadata and strategy config using validated retrieval
-            stored_metadata_info = self.service.data_manager._get_geo_metadata(clean_geo_id)
+            stored_metadata_info = self.service.data_manager._get_geo_metadata(
+                clean_geo_id
+            )
             if not stored_metadata_info:
                 raise ValueError(
                     f"Metadata for {clean_geo_id} not found or malformed in metadata_store. "
@@ -472,9 +482,7 @@ Multi-Modal Dataset Detected:
                     else:
                         logger.debug(f"Step failed: {result.error_message}")
                 except Exception as e:
-                    logger.debug(
-                        f"Pipeline step {pipeline_func.__name__} failed: {e}"
-                    )
+                    logger.debug(f"Pipeline step {pipeline_func.__name__} failed: {e}")
                     continue
 
             return GEOResult(
@@ -509,7 +517,10 @@ Multi-Modal Dataset Detected:
         stored = self.service.data_manager._get_geo_metadata(geo_id)
         if stored and isinstance(stored, dict):
             modality_info = stored.get("modality_detection")
-            if isinstance(modality_info, dict) and modality_info.get("confidence", 0) >= 0.8:
+            if (
+                isinstance(modality_info, dict)
+                and modality_info.get("confidence", 0) >= 0.8
+            ):
                 llm_modality = modality_info["modality"]
                 modality_to_data_type = {
                     "bulk_rna": "bulk_rna_seq",
@@ -536,7 +547,9 @@ Multi-Modal Dataset Detected:
         )
 
         # Determine best pipeline type
-        pipeline_type, description = self.service.pipeline_engine.determine_pipeline(context)
+        pipeline_type, description = self.service.pipeline_engine.determine_pipeline(
+            context
+        )
 
         logger.info(f"Pipeline selection for {geo_id}: {pipeline_type.name}")
         logger.info(f"Reason: {description}")
@@ -707,9 +720,18 @@ Multi-Modal Dataset Detected:
                         ):
                             continue
 
-                    parse_result = self.service.geo_parser.parse_supplementary_file(local_path)
-                    matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
-                    if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                    parse_result = self.service.geo_parser.parse_supplementary_file(
+                        local_path
+                    )
+                    matrix = (
+                        parse_result.data
+                        if isinstance(parse_result, ParseResult)
+                        else parse_result
+                    )
+                    if (
+                        isinstance(parse_result, ParseResult)
+                        and parse_result.is_partial
+                    ):
                         logger.warning(
                             f"Partial parse result for {geo_id}: {parse_result.truncation_reason} "
                             f"({parse_result.rows_read:,} rows read)"
@@ -791,7 +813,9 @@ Multi-Modal Dataset Detected:
                     source=GEODataSource.SUPPLEMENTARY,
                     processing_info={
                         "method": "supplementary_first",
-                        "data_type": self.service._determine_data_type_from_metadata(metadata),
+                        "data_type": self.service._determine_data_type_from_metadata(
+                            metadata
+                        ),
                         "n_samples": len(gse.gsms) if hasattr(gse, "gsms") else 0,
                     },
                     success=True,
@@ -834,7 +858,9 @@ Multi-Modal Dataset Detected:
                     source=GEODataSource.SUPPLEMENTARY,
                     processing_info={
                         "method": "supplementary_fallback",
-                        "data_type": self.service._determine_data_type_from_metadata(metadata),
+                        "data_type": self.service._determine_data_type_from_metadata(
+                            metadata
+                        ),
                         "note": "Used as fallback after primary methods failed",
                     },
                     success=True,
@@ -936,13 +962,17 @@ Multi-Modal Dataset Detected:
 
             # Use instance variable if set, otherwise use parameter default
             concat_strategy = getattr(
-                self.service, "_use_intersecting_genes_only", use_intersecting_genes_only
+                self.service,
+                "_use_intersecting_genes_only",
+                use_intersecting_genes_only,
             )
 
             # Try sample matrices
             sample_info = self.service._get_sample_info(gse)
             if sample_info:
-                sample_matrices = self.service._download_sample_matrices(sample_info, geo_id)
+                sample_matrices = self.service._download_sample_matrices(
+                    sample_info, geo_id
+                )
 
                 # Detect sample types for type-aware validation
                 sample_types = self.service._detect_sample_types(metadata)
@@ -982,8 +1012,10 @@ Multi-Modal Dataset Detected:
                                 "Step 2/3: Concatenating samples (this may take 30-90s for large datasets)..."
                             )
 
-                            concatenated_dataset = self.service._concatenate_stored_samples(
-                                geo_id, stored_samples, concat_strategy
+                            concatenated_dataset = (
+                                self.service._concatenate_stored_samples(
+                                    geo_id, stored_samples, concat_strategy
+                                )
                             )
 
                             if concatenated_dataset is not None:

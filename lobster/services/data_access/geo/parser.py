@@ -1219,9 +1219,7 @@ class GEOParser:
 
             with h5py.File(file_path, "r") as f:
                 if "matrix" in f and isinstance(f["matrix"], h5py.Group):
-                    return all(
-                        k in f["matrix"] for k in ("data", "indices", "indptr")
-                    )
+                    return all(k in f["matrix"] for k in ("data", "indices", "indptr"))
             return False
         except Exception:
             return False
@@ -1354,7 +1352,11 @@ class GEOParser:
                         # Sparse CSR matrix format (e.g. 10X CellRanger H5)
                         if all(k in matrix_obj for k in ("data", "indices", "indptr")):
                             X = sp.csr_matrix(
-                                (matrix_obj["data"][:], matrix_obj["indices"][:], matrix_obj["indptr"][:])
+                                (
+                                    matrix_obj["data"][:],
+                                    matrix_obj["indices"][:],
+                                    matrix_obj["indptr"][:],
+                                )
                             ).toarray()
                         else:
                             logger.error(

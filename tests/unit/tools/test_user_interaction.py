@@ -19,9 +19,7 @@ def test_ask_user_calls_interrupt_with_component_selection():
 
     with patch("langgraph.types.interrupt") as mock_interrupt:
         mock_interrupt.return_value = fake_response
-        result = ask_user.invoke(
-            {"question": "Proceed?", "context": None}
-        )
+        result = ask_user.invoke({"question": "Proceed?", "context": None})
 
     # Verify interrupt was called with the mapped ComponentSelection.
     mock_interrupt.assert_called_once()
@@ -32,6 +30,7 @@ def test_ask_user_calls_interrupt_with_component_selection():
 
     # Result should be JSON-serialized response.
     import json
+
     parsed = json.loads(result)
     assert parsed == {"confirmed": True}
 
@@ -73,9 +72,7 @@ def test_create_ask_user_tool_with_llm_passes_llm_to_mapper():
 
     with (
         patch("langgraph.types.interrupt") as mock_interrupt,
-        patch(
-            "lobster.services.interaction.component_mapper.map_question"
-        ) as mock_map,
+        patch("lobster.services.interaction.component_mapper.map_question") as mock_map,
     ):
         from lobster.services.interaction.component_schemas import ComponentSelection
 
@@ -112,9 +109,7 @@ def test_create_ask_user_tool_no_llm_backward_compat():
 
     with (
         patch("langgraph.types.interrupt") as mock_interrupt,
-        patch(
-            "lobster.services.interaction.component_mapper.map_question"
-        ) as mock_map,
+        patch("lobster.services.interaction.component_mapper.map_question") as mock_map,
     ):
         from lobster.services.interaction.component_schemas import ComponentSelection
 

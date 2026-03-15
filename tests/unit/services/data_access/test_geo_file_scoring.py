@@ -78,9 +78,9 @@ class TestGeneAmbiguity:
         """gene_expression_matrix should rank higher than genes.tsv.gz."""
         expr_score = _score_expression_file("gene_expression_matrix.txt.gz")
         genes_score = _score_expression_file("genes.tsv.gz")
-        assert expr_score > genes_score, (
-            f"Expression file ({expr_score}) should score higher than feature list ({genes_score})"
-        )
+        assert (
+            expr_score > genes_score
+        ), f"Expression file ({expr_score}) should score higher than feature list ({genes_score})"
 
 
 class TestFormatBonuses:
@@ -89,23 +89,23 @@ class TestFormatBonuses:
     def test_h5ad_gets_format_bonus(self):
         h5ad_score = _score_expression_file("normalized_expression.h5ad")
         txt_score = _score_expression_file("normalized_expression.txt.gz")
-        assert h5ad_score > txt_score, (
-            f"h5ad ({h5ad_score}) should score higher than txt ({txt_score})"
-        )
+        assert (
+            h5ad_score > txt_score
+        ), f"h5ad ({h5ad_score}) should score higher than txt ({txt_score})"
 
     def test_h5_gets_format_bonus(self):
         h5_score = _score_expression_file("expression_data.h5")
         txt_score = _score_expression_file("expression_data.txt.gz")
-        assert h5_score > txt_score, (
-            f"h5 ({h5_score}) should score higher than txt ({txt_score})"
-        )
+        assert (
+            h5_score > txt_score
+        ), f"h5 ({h5_score}) should score higher than txt ({txt_score})"
 
     def test_h5ad_higher_than_h5(self):
         h5ad_score = _score_expression_file("expression.h5ad")
         h5_score = _score_expression_file("expression.h5")
-        assert h5ad_score > h5_score, (
-            f"h5ad ({h5ad_score}) should score higher than h5 ({h5_score})"
-        )
+        assert (
+            h5ad_score > h5_score
+        ), f"h5ad ({h5ad_score}) should score higher than h5 ({h5_score})"
 
 
 class TestScoringIntegration:

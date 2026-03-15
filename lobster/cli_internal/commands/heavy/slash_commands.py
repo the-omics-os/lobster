@@ -13,8 +13,8 @@ import json
 import logging
 import os
 import shutil
-import time
 import threading
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence
@@ -30,40 +30,16 @@ from rich.table import Table
 from rich.text import Text
 
 from lobster.ui import LobsterTheme
-from lobster.ui.console_manager import get_console_manager
 from lobster.ui.components.file_tree import create_file_tree, create_workspace_tree
-from lobster.ui.components.status_display import get_status_display
 from lobster.ui.components.multi_progress import get_multi_progress_manager
+from lobster.ui.components.status_display import get_status_display
+from lobster.ui.console_manager import get_console_manager
 from lobster.version import __version__
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
 # Lazy imports from other heavy modules (these are the extracted companions)
-from lobster.cli_internal.commands.heavy.session_infra import (
-    _add_command_to_history,
-    _backup_command_to_file,
-    _maybe_print_timings,
-    build_session_blocks,
-    should_show_progress,
-    LobsterClientAdapter,
-    CloudAwareCache,
-)
-from lobster.cli_internal.commands.heavy.animations import (
-    display_welcome,
-    display_goodbye,
-)
-from lobster.cli_internal.commands.heavy.display_helpers import build_status_blocks
-from lobster.cli_internal.commands.output_adapter import (
-    OutputBlock,
-    alert_block,
-    hint_block,
-    kv_block,
-    list_block,
-    section_block,
-    table_block,
-)
-from lobster.cli_internal.utils.path_resolution import PathResolver
 from lobster.cli_internal.commands import (
     ConsoleOutputAdapter,
     QueueFileTypeNotSupported,
@@ -106,6 +82,30 @@ from lobster.cli_internal.commands import (
     workspace_remove,
     workspace_status,
 )
+from lobster.cli_internal.commands.heavy.animations import (
+    display_goodbye,
+    display_welcome,
+)
+from lobster.cli_internal.commands.heavy.display_helpers import build_status_blocks
+from lobster.cli_internal.commands.heavy.session_infra import (
+    CloudAwareCache,
+    LobsterClientAdapter,
+    _add_command_to_history,
+    _backup_command_to_file,
+    _maybe_print_timings,
+    build_session_blocks,
+    should_show_progress,
+)
+from lobster.cli_internal.commands.output_adapter import (
+    OutputBlock,
+    alert_block,
+    hint_block,
+    kv_block,
+    list_block,
+    section_block,
+    table_block,
+)
+from lobster.cli_internal.utils.path_resolution import PathResolver
 
 # Import prompt_toolkit for autocomplete functionality (optional dependency)
 try:
@@ -759,7 +759,6 @@ if PROMPT_TOOLKIT_AVAILABLE:
                 pass
 
 
-
 def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     """
     Change the operation mode and reinitialize client with the new configuration.
@@ -891,7 +890,6 @@ def get_user_input_with_editing(prompt_text: str, client=None) -> str:
             return user_input.strip()
         except (KeyboardInterrupt, EOFError):
             raise KeyboardInterrupt
-
 
 
 def execute_shell_command(command: str) -> bool:
@@ -1129,6 +1127,7 @@ def execute_shell_command(command: str) -> bool:
 
             # Open file or folder using centralized system utility
             from lobster.utils import open_path
+
             success, message = open_path(target_path)
 
             if success:
@@ -1286,6 +1285,7 @@ def execute_shell_command(command: str) -> bool:
 def get_current_agent_name(client=None) -> str:
     """Get the current active agent name for display."""
     from lobster.utils import TerminalCallbackHandler
+
     if client and hasattr(client, "callbacks") and client.callbacks:
         for callback in client.callbacks:
             if isinstance(callback, TerminalCallbackHandler):
@@ -1361,7 +1361,6 @@ def show_default_help():
     help_panel = LobsterTheme.create_panel(help_content, title=str(header_text))
 
     console_manager.print(help_panel)
-
 
 
 def _show_workspace_prompt(client):
@@ -1442,7 +1441,9 @@ def _show_workspace_prompt(client):
 
         # Check semantic search backend availability
         try:
-            from lobster.services.vector.service import VectorSearchService  # noqa: F401
+            from lobster.services.vector.service import (  # noqa: F401
+                VectorSearchService,
+            )
 
             has_semantic = True
         except ImportError:
@@ -1552,7 +1553,9 @@ def handle_command(command: str, client: "AgentClient"):
 
     try:
         # Execute command and capture summary for history
-        command_summary = _execute_command(cmd, client, original_command=command.strip())
+        command_summary = _execute_command(
+            cmd, client, original_command=command.strip()
+        )
 
         # Add to conversation history if summary provided
         if command_summary:
@@ -1726,11 +1729,14 @@ def _build_query_help_blocks(*, protocol_friendly: bool = False) -> list[OutputB
                 ["/plots", "List generated plots"],
                 ["/metadata", "Metadata overview"],
                 ["/queue", "Queue status"],
-                ["/pipeline export", "Export an analysis notebook when provenance exists"],
+                [
+                    "/pipeline export",
+                    "Export an analysis notebook when provenance exists",
+                ],
             ],
         ),
         hint_block(
-            "Use `lobster command \"/help\"` or `lobster chat` for the full interactive slash-command catalog."
+            'Use `lobster command "/help"` or `lobster chat` for the full interactive slash-command catalog.'
         ),
     ]
 
@@ -1757,9 +1763,7 @@ def _build_token_blocks(client: "AgentClient") -> list[OutputBlock]:
         else "Session Token Usage & Cost"
     )
     cost_display = (
-        "FREE (local model)"
-        if is_ollama
-        else f"${token_usage['total_cost_usd']:.4f}"
+        "FREE (local model)" if is_ollama else f"${token_usage['total_cost_usd']:.4f}"
     )
     provider_display = (
         "Ollama (Local)"
@@ -1818,12 +1822,16 @@ def _build_token_blocks(client: "AgentClient") -> list[OutputBlock]:
     return blocks
 
 
-def _build_files_blocks(workspace_files: dict[str, list[dict[str, Any]]]) -> list[OutputBlock]:
+def _build_files_blocks(
+    workspace_files: dict[str, list[dict[str, Any]]],
+) -> list[OutputBlock]:
     blocks: list[OutputBlock] = []
     for category, files in workspace_files.items():
         if not files:
             continue
-        files_sorted = sorted(files, key=lambda file_info: file_info["modified"], reverse=True)
+        files_sorted = sorted(
+            files, key=lambda file_info: file_info["modified"], reverse=True
+        )
         rows = []
         for file_info in files_sorted:
             size_kb = file_info["size"] / 1024
@@ -1860,7 +1868,9 @@ def _build_save_blocks(saved_items: list[str]) -> list[OutputBlock]:
     skipped_count = len(saved_items) - len(actual_saves)
     blocks = [section_block(body=f"Saved: {item}") for item in actual_saves]
     if skipped_count > 0:
-        blocks.append(section_block(body=f"Skipped {skipped_count} unchanged modalities"))
+        blocks.append(
+            section_block(body=f"Skipped {skipped_count} unchanged modalities")
+        )
     if not blocks:
         blocks.append(section_block(body="All modalities already up-to-date"))
     return blocks
@@ -1875,7 +1885,9 @@ def _build_restore_blocks(result: dict[str, Any]) -> list[OutputBlock]:
             item if isinstance(item, str) else item.get("name", str(item))
             for item in restored
         ]
-        blocks.extend(section_block(body=f"Restored: {name}") for name in restored_names)
+        blocks.extend(
+            section_block(body=f"Restored: {name}") for name in restored_names
+        )
     if skipped:
         blocks.append(section_block(body=f"Skipped {len(skipped)} items"))
     if not blocks:
@@ -1899,7 +1911,9 @@ def _build_open_blocks(
 
 
 def _execute_command(
-    cmd: str, client: "AgentClient", original_command: Optional[str] = None,
+    cmd: str,
+    client: "AgentClient",
+    original_command: Optional[str] = None,
     output: Optional["OutputAdapter"] = None,
 ) -> Optional[str]:
     """Execute individual slash commands.
@@ -2009,20 +2023,22 @@ def _execute_command(
 
     elif cmd == "/input-features":
         if _is_protocol_output(output):
-            output.print_table({
-                "title": "Input Features (Go TUI)",
-                "columns": [{"name": "Feature"}, {"name": "Status"}],
-                "rows": [
-                    ["Slash command completion", "Enabled"],
-                    ["Tab accept suggestion", "Enabled"],
-                    ["Up/Down suggestion cycle", "Enabled"],
-                    ["PgUp/PgDn transcript scroll", "Enabled"],
-                    ["Ctrl+G mouse mode toggle", "Enabled"],
-                    ["Mouse select mode", "Drag to copy text"],
-                    ["Mouse scroll mode", "Wheel/trackpad scrolls transcript"],
-                    ["Inline dropdown list", "Not supported (inline only)"],
-                ],
-            })
+            output.print_table(
+                {
+                    "title": "Input Features (Go TUI)",
+                    "columns": [{"name": "Feature"}, {"name": "Status"}],
+                    "rows": [
+                        ["Slash command completion", "Enabled"],
+                        ["Tab accept suggestion", "Enabled"],
+                        ["Up/Down suggestion cycle", "Enabled"],
+                        ["PgUp/PgDn transcript scroll", "Enabled"],
+                        ["Ctrl+G mouse mode toggle", "Enabled"],
+                        ["Mouse select mode", "Drag to copy text"],
+                        ["Mouse scroll mode", "Wheel/trackpad scrolls transcript"],
+                        ["Inline dropdown list", "Not supported (inline only)"],
+                    ],
+                }
+            )
             output.print(
                 "Tip: type '/' then press Tab to accept a suggestion. Use Ctrl+G to switch mouse mode between select and scroll.",
                 style="info",
@@ -2636,9 +2652,13 @@ when they are started by agents or analysis workflows.
 
         resolver = PathResolver(
             current_directory=current_directory,
-            workspace_path=(client.workspace_path if hasattr(client, "workspace_path") else None),
+            workspace_path=(
+                client.workspace_path if hasattr(client, "workspace_path") else None
+            ),
         )
-        resolved = resolver.resolve(file_or_folder, search_workspace=True, must_exist=False)
+        resolved = resolver.resolve(
+            file_or_folder, search_workspace=True, must_exist=False
+        )
 
         if not resolved.is_safe:
             _render_structured_output(
@@ -2762,7 +2782,9 @@ when they are started by agents or analysis workflows.
             try:
                 vs_top_k = int(parts_vs[1].strip().split()[0])
             except (ValueError, IndexError):
-                output.print("Invalid --top-k value, using default (5)", style="warning")
+                output.print(
+                    "Invalid --top-k value, using default (5)", style="warning"
+                )
 
         # Strip surrounding quotes from query
         query_text = raw_args.strip().strip("\"'")
@@ -2862,14 +2884,13 @@ def _command_files(client, output) -> Optional[str]:
     return f"Listed {total} workspace files"
 
 
-
-
-
 def _command_save(client, output, force: bool = False) -> Optional[str]:
     """Save workspace state via OutputAdapter (standalone version of /save)."""
     modality_count = len(client.data_manager.modalities)
     if modality_count == 0:
-        _render_structured_output(output, [section_block(body="Nothing to save (no data loaded)")])
+        _render_structured_output(
+            output, [section_block(body="Nothing to save (no data loaded)")]
+        )
         return "No data to save"
 
     saved_items = client.data_manager.auto_save_state(force=force)
@@ -2900,7 +2921,9 @@ def _command_restore(client, output, pattern: str = "recent") -> Optional[str]:
             return "Nothing to restore"
         return f"Restored {len(restored)} datasets"
     except Exception as e:
-        _render_structured_output(output, [alert_block(f"Restore failed: {e}", level="error")])
+        _render_structured_output(
+            output, [alert_block(f"Restore failed: {e}", level="error")]
+        )
         return None
 
 
@@ -3201,7 +3224,6 @@ def _dispatch_command(cmd_str: str, client, output):
         return _UNKNOWN_COMMAND
 
 
-
 # ============================================================================
 # Command impl functions (extracted from cli.py Plan 08-02)
 # ============================================================================
@@ -3211,7 +3233,6 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
     """Metadata command dispatcher (extracted from cli.py)."""
     import typer
 
-    from lobster.core.workspace import resolve_workspace
     from lobster.cli_internal.commands import (
         ConsoleOutputAdapter,
         metadata_exports,
@@ -3221,8 +3242,8 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
         metadata_samples,
         metadata_workspace,
     )
-
     from lobster.core.client import AgentClient
+    from lobster.core.workspace import resolve_workspace
 
     output = ConsoleOutputAdapter(console)
 
@@ -3275,14 +3296,13 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
         raise typer.Exit(1)
 
 
-
-
 def activate_impl(access_code: str, server_url=None):
     """Activate a premium license (extracted from cli.py)."""
+    import typer
     from rich.panel import Panel
     from rich.prompt import Confirm
+
     from lobster.ui import LobsterTheme
-    import typer
 
     console.print()
     console.print(
@@ -3397,14 +3417,13 @@ def activate_impl(access_code: str, server_url=None):
         raise typer.Exit(1)
 
 
-
-
 def deactivate_impl():
     """Deactivate the current premium license (extracted from cli.py)."""
+    import typer
     from rich.panel import Panel
     from rich.prompt import Confirm
+
     from lobster.ui import LobsterTheme
-    import typer
 
     console.print()
     console.print(
@@ -3481,8 +3500,6 @@ def deactivate_impl():
         raise typer.Exit(1)
 
 
-
-
 def command_cmd_impl(
     cmd: str,
     workspace=None,
@@ -3492,13 +3509,14 @@ def command_cmd_impl(
 ):
     """Execute workspace commands without an LLM session (extracted from cli.py)."""
     import json
-    from pathlib import Path
     import sys
+    from pathlib import Path
 
-    from lobster.core.workspace import resolve_workspace
+    import typer
+
     from lobster.cli_internal.commands import JsonOutputAdapter
     from lobster.cli_internal.commands.heavy.session_infra import CommandClient
-    import typer
+    from lobster.core.workspace import resolve_workspace
 
     output = JsonOutputAdapter() if json_output else ConsoleOutputAdapter(console)
 
@@ -3586,7 +3604,9 @@ def command_cmd_impl(
         if base_cmd == "help" and help_profile == "query":
             _render_structured_output(
                 runtime_output,
-                _build_query_help_blocks(protocol_friendly=_is_protocol_output(runtime_output)),
+                _build_query_help_blocks(
+                    protocol_friendly=_is_protocol_output(runtime_output)
+                ),
             )
             result = None
         else:
@@ -3625,11 +3645,10 @@ def command_cmd_impl(
         console.file = original_console_file
 
 
-
-
 def vector_search_cmd_impl(query_text: str, top_k=None, pretty: bool = True):
     """Search all ontology collections via semantic vector similarity (extracted from cli.py)."""
     import json
+
     import typer
 
     try:
@@ -3646,17 +3665,16 @@ def vector_search_cmd_impl(query_text: str, top_k=None, pretty: bool = True):
         raise typer.Exit(1)
 
 
-
-
 def serve_impl(port: int = 8000, host: str = "0.0.0.0"):
     """Start the agent system as an API server (extracted from cli.py)."""
     from typing import Optional
-    import typer
 
+    import typer
     import uvicorn
-    from lobster.cli_internal.commands.heavy.session_infra import init_client
     from fastapi import FastAPI, HTTPException
     from pydantic import BaseModel
+
+    from lobster.cli_internal.commands.heavy.session_infra import init_client
 
     # Create FastAPI app
     api = FastAPI(

@@ -25,6 +25,7 @@ except ImportError:
 from lobster.config.settings import get_settings
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.schemas.download_urls import DownloadFile, DownloadUrlResult
+from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.tools.providers.base_provider import (
     BasePublicationProvider,
     DatasetType,
@@ -40,7 +41,6 @@ from lobster.tools.providers.geo_utils import (
 from lobster.tools.providers.ncbi_query_builder import (
     GEOQueryBuilder,
 )
-from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.utils.logger import get_logger
 from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 

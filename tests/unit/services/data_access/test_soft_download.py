@@ -133,9 +133,7 @@ class TestPreDownloadSoftFile:
 
     @patch("lobster.services.data_access.geo.soft_download.urllib.request.urlopen")
     @patch("lobster.services.data_access.geo.soft_download.create_ssl_context")
-    def test_raises_on_ssl_certificate_failure(
-        self, mock_ssl, mock_urlopen, tmp_path
-    ):
+    def test_raises_on_ssl_certificate_failure(self, mock_ssl, mock_urlopen, tmp_path):
         """SSL certificate failure raises (not recoverable by FTP retry)."""
         from lobster.services.data_access.geo.soft_download import (
             pre_download_soft_file,

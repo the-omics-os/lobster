@@ -274,7 +274,10 @@ class ILLMProvider(ABC):
         try:
             llm = self.create_chat_model(target_model, temperature=0.0, max_tokens=1)
             llm.invoke("Hi")
-            return True, f"✓ {self.display_name} connection verified (model: {target_model})"
+            return (
+                True,
+                f"✓ {self.display_name} connection verified (model: {target_model})",
+            )
         except Exception as e:
             return False, f"{self.display_name} connection failed: {e}"
 

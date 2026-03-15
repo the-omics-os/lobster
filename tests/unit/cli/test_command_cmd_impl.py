@@ -1,7 +1,7 @@
 import json
 
-import typer
 import pytest
+import typer
 
 from lobster.cli_internal.commands.heavy import slash_commands
 

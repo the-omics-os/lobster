@@ -23,7 +23,15 @@ def test_valid_providers_contains_all_core_providers():
     """Guard against accidental removals from VALID_PROVIDERS."""
     from lobster.config.constants import VALID_PROVIDERS
 
-    required = {"anthropic", "bedrock", "ollama", "gemini", "azure", "openai", "openrouter"}
+    required = {
+        "anthropic",
+        "bedrock",
+        "ollama",
+        "gemini",
+        "azure",
+        "openai",
+        "openrouter",
+    }
     missing = required - set(VALID_PROVIDERS)
     assert not missing, f"Missing providers: {missing}"
 
@@ -33,6 +41,6 @@ def test_display_names_covers_all_valid_providers():
     from lobster.config.constants import PROVIDER_DISPLAY_NAMES, VALID_PROVIDERS
 
     for provider in VALID_PROVIDERS:
-        assert provider in PROVIDER_DISPLAY_NAMES, (
-            f"Provider '{provider}' is in VALID_PROVIDERS but missing from PROVIDER_DISPLAY_NAMES"
-        )
+        assert (
+            provider in PROVIDER_DISPLAY_NAMES
+        ), f"Provider '{provider}' is in VALID_PROVIDERS but missing from PROVIDER_DISPLAY_NAMES"

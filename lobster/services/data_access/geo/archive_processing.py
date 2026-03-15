@@ -136,7 +136,9 @@ class ArchiveProcessor:
                     )
 
             # STEP 2: Check for series-level 10x trio files
-            series_10x_result = self.service._try_series_level_10x_trio(suppl_files, gse_id)
+            series_10x_result = self.service._try_series_level_10x_trio(
+                suppl_files, gse_id
+            )
             if series_10x_result is not None:
                 logger.info(
                     f"{gse_id}: Successfully loaded series-level 10x trio files"
@@ -167,7 +169,8 @@ class ArchiveProcessor:
                 unsupported = multimodal_info.get("unsupported_types", [])
                 if unsupported:
                     candidate_files = [
-                        f for f in candidate_files
+                        f
+                        for f in candidate_files
                         if not _is_unsupported_modality_file(
                             f.split("/")[-1], unsupported
                         )
@@ -232,7 +235,9 @@ class ArchiveProcessor:
                     tar_url = tar_url.replace("ftp://", "https://", 1)
                     logger.debug(f"Converted FTP to HTTPS: {tar_url}")
 
-                if not self.service.geo_downloader.download_file(tar_url, tar_file_path):
+                if not self.service.geo_downloader.download_file(
+                    tar_url, tar_file_path
+                ):
                     raise GEODownloadError(f"Failed to download TAR file: {tar_url}")
 
                 logger.debug(f"Downloaded TAR file: {tar_file_path}")
@@ -267,7 +272,9 @@ class ArchiveProcessor:
                 logger.debug(f"Checking for quantification files in {extract_dir}")
 
                 # Lazy import to avoid heavy deps at module level
-                from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
+                from lobster.services.analysis.bulk_rnaseq_service import (
+                    BulkRNASeqService,
+                )
 
                 bulk_service = BulkRNASeqService()
                 tool_type = bulk_service._detect_quantification_tool(extract_dir)
@@ -336,9 +343,7 @@ class ArchiveProcessor:
                         sample_extract_dir = nested_extract_dir / sample_id
                         sample_extract_dir.mkdir(exist_ok=True)
 
-                        logger.info(
-                            f"Processing sample {i}/{n_samples}: {sample_id}"
-                        )
+                        logger.info(f"Processing sample {i}/{n_samples}: {sample_id}")
 
                         logger.debug(f"Extracting nested archive: {archive_path.name}")
                         with tarfile.open(archive_path, "r:gz") as nested_tar:
@@ -364,9 +369,7 @@ class ArchiveProcessor:
                         continue
 
                 if all_matrices:
-                    logger.info(
-                        f"Concatenating {len(all_matrices)} AnnData objects..."
-                    )
+                    logger.info(f"Concatenating {len(all_matrices)} AnnData objects...")
                     try:
                         import anndata
 
@@ -406,7 +409,8 @@ class ArchiveProcessor:
                 if unsupported:
                     before_count = len(expression_files)
                     expression_files = [
-                        f for f in expression_files
+                        f
+                        for f in expression_files
                         if not _is_unsupported_modality_file(f.name, unsupported)
                     ]
                     filtered = before_count - len(expression_files)
@@ -426,9 +430,18 @@ class ArchiveProcessor:
                 for file_path in expression_files[:3]:
                     try:
                         logger.debug(f"Attempting to parse: {file_path.name}")
-                        parse_result = self.service.geo_parser.parse_expression_file(file_path)
-                        matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
-                        if isinstance(parse_result, ParseResult) and parse_result.is_partial:
+                        parse_result = self.service.geo_parser.parse_expression_file(
+                            file_path
+                        )
+                        matrix = (
+                            parse_result.data
+                            if isinstance(parse_result, ParseResult)
+                            else parse_result
+                        )
+                        if (
+                            isinstance(parse_result, ParseResult)
+                            and parse_result.is_partial
+                        ):
                             logger.warning(
                                 f"Partial parse result for {gse_id}: {parse_result.truncation_reason} "
                                 f"({parse_result.rows_read:,} rows read)"
@@ -488,7 +501,11 @@ class ArchiveProcessor:
                 logger.debug(f"Using cached file: {local_file}")
 
             parse_result = self.service.geo_parser.parse_expression_file(local_file)
-            matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+            matrix = (
+                parse_result.data
+                if isinstance(parse_result, ParseResult)
+                else parse_result
+            )
             if isinstance(parse_result, ParseResult) and parse_result.is_partial:
                 logger.warning(
                     f"Partial parse result for {gse_id}: {parse_result.truncation_reason} "
@@ -585,7 +602,9 @@ class ArchiveProcessor:
             )
 
             # Lazy imports to avoid heavy deps at module level
-            from lobster.core.adapters.transcriptomics_adapter import TranscriptomicsAdapter
+            from lobster.core.adapters.transcriptomics_adapter import (
+                TranscriptomicsAdapter,
+            )
             from lobster.services.analysis.bulk_rnaseq_service import BulkRNASeqService
 
             bulk_service = BulkRNASeqService(data_manager=self.service.data_manager)
@@ -674,7 +693,9 @@ class ArchiveProcessor:
             for file_type, url in files_info.items():
                 if file_type in ["matrix", "barcodes", "features"]:
                     filename = url.split("/")[-1]
-                    local_path = self.service.cache_dir / f"{gsm_id}_{file_type}_{filename}"
+                    local_path = (
+                        self.service.cache_dir / f"{gsm_id}_{file_type}_{filename}"
+                    )
 
                     if not local_path.exists():
                         logger.debug(f"Downloading {file_type} file: {url}")
@@ -839,7 +860,11 @@ class ArchiveProcessor:
                 logger.info(f"Using cached H5 file: {local_path}")
 
             parse_result = self.service.geo_parser.parse_supplementary_file(local_path)
-            matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+            matrix = (
+                parse_result.data
+                if isinstance(parse_result, ParseResult)
+                else parse_result
+            )
             if isinstance(parse_result, ParseResult) and parse_result.is_partial:
                 logger.warning(
                     f"Partial parse result for {gsm_id}: {parse_result.truncation_reason} "

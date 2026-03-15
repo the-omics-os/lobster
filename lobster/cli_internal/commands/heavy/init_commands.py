@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 console_manager = get_console_manager()
 console = console_manager.console
 
+
 def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     """
     Change the operation mode and reinitialize client with the new configuration.
@@ -164,7 +165,9 @@ _DEFAULT_TUI_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
 
 def _get_init_package_agents_map() -> dict[str, list[str]]:
     """Return package -> agents mapping for init selection UIs."""
-    return {pkg_name: list(agents) for pkg_name, _, agents, _, _ in AVAILABLE_AGENT_PACKAGES}
+    return {
+        pkg_name: list(agents) for pkg_name, _, agents, _, _ in AVAILABLE_AGENT_PACKAGES
+    }
 
 
 def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
@@ -193,7 +196,13 @@ def _normalize_selected_agents(selected_agents: list[str]) -> list[str]:
 def _get_tui_agent_package_choices() -> list[tuple[str, str, list[str]]]:
     """Return published init package choices for Go/questionary UIs."""
     choices: list[tuple[str, str, list[str]]] = []
-    for pkg_name, description, agents, published, _experimental in AVAILABLE_AGENT_PACKAGES:
+    for (
+        pkg_name,
+        description,
+        agents,
+        published,
+        _experimental,
+    ) in AVAILABLE_AGENT_PACKAGES:
         if not published:
             continue
         choices.append((pkg_name, description, list(agents)))
@@ -502,15 +511,14 @@ def _check_and_prompt_install_packages(
         elif prompt_for_install:
             console.print("[dim]Skipping package installation for now[/dim]")
         else:
-            console.print("[dim]Skipping package installation in non-interactive mode[/dim]")
+            console.print(
+                "[dim]Skipping package installation in non-interactive mode[/dim]"
+            )
 
-    unresolved = [
-        agent for agent in normalized_agents if agent not in confirmed_names
-    ]
+    unresolved = [agent for agent in normalized_agents if agent not in confirmed_names]
     if unresolved:
         console.print(
-            "\n[yellow]Skipping uninstalled agents:[/yellow] "
-            + ", ".join(unresolved)
+            "\n[yellow]Skipping uninstalled agents:[/yellow] " + ", ".join(unresolved)
         )
 
     # Avoid immediate same-process registry reload here. In development installs we
@@ -625,7 +633,9 @@ def _filter_unpublished_preset_agents(
     from lobster.core.component_registry import AGENT_TO_PACKAGE
 
     published_packages = {
-        pkg_name for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES if published
+        pkg_name
+        for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES
+        if published
     }
 
     filtered: list[str] = []
@@ -679,7 +689,9 @@ def _build_uv_tool_init_command(
             extras.append("vector-search")
 
     published_packages = {
-        pkg_name for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES if published
+        pkg_name
+        for pkg_name, _, _, published, _ in AVAILABLE_AGENT_PACKAGES
+        if published
     }
     installed_packages = set()
     if info:
@@ -723,9 +735,6 @@ def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str
     return selected, None
 
 
-
-
-
 _SMART_STD_AGENT_DISPLAY = {
     "metadata_assistant": "Metadata Assistant",
     "transcriptomics_expert": "Transcriptomics Expert",
@@ -763,7 +772,9 @@ def _print_vector_backend_unavailable() -> None:
     )
 
 
-def _get_smart_standardization_beneficiaries(selected_agents: list[str] | None) -> list[str]:
+def _get_smart_standardization_beneficiaries(
+    selected_agents: list[str] | None,
+) -> list[str]:
     """Return display names for selected agents that benefit from embeddings."""
     beneficiaries: list[str] = []
     for agent in _normalize_selected_agents(selected_agents or []):
@@ -786,7 +797,9 @@ def _install_smart_standardization_dependencies() -> None:
     if s1 and s2:
         console.print("  [green]✓[/green] Dependencies installed")
     else:
-        console.print(f"  [yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]")
+        console.print(
+            f"  [yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]"
+        )
         return
 
     console.print(
@@ -798,6 +811,7 @@ def _install_smart_standardization_dependencies() -> None:
         console.print(
             "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
         )
+
 
 def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """
@@ -843,7 +857,9 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
         if "model_id" in config_dict and config_dict["model_id"]:
             provider = config_dict.get("provider", "")
             if provider:
-                workspace_config.set_model_for_provider(provider, config_dict["model_id"])
+                workspace_config.set_model_for_provider(
+                    provider, config_dict["model_id"]
+                )
 
         # Ensure workspace directory exists and save config
         workspace_path.mkdir(parents=True, exist_ok=True)
@@ -1071,9 +1087,10 @@ def _prompt_docling_install() -> None:
 
     if choice == "1":
         console.print("  [dim]Installing docling (this may take a moment)...[/dim]")
+        from rich.markup import escape as rich_escape
+
         from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
         from lobster.core.component_registry import get_install_command
-        from rich.markup import escape as rich_escape
 
         s1, _ = _uv_pip_install("docling>=2.60.0")
         s2, _ = _uv_pip_install("docling-core>=2.50.0")
@@ -1081,17 +1098,14 @@ def _prompt_docling_install() -> None:
             console.print("  [green]✓[/green] Docling installed")
         else:
             docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
-            console.print(
-                f"  [yellow]⚠ Install manually: {docling_cmd}[/yellow]"
-            )
+            console.print(f"  [yellow]⚠ Install manually: {docling_cmd}[/yellow]")
     else:
-        from lobster.core.component_registry import get_install_command
         from rich.markup import escape as rich_escape
 
+        from lobster.core.component_registry import get_install_command
+
         docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
-        console.print(
-            f"  [dim]Skipped. Install later: {docling_cmd}[/dim]"
-        )
+        console.print(f"  [dim]Skipped. Install later: {docling_cmd}[/dim]")
 
 
 def _postprocess_tui_init_result(
@@ -1141,7 +1155,9 @@ def _postprocess_tui_init_result(
                         "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
                     )
 
-    normalized_agents = _normalize_selected_agents(normalized_result.get("agents") or [])
+    normalized_agents = _normalize_selected_agents(
+        normalized_result.get("agents") or []
+    )
     if normalized_agents:
         normalized_agents = _check_and_prompt_install_packages(
             normalized_agents, workspace_path
@@ -1177,16 +1193,26 @@ def _validate_oauth_credentials() -> None:
     mirrors what the Python browser login does after receiving tokens.
     """
     try:
-        from lobster.config.credentials import get_api_key, get_endpoint, load_credentials, save_credentials
+        from lobster.config.credentials import (
+            get_api_key,
+            get_endpoint,
+            load_credentials,
+            save_credentials,
+        )
 
         token = get_api_key()
         if not token:
-            console.print("[yellow]OAuth tokens found but could not be loaded.[/yellow]")
+            console.print(
+                "[yellow]OAuth tokens found but could not be loaded.[/yellow]"
+            )
             return
 
         endpoint = get_endpoint()
 
-        from lobster.cli_internal.commands.light.cloud_commands import _validate_credentials
+        from lobster.cli_internal.commands.light.cloud_commands import (
+            _validate_credentials,
+        )
+
         data = _validate_credentials(endpoint, token, token_type="token")
         if data is None:
             console.print(
@@ -1391,8 +1417,6 @@ def _ensure_tui_installed() -> None:
         console.print("  [green]✓[/green] textual installed")
 
 
-
-
 def init_impl(
     global_config: bool = typer.Option(
         False,
@@ -1450,7 +1474,9 @@ def init_impl(
         None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
     ),
     azure_credential: Optional[str] = typer.Option(
-        None, "--azure-credential", help="Azure AI API credential (non-interactive mode)"
+        None,
+        "--azure-credential",
+        help="Azure AI API credential (non-interactive mode)",
     ),
     profile: Optional[str] = typer.Option(
         None,
@@ -1711,8 +1737,13 @@ def init_impl(
 
         # Validate at least one provider
         valid, error_msg = provider_setup.validate_provider_choice(
-            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
-            has_openrouter=has_openrouter, has_azure=has_azure,
+            has_anthropic,
+            has_bedrock,
+            has_ollama,
+            has_gemini,
+            has_openai,
+            has_openrouter=has_openrouter,
+            has_azure=has_azure,
         )
         if not valid:
             console.print(f"[red]❌ Error: {error_msg}[/red]")
@@ -1726,15 +1757,18 @@ def init_impl(
             console.print("  • Google Gemini: --gemini-key=xxx")
             console.print("  • OpenAI: --openai-key=xxx")
             console.print("  • OpenRouter: --openrouter-key=xxx")
-            console.print(
-                "  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx"
-            )
+            console.print("  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx")
             raise typer.Exit(1)
 
         # Warn if multiple providers
         priority_warning = provider_setup.get_provider_priority_warning(
-            has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
-            has_openrouter=has_openrouter, has_azure=has_azure,
+            has_anthropic,
+            has_bedrock,
+            has_ollama,
+            has_gemini,
+            has_openai,
+            has_openrouter=has_openrouter,
+            has_azure=has_azure,
         )
         if priority_warning:
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
@@ -1822,7 +1856,9 @@ def init_impl(
                 config_dict["provider"] = "openrouter"
                 console.print("[green]✓ OpenRouter provider configured[/green]")
         elif has_azure:
-            config = provider_setup.create_azure_config(azure_endpoint, azure_credential)
+            config = provider_setup.create_azure_config(
+                azure_endpoint, azure_credential
+            )
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
@@ -1928,8 +1964,9 @@ def init_impl(
                 if s1 and s2:
                     console.print("[green]✓ Docling installed[/green]")
                 else:
-                    from lobster.core.component_registry import get_install_command
                     from rich.markup import escape as rich_escape
+
+                    from lobster.core.component_registry import get_install_command
 
                     docling_cmd = rich_escape(
                         get_install_command("docling", is_extra=True)
@@ -1951,7 +1988,9 @@ def init_impl(
                     s1, _ = _uv_pip_install("chromadb>=1.0.0")
                     s2, _ = _uv_pip_install("openai>=1.0.0")
                     if s1 and s2:
-                        console.print("[green]✓ Smart Standardization installed[/green]")
+                        console.print(
+                            "[green]✓ Smart Standardization installed[/green]"
+                        )
                         env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
                     else:
                         console.print(
@@ -2120,7 +2159,9 @@ def init_impl(
                     )
                     raise typer.Exit(1)
             except ImportError as _ie:
-                console.print(f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]")
+                console.print(
+                    f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]"
+                )
 
         # ---- Try questionary fallback (auto mode only, when Go TUI was unavailable) ----
         if not _tui_handled and ui_mode == "auto":
@@ -2233,13 +2274,21 @@ def init_impl(
         console.print(
             "  [cyan]2[/cyan] - Claude API (Anthropic)  — direct access to Claude models"
         )
-        console.print("  [cyan]3[/cyan] - AWS Bedrock             — production, enterprise")
-        console.print("  [cyan]4[/cyan] - Ollama (local)          — privacy, zero cost, offline")
+        console.print(
+            "  [cyan]3[/cyan] - AWS Bedrock             — production, enterprise"
+        )
+        console.print(
+            "  [cyan]4[/cyan] - Ollama (local)          — privacy, zero cost, offline"
+        )
         console.print(
             "  [cyan]5[/cyan] - Google Gemini           — Gemini models + thinking"
         )
-        console.print("  [cyan]6[/cyan] - Azure AI                — enterprise Azure deployments")
-        console.print("  [cyan]7[/cyan] - OpenAI                  — GPT-4o, o-series reasoning")
+        console.print(
+            "  [cyan]6[/cyan] - Azure AI                — enterprise Azure deployments"
+        )
+        console.print(
+            "  [cyan]7[/cyan] - OpenAI                  — GPT-4o, o-series reasoning"
+        )
         console.print(
             "  [cyan]8[/cyan] - OpenRouter              — 600+ models via one API key"
         )
@@ -2291,7 +2340,9 @@ def init_impl(
                         for key, value in config.env_vars.items():
                             env_lines.append(f"{key}={value}")
                         config_dict["provider"] = "omics-os"
-                        console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
+                        console.print(
+                            "[green]✓ Omics-OS Cloud provider configured[/green]"
+                        )
                     else:
                         console.print(f"[red]❌ {config.message}[/red]")
                         raise typer.Exit(1)
@@ -2381,7 +2432,9 @@ def init_impl(
                 if ollama_status.installed:
                     console.print("[green]✓ Ollama is installed[/green]")
                     if not ollama_status.running:
-                        console.print("[yellow]⚠️  Ollama server is not running. Start with: ollama serve[/yellow]")
+                        console.print(
+                            "[yellow]⚠️  Ollama server is not running. Start with: ollama serve[/yellow]"
+                        )
 
             config = provider_setup.create_ollama_config(model_name=model_name)
             for key, value in config.env_vars.items():
@@ -2475,7 +2528,11 @@ def init_impl(
                 raise typer.Exit(1)
 
         # Auto-install provider package if missing
-        if not skip_extras and not _in_uv_tool and provider_name not in ("omics-os", "ollama"):
+        if (
+            not skip_extras
+            and not _in_uv_tool
+            and provider_name not in ("omics-os", "ollama")
+        ):
             _ensure_provider_installed(provider_name)
 
         # ================================================================== #
@@ -2522,7 +2579,9 @@ def init_impl(
         # ================================================================== #
         # Step 4 — Agent selection                                            #
         # ================================================================== #
-        selected_agents, preset_name = _perform_agent_selection_interactive(workspace_path)
+        selected_agents, preset_name = _perform_agent_selection_interactive(
+            workspace_path
+        )
         if selected_agents:
             _save_agent_config(selected_agents, workspace_path, preset_name)
         console.print()
@@ -2586,7 +2645,12 @@ def init_impl(
                         key = key.strip()
                         if any(
                             tok in key
-                            for tok in ["API_KEY", "ACCESS_KEY", "SECRET_KEY", "CLOUD_KEY"]
+                            for tok in [
+                                "API_KEY",
+                                "ACCESS_KEY",
+                                "SECRET_KEY",
+                                "CLOUD_KEY",
+                            ]
                         ):
                             credentials[key] = value.strip()
 

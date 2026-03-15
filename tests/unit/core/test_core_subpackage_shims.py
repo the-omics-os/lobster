@@ -18,21 +18,66 @@ import pytest
 
 # All 13 shim pairs: (old_path, new_path, expected_name)
 SHIM_PAIRS = [
-    ("lobster.core.download_queue", "lobster.core.queues.download_queue", "DownloadQueue"),
-    ("lobster.core.publication_queue", "lobster.core.queues.publication_queue", "PublicationQueue"),
-    ("lobster.core.queue_storage", "lobster.core.queues.queue_storage", "InterProcessFileLock"),
-    ("lobster.core.notebook_executor", "lobster.core.notebooks.executor", "NotebookExecutor"),
-    ("lobster.core.notebook_exporter", "lobster.core.notebooks.exporter", "NotebookExporter"),
-    ("lobster.core.notebook_validator", "lobster.core.notebooks.validator", "NotebookValidator"),
-    ("lobster.core.license_manager", "lobster.core.governance.license_manager", "get_current_tier"),
-    ("lobster.core.aquadif_monitor", "lobster.core.governance.aquadif_monitor", "AquadifMonitor"),
+    (
+        "lobster.core.download_queue",
+        "lobster.core.queues.download_queue",
+        "DownloadQueue",
+    ),
+    (
+        "lobster.core.publication_queue",
+        "lobster.core.queues.publication_queue",
+        "PublicationQueue",
+    ),
+    (
+        "lobster.core.queue_storage",
+        "lobster.core.queues.queue_storage",
+        "InterProcessFileLock",
+    ),
+    (
+        "lobster.core.notebook_executor",
+        "lobster.core.notebooks.executor",
+        "NotebookExecutor",
+    ),
+    (
+        "lobster.core.notebook_exporter",
+        "lobster.core.notebooks.exporter",
+        "NotebookExporter",
+    ),
+    (
+        "lobster.core.notebook_validator",
+        "lobster.core.notebooks.validator",
+        "NotebookValidator",
+    ),
+    (
+        "lobster.core.license_manager",
+        "lobster.core.governance.license_manager",
+        "get_current_tier",
+    ),
+    (
+        "lobster.core.aquadif_monitor",
+        "lobster.core.governance.aquadif_monitor",
+        "AquadifMonitor",
+    ),
     ("lobster.core.analysis_ir", "lobster.core.provenance.analysis_ir", "AnalysisStep"),
-    ("lobster.core.provenance", "lobster.core.provenance.provenance", "ProvenanceTracker"),
+    (
+        "lobster.core.provenance",
+        "lobster.core.provenance.provenance",
+        "ProvenanceTracker",
+    ),
     ("lobster.core.lineage", "lobster.core.provenance.lineage", "LineageMetadata"),
-    ("lobster.core.ir_coverage", "lobster.core.provenance.ir_coverage", "IRCoverageAnalyzer"),
+    (
+        "lobster.core.ir_coverage",
+        "lobster.core.provenance.ir_coverage",
+        "IRCoverageAnalyzer",
+    ),
     ("lobster.core.workspace", "lobster.core.runtime.workspace", "resolve_workspace"),
-    ("lobster.core.data_manager_v2", "lobster.core.runtime.data_manager", "DataManagerV2"),
+    (
+        "lobster.core.data_manager_v2",
+        "lobster.core.runtime.data_manager",
+        "DataManagerV2",
+    ),
 ]
+
 
 def _shim_id(pair):
     """Generate readable test ID from shim pair."""
@@ -60,13 +105,12 @@ class TestShimReexportsAndWarns:
             has_name = hasattr(mod, expected_name)
 
         # The expected name must be accessible
-        assert has_name, (
-            f"{old_path} shim missing expected name '{expected_name}'"
-        )
+        assert has_name, f"{old_path} shim missing expected name '{expected_name}'"
 
         # At least one DeprecationWarning must mention the new path
         dep_warnings = [
-            w for w in caught
+            w
+            for w in caught
             if issubclass(w.category, DeprecationWarning)
             and new_path.rsplit(".", 1)[0] in str(w.message)
         ]
@@ -86,9 +130,9 @@ class TestShimReexportsAndWarns:
         old_obj = getattr(old_mod, expected_name)
         new_obj = getattr(new_mod, expected_name)
 
-        assert old_obj is new_obj, (
-            f"{expected_name} from old path is not identical to new path object"
-        )
+        assert (
+            old_obj is new_obj
+        ), f"{expected_name} from old path is not identical to new path object"
 
 
 # --------------------------------------------------------------------------- #
@@ -125,7 +169,8 @@ class TestProvenanceMultiModuleShim:
         assert obj is not None, f"Failed to resolve '{attr_name}' from provenance shim"
 
         dep_warnings = [
-            w for w in caught
+            w
+            for w in caught
             if issubclass(w.category, DeprecationWarning)
             and expected_submod in str(w.message)
         ]
@@ -146,9 +191,9 @@ class TestProvenanceMultiModuleShim:
         )
         canonical_obj = getattr(canonical_mod, attr_name)
 
-        assert shim_obj is canonical_obj, (
-            f"'{attr_name}' from shim is not identical to canonical import"
-        )
+        assert (
+            shim_obj is canonical_obj
+        ), f"'{attr_name}' from shim is not identical to canonical import"
 
 
 def test_provenance_shim_unknown_name_raises():
@@ -160,11 +205,11 @@ def test_provenance_shim_unknown_name_raises():
 
 # Subpackage existence tests
 SUBPACKAGES = [
-    "lobster.core.governance",    # Plan 01
-    "lobster.core.queues",        # Plan 01
-    "lobster.core.runtime",       # Plan 01
-    "lobster.core.notebooks",     # Plan 02
-    "lobster.core.provenance",    # Plan 02
+    "lobster.core.governance",  # Plan 01
+    "lobster.core.queues",  # Plan 01
+    "lobster.core.runtime",  # Plan 01
+    "lobster.core.notebooks",  # Plan 02
+    "lobster.core.provenance",  # Plan 02
 ]
 
 
@@ -195,9 +240,9 @@ def test_no_deprecated_data_manager_imports_in_packages():
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 1, (
-        f"Deprecated imports found in packages/:\n{result.stdout}"
-    )
+    assert (
+        result.returncode == 1
+    ), f"Deprecated imports found in packages/:\n{result.stdout}"
 
 
 def test_no_deprecated_analysis_ir_imports_in_packages():
@@ -215,6 +260,6 @@ def test_no_deprecated_analysis_ir_imports_in_packages():
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 1, (
-        f"Deprecated analysis_ir imports found in packages/:\n{result.stdout}"
-    )
+    assert (
+        result.returncode == 1
+    ), f"Deprecated analysis_ir imports found in packages/:\n{result.stdout}"

@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.core.notebooks.executor instead."""
+
 import warnings as _w
 
 _w.warn(

@@ -73,7 +73,9 @@ def geo_service():
 class TestDownloadAndParseFilePartialHandling:
     """Test call site at line 4004 in _download_and_parse_file."""
 
-    def test_partial_result_logs_warning_and_returns_data(self, geo_service, log_capture):
+    def test_partial_result_logs_warning_and_returns_data(
+        self, geo_service, log_capture
+    ):
         """parse_expression_file returning partial ParseResult triggers warning."""
         df = pd.DataFrame({"a": [1]})
         partial = ParseResult(

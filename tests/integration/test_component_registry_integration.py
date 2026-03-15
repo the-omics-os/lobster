@@ -65,7 +65,11 @@ class TestPluginLoaderBackwardCompatibility:
         all_agents = fresh_registry.list_agents()
 
         # Verify expected core agents are present
-        expected_core = ["research_agent", "data_expert_agent", "transcriptomics_expert"]
+        expected_core = [
+            "research_agent",
+            "data_expert_agent",
+            "transcriptomics_expert",
+        ]
         for agent_name in expected_core:
             assert (
                 agent_name in all_agents

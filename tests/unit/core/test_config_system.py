@@ -528,6 +528,7 @@ class TestEdgeCases:
 # Tests for _find_existing_configs() scanner
 # =============================================================================
 
+
 class TestFindExistingConfigs:
     """Tests for the config scanner that discovers configs in parent directories."""
 
@@ -553,9 +554,7 @@ class TestFindExistingConfigs:
 
         workspace = tmp_path / ".lobster_workspace"
         workspace.mkdir()
-        (workspace / "provider_config.json").write_text(
-            '{"global_provider": "ollama"}'
-        )
+        (workspace / "provider_config.json").write_text('{"global_provider": "ollama"}')
 
         found = _find_existing_configs(start=tmp_path, home=tmp_path.parent)
         assert workspace in found
@@ -683,7 +682,9 @@ class TestBuildDiagnosticHelpText:
         plain_line = next(
             (i for i, l in enumerate(text_lines) if l.strip() == "lobster init"), None
         )
-        assert global_line is not None, "Expected 'lobster init --global' line in output"
+        assert (
+            global_line is not None
+        ), "Expected 'lobster init --global' line in output"
         assert plain_line is not None, "Expected bare 'lobster init' line in output"
         assert global_line < plain_line, (
             f"Expected 'lobster init --global' (line {global_line}) to appear "

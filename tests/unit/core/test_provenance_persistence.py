@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.provenance import ProvenanceTracker
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
 # ============================================================================
 # Fixtures

@@ -324,6 +324,7 @@ def modality_describe(
     """
     import numpy as np
     import pandas as pd
+
     protocol_mode = output.__class__.__name__ == "ProtocolOutputAdapter"
 
     def emit(message: str, style: Optional[str] = None) -> None:
@@ -362,9 +363,7 @@ def modality_describe(
 
         # Create main header
         emit("", style="info")
-        emit(
-            f"[bold orange1]🧬 Modality: {modality_name}[/bold orange1]", style="info"
-        )
+        emit(f"[bold orange1]🧬 Modality: {modality_name}[/bold orange1]", style="info")
         emit("━" * 60, style="info")
 
         # ====================================================================
@@ -475,9 +474,7 @@ def modality_describe(
         # ====================================================================
         # Additional Data Structures
         # ====================================================================
-        emit(
-            "\n[bold white]📦 Additional Data Structures[/bold white]", style="info"
-        )
+        emit("\n[bold white]📦 Additional Data Structures[/bold white]", style="info")
 
         # Layers
         if adata.layers:
@@ -508,18 +505,14 @@ def modality_describe(
             emit("\n[cyan]Observation Pairwise (obsp):[/cyan]", style="info")
             for key in adata.obsp.keys():
                 matrix = adata.obsp[key]
-                emit(
-                    f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info"
-                )
+                emit(f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info")
 
         # Varp (variable pairwise)
         if adata.varp:
             emit("\n[cyan]Variable Pairwise (varp):[/cyan]", style="info")
             for key in adata.varp.keys():
                 matrix = adata.varp[key]
-                emit(
-                    f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info"
-                )
+                emit(f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info")
 
         # Unstructured data (uns)
         if adata.uns:

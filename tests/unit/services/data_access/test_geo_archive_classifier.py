@@ -38,28 +38,41 @@ class TestIsArchiveUrl:
         assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.tar") is True
 
     def test_tar_gz_url_is_archive(self):
-        assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.tar.gz") is True
+        assert (
+            _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.tar.gz") is True
+        )
 
     def test_tgz_url_is_archive(self):
         assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.tgz") is True
 
     def test_tar_bz2_url_is_archive(self):
-        assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.tar.bz2") is True
+        assert (
+            _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.tar.bz2") is True
+        )
 
     def test_txt_gz_is_not_archive(self):
-        assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_counts.txt.gz") is False
+        assert (
+            _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_counts.txt.gz")
+            is False
+        )
 
     def test_csv_is_not_archive(self):
-        assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_data.csv") is False
+        assert (
+            _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_data.csv") is False
+        )
 
     def test_h5ad_is_not_archive(self):
-        assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_data.h5ad") is False
+        assert (
+            _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_data.h5ad") is False
+        )
 
     def test_case_insensitive_tar(self):
         assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.TAR") is True
 
     def test_case_insensitive_tar_gz(self):
-        assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.TAR.GZ") is True
+        assert (
+            _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.TAR.GZ") is True
+        )
 
     def test_case_insensitive_tgz(self):
         assert _is_archive_url("https://ftp.ncbi.nlm.nih.gov/GSE12345_RAW.TGZ") is True

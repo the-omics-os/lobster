@@ -13,6 +13,7 @@ import pytest
 pytestmark = [pytest.mark.performance, pytest.mark.slow]
 import functools
 import gc
+
 try:
     import resource
 except ImportError:

@@ -29,8 +29,16 @@ def test_protocol_output_adapter_print_table_strips_rich_markup():
                 {"name": "[yellow]Tier[/yellow]"},
             ],
             "rows": [
-                ["[cyan]Research Agent[/cyan]", "[green]Installed[/green]", "[yellow]Free[/yellow]"],
-                ["[cyan]Data Expert[/cyan]", "[green]Installed[/green]", "[yellow]Free[/yellow]"],
+                [
+                    "[cyan]Research Agent[/cyan]",
+                    "[green]Installed[/green]",
+                    "[yellow]Free[/yellow]",
+                ],
+                [
+                    "[cyan]Data Expert[/cyan]",
+                    "[green]Installed[/green]",
+                    "[yellow]Free[/yellow]",
+                ],
             ],
         }
     )
@@ -160,7 +168,9 @@ def test_protocol_output_adapter_render_blocks_maps_structured_blocks():
 
     adapter.render_blocks(
         [
-            section_block(title="[bold cyan]Summary[/bold cyan]", body="[dim]Ready[/dim]"),
+            section_block(
+                title="[bold cyan]Summary[/bold cyan]", body="[dim]Ready[/dim]"
+            ),
             kv_block(
                 [("Tier", "free"), ("Calls", 2)],
                 title="[green]Metrics[/green]",

@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 from lobster.cli_internal import go_tui_launcher
 from lobster.cli_internal.startup_diagnostics import StartupDiagnostic
@@ -406,7 +406,11 @@ def test_handle_user_query_maps_agent_change_to_activity_transition(monkeypatch)
         def query(self, text, stream=True, cancel_event=None):
             assert text == "delegate"
             assert stream is True
-            yield {"type": "agent_change", "agent": "research_agent", "status": "working"}
+            yield {
+                "type": "agent_change",
+                "agent": "research_agent",
+                "status": "working",
+            }
             yield {"type": "complete"}
 
     bridge = _FakeBridge()
@@ -426,7 +430,9 @@ def test_handle_user_query_maps_agent_change_to_activity_transition(monkeypatch)
     ) in bridge.calls
 
 
-def test_resolve_go_chat_session_target_latest_missing_returns_none(tmp_path, monkeypatch):
+def test_resolve_go_chat_session_target_latest_missing_returns_none(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(
         "lobster.core.workspace.resolve_workspace",
         lambda explicit_path=None, create=True: tmp_path,

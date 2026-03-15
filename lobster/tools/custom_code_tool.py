@@ -274,7 +274,11 @@ def create_execute_custom_code_tool(
                     "- Check `if value is not None` before .lower()/.upper()\n"
                     "- Check isinstance(data, dict) before dict operations"
                 )
-            elif "numpy" in error_str.lower() or "int64" in error_str or "float64" in error_str:
+            elif (
+                "numpy" in error_str.lower()
+                or "int64" in error_str
+                or "float64" in error_str
+            ):
                 hints = (
                     "\n\nHINT — Convert numpy types:\n"
                     "- int(val), float(val), list(arr), str(val)"

@@ -213,12 +213,18 @@ class TestResolveContextWindow:
         class _FakeProvider:
             def get_model_info(self, model_id):
                 from types import SimpleNamespace
+
                 if model_id == "test-model":
                     return SimpleNamespace(context_window=32768)
                 return None
 
         from lobster.config import providers
-        monkeypatch.setattr(providers, "get_provider", lambda name: _FakeProvider() if name == "test-provider" else None)
+
+        monkeypatch.setattr(
+            providers,
+            "get_provider",
+            lambda name: _FakeProvider() if name == "test-provider" else None,
+        )
 
         result = resolve_context_window(
             provider_override="test-provider",
@@ -233,9 +239,11 @@ class TestResolveContextWindow:
         class _FakeProvider:
             def get_model_info(self, model_id):
                 from types import SimpleNamespace
+
                 return SimpleNamespace(context_window=40960)
 
         from lobster.config import providers
+
         monkeypatch.setattr(providers, "get_provider", lambda name: _FakeProvider())
 
         # ConfigResolver.resolve_provider() would throw — but should never be called
@@ -255,6 +263,7 @@ class TestResolveContextWindow:
             def get_model_info(self, model_id):
                 call_log.append(model_id)
                 from types import SimpleNamespace
+
                 if model_id == "real-model":
                     return SimpleNamespace(context_window=16384)
                 return None
@@ -263,22 +272,32 @@ class TestResolveContextWindow:
             @classmethod
             def get_instance(cls, path):
                 return cls()
-            def resolve_provider(self):
-                return ("test-provider", "workspace_config")  # second element is source, NOT model
 
-        from lobster.core import config_resolver
+            def resolve_provider(self):
+                return (
+                    "test-provider",
+                    "workspace_config",
+                )  # second element is source, NOT model
+
         from lobster.config import providers
+        from lobster.core import config_resolver
+
         monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
         monkeypatch.setattr(providers, "get_provider", lambda name: _FakeProvider())
 
         # With model_override, decision_source should NOT be passed to get_model_info
         result = resolve_context_window(model_override="real-model")
         assert result == 16384
-        assert "workspace_config" not in call_log, "decision_source was incorrectly used as model_id"
+        assert (
+            "workspace_config" not in call_log
+        ), "decision_source was incorrectly used as model_id"
 
-    def test_no_overrides_no_config_returns_none_with_warning(self, monkeypatch, caplog):
+    def test_no_overrides_no_config_returns_none_with_warning(
+        self, monkeypatch, caplog
+    ):
         """Bug #3: should warn (not silently swallow) when resolution fails."""
         import logging
+
         from lobster.agents.context_management import resolve_context_window
         from lobster.core.config_resolver import ConfigurationError
 
@@ -286,13 +305,17 @@ class TestResolveContextWindow:
             @classmethod
             def get_instance(cls, path):
                 return cls()
+
             def resolve_provider(self):
                 raise ConfigurationError("No provider configured.")
 
         from lobster.core import config_resolver
+
         monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
 
-        with caplog.at_level(logging.WARNING, logger="lobster.agents.context_management"):
+        with caplog.at_level(
+            logging.WARNING, logger="lobster.agents.context_management"
+        ):
             result = resolve_context_window()
 
         assert result is None
@@ -317,11 +340,19 @@ class TestResolveContextWindow:
         class _FakeProvider:
             def get_model_info(self, model_id):
                 from types import SimpleNamespace
+
                 # model_id will be None since no model_override and resolver doesn't give model
-                return SimpleNamespace(context_window=8192) if model_id is None else None
+                return (
+                    SimpleNamespace(context_window=8192) if model_id is None else None
+                )
 
         from lobster.config import providers
-        monkeypatch.setattr(providers, "get_provider", lambda name: _FakeProvider() if name == "ollama" else None)
+
+        monkeypatch.setattr(
+            providers,
+            "get_provider",
+            lambda name: _FakeProvider() if name == "ollama" else None,
+        )
 
         result = resolve_context_window(provider_override="ollama")
         assert result == 8192

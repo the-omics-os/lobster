@@ -22,8 +22,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.execution.execution_context_builder import ExecutionContextBuilder
 from lobster.utils.logger import get_logger
 
@@ -459,7 +459,9 @@ class CustomCodeExecutionService:
                 if captured_plot_count > 0:
                     # Save all captured plots to workspace as HTML + PNG
                     self.data_manager.plot_manager.save_plots_to_workspace()
-                    logger.info(f"Auto-captured {captured_plot_count} Plotly figure(s) from custom code")
+                    logger.info(
+                        f"Auto-captured {captured_plot_count} Plotly figure(s) from custom code"
+                    )
             except Exception as me:
                 logger.warning(f"Could not read plot manifest: {me}")
             finally:

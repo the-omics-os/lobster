@@ -22,8 +22,11 @@ from unittest.mock import Mock
 import pandas as pd
 
 from lobster.core.adapters.base import BaseAdapter
-from lobster.core.provenance.analysis_ir import create_data_loading_ir, create_data_saving_ir
 from lobster.core.plot_manager import PlotManager
+from lobster.core.provenance.analysis_ir import (
+    create_data_loading_ir,
+    create_data_saving_ir,
+)
 
 # Import TranscriptomicsAdapter conditionally (has optional scanpy dependency)
 try:
@@ -47,8 +50,8 @@ from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance.provenance import ProvenanceTracker
 from lobster.core.queues.queue_storage import atomic_write_json, queue_file_lock
-from lobster.core.utils.h5ad_utils import validate_for_h5ad
 from lobster.core.runtime.workspace import resolve_workspace
+from lobster.core.utils.h5ad_utils import validate_for_h5ad
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:

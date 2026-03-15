@@ -4,9 +4,10 @@ Tests MetadataFetcher methods in isolation via mocked service.
 Part of Phase 4 Plan 03: GEO Service Decomposition.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from lobster.services.data_access.geo.metadata_fetch import MetadataFetcher
 
@@ -129,9 +130,7 @@ class TestDetectSampleTypes:
         """Antibody capture in characteristics should classify as protein."""
         metadata = {
             "samples": {
-                "GSM3": {
-                    "characteristics_ch1": ["library type: antibody capture"]
-                },
+                "GSM3": {"characteristics_ch1": ["library type: antibody capture"]},
             }
         }
         result = fetcher._detect_sample_types(metadata)

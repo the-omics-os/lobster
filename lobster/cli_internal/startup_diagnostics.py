@@ -98,7 +98,9 @@ def _format_missing_credentials_fix_lines(
 
 def _build_invalid_provider_diagnostic(message: str) -> StartupDiagnostic:
     valid_prefix = "Valid providers:"
-    valid_line = message.split(valid_prefix, 1)[1].strip() if valid_prefix in message else ""
+    valid_line = (
+        message.split(valid_prefix, 1)[1].strip() if valid_prefix in message else ""
+    )
     fix_lines = []
     if valid_line:
         fix_lines.append(f"Use one of: {valid_line}")
@@ -172,12 +174,18 @@ def _build_provider_not_configured_fix_lines(
         from lobster.core.config_resolver import _find_existing_configs
 
         search_start = workspace.parent if workspace else None
-        found_configs = _find_existing_configs(start=search_start) if search_start else _find_existing_configs()
+        found_configs = (
+            _find_existing_configs(start=search_start)
+            if search_start
+            else _find_existing_configs()
+        )
     except Exception:
         found_configs = []
 
     if found_configs:
-        lines.insert(0, f"Reuse existing workspace: export LOBSTER_WORKSPACE={found_configs[0]}")
+        lines.insert(
+            0, f"Reuse existing workspace: export LOBSTER_WORKSPACE={found_configs[0]}"
+        )
 
     return tuple(lines)
 

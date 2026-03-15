@@ -94,7 +94,9 @@ class DownloadOrchestrator:
         """
         self.data_manager = data_manager
         self._services: Dict[str, IDownloadService] = {}
-        self.progress_callback = None  # Optional callback: fn(label, current, total, done)
+        self.progress_callback = (
+            None  # Optional callback: fn(label, current, total, done)
+        )
         self._register_default_services()
         logger.info("DownloadOrchestrator initialized")
 

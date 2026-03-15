@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import anndata as ad
 from scipy import sparse
 
-from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)

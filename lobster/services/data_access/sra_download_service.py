@@ -46,9 +46,9 @@ import pandas as pd
 import requests
 import scipy.sparse as sp
 
-from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.tools.providers.sra_provider import SRAProvider
 from lobster.utils.logger import get_logger

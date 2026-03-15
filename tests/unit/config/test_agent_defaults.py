@@ -21,7 +21,6 @@ from lobster.config.agent_defaults import (
     get_current_profile,
 )
 
-
 # =============================================================================
 # get_agent_params tests
 # =============================================================================
@@ -57,14 +56,20 @@ class TestGetAgentParams:
         with patch.dict(os.environ, {"LOBSTER_SUPERVISOR_THINKING": "light"}):
             params = get_agent_params("supervisor")
         assert "additional_model_request_fields" in params
-        assert params["additional_model_request_fields"]["thinking"]["budget_tokens"] == 1000
+        assert (
+            params["additional_model_request_fields"]["thinking"]["budget_tokens"]
+            == 1000
+        )
 
     def test_global_thinking_override_applies(self):
         """LOBSTER_GLOBAL_THINKING applies thinking preset to all agents."""
         with patch.dict(os.environ, {"LOBSTER_GLOBAL_THINKING": "extended"}):
             params = get_agent_params("any_agent")
         assert "additional_model_request_fields" in params
-        assert params["additional_model_request_fields"]["thinking"]["budget_tokens"] == 5000
+        assert (
+            params["additional_model_request_fields"]["thinking"]["budget_tokens"]
+            == 5000
+        )
 
     def test_disabled_thinking_preset_produces_no_key(self):
         """When no thinking env var is set the returned dict has no additional_model_request_fields."""
@@ -182,9 +187,9 @@ class TestThinkingPresetsAgentDefaults:
             "deep": 10000,
         }
         for name, expected_budget in expected.items():
-            assert THINKING_PRESETS[name].budget_tokens == expected_budget, (
-                f"Preset '{name}' has wrong budget_tokens"
-            )
+            assert (
+                THINKING_PRESETS[name].budget_tokens == expected_budget
+            ), f"Preset '{name}' has wrong budget_tokens"
 
     def test_disabled_preset_is_not_enabled(self):
         """The 'disabled' preset must have enabled=False."""
@@ -194,13 +199,13 @@ class TestThinkingPresetsAgentDefaults:
         """All presets except 'disabled' must have enabled=True."""
         for name, preset in THINKING_PRESETS.items():
             if name != "disabled":
-                assert preset.enabled is True, (
-                    f"Preset '{name}' should be enabled but is not"
-                )
+                assert (
+                    preset.enabled is True
+                ), f"Preset '{name}' should be enabled but is not"
 
     def test_all_values_are_thinking_config_instances(self):
         """Every value in THINKING_PRESETS must be a ThinkingConfig."""
         for name, value in THINKING_PRESETS.items():
-            assert isinstance(value, ThinkingConfig), (
-                f"THINKING_PRESETS['{name}'] is not a ThinkingConfig"
-            )
+            assert isinstance(
+                value, ThinkingConfig
+            ), f"THINKING_PRESETS['{name}'] is not a ThinkingConfig"

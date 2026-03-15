@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import lobster.cli_internal.commands.heavy.slash_commands as slash_commands
 from lobster.cli_internal.commands.output_adapter import (
     ProtocolOutputAdapter,
     kv_block,
@@ -14,13 +15,15 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
     table_block,
 )
-import lobster.cli_internal.commands.heavy.slash_commands as slash_commands
-
 
 pytestmark = pytest.mark.integration
 
 _GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden" / "slash_commands"
-_UPDATE_GOLDENS = os.getenv("LOBSTER_UPDATE_GOLDENS", "").lower() in {"1", "true", "yes"}
+_UPDATE_GOLDENS = os.getenv("LOBSTER_UPDATE_GOLDENS", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 class _DummyDataManager:
@@ -62,7 +65,9 @@ class _DummyDataManager:
             encoding="utf-8",
         )
         (workspace_path / "data" / "geo_gse12345_rna.h5ad").write_bytes(b"H5AD")
-        (workspace_path / "data" / "geo_gse67890_atac_clustered.h5ad").write_bytes(b"H5AD")
+        (workspace_path / "data" / "geo_gse67890_atac_clustered.h5ad").write_bytes(
+            b"H5AD"
+        )
         self.modalities = {
             "rna": self._make_modality(
                 n_obs=1024,
@@ -95,7 +100,9 @@ class _DummyDataManager:
                 "size_mb": 8.3,
                 "shape": (512, 1024),
                 "modified": "2026-02-20T08:30:00",
-                "path": str(workspace_path / "data" / "geo_gse67890_atac_clustered.h5ad"),
+                "path": str(
+                    workspace_path / "data" / "geo_gse67890_atac_clustered.h5ad"
+                ),
                 "type": "h5ad",
             },
         }
@@ -170,7 +177,9 @@ class _DummyDataManager:
                     "name": "analysis_summary.csv",
                     "size": 3_072,
                     "modified": 1_709_199_000,
-                    "path": str(self.workspace_path / "exports" / "analysis_summary.csv"),
+                    "path": str(
+                        self.workspace_path / "exports" / "analysis_summary.csv"
+                    ),
                 }
             ],
         }
@@ -229,7 +238,9 @@ class _DummyDataManager:
                 "created_at": "2026-03-01T12:00:00",
                 "n_steps": 7,
                 "size_kb": 43.2,
-                "path": str(self.workspace_path / "notebooks" / "rna_qc_workflow.ipynb"),
+                "path": str(
+                    self.workspace_path / "notebooks" / "rna_qc_workflow.ipynb"
+                ),
             },
             {
                 "name": "ATAC Cluster Analysis",
@@ -238,7 +249,9 @@ class _DummyDataManager:
                 "created_at": "2026-03-02T09:15:00",
                 "n_steps": 5,
                 "size_kb": 27.8,
-                "path": str(self.workspace_path / "notebooks" / "atac_cluster_analysis.ipynb"),
+                "path": str(
+                    self.workspace_path / "notebooks" / "atac_cluster_analysis.ipynb"
+                ),
             },
         ]
 
@@ -251,7 +264,9 @@ class _DummyDataManager:
         )
         return path
 
-    def run_notebook(self, notebook_name: str, input_modality: str, dry_run: bool = False):
+    def run_notebook(
+        self, notebook_name: str, input_modality: str, dry_run: bool = False
+    ):
         _ = input_modality
         if dry_run:
             return {
@@ -417,7 +432,17 @@ class _DummyClient:
 
     def detect_file_type(self, file_path: Path):
         suffix = file_path.suffix.lower()
-        if suffix in {".txt", ".md", ".py", ".json", ".yaml", ".yml", ".csv", ".tsv", ".log"}:
+        if suffix in {
+            ".txt",
+            ".md",
+            ".py",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".csv",
+            ".tsv",
+            ".log",
+        }:
             return {"description": "Text file", "category": "text", "binary": False}
         if suffix == ".h5ad":
             return {
@@ -606,11 +631,11 @@ def _apply_deterministic_family_mocks(monkeypatch):
                 {"op": "remove", "modality": modality_name},
             )
 
-    import lobster.config.llm_factory as llm_factory
     import lobster.config.agent_defaults as agent_defaults
+    import lobster.config.llm_factory as llm_factory
     import lobster.config.providers as providers
-    import lobster.services.metadata.metadata_overview_service as metadata_overview_service
     import lobster.services.data_management.modality_management_service as modality_management_service
+    import lobster.services.metadata.metadata_overview_service as metadata_overview_service
     import lobster.utils as lobster_utils
 
     monkeypatch.setattr(agent_defaults, "get_current_profile", lambda: "semantic")
@@ -752,14 +777,18 @@ def _apply_config_show_mocks(
     monkeypatch.setattr(global_config, "CONFIG_DIR", global_config_dir)
     monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
     monkeypatch.setattr(settings, "get_settings", lambda: _FakeSettings())
-    monkeypatch.setattr(providers, "get_provider", lambda provider_name: _FakeProvider())
+    monkeypatch.setattr(
+        providers, "get_provider", lambda provider_name: _FakeProvider()
+    )
     monkeypatch.setattr(
         workspace_config.WorkspaceProviderConfig,
         "exists",
         staticmethod(lambda path: Path(path) == workspace_path),
     )
     monkeypatch.setattr(license_manager, "get_current_tier", lambda: "free")
-    monkeypatch.setattr(subscription_tiers, "is_agent_available", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        subscription_tiers, "is_agent_available", lambda *_args, **_kwargs: True
+    )
     monkeypatch.setattr(
         agent_registry,
         "AGENT_REGISTRY",
@@ -774,7 +803,9 @@ def _apply_config_show_mocks(
             ),
         },
     )
-    monkeypatch.setattr(agent_registry, "get_valid_handoffs", lambda: {"supervisor": set()})
+    monkeypatch.setattr(
+        agent_registry, "get_valid_handoffs", lambda: {"supervisor": set()}
+    )
     monkeypatch.setattr(
         component_registry.component_registry,
         "list_agents",
@@ -855,7 +886,9 @@ def _apply_config_model_mocks(
     import lobster.core.config_resolver as config_resolver
 
     monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
-    monkeypatch.setattr(providers, "get_provider", lambda _provider_name: _FakeProvider())
+    monkeypatch.setattr(
+        providers, "get_provider", lambda _provider_name: _FakeProvider()
+    )
 
 
 @pytest.mark.parametrize(
@@ -959,7 +992,9 @@ def test_slash_command_protocol_golden_transcripts(
         client.provider_override = None
         client.model_override = None
     events = []
-    output = ProtocolOutputAdapter(lambda msg_type, payload: events.append({"type": msg_type, "payload": payload}))
+    output = ProtocolOutputAdapter(
+        lambda msg_type, payload: events.append({"type": msg_type, "payload": payload})
+    )
 
     summary = slash_commands._execute_command(
         command,
@@ -973,7 +1008,9 @@ def test_slash_command_protocol_golden_transcripts(
 
     if _UPDATE_GOLDENS:
         golden_path.parent.mkdir(parents=True, exist_ok=True)
-        golden_path.write_text(json.dumps(actual, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        golden_path.write_text(
+            json.dumps(actual, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         pytest.skip(f"updated golden file: {golden_path}")
 
     expected = json.loads(golden_path.read_text(encoding="utf-8"))

@@ -31,9 +31,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import anndata as ad
 
-from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.services.data_access.geo.constants import GEOServiceError
 from lobster.services.data_access.geo_service import GEOService

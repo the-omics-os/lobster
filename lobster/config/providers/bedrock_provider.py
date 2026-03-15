@@ -216,9 +216,9 @@ class BedrockProvider(ILLMProvider):
         aws_access_key = kwargs.pop("aws_access_key_id", None) or os.environ.get(
             "AWS_BEDROCK_ACCESS_KEY"
         )
-        aws_secret_key = kwargs.pop(
-            "aws_secret_access_key", None
-        ) or os.environ.get("AWS_BEDROCK_SECRET_ACCESS_KEY")
+        aws_secret_key = kwargs.pop("aws_secret_access_key", None) or os.environ.get(
+            "AWS_BEDROCK_SECRET_ACCESS_KEY"
+        )
 
         if not (aws_access_key and aws_secret_key):
             raise ValueError(

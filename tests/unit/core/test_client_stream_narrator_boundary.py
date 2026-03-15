@@ -30,10 +30,10 @@ from lobster.core.client import (
 )
 from lobster.ui.callbacks.protocol_callback import ProtocolCallbackHandler
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_client(tmp_path, stream_events):
     """Build an AgentClient wired to yield *stream_events* from graph.stream."""
@@ -126,7 +126,9 @@ def _handoff_chunk(target: str, namespace: tuple = ()) -> tuple:
     chunk = AIMessageChunk(
         content="",
         id="handoff-tc",
-        tool_call_chunks=[{"name": f"handoff_to_{target}", "args": "{}", "id": "tc-h", "index": 0}],
+        tool_call_chunks=[
+            {"name": f"handoff_to_{target}", "args": "{}", "id": "tc-h", "index": 0}
+        ],
     )
     metadata = {"langgraph_node": "agent"}
     return (namespace, "messages", (chunk, metadata))
@@ -160,6 +162,7 @@ def _events_of_type(events, event_type):
 # TestClassifyStreamSource — namespace-based source classification
 # ===========================================================================
 
+
 class TestSpeakerDetection:
     """_detect_speaker_transition and _classify_stream_source work together
     to determine which agent owns a stream event."""
@@ -169,14 +172,28 @@ class TestSpeakerDetection:
     def test_handoff_detected(self):
         chunk = AIMessageChunk(
             content="",
-            tool_call_chunks=[{"name": "handoff_to_research_agent", "args": "{}", "id": "t1", "index": 0}],
+            tool_call_chunks=[
+                {
+                    "name": "handoff_to_research_agent",
+                    "args": "{}",
+                    "id": "t1",
+                    "index": 0,
+                }
+            ],
         )
         assert _detect_speaker_transition(chunk) == "research_agent"
 
     def test_transfer_back_detected(self):
         chunk = AIMessageChunk(
             content="",
-            tool_call_chunks=[{"name": "transfer_back_to_supervisor", "args": "{}", "id": "t1", "index": 0}],
+            tool_call_chunks=[
+                {
+                    "name": "transfer_back_to_supervisor",
+                    "args": "{}",
+                    "id": "t1",
+                    "index": 0,
+                }
+            ],
         )
         assert _detect_speaker_transition(chunk) == "supervisor"
 
@@ -214,8 +231,12 @@ class TestSpeakerDetection:
 
     def test_two_segment_supervisor_prefix_is_subagent(self):
         """Sub-agent inside supervisor's tool call has 2+ segments."""
-        assert _is_main_agent_namespace(("supervisor:abc", "research_agent:def")) is False
-        assert _is_main_agent_namespace(["supervisor:abc", "research_agent:def"]) is False
+        assert (
+            _is_main_agent_namespace(("supervisor:abc", "research_agent:def")) is False
+        )
+        assert (
+            _is_main_agent_namespace(["supervisor:abc", "research_agent:def"]) is False
+        )
 
     def test_non_supervisor_single_segment_is_subagent(self):
         """A single segment that doesn't start with 'supervisor' is a sub-agent."""
@@ -226,6 +247,7 @@ class TestSpeakerDetection:
 # ===========================================================================
 # TestSingleSpeakerPolicy — only supervisor content reaches the user
 # ===========================================================================
+
 
 class TestSingleSpeakerPolicy:
     """The stream contract: only the supervisor's AIMessage content is emitted
@@ -268,8 +290,18 @@ class TestSingleSpeakerPolicy:
             # 2. Supervisor emits handoff tool call
             _handoff_chunk("research_agent", namespace=()),
             # 3. Sub-agent reasoning — non-empty namespace (subgraph)
-            _ai_chunk('{"modality": "scrna_10x"}', "agent", "ra-1", namespace=("supervisor", "research_agent")),
-            _ai_chunk("Let me check another dataset", "agent", "ra-2", namespace=("supervisor", "research_agent")),
+            _ai_chunk(
+                '{"modality": "scrna_10x"}',
+                "agent",
+                "ra-1",
+                namespace=("supervisor", "research_agent"),
+            ),
+            _ai_chunk(
+                "Let me check another dataset",
+                "agent",
+                "ra-2",
+                namespace=("supervisor", "research_agent"),
+            ),
             # 4. Handoff tool returns — ToolMessage back in main namespace
             _handoff_tool_response("tc-h", namespace=()),
             # 5. Supervisor synthesis — empty namespace again
@@ -294,7 +326,12 @@ class TestSingleSpeakerPolicy:
         """Sub-agent transitions emit agent_change events for the activity lane."""
         events_in = [
             _handoff_chunk("research_agent", namespace=()),
-            _ai_chunk("thinking...", "agent", "ra-1", namespace=("supervisor", "research_agent")),
+            _ai_chunk(
+                "thinking...",
+                "agent",
+                "ra-1",
+                namespace=("supervisor", "research_agent"),
+            ),
         ]
         client = _make_client(tmp_path, events_in)
         events = _collect_events(client)
@@ -353,7 +390,8 @@ class TestSingleSpeakerPolicy:
             # Supervisor intro — single-segment supervisor namespace
             _ai_chunk(
                 "I'll help you analyze.",
-                "agent", "sup-1",
+                "agent",
+                "sup-1",
                 namespace=("supervisor:abc123",),
             ),
             # Supervisor handoff tool call
@@ -361,17 +399,20 @@ class TestSingleSpeakerPolicy:
             # Sub-agent — two-segment namespace
             _ai_chunk(
                 "searching databases...",
-                "agent", "ra-1",
+                "agent",
+                "ra-1",
                 namespace=("supervisor:abc123", "research_agent:def456"),
             ),
             # Handoff tool returns
             _handoff_tool_response(
-                "tc-h", namespace=("supervisor:abc123",),
+                "tc-h",
+                namespace=("supervisor:abc123",),
             ),
             # Supervisor synthesis — still single-segment supervisor namespace
             _ai_chunk(
                 "Found 3 datasets.",
-                "agent", "sup-2",
+                "agent",
+                "sup-2",
                 namespace=("supervisor:abc123",),
             ),
         ]
@@ -398,6 +439,7 @@ class TestSingleSpeakerPolicy:
 # ===========================================================================
 # TestStreamingDedup — message replay suppression
 # ===========================================================================
+
 
 class TestStreamingDedup:
     """LangGraph with subgraphs=True re-emits complete messages at the parent
@@ -429,14 +471,16 @@ class TestStreamingDedup:
 
         deltas = _events_of_type(events, "content_delta")
         texts = [d["delta"] for d in deltas]
-        assert texts == ["Hello", " world"], (
-            f"ID-less replay was not deduplicated: {texts}"
-        )
+        assert texts == [
+            "Hello",
+            " world",
+        ], f"ID-less replay was not deduplicated: {texts}"
 
 
 # ===========================================================================
 # TestUnknownToolSuppression — "unknown_tool" must not reach operators
 # ===========================================================================
+
 
 class TestUnknownToolSuppression:
     """The ProtocolCallbackHandler defaults tool_name to 'unknown_tool' when
@@ -453,12 +497,13 @@ class TestUnknownToolSuppression:
         handler.on_tool_start(serialized={}, input_str="some input")
 
         tool_events = [
-            (t, p) for t, p in emitted
+            (t, p)
+            for t, p in emitted
             if t == "tool_execution" and p.get("tool") == "unknown_tool"
         ]
-        assert len(tool_events) == 0, (
-            f"'unknown_tool' event was emitted to operators: {tool_events}"
-        )
+        assert (
+            len(tool_events) == 0
+        ), f"'unknown_tool' event was emitted to operators: {tool_events}"
 
     def test_unknown_tool_end_suppressed(self):
         emitted = []
@@ -470,12 +515,13 @@ class TestUnknownToolSuppression:
         handler.on_tool_end(output="some output")
 
         tool_events = [
-            (t, p) for t, p in emitted
+            (t, p)
+            for t, p in emitted
             if t == "tool_execution" and p.get("tool") == "unknown_tool"
         ]
-        assert len(tool_events) == 0, (
-            f"'unknown_tool' event was emitted on tool_end: {tool_events}"
-        )
+        assert (
+            len(tool_events) == 0
+        ), f"'unknown_tool' event was emitted on tool_end: {tool_events}"
 
     def test_real_tool_still_emitted(self):
         emitted = []
@@ -490,9 +536,7 @@ class TestUnknownToolSuppression:
         )
         handler.on_tool_end(output="3 results found")
 
-        tool_events = [
-            p for t, p in emitted if t == "tool_execution"
-        ]
+        tool_events = [p for t, p in emitted if t == "tool_execution"]
         assert len(tool_events) == 2
         assert tool_events[0]["tool"] == "search_pubmed"
         assert tool_events[0]["status"] == "running"
@@ -539,6 +583,7 @@ class TestUnknownToolSuppression:
 # ===========================================================================
 # TestProtocolCallbackTransitions — task/activity semantics stay explicit
 # ===========================================================================
+
 
 class TestProtocolCallbackTransitions:
     def test_handoff_emits_task_transition_with_extracted_description(self):
@@ -622,6 +667,7 @@ class TestProtocolCallbackTransitions:
 # ===========================================================================
 # TestEndNodeFiltered — __end__ node never emits content
 # ===========================================================================
+
 
 class TestEndNodeFiltered:
     """The __end__ sentinel node must be silently dropped."""

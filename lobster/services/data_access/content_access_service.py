@@ -24,8 +24,8 @@ import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.services.data_access.docling_service import DoclingService
 from lobster.tools.providers.abstract_provider import AbstractProvider
 from lobster.tools.providers.base_provider import DatasetType, PublicationMetadata

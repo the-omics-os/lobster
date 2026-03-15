@@ -75,7 +75,9 @@ def _find_existing_configs(
     home = Path(os.path.abspath(home))
 
     found = []
-    seen = set()  # guard against revisiting the same workspace (e.g. via future symlink resolution)
+    seen = (
+        set()
+    )  # guard against revisiting the same workspace (e.g. via future symlink resolution)
 
     current = start
     while True:
@@ -337,15 +339,21 @@ class ConfigResolver:
             lines.append("  # Then re-run your command from any directory")
             lines.append("")
             lines.append("Or make it the global default (works everywhere):")
-            lines.append("  lobster init --global        # Configure once, use anywhere")
+            lines.append(
+                "  lobster init --global        # Configure once, use anywhere"
+            )
             lines.append("")
             lines.append("Or configure this directory:")
-            lines.append("  lobster init                 # Configure current directory only")
+            lines.append(
+                "  lobster init                 # Configure current directory only"
+            )
         else:
             lines.append("")
             # Global-first when no global config — most useful for tool-installed lobster
             if not global_config_exists:
-                lines.append("Quick Setup (recommended \u2014 works from any directory):")
+                lines.append(
+                    "Quick Setup (recommended \u2014 works from any directory):"
+                )
                 lines.append(
                     "  lobster init --global        # Set global defaults for all workspaces"
                 )

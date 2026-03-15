@@ -181,8 +181,8 @@ def resolve_context_window(
     # Check config-level context window overrides (highest priority)
     if model_id:
         try:
-            from lobster.config.workspace_config import WorkspaceProviderConfig
             from lobster.config.global_config import GlobalProviderConfig
+            from lobster.config.workspace_config import WorkspaceProviderConfig
 
             # Workspace override (highest priority)
             if workspace_path:
@@ -208,7 +208,9 @@ def resolve_context_window(
             if model_info and model_info.context_window:
                 return model_info.context_window
     except Exception as e:
-        logger.warning(f"Could not resolve context window for {provider_name}/{model_id}: {e}")
+        logger.warning(
+            f"Could not resolve context window for {provider_name}/{model_id}: {e}"
+        )
     return None
 
 

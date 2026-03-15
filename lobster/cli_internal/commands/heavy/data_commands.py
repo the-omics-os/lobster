@@ -175,7 +175,9 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
                 memory = _compact_memory_label(mod_info.get("memory_usage", "N/A"))
                 sparse = "✓" if mod_info.get("is_sparse") else "✗"
 
-                modalities_table_data["rows"].append([display_name, shape_str, memory, sparse])
+                modalities_table_data["rows"].append(
+                    [display_name, shape_str, memory, sparse]
+                )
             else:
                 # Handle error case
                 error_msg = (

@@ -4,12 +4,12 @@ Tests MatrixParser methods in isolation via mocked service.
 Part of Phase 4 Plan 03: GEO Service Decomposition.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from lobster.services.data_access.geo.matrix_parsing import MatrixParser
 
@@ -86,7 +86,9 @@ class TestIsValidExpressionMatrix:
 class TestDetermineDataTypeFromMetadata:
     """Test _determine_data_type_from_metadata classification."""
 
-    @patch("lobster.services.data_access.geo.matrix_parsing.MatrixParser._determine_data_type_from_metadata")
+    @patch(
+        "lobster.services.data_access.geo.matrix_parsing.MatrixParser._determine_data_type_from_metadata"
+    )
     def test_delegates_to_data_type_detector(self, mock_method, parser):
         """Should delegate to DataTypeDetector for classification."""
         mock_method.return_value = "single_cell_rna_seq"

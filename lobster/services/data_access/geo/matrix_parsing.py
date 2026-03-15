@@ -207,7 +207,9 @@ class MatrixParser:
                         f"Using expression table for non-single-cell sample {gsm_id}"
                     )
                     matrix = gsm.table
-                    return self.service._store_single_sample_as_modality(gsm_id, matrix, gsm)
+                    return self.service._store_single_sample_as_modality(
+                        gsm_id, matrix, gsm
+                    )
             else:
                 logger.error(
                     f"Single-cell sample {gsm_id} failed to download 10X/H5 files. "
@@ -311,7 +313,9 @@ class MatrixParser:
                     re.compile(r".*-barcode.*\.(tsv|txt|csv)(\.gz)?$", re.IGNORECASE),
                     re.compile(r".*\.barcode.*\.(tsv|txt|csv)(\.gz)?$", re.IGNORECASE),
                     re.compile(r".*barcode.*\.(tsv|txt|csv)(\.gz)?$", re.IGNORECASE),
-                    re.compile(r".*(cell|bc).*id.*\.(tsv|txt|csv)(\.gz)?$", re.IGNORECASE),
+                    re.compile(
+                        r".*(cell|bc).*id.*\.(tsv|txt|csv)(\.gz)?$", re.IGNORECASE
+                    ),
                 ],
                 "base_score": 1.0,
                 "boost_keywords": ["cell", "10x", "chromium", "droplet"],
@@ -519,7 +523,9 @@ class MatrixParser:
         self, temp_dir: Path, features_format: str, gse_id: str
     ) -> anndata.AnnData:
         """Manually load 10X MTX when features file is non-standard."""
-        return self.service.tenx_loader.load_10x_manual(temp_dir, features_format, gse_id)
+        return self.service.tenx_loader.load_10x_manual(
+            temp_dir, features_format, gse_id
+        )
 
     def _validate_matrices(
         self,
@@ -834,7 +840,11 @@ class MatrixParser:
                 logger.info(f"Using cached expression file: {local_path}")
 
             parse_result = self.service.geo_parser.parse_supplementary_file(local_path)
-            matrix = parse_result.data if isinstance(parse_result, ParseResult) else parse_result
+            matrix = (
+                parse_result.data
+                if isinstance(parse_result, ParseResult)
+                else parse_result
+            )
             if isinstance(parse_result, ParseResult) and parse_result.is_partial:
                 logger.warning(
                     f"Partial parse result for {gsm_id}: {parse_result.truncation_reason} "

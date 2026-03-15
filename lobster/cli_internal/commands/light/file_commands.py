@@ -37,7 +37,9 @@ _MAX_TEXT_PREVIEW_CHARS = 20_000
 
 def build_read_usage_blocks() -> list[OutputBlock]:
     return [
-        section_block(body="/read views file contents without loading data into memory."),
+        section_block(
+            body="/read views file contents without loading data into memory."
+        ),
         section_block(body="Usage: /read <filename>"),
         hint_block("Examples: /read my_data.h5ad, /read config.yaml, /read data/*.csv"),
         hint_block("To load data for analysis, use /workspace load <name>."),
@@ -226,7 +228,9 @@ def file_read(
 
                     blocks.extend(
                         [
-                            section_block(body=f"{match_file.name} ({len(lines)} lines)"),
+                            section_block(
+                                body=f"{match_file.name} ({len(lines)} lines)"
+                            ),
                             code_block(content, language=language),
                         ]
                     )
@@ -239,9 +243,7 @@ def file_read(
                         )
                     )
             else:
-                blocks.append(
-                    hint_block(f"{match_file.name} (binary file - skipped)")
-                )
+                blocks.append(hint_block(f"{match_file.name} (binary file - skipped)"))
 
         if total_count > 10:
             blocks.append(
@@ -411,7 +413,9 @@ def file_read(
         elif file_category == "archive":
             output.render_blocks(
                 [
-                    section_block(body=f"This is an archive file ({file_description})."),
+                    section_block(
+                        body=f"This is an archive file ({file_description})."
+                    ),
                     hint_block(f"To extract and load it: /workspace load {filename}"),
                 ]
             )

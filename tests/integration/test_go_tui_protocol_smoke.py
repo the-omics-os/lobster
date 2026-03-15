@@ -4,7 +4,6 @@ import pytest
 
 from lobster.cli_internal import go_tui_launcher
 
-
 pytestmark = pytest.mark.integration
 
 

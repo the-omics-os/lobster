@@ -154,7 +154,10 @@ _extraction_cache_checked = False
 
 def _get_extraction_cache_manager():
     """Lazy loader for ExtractionCacheManager (premium feature)."""
-    from lobster.cli_internal.commands.heavy.session_infra import _get_extraction_cache_manager as _impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _get_extraction_cache_manager as _impl,
+    )
+
     return _impl()
 
 
@@ -162,15 +165,25 @@ def _add_command_to_history(
     client: "AgentClient", command: str, summary: str, is_error: bool = False
 ) -> bool:
     """Add command execution to conversation history for AI context."""
-    from lobster.cli_internal.commands.heavy.session_infra import _add_command_to_history as _impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _add_command_to_history as _impl,
+    )
+
     return _impl(client, command, summary, is_error)
 
 
 def _backup_command_to_file(
-    client: "AgentClient", command: str, summary: str, is_error: bool, primary_logged: bool,
+    client: "AgentClient",
+    command: str,
+    summary: str,
+    is_error: bool,
+    primary_logged: bool,
 ) -> bool:
     """Write command to backup file for audit trail and recovery."""
-    from lobster.cli_internal.commands.heavy.session_infra import _backup_command_to_file as _impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _backup_command_to_file as _impl,
+    )
+
     return _impl(client, command, summary, is_error, primary_logged)
 
 
@@ -221,11 +234,21 @@ _COMMAND_HISTORY_LOCK = threading.Lock()
 
 class NoOpProgress:
     """No-operation progress context manager for verbose/reasoning modes."""
-    def __enter__(self): return self
-    def __exit__(self, *a): pass
-    def add_task(self, *a, **kw): return None
-    def update(self, *a, **kw): pass
-    def remove_task(self, *a, **kw): pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+    def add_task(self, *a, **kw):
+        return None
+
+    def update(self, *a, **kw):
+        pass
+
+    def remove_task(self, *a, **kw):
+        pass
 
 
 class CommandClient:
@@ -311,15 +334,18 @@ def check_for_missing_slash_command(user_input: str) -> Optional[str]:
 
 
 def extract_available_commands() -> Dict[str, str]:
-    from lobster.cli_internal.commands.heavy.slash_commands import extract_available_commands as _impl
-    return _impl()
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        extract_available_commands as _impl,
+    )
 
+    return _impl()
 
 
 def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
     from lobster.cli_internal.commands.heavy.slash_commands import change_mode as _impl
+
     return _impl(new_mode, current_client)
-    
+
 
 # =============================================================================
 # Available Agent Packages (static registry for init flow)
@@ -441,23 +467,33 @@ PROFILE_TIMINGS_ENV = "LOBSTER_PROFILE_TIMINGS"
 
 def _str_to_bool(value: Optional[str]) -> Optional[bool]:
     from lobster.cli_internal.commands.heavy.session_infra import _str_to_bool as _impl
+
     return _impl(value)
 
 
 def _resolve_profile_timings_flag(cli_flag: Optional[bool]) -> bool:
-    from lobster.cli_internal.commands.heavy.session_infra import _resolve_profile_timings_flag as _impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _resolve_profile_timings_flag as _impl,
+    )
+
     return _impl(cli_flag)
 
 
 def _collect_profile_timings(
     client: "AgentClient", clear: bool = True
 ) -> Dict[str, Dict[str, float]]:
-    from lobster.cli_internal.commands.heavy.session_infra import _collect_profile_timings as _impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _collect_profile_timings as _impl,
+    )
+
     return _impl(client, clear)
 
 
 def _maybe_print_timings(client: "AgentClient", context: str) -> None:
-    from lobster.cli_internal.commands.heavy.session_infra import _maybe_print_timings as _impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        _maybe_print_timings as _impl,
+    )
+
     _impl(client, context)
 
 
@@ -472,28 +508,38 @@ def init_client(
     session_id: Optional[str] = None,
 ) -> "AgentClient":
     """Initialize either local or cloud client based on environment."""
-    from lobster.cli_internal.commands.heavy.session_infra import init_client as _init_client_impl
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        init_client as _init_client_impl,
+    )
 
     global client
     client = _init_client_impl(
-        workspace, reasoning, verbose, debug, profile_timings,
-        provider_override, model_override, session_id,
+        workspace,
+        reasoning,
+        verbose,
+        debug,
+        profile_timings,
+        provider_override,
+        model_override,
+        session_id,
     )
     return client
 
 
-
-
 def get_user_input_with_editing(prompt_text: str, client=None) -> str:
-    from lobster.cli_internal.commands.heavy.slash_commands import get_user_input_with_editing as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        get_user_input_with_editing as _impl,
+    )
+
     return _impl(prompt_text, client)
 
 
-
 def execute_shell_command(command: str) -> bool:
-    from lobster.cli_internal.commands.heavy.slash_commands import execute_shell_command as _impl
-    return _impl(command)
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        execute_shell_command as _impl,
+    )
 
+    return _impl(command)
 
 
 def get_current_agent_name() -> str:
@@ -525,13 +571,17 @@ def get_current_agent_name() -> str:
 
 def _dna_helix_animation(width: int, duration: float = 0.7):
     """DNA sequence animation with colorful bases."""
-    from lobster.cli_internal.commands.heavy.animations import _dna_helix_animation as _impl
+    from lobster.cli_internal.commands.heavy.animations import (
+        _dna_helix_animation as _impl,
+    )
+
     _impl(width, duration)
 
 
 def display_welcome():
     """Display DNA sequence animation as bioinformatics-themed startup visualization."""
     from lobster.cli_internal.commands.heavy.animations import display_welcome as _impl
+
     _impl()
 
 
@@ -539,31 +589,43 @@ def _dna_agent_loading_phase(
     width: int, agent_names: List[str], ready_queue=None, timeout: float = 10.0
 ):
     """DNA-themed agent loading animation showing real-time progress."""
-    from lobster.cli_internal.commands.heavy.animations import _dna_agent_loading_phase as _impl
+    from lobster.cli_internal.commands.heavy.animations import (
+        _dna_agent_loading_phase as _impl,
+    )
+
     _impl(width, agent_names, ready_queue, timeout)
 
 
 def _dna_exit_animation(width: int, duration: float = 0.5):
     """DNA exit animation - reverse of startup animation."""
-    from lobster.cli_internal.commands.heavy.animations import _dna_exit_animation as _impl
+    from lobster.cli_internal.commands.heavy.animations import (
+        _dna_exit_animation as _impl,
+    )
+
     _impl(width, duration)
 
 
 def display_goodbye():
     """Display DNA exit animation as bioinformatics-themed farewell visualization."""
     from lobster.cli_internal.commands.heavy.animations import display_goodbye as _impl
+
     _impl()
 
 
 def show_default_help():
-    from lobster.cli_internal.commands.heavy.slash_commands import show_default_help as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        show_default_help as _impl,
+    )
+
     _impl()
 
 
 def _show_workspace_prompt(client):
-    from lobster.cli_internal.commands.heavy.slash_commands import _show_workspace_prompt as _impl
-    _impl(client)
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        _show_workspace_prompt as _impl,
+    )
 
+    _impl(client)
 
 
 def init_client_with_animation(
@@ -577,9 +639,20 @@ def init_client_with_animation(
     session_id: Optional[str] = None,
 ) -> "AgentClient":
     """Initialize client. Fast startup thanks to lazy imports."""
-    from lobster.cli_internal.commands.heavy.session_infra import init_client_with_animation as _impl
-    return _impl(workspace, reasoning, verbose, debug, profile_timings,
-                 provider_override, model_override, session_id)
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        init_client_with_animation as _impl,
+    )
+
+    return _impl(
+        workspace,
+        reasoning,
+        verbose,
+        debug,
+        profile_timings,
+        provider_override,
+        model_override,
+        session_id,
+    )
 
 
 @app.command()
@@ -593,6 +666,7 @@ def config_test(
 ):
     """Test API connectivity and validate configuration."""
     from lobster.cli_internal.commands.light.config_commands import config_test_impl
+
     config_test_impl(output_json=output_json)
 
 
@@ -642,9 +716,10 @@ def metadata_command(
       lobster metadata exports                   # Export files
     """
     from lobster.cli_internal.commands.heavy.slash_commands import metadata_command_impl
-    metadata_command_impl(subcommand=subcommand, workspace=workspace, status_filter=status_filter)
 
-
+    metadata_command_impl(
+        subcommand=subcommand, workspace=workspace, status_filter=status_filter
+    )
 
 
 @app.command()
@@ -669,9 +744,8 @@ def activate(
       lobster activate ABC123-XYZ789 --server https://custom.server.com
     """
     from lobster.cli_internal.commands.heavy.slash_commands import activate_impl
+
     activate_impl(access_code=access_code, server_url=server_url)
-
-
 
 
 @app.command()
@@ -683,9 +757,8 @@ def deactivate():
     Your license can be re-activated on another machine or re-used later.
     """
     from lobster.cli_internal.commands.heavy.slash_commands import deactivate_impl
+
     deactivate_impl()
-
-
 
 
 @app.command()
@@ -779,7 +852,6 @@ def purge(
         raise typer.Exit(1)
 
 
-
 @app.command()
 def init(
     global_config: bool = typer.Option(
@@ -838,7 +910,9 @@ def init(
         None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
     ),
     azure_credential: Optional[str] = typer.Option(
-        None, "--azure-credential", help="Azure AI API credential (non-interactive mode)"
+        None,
+        "--azure-credential",
+        help="Azure AI API credential (non-interactive mode)",
     ),
     profile: Optional[str] = typer.Option(
         None,
@@ -972,34 +1046,59 @@ def init(
         --azure-credential=xxx                       # CI/CD: Azure AI
     """
     from lobster.cli_internal.commands.heavy.init_commands import init_impl
+
     init_impl(
-        global_config=global_config, force=force, non_interactive=non_interactive,
-        anthropic_key=anthropic_key, bedrock_access_key=bedrock_access_key,
-        bedrock_secret_key=bedrock_secret_key, use_ollama=use_ollama,
-        ollama_model=ollama_model, model=model,
-        gemini_key=gemini_key, openai_key=openai_key,
-        openrouter_key=openrouter_key, azure_endpoint=azure_endpoint,
+        global_config=global_config,
+        force=force,
+        non_interactive=non_interactive,
+        anthropic_key=anthropic_key,
+        bedrock_access_key=bedrock_access_key,
+        bedrock_secret_key=bedrock_secret_key,
+        use_ollama=use_ollama,
+        ollama_model=ollama_model,
+        model=model,
+        gemini_key=gemini_key,
+        openai_key=openai_key,
+        openrouter_key=openrouter_key,
+        azure_endpoint=azure_endpoint,
         azure_credential=azure_credential,
-        profile=profile, ncbi_key=ncbi_key, cloud_key=cloud_key,
-        cloud_endpoint=cloud_endpoint, skip_ssl_test=skip_ssl_test,
-        ssl_verify=ssl_verify, ssl_cert_path=ssl_cert_path, agents=agents,
-        preset=preset, auto_agents=auto_agents, agents_description=agents_description,
-        skip_docling=skip_docling, install_docling=install_docling,
-        install_vector_search=install_vector_search, skip_extras=skip_extras,
+        profile=profile,
+        ncbi_key=ncbi_key,
+        cloud_key=cloud_key,
+        cloud_endpoint=cloud_endpoint,
+        skip_ssl_test=skip_ssl_test,
+        ssl_verify=ssl_verify,
+        ssl_cert_path=ssl_cert_path,
+        agents=agents,
+        preset=preset,
+        auto_agents=auto_agents,
+        agents_description=agents_description,
+        skip_docling=skip_docling,
+        install_docling=install_docling,
+        install_vector_search=install_vector_search,
+        skip_extras=skip_extras,
         ui_mode=ui_mode,
     )
 
 
-def _display_streaming_response(client, user_input: str, console: Console) -> Dict[str, Any]:
+def _display_streaming_response(
+    client, user_input: str, console: Console
+) -> Dict[str, Any]:
     """Display streaming response with live updates."""
-    from lobster.cli_internal.commands.heavy.slash_commands import _display_streaming_response as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        _display_streaming_response as _impl,
+    )
+
     return _impl(client, user_input, console)
+
 
 def _validate_chat_ui_mode(ui_mode: str) -> None:
     """Validate `lobster chat --ui` values early with CLI-friendly errors."""
     if ui_mode in {"auto", "go", "classic"}:
         return
-    _raise_cli_error(f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, classic, go")
+    _raise_cli_error(
+        f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, classic, go"
+    )
 
 
 def _raise_cli_error(message: str) -> None:
@@ -1013,7 +1112,9 @@ def _raise_cli_error(message: str) -> None:
 def _ensure_go_chat_tty(ui_mode: str) -> None:
     """Reject explicit Go UI requests when stdin is not interactive."""
     if ui_mode == "go" and not os.isatty(0):
-        _raise_cli_error("Error: Go TUI requires an interactive terminal (stdin is not a TTY)")
+        _raise_cli_error(
+            "Error: Go TUI requires an interactive terminal (stdin is not a TTY)"
+        )
 
 
 def _should_try_go_chat_ui(ui_mode: str, reasoning: bool, verbose: bool) -> bool:
@@ -1023,8 +1124,8 @@ def _should_try_go_chat_ui(ui_mode: str, reasoning: bool, verbose: bool) -> bool
 
 def _resolve_go_chat_binary(ui_mode: str) -> Optional[str]:
     """Return Go TUI binary path, or raise for explicit `--ui go`."""
-    from lobster.core.component_registry import get_install_command
     from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
+    from lobster.core.component_registry import get_install_command
 
     binary = find_tui_binary_fast()
     if binary or ui_mode != "go":
@@ -1087,6 +1188,7 @@ def _maybe_launch_go_chat_ui(
     if not binary:
         if ui_mode == "auto":
             import sys
+
             from lobster.core.component_registry import get_install_command
 
             print(
@@ -1112,11 +1214,13 @@ def _maybe_launch_go_chat_ui(
         if ui_mode == "go":
             raise
         import sys
+
         print(
             f"\033[33mNote:\033[0m Go TUI failed ({exc}), falling back to classic mode.",
             file=sys.stderr,
         )
         return False
+
 
 @app.command()
 def chat(
@@ -1161,8 +1265,12 @@ def chat(
         "-m",
         help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration.",
     ),
-    no_intro: bool = typer.Option(False, "--no-intro", is_flag=True,
-        help="Disable the Go TUI inline intro animation (useful for automation and PTY capture)."),
+    no_intro: bool = typer.Option(
+        False,
+        "--no-intro",
+        is_flag=True,
+        help="Disable the Go TUI inline intro animation (useful for automation and PTY capture).",
+    ),
     stream: bool = typer.Option(
         True,
         "--stream/--no-stream",
@@ -1210,21 +1318,33 @@ def chat(
 
     # Classic Rich terminal path (heavy imports happen here).
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
-    chat_impl(workspace=workspace, session_id=session_id, reasoning=reasoning,
-        verbose=verbose, debug=debug, profile_timings=profile_timings,
-        provider=provider, model=model, stream=stream)
+
+    chat_impl(
+        workspace=workspace,
+        session_id=session_id,
+        reasoning=reasoning,
+        verbose=verbose,
+        debug=debug,
+        profile_timings=profile_timings,
+        provider=provider,
+        model=model,
+        stream=stream,
+    )
 
 
 @app.command(name="dashboard")
 def dashboard_command(
     workspace: Optional[Path] = typer.Option(
-        None, "--workspace", "-w",
+        None,
+        "--workspace",
+        "-w",
         help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
     ),
 ):
     """Launch interactive dashboard (Textual UI)."""
     try:
         from lobster.ui.os_app import run_lobster_os
+
         run_lobster_os(workspace)
     except ImportError:
         from lobster.core.component_registry import get_install_command
@@ -1242,59 +1362,103 @@ def dashboard_command(
 @app.command()
 def query(
     question: str,
-    workspace: Optional[Path] = typer.Option(None, "--workspace", "-w",
-        help="Workspace directory. Defaults to ./.lobster_workspace or LOBSTER_WORKSPACE."),
-    session_id: Optional[str] = typer.Option(None, "--session-id", "-s",
-        help="Continue a saved session. Use 'latest' for the most recent one."),
-    reasoning: bool = typer.Option(False, "--reasoning", is_flag=True,
-        help="Show agent reasoning."),
-    verbose: bool = typer.Option(False, "--verbose", "-v",
-        help="Show agent and tool trace details."),
-    debug: bool = typer.Option(False, "--debug", "-d",
-        help="Enable debug logging."),
-    output: Optional[Path] = typer.Option(None, "--output", "-o",
-        help="Write the final answer to a file."),
-    profile_timings: Optional[bool] = typer.Option(None, "--profile-timings/--no-profile-timings",
-        help="Show data-manager timing diagnostics."),
-    provider: Optional[str] = typer.Option(None, "--provider", "-p",
-        help="Provider override. Uses the configured provider when omitted."),
-    model: Optional[str] = typer.Option(None, "--model", "-m",
-        help="Model override. Uses the configured model when omitted."),
-    stream: bool = typer.Option(False, "--stream/--no-stream",
-        help="Stream text as it arrives. Disabled automatically in trace mode."),
-    json_output: bool = typer.Option(False, "--json", "-j", is_flag=True,
-        help="Emit JSON only on stdout."),
+    workspace: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help="Workspace directory. Defaults to ./.lobster_workspace or LOBSTER_WORKSPACE.",
+    ),
+    session_id: Optional[str] = typer.Option(
+        None,
+        "--session-id",
+        "-s",
+        help="Continue a saved session. Use 'latest' for the most recent one.",
+    ),
+    reasoning: bool = typer.Option(
+        False, "--reasoning", is_flag=True, help="Show agent reasoning."
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Show agent and tool trace details."
+    ),
+    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug logging."),
+    output: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Write the final answer to a file."
+    ),
+    profile_timings: Optional[bool] = typer.Option(
+        None,
+        "--profile-timings/--no-profile-timings",
+        help="Show data-manager timing diagnostics.",
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help="Provider override. Uses the configured provider when omitted.",
+    ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Model override. Uses the configured model when omitted.",
+    ),
+    stream: bool = typer.Option(
+        False,
+        "--stream/--no-stream",
+        help="Stream text as it arrives. Disabled automatically in trace mode.",
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", "-j", is_flag=True, help="Emit JSON only on stdout."
+    ),
 ):
     """Send a single query, or run a local slash command when QUESTION starts with '/'."""
     from lobster.cli_internal.commands.heavy.query_commands import query_impl
+
     query_impl(
-        question=question, workspace=workspace, session_id=session_id,
-        reasoning=reasoning, verbose=verbose, debug=debug, output=output,
-        profile_timings=profile_timings, provider=provider, model=model,
-        stream=stream, json_output=json_output,
+        question=question,
+        workspace=workspace,
+        session_id=session_id,
+        reasoning=reasoning,
+        verbose=verbose,
+        debug=debug,
+        output=output,
+        profile_timings=profile_timings,
+        provider=provider,
+        model=model,
+        stream=stream,
+        json_output=json_output,
     )
 
 
 def handle_command(command: str, client: "AgentClient"):
     """Handle slash commands with enhanced error handling."""
-    from lobster.cli_internal.commands.heavy.slash_commands import handle_command as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        handle_command as _impl,
+    )
+
     _impl(command, client)
 
 
-
-
 def _command_files(client, output) -> Optional[str]:
-    from lobster.cli_internal.commands.heavy.slash_commands import _command_files as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        _command_files as _impl,
+    )
+
     return _impl(client, output)
 
 
 def _command_save(client, output, force: bool = False) -> Optional[str]:
-    from lobster.cli_internal.commands.heavy.slash_commands import _command_save as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        _command_save as _impl,
+    )
+
     return _impl(client, output, force)
 
 
 def _command_restore(client, output, pattern: str = "recent") -> Optional[str]:
-    from lobster.cli_internal.commands.heavy.slash_commands import _command_restore as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        _command_restore as _impl,
+    )
+
     return _impl(client, output, pattern)
 
 
@@ -1302,7 +1466,10 @@ _UNKNOWN_COMMAND = object()  # Sentinel for unrecognized commands
 
 
 def _dispatch_command(cmd_str: str, client, output):
-    from lobster.cli_internal.commands.heavy.slash_commands import _dispatch_command as _impl
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        _dispatch_command as _impl,
+    )
+
     return _impl(cmd_str, client, output)
 
 
@@ -1368,8 +1535,10 @@ def command_cmd(
       lobster command "workspace list" --json
     """
     from lobster.cli_internal.commands.heavy.slash_commands import command_cmd_impl
-    command_cmd_impl(cmd=cmd, workspace=workspace, session_id=session_id, json_output=json_output)
 
+    command_cmd_impl(
+        cmd=cmd, workspace=workspace, session_id=session_id, json_output=json_output
+    )
 
 
 @app.command(name="vector-search")
@@ -1397,9 +1566,11 @@ def vector_search_cmd(
       lobster vector-search "CD8+ T cell" --top-k 10
       lobster vector-search "liver" --compact | jq '.results.uberon'
     """
-    from lobster.cli_internal.commands.heavy.slash_commands import vector_search_cmd_impl
-    vector_search_cmd_impl(query_text=query_text, top_k=top_k, pretty=pretty)
+    from lobster.cli_internal.commands.heavy.slash_commands import (
+        vector_search_cmd_impl,
+    )
 
+    vector_search_cmd_impl(query_text=query_text, top_k=top_k, pretty=pretty)
 
 
 @app.command()
@@ -1411,8 +1582,8 @@ def serve(
     Start the agent system as an API server (for React UI).
     """
     from lobster.cli_internal.commands.heavy.slash_commands import serve_impl
-    serve_impl(port=port, host=host)
 
+    serve_impl(port=port, host=host)
 
 
 # Config subcommands
@@ -1420,16 +1591,16 @@ def serve(
 def list_models():
     """List all available model presets."""
     from lobster.cli_internal.commands.light.config_commands import list_models_impl
-    list_models_impl()
 
+    list_models_impl()
 
 
 @config_app.command(name="list-profiles")
 def list_profiles():
     """List all available testing profiles."""
     from lobster.cli_internal.commands.light.config_commands import list_profiles_impl
-    list_profiles_impl()
 
+    list_profiles_impl()
 
 
 @config_app.command(name="show")
@@ -1443,6 +1614,7 @@ def config_show_subcommand(
 ):
     """Display current configuration including agent composition."""
     from lobster.core.client import AgentClient
+
     workspace_path = resolve_workspace(workspace, create=False)
     try:
         client = AgentClient(workspace_path=str(workspace_path))
@@ -1451,7 +1623,6 @@ def config_show_subcommand(
     except Exception as e:
         console.print(f"[red]Error displaying configuration: {str(e)}[/red]")
         raise typer.Exit(1)
-
 
 
 @config_app.command(name="show-config")
@@ -1467,8 +1638,8 @@ def show_config(
 ):
     """Show current runtime configuration from ConfigResolver and ProviderRegistry."""
     from lobster.cli_internal.commands.light.config_commands import show_config_impl
-    show_config_impl(workspace=workspace, show_all=show_all)
 
+    show_config_impl(workspace=workspace, show_all=show_all)
 
 
 @config_app.command(name="test")
@@ -1489,14 +1660,15 @@ def test(
     and tests basic connectivity. With --profile, tests the full agent configuration.
     """
     from lobster.cli_internal.commands.light.config_commands import test_impl
-    test_impl(profile=profile, agent=agent)
 
+    test_impl(profile=profile, agent=agent)
 
 
 @config_app.command(name="create-custom")
 def create_custom():
     """Interactive creation of custom configuration."""
     from lobster.cli_internal.commands.light.config_commands import create_custom_impl
+
     create_custom_impl()
 
 
@@ -1511,6 +1683,7 @@ def config_models(
 ):
     """Interactive per-agent model configuration."""
     from lobster.cli_internal.commands.light.config_commands import config_models_impl
+
     config_models_impl(workspace=workspace)
 
 
@@ -1518,8 +1691,8 @@ def config_models(
 def generate_env():
     """Generate .env template with all available options."""
     from lobster.cli_internal.commands.light.config_commands import generate_env_impl
-    generate_env_impl()
 
+    generate_env_impl()
 
 
 if __name__ == "__main__":

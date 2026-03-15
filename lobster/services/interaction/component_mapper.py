@@ -62,9 +62,11 @@ def map_question(
     if isinstance(options, list) and len(options) > 0:
         # Normalize dicts to strings — Go TUI select expects []string.
         str_options = [
-            opt.get("label", opt.get("name", str(opt)))
-            if isinstance(opt, dict)
-            else str(opt)
+            (
+                opt.get("label", opt.get("name", str(opt)))
+                if isinstance(opt, dict)
+                else str(opt)
+            )
             for opt in options
         ]
         return ComponentSelection(

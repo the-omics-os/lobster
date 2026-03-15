@@ -2,8 +2,7 @@ from types import SimpleNamespace
 
 from rich.console import Console
 
-from lobster.cli_internal.commands.heavy import query_commands
-from lobster.cli_internal.commands.heavy import session_infra
+from lobster.cli_internal.commands.heavy import query_commands, session_infra
 
 
 class _Tracker:
@@ -20,9 +19,7 @@ class _Client:
 
 def test_compact_query_usage_summary_normalizes_session_prefix():
     assert (
-        query_commands._compact_query_usage_summary(
-            "Session: 5.8k tokens (local)"
-        )
+        query_commands._compact_query_usage_summary("Session: 5.8k tokens (local)")
         == "5.8k tokens (local)"
     )
     assert (
@@ -149,7 +146,9 @@ def test_query_impl_prints_working_indicator_in_reasoning_mode(monkeypatch, tmp_
 
     recorded_console = Console(record=True, width=120)
     monkeypatch.setattr(query_commands, "console", recorded_console)
-    monkeypatch.setattr(query_commands, "_maybe_print_timings", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        query_commands, "_maybe_print_timings", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(query_commands, "should_show_progress", lambda client: False)
 
     class _FakeClient:
@@ -168,7 +167,9 @@ def test_query_impl_prints_working_indicator_in_reasoning_mode(monkeypatch, tmp_
                 "last_agent": "research_agent",
             }
 
-    monkeypatch.setattr(query_commands, "init_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        query_commands, "init_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     query_commands.query_impl(
         "debug me",
@@ -197,7 +198,9 @@ def test_query_impl_reports_trace_mode_when_stream_requested(monkeypatch, tmp_pa
 
     recorded_console = Console(record=True, width=120)
     monkeypatch.setattr(query_commands, "console", recorded_console)
-    monkeypatch.setattr(query_commands, "_maybe_print_timings", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        query_commands, "_maybe_print_timings", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(query_commands, "should_show_progress", lambda client: False)
 
     class _FakeClient:
@@ -214,7 +217,9 @@ def test_query_impl_reports_trace_mode_when_stream_requested(monkeypatch, tmp_pa
                 "last_agent": "research_agent",
             }
 
-    monkeypatch.setattr(query_commands, "init_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr(
+        query_commands, "init_client", lambda *args, **kwargs: _FakeClient()
+    )
 
     query_commands.query_impl(
         "debug me",
@@ -250,9 +255,7 @@ def test_display_streaming_response_delegates_to_shared_helper(monkeypatch):
         _fake_impl,
     )
 
-    result = query_commands._display_streaming_response(
-        "client", "hello", "console"
-    )
+    result = query_commands._display_streaming_response("client", "hello", "console")
 
     assert result == expected
 
@@ -301,9 +304,11 @@ def test_resolve_session_continuation_prefers_session_directory_for_latest(tmp_p
     session_dir = workspace_path / ".lobster" / "sessions" / "session_20260305_120000"
     session_dir.mkdir(parents=True)
 
-    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
-        workspace_path,
-        "latest",
+    session_file, session_id, found_existing = (
+        session_infra.resolve_session_continuation(
+            workspace_path,
+            "latest",
+        )
     )
 
     assert session_file is None
@@ -315,9 +320,11 @@ def test_resolve_session_continuation_explicit_missing_returns_new_session_id(tm
     workspace_path = tmp_path / ".lobster_workspace"
     workspace_path.mkdir(parents=True)
 
-    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
-        workspace_path,
-        "project_alpha",
+    session_file, session_id, found_existing = (
+        session_infra.resolve_session_continuation(
+            workspace_path,
+            "project_alpha",
+        )
     )
 
     assert session_file is None
@@ -331,9 +338,11 @@ def test_resolve_session_continuation_explicit_legacy_json_is_loaded(tmp_path):
     legacy_session = workspace_path / "session_project_beta.json"
     legacy_session.write_text("{}")
 
-    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
-        workspace_path,
-        "project_beta",
+    session_file, session_id, found_existing = (
+        session_infra.resolve_session_continuation(
+            workspace_path,
+            "project_beta",
+        )
     )
 
     assert session_file == legacy_session
@@ -347,9 +356,11 @@ def test_resolve_session_continuation_latest_falls_back_to_legacy_json(tmp_path)
     legacy_session = workspace_path / "session_project_gamma.json"
     legacy_session.write_text("{}")
 
-    session_file, session_id, found_existing = session_infra.resolve_session_continuation(
-        workspace_path,
-        "latest",
+    session_file, session_id, found_existing = (
+        session_infra.resolve_session_continuation(
+            workspace_path,
+            "latest",
+        )
     )
 
     assert session_file == legacy_session

@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
-
 PROTOCOL_VERSION = 1
 
 
@@ -78,9 +77,13 @@ class ProtocolMessage:
         )
 
 
-def new_message(msg_type: str, payload: Optional[dict[str, Any]] = None) -> ProtocolMessage:
+def new_message(
+    msg_type: str, payload: Optional[dict[str, Any]] = None
+) -> ProtocolMessage:
     return ProtocolMessage(type=msg_type, payload=payload)
 
 
-def new_request(msg_type: str, payload: Optional[dict[str, Any]] = None) -> ProtocolMessage:
+def new_request(
+    msg_type: str, payload: Optional[dict[str, Any]] = None
+) -> ProtocolMessage:
     return ProtocolMessage(type=msg_type, id=str(uuid.uuid4()), payload=payload)

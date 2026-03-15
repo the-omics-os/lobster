@@ -33,6 +33,8 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.exceptions import (
     UnsupportedPlatformError,
 )
+from lobster.services.data_access.geo.archive_processing import ArchiveProcessor
+from lobster.services.data_access.geo.concatenation import SampleConcatenator
 
 # Re-export constants for backward compatibility -- consumers import from here
 from lobster.services.data_access.geo.constants import (
@@ -41,14 +43,9 @@ from lobster.services.data_access.geo.constants import (
     GEOResult,
     GEOServiceError,
 )
+from lobster.services.data_access.geo.download_execution import DownloadExecutor
 from lobster.services.data_access.geo.downloader import (
     GEODownloadManager,
-)
-from lobster.services.data_access.geo.loaders.tenx import TenXGenomicsLoader
-from lobster.services.data_access.geo.parser import GEOParser
-from lobster.services.data_access.geo.strategy import (
-    PipelineStrategyEngine,
-    PipelineType,
 )
 
 # Re-exports from helpers.py (added in Plan 01 Task 2) -- keep for backward compat
@@ -57,18 +54,24 @@ from lobster.services.data_access.geo.helpers import (
     RetryOutcome,
     RetryResult,
     _is_archive_url,
-    _is_data_valid as _is_data_valid_fn,
+)
+from lobster.services.data_access.geo.helpers import _is_data_valid as _is_data_valid_fn
+from lobster.services.data_access.geo.helpers import (
     _retry_with_backoff as _retry_with_backoff_fn,
+)
+from lobster.services.data_access.geo.helpers import (
     _score_expression_file,
 )
+from lobster.services.data_access.geo.loaders.tenx import TenXGenomicsLoader
+from lobster.services.data_access.geo.matrix_parsing import MatrixParser
 
 # Domain module imports
 from lobster.services.data_access.geo.metadata_fetch import MetadataFetcher
-from lobster.services.data_access.geo.download_execution import DownloadExecutor
-from lobster.services.data_access.geo.archive_processing import ArchiveProcessor
-from lobster.services.data_access.geo.matrix_parsing import MatrixParser
-from lobster.services.data_access.geo.concatenation import SampleConcatenator
-
+from lobster.services.data_access.geo.parser import GEOParser
+from lobster.services.data_access.geo.strategy import (
+    PipelineStrategyEngine,
+    PipelineType,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -233,9 +236,7 @@ class GEOService:
             self.__dict__["_concatenator"] = SampleConcatenator(self)
 
         # Access modules from __dict__ to avoid recursion
-        modules = [
-            self.__dict__.get(m) for m in module_names
-        ]
+        modules = [self.__dict__.get(m) for m in module_names]
         for module in modules:
             if module is None:
                 continue
@@ -243,4 +244,6 @@ class GEOService:
                 return getattr(module, name)
             except AttributeError:
                 continue
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
+        )

@@ -5,9 +5,10 @@ after the GEOService monolith was decomposed into 5 domain modules.
 Part of Phase 4 Plan 03: GEO Service Decomposition.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
 from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestImportCompatibility:
@@ -84,12 +85,12 @@ class TestDomainModuleComposition:
 
     def test_init_creates_all_domain_modules(self, tmp_path):
         """GEOService.__init__ should create all 5 domain module instances."""
-        from lobster.services.data_access.geo_service import GEOService
-        from lobster.services.data_access.geo.metadata_fetch import MetadataFetcher
-        from lobster.services.data_access.geo.download_execution import DownloadExecutor
         from lobster.services.data_access.geo.archive_processing import ArchiveProcessor
-        from lobster.services.data_access.geo.matrix_parsing import MatrixParser
         from lobster.services.data_access.geo.concatenation import SampleConcatenator
+        from lobster.services.data_access.geo.download_execution import DownloadExecutor
+        from lobster.services.data_access.geo.matrix_parsing import MatrixParser
+        from lobster.services.data_access.geo.metadata_fetch import MetadataFetcher
+        from lobster.services.data_access.geo_service import GEOService
 
         # Create mock data_manager with real temp path for cache_dir
         mock_dm = MagicMock()
@@ -118,7 +119,9 @@ class TestPublicAPIDelegation:
         service = GEOService(data_manager=mock_dm)
         return service
 
-    def test_fetch_metadata_only_delegates_to_fetcher(self, service_with_mocked_modules):
+    def test_fetch_metadata_only_delegates_to_fetcher(
+        self, service_with_mocked_modules
+    ):
         """fetch_metadata_only should delegate to MetadataFetcher."""
         service = service_with_mocked_modules
         service._metadata_fetcher.fetch_metadata_only = MagicMock(

@@ -123,7 +123,9 @@ def _build_agent_directory(active_agents: List[str], config: SupervisorConfig) -
     Structure: tree showing parent → child relationships and descriptions.
     """
     lines = ["<Agent Directory>"]
-    lines.append("Use handoff_to_{agent_name} to delegate. Match request to agent below.\n")
+    lines.append(
+        "Use handoff_to_{agent_name} to delegate. Match request to agent below.\n"
+    )
 
     # Separate top-level (supervisor-accessible) from children
     # Collect child_agents across all parents for tree rendering
@@ -158,7 +160,9 @@ def _build_agent_directory(active_agents: List[str], config: SupervisorConfig) -
                 is_last = i == len(agent_config.child_agents) - 1
                 branch = "└──" if is_last else "├──"
                 if child_config:
-                    entry += f"\n│   {branch} {child_config.display_name} ({child_name})"
+                    entry += (
+                        f"\n│   {branch} {child_config.display_name} ({child_name})"
+                    )
                 else:
                     entry += f"\n│   {branch} {child_name} (not installed)"
 
@@ -173,7 +177,7 @@ def _build_agent_directory(active_agents: List[str], config: SupervisorConfig) -
             "1. research_agent prepares queue entry (validate_dataset_metadata or prepare_dataset_download)\n"
             "2. Extract entry_id from response (format: queue_{accession}_{hex8})\n"
             "3. Confirm with user before downloading (unless ADMIN SUPERUSER)\n"
-            "4. handoff_to_data_expert_agent(\"execute_download_from_queue(entry_id=...)\")\n"
+            '4. handoff_to_data_expert_agent("execute_download_from_queue(entry_id=...)")\n'
             "Never delegate download without a confirmed queue entry."
         )
 

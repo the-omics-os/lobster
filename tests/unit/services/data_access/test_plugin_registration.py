@@ -18,7 +18,6 @@ Requirements covered: PLUG-03, PLUG-04
 
 from importlib.metadata import entry_points
 
-
 EXPECTED_DATABASES = {"geo", "sra", "pride", "massive", "metabolights"}
 
 
@@ -43,7 +42,7 @@ class TestPluginRegistrationContract:
         discovered = {ep.name for ep in entry_points(group="lobster.queue_preparers")}
         assert EXPECTED_DATABASES <= discovered, (
             f"Missing queue preparer entry points: {EXPECTED_DATABASES - discovered}. "
-            "Add [project.entry-points.\"lobster.queue_preparers\"] to pyproject.toml "
+            'Add [project.entry-points."lobster.queue_preparers"] to pyproject.toml '
             "then run `uv pip install -e .` to register them."
         )
 
@@ -59,7 +58,7 @@ class TestPluginRegistrationContract:
         discovered = {ep.name for ep in entry_points(group="lobster.download_services")}
         assert EXPECTED_DATABASES <= discovered, (
             f"Missing download service entry points: {EXPECTED_DATABASES - discovered}. "
-            "Add [project.entry-points.\"lobster.download_services\"] to pyproject.toml "
+            'Add [project.entry-points."lobster.download_services"] to pyproject.toml '
             "then run `uv pip install -e .` to register them."
         )
 

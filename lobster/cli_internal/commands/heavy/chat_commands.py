@@ -36,13 +36,13 @@ from lobster.cli_internal.commands.heavy.session_infra import (
     should_show_progress,
     validate_startup_or_raise_startup_diagnostic,
 )
-from lobster.cli_internal.startup_diagnostics import (
-    StartupDiagnosticError,
-    render_startup_diagnostic_rich,
-)
 from lobster.cli_internal.commands.heavy.slash_commands import (
     _execute_command,
     check_for_missing_slash_command,
+)
+from lobster.cli_internal.startup_diagnostics import (
+    StartupDiagnosticError,
+    render_startup_diagnostic_rich,
 )
 from lobster.ui import LobsterTheme, setup_logging
 from lobster.ui.console_manager import get_console_manager
@@ -72,6 +72,7 @@ console = console_manager.console
 # Global state shared across functions in this module
 current_directory = Path.cwd()
 client = None
+
 
 def get_user_input_with_editing(prompt_text: str, client=None) -> str:
     """
@@ -568,7 +569,6 @@ def execute_shell_command(command: str) -> bool:
         return True  # We handled it, even if it failed
 
 
-
 def get_current_agent_name() -> str:
     """Get the current active agent name for display."""
     global client
@@ -596,9 +596,11 @@ def get_current_agent_name() -> str:
 
 def _dna_helix_animation(width: int, duration: float = 0.7):
     """DNA sequence animation with colorful bases."""
-    from lobster.cli_internal.commands.heavy.animations import _dna_helix_animation as _impl
-    _impl(width, duration)
+    from lobster.cli_internal.commands.heavy.animations import (
+        _dna_helix_animation as _impl,
+    )
 
+    _impl(width, duration)
 
 
 def _show_workspace_prompt(client):
@@ -679,7 +681,9 @@ def _show_workspace_prompt(client):
 
         # Check semantic search backend availability
         try:
-            from lobster.services.vector.service import VectorSearchService  # noqa: F401
+            from lobster.services.vector.service import (  # noqa: F401
+                VectorSearchService,
+            )
 
             has_semantic = True
         except ImportError:
@@ -703,7 +707,6 @@ def _show_workspace_prompt(client):
         console.print(f"[dim red]Error loading system info: {e}[/dim red]")
         console.print(f"  [green]●[/] lobster v{__version__}")
         console.print()
-
 
 
 def _display_streaming_response(
@@ -782,7 +785,6 @@ def _display_streaming_response(
         }
     except Exception as e:
         return {"success": False, "error": str(e)}
-
 
 
 def chat_impl(
@@ -881,11 +883,10 @@ def chat_impl(
     session_id_for_client = None
 
     if session_id:
-        from lobster.core.workspace import resolve_workspace
-
         from lobster.cli_internal.commands.heavy.session_infra import (
             resolve_session_continuation,
         )
+        from lobster.core.workspace import resolve_workspace
 
         workspace_path = resolve_workspace(explicit_path=workspace, create=True)
         (
@@ -1150,14 +1151,15 @@ def chat_impl(
                 )
 
 
-
 def handle_command(command: str, client: "AgentClient"):
     """Handle slash commands with enhanced error handling."""
     cmd = command.lower().strip()
 
     try:
         # Execute command and capture summary for history
-        command_summary = _execute_command(cmd, client, original_command=command.strip())
+        command_summary = _execute_command(
+            cmd, client, original_command=command.strip()
+        )
 
         # Add to conversation history if summary provided
         if command_summary:
