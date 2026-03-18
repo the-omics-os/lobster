@@ -10,8 +10,14 @@ All tools follow the Lobster AI tool pattern:
 - Call stateless services returning 3-tuples
 - Log with ir=ir for provenance
 - Return human-readable summary strings
+
+Cloud visualization integration:
+- prepare_molecule_3d writes .sdf files to workspace/data/ for Mol* rendering
+- fingerprint_similarity creates Plotly heatmaps via plot_manager
 """
 
+import hashlib
+from pathlib import Path
 from typing import Callable, List
 
 from langchain_core.tools import tool
@@ -146,6 +152,43 @@ def create_cheminformatics_tools(
                 ir=ir,
             )
 
+            # Create Plotly heatmap for cloud UI canvas visualization
+            matrix = stats.get("similarity_matrix")
+            plot_manager = getattr(data_manager, "plot_manager", None)
+            if matrix and plot_manager:
+                try:
+                    import plotly.graph_objects as go
+
+                    labels = stats.get(
+                        "compound_ids",
+                        [f"Mol {i + 1}" for i in range(len(matrix))],
+                    )
+                    fig = go.Figure(
+                        data=go.Heatmap(
+                            z=matrix,
+                            x=labels,
+                            y=labels,
+                            colorscale="Viridis",
+                            text=[[f"{v:.3f}" for v in row] for row in matrix],
+                            texttemplate="%{text}",
+                            hovertemplate=(
+                                "Similarity(%{x}, %{y}) = %{z:.3f}<extra></extra>"
+                            ),
+                        )
+                    )
+                    fig.update_layout(
+                        title=f"Tanimoto Similarity ({fingerprint.title()} Fingerprints)",
+                        width=600,
+                        height=500,
+                    )
+                    plot_manager.add_plot(
+                        fig,
+                        title=f"Fingerprint Similarity ({len(parsed)} compounds)",
+                        source="cheminformatics_expert",
+                    )
+                except Exception as plot_err:
+                    logger.warning(f"Failed to create similarity heatmap: {plot_err}")
+
             n = stats.get("n_compounds", 0)
             mean_sim = stats.get("mean_similarity", 0)
             max_sim = stats.get("max_similarity", 0)
@@ -262,6 +305,24 @@ def create_cheminformatics_tools(
                 ir=ir,
             )
 
+            # Write .sdf file to workspace for Mol* visualization in cloud UI
+            sdf_file_info = ""
+            mol_block = stats.get("mol_block", "")
+            ws_path = getattr(data_manager, "workspace_path", None)
+            if mol_block and ws_path:
+                try:
+                    smiles_hash = hashlib.md5(smiles.encode()).hexdigest()[:8]
+                    safe_name = f"molecule_{smiles_hash}"
+                    sdf_filename = f"{safe_name}.sdf"
+                    data_dir = Path(ws_path) / "data"
+                    data_dir.mkdir(parents=True, exist_ok=True)
+                    sdf_path = data_dir / sdf_filename
+                    sdf_path.write_text(mol_block)
+                    sdf_file_info = f"\n  Structure file: data/{sdf_filename}"
+                    logger.info(f"Wrote 3D structure to {sdf_path}")
+                except Exception as write_err:
+                    logger.warning(f"Failed to write SDF file: {write_err}")
+
             energy = stats.get("energy_kcal_mol")
             energy_str = f"{energy:.3f} kcal/mol" if energy is not None else "N/A"
             n_generated = stats.get("n_conformers_generated", 0)
@@ -272,7 +333,8 @@ def create_cheminformatics_tools(
                 f"(heavy: {stats.get('num_heavy_atoms', 'N/A')})\n"
                 f"  Conformers generated: {n_generated}\n"
                 f"  Best conformer energy: {energy_str}\n"
-                f"  MOL block generated ({len(stats.get('mol_block', ''))} characters)"
+                f"  MOL block generated ({len(mol_block)} characters)"
+                f"{sdf_file_info}"
             )
         except Exception as e:
             return f"Error preparing 3D structure: {e}"
