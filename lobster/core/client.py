@@ -270,7 +270,7 @@ class AgentClient(BaseClient):
         config = {
             "configurable": {"thread_id": self.session_id},
             "callbacks": self.callbacks,
-            "recursion_limit": 100,  # Prevent hitting default limit of 25
+            "recursion_limit": 1000,  # High limit to support complex multi-agent analyses
         }
 
         if stream:
@@ -733,7 +733,7 @@ class AgentClient(BaseClient):
         config = {
             "configurable": {"thread_id": self.session_id},
             "callbacks": self.callbacks,
-            "recursion_limit": 100,
+            "recursion_limit": 1000,
         }
         stream_input = Command(resume=response)
         if stream:

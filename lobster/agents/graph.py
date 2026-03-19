@@ -482,7 +482,7 @@ def _create_agents_single_pass(
 
         try:
             created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
-                {"recursion_limit": 50}
+                {"recursion_limit": 200}
             )
         except Exception as e:
             logger.warning(
@@ -717,7 +717,7 @@ def create_bioinformatics_graph(
 
     Note: When invoking this graph, set the recursion_limit in the config to prevent
     hitting the default limit of 25. Example:
-        config = {"recursion_limit": 100, ...}
+        config = {"recursion_limit": 1000, ...}
         graph.invoke(input, config)
     """
     # Auto-detect subscription tier if not provided
