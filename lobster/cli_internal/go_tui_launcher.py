@@ -352,6 +352,28 @@ def _heartbeat_loop(bridge: _LightBridge, stop_event: threading.Event) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _friendly_error(raw: str) -> tuple:
+    """Map raw error messages to user-friendly (title, message) tuples."""
+    msg = raw.strip()
+    if "security token" in msg or "UnrecognizedClientException" in msg:
+        return ("Provider Error", "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini")
+    if "ConverseStream" in msg or "InvokeModel" in msg:
+        return ("Provider Error", "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini")
+    if "not authorized" in msg.lower() and "bedrock" in msg.lower():
+        return ("Provider Error", "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini")
+    if "rate limit" in msg.lower() or "429" in msg:
+        return ("Rate Limited", "Rate limited by the LLM provider. Wait a moment and try again.")
+    if "Could not connect" in msg or "ECONNREFUSED" in msg or "ConnectionRefused" in msg:
+        return ("Connection Error", "Cannot reach the LLM provider. Check your network connection.")
+    if "timeout" in msg.lower() or "timed out" in msg.lower():
+        return ("Timeout", "Request timed out. Check your network connection.")
+    if "quota" in msg.lower() or "insufficient_quota" in msg:
+        return ("Quota Exceeded", "LLM provider quota exceeded. Check your billing or switch provider.")
+    if "invalid api key" in msg.lower() or "invalid_api_key" in msg.lower():
+        return ("Auth Error", "Invalid API key. Run: lobster config --provider <provider>")
+    return ("Error", msg)
+
+
 def _normalize_tool_payload(payload: dict) -> dict:
     """Normalize tool-execution event payloads to a consistent shape."""
     event = {
@@ -929,7 +951,8 @@ def _handle_user_query(
         bridge.send("alert", {"level": "warning", "message": "Query interrupted"})
         bridge.send("spinner", {"active": False})
     except Exception as exc:
-        bridge.send("alert", {"level": "error", "message": f"Error: {exc}"})
+        title, friendly = _friendly_error(str(exc))
+        bridge.send("alert", {"level": "error", "title": title, "message": friendly})
         bridge.send("spinner", {"active": False})
 
 
@@ -1022,13 +1045,14 @@ def _forward_stream_event(
         )
     elif etype == "error":
         error_msg = str(event.get("error", "Unknown error"))
+        title, friendly = _friendly_error(error_msg)
         if event.get("is_rate_limit") or "rate limit" in error_msg.lower():
             bridge.send(
                 "alert",
                 {
                     "level": "warning",
                     "title": "Rate Limited",
-                    "message": error_msg,
+                    "message": friendly,
                 },
             )
         else:
@@ -1036,7 +1060,8 @@ def _forward_stream_event(
                 "alert",
                 {
                     "level": "error",
-                    "message": error_msg,
+                    "title": title,
+                    "message": friendly,
                 },
             )
         bridge.send("spinner", {"active": False})
