@@ -5,6 +5,7 @@
 
 import type { AppConfig } from "../config.js";
 import { apiFetch } from "../api/apiClient.js";
+import { listSessions, type Session as ApiSession } from "../api/sessions.js";
 import type { AppState } from "../utils/stateHandlers.js";
 import { isFeatureEnabled } from "../api/featureFlags.js";
 import { listProjects } from "../api/projects.js";
@@ -176,6 +177,205 @@ const PROJECT_COMMANDS: CommandDef[] = [
   },
 ];
 
+const SESSION_COMMANDS: CommandDef[] = [
+  {
+    name: "sessions",
+    description: "List / manage cloud sessions",
+    bridged: false,
+    handler: async (args, ctx) => {
+      const tokens = args.trim().split(/\s+/).filter(Boolean);
+      const sub = tokens[0]?.toLowerCase();
+
+      if (!sub || sub === "list") {
+        return sessionsListHandler(ctx);
+      }
+      if (sub === "archive" && tokens[1]) {
+        return sessionArchiveHandler(ctx, tokens[1]);
+      }
+      if (sub === "delete" && tokens[1]) {
+        return sessionDeleteHandler(ctx, tokens[1]);
+      }
+      return buildTextResult(
+        "Usage: /sessions [list]\n       /sessions archive <id>\n       /sessions delete <id>",
+      );
+    },
+  },
+];
+
+async function sessionsListHandler(ctx: CommandContext): Promise<CommandResult> {
+  try {
+    const sessions = await listSessions(ctx.config);
+    if (sessions.length === 0) {
+      return buildTextResult("No sessions found.");
+    }
+    const sorted = sessions.sort(
+      (a: ApiSession, b: ApiSession) =>
+        new Date(b.updated_at ?? b.created_at).getTime() -
+        new Date(a.updated_at ?? a.created_at).getTime(),
+    );
+    const lines = [
+      "Sessions:",
+      "",
+      ...sorted.slice(0, 20).map((s: ApiSession) => {
+        const date = (s.updated_at ?? s.created_at).split("T")[0] ?? "?";
+        const name = (s.title ?? "untitled").slice(0, 40).padEnd(42);
+        const current = s.session_id === ctx.sessionId ? " ←" : "";
+        return `  ${date}  ${name} ${s.session_id.slice(0, 8)}${current}`;
+      }),
+    ];
+    if (sorted.length > 20) {
+      lines.push("", `  ... and ${sorted.length - 20} more`);
+    }
+    return buildTextResult(lines.join("\n"));
+  } catch (error) {
+    return buildTextResult(asErrorMessage(error));
+  }
+}
+
+async function sessionArchiveHandler(
+  ctx: CommandContext,
+  sessionId: string,
+): Promise<CommandResult> {
+  try {
+    await apiFetch(ctx.config, `/sessions/${sessionId}/archive`, {
+      method: "POST",
+    });
+    return buildTextResult(`Session ${sessionId.slice(0, 8)} archived.`);
+  } catch (error) {
+    return buildTextResult(asErrorMessage(error));
+  }
+}
+
+async function sessionDeleteHandler(
+  ctx: CommandContext,
+  sessionId: string,
+): Promise<CommandResult> {
+  try {
+    await apiFetch(ctx.config, `/sessions/${sessionId}`, {
+      method: "DELETE",
+    });
+    return buildTextResult(`Session ${sessionId.slice(0, 8)} deleted.`);
+  } catch (error) {
+    return buildTextResult(asErrorMessage(error));
+  }
+}
+
+const CLOUD_COMMANDS: CommandDef[] = [
+  {
+    name: "cloud",
+    description: "Cloud account info & links",
+    bridged: false,
+    handler: async (args, ctx) => {
+      const sub = args.trim().toLowerCase();
+      if (sub === "account" || sub === "") {
+        return cloudAccountHandler(ctx);
+      }
+      if (sub === "keys" || sub.startsWith("keys ")) {
+        return buildTextResult(
+          "API key management is available at:\n\n" +
+            "  https://app.omics-os.com/settings/api-keys\n\n" +
+            "For security, API keys are managed through the web interface only.",
+        );
+      }
+      return buildTextResult(`Unknown subcommand: /cloud ${sub}\nUsage: /cloud account | /cloud keys`);
+    },
+  },
+  {
+    name: "data",
+    description: "Provenance events for a dataset or session",
+    bridged: true,
+    handler: async (args, ctx) => {
+      const tokens = args.trim().split(/\s+/).filter(Boolean);
+      const sub = tokens[0]?.toLowerCase();
+      if (sub !== "events" || !tokens[1]) {
+        return buildTextResult("Usage: /data events <dataset_or_session_id>");
+      }
+      if (!isFeatureEnabled("projects_datasets")) {
+        return buildTextResult("This feature is not enabled on your server.");
+      }
+      const entityId = tokens[1];
+      if (!/^[a-zA-Z0-9_-]+$/.test(entityId) || entityId.length > 128) {
+        return buildTextResult("Invalid entity ID. Must be alphanumeric (with hyphens/underscores).");
+      }
+      return fetchEntityEvents(ctx, entityId);
+    },
+  },
+];
+
+async function cloudAccountHandler(ctx: CommandContext): Promise<CommandResult> {
+  if (!ctx.config.token) {
+    return buildTextResult(
+      "Not connected to Omics-OS Cloud.\nRun: lobster cloud login",
+    );
+  }
+  try {
+    const data = await apiFetch<Record<string, unknown>>(ctx.config, "/gateway/usage");
+    const tier = String(data.tier ?? "unknown");
+    const period = String(data.period ?? "unknown");
+    const budget = (data.budget ?? {}) as Record<string, unknown>;
+    const remaining = budget.remaining_usd ?? "?";
+    const lines = [
+      "Omics-OS Cloud Account",
+      "",
+      `  Tier:             ${tier}`,
+      `  Period:           ${period}`,
+      `  Budget remaining: $${remaining}`,
+      `  Auth:             ${ctx.config.authType}`,
+      "",
+      "Manage API keys:   https://app.omics-os.com/settings/api-keys",
+      "Account settings:  https://app.omics-os.com/account",
+    ];
+    return buildTextResult(lines.join("\n"));
+  } catch (error) {
+    return buildTextResult(asErrorMessage(error));
+  }
+}
+
+function stripControlChars(text: string): string {
+  return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+
+async function fetchEntityEvents(
+  ctx: CommandContext,
+  entityId: string,
+): Promise<CommandResult> {
+  for (const entityType of ["datasets", "sessions"] as const) {
+    try {
+      const data = await apiFetch<{
+        events: Array<{
+          timestamp: string;
+          event_type: string;
+          actor: string;
+          payload: Record<string, unknown>;
+        }>;
+        count: number;
+      }>(ctx.config, `/${entityType}/${entityId}/events?limit=50`);
+
+      const events = data.events ?? [];
+      if (events.length === 0) {
+        return buildTextResult(`No events found for ${entityType.slice(0, -1)} ${entityId}.`);
+      }
+      const header = `Events for ${entityType.slice(0, -1)} ${entityId} (${data.count} shown)`;
+      const lines = [header, ""];
+      for (const event of events) {
+        const ts = event.timestamp?.split("T")[0] ?? "?";
+        const details = Object.entries(event.payload ?? {})
+          .map(([k, v]) => `${k}=${stripControlChars(String(v))}`)
+          .join(", ");
+        lines.push(`  ${ts}  ${event.event_type.padEnd(24)}  ${details}`);
+      }
+      return buildTextResult(lines.join("\n"));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("401") || msg.includes("403")) {
+        return buildTextResult(`Access denied for ${entityType.slice(0, -1)} ${entityId}. Check your authentication.`);
+      }
+      continue;
+    }
+  }
+  return buildTextResult(`No dataset or session found with ID: ${entityId}`);
+}
+
 const AGENT_COMMANDS: CommandDef[] = [
   {
     name: "agents",
@@ -252,8 +452,10 @@ const BRIDGED_HELP_COMMANDS = PARITY_COMMANDS.filter(
 const HELP_COMMANDS = [
   ...NATIVE_COMMANDS,
   ...BRIDGED_HELP_COMMANDS,
+  ...SESSION_COMMANDS,
   ...PROJECT_COMMANDS,
   ...AGENT_COMMANDS,
+  ...CLOUD_COMMANDS,
 ];
 
 function asErrorMessage(error: unknown) {
@@ -405,7 +607,7 @@ export function dispatchCommand(
   ).toLowerCase();
   const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
 
-  const custom = [...NATIVE_COMMANDS, ...PROJECT_COMMANDS, ...AGENT_COMMANDS].find(
+  const custom = [...NATIVE_COMMANDS, ...SESSION_COMMANDS, ...PROJECT_COMMANDS, ...AGENT_COMMANDS, ...CLOUD_COMMANDS].find(
     (command) => command.name === name,
   );
   if (custom) {

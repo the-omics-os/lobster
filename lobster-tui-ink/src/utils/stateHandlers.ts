@@ -22,6 +22,8 @@ const SUPPORTED_VERSIONS: Record<string, number> = {
   alerts: 1,
   token_usage: 1,
   session_title: 1,
+  files: 1,
+  error_detail: 1,
 };
 
 /** Known state key names. */
@@ -79,6 +81,8 @@ export interface AppState {
   alerts: AlertEvent[];
   tokenUsage: { promptTokens?: number; completionTokens?: number } | null;
   sessionTitle: string | null;
+  files: unknown[];
+  errorDetail: string | null;
 }
 
 export function createInitialState(): AppState {
@@ -92,6 +96,8 @@ export function createInitialState(): AppState {
     alerts: [],
     tokenUsage: null,
     sessionTitle: null,
+    files: [],
+    errorDetail: null,
   };
 }
 
@@ -309,6 +315,13 @@ export function applyStatePatch(
       return {
         ...state,
         sessionTitle: typeof data === "string" ? data : null,
+      };
+    case "files":
+      return { ...state, files: Array.isArray(data) ? data : [data] };
+    case "error_detail":
+      return {
+        ...state,
+        errorDetail: typeof data === "string" ? data : null,
       };
     default:
       return state;

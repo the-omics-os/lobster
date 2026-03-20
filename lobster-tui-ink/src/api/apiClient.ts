@@ -1,10 +1,10 @@
 /** Thin auth-aware REST client for shared backend APIs. */
 
 import type { AppConfig } from "../config.js";
-import { authHeaders } from "../config.js";
+import { freshAuthHeaders } from "../config.js";
 
 interface ApiRequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   timeoutMs?: number;
 }
@@ -22,6 +22,8 @@ export async function apiFetch<T>(
     ? setTimeout(() => controller.abort(), options.timeoutMs)
     : undefined;
 
+  const auth = await freshAuthHeaders(config);
+
   let resp: Response;
   try {
     resp = await fetch(url, {
@@ -29,7 +31,7 @@ export async function apiFetch<T>(
       headers: {
         Accept: "application/json",
         ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...authHeaders(config),
+        ...auth,
       },
       ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
       ...(controller ? { signal: controller.signal } : {}),
@@ -49,8 +51,18 @@ export async function apiFetch<T>(
     }
   }
 
+  if (resp.status === 401) {
+    throw new Error(
+      `Authentication failed (401). Run 'lobster cloud login' to re-authenticate.`
+    );
+  }
+
   if (!resp.ok) {
     throw new Error(`API ${path}: ${resp.status} ${resp.statusText}`);
+  }
+
+  if (resp.status === 204) {
+    return {} as T;
   }
 
   return (await resp.json()) as T;

@@ -8,7 +8,7 @@
 import type { ThreadMessageLike } from "@assistant-ui/react-ink";
 import type { ReadonlyJSONObject } from "assistant-stream/utils";
 import type { AppConfig } from "../config.js";
-import { authHeaders } from "../config.js";
+import { freshAuthHeaders } from "../config.js";
 import type {
   AlertBlockData,
   CodeBlockData,
@@ -65,9 +65,10 @@ export async function hydrateMessages(
   sessionId: string
 ): Promise<ThreadMessageLike[]> {
   const url = `${config.apiUrl}/sessions/${sessionId}/messages`;
+  const auth = await freshAuthHeaders(config);
   const headers: Record<string, string> = {
     Accept: "application/json",
-    ...authHeaders(config),
+    ...auth,
   };
 
   try {
@@ -137,18 +138,20 @@ function convertToThreadMessageLike(msg: DurableMessage): ThreadMessageLike {
 
     return {
       role: role as "user" | "assistant",
-      id: msg.message_id,
+      id: msg.message_id ?? (msg as Record<string, unknown>).id as string,
       content,
-      createdAt: new Date(msg.created_at),
+      createdAt: msg.created_at ? new Date(msg.created_at) : new Date(),
+      attachments: [],
     };
   }
 
   // Fallback: plain text content
   return {
     role: role as "user" | "assistant",
-    id: msg.message_id,
+    id: msg.message_id ?? (msg as Record<string, unknown>).id as string,
     content: msg.content ?? "",
-    createdAt: new Date(msg.created_at),
+    createdAt: msg.created_at ? new Date(msg.created_at) : new Date(),
+    attachments: [],
   };
 }
 

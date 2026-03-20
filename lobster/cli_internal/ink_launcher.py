@@ -200,6 +200,23 @@ def find_ink_binary() -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+def _friendly_error_msg(raw: str) -> str:
+    """Map raw error messages to user-friendly strings."""
+    if "security token" in raw or "UnrecognizedClientException" in raw:
+        return "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini"
+    if "ConverseStream" in raw or "InvokeModel" in raw:
+        return "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini"
+    if "not authorized" in raw.lower() and "bedrock" in raw.lower():
+        return "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini"
+    if "rate limit" in raw.lower():
+        return "Rate limited by the LLM provider. Wait a moment and try again."
+    if "invalid api key" in raw.lower() or "invalid_api_key" in raw.lower():
+        return "Invalid API key. Run: lobster config --provider <provider>"
+    if "quota" in raw.lower() or "insufficient_quota" in raw:
+        return "LLM provider quota exceeded. Check your billing or switch provider."
+    return f"Error: {raw}"
+
+
 def _find_free_port() -> int:
     """Find a random available port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -570,15 +587,16 @@ class _DataStreamHandler(BaseHTTPRequestHandler):
 
             elif etype == "error":
                 error_msg = str(event.get("error", "Unknown error"))
+                friendly = _friendly_error_msg(error_msg)
                 is_rate_limit = event.get("is_rate_limit", False)
                 yield {
                     "type": "text-delta",
-                    "textDelta": f"\n\nError: {error_msg}",
+                    "textDelta": f"\n\n{friendly}",
                 }
                 if is_rate_limit:
                     yield self._state_chunk(
                         "activity_events",
-                        [{"type": "error", "error_type": "rate_limit", "message": error_msg}],
+                        [{"type": "error", "error_type": "rate_limit", "message": friendly}],
                     )
 
             elif etype == "interrupt":
@@ -945,7 +963,10 @@ def _convert_ink_result_to_legacy(ink_result: dict) -> dict:
 
     # Map credentials to legacy api_key/api_key_secondary
     if provider == "anthropic":
-        legacy["api_key"] = creds.get("ANTHROPIC_API_KEY", "")
+        if ink_result.get("oauthAuthenticated"):
+            legacy["oauth_authenticated"] = True
+        else:
+            legacy["api_key"] = creds.get("ANTHROPIC_API_KEY", "")
     elif provider == "bedrock":
         legacy["api_key"] = creds.get("AWS_ACCESS_KEY_ID", "")
         legacy["api_key_secondary"] = creds.get("AWS_SECRET_ACCESS_KEY", "")
