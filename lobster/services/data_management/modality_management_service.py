@@ -433,6 +433,32 @@ class ModalityManagementService:
                 **kwargs,
             )
 
+            # Auto-enrich Loom files with GEO SOFT metadata if filename has GSE accession
+            if file_path_obj.suffix.lower() == ".loom":
+                try:
+                    from lobster.services.data_access.geo.loom_metadata import (
+                        enrich_loom_adata_with_geo_metadata,
+                        extract_geo_accession,
+                    )
+
+                    geo_id = extract_geo_accession(str(file_path_obj))
+                    if geo_id:
+                        cache_dir = (
+                            str(self.data_manager.workspace_path)
+                            if self.data_manager.workspace_path
+                            else None
+                        )
+                        enriched = enrich_loom_adata_with_geo_metadata(
+                            adata, geo_id, cache_dir=cache_dir
+                        )
+                        if not enriched:
+                            logger.warning(
+                                f"Could not auto-enrich Loom metadata for {geo_id}. "
+                                f"Use inject_sample_metadata tool to add condition labels manually."
+                            )
+                except Exception as e:
+                    logger.warning(f"Loom metadata auto-enrichment failed: {e}")
+
             # Get quality metrics
             quality_metrics = self.data_manager.get_quality_metrics(modality_name)
 

@@ -276,9 +276,7 @@ Dataset: {entry.dataset_id}
                         strategy_override
                     )
                     if explicit_strategy_name:
-                        strategy_override_dict["strategy_name"] = (
-                            explicit_strategy_name
-                        )
+                        strategy_override_dict["strategy_name"] = explicit_strategy_name
                 if not strategy_override_dict:
                     strategy_override_dict = None
 
@@ -432,12 +430,18 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error in execute_download_from_queue: {e}")
             return f"Error processing queue entry '{entry_id}': {str(e)}"
 
-    execute_download_from_queue.metadata = {"categories": ["IMPORT"], "provenance": True}
+    execute_download_from_queue.metadata = {
+        "categories": ["IMPORT"],
+        "provenance": True,
+    }
     execute_download_from_queue.tags = ["IMPORT"]
 
     # Use shared tool from workspace_tool.py (shared with supervisor)
     list_available_modalities = create_list_modalities_tool(data_manager)
-    list_available_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
+    list_available_modalities.metadata = {
+        "categories": ["UTILITY"],
+        "provenance": False,
+    }
     list_available_modalities.tags = ["UTILITY"]
 
     @tool
@@ -492,7 +496,10 @@ You can now analyze this dataset using the appropriate analysis tools.
             return response
 
         except Exception as e:
-            logger.error(f"Error getting modality details for '{modality_name}': {e}", exc_info=True)
+            logger.error(
+                f"Error getting modality details for '{modality_name}': {e}",
+                exc_info=True,
+            )
             try:
                 available = data_manager.list_modalities()
             except Exception:
@@ -607,7 +614,10 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error validating compatibility: {e}")
             return f"Error validating compatibility: {str(e)}"
 
-    validate_modality_compatibility.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_modality_compatibility.metadata = {
+        "categories": ["QUALITY"],
+        "provenance": True,
+    }
     validate_modality_compatibility.tags = ["QUALITY"]
 
     @tool
@@ -710,7 +720,10 @@ You can now analyze this dataset using the appropriate analysis tools.
 
             data_manager.log_tool_usage(
                 tool_name="create_mudata_from_modalities",
-                parameters={"modality_names": modality_names, "output_name": output_name},
+                parameters={
+                    "modality_names": modality_names,
+                    "output_name": output_name,
+                },
                 description=f"Created MuData from {len(modality_names)} modalities → {mudata_path}",
                 ir=None,
             )
@@ -727,7 +740,10 @@ The MuData object contains all selected modalities and is ready for cross-modal 
             logger.error(f"Error creating MuData: {e}")
             return f"Error creating MuData: {str(e)}"
 
-    create_mudata_from_modalities.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    create_mudata_from_modalities.metadata = {
+        "categories": ["PREPROCESS"],
+        "provenance": True,
+    }
     create_mudata_from_modalities.tags = ["PREPROCESS"]
 
     @tool
@@ -760,6 +776,122 @@ The MuData object contains all selected modalities and is ready for cross-modal 
 
     get_adapter_info.metadata = {"categories": ["UTILITY"], "provenance": False}
     get_adapter_info.tags = ["UTILITY"]
+
+    @tool
+    def inject_sample_metadata(
+        modality_name: str,
+        geo_id: str = "",
+        metadata_file: str = "",
+        key_column: str = "",
+    ) -> str:
+        """Merge sample-level metadata into a loaded modality's .obs columns.
+
+        Two modes:
+        1. GEO mode: provide geo_id to auto-fetch SOFT metadata and map to cells
+        2. File mode: provide metadata_file (CSV/TSV in workspace) with key_column
+
+        Args:
+            modality_name: Target modality to enrich
+            geo_id: GEO accession (e.g. "GSE162183") for automatic SOFT fetch
+            metadata_file: Path to CSV/TSV metadata file (relative to workspace)
+            key_column: Column in metadata_file matching obs_names or sample_id
+        """
+        try:
+            adata = data_manager.get_modality(modality_name)
+            if adata is None:
+                available = data_manager.list_modalities()
+                return f"Modality '{modality_name}' not found. Available: {available}"
+
+            obs_before = set(adata.obs.columns)
+
+            if geo_id:
+                from lobster.services.data_access.geo.loom_metadata import (
+                    enrich_loom_adata_with_geo_metadata,
+                )
+
+                cache_dir = (
+                    str(data_manager.workspace_path)
+                    if data_manager.workspace_path
+                    else None
+                )
+                enriched = enrich_loom_adata_with_geo_metadata(
+                    adata,
+                    geo_id.strip().upper(),
+                    cache_dir=cache_dir,
+                )
+                if not enriched:
+                    return (
+                        f"STATUS=PARTIAL_FAIL | Could not map GEO SOFT metadata for {geo_id} "
+                        f"to observations in '{modality_name}'. "
+                        f"obs_names sample: {adata.obs_names[:3].tolist()}. "
+                        f"Try providing a metadata CSV with key_column instead."
+                    )
+
+            elif metadata_file:
+                import pandas as _pd
+
+                ws = data_manager.workspace_path
+                if not ws:
+                    return "STATUS=ERROR | No workspace path configured"
+                meta_path = (ws / metadata_file).resolve()
+                # Path traversal guard: must stay within workspace
+                try:
+                    meta_path.relative_to(ws.resolve())
+                except ValueError:
+                    return "STATUS=ERROR | metadata_file must be within workspace"
+                if not meta_path.exists():
+                    return f"STATUS=ERROR | Metadata file not found: {meta_path}"
+
+                sep = "\t" if meta_path.suffix in [".tsv", ".txt"] else ","
+                meta_df = _pd.read_csv(meta_path, sep=sep)
+
+                if key_column and key_column in meta_df.columns:
+                    meta_df = meta_df.set_index(key_column)
+
+                # Merge matching columns
+                shared_idx = adata.obs_names.intersection(meta_df.index)
+                if len(shared_idx) == 0:
+                    return (
+                        f"STATUS=ERROR | No matching indices between modality obs_names "
+                        f"and metadata. obs_names: {adata.obs_names[:3].tolist()}, "
+                        f"metadata index: {meta_df.index[:3].tolist()}"
+                    )
+
+                for col in meta_df.columns:
+                    if col not in adata.obs.columns:
+                        adata.obs.loc[shared_idx, col] = meta_df.loc[shared_idx, col]
+
+            else:
+                return "STATUS=ERROR | Provide either geo_id or metadata_file"
+
+            new_cols = set(adata.obs.columns) - obs_before
+
+            # Persist the mutation so it survives session save/restore
+            data_manager.store_modality(modality_name, adata)
+
+            data_manager.log_tool_usage(
+                tool_name="inject_sample_metadata",
+                parameters={
+                    "modality_name": modality_name,
+                    "geo_id": geo_id or None,
+                    "metadata_file": metadata_file or None,
+                },
+                description=f"Injected {len(new_cols)} metadata columns into {modality_name}",
+                ir=None,
+            )
+
+            return (
+                f"STATUS=OK | Injected {len(new_cols)} new columns into '{modality_name}': "
+                f"{sorted(new_cols)}. "
+                f"Total obs columns: {len(adata.obs.columns)}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error injecting metadata: {e}", exc_info=True)
+            return f"STATUS=ERROR | {str(e)}"
+
+    inject_sample_metadata.metadata = {"categories": ["ANNOTATE"], "provenance": False}
+    inject_sample_metadata.tags = ["ANNOTATE"]
 
     @tool
     def concatenate_samples(
@@ -890,8 +1022,14 @@ To save, run again with save_to_file=True"""
                 available = data_manager.list_modalities()
             except Exception:
                 available = "(unavailable)"
-            samples_str = str(sample_modalities) if sample_modalities else "(auto-detect failed or not provided)"
-            output_str = output_modality_name if output_modality_name else "(not yet determined)"
+            samples_str = (
+                str(sample_modalities)
+                if sample_modalities
+                else "(auto-detect failed or not provided)"
+            )
+            output_str = (
+                output_modality_name if output_modality_name else "(not yet determined)"
+            )
             return (
                 f"Error concatenating samples: {str(e)}\n"
                 f"Parameters: sample_modalities={samples_str}, "
@@ -1114,7 +1252,9 @@ To save, run again with save_to_file=True"""
 
     # Create filesystem tools for file-level operations (DeepAgent-inspired)
     fs_workspace = workspace_path or data_manager.workspace_path
-    filesystem_tools = create_filesystem_tools(workspace_path=fs_workspace) if fs_workspace else []
+    filesystem_tools = (
+        create_filesystem_tools(workspace_path=fs_workspace) if fs_workspace else []
+    )
 
     base_tools = [
         # CORE (3 tools)
@@ -1129,6 +1269,7 @@ To save, run again with save_to_file=True"""
         validate_modality_compatibility,
         # HELPER
         get_adapter_info,
+        inject_sample_metadata,
         # ADVANCED (Execution & Reasoning)
         execute_custom_code,
         # delegate_complex_reasoning, #TODO needs further security validation

@@ -118,7 +118,7 @@ class GEODownloadManager:
 
             # Parse HTML directory listing to find files
             file_links = re.findall(
-                r'href="([^"]*\.(?:txt|csv|xlsx|h5|gz|bz2))"',
+                r'href="([^"]*\.(?:txt|csv|xlsx|h5|h5ad|loom|gz|bz2))"',
                 response.text,
                 re.IGNORECASE,
             )
@@ -232,6 +232,7 @@ class GEODownloadManager:
                 "filtered",
                 "pdac",
                 "indrop",
+                "loom",
             ]
             ext_priority = [
                 ".txt.gz",
@@ -241,6 +242,7 @@ class GEODownloadManager:
                 ".mtx",
                 ".h5",
                 ".h5ad",
+                ".loom",
                 ".rds",
             ]
 
@@ -257,6 +259,7 @@ class GEODownloadManager:
                 "*_htseq*",
                 "*_PDAC*",
                 "*_indrop*",
+                "*.loom",
             ]
 
             # Look for files matching common patterns first
@@ -354,7 +357,15 @@ class GEODownloadManager:
             ]
 
             # File extensions in priority order
-            ext_priority = [".txt.gz", ".csv.gz", ".tsv.gz", ".txt", ".csv", ".tsv"]
+            ext_priority = [
+                ".txt.gz",
+                ".csv.gz",
+                ".tsv.gz",
+                ".txt",
+                ".csv",
+                ".tsv",
+                ".loom",
+            ]
 
             # First, look for files that match specific expression matrix patterns for GSE111672
             selected_file = None

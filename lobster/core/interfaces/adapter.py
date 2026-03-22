@@ -127,6 +127,7 @@ class IModalityAdapter(ABC):
                 ".mtx": "mtx",
                 ".h5mu": "h5mu",
                 ".parquet": "parquet",
+                ".loom": "loom",
             }
 
             return format_mapping.get(extension)
