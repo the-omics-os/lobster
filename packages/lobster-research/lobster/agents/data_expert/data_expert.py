@@ -778,122 +778,6 @@ The MuData object contains all selected modalities and is ready for cross-modal 
     get_adapter_info.tags = ["UTILITY"]
 
     @tool
-    def inject_sample_metadata(
-        modality_name: str,
-        geo_id: str = "",
-        metadata_file: str = "",
-        key_column: str = "",
-    ) -> str:
-        """Merge sample-level metadata into a loaded modality's .obs columns.
-
-        Two modes:
-        1. GEO mode: provide geo_id to auto-fetch SOFT metadata and map to cells
-        2. File mode: provide metadata_file (CSV/TSV in workspace) with key_column
-
-        Args:
-            modality_name: Target modality to enrich
-            geo_id: GEO accession (e.g. "GSE162183") for automatic SOFT fetch
-            metadata_file: Path to CSV/TSV metadata file (relative to workspace)
-            key_column: Column in metadata_file matching obs_names or sample_id
-        """
-        try:
-            adata = data_manager.get_modality(modality_name)
-            if adata is None:
-                available = data_manager.list_modalities()
-                return f"Modality '{modality_name}' not found. Available: {available}"
-
-            obs_before = set(adata.obs.columns)
-
-            if geo_id:
-                from lobster.services.data_access.geo.loom_metadata import (
-                    enrich_loom_adata_with_geo_metadata,
-                )
-
-                cache_dir = (
-                    str(data_manager.workspace_path)
-                    if data_manager.workspace_path
-                    else None
-                )
-                enriched = enrich_loom_adata_with_geo_metadata(
-                    adata,
-                    geo_id.strip().upper(),
-                    cache_dir=cache_dir,
-                )
-                if not enriched:
-                    return (
-                        f"STATUS=PARTIAL_FAIL | Could not map GEO SOFT metadata for {geo_id} "
-                        f"to observations in '{modality_name}'. "
-                        f"obs_names sample: {adata.obs_names[:3].tolist()}. "
-                        f"Try providing a metadata CSV with key_column instead."
-                    )
-
-            elif metadata_file:
-                import pandas as _pd
-
-                ws = data_manager.workspace_path
-                if not ws:
-                    return "STATUS=ERROR | No workspace path configured"
-                meta_path = (ws / metadata_file).resolve()
-                # Path traversal guard: must stay within workspace
-                try:
-                    meta_path.relative_to(ws.resolve())
-                except ValueError:
-                    return "STATUS=ERROR | metadata_file must be within workspace"
-                if not meta_path.exists():
-                    return f"STATUS=ERROR | Metadata file not found: {meta_path}"
-
-                sep = "\t" if meta_path.suffix in [".tsv", ".txt"] else ","
-                meta_df = _pd.read_csv(meta_path, sep=sep)
-
-                if key_column and key_column in meta_df.columns:
-                    meta_df = meta_df.set_index(key_column)
-
-                # Merge matching columns
-                shared_idx = adata.obs_names.intersection(meta_df.index)
-                if len(shared_idx) == 0:
-                    return (
-                        f"STATUS=ERROR | No matching indices between modality obs_names "
-                        f"and metadata. obs_names: {adata.obs_names[:3].tolist()}, "
-                        f"metadata index: {meta_df.index[:3].tolist()}"
-                    )
-
-                for col in meta_df.columns:
-                    if col not in adata.obs.columns:
-                        adata.obs.loc[shared_idx, col] = meta_df.loc[shared_idx, col]
-
-            else:
-                return "STATUS=ERROR | Provide either geo_id or metadata_file"
-
-            new_cols = set(adata.obs.columns) - obs_before
-
-            # Persist the mutation so it survives session save/restore
-            data_manager.store_modality(modality_name, adata)
-
-            data_manager.log_tool_usage(
-                tool_name="inject_sample_metadata",
-                parameters={
-                    "modality_name": modality_name,
-                    "geo_id": geo_id or None,
-                    "metadata_file": metadata_file or None,
-                },
-                description=f"Injected {len(new_cols)} metadata columns into {modality_name}",
-                ir=None,
-            )
-
-            return (
-                f"STATUS=OK | Injected {len(new_cols)} new columns into '{modality_name}': "
-                f"{sorted(new_cols)}. "
-                f"Total obs columns: {len(adata.obs.columns)}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error injecting metadata: {e}", exc_info=True)
-            return f"STATUS=ERROR | {str(e)}"
-
-    inject_sample_metadata.metadata = {"categories": ["ANNOTATE"], "provenance": False}
-    inject_sample_metadata.tags = ["ANNOTATE"]
-
-    @tool
     def concatenate_samples(
         sample_modalities: List[str] = None,
         output_modality_name: str = None,
@@ -1269,7 +1153,6 @@ To save, run again with save_to_file=True"""
         validate_modality_compatibility,
         # HELPER
         get_adapter_info,
-        inject_sample_metadata,
         # ADVANCED (Execution & Reasoning)
         execute_custom_code,
         # delegate_complex_reasoning, #TODO needs further security validation
