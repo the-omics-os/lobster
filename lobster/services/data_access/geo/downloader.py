@@ -7,7 +7,6 @@ database, providing structured access to gene expression datasets.
 
 import ftplib
 import hashlib
-import os
 import random
 import re
 import tarfile

@@ -8,7 +8,7 @@ loaded from Loom files. Usable from both the local CLI pipeline and cloud API.
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import pandas as pd
 

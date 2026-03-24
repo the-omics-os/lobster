@@ -10,15 +10,11 @@ import os
 import shutil
 import tarfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import anndata
-import numpy as np
 import pandas as pd
 
-from lobster.services.data_access.geo.constants import (
-    GEODataSource,
-)
 from lobster.services.data_access.geo.downloader import GEODownloadError
 from lobster.services.data_access.geo.helpers import (
     _is_archive_url,

@@ -15,7 +15,7 @@ import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 from lobster.utils.logger import get_logger
 

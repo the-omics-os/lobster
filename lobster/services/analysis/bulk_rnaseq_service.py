@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import anndata
 import numpy as np
 import pandas as pd
-from scipy import sparse
 
 from lobster.core import FormulaError
 from lobster.core.provenance.analysis_ir import AnalysisStep

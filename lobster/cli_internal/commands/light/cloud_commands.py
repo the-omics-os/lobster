@@ -10,7 +10,6 @@ Commands:
 """
 
 import logging
-import sys
 import time
 from typing import Optional
 from urllib.parse import urlparse
@@ -227,7 +226,7 @@ def _browser_login() -> None:
     server.timeout = 120
 
     auth_url = f"{endpoint}/auth/cli?port={port}&state={state}"
-    console.print(f"[dim]Opening browser for authentication...[/dim]")
+    console.print("[dim]Opening browser for authentication...[/dim]")
     console.print(f"[dim]If the browser doesn't open, visit:[/dim] {auth_url}")
 
     try:

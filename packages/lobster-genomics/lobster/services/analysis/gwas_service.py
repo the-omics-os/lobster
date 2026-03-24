@@ -424,7 +424,9 @@ class GWASService:
             # Compute dosage
             ds["call_dosage"] = ds["call_genotype"].sum(dim="ploidy")
 
-            # Add variant_contig (REQUIRED for windowing)
+            # Add variant_contig and contig_id (REQUIRED for windowing)
+            # sgkit's window_by_variant needs both variant_contig indices AND
+            # a contig_id variable (or contigs attr) to resolve contig metadata.
             if "CHROM" in adata.var.columns:
                 chroms = adata.var["CHROM"].astype(str).values
                 unique_chroms = np.unique(chroms)
@@ -432,8 +434,10 @@ class GWASService:
                 variant_contig = np.array([chrom_to_idx[c] for c in chroms], dtype=int)
             else:
                 # Single contig fallback
+                unique_chroms = np.array(["0"])
                 variant_contig = np.zeros(ds.sizes["variants"], dtype=int)
             ds["variant_contig"] = ("variants", variant_contig)
+            ds["contig_id"] = ("contigs", unique_chroms)
 
             # Window BEFORE pruning (required by sgkit)
             ds = sg.window_by_variant(ds, size=window_size)
@@ -532,8 +536,15 @@ class GWASService:
                 call_dosage = call_dosage.transpose("variants", "samples")
             ds["call_dosage"] = call_dosage
 
+            # Compute ancestral (sample) allele frequency for GRM estimation
+            # VanRaden estimator requires ancestral_frequency: freq = mean(dosage) / ploidy
+            ploidy = ds.sizes.get("ploidy", 2)
+            ds["sample_frequency"] = ds["call_dosage"].mean(dim="samples") / ploidy
+
             # Compute GRM
-            ds = sg.genomic_relationship(ds, estimator=estimator)
+            ds = sg.genomic_relationship(
+                ds, estimator=estimator, ancestral_frequency="sample_frequency"
+            )
 
             # Extract GRM
             grm = ds["stat_genomic_relationship"].values  # (n_samples, n_samples)

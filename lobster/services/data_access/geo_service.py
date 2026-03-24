@@ -19,7 +19,7 @@ Phase 4 Plan 02: GEO Service Decomposition.
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import anndata
 import pandas as pd
@@ -30,18 +30,13 @@ except ImportError:
     GEOparse = None
 
 from lobster.core.data_manager_v2 import DataManagerV2
-from lobster.core.exceptions import (
-    UnsupportedPlatformError,
-)
 from lobster.services.data_access.geo.archive_processing import ArchiveProcessor
 from lobster.services.data_access.geo.concatenation import SampleConcatenator
 
 # Re-export constants for backward compatibility -- consumers import from here
 from lobster.services.data_access.geo.constants import (
     DownloadStrategy,
-    GEODataSource,
     GEOResult,
-    GEOServiceError,
 )
 from lobster.services.data_access.geo.download_execution import DownloadExecutor
 from lobster.services.data_access.geo.downloader import (
@@ -50,17 +45,11 @@ from lobster.services.data_access.geo.downloader import (
 
 # Re-exports from helpers.py (added in Plan 01 Task 2) -- keep for backward compat
 from lobster.services.data_access.geo.helpers import (
-    ARCHIVE_EXTENSIONS,
-    RetryOutcome,
     RetryResult,
-    _is_archive_url,
 )
 from lobster.services.data_access.geo.helpers import _is_data_valid as _is_data_valid_fn
 from lobster.services.data_access.geo.helpers import (
     _retry_with_backoff as _retry_with_backoff_fn,
-)
-from lobster.services.data_access.geo.helpers import (
-    _score_expression_file,
 )
 from lobster.services.data_access.geo.loaders.tenx import TenXGenomicsLoader
 from lobster.services.data_access.geo.matrix_parsing import MatrixParser

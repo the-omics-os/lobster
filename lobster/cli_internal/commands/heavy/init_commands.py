@@ -5,13 +5,11 @@ Extracted from cli.py -- the `lobster init` wizard and all supporting
 helper functions for provider setup, agent selection, and package installation.
 """
 
-import datetime
 import logging
-import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import typer
 from rich.panel import Panel
@@ -20,7 +18,6 @@ from rich.prompt import Confirm, Prompt
 from lobster.config import provider_setup
 from lobster.ui import LobsterTheme
 from lobster.ui.console_manager import get_console_manager
-from lobster.version import __version__
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient

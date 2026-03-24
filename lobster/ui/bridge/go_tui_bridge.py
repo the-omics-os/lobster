@@ -17,7 +17,6 @@ from lobster.ui.bridge.protocol import (
     PROTOCOL_VERSION,
     MessageType,
     ProtocolMessage,
-    new_message,
     new_request,
 )
 

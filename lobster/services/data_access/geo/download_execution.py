@@ -6,9 +6,8 @@ Contains 10 methods that coordinate download strategies, execute pipeline
 steps, and manage the layered download approach.
 """
 
-import urllib.request
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List
 
 import anndata
 import pandas as pd
@@ -28,7 +27,6 @@ from lobster.services.data_access.geo.constants import (
 )
 from lobster.services.data_access.geo.helpers import (
     _is_data_valid,
-    _score_expression_file,
 )
 from lobster.services.data_access.geo.parser import ParseResult
 from lobster.services.data_access.geo.soft_download import pre_download_soft_file
@@ -38,7 +36,6 @@ from lobster.services.data_access.geo.strategy import (
     create_pipeline_context,
 )
 from lobster.utils.logger import get_logger
-from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
 logger = get_logger(__name__)
 

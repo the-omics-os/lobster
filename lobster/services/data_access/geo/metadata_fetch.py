@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
@@ -31,10 +31,6 @@ from lobster.services.data_access.geo.constants import (
     SUPPORTED_KEYWORDS,
     UNSUPPORTED_KEYWORDS,
     PlatformCompatibility,
-)
-from lobster.services.data_access.geo.helpers import (
-    RetryOutcome,
-    RetryResult,
 )
 from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.utils.logger import get_logger

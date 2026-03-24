@@ -263,6 +263,7 @@ class TestChimeraXVisualizationService:
         output_image = tmp_path / "output.png"
         commands = viz_service._generate_chimerax_commands(
             structure_file=mock_structure_file,
+            mode="batch",
             style="cartoon",
             color_by="chain",
             output_image=output_image,
@@ -285,6 +286,7 @@ class TestChimeraXVisualizationService:
         output_image = tmp_path / "output.png"
         commands = viz_service._generate_chimerax_commands(
             structure_file=mock_structure_file,
+            mode="static",
             style="surface",
             color_by="hydrophobicity",
             output_image=output_image,

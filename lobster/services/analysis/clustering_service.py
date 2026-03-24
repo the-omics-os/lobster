@@ -2643,7 +2643,6 @@ print(f"Quality metrics computed for {len(np.unique(labels))} clusters")
         }
 
         # Jinja2 code template
-        subcluster_key = f"{algorithm}_subcluster"
         code_template = """# Sub-clustering pipeline: Re-cluster specific cell populations
 import scanpy as sc
 import numpy as np

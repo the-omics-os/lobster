@@ -33,9 +33,7 @@ warnings.filterwarnings(
     "ignore", message="Core Pydantic V1 functionality", category=UserWarning
 )
 
-import html
 import os
-import random
 import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -49,15 +47,9 @@ import pandas as pd
 pd.options.future.infer_string = False
 
 os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "900000"
-import ast
-import inspect
-import json
 import logging
-import shutil
-import time
 import warnings
-from functools import lru_cache
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 # =============================================================================
 # Suppress noisy third-party warnings
@@ -77,75 +69,24 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="pydantic.
 
 # Heavy imports moved to TYPE_CHECKING for lazy loading (saves ~5s startup time)
 if TYPE_CHECKING:
-    import numpy as np
     import pandas as pd
     from lobster.core.client import AgentClient
-    from lobster.utils import TerminalCallbackHandler, open_path
 
 import typer
-from rich import box
 from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Confirm, Prompt
-from rich.syntax import Syntax
-from rich.table import Table
-from rich.text import Text
 
 from lobster.cli_internal.commands import (
     ConsoleOutputAdapter,
-    QueueFileTypeNotSupported,
-    archive_queue,
-    config_model_list,
-    config_model_switch,
-    config_provider_list,
-    config_provider_switch,
     config_show,
-    data_summary,
-    export_data,
-    file_read,
-    metadata_clear,
-    metadata_clear_all,
-    metadata_clear_exports,
-    metadata_exports,
-    metadata_list,
-    metadata_overview,
-    metadata_publications,
-    metadata_samples,
-    metadata_workspace,
-    modalities_list,
-    modality_describe,
-    pipeline_export,
-    pipeline_info,
-    pipeline_list,
-    pipeline_run,
-    plot_show,
-    plots_list,
-    queue_clear,
-    queue_export,
-    queue_import,
-    queue_list,
-    queue_load_file,
-    show_queue_status,
-    workspace_info,
-    workspace_list,
-    workspace_load,
-    workspace_remove,
-    workspace_status,
 )
 from lobster.cli_internal.commands.light.agent_commands import agents_app
+from lobster.cli_internal.commands.light.auth_commands import auth_app
 from lobster.cli_internal.commands.light.cloud_commands import cloud_app
 from lobster.cli_internal.commands.light.scaffold_commands import scaffold_app
 from lobster.cli_internal.commands.light.validate_commands import validate_app
-from lobster.cli_internal.utils.path_resolution import (  # BUG FIX #6: Secure path resolution
-    PathResolver,
-)
-from lobster.config import provider_setup
 
 # Import component registry (lazy - don't trigger load_components at import time)
-from lobster.core.component_registry import component_registry
 
 # Extraction cache manager loaded lazily to avoid triggering all agent imports at startup
 _ExtractionCacheManager = None
@@ -187,17 +128,10 @@ def _backup_command_to_file(
     return _impl(client, command, summary, is_error, primary_logged)
 
 
-from lobster.core.queue_storage import queue_file_lock
 from lobster.core.workspace import resolve_workspace
 
 # Import new UI system
-from lobster.ui import LobsterTheme, setup_logging
-from lobster.ui.components import (
-    create_file_tree,
-    create_workspace_tree,
-    get_multi_progress_manager,
-    get_status_display,
-)
+from lobster.ui import LobsterTheme
 from lobster.ui.console_manager import get_console_manager
 
 # Note: SimpleTerminalCallback, TerminalCallbackHandler, open_path moved to lazy loading
@@ -205,17 +139,17 @@ from lobster.version import __version__
 
 # Import prompt_toolkit for autocomplete functionality (optional dependency)
 try:
-    from prompt_toolkit import prompt
-    from prompt_toolkit.completion import (
+    from prompt_toolkit import prompt  # noqa: F401
+    from prompt_toolkit.completion import (  # noqa: F401
         CompleteEvent,
         Completer,
         Completion,
         ThreadedCompleter,
     )
-    from prompt_toolkit.document import Document
-    from prompt_toolkit.formatted_text import HTML
-    from prompt_toolkit.history import FileHistory
-    from prompt_toolkit.styles import Style
+    from prompt_toolkit.document import Document  # noqa: F401
+    from prompt_toolkit.formatted_text import HTML  # noqa: F401
+    from prompt_toolkit.history import FileHistory  # noqa: F401
+    from prompt_toolkit.styles import Style  # noqa: F401
 
     PROMPT_TOOLKIT_AVAILABLE = True
 except ImportError:
@@ -413,6 +347,9 @@ def config_callback(
 
 # Register agents subcommand group
 app.add_typer(agents_app, name="agents")
+
+# Register auth subcommand group (OAuth login/logout for LLM providers)
+app.add_typer(auth_app, name="auth")
 
 # Register cloud subcommand group
 app.add_typer(cloud_app, name="cloud")

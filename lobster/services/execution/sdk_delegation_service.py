@@ -67,7 +67,7 @@ class SDKDelegationService:
         if not SDK_AVAILABLE:
             raise SDKDelegationError(
                 "Claude Agent SDK not available. "
-                f"Please ensure it's installed or available at {sdk_path}"
+                "Please ensure it's installed."
             )
 
         self.data_manager = data_manager

@@ -16,7 +16,7 @@ Features:
 import csv
 import gzip
 import io
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 

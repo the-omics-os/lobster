@@ -6,7 +6,7 @@ All code performing .toarray() on potentially large matrices should use
 ``safe_toarray()`` or ``check_sparse_conversion_safe()`` first.
 """
 
-from typing import Any, Union
+from typing import Union
 
 import numpy as np
 import psutil

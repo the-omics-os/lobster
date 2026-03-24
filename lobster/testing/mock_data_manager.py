@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
 
-import anndata as ad
 
 
 class MockProvenanceTracker:

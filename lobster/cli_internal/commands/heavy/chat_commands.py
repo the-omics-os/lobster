@@ -9,7 +9,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import typer
 from rich import box
@@ -27,11 +27,8 @@ from lobster.cli_internal.commands.heavy.animations import (
     display_welcome,
 )
 from lobster.cli_internal.commands.heavy.session_infra import (
-    LobsterClientAdapter,
     _add_command_to_history,
     _maybe_print_timings,
-    display_session,
-    init_client,
     init_client_with_animation,
     should_show_progress,
     validate_startup_or_raise_startup_diagnostic,
@@ -44,7 +41,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
     render_startup_diagnostic_rich,
 )
-from lobster.ui import LobsterTheme, setup_logging
+from lobster.ui import setup_logging
 from lobster.ui.console_manager import get_console_manager
 from lobster.utils.callbacks import TerminalCallbackHandler
 from lobster.utils.system import open_path

@@ -726,7 +726,7 @@ class AgentContractTestMixin:
         bare_builtins = {list, dict, tuple, set}
         # typing module aliases (unparameterized) — also produce bare schemas
         bare_typing = {typing.List, typing.Dict, typing.Tuple, typing.Set}
-        bare_all = bare_builtins | bare_typing
+        bare_builtins | bare_typing
 
         def _is_bare(hint) -> str | None:
             """Return type name if hint is a bare collection, else None."""

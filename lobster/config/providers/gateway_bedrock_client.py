@@ -4,7 +4,7 @@ import json
 import logging
 import random
 import time
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 

@@ -261,6 +261,73 @@ def _fix_orphaned_tool_messages(messages: list) -> list:
     return result
 
 
+def _wrap_tool_results(messages: list) -> list:
+    """Wrap ToolMessage content in <tool_data> markers (spotlighting defense).
+
+    Ensures the LLM treats tool output as DATA, not instructions.
+    Any directive-like text embedded in tool results (e.g. from GEO metadata,
+    PubMed abstracts, or custom code output) stays inert.
+
+    Handles string content and multi-part list content. Skips messages
+    already wrapped or with empty/None content.
+    """
+    from langchain_core.messages import ToolMessage
+
+    if not messages:
+        return messages
+
+    result = []
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            result.append(msg)
+            continue
+
+        content = msg.content
+
+        # Skip None/empty content
+        if not content:
+            result.append(msg)
+            continue
+
+        if isinstance(content, str):
+            # Skip if already wrapped
+            if content.lstrip().startswith("<tool_data>"):
+                result.append(msg)
+                continue
+            wrapped_content = f"<tool_data>{content}</tool_data>"
+        elif isinstance(content, list):
+            # Multi-part content: wrap each text part
+            wrapped_content = []
+            for part in content:
+                if isinstance(part, str):
+                    if part.lstrip().startswith("<tool_data>"):
+                        wrapped_content.append(part)
+                    else:
+                        wrapped_content.append(f"<tool_data>{part}</tool_data>")
+                elif isinstance(part, dict) and part.get("type") == "text":
+                    text = part.get("text", "")
+                    if text.lstrip().startswith("<tool_data>"):
+                        wrapped_content.append(part)
+                    else:
+                        wrapped_content.append({**part, "text": f"<tool_data>{text}</tool_data>"})
+                else:
+                    # Non-text parts (images, etc.) pass through unchanged
+                    wrapped_content.append(part)
+        else:
+            result.append(msg)
+            continue
+
+        # Create new ToolMessage preserving tool_call_id and name
+        wrapped_msg = ToolMessage(
+            content=wrapped_content,
+            tool_call_id=msg.tool_call_id,
+            name=getattr(msg, "name", None),
+        )
+        result.append(wrapped_msg)
+
+    return result
+
+
 def _build_store_key_index(store) -> dict[str, str]:
     """Read all stored agent results and build a key→agent_name index.
 
@@ -337,6 +404,9 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
 
         # Fix orphaned ToolMessages that lost their AIMessage partner
         trimmed = _fix_orphaned_tool_messages(trimmed)
+
+        # Spotlighting defense: wrap tool results so LLM treats them as data
+        trimmed = _wrap_tool_results(trimmed)
 
         compaction_metadata: dict[str, int] | None = None
         if len(trimmed) < len(messages):

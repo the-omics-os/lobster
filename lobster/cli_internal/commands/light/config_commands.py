@@ -5,7 +5,6 @@ Extracted from cli.py to enable reuse across interfaces.
 All commands accept OutputAdapter for UI-agnostic rendering.
 """
 
-import os
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -1108,9 +1107,7 @@ def config_test_impl(output_json: bool = False):
     console_manager = get_console_manager()
     console = console_manager.console
 
-    import json as json_module
 
-    from dotenv import load_dotenv
 
     # Results structure for JSON output
     test_results = {
@@ -1477,10 +1474,7 @@ def list_profiles_impl():
 
 def show_config_impl(workspace=None, show_all: bool = False):
     """Show current runtime configuration (extracted from cli.py)."""
-    import os
-    from pathlib import Path
 
-    import typer
     from rich.panel import Panel
 
     from lobster.core.workspace import resolve_workspace
@@ -1715,7 +1709,6 @@ def show_config_impl(workspace=None, show_all: bool = False):
 def test_impl(profile=None, agent=None):
     """Test LLM provider connectivity and configuration (extracted from cli.py)."""
     import os
-    from pathlib import Path
 
     import typer
     from rich.panel import Panel
@@ -1975,7 +1968,6 @@ LOBSTER_CACHE_DIR=data/cache
 
 def config_models_impl(workspace=None):
     """Interactive per-agent model configuration using prompt_toolkit dialogs."""
-    from pathlib import Path
 
     from prompt_toolkit.shortcuts import radiolist_dialog
 

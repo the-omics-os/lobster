@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import shutil
-import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -22,9 +21,8 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence
 from rich import box
 from rich.console import Console
 from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Confirm
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
@@ -38,6 +36,8 @@ from lobster.version import __version__
 
 if TYPE_CHECKING:
     from lobster.core.client import AgentClient
+
+    from lobster.cli_internal.commands.output_adapter import OutputAdapter
 
 # Lazy imports from other heavy modules (these are the extracted companions)
 from lobster.cli_internal.commands import (
@@ -84,24 +84,20 @@ from lobster.cli_internal.commands import (
 )
 from lobster.cli_internal.commands.heavy.animations import (
     display_goodbye,
-    display_welcome,
 )
 from lobster.cli_internal.commands.heavy.display_helpers import build_status_blocks
 from lobster.cli_internal.commands.heavy.session_infra import (
     CloudAwareCache,
     LobsterClientAdapter,
     _add_command_to_history,
-    _backup_command_to_file,
     _maybe_print_timings,
     build_session_blocks,
-    should_show_progress,
 )
 from lobster.cli_internal.commands.output_adapter import (
     OutputBlock,
     alert_block,
     hint_block,
     kv_block,
-    list_block,
     section_block,
     table_block,
 )
@@ -3510,7 +3506,6 @@ def command_cmd_impl(
     """Execute workspace commands without an LLM session (extracted from cli.py)."""
     import json
     import sys
-    from pathlib import Path
 
     import typer
 

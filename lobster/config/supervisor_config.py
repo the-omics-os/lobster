@@ -58,6 +58,9 @@ class SupervisorConfig:
     )
     workspace_metadata_level_warning: bool = True  # Warn about large metadata fetches
 
+    # Security settings
+    admin_mode: bool = False  # Server-verified admin bypass (replaces text-based "ADMIN SUPERUSER")
+
     # Agent discovery settings
     auto_discover_agents: bool = True
     include_agent_tools: bool = True  # Whether to list individual agent tools
@@ -100,6 +103,7 @@ class SupervisorConfig:
             "SUPERVISOR_AUTO_DISCOVER": ("auto_discover_agents", bool),
             "SUPERVISOR_INCLUDE_AGENT_TOOLS": ("include_agent_tools", bool),
             "SUPERVISOR_MAX_TOOLS_PER_AGENT": ("max_tools_per_agent", int),
+            "SUPERVISOR_ADMIN_MODE": ("admin_mode", bool),
         }
 
         for env_var, (field_name, field_type) in env_mappings.items():
@@ -192,6 +196,7 @@ class SupervisorConfig:
             "auto_discover_agents": self.auto_discover_agents,
             "include_agent_tools": self.include_agent_tools,
             "max_tools_per_agent": self.max_tools_per_agent,
+            "admin_mode": self.admin_mode,
         }
 
     def get_prompt_mode(self) -> str:

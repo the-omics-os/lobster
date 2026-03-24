@@ -6,7 +6,7 @@ to translate natural-language questions into typed UI components.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from pydantic import BaseModel, Field, model_validator
 

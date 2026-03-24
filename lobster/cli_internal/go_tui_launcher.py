@@ -145,9 +145,9 @@ def find_tui_binary_fast() -> Optional[str]:
 
     Search order:
     1. ``LOBSTER_TUI_BINARY`` override path (if set).
-    2. Development build -- walk up from this file looking for
+    2. Platform wheel package (``lobster_ai_tui``) — preferred in production.
+    3. Development build -- walk up from this file looking for
        ``lobster-tui/lobster-tui``.
-    3. Platform wheel package (``lobster_ai_tui``).
     4. User cache directory (``~/.cache/lobster/bin/lobster-tui``).
     5. System PATH via ``shutil.which``.
 
@@ -160,17 +160,7 @@ def find_tui_binary_fast() -> Optional[str]:
         if override_path.is_file() and os.access(override_path, os.X_OK):
             return str(override_path.resolve())
 
-    # 2. Development build -- walk up from this file.
-    current = Path(__file__).resolve().parent
-    for _ in range(8):
-        candidate = current / "lobster-tui" / "lobster-tui"
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return str(candidate)
-        if current.parent == current:
-            break
-        current = current.parent
-
-    # 3. Platform wheel package (tiny or absent -- safe to attempt)
+    # 2. Platform wheel package — preferred over dev builds.
     try:
         from lobster_ai_tui import get_binary_path  # type: ignore[import-untyped]
 
@@ -179,6 +169,16 @@ def find_tui_binary_fast() -> Optional[str]:
             return str(candidate)
     except (ImportError, FileNotFoundError, AttributeError, TypeError):
         pass
+
+    # 3. Development build -- walk up from this file.
+    current = Path(__file__).resolve().parent
+    for _ in range(8):
+        candidate = current / "lobster-tui" / "lobster-tui"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+        if current.parent == current:
+            break
+        current = current.parent
 
     # 4. User cache
     cache_bin = Path.home() / ".cache" / "lobster" / "bin" / "lobster-tui"

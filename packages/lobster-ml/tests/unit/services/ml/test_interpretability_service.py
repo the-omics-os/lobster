@@ -12,6 +12,18 @@ from sklearn.ensemble import RandomForestClassifier
 
 from lobster.services.ml.interpretability_service import InterpretabilityService
 
+# Check if SHAP is available for conditional testing
+try:
+    import shap  # noqa: F401
+
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not SHAP_AVAILABLE, reason="SHAP not installed"
+)
+
 
 @pytest.fixture
 def service():

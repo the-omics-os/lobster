@@ -657,8 +657,8 @@ def test_ir_includes_code_template(ml_service, sample_adata):
     _, _, ir = ml_service.check_ml_readiness(sample_adata, "test_modality")
 
     assert ir.code_template
-    assert "service = MLPreparationService()" in ir.code_template
     assert "{{ modality_name }}" in ir.code_template
+    assert "ML Readiness Assessment" in ir.code_template
 
 
 def test_ir_includes_imports(ml_service, sample_adata):
@@ -668,7 +668,7 @@ def test_ir_includes_imports(ml_service, sample_adata):
     )
 
     assert len(ir.imports) > 0
-    assert any("MLPreparationService" in imp for imp in ir.imports)
+    assert any("numpy" in imp or "sklearn" in imp for imp in ir.imports)
 
 
 def test_ir_includes_parameters(ml_service, sample_adata):

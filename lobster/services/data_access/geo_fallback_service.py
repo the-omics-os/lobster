@@ -6,7 +6,6 @@ data from the Gene Expression Omnibus (GEO) database when the standard GEOparse 
 It includes TAR processing, supplementary file handling, and alternative download strategies.
 """
 
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -25,7 +24,6 @@ from lobster.services.data_access.geo.soft_download import pre_download_soft_fil
 # Import the main service classes and enums
 from lobster.services.data_access.geo_service import GEODataSource, GEOResult
 from lobster.utils.logger import get_logger
-from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
 logger = get_logger(__name__)
 

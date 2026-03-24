@@ -9,7 +9,6 @@ and metadata formatting.
 
 import re
 import time
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -26,7 +25,6 @@ except ImportError:
 from lobster.services.data_access.geo.parser import ParseResult
 from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.utils.logger import get_logger
-from lobster.utils.ssl_utils import create_ssl_context, handle_ssl_error
 
 logger = get_logger(__name__)
 
