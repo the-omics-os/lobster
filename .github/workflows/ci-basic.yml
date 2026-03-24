@@ -69,7 +69,7 @@ jobs:
           --durations=10 \
           --ignore=tests/unit/agents \
           --ignore=tests/unit/core/backends \
-          --ignore=tests/unit/services/analysis \
+          --ignore=tests/unit/services \
           --ignore=tests/unit/tools \
           -v
 
