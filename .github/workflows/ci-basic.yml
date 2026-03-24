@@ -82,6 +82,7 @@ jobs:
           --import-mode=importlib \
           --maxfail=10 \
           --durations=10 \
+          --ignore=tests/unit/core/backends/test_h5ad_backend.py \
           -v
 
     - name: Run unit/core tests
