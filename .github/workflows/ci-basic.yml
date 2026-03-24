@@ -65,6 +65,9 @@ jobs:
           --import-mode=importlib \
           --maxfail=5 \
           --durations=10 \
+          --ignore=tests/chaos \
+          --ignore=tests/integration \
+          --ignore=tests/performance \
           -v
 
     - name: Run unit/config tests

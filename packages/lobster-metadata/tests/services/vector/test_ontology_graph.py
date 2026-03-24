@@ -12,6 +12,10 @@ All tests use mocked obonet — no real network calls.
 
 from __future__ import annotations
 
+import pytest
+
+networkx = pytest.importorskip("networkx", reason="networkx not installed")
+
 from unittest.mock import MagicMock, patch
 
 import networkx as nx
