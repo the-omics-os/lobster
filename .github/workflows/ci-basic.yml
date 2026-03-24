@@ -60,18 +60,11 @@ jobs:
 
     - name: Run contract tests
       run: |
-        # Contract tests run per-package in Testing Infrastructure workflow.
-        # Here we only run the subset that doesn't require heavy deps (scanpy, etc).
-        python -m pytest tests/unit -m contract \
-          --no-cov \
-          --import-mode=importlib \
-          --maxfail=5 \
-          --durations=10 \
-          --ignore=tests/unit/agents \
-          --ignore=tests/unit/core/backends \
-          --ignore=tests/unit/services \
-          --ignore=tests/unit/tools \
-          -v
+        # Contract tests live in tests/unit/services and packages/*/tests — both
+        # require heavy deps (scanpy, agent packages) not installed in Basic CI.
+        # Full contract validation runs per-package in the Testing Infrastructure workflow.
+        # Here we verify the contract test framework itself is importable.
+        python -c "from lobster.testing.contract_mixins import AgentContractTestMixin; print('Contract test framework OK')"
 
     - name: Run unit/config tests
       run: |
