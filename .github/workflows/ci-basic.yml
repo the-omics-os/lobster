@@ -60,12 +60,17 @@ jobs:
 
     - name: Run contract tests
       run: |
+        # Contract tests run per-package in Testing Infrastructure workflow.
+        # Here we only run the subset that doesn't require heavy deps (scanpy, etc).
         python -m pytest tests/unit -m contract \
           --no-cov \
           --import-mode=importlib \
           --maxfail=5 \
           --durations=10 \
           --ignore=tests/unit/agents \
+          --ignore=tests/unit/core/backends \
+          --ignore=tests/unit/services/analysis \
+          --ignore=tests/unit/tools \
           -v
 
     - name: Run unit/config tests
