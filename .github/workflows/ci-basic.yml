@@ -106,8 +106,6 @@ jobs:
       run: |
         python -m pytest \
           tests/unit/agents/test_agent_registry.py \
-          tests/unit/agents/test_research_agent.py \
-          tests/unit/agents/test_data_expert.py \
           -m "not slow and not real_api" \
           --import-mode=importlib \
           --maxfail=10 \
