@@ -97,20 +97,9 @@ jobs:
           --durations=10 \
           -v
 
-    - name: Run unit/agents tests
-      env:
-        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
-        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
-      run: |
-        python -m pytest \
-          tests/unit/agents/test_agent_registry.py \
-          -m "not slow and not real_api" \
-          --import-mode=importlib \
-          --maxfail=10 \
-          --durations=10 \
-          -v
+    # Agent tests require agent packages (lobster-research, lobster-transcriptomics, etc.)
+    # which are only installed in the Testing Infrastructure workflow.
+    # Skipping here — full agent tests run per-package in test-packages.yml.
 
   # =====================================================================
   # Go TUI Verification
