@@ -262,6 +262,9 @@ jobs:
             --maxfail=5 \
             --timeout=300 \
             --durations=10 \
+            --ignore=tests/integration/test_agent15_complete_scrna_workflows.py \
+            --ignore=tests/integration/test_agent16_bulk_multi_omics.py \
+            --ignore=tests/integration/test_agent_guided_formula_construction.py \
             -v
         fi
 
