@@ -106,7 +106,7 @@ class TestMetadataAssistantInit:
         mock_agent,
     ):
         """Test agent initialization without callback handler."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -170,7 +170,7 @@ class TestMetadataAssistantInit:
         mock_agent,
     ):
         """Test agent initialization with callback handler."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -210,7 +210,7 @@ class TestMetadataAssistantInit:
         mock_agent,
     ):
         """Test agent initialization with delegation tools."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -261,7 +261,7 @@ class TestMapSamplesByID:
         mock_agent,
     ):
         """Test successful sample mapping."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -384,7 +384,7 @@ class TestMapSamplesByID:
         mock_agent,
     ):
         """Test sample mapping with specific strategies."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -468,7 +468,7 @@ class TestMapSamplesByID:
         mock_agent,
     ):
         """Test sample mapping with invalid strategy."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -528,7 +528,7 @@ class TestMapSamplesByID:
         mock_agent,
     ):
         """Test sample mapping with ValueError from service."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -593,7 +593,7 @@ class TestReadSampleMetadata:
         mock_agent,
     ):
         """Test reading metadata in summary format."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -660,7 +660,7 @@ class TestReadSampleMetadata:
         mock_agent,
     ):
         """Test reading metadata in detailed format (JSON)."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -719,7 +719,7 @@ class TestReadSampleMetadata:
         mock_agent,
     ):
         """Test reading metadata in schema format (DataFrame markdown)."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -778,7 +778,7 @@ class TestReadSampleMetadata:
         mock_agent,
     ):
         """Test reading metadata with specific fields."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -839,7 +839,7 @@ class TestReadSampleMetadata:
         mock_agent,
     ):
         """Test reading metadata with ValueError from data_manager."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -892,7 +892,7 @@ class TestStandardizeSampleMetadata:
         mock_agent,
     ):
         """Test successful metadata standardization."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -991,7 +991,7 @@ class TestStandardizeSampleMetadata:
         mock_agent,
     ):
         """Test standardization with controlled vocabularies."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1063,7 +1063,7 @@ class TestStandardizeSampleMetadata:
         mock_agent,
     ):
         """Test standardization with invalid JSON for controlled vocabularies."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1116,7 +1116,7 @@ class TestStandardizeSampleMetadata:
         mock_agent,
     ):
         """Test standardization with ValueError from service."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1175,7 +1175,7 @@ class TestValidateDatasetContent:
         mock_agent,
     ):
         """Test validation of dataset passing all checks."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1267,7 +1267,7 @@ class TestValidateDatasetContent:
         mock_agent,
     ):
         """Test validation of dataset with issues."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1345,7 +1345,7 @@ class TestValidateDatasetContent:
         mock_agent,
     ):
         """Test validation with required conditions."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1417,7 +1417,7 @@ class TestValidateDatasetContent:
         mock_agent,
     ):
         """Test validation with ValueError from service."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1473,7 +1473,7 @@ class TestSystemPrompt:
         mock_agent,
     ):
         """Test that system prompt includes current date."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1526,7 +1526,7 @@ class TestUnexpectedErrors:
         mock_agent,
     ):
         """Test map_samples_by_id with unexpected error."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1590,7 +1590,7 @@ class TestUnexpectedErrors:
         mock_agent,
     ):
         """Test read_sample_metadata with unexpected error."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1645,7 +1645,7 @@ class TestUnexpectedErrors:
         mock_agent,
     ):
         """Test standardize_sample_metadata with unexpected error."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1698,7 +1698,7 @@ class TestUnexpectedErrors:
         mock_agent,
     ):
         """Test validate_dataset_content with unexpected error."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1767,7 +1767,7 @@ class TestToolRouting:
         - Query: "Map samples between dataset1 and dataset2"
         - Expected: Agent chooses map_samples_by_id tool
         """
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -1868,7 +1868,7 @@ class TestToolRouting:
         """
         import time
 
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Rate limiting
         time.sleep(1.0)
@@ -1986,7 +1986,7 @@ class TestToolRouting:
         - Missing required parameters
         - Malformed inputs
         """
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -2044,7 +2044,7 @@ class TestToolRouting:
 
         Verifies agent can chain tool calls with intermediate results.
         """
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -2175,7 +2175,7 @@ class TestHandoffCoordination:
         Use exact and pattern matching strategies. Return mapping report with
         confidence scores and unmapped samples."
         """
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -2270,7 +2270,7 @@ class TestHandoffCoordination:
         - Quantitative metrics (mapping rate, confidence scores)
         - Actionable recommendation
         """
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -2380,7 +2380,7 @@ class TestHandoffCoordination:
 
         Report format complies with metadata_assistant system prompt requirements.
         """
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -2484,7 +2484,7 @@ class TestFilterSamplesBy:
         mock_agent,
     ):
         """Test basic filtering with single criterion (16S amplicon)."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
         from lobster.core.provenance.analysis_ir import AnalysisStep
 
         # Setup mocks
@@ -2628,7 +2628,7 @@ class TestFilterSamplesBy:
         mock_agent,
     ):
         """Test multi-criteria filtering (16S + human + fecal)."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
         from lobster.core.provenance.analysis_ir import AnalysisStep
 
         # Setup mocks
@@ -2795,7 +2795,7 @@ class TestFilterSamplesBy:
         mock_agent,
     ):
         """Test natural language criteria parsing."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()

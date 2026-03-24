@@ -223,7 +223,7 @@ class TestProcessMetadataEntry:
         sample_workspace_metadata,
     ):
         """Process single entry with filter criteria."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -299,7 +299,7 @@ class TestProcessMetadataEntry:
         real_queue,
     ):
         """Error when entry has no workspace_metadata_keys."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -364,7 +364,7 @@ class TestProcessMetadataQueue:
         sample_workspace_metadata,
     ):
         """Batch process multiple HANDOFF_READY entries."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -445,7 +445,7 @@ class TestProcessMetadataQueue:
         sample_workspace_metadata,
     ):
         """max_entries parameter limits processing."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -525,7 +525,7 @@ class TestProcessMetadataQueue:
         sample_workspace_metadata,
     ):
         """Aggregated samples stored for write_to_workspace access."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -593,7 +593,7 @@ class TestUpdateMetadataStatus:
         queue_entry_with_metadata_keys,
     ):
         """Manually update handoff_status."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -654,7 +654,7 @@ class TestUpdateMetadataStatus:
         queue_entry_with_metadata_keys,
     ):
         """Add error message to entry."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -709,7 +709,7 @@ class TestSharedWorkspaceToolsInAgent:
         mock_data_manager,
     ):
         """Verify write_to_workspace tool is available."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
@@ -750,7 +750,7 @@ class TestSharedWorkspaceToolsInAgent:
         mock_data_manager,
     ):
         """Verify tool count includes new queue tools + shared tools."""
-        from lobster.agents.metadata_assistant import metadata_assistant
+        from lobster.agents.metadata_assistant.metadata_assistant import metadata_assistant
 
         # Setup mocks
         mock_settings_instance = Mock()
