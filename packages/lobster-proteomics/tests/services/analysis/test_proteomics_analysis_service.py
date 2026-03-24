@@ -770,8 +770,12 @@ class TestIntegrationScenarios:
             adata_reduced, clustering_method="kmeans"
         )
 
-        # Step 4: Pathway enrichment
-        adata_enriched, _, _ = service.perform_pathway_enrichment(adata_clustered)
+        # Step 4: Pathway enrichment (provide explicit protein list since
+        # statistical_testing doesn't set is_significant column)
+        top_proteins = adata_clustered.var_names[:20].tolist()
+        adata_enriched, _, _ = service.perform_pathway_enrichment(
+            adata_clustered, protein_list=top_proteins
+        )
 
         # Verify final result has all analysis components
         assert "statistical_tests" in adata_enriched.uns

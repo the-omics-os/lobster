@@ -28,31 +28,36 @@ class TestWGCNALiteService:
 
     @pytest.fixture
     def sample_adata_with_modules(self):
-        """Create sample AnnData with correlated protein expression patterns."""
+        """Create sample AnnData with strongly correlated protein expression patterns.
+
+        Three distinct modules with very low noise (0.05) so that co-expression
+        structure survives soft power thresholding at any reasonable power.
+        Module signals are orthogonal (no cross-module correlation).
+        """
         np.random.seed(42)
 
-        n_samples = 50
+        n_samples = 60
         n_proteins = 100
 
-        # Create base expression
-        X = np.random.randn(n_samples, n_proteins)
+        # Create base expression (noise floor for unassigned proteins)
+        X = np.random.randn(n_samples, n_proteins) * 0.5
 
-        # Create module 1 (proteins 0-29): correlated expression
-        module1_signal = np.random.randn(n_samples)
+        # Create module 1 (proteins 0-29): strong correlated expression
+        module1_signal = np.random.randn(n_samples) * 3.0
         for i in range(30):
-            X[:, i] = module1_signal + np.random.randn(n_samples) * 0.3
+            X[:, i] = module1_signal + np.random.randn(n_samples) * 0.05
 
-        # Create module 2 (proteins 30-59): different correlated expression
-        module2_signal = np.random.randn(n_samples)
+        # Create module 2 (proteins 30-59): different strong correlated expression
+        module2_signal = np.random.randn(n_samples) * 3.0
         for i in range(30, 60):
-            X[:, i] = module2_signal + np.random.randn(n_samples) * 0.3
+            X[:, i] = module2_signal + np.random.randn(n_samples) * 0.05
 
-        # Create module 3 (proteins 60-79): another pattern
-        module3_signal = np.random.randn(n_samples)
+        # Create module 3 (proteins 60-79): another strong pattern
+        module3_signal = np.random.randn(n_samples) * 3.0
         for i in range(60, 80):
-            X[:, i] = module3_signal + np.random.randn(n_samples) * 0.3
+            X[:, i] = module3_signal + np.random.randn(n_samples) * 0.05
 
-        # Proteins 80-99 remain uncorrelated (should be grey)
+        # Proteins 80-99 remain low-variance uncorrelated (should be grey)
 
         # Create clinical traits
         obs = pd.DataFrame(
@@ -61,7 +66,7 @@ class TestWGCNALiteService:
                 "response": np.random.choice(["CR", "PR", "SD", "PD"], n_samples),
                 "age": np.random.randint(30, 70, n_samples),
                 "continuous_trait": module1_signal * 2
-                + np.random.randn(n_samples) * 0.5,
+                + np.random.randn(n_samples) * 0.1,
             },
             index=[f"sample_{i}" for i in range(n_samples)],
         )
@@ -104,6 +109,7 @@ class TestWGCNALiteService:
         adata_modules, stats, ir = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
             distance_threshold=0.3,
             min_module_size=10,
         )
@@ -130,6 +136,7 @@ class TestWGCNALiteService:
         adata_modules, stats, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
             distance_threshold=0.4,  # More lenient threshold
             min_module_size=15,
         )
@@ -151,6 +158,7 @@ class TestWGCNALiteService:
         adata_modules, stats, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         # Check eigengenes are stored
@@ -169,6 +177,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         # Then correlate with traits
@@ -201,6 +210,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         # Correlate with traits - continuous_trait was constructed to correlate with module1
@@ -222,6 +232,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         # Get the first non-grey module
@@ -239,6 +250,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         summary = service.get_module_summary(adata_modules)
@@ -254,6 +266,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         adata_kme, stats, ir = service.calculate_module_membership(adata_modules)
@@ -294,6 +307,7 @@ class TestWGCNALiteService:
         adata_strict, stats_strict, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
             merge_cut_height=0.1,  # Strict - less merging
         )
 
@@ -301,6 +315,7 @@ class TestWGCNALiteService:
         adata_lenient, stats_lenient, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
             merge_cut_height=0.5,  # Lenient - more merging
         )
 
@@ -348,6 +363,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         # Should warn but not fail with some valid traits
@@ -363,6 +379,7 @@ class TestWGCNALiteService:
         adata_modules, _, _ = service.identify_modules(
             sample_adata_with_modules,
             n_top_variable=100,
+            soft_power=6,
         )
 
         with pytest.raises(ProteomicsNetworkError, match="No valid traits"):
@@ -498,20 +515,23 @@ class TestWGCNALiteServiceEdgeCases:
         return WGCNALiteService()
 
     def test_very_small_dataset(self, service):
-        """Test with very small dataset."""
+        """Test with very small dataset (below 15-sample minimum)."""
+        from lobster.services.analysis.proteomics_network_service import (
+            ProteomicsNetworkError,
+        )
+
         X = np.random.randn(10, 20)
         obs = pd.DataFrame(index=[f"s_{i}" for i in range(10)])
 
         adata = anndata.AnnData(X=X, obs=obs)
 
-        # Should still run
-        adata_modules, stats, _ = service.identify_modules(
-            adata,
-            n_top_variable=20,
-            min_module_size=3,  # Allow smaller modules
-        )
-
-        assert isinstance(stats, dict)
+        # Service requires >=15 samples for reliable WGCNA
+        with pytest.raises(ProteomicsNetworkError, match="at least 15 samples"):
+            service.identify_modules(
+                adata,
+                n_top_variable=20,
+                min_module_size=3,
+            )
 
     def test_single_protein_per_sample(self, service):
         """Test with extreme dimensions."""

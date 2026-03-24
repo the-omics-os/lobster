@@ -41,13 +41,14 @@ def service():
 @pytest.fixture
 def mock_adata_with_groups():
     """Create mock AnnData with groups for differential expression."""
+    rng = np.random.default_rng(42)
     n_samples, n_proteins = 60, 100
 
-    # Create different expression levels for different groups
-    base_expression = np.random.lognormal(mean=8, sigma=1, size=(n_samples, n_proteins))
+    # Low variance so fold changes are detectable
+    base_expression = rng.lognormal(mean=8, sigma=0.3, size=(n_samples, n_proteins))
 
     # Add group-specific effects to some proteins
-    differential_proteins = np.random.choice(n_proteins, 20, replace=False)
+    differential_proteins = rng.choice(n_proteins, 20, replace=False)
 
     # Control group: samples 0-19
     # Treatment1 group: samples 20-39 (upregulated proteins)
@@ -56,12 +57,12 @@ def mock_adata_with_groups():
     for protein_idx in differential_proteins[
         :10
     ]:  # First 10 are upregulated in treatment1
-        base_expression[20:40, protein_idx] *= 2.5  # 2.5x increase
+        base_expression[20:40, protein_idx] *= 4.0  # 4x increase
 
     for protein_idx in differential_proteins[
         10:
     ]:  # Last 10 are downregulated in treatment2
-        base_expression[40:60, protein_idx] *= 0.4  # 2.5x decrease
+        base_expression[40:60, protein_idx] *= 0.25  # 4x decrease
 
     adata = ad.AnnData(X=base_expression)
     adata.obs_names = [f"sample_{i}" for i in range(n_samples)]

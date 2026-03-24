@@ -28,13 +28,8 @@ from lobster.services.data_access.proteomics_parsers import (
     get_parser_for_file,
 )
 
-# Fixtures directory path
-FIXTURES_DIR = (
-    Path(__file__).parent.parent.parent.parent.parent
-    / "fixtures"
-    / "proteomics"
-    / "spectronaut"
-)
+# Fixtures directory path (inside package test directory)
+FIXTURES_DIR = Path(__file__).parent.parent.parent / "fixtures" / "spectronaut"
 
 
 class TestSpectronautParserInit:
