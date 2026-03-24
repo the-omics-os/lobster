@@ -2,10 +2,15 @@
 
 import json
 import os
+from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+def _has_langchain_aws():
+    return find_spec("langchain_aws") is not None
 
 # ---------------------------------------------------------------------------
 # Credentials tests
@@ -180,6 +185,10 @@ class TestOmicsOSProvider:
         with pytest.raises(ValueError, match="not configured"):
             p.create_chat_model("us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
+    @pytest.mark.skipif(
+        not _has_langchain_aws(),
+        reason="langchain_aws not installed",
+    )
     def test_create_chat_model_returns_bedrock_converse(self, monkeypatch):
         """create_chat_model should return a ChatBedrockConverse via gateway shim."""
         from lobster.config.providers.omics_os_provider import OmicsOSProvider
@@ -198,6 +207,10 @@ class TestOmicsOSProvider:
         assert model.model_id == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
         assert model.temperature == 0.5
 
+    @pytest.mark.skipif(
+        not _has_langchain_aws(),
+        reason="langchain_aws not installed",
+    )
     def test_create_chat_model_alias_resolution(self, monkeypatch):
         """Friendly model names should be resolved to canonical Bedrock IDs."""
         from lobster.config.providers.omics_os_provider import OmicsOSProvider

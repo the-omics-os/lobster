@@ -1,5 +1,7 @@
 """Tests for OpenRouter config schema fields."""
 
+from importlib.util import find_spec
+
 import pytest
 
 
@@ -155,6 +157,10 @@ def test_config_resolver_rejects_invalid_provider(monkeypatch, reset_singletons)
 
 
 @pytest.mark.no_auto_config
+@pytest.mark.skipif(
+    not find_spec("langchain_openai"),
+    reason="langchain_openai not installed",
+)
 def test_llm_factory_creates_openrouter_model(monkeypatch, reset_singletons):
     """LLMFactory creates a ChatOpenAI instance routed through OpenRouter with correct params."""
     import unittest.mock as mock

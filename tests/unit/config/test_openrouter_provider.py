@@ -1,9 +1,12 @@
 """Tests for OpenRouter provider implementation."""
 
 import os
+from importlib.util import find_spec
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytest.importorskip("langchain_openai", reason="langchain_openai not installed")
 
 from lobster.config.providers.openrouter_provider import OpenRouterProvider
 
