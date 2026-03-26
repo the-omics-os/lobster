@@ -969,8 +969,15 @@ def _uv_tool_env_handoff(
     wiped on the next ``uv tool install``), we build the correct
     ``uv tool install`` command and let the user run it.
 
-    After the subprocess finishes, we ``sys.exit()`` so the stale process
-    never touches the rebuilt venv.
+    .. warning::
+
+        If the user confirms execution, this function **terminates the process
+        via ``os._exit()``** and never returns.  ``uv tool install`` replaces
+        the venv on disk; any Rich/importlib call after that risks
+        ``ModuleNotFoundError``.  Callers must not place cleanup logic after
+        this call — save config **before** calling.
+
+    If the user declines, this function returns normally.
     """
     import subprocess as _sp
 
@@ -1004,19 +1011,46 @@ def _uv_tool_env_handoff(
 
     if Confirm.ask("  Run this now?", default=True):
         console.print("[dim]  Running uv tool install...[/dim]")
-        result = _sp.run(cmd, capture_output=True, text=True)
+        # ── CRITICAL: venv-safe subprocess execution ──────────────────
+        # After `uv tool install` completes, the venv on disk is replaced
+        # while this process still has OLD modules loaded in memory.
+        # Rich lazy-loads _unicode_data modules on demand — any
+        # console.print() after the swap crashes with ModuleNotFoundError.
+        #
+        # Rules after subprocess.run():
+        #   1. NO Rich (console.print, Panel, Prompt, etc.)
+        #   2. Plain print() only, respecting NO_COLOR
+        #   3. os._exit() to skip Python teardown (atexit, __del__, etc.)
+        #      Safe here: no DB/network connections, config already saved.
+        # ──────────────────────────────────────────────────────────────
+        import os as _os
+
+        if console.file:
+            console.file.flush()
+
+        # Stream output so the user sees resolver/download progress
+        # instead of staring at a frozen terminal.
+        result = _sp.run(cmd)
+
+        # === DANGER ZONE: venv on disk has been replaced ===
+        _use_color = _os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
+
         if result.returncode == 0:
-            console.print("[green]  ✓ Packages installed successfully.[/green]")
-            console.print("[dim]  Restart lobster to use the new packages.[/dim]")
+            if _use_color:
+                print("  \033[32m✓ Packages installed successfully.\033[0m")
+            else:
+                print("  ✓ Packages installed successfully.")
+            print("  Restart lobster to use the new packages.")
+            sys.stdout.flush()
+            _os._exit(0)
         else:
-            console.print("[red]  ✗ Installation failed.[/red]")
-            # Show a concise failure reason instead of the full resolver dump
-            for line in (result.stderr or "").splitlines():
-                if "Because" in line or "not found" in line or "No solution" in line:
-                    console.print(f"  [dim]{line.strip()}[/dim]")
-                    break
-            console.print(f"  [dim]Run manually: {cmd_str}[/dim]")
-        sys.exit(result.returncode)
+            if _use_color:
+                print("  \033[31m✗ Installation failed.\033[0m")
+            else:
+                print("  ✗ Installation failed.")
+            print(f"  Run manually: {cmd_str}")
+            sys.stdout.flush()
+            _os._exit(result.returncode)
     else:
         console.print(f"  [dim]Run manually when ready:[/dim]\n  {cmd_str}\n")
 
@@ -2085,6 +2119,18 @@ def init_impl(
 
     # Interactive mode: run wizard
     # =========================================================================
+    # Guard: if stdin is not a TTY (e.g. piped from curl | bash), no
+    # interactive UI path can work — Go TUI, questionary, and Rich prompts
+    # all need a real terminal.  Check BEFORE dispatching to any UI.
+    import sys as _sys
+
+    if not non_interactive and not _sys.stdin.isatty():
+        console.print(
+            "[yellow]Cannot run interactive setup — stdin is not a terminal.[/yellow]\n"
+            "Run [bold]lobster init --global[/bold] manually in your terminal to configure."
+        )
+        raise typer.Exit(1)
+
     # === TRY GO TUI / QUESTIONARY FIRST (ui_mode: auto | go | classic) ===
     # The Go binary and the questionary fallback both return the same JSON dict,
     # so a single apply_tui_init_result() call handles both paths.
