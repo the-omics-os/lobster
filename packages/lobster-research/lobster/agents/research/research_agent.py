@@ -15,7 +15,7 @@ AGENT_CONFIG = AgentRegistryConfig(
     description="Handles literature discovery, dataset identification, PDF extraction with AUTOMATIC PMID/DOI resolution, computational method analysis, and parameter extraction from publications and queuing datasets for download.",
     factory_function="lobster.agents.research.research_agent.research_agent",
     handoff_tool_name="handoff_to_research_agent",
-    handoff_tool_description="Assign literature search, dataset discovery, method analysis, parameter extraction, download queue creation, and knowledgebase identifier lookups (UniProt protein accessions like P04637, Ensembl gene IDs like ENSG00000141510, gene symbols) to the research agent",
+    handoff_tool_description="Assign literature search, dataset discovery, method analysis, parameter extraction, download queue creation, knowledgebase identifier lookups (UniProt protein accessions like P04637, Ensembl gene IDs like ENSG00000141510, gene symbols), and peptide database searches (DBAASP, IEDB, Peptipedia) to the research agent",
     child_agents=["metadata_assistant"],
 )
 
@@ -2397,6 +2397,61 @@ Could not extract content for: {identifier}
     get_content_from_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
     get_content_from_workspace.tags = ["UTILITY"]
 
+    # ============================================================
+    # Peptide database search tool
+    # ============================================================
+
+    @tool
+    def search_peptide_databases(
+        query: str,
+        database: str = "all",
+        max_results: int = 10,
+    ) -> str:
+        """Search peptide databases (DBAASP, IEDB, Peptipedia) for sequences matching query.
+
+        Args:
+            query: Search query (sequence, keyword, activity type)
+            database: Which database — "dbaasp", "iedb", "peptipedia", or "all"
+            max_results: Max results per database (default 10)
+        """
+        from lobster.tools.providers.dbaasp_provider import DBAASPProvider
+        from lobster.tools.providers.iedb_provider import IEDBProvider
+        from lobster.tools.providers.peptipedia_provider import PeptipediaProvider
+
+        providers_map = {
+            "dbaasp": DBAASPProvider,
+            "iedb": IEDBProvider,
+            "peptipedia": PeptipediaProvider,
+        }
+
+        db_lower = database.lower()
+        if db_lower == "all":
+            selected = list(providers_map.items())
+        elif db_lower in providers_map:
+            selected = [(db_lower, providers_map[db_lower])]
+        else:
+            return f"Unknown database '{database}'. Use: dbaasp, iedb, peptipedia, or all"
+
+        all_results = []
+        for db_name, provider_cls in selected:
+            try:
+                provider = provider_cls()
+                results = provider.search_sequences(query, max_results=max_results)
+                if results:
+                    formatted = provider.format_results(results, query)
+                    all_results.append(formatted)
+            except Exception as e:
+                logger.warning(f"Peptide search failed for {db_name}: {e}")
+                all_results.append(f"## {db_name.upper()}\nSearch failed: {e}\n")
+
+        if not all_results:
+            return f"No peptide results found for query: {query}"
+
+        return "\n---\n\n".join(all_results)
+
+    search_peptide_databases.metadata = {"categories": ["UTILITY"], "provenance": False}
+    search_peptide_databases.tags = ["UTILITY"]
+
     base_tools = [
         # --------------------------------
         # Literature discovery tools (3 tools)
@@ -2422,7 +2477,10 @@ Could not extract content for: {identifier}
         validate_dataset_metadata,
         prepare_dataset_download,  # Multi-database queue preparation (GEO, PRIDE, SRA, MassIVE)
         # --------------------------------
-        # Total: 13 tools (3 discovery + 4 content + 2 pub queue + 2 workspace + 2 system)
+        # Peptide database search (1 tool)
+        search_peptide_databases,
+        # --------------------------------
+        # Total: 14 tools (3 discovery + 4 content + 2 pub queue + 2 workspace + 2 system + 1 peptide)
     ]
 
     tools = base_tools

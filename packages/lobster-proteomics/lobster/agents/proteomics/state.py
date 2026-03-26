@@ -16,6 +16,7 @@ __all__ = [
     "ProteomicsExpertState",
     "DEAnalysisExpertState",
     "BiomarkerDiscoveryExpertState",
+    "PeptideExpertState",
 ]
 
 
@@ -96,6 +97,29 @@ class BiomarkerDiscoveryExpertState(AgentState):
     # Survival analysis state
     survival_results: Dict[str, Any] = {}
     biomarker_candidates: List[str] = []
+
+    # Cross-cutting
+    intermediate_outputs: Dict[str, Any] = {}
+
+
+class PeptideExpertState(AgentState):
+    """
+    State for the peptide expert sub-agent.
+
+    Handles peptide sequence analysis, property calculation,
+    activity prediction, and variant generation.
+    """
+
+    next: str = ""
+
+    # Task context
+    task_description: str = ""
+
+    # Peptide analysis state
+    property_results: Dict[str, Any] = {}
+    activity_predictions: Dict[str, Any] = {}
+    digestion_results: Dict[str, Any] = {}
+    variant_results: Dict[str, Any] = {}
 
     # Cross-cutting
     intermediate_outputs: Dict[str, Any] = {}
