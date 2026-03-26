@@ -12,6 +12,7 @@ import pytest
 def _has_langchain_aws():
     return find_spec("langchain_aws") is not None
 
+
 # ---------------------------------------------------------------------------
 # Credentials tests
 # ---------------------------------------------------------------------------

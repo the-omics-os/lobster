@@ -59,7 +59,9 @@ class SupervisorConfig:
     workspace_metadata_level_warning: bool = True  # Warn about large metadata fetches
 
     # Security settings
-    admin_mode: bool = False  # Server-verified admin bypass (replaces text-based "ADMIN SUPERUSER")
+    admin_mode: bool = (
+        False  # Server-verified admin bypass (replaces text-based "ADMIN SUPERUSER")
+    )
 
     # Agent discovery settings
     auto_discover_agents: bool = True

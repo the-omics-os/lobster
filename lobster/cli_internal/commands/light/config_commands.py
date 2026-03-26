@@ -1107,8 +1107,6 @@ def config_test_impl(output_json: bool = False):
     console_manager = get_console_manager()
     console = console_manager.console
 
-
-
     # Results structure for JSON output
     test_results = {
         "valid": False,

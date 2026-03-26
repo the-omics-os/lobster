@@ -4,11 +4,10 @@ Tests the standalone functions for GEO SOFT metadata extraction and
 merging into Loom-loaded AnnData objects.
 """
 
+import anndata
 import numpy as np
 import pandas as pd
 import pytest
-
-import anndata
 
 from lobster.services.data_access.geo.loom_metadata import (
     enrich_loom_adata_with_geo_metadata,
@@ -240,6 +239,7 @@ class TestDownloaderLoomDetection:
         """Verify .loom is in the extension priority for TAR extraction."""
         # This is a structural test — we verify the string is present
         import inspect
+
         from lobster.services.data_access.geo.downloader import GEODownloadManager
 
         source = inspect.getsource(GEODownloadManager.find_expression_file_in_tar)

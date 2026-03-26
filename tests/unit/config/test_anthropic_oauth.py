@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lobster.config.auth.pkce import generate_pkce
-from lobster.config.auth.oauth_store import OAuthCredentials, save, load, delete, has_credentials
 from lobster.config.auth.anthropic_oauth import (
     PROVIDER_ID,
+    OAuthError,
+    _parse_authorization_input,
     build_authorize_url,
     exchange_authorization_code,
     get_access_token,
@@ -18,10 +18,15 @@ from lobster.config.auth.anthropic_oauth import (
     login_interactive,
     logout,
     refresh_access_token,
-    _parse_authorization_input,
-    OAuthError,
 )
-
+from lobster.config.auth.oauth_store import (
+    OAuthCredentials,
+    delete,
+    has_credentials,
+    load,
+    save,
+)
+from lobster.config.auth.pkce import generate_pkce
 
 # ---------------------------------------------------------------------------
 # PKCE tests
@@ -40,7 +45,9 @@ class TestPKCE:
 
         verifier, challenge = generate_pkce()
         expected_digest = hashlib.sha256(verifier.encode("ascii")).digest()
-        expected = base64.urlsafe_b64encode(expected_digest).rstrip(b"=").decode("ascii")
+        expected = (
+            base64.urlsafe_b64encode(expected_digest).rstrip(b"=").decode("ascii")
+        )
         assert challenge == expected
 
     def test_unique_per_call(self):
@@ -66,7 +73,9 @@ class TestOAuthStore:
     @pytest.fixture(autouse=True)
     def _tmp_auth_dir(self, tmp_path, monkeypatch):
         """Redirect AUTH_DIR to a temp directory."""
-        monkeypatch.setattr("lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth")
+        monkeypatch.setattr(
+            "lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth"
+        )
 
     def _make_creds(self, **overrides) -> OAuthCredentials:
         defaults = {
@@ -217,7 +226,9 @@ class TestTokenExchange:
 class TestGetAccessToken:
     @pytest.fixture(autouse=True)
     def _tmp_auth_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth")
+        monkeypatch.setattr(
+            "lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth"
+        )
 
     def test_no_credentials(self):
         assert get_access_token() is None
@@ -255,29 +266,41 @@ class TestGetAccessToken:
 class TestIsAuthenticated:
     @pytest.fixture(autouse=True)
     def _tmp_auth_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth")
+        monkeypatch.setattr(
+            "lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth"
+        )
 
     def test_not_authenticated(self):
         assert is_authenticated() is False
 
     def test_authenticated(self):
-        save(OAuthCredentials(
-            access_token="a", refresh_token="r",
-            expires_at=time.time() + 3600, provider="anthropic",
-        ))
+        save(
+            OAuthCredentials(
+                access_token="a",
+                refresh_token="r",
+                expires_at=time.time() + 3600,
+                provider="anthropic",
+            )
+        )
         assert is_authenticated() is True
 
 
 class TestLogout:
     @pytest.fixture(autouse=True)
     def _tmp_auth_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth")
+        monkeypatch.setattr(
+            "lobster.config.auth.oauth_store.AUTH_DIR", tmp_path / "auth"
+        )
 
     def test_logout_clears_credentials(self):
-        save(OAuthCredentials(
-            access_token="a", refresh_token="r",
-            expires_at=time.time() + 3600, provider="anthropic",
-        ))
+        save(
+            OAuthCredentials(
+                access_token="a",
+                refresh_token="r",
+                expires_at=time.time() + 3600,
+                provider="anthropic",
+            )
+        )
         assert logout() is True
         assert is_authenticated() is False
 

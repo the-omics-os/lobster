@@ -309,7 +309,9 @@ def _wrap_tool_results(messages: list) -> list:
                     if text.lstrip().startswith("<tool_data>"):
                         wrapped_content.append(part)
                     else:
-                        wrapped_content.append({**part, "text": f"<tool_data>{text}</tool_data>"})
+                        wrapped_content.append(
+                            {**part, "text": f"<tool_data>{text}</tool_data>"}
+                        )
                 else:
                     # Non-text parts (images, etc.) pass through unchanged
                     wrapped_content.append(part)

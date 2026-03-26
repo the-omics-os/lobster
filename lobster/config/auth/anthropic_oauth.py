@@ -76,9 +76,7 @@ def _post_token(body: dict) -> dict:
             },
         )
     if resp.status_code != 200:
-        raise OAuthError(
-            f"Token request failed (HTTP {resp.status_code}): {resp.text}"
-        )
+        raise OAuthError(f"Token request failed (HTTP {resp.status_code}): {resp.text}")
     try:
         return resp.json()
     except json.JSONDecodeError as e:
@@ -263,9 +261,7 @@ def login_interactive(
             if error:
                 self.send_response(400)
                 self.end_headers()
-                self.wfile.write(
-                    f"Authentication error: {error}".encode()
-                )
+                self.wfile.write(f"Authentication error: {error}".encode())
                 return
 
             code = params.get("code", [None])[0]
@@ -380,9 +376,7 @@ def login_interactive(
     return LoginResult(success=True, credentials=creds)
 
 
-def _parse_authorization_input(
-    raw: str, expected_state: str
-) -> Optional[dict]:
+def _parse_authorization_input(raw: str, expected_state: str) -> Optional[dict]:
     """Parse manual authorization input (URL or bare code)."""
     value = raw.strip()
     if not value:

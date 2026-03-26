@@ -356,21 +356,46 @@ def _friendly_error(raw: str) -> tuple:
     """Map raw error messages to user-friendly (title, message) tuples."""
     msg = raw.strip()
     if "security token" in msg or "UnrecognizedClientException" in msg:
-        return ("Provider Error", "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini")
+        return (
+            "Provider Error",
+            "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini",
+        )
     if "ConverseStream" in msg or "InvokeModel" in msg:
-        return ("Provider Error", "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini")
+        return (
+            "Provider Error",
+            "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini",
+        )
     if "not authorized" in msg.lower() and "bedrock" in msg.lower():
-        return ("Provider Error", "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini")
+        return (
+            "Provider Error",
+            "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini",
+        )
     if "rate limit" in msg.lower() or "429" in msg:
-        return ("Rate Limited", "Rate limited by the LLM provider. Wait a moment and try again.")
-    if "Could not connect" in msg or "ECONNREFUSED" in msg or "ConnectionRefused" in msg:
-        return ("Connection Error", "Cannot reach the LLM provider. Check your network connection.")
+        return (
+            "Rate Limited",
+            "Rate limited by the LLM provider. Wait a moment and try again.",
+        )
+    if (
+        "Could not connect" in msg
+        or "ECONNREFUSED" in msg
+        or "ConnectionRefused" in msg
+    ):
+        return (
+            "Connection Error",
+            "Cannot reach the LLM provider. Check your network connection.",
+        )
     if "timeout" in msg.lower() or "timed out" in msg.lower():
         return ("Timeout", "Request timed out. Check your network connection.")
     if "quota" in msg.lower() or "insufficient_quota" in msg:
-        return ("Quota Exceeded", "LLM provider quota exceeded. Check your billing or switch provider.")
+        return (
+            "Quota Exceeded",
+            "LLM provider quota exceeded. Check your billing or switch provider.",
+        )
     if "invalid api key" in msg.lower() or "invalid_api_key" in msg.lower():
-        return ("Auth Error", "Invalid API key. Run: lobster config --provider <provider>")
+        return (
+            "Auth Error",
+            "Invalid API key. Run: lobster config --provider <provider>",
+        )
     return ("Error", msg)
 
 

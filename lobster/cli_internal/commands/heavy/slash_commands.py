@@ -35,9 +35,8 @@ from lobster.ui.console_manager import get_console_manager
 from lobster.version import __version__
 
 if TYPE_CHECKING:
-    from lobster.core.client import AgentClient
-
     from lobster.cli_internal.commands.output_adapter import OutputAdapter
+    from lobster.core.client import AgentClient
 
 # Lazy imports from other heavy modules (these are the extracted companions)
 from lobster.cli_internal.commands import (

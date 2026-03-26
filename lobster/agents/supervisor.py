@@ -290,9 +290,7 @@ def _build_response_behavior(config: SupervisorConfig, interactive: bool = True)
             )
 
         if config.require_download_confirmation and not config.admin_mode:
-            rules.append(
-                "- Confirm with the user before initiating downloads."
-            )
+            rules.append("- Confirm with the user before initiating downloads.")
 
         if config.require_metadata_preview and not config.admin_mode:
             rules.append(
