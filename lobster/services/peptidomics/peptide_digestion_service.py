@@ -9,7 +9,6 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata as ad
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)

@@ -29,6 +29,7 @@ class TestParentAgentConfig:
         assert PARENT_CONFIG.child_agents == [
             "proteomics_de_analysis_expert",
             "biomarker_discovery_expert",
+            "peptide_expert",
         ]
 
     def test_parent_is_supervisor_accessible(self):
