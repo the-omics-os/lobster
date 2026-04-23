@@ -609,19 +609,92 @@ class TestModalityManagement:
             dm.save_modality("test_modality", "test.h5ad", backend="nonexistent")
 
     def test_save_modality_relative_path(self, temp_workspace, mock_backend):
-        """Test saving modality with relative path resolves to data_dir."""
+        """Test saving modality with relative path passes relative path to backend."""
         dm = DataManagerV2(workspace_path=temp_workspace)
         dm.register_backend("test_backend", mock_backend)
         dm.modalities["test_modality"] = SingleCellDataFactory(
             config=SMALL_DATASET_CONFIG
         )
 
-        dm.save_modality("test_modality", "relative_path.h5ad", backend="test_backend")
+        result = dm.save_modality(
+            "test_modality", "relative_path.h5ad", backend="test_backend"
+        )
 
-        # Check that path was resolved relative to data_dir
+        # Backend receives a relative path (relative to data_dir)
         call_args = mock_backend.save.call_args
-        saved_path = call_args[0][1]  # Second argument to save()
-        assert str(saved_path).startswith(str(dm.data_dir))
+        saved_path = Path(call_args[0][1])
+        assert not saved_path.is_absolute()
+        assert str(saved_path) == "relative_path.h5ad"
+
+        # Return value is still the absolute resolved path
+        assert str(result).startswith(str(dm.data_dir))
+
+    def test_save_modality_absolute_data_dir_path(self, temp_workspace, mock_backend):
+        """Test absolute path under data_dir is relativized for backend."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        dm.register_backend("test_backend", mock_backend)
+        dm.modalities["test_modality"] = SingleCellDataFactory(
+            config=SMALL_DATASET_CONFIG
+        )
+
+        abs_path = dm.data_dir / "test_file.h5ad"
+        dm.save_modality("test_modality", str(abs_path), backend="test_backend")
+
+        call_args = mock_backend.save.call_args
+        saved_path = Path(call_args[0][1])
+        assert not saved_path.is_absolute()
+        assert str(saved_path) == "test_file.h5ad"
+
+    def test_save_modality_absolute_workspace_path(self, temp_workspace, mock_backend):
+        """Test absolute path under workspace_path (not data_dir) is relativized."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        dm.register_backend("test_backend", mock_backend)
+        dm.modalities["test_modality"] = SingleCellDataFactory(
+            config=SMALL_DATASET_CONFIG
+        )
+
+        # custom_code_execution_service saves to workspace_path / "{name}.h5ad"
+        abs_path = dm.workspace_path / "test_modality.h5ad"
+        dm.save_modality("test_modality", str(abs_path), backend="test_backend")
+
+        call_args = mock_backend.save.call_args
+        saved_path = Path(call_args[0][1])
+        assert not saved_path.is_absolute()
+        assert str(saved_path) == "test_modality.h5ad"
+
+    def test_save_modality_temp_path_stays_absolute(self, temp_workspace, mock_backend):
+        """Test absolute path outside workspace is passed through as-is."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        dm.register_backend("test_backend", mock_backend)
+        dm.modalities["test_modality"] = SingleCellDataFactory(
+            config=SMALL_DATASET_CONFIG
+        )
+
+        # Notebook execution uses /tmp/ paths
+        tmp_path = Path(tempfile.mkdtemp()) / "input.h5ad"
+        dm.save_modality("test_modality", str(tmp_path), backend="test_backend")
+
+        call_args = mock_backend.save.call_args
+        saved_path = Path(call_args[0][1])
+        assert saved_path.is_absolute()
+        assert str(saved_path) == str(tmp_path)
+
+    def test_save_modality_validation_runs_for_all_backends(
+        self, temp_workspace, mock_backend
+    ):
+        """Test that H5AD validation runs regardless of backend name."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        dm.register_backend("s3", mock_backend)
+
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm.modalities["test_modality"] = adata
+
+        with patch(
+            "lobster.core.runtime.data_manager.validate_for_h5ad"
+        ) as mock_validate:
+            mock_validate.return_value = []
+            dm.save_modality("test_modality", "test.h5ad", backend="s3")
+            mock_validate.assert_called_once()
 
 
 # ===============================================================================

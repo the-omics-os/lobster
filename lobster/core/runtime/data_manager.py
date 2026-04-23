@@ -1000,14 +1000,26 @@ class DataManagerV2:
         """
         Save a modality using specified backend.
 
+        Path contract: relative paths are resolved to absolute against
+        ``data_dir`` for provenance/logging, then converted back to a
+        backend-relative path via two-step resolution:
+
+        1. ``relative_to(data_dir)``  — e.g. ``x.h5ad``
+        2. ``relative_to(workspace_path)`` — e.g. ``x.h5ad`` or ``subdir/x.h5ad``
+        3. Keep absolute (fallback for ``/tmp/`` paths outside workspace)
+
+        Backends receive the relative path and resolve it against their
+        own base_path. The return value is always the absolute resolved
+        path (for provenance and caller use).
+
         Args:
             name: Name of modality to save
-            path: Destination path
+            path: Destination path (relative to data_dir, or absolute)
             backend: Backend to use (default: default_backend)
             **kwargs: Additional parameters passed to backend
 
         Returns:
-            str: Path where data was saved
+            str: Absolute path where data was saved
 
         Raises:
             ValueError: If modality or backend not found
@@ -1023,12 +1035,25 @@ class DataManagerV2:
             backend_instance = self.backends[backend_name]
             adata = self.modalities[name]
 
-            # Resolve path
-            if not Path(path).is_absolute():
-                path = self.data_dir / path
+            # Resolve to absolute path for filesystem ops and provenance
+            resolved_path = Path(path)
+            if not resolved_path.is_absolute():
+                resolved_path = self.data_dir / path
+
+            # Compute backend-relative path so remote backends (S3) get
+            # clean keys instead of embedded absolute filesystem paths.
+            # Local backends re-resolve via base_path in _resolve_path().
+            backend_path: Union[str, Path] = resolved_path
+            try:
+                backend_path = resolved_path.relative_to(self.data_dir)
+            except ValueError:
+                try:
+                    backend_path = resolved_path.relative_to(self.workspace_path)
+                except ValueError:
+                    backend_path = resolved_path
 
             # Validate data for H5AD serialization (optional pre-save check)
-            if backend_name in ["h5ad", "H5ADBackend"] and hasattr(adata, "uns"):
+            if hasattr(adata, "uns"):
                 validation_issues = validate_for_h5ad(adata.uns, path="adata.uns")
                 if validation_issues:
                     logger.warning(
@@ -1043,8 +1068,9 @@ class DataManagerV2:
                             f"Set logging to DEBUG for full list."
                         )
 
-            # Save data
-            backend_instance.save(adata, path, **kwargs)
+            # Save data — pass relative path to backend
+            backend_instance.save(adata, backend_path, **kwargs)
+            path = resolved_path
 
             # Log provenance
             if self.provenance:
@@ -1290,13 +1316,16 @@ class DataManagerV2:
         """
         Save modalities as MuData file.
 
+        Uses the same two-step path resolution as ``save_modality()``:
+        backends receive a relative path, return value is absolute.
+
         Args:
-            path: Destination path
+            path: Destination path (relative to data_dir, or absolute)
             modalities: List of modality names to include (default: all)
             **kwargs: Additional parameters passed to MuData backend
 
         Returns:
-            str: Path where data was saved
+            str: Absolute path where data was saved
 
         Raises:
             ValueError: If MuData backend not available
@@ -1307,16 +1336,27 @@ class DataManagerV2:
         # Create MuData object
         mdata = self.to_mudata(modalities=modalities)
 
-        # Resolve path
-        if not Path(path).is_absolute():
-            path = self.data_dir / path
+        # Resolve to absolute path for provenance/logging
+        resolved_path = Path(path)
+        if not resolved_path.is_absolute():
+            resolved_path = self.data_dir / path
+
+        # Compute backend-relative path (same logic as save_modality)
+        backend_path: Union[str, Path] = resolved_path
+        try:
+            backend_path = resolved_path.relative_to(self.data_dir)
+        except ValueError:
+            try:
+                backend_path = resolved_path.relative_to(self.workspace_path)
+            except ValueError:
+                backend_path = resolved_path
 
         # Save using MuData backend
         mudata_backend = self.backends["mudata"]
-        mudata_backend.save(mdata, path, **kwargs)
+        mudata_backend.save(mdata, backend_path, **kwargs)
 
-        logger.info(f"Saved MuData to {path}")
-        return str(path)
+        logger.info(f"Saved MuData to {resolved_path}")
+        return str(resolved_path)
 
     def _match_modality_to_adapter(self, modality_name: str) -> Optional[str]:
         """
