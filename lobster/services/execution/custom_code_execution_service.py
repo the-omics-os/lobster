@@ -313,8 +313,11 @@ class CustomCodeExecutionService:
         validation_warnings = self._validate_code_safety(code)
 
         # Step 2: Ensure modality is saved to disk (subprocess needs file access)
+        # Temp h5ad files go to cache/execution/ to avoid polluting workspace root
+        exec_cache = self.data_manager.workspace_path / "cache" / "execution"
+        exec_cache.mkdir(parents=True, exist_ok=True)
         if modality_name and modality_name in self.data_manager.list_modalities():
-            modality_path = self.data_manager.workspace_path / f"{modality_name}.h5ad"
+            modality_path = exec_cache / f"{modality_name}.h5ad"
             # Always save latest in-memory state (fixes stale reads when
             # a specialized tool modified the modality since last disk save)
             logger.debug(
@@ -384,9 +387,7 @@ class CustomCodeExecutionService:
         new_modality_name = None
         write_back_error = None
         if modality_name and exec_error is None:
-            modified_path = (
-                Path(self.data_manager.workspace_path) / ".modified_adata.h5ad"
-            )
+            modified_path = exec_cache / ".modified_adata.h5ad"
             if modified_path.exists():
                 try:
                     import anndata
@@ -726,6 +727,10 @@ _pd.options.future.infer_string = False
 WORKSPACE = Path('{workspace_path}')
 sys.path.append(str(WORKSPACE))  # SECURITY: Lower priority - cannot shadow stdlib
 
+# EXEC_CACHE: Temp directory for subprocess IPC (modality h5ad files)
+EXEC_CACHE = WORKSPACE / 'cache' / 'execution'
+EXEC_CACHE.mkdir(parents=True, exist_ok=True)
+
 # OUTPUT_DIR: Recommended directory for all CSV/TSV/Excel exports (v1.0+)
 # Using this ensures files go to workspace/exports/ for easy user discovery
 # Convention: df.to_csv(f"{{OUTPUT_DIR}}/my_results.csv")
@@ -743,7 +748,7 @@ modalities = []
 try:
     import anndata
     anndata.settings.allow_write_nullable_strings = True
-    modality_path = WORKSPACE / '{modality_name}.h5ad'
+    modality_path = EXEC_CACHE / '{modality_name}.h5ad'
     if modality_path.exists():
         adata = anndata.read_h5ad(modality_path)
         print(f"Loaded modality '{modality_name}': {{adata.n_obs}} obs x {{adata.n_vars}} vars")
@@ -970,7 +975,7 @@ if _lobster_fp is not None and adata is not None:
         if _lobster_fp != _post_fp:
             import pandas as _wb_pd
             _wb_pd.options.future.infer_string = False
-            adata.write_h5ad(WORKSPACE / '.modified_adata.h5ad')
+            adata.write_h5ad(EXEC_CACHE / '.modified_adata.h5ad')
             print("__LOBSTER_ADATA_MODIFIED__")
             # Report changes
             _ch = []

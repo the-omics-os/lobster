@@ -139,7 +139,10 @@ result = 42
         mock_data_manager.list_modalities.return_value = ["test_modality"]
 
         # Write a real h5ad file so subprocess can read it
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        # Subprocess reads from cache/execution/ (not workspace root)
+        exec_cache = mock_data_manager.workspace_path / "cache" / "execution"
+        exec_cache.mkdir(parents=True, exist_ok=True)
+        h5ad_path = exec_cache / "test_modality.h5ad"
         mock_adata.write_h5ad(h5ad_path)
 
         code = "result = adata.n_obs"
@@ -414,7 +417,9 @@ result = add(5, 3)
 
         # Create a real h5ad file the subprocess can read
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        exec_cache = mock_data_manager.workspace_path / "cache" / "execution"
+        exec_cache.mkdir(parents=True, exist_ok=True)
+        h5ad_path = exec_cache / "test_modality.h5ad"
         adata.write_h5ad(h5ad_path)
 
         mock_data_manager.get_modality.return_value = adata
@@ -449,7 +454,9 @@ result = add(5, 3)
         import numpy as np
 
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        exec_cache = mock_data_manager.workspace_path / "cache" / "execution"
+        exec_cache.mkdir(parents=True, exist_ok=True)
+        h5ad_path = exec_cache / "test_modality.h5ad"
         adata.write_h5ad(h5ad_path)
 
         mock_data_manager.get_modality.return_value = adata
@@ -475,7 +482,9 @@ result = add(5, 3)
         import numpy as np
 
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        exec_cache = mock_data_manager.workspace_path / "cache" / "execution"
+        exec_cache.mkdir(parents=True, exist_ok=True)
+        h5ad_path = exec_cache / "test_modality.h5ad"
         adata.write_h5ad(h5ad_path)
 
         mock_data_manager.get_modality.return_value = adata
@@ -505,7 +514,9 @@ result = add(5, 3)
 
         # Create stale h5ad on disk (old data — 1 obs)
         old_adata = anndata.AnnData(X=np.array([[0, 0]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
+        exec_cache = mock_data_manager.workspace_path / "cache" / "execution"
+        exec_cache.mkdir(parents=True, exist_ok=True)
+        h5ad_path = exec_cache / "test_modality.h5ad"
         old_adata.write_h5ad(h5ad_path)
 
         # In-memory modality has different (newer) data — 3 obs
