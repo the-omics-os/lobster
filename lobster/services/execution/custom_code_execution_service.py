@@ -312,26 +312,26 @@ class CustomCodeExecutionService:
         # Step 1: Validate code safety
         validation_warnings = self._validate_code_safety(code)
 
-        # Step 2: Ensure modality is saved to disk (subprocess needs file access)
-        # Temp h5ad files go to cache/execution/ to avoid polluting workspace root
+        # Step 2: Serialize modality to local disk for subprocess IPC.
+        # This MUST write locally regardless of the configured backend (S3, GCS, etc.)
+        # because the subprocess reads from the local filesystem.
         exec_cache = self.data_manager.workspace_path / "cache" / "execution"
         exec_cache.mkdir(parents=True, exist_ok=True)
         if modality_name and modality_name in self.data_manager.list_modalities():
             modality_path = exec_cache / f"{modality_name}.h5ad"
-            # Always save latest in-memory state (fixes stale reads when
-            # a specialized tool modified the modality since last disk save)
             logger.debug(
-                f"Saving modality {modality_name} to disk for subprocess access"
+                f"Serializing modality {modality_name} to local disk for subprocess access"
             )
-            # Use data_manager.save_modality() which goes through H5ADBackend
-            # with full Arrow conversion + sanitization pipeline
+            adata = self.data_manager.get_modality(modality_name)
             try:
-                self.data_manager.save_modality(modality_name, str(modality_path))
+                from lobster.core.backends.h5ad_backend import H5ADBackend
+
+                local_backend = H5ADBackend(base_path=exec_cache)
+                local_backend.save(adata, f"{modality_name}.h5ad")
             except Exception as e:
                 logger.warning(
-                    f"H5AD backend save failed ({e}), attempting direct write"
+                    f"H5ADBackend local save failed ({e}), attempting direct write"
                 )
-                adata = self.data_manager.get_modality(modality_name)
                 try:
                     from lobster.core.utils.h5ad_utils import (
                         convert_arrow_to_standard,
@@ -340,16 +340,12 @@ class CustomCodeExecutionService:
                     adata = convert_arrow_to_standard(adata)
                 except Exception:
                     pass
-                # Strip uns keys that commonly cause h5py serialization
-                # failures (provenance may contain DataFrames, Categoricals,
-                # or other complex objects that h5py can't write).
                 import copy as _copy
 
                 adata_fallback = adata.copy()
                 adata_fallback.uns = {}
                 for k, v in adata.uns.items():
                     try:
-                        # Test-serialize: only keep keys that are simple types
                         if isinstance(v, (str, int, float, bool, list, dict)):
                             adata_fallback.uns[k] = _copy.deepcopy(v)
                     except Exception:

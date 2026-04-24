@@ -508,7 +508,11 @@ result = add(5, 3)
         assert "disk full" in stats["write_back_error"]
 
     def test_stale_disk_fix(self, service, mock_data_manager):
-        """Test that in-memory modality is always saved to disk before subprocess."""
+        """Test that in-memory modality is always serialized to local disk before subprocess.
+
+        Uses H5ADBackend directly (not save_modality) so it works regardless of
+        configured backend (local, S3, GCS).
+        """
         import anndata
         import numpy as np
 
@@ -524,12 +528,6 @@ result = add(5, 3)
         mock_data_manager.get_modality.return_value = new_adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
 
-        # Make save_modality actually write the new adata to disk
-        def _save_side_effect(name, path):
-            new_adata.write_h5ad(path)
-
-        mock_data_manager.save_modality.side_effect = _save_side_effect
-
         # Code that reads n_obs — should see the in-memory version (3 obs), not stale disk (1 obs)
         code = "result = int(adata.n_obs)"
         result, stats, ir = service.execute(
@@ -540,7 +538,7 @@ result = add(5, 3)
 
         assert result == 3  # From fresh in-memory state, not stale disk
         assert stats["success"] is True
-        # save_modality should have been called to sync disk
-        mock_data_manager.save_modality.assert_called_once_with(
-            "test_modality", str(h5ad_path)
-        )
+        # get_modality should have been called to fetch in-memory state
+        mock_data_manager.get_modality.assert_called_with("test_modality")
+        # save_modality should NOT be called — we use local H5ADBackend directly
+        mock_data_manager.save_modality.assert_not_called()
