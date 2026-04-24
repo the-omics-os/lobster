@@ -170,6 +170,10 @@ def create_execute_custom_code_tool(
         Choose ONE data source: modality_name (AnnData as `adata`), workspace_key
         (JSON/CSV file), or neither (all workspace files auto-loaded).
 
+        WARNING: NEVER use sc.read_h5ad() or anndata.read_h5ad() in your code.
+        Modality files may not exist on local disk (cloud uses S3). Always pass
+        the modality_name parameter instead — the tool loads it as `adata`.
+
         Namespace: WORKSPACE, OUTPUT_DIR, adata (if modality_name), auto-loaded files.
         Assign results to `result` variable. Large output (>8K chars) is truncated
         — save to OUTPUT_DIR instead.

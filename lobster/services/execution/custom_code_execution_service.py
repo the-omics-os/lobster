@@ -315,7 +315,9 @@ class CustomCodeExecutionService:
         # Step 2: Serialize modality to local disk for subprocess IPC.
         # This MUST write locally regardless of the configured backend (S3, GCS, etc.)
         # because the subprocess reads from the local filesystem.
-        exec_cache = self.data_manager.workspace_path / "cache" / "execution"
+        # Each execution gets a UUID-scoped directory to prevent concurrent collisions.
+        exec_id = uuid.uuid4().hex[:12]
+        exec_cache = self.data_manager.workspace_path / "cache" / "execution" / exec_id
         exec_cache.mkdir(parents=True, exist_ok=True)
         if modality_name and modality_name in self.data_manager.list_modalities():
             modality_path = exec_cache / f"{modality_name}.h5ad"
@@ -370,7 +372,8 @@ class CustomCodeExecutionService:
             "workspace_path": self.data_manager.workspace_path,
             "load_workspace_files": load_workspace_files,
             "workspace_keys": workspace_keys,
-            "resolved_paths": resolved_paths,  # NEW: Pass resolved paths to subprocess
+            "resolved_paths": resolved_paths,
+            "exec_cache_path": exec_cache,
             "timeout": timeout,
         }
 
@@ -427,7 +430,7 @@ class CustomCodeExecutionService:
 
         # Step 4b: Read plot manifest and register captured Plotly figures
         captured_plot_count = 0
-        manifest_path = Path(self.data_manager.workspace_path) / ".plot_manifest.json"
+        manifest_path = exec_cache / ".plot_manifest.json"
         if manifest_path.exists():
             try:
                 with open(manifest_path) as mf:
@@ -473,6 +476,14 @@ class CustomCodeExecutionService:
                 and "__LOBSTER_CHANGES__:" not in line
                 and "__LOBSTER_PLOT_CAPTURED__:" not in line
             )
+
+        # Clean up UUID-scoped exec_cache now that all IPC reads are done
+        try:
+            import shutil
+
+            shutil.rmtree(exec_cache, ignore_errors=True)
+        except Exception:
+            pass
 
         # Step 4b: Save large outputs to files (DeepAgents pattern)
         workspace_path = Path(self.data_manager.workspace_path)
@@ -657,6 +668,7 @@ class CustomCodeExecutionService:
         load_workspace_files: bool,
         workspace_keys: Optional[List[str]] = None,
         resolved_paths: Optional[Dict[str, str]] = None,
+        exec_cache_path: Optional[Path] = None,
     ) -> str:
         """
         Generate Python code to set up execution context in subprocess.
@@ -673,6 +685,7 @@ class CustomCodeExecutionService:
         Returns:
             Python code string that sets up context
         """
+        exec_cache_str = str(exec_cache_path) if exec_cache_path else str(workspace_path / "cache" / "execution")
         setup_code = f"""
 # Auto-generated context setup for Lobster custom code execution
 
@@ -723,8 +736,8 @@ _pd.options.future.infer_string = False
 WORKSPACE = Path('{workspace_path}')
 sys.path.append(str(WORKSPACE))  # SECURITY: Lower priority - cannot shadow stdlib
 
-# EXEC_CACHE: Temp directory for subprocess IPC (modality h5ad files)
-EXEC_CACHE = WORKSPACE / 'cache' / 'execution'
+# EXEC_CACHE: Per-execution temp directory for subprocess IPC (modality h5ad files)
+EXEC_CACHE = Path('{exec_cache_str}')
 EXEC_CACHE.mkdir(parents=True, exist_ok=True)
 
 # OUTPUT_DIR: Recommended directory for all CSV/TSV/Excel exports (v1.0+)
@@ -943,12 +956,15 @@ Path = Path
         workspace_keys = context.get("workspace_keys")
         resolved_paths = context.get("resolved_paths", {})
 
+        exec_cache_path = context.get("exec_cache_path")
+
         setup_code = self._generate_context_setup_code(
             modality_name=modality_name,
             workspace_path=workspace_path,
             load_workspace_files=load_workspace_files,
             workspace_keys=workspace_keys,
             resolved_paths=resolved_paths,
+            exec_cache_path=exec_cache_path,
         )
 
         # Combine setup + user code + write-back + result extraction
@@ -1027,7 +1043,7 @@ try:
             except Exception as _pe:
                 print(f"Warning: could not capture plot '{_var_name}': {_pe}")
     if _plot_manifest:
-        _manifest_path = WORKSPACE / '.plot_manifest.json'
+        _manifest_path = EXEC_CACHE / '.plot_manifest.json'
         with open(_manifest_path, 'w') as _mf:
             import json as _json_mod
             _json_mod.dump(_plot_manifest, _mf)
@@ -1040,7 +1056,7 @@ except Exception as _auto_err:
 # Extract result and write to temp file for parent process
 import json
 if 'result' in dir() and result is not None:
-    result_path = WORKSPACE / '.execution_result.json'
+    result_path = EXEC_CACHE / '.execution_result.json'
     try:
         # Try to serialize result
         with open(result_path, 'w') as f:
@@ -1051,9 +1067,16 @@ if 'result' in dir() and result is not None:
             json.dump({'result': str(result), 'type': type(result).__name__}, f)
 """
 
-        # Write script to temporary file
-        script_path = workspace_path / f".script_{uuid.uuid4().hex}.py"
-        result_path = workspace_path / ".execution_result.json"
+        # IPC dir must match EXEC_CACHE in the subprocess template.
+        # When exec_cache_path is provided, subprocess uses it directly.
+        # When not provided, subprocess defaults to WORKSPACE / 'cache' / 'execution'.
+        if exec_cache_path:
+            ipc_dir = exec_cache_path
+        else:
+            ipc_dir = workspace_path / "cache" / "execution"
+        ipc_dir.mkdir(parents=True, exist_ok=True)
+        script_path = ipc_dir / f".script_{uuid.uuid4().hex}.py"
+        result_path = ipc_dir / ".execution_result.json"
 
         try:
             script_path.write_text(full_script)
