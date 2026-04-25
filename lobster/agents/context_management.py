@@ -48,17 +48,41 @@ def approximate_token_count(text: str) -> int:
     return int(len(text) / 4.0 + 3.0)
 
 
+def _message_token_count(msg: BaseMessage) -> int:
+    """Count tokens for a single message including all serialized fields."""
+    parts: list[str] = []
+
+    content = getattr(msg, "content", "")
+    if isinstance(content, str):
+        parts.append(content)
+    elif content:
+        parts.append(json.dumps(content, default=str, separators=(",", ":")))
+
+    tool_calls = getattr(msg, "tool_calls", None)
+    if tool_calls:
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                parts.append(tc.get("name", ""))
+                args = tc.get("args", {})
+                parts.append(json.dumps(args, default=str, separators=(",", ":")))
+            else:
+                parts.append(str(tc))
+
+    for attr in ("tool_call_id", "name"):
+        value = getattr(msg, attr, None)
+        if value:
+            parts.append(str(value))
+
+    return approximate_token_count("\n".join(parts)) + 4
+
+
 def _message_list_token_counter(messages: list[BaseMessage]) -> int:
     """Token counter compatible with trim_messages (receives list of messages).
 
-    trim_messages calls token_counter([msg1, msg2, ...]) and expects a single
-    int back representing total tokens for the batch.
+    Counts all token-bearing fields: content, tool_calls (name + args JSON),
+    tool_call_id, message name, plus per-message role/framing overhead.
     """
-    total = 0
-    for msg in messages:
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        total += approximate_token_count(content)
-    return total
+    return sum(_message_token_count(msg) for msg in messages)
 
 
 def measure_tool_schema_tokens(tools: Sequence[Any]) -> int:
