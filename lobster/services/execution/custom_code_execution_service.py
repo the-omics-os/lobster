@@ -312,47 +312,37 @@ class CustomCodeExecutionService:
         # Step 1: Validate code safety
         validation_warnings = self._validate_code_safety(code)
 
-        # Step 2: Serialize modality to local disk for subprocess IPC.
-        # This MUST write locally regardless of the configured backend (S3, GCS, etc.)
-        # because the subprocess reads from the local filesystem.
-        # Each execution gets a UUID-scoped directory to prevent concurrent collisions.
+        # Step 2: Materialize modalities to local disk for subprocess IPC.
+        # Session-scoped materialized/ dir persists across executions (cache hits).
+        # Per-execution UUID dir holds IPC artifacts (cleaned up after).
         exec_id = uuid.uuid4().hex[:12]
         exec_cache = self.data_manager.workspace_path / "cache" / "execution" / exec_id
         exec_cache.mkdir(parents=True, exist_ok=True)
-        if modality_name and modality_name in self.data_manager.list_modalities():
-            modality_path = exec_cache / f"{modality_name}.h5ad"
-            logger.debug(
-                f"Serializing modality {modality_name} to local disk for subprocess access"
-            )
-            adata = self.data_manager.get_modality(modality_name)
+        materialized_dir = self.data_manager.workspace_path / "cache" / "execution" / "materialized"
+        materialized_dir.mkdir(parents=True, exist_ok=True)
+
+        # Preflight: detect all modalities referenced in code (fails fast on unknown paths)
+        required_modalities = self._detect_required_modalities(code, modality_name)
+        alias_map = {}
+        from lobster.core.interfaces.locality import _safe_filename
+        for name in required_modalities:
             try:
-                from lobster.core.backends.h5ad_backend import H5ADBackend
-
-                local_backend = H5ADBackend(base_path=exec_cache)
-                local_backend.save(adata, f"{modality_name}.h5ad")
+                local_path = self._materialize_modality(name, materialized_dir)
+            except FileNotFoundError as e:
+                raise CodeValidationError(str(e)) from e
             except Exception as e:
-                logger.warning(
-                    f"H5ADBackend local save failed ({e}), attempting direct write"
-                )
-                try:
-                    from lobster.core.utils.h5ad_utils import (
-                        convert_arrow_to_standard,
-                    )
-
-                    adata = convert_arrow_to_standard(adata)
-                except Exception:
-                    pass
-                import copy as _copy
-
-                adata_fallback = adata.copy()
-                adata_fallback.uns = {}
-                for k, v in adata.uns.items():
-                    try:
-                        if isinstance(v, (str, int, float, bool, list, dict)):
-                            adata_fallback.uns[k] = _copy.deepcopy(v)
-                    except Exception:
-                        logger.debug(f"Stripping uns['{k}'] from fallback write")
-                adata_fallback.write_h5ad(modality_path)
+                raise CodeExecutionError(
+                    f"Failed to materialize modality '{name}': {e}"
+                ) from e
+            safe = _safe_filename(name)
+            real = str(local_path)
+            ws = str(self.data_manager.workspace_path)
+            alias_map[f"{ws}/modalities/{safe}.h5ad"] = real
+            alias_map[f"{ws}/data/{safe}.h5ad"] = real
+            alias_map[f"/tmp/workspace/modalities/{safe}.h5ad"] = real
+            alias_map[f"/tmp/workspace/data/{safe}.h5ad"] = real
+            alias_map[f"data/{safe}.h5ad"] = real
+            alias_map[f"{safe}.h5ad"] = real
 
         # Step 2.5: Resolve workspace_key paths (Bug fix - Gemini Option C)
         resolved_paths = {}
@@ -374,6 +364,8 @@ class CustomCodeExecutionService:
             "workspace_keys": workspace_keys,
             "resolved_paths": resolved_paths,
             "exec_cache_path": exec_cache,
+            "materialized_dir": materialized_dir,
+            "alias_map": alias_map,
             "timeout": timeout,
         }
 
@@ -661,6 +653,117 @@ class CustomCodeExecutionService:
 
         return warnings
 
+    def _detect_required_modalities(
+        self, code: str, explicit_modality: Optional[str]
+    ) -> set:
+        """Parse code for h5ad path references and match to known modalities.
+
+        Raises CodeValidationError if unresolvable h5ad paths are found (fail-fast).
+        """
+        import re
+
+        required = set()
+        available = set(self.data_manager.locality_provider.list_available())
+        # Also include in-memory modalities (may not be in provider's list yet)
+        available |= set(self.data_manager.list_modalities())
+
+        if explicit_modality:
+            if explicit_modality not in available:
+                raise CodeValidationError(
+                    f"Modality '{explicit_modality}' not found. "
+                    f"Available: {sorted(available)}"
+                )
+            required.add(explicit_modality)
+        unresolved = []
+
+        # Regex patterns for h5ad file access
+        patterns = [
+            r'''(?:read_h5ad|\.read)\s*\(\s*['"](.*?\.h5ad)['"]\s*''',
+            r'''Path\s*\(\s*['"](.*?\.h5ad)['"]\s*\)''',
+            r'''h5py\.File\s*\(\s*['"](.*?\.h5ad)['"]\s*''',
+        ]
+        h5ad_refs = []
+        for pattern in patterns:
+            h5ad_refs.extend(re.findall(pattern, code))
+
+        for ref in h5ad_refs:
+            stem = Path(ref).stem
+            if stem in available:
+                required.add(stem)
+            else:
+                unresolved.append(ref)
+
+        if unresolved:
+            raise CodeValidationError(
+                "Code references h5ad files that don't match any known modality:\n"
+                + "\n".join(f"  - {p}" for p in unresolved)
+                + f"\n\nAvailable modalities: {sorted(available)}"
+                + "\n\nUse the modality_name parameter instead of hardcoded paths."
+            )
+
+        return required
+
+    def _materialize_modality(self, name: str, materialized_dir: Path) -> Path:
+        """Materialize a single modality to local disk via 3-step resolution.
+
+        Step 0: Cache hit (already materialized in this session)
+        Step 1: In-memory non-backed AnnData → serialize via H5ADBackend
+        Step 2: Delegate to locality provider (S3 download, disk lookup, etc.)
+        """
+        import os
+        import shutil
+
+        from lobster.core.interfaces.locality import _safe_filename
+
+        safe_name = _safe_filename(name)
+        target = materialized_dir / f"{safe_name}.h5ad"
+
+        # Step 0: cache hit
+        if target.exists() and target.stat().st_size > 0:
+            logger.debug(f"Materialization cache hit for '{name}'")
+            return target
+
+        # Step 1: in-memory AND not backed → serialize locally (atomic write)
+        if name in self.data_manager.list_modalities():
+            adata = self.data_manager.get_modality(name)
+            if not getattr(adata, "isbacked", False):
+                tmp_dir = materialized_dir / f".tmp_{uuid.uuid4().hex[:8]}"
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    from lobster.core.backends.h5ad_backend import H5ADBackend
+
+                    local_backend = H5ADBackend(base_path=tmp_dir)
+                    local_backend.save(adata, f"{safe_name}.h5ad")
+                    tmp_file = tmp_dir / f"{safe_name}.h5ad"
+                    os.replace(str(tmp_file), str(target))
+                    return target
+                except Exception as e:
+                    logger.warning(f"H5ADBackend serialize failed for '{name}': {e}")
+                finally:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        # Step 2: delegate to locality provider (S3 download, disk check, etc.)
+        provider = self.data_manager.locality_provider
+        tmp_dir = materialized_dir / f".tmp_{uuid.uuid4().hex[:8]}"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            provider_path = Path(provider.ensure_local(name, tmp_dir))
+            if not provider_path.exists() or provider_path.stat().st_size == 0:
+                raise FileNotFoundError(
+                    f"Provider returned invalid h5ad for '{name}': {provider_path}"
+                )
+            # If provider returned a file inside our temp dir, move it (atomic).
+            # If it returned an existing file elsewhere (e.g. data_dir), COPY to
+            # avoid moving the original and breaking the local CLI.
+            try:
+                provider_path.relative_to(tmp_dir)
+                os.replace(str(provider_path), str(target))
+            except ValueError:
+                shutil.copy2(str(provider_path), str(target))
+            return target
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
     def _generate_context_setup_code(
         self,
         modality_name: Optional[str],
@@ -669,6 +772,7 @@ class CustomCodeExecutionService:
         workspace_keys: Optional[List[str]] = None,
         resolved_paths: Optional[Dict[str, str]] = None,
         exec_cache_path: Optional[Path] = None,
+        alias_map: Optional[Dict[str, str]] = None,
     ) -> str:
         """
         Generate Python code to set up execution context in subprocess.
@@ -686,6 +790,7 @@ class CustomCodeExecutionService:
             Python code string that sets up context
         """
         exec_cache_str = str(exec_cache_path) if exec_cache_path else str(workspace_path / "cache" / "execution")
+        alias_map_repr = repr(alias_map or {})
         setup_code = f"""
 # Auto-generated context setup for Lobster custom code execution
 
@@ -731,6 +836,55 @@ import pandas as _pd
 _pd.options.future.infer_string = False
 
 # ==============================================================================
+# Execution Locality Resolver — redirects hardcoded h5ad paths to materialized files
+# ==============================================================================
+import os as _os
+
+_LOBSTER_ALIAS_MAP = {alias_map_repr}
+
+def _resolve_alias(path):
+    str_path = str(path)
+    norm_path = _os.path.normpath(str_path)
+    basename = _os.path.basename(str_path)
+    for candidate in [str_path, norm_path, basename]:
+        if candidate in _LOBSTER_ALIAS_MAP:
+            real = _LOBSTER_ALIAS_MAP[candidate]
+            print(f"[lobster] Redirected {{str_path}} -> {{real}}", file=__import__('sys').stderr)
+            return real
+    return path
+
+try:
+    import anndata as _ad
+    _orig_read_h5ad = _ad.read_h5ad
+    def _aliased_read_h5ad(path, *args, **kwargs):
+        return _orig_read_h5ad(_resolve_alias(path), *args, **kwargs)
+    _ad.read_h5ad = _aliased_read_h5ad
+except ImportError:
+    pass
+
+try:
+    import scanpy as _sc
+    _sc.read_h5ad = _aliased_read_h5ad
+    _orig_sc_read = _sc.read
+    def _aliased_sc_read(path, *args, **kwargs):
+        return _orig_sc_read(_resolve_alias(path), *args, **kwargs)
+    _sc.read = _aliased_sc_read
+except (ImportError, NameError):
+    pass
+
+try:
+    import h5py as _h5py
+    _orig_h5py_File_init = _h5py.File.__init__
+    def _patched_h5py_init(self, path, mode='r', *args, **kwargs):
+        if mode in ('r', 'r+'):
+            path = _resolve_alias(path)
+        return _orig_h5py_File_init(self, path, mode, *args, **kwargs)
+    _h5py.File.__init__ = _patched_h5py_init
+except (ImportError, AttributeError):
+    pass
+# === End Locality Resolver ===
+
+# ==============================================================================
 # Workspace configuration
 # ==============================================================================
 WORKSPACE = Path('{workspace_path}')
@@ -752,17 +906,24 @@ modalities = []
 
         # Add modality loading if specified
         if modality_name:
+            from lobster.core.interfaces.locality import _safe_filename
+            safe_mod_name = _safe_filename(modality_name)
+            materialized_dir_str = str(Path(exec_cache_str).parent / "materialized") if exec_cache_path else str(workspace_path / "cache" / "execution" / "materialized")
             setup_code += f"""
-# Load specified modality
+# Load specified modality (check materialized cache first, then exec cache)
 try:
     import anndata
     anndata.settings.allow_write_nullable_strings = True
-    modality_path = EXEC_CACHE / '{modality_name}.h5ad'
-    if modality_path.exists():
-        adata = anndata.read_h5ad(modality_path)
+    _materialized_path = Path('{materialized_dir_str}') / '{safe_mod_name}.h5ad'
+    _exec_cache_path = EXEC_CACHE / '{safe_mod_name}.h5ad'
+    if _materialized_path.exists():
+        adata = anndata.read_h5ad(_materialized_path)
+        print(f"Loaded modality '{modality_name}': {{adata.n_obs}} obs x {{adata.n_vars}} vars")
+    elif _exec_cache_path.exists():
+        adata = anndata.read_h5ad(_exec_cache_path)
         print(f"Loaded modality '{modality_name}': {{adata.n_obs}} obs x {{adata.n_vars}} vars")
     else:
-        print(f"Warning: Modality file not found: {{modality_path}}")
+        print(f"Warning: Modality file not found at {{_materialized_path}} or {{_exec_cache_path}}")
         adata = None
 except Exception as e:
     print(f"Error loading modality: {{e}}")
@@ -957,6 +1118,7 @@ Path = Path
         resolved_paths = context.get("resolved_paths", {})
 
         exec_cache_path = context.get("exec_cache_path")
+        alias_map = context.get("alias_map", {})
 
         setup_code = self._generate_context_setup_code(
             modality_name=modality_name,
@@ -965,6 +1127,7 @@ Path = Path
             workspace_keys=workspace_keys,
             resolved_paths=resolved_paths,
             exec_cache_path=exec_cache_path,
+            alias_map=alias_map,
         )
 
         # Combine setup + user code + write-back + result extraction

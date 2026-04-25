@@ -294,6 +294,10 @@ class DataManagerV2:
         # Optional callback for modality loaded events: fn(name, adata)
         self.on_modality_loaded = None
 
+        # Locality provider for materializing modalities to local disk
+        # (enables subprocess-based execution on cloud where data lives in S3)
+        self._locality_provider = None
+
         # Current dataset management (for legacy compatibility)
         self.current_dataset: Optional[str] = None  # Name of current active modality
         self.current_data: Optional[pd.DataFrame] = None  # Legacy compatibility
@@ -365,6 +369,19 @@ class DataManagerV2:
             queue_file = self._get_queues_dir() / "publication_queue.jsonl"
             self._publication_queue = PublicationQueue(queue_file=queue_file)
         return self._publication_queue
+
+    @property
+    def locality_provider(self):
+        """Lazy-initialized data locality provider for materializing modalities."""
+        if self._locality_provider is None:
+            from lobster.core.interfaces.locality import LocalDataLocalityProvider
+
+            self._locality_provider = LocalDataLocalityProvider(self)
+        return self._locality_provider
+
+    def set_locality_provider(self, provider) -> None:
+        """Register a custom locality provider (e.g., S3-backed for cloud)."""
+        self._locality_provider = provider
 
     @property
     def notebook_exporter(self):
