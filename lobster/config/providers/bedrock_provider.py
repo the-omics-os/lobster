@@ -84,6 +84,26 @@ class BedrockProvider(ILLMProvider):
             input_cost_per_million=15.0,
             output_cost_per_million=75.0,
         ),
+        ModelInfo(
+            name="us.anthropic.claude-sonnet-4-5-20250929-v1:0[1m]",
+            display_name="Claude Sonnet 4.5 Extended (Bedrock)",
+            description="Claude 4.5 Sonnet - 1M extended context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-opus-4-5-20251101-v1:0[1m]",
+            display_name="Claude Opus 4.5 Extended (Bedrock)",
+            description="Claude 4.5 Opus - 1M extended context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=15.0,
+            output_cost_per_million=75.0,
+        ),
     ]
 
     DEFAULT_REGION = "us-east-1"

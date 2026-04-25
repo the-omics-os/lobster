@@ -364,10 +364,36 @@ class StructuredErrorParser:
         These are distinct from rate limits - they mean the single request
         exceeded the model's context window, not the per-minute quota.
         """
+        error_lower = error_str.lower()
+
+        # Provider-agnostic patterns (catch Bedrock, Anthropic, OpenAI, etc.)
+        context_patterns = [
+            r"prompt is too long",
+            r"input is too long",
+            r"context length",
+            r"context window",
+            r"\d[\d,]*\s*tokens?\s*>\s*\d[\d,]*\s*maximum",
+            r"exceeds?\s+(?:the\s+)?(?:maximum|max|context)",
+        ]
+        if any(re.search(pattern, error_lower) for pattern in context_patterns):
+            return True
+
+        # Bedrock: ValidationException with prompt/token message
         if structured_data:
             error_data = structured_data.get("error", structured_data)
-            message = error_data.get("message", "").lower()
+            message = str(
+                error_data.get("Message", error_data.get("message", ""))
+            ).lower()
+            code = str(
+                error_data.get("Code", error_data.get("code", ""))
+            ).lower()
             status = error_data.get("status", "")
+
+            if code == "validationexception" and any(
+                term in message
+                for term in ("prompt is too long", "token", "context", "input")
+            ):
+                return True
 
             # Gemini/Google: INVALID_ARGUMENT with token/length in message
             if status == "INVALID_ARGUMENT":
@@ -382,10 +408,8 @@ class StructuredErrorParser:
                     if re.search(indicator, message):
                         return True
 
-        # Anthropic: overloaded_error type
-        error_lower = error_str.lower()
+        # Anthropic: overloaded_error type (only context-related, not capacity)
         if "overloaded_error" in error_lower:
-            # Only if not accompanied by 429 (rate limit)
             if "429" not in error_str:
                 return True
 

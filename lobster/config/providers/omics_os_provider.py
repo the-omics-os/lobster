@@ -74,6 +74,16 @@ class OmicsOSProvider(ILLMProvider):
             input_cost_per_million=3.00,
             output_cost_per_million=15.00,
         ),
+        ModelInfo(
+            name="us.anthropic.claude-sonnet-4-5-20250929-v1:0[1m]",
+            display_name="Claude Sonnet 4.5 Extended (Omics-OS Cloud)",
+            description="Gateway model — 1M extended context",
+            provider="omics-os",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=3.00,
+            output_cost_per_million=15.00,
+        ),
     ]
 
     @property

@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 # Default context budget if provider info unavailable
 DEFAULT_CONTEXT_WINDOW = 128_000
 
-# Reserve this fraction for model output generation
-OUTPUT_RESERVE_FRACTION = 0.15
+# Reserve this fraction for model output + safety margin against counting drift
+OUTPUT_RESERVE_FRACTION = 0.20
 
 # Absolute minimum budget (prevents degenerate trimming)
 # Must be large enough for system prompt + a few conversation turns
@@ -93,14 +93,16 @@ def measure_tool_schema_tokens(tools: Sequence[Any]) -> int:
 def resolve_context_budget(
     context_window: Optional[int] = None,
     tools: Optional[Sequence[Any]] = None,
+    system_prompt: Optional[str] = None,
 ) -> int:
     """Resolve the usable context budget for messages.
 
-    budget = context_window - output_reserve - tool_schema_tokens
+    budget = context_window * 0.80 - tool_schema_tokens - system_prompt_tokens
 
     Args:
         context_window: Max tokens for the model. None -> DEFAULT_CONTEXT_WINDOW.
         tools: Tool objects to measure schema overhead.
+        system_prompt: System prompt text to subtract from budget.
 
     Returns:
         Usable token budget for messages (minimum MINIMUM_BUDGET).
@@ -108,17 +110,18 @@ def resolve_context_budget(
     if context_window is None:
         context_window = DEFAULT_CONTEXT_WINDOW
 
-    output_reserve = int(context_window * OUTPUT_RESERVE_FRACTION)
+    input_ceiling = int(context_window * (1.0 - OUTPUT_RESERVE_FRACTION))
     tool_tokens = measure_tool_schema_tokens(tools or [])
-    raw_budget = context_window - output_reserve - tool_tokens
+    prompt_tokens = approximate_token_count(system_prompt) if system_prompt else 0
+    fixed_overhead = tool_tokens + prompt_tokens
+    raw_budget = input_ceiling - fixed_overhead
 
-    # Warn when baseline overhead (tool schemas) consumes too much of the window.
-    # This catches misconfigured small models where schemas alone exceed capacity.
-    baseline_fraction = tool_tokens / context_window if context_window > 0 else 0
+    # Warn when baseline overhead consumes too much of the window.
+    baseline_fraction = fixed_overhead / context_window if context_window > 0 else 0
     if baseline_fraction > BASELINE_WARNING_THRESHOLD:
         logger.warning(
-            f"Tool schemas consume {baseline_fraction:.0%} of context window "
-            f"({tool_tokens}/{context_window} tokens). "
+            f"Fixed overhead consumes {baseline_fraction:.0%} of context window "
+            f"(tools={tool_tokens}, prompt={prompt_tokens}, total={fixed_overhead}/{context_window}). "
             f"Model may struggle with complex conversations. "
             f"Consider reducing tool description sizes or using a larger model."
         )
@@ -127,14 +130,15 @@ def resolve_context_budget(
         logger.warning(
             f"Context budget {raw_budget} < minimum {MINIMUM_BUDGET}. "
             f"Clamping to {MINIMUM_BUDGET} but context overflow is likely "
-            f"(window={context_window}, schemas={tool_tokens}, reserve={output_reserve})."
+            f"(window={context_window}, overhead={fixed_overhead}, ceiling={input_ceiling})."
         )
 
     budget = max(raw_budget, MINIMUM_BUDGET)
 
     logger.debug(
         f"Context budget: {budget} tokens "
-        f"(window={context_window}, reserve={output_reserve}, schemas={tool_tokens})"
+        f"(window={context_window}, ceiling={input_ceiling}, tools={tool_tokens}, "
+        f"prompt={prompt_tokens})"
     )
 
     return budget
@@ -395,9 +399,17 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
         if not messages:
             return {"llm_input_messages": messages, "store_keys": store_keys}
 
+        # Wrap tool results BEFORE trimming so wrapper overhead is counted
+        wrapped = _wrap_tool_results(messages)
+
+        # Compute post-trim injection overhead and subtract from budget
+        key_index_text = _build_key_index_text(store_keys)
+        key_index_overhead = approximate_token_count(key_index_text) if key_index_text else 0
+        effective_budget = max(_max_tokens - key_index_overhead, 0)
+
         trimmed = trim_messages(
-            messages,
-            max_tokens=_max_tokens,
+            wrapped,
+            max_tokens=effective_budget,
             token_counter=_message_list_token_counter,
             strategy="last",
             include_system=True,
@@ -407,11 +419,8 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
         # Fix orphaned ToolMessages that lost their AIMessage partner
         trimmed = _fix_orphaned_tool_messages(trimmed)
 
-        # Spotlighting defense: wrap tool results so LLM treats them as data
-        trimmed = _wrap_tool_results(trimmed)
-
         compaction_metadata: dict[str, int] | None = None
-        if len(trimmed) < len(messages):
+        if len(trimmed) < len(wrapped):
             compaction_metadata = {
                 "before_count": len(messages),
                 "after_count": len(trimmed),
@@ -419,12 +428,11 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
             }
             logger.debug(
                 f"pre_model_hook trimmed {len(messages)} -> {len(trimmed)} messages "
-                f"(budget: {_max_tokens} tokens)"
+                f"(budget: {_max_tokens}, effective: {effective_budget})"
             )
 
         # Append key index to existing SystemMessage (single system message
         # for maximum provider compatibility — Anthropic, OpenAI, Ollama, Gemini)
-        key_index_text = _build_key_index_text(store_keys)
         if key_index_text:
             trimmed = list(trimmed)
             for i, msg in enumerate(trimmed):

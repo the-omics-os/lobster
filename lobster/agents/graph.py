@@ -833,6 +833,7 @@ def create_bioinformatics_graph(
         budget = resolve_context_budget(
             context_window=context_window,
             tools=all_supervisor_tools,
+            system_prompt=system_prompt,
         )
         pre_model_hook = create_supervisor_pre_model_hook(max_tokens=budget)
 
