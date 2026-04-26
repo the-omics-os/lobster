@@ -12,12 +12,14 @@ import type {
   WizardResult,
   ProviderDef,
   CredentialField,
+  AuthMethodDef,
 } from "./types.js";
 import { theme } from "../theme.js";
 
 type WizardStep =
   | "packages"
   | "provider"
+  | "authMethod"
   | "credentials"
   | "model"
   | "optionalKeys";
@@ -25,6 +27,7 @@ type WizardStep =
 const STEP_LABELS: Record<WizardStep, string> = {
   packages: "Packages",
   provider: "Provider",
+  authMethod: "Auth",
   credentials: "Credentials",
   model: "Model",
   optionalKeys: "Options",
@@ -33,6 +36,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
 const STEPS: WizardStep[] = [
   "packages",
   "provider",
+  "authMethod",
   "credentials",
   "model",
   "optionalKeys",
@@ -44,6 +48,7 @@ interface WizardState {
   credentials: Record<string, string>;
   model: string | null;
   profile: string | null;
+  oauthAuthenticated: boolean;
 }
 
 interface InitWizardProps {
@@ -59,6 +64,7 @@ export function InitWizard({ manifest, onComplete }: InitWizardProps) {
     credentials: {},
     model: null,
     profile: null,
+    oauthAuthenticated: false,
   });
 
   const stepIndex = STEPS.indexOf(step);
@@ -72,8 +78,13 @@ export function InitWizard({ manifest, onComplete }: InitWizardProps) {
     (value: string) => {
       const provider = manifest.providers.find((p) => p.name === value);
       if (!provider) return;
-      setState((s) => ({ ...s, provider }));
-      if (provider.credentials.length === 0) {
+      setState((s) => ({ ...s, provider, oauthAuthenticated: false }));
+
+      const hasOAuth = provider.auth_methods?.some((am) => am.type === "oauth");
+      if (hasOAuth && provider.auth_methods.length > 1) {
+        // Provider supports multiple auth methods — let user choose
+        setStep("authMethod");
+      } else if (provider.credentials.length === 0) {
         // Skip credentials (e.g. Ollama), go to model step
         advanceToModelStep(provider);
       } else {
@@ -81,6 +92,23 @@ export function InitWizard({ manifest, onComplete }: InitWizardProps) {
       }
     },
     [manifest.providers]
+  );
+
+  const handleAuthMethodSelect = useCallback(
+    (method: string) => {
+      if (method === "oauth") {
+        // OAuth selected — mark it and skip credential form
+        setState((s) => ({ ...s, oauthAuthenticated: true, credentials: {} }));
+        if (state.provider) {
+          advanceToModelStep(state.provider);
+        }
+      } else {
+        // API key selected — proceed to credential form
+        setState((s) => ({ ...s, oauthAuthenticated: false }));
+        setStep("credentials");
+      }
+    },
+    [state.provider]
   );
 
   function advanceToModelStep(provider: ProviderDef) {
@@ -121,6 +149,7 @@ export function InitWizard({ manifest, onComplete }: InitWizardProps) {
         profile: state.profile,
         optionalKeys,
         smartStandardization: smartStd,
+        ...(state.oauthAuthenticated ? { oauthAuthenticated: true } : {}),
       });
     },
     [state, onComplete]
@@ -143,6 +172,13 @@ export function InitWizard({ manifest, onComplete }: InitWizardProps) {
 
       {step === "provider" && (
         <ProviderStep manifest={manifest} onSelect={handleProviderSelect} />
+      )}
+
+      {step === "authMethod" && state.provider && (
+        <AuthMethodStep
+          provider={state.provider}
+          onSelect={handleAuthMethodSelect}
+        />
       )}
 
       {step === "credentials" && state.provider && (
@@ -237,6 +273,35 @@ function ProviderStep({
       <Box marginTop={1}>
         <Select options={options} onChange={onSelect} />
       </Box>
+    </Box>
+  );
+}
+
+/* --- Step 2b: Auth Method Selection (OAuth vs API key) --- */
+
+function AuthMethodStep({
+  provider,
+  onSelect,
+}: {
+  provider: ProviderDef;
+  onSelect: (method: string) => void;
+}) {
+  const methods = provider.auth_methods ?? [];
+  const options = methods.map((am) => ({
+    label: am.label,
+    value: am.type,
+  }));
+  const defaultMethod = methods.find((am) => am.is_default)?.type;
+
+  return (
+    <Box flexDirection="column">
+      <Text bold>How would you like to authenticate with {provider.display_name}?</Text>
+      <Box marginTop={1}>
+        <Select options={options} defaultValue={defaultMethod} onChange={onSelect} />
+      </Box>
+      <Text color={theme.textMuted} dimColor>
+        OAuth lets you use your existing Claude Pro/Max subscription.
+      </Text>
     </Box>
   );
 }

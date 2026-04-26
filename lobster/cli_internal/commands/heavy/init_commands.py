@@ -1125,6 +1125,35 @@ def _postprocess_tui_init_result(
     api_key = (normalized_result.get("api_key") or "").strip()
     oauth_done = normalized_result.get("oauth_authenticated", False)
 
+    if provider_name == "anthropic" and oauth_done and not api_key:
+        # Anthropic OAuth: run browser PKCE flow to get tokens
+        from lobster.config.auth.anthropic_oauth import login_interactive
+
+        console.print("[dim]Completing Anthropic OAuth login...[/dim]")
+        login_result = login_interactive(
+            on_url=lambda url: console.print(
+                f"[dim]Opening browser...[/dim]\n[dim]If browser doesn't open: {url}[/dim]"
+            ),
+            on_progress=lambda msg: console.print(f"[dim]{msg}[/dim]"),
+        )
+        if login_result.success:
+            console.print("[green]Authenticated with Anthropic![/green]")
+        else:
+            console.print(
+                f"[yellow]OAuth login failed: {login_result.error}[/yellow]\n"
+                "[dim]You can paste an API key instead.[/dim]"
+            )
+            api_key = Prompt.ask(
+                "[bold white]Enter your Anthropic API key (sk-ant-...)[/bold white]",
+                default="",
+            )
+            if api_key.strip():
+                normalized_result["api_key"] = api_key.strip()
+            else:
+                console.print(
+                    "[yellow]No credentials provided. Run 'lobster auth login anthropic' later.[/yellow]"
+                )
+
     if provider_name == "omics-os" and not api_key:
         if oauth_done:
             # Go TUI saved raw tokens to credentials.json. Validate against

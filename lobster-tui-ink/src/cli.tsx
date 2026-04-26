@@ -1,13 +1,23 @@
 #!/usr/bin/env bun
 import React from "react";
 import { render } from "ink";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, appendFileSync } from "fs";
 import { parseArgs } from "util";
 import { resolveConfig } from "./config.js";
 import { App } from "./App.js";
 import { ThemeProvider } from "./hooks/useTheme.js";
 import { InitWizard } from "./wizard/InitWizard.js";
 import type { WizardManifest, WizardResult } from "./wizard/types.js";
+
+// Prevent silent crashes from unhandled promise rejections
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+  process.stderr.write(`\n[lobster-chat] Unhandled rejection: ${msg}\n`);
+});
+process.on("uncaughtException", (error) => {
+  process.stderr.write(`\n[lobster-chat] Uncaught exception: ${error.stack ?? error.message}\n`);
+  process.exit(1);
+});
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),

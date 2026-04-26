@@ -71,7 +71,7 @@ export function App({ config }: { config: AppConfig }) {
     return () => { cancelled = true; };
   }, [config.apiUrl, config.isCloud]);
 
-  const { runtime, appStateStore, sessionId, clearThread } = useRuntime(config);
+  const { runtime, appStateStore, sessionId, sessionReady, clearThread } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
   }, [runtime]);
@@ -84,6 +84,7 @@ export function App({ config }: { config: AppConfig }) {
   const [showTemplates, setShowTemplates] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | undefined>();
+  const waitingForSession = !showTemplates && !sessionReady;
 
   // Bootstrap: single fetch for flags, resources, and templates (after backend ready)
   useEffect(() => {
@@ -92,7 +93,7 @@ export function App({ config }: { config: AppConfig }) {
       if (!bootstrap) return;
       setResources(bootstrap.resources);
       setRuntimeInfo(bootstrap.runtime);
-      if (!config.sessionId && bootstrap.templates.length > 0) {
+      if (!config.isCloud && !config.sessionId && bootstrap.templates.length > 0) {
         setTemplates(bootstrap.templates);
         setShowTemplates(true);
       }
@@ -171,6 +172,13 @@ export function App({ config }: { config: AppConfig }) {
                 onSelect={handleTemplateSelect}
                 onDismiss={handleTemplateDismiss}
               />
+            ) : waitingForSession ? (
+              <Box flexDirection="column" marginTop={1} gap={1}>
+                <BrailleSpinner
+                  label={config.isCloud ? "Opening cloud session..." : "Preparing session..."}
+                  color={theme.primary}
+                />
+              </Box>
             ) : (
               <>
                 <Thread />
@@ -192,7 +200,7 @@ export function App({ config }: { config: AppConfig }) {
 
           <Alerts appStateStore={appStateStore} />
 
-          {!showTemplates && (
+          {!showTemplates && sessionReady && (
             <Box marginTop={1}>
               <Composer
                 onIntercept={slashCmds.handleInput}

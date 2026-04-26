@@ -1,11 +1,12 @@
 /** Central configuration for API connectivity + auth. */
 
-import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
 import { homedir } from "os";
 
 const CLOUD_API_BASE = "https://app.omics-os.com/api/v1";
 const LOCAL_API_BASE = "http://localhost:8000";
+const DEFAULT_CLIENT_ID = "7lgldp8e72p2lmpmi3gjbnn9uk";
 const CREDENTIALS_PATH = join(
   homedir(),
   ".config",
@@ -25,32 +26,127 @@ export interface AppConfig {
 }
 
 interface StoredCredentials {
+  auth_mode?: string;
   token?: string;
   access_token?: string;
   api_key?: string;
+  refresh_token?: string;
+  client_id?: string;
+  token_expiry?: string;
+  endpoint?: string;
+  id_token?: string;
+  [key: string]: unknown;
 }
 
-/** Read stored credentials from ~/.config/omics-os/credentials.json. */
-function readStoredCredentials(): { token: string; authType: AuthType } | undefined {
+/** Read the full stored credentials object. */
+function readFullCredentials(): StoredCredentials | undefined {
   try {
     if (!existsSync(CREDENTIALS_PATH)) return undefined;
-    const data = JSON.parse(readFileSync(CREDENTIALS_PATH, "utf-8")) as StoredCredentials;
-
-    // API key (omk_* prefix)
-    if (data.api_key && data.api_key.startsWith("omk_")) {
-      return { token: data.api_key, authType: "api-key" };
-    }
-
-    // JWT / OAuth token
-    const jwt = data.token ?? data.access_token;
-    if (jwt) {
-      return { token: jwt, authType: "bearer" };
-    }
-
-    return undefined;
+    return JSON.parse(readFileSync(CREDENTIALS_PATH, "utf-8")) as StoredCredentials;
   } catch {
     return undefined;
   }
+}
+
+/** Write credentials back to disk. */
+function writeCredentials(creds: StoredCredentials): void {
+  try {
+    mkdirSync(dirname(CREDENTIALS_PATH), { recursive: true });
+    writeFileSync(CREDENTIALS_PATH, JSON.stringify(creds, null, 2) + "\n", "utf-8");
+  } catch {
+    // Non-fatal — token refresh persistence failed
+  }
+}
+
+/** Check if the stored OAuth token is expired (with 60s buffer). */
+function isTokenExpired(creds: StoredCredentials): boolean {
+  if (creds.auth_mode !== "oauth") return false;
+  const expiry = creds.token_expiry;
+  if (!expiry) return true;
+  try {
+    return new Date(expiry).getTime() < Date.now() + 60_000;
+  } catch {
+    return true;
+  }
+}
+
+/** Attempt to refresh the OAuth token via the gateway endpoint. Returns new access_token or undefined. */
+async function refreshOAuthToken(creds: StoredCredentials): Promise<string | undefined> {
+  const refreshToken = creds.refresh_token;
+  if (!refreshToken) return undefined;
+
+  const endpoint = (creds.endpoint ?? "https://app.omics-os.com").replace(/\/+$/, "");
+  const clientId = creds.client_id ?? DEFAULT_CLIENT_ID;
+  const url = `${endpoint}/api/v1/gateway/token/refresh`;
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken, client_id: clientId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return undefined;
+
+    const data = (await resp.json()) as { access_token?: string; id_token?: string; expires_in?: number };
+    if (!data.access_token) return undefined;
+
+    // Persist refreshed tokens
+    creds.access_token = data.access_token;
+    if (data.id_token) creds.id_token = data.id_token;
+    creds.token_expiry = new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString();
+    writeCredentials(creds);
+
+    return data.access_token;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read stored credentials, auto-refreshing expired OAuth tokens. */
+async function readStoredCredentialsAsync(): Promise<{ token: string; authType: AuthType } | undefined> {
+  const creds = readFullCredentials();
+  if (!creds) return undefined;
+
+  // API key (omk_* prefix)
+  if (creds.api_key && creds.api_key.startsWith("omk_")) {
+    return { token: creds.api_key, authType: "api-key" };
+  }
+
+  // OAuth mode — check expiry and refresh if needed
+  if (creds.auth_mode === "oauth") {
+    let token = creds.access_token;
+    if (isTokenExpired(creds)) {
+      const refreshed = await refreshOAuthToken(creds);
+      if (refreshed) {
+        token = refreshed;
+      }
+      // If refresh failed, return stale token — server will reject with 401
+    }
+    if (token) return { token, authType: "bearer" };
+    return undefined;
+  }
+
+  // Legacy: plain token field
+  const jwt = creds.token ?? creds.access_token;
+  if (jwt) return { token: jwt, authType: "bearer" };
+
+  return undefined;
+}
+
+/** Read stored credentials (sync, no refresh — for initial config resolution). */
+function readStoredCredentials(): { token: string; authType: AuthType } | undefined {
+  const creds = readFullCredentials();
+  if (!creds) return undefined;
+
+  if (creds.api_key && creds.api_key.startsWith("omk_")) {
+    return { token: creds.api_key, authType: "api-key" };
+  }
+
+  const jwt = creds.token ?? creds.access_token;
+  if (jwt) return { token: jwt, authType: "bearer" };
+
+  return undefined;
 }
 
 /** Detect auth type from a raw token string. */
@@ -129,6 +225,25 @@ export function authHeaders(config: AppConfig): Record<string, string> {
     default:
       return {};
   }
+}
+
+/** Build fresh auth headers, refreshing expired OAuth tokens if needed. */
+export async function freshAuthHeaders(config: AppConfig): Promise<Record<string, string>> {
+  // If token was provided explicitly (env/CLI flag), use it as-is
+  if (config.token && (process.env.LOBSTER_TOKEN || !config.isCloud)) {
+    return authHeaders(config);
+  }
+
+  // For cloud mode with stored credentials, attempt refresh if needed
+  if (config.isCloud) {
+    const stored = await readStoredCredentialsAsync();
+    if (stored) {
+      const refreshedConfig = { ...config, token: stored.token, authType: stored.authType };
+      return authHeaders(refreshedConfig);
+    }
+  }
+
+  return authHeaders(config);
 }
 
 /** Build the stream endpoint URL for a session. */

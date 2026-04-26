@@ -40,6 +40,12 @@ export interface OllamaStatus {
   error: string | null;
 }
 
+export interface AuthMethodDef {
+  type: "oauth" | "api_key";
+  label: string;
+  is_default: boolean;
+}
+
 export type ModelSelection = "explicit" | "profile" | "local" | "managed";
 
 export interface ProviderDef {
@@ -50,6 +56,7 @@ export interface ProviderDef {
   credentials: CredentialField[];
   models: ModelDef[];
   profiles: ProfileDef[];
+  auth_methods: AuthMethodDef[];
 }
 
 export interface WizardManifest {
@@ -66,4 +73,5 @@ export interface WizardResult {
   profile: string | null;
   optionalKeys: Record<string, string>;
   smartStandardization: boolean;
+  oauthAuthenticated?: boolean;
 }

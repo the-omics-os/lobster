@@ -3,7 +3,7 @@ import { useDataStreamRuntime } from "@assistant-ui/react-data-stream";
 import type { AppConfig } from "../config.js";
 import { freshAuthHeaders } from "../config.js";
 import { hydrateMessages } from "../utils/hydration.js";
-import { resolveSessionId } from "../api/sessions.js";
+import { isUuidSessionId, resolveSessionId } from "../api/sessions.js";
 import { apiFetch } from "../api/apiClient.js";
 import {
   processStatePatch,
@@ -16,32 +16,62 @@ import {
   resetAppStateStore,
 } from "../utils/appStateStore.js";
 
+function seedSessionId(config: AppConfig): string | undefined {
+  if (!config.sessionId) {
+    return undefined;
+  }
+
+  if (config.isCloud && !isUuidSessionId(config.sessionId)) {
+    return undefined;
+  }
+
+  return config.sessionId;
+}
+
 export function useRuntime(config: AppConfig) {
   const [sessionId, setSessionId] = useState<string | undefined>(
-    config.sessionId
+    seedSessionId(config),
   );
   const appStateStoreRef = useRef(createAppStateStore());
   const appStateStore = appStateStoreRef.current;
+  const sessionReady = !config.isCloud || Boolean(sessionId);
 
   const sse = useSSEReconnect(sessionId);
 
   // Resolve session ID on mount
   useEffect(() => {
-    resolveSessionId(config).then(setSessionId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      let alertMessage: string;
-      if (message.includes("401") || message.includes("Authentication")) {
-        alertMessage = "Not authenticated. Run: lobster cloud login";
-      } else if (message.includes("ECONNREFUSED") || message.includes("fetch failed")) {
-        alertMessage = "Cannot reach backend. Is the server running?";
-      } else {
-        alertMessage = `Failed to create session: ${message}`;
-      }
-      applyAppStatePatch(appStateStore, "alerts", [
-        { level: "error", title: "Session Error", message: alertMessage },
-      ]);
-    });
-  }, [config.apiUrl, config.sessionId]);
+    let cancelled = false;
+    setSessionId(seedSessionId(config));
+
+    resolveSessionId(config)
+      .then((resolvedId) => {
+        if (cancelled) return;
+        setSessionId(resolvedId);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+
+        const message = error instanceof Error ? error.message : String(error);
+        let alertMessage: string;
+        if (message.includes("401") || message.includes("Authentication")) {
+          alertMessage = "Not authenticated. Run: lobster cloud login";
+        } else if (
+          message.includes("ECONNREFUSED") ||
+          message.includes("fetch failed")
+        ) {
+          alertMessage = "Cannot reach backend. Is the server running?";
+        } else {
+          alertMessage = `Failed to create session: ${message}`;
+        }
+        applyAppStatePatch(appStateStore, "alerts", [
+          { level: "error", title: "Session Error", message: alertMessage },
+        ]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appStateStore, config.apiUrl, config.isCloud, config.sessionId]);
 
   // Refs for callbacks that need current values
   const configRef = useRef(config);
@@ -66,6 +96,17 @@ export function useRuntime(config: AppConfig) {
     },
     [appStateStore, sse.trackEventId],
   );
+
+  const onResponse = useCallback(async (response: Response) => {
+    if (!response.ok || appStateStore.getState().alerts.length === 0) {
+      return;
+    }
+
+    appStateStore.setState((state) => ({
+      ...state,
+      alerts: [],
+    }));
+  }, [appStateStore]);
 
   // Post-stream REST fallback — refetch modalities/files/plots (matches web app onFinish pattern)
   const refetchAfterStream = useCallback(async () => {
@@ -151,6 +192,7 @@ export function useRuntime(config: AppConfig) {
     // Local ink_launcher uses SSE format with [DONE] (ui-message-stream).
     protocol: config.isCloud ? "data-stream" : "ui-message-stream",
     onData,
+    onResponse,
     onError,
     onFinish,
   });
@@ -169,9 +211,12 @@ export function useRuntime(config: AppConfig) {
   const clearThread = useCallback(() => {
     resetAppStateStore(appStateStore);
     runtime.thread.reset();
-    // Request a new session so old messages don't rehydrate
-    resolveSessionId({ ...config, sessionId: undefined }).then(setSessionId);
+    if (!config.isCloud) {
+      setSessionId(undefined);
+      // Request a new session so old messages don't rehydrate.
+      resolveSessionId({ ...config, sessionId: undefined }).then(setSessionId);
+    }
   }, [appStateStore, config, runtime]);
 
-  return { runtime, appStateStore, sessionId, sse, clearThread };
+  return { runtime, appStateStore, sessionId, sessionReady, sse, clearThread };
 }

@@ -78,6 +78,15 @@ class OllamaStatus:
 
 
 @dataclass
+class AuthMethodDef:
+    """An authentication method available for a provider."""
+
+    type: str  # "oauth" or "api_key"
+    label: str  # e.g. "Login with Claude account (Pro/Max)"
+    is_default: bool = False
+
+
+@dataclass
 class ProviderDef:
     """A provider with its credentials, models/profiles, and model selection mode."""
 
@@ -90,6 +99,7 @@ class ProviderDef:
     credentials: list[CredentialField] = field(default_factory=list)
     models: list[ModelDef] = field(default_factory=list)
     profiles: list[ProfileDef] = field(default_factory=list)
+    auth_methods: list[AuthMethodDef] = field(default_factory=list)
 
 
 @dataclass
@@ -119,6 +129,9 @@ class WizardManifest:
                         ],
                         "models": [ModelDef(**m) for m in p.get("models", [])],
                         "profiles": [ProfileDef(**pr) for pr in p.get("profiles", [])],
+                        "auth_methods": [
+                            AuthMethodDef(**am) for am in p.get("auth_methods", [])
+                        ],
                     }
                 )
                 for p in raw.get("providers", [])
@@ -193,6 +206,18 @@ _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
     ],
 }
 
+_PROVIDER_AUTH_METHODS: dict[str, list[AuthMethodDef]] = {
+    "anthropic": [
+        AuthMethodDef(
+            type="oauth",
+            label="Login with Claude account (Pro/Max)",
+            is_default=True,
+        ),
+        AuthMethodDef(type="api_key", label="Paste API key"),
+    ],
+    # Other providers: api_key only (no explicit auth_methods needed)
+}
+
 _PROFILE_DESCRIPTIONS: dict[str, tuple[str, str, bool]] = {
     "development": ("Development", "Sonnet 4 — fastest, most affordable", False),
     "production": (
@@ -262,6 +287,8 @@ def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
                         )
                     )
 
+        auth_methods = _PROVIDER_AUTH_METHODS.get(name, [])
+
         providers.append(
             ProviderDef(
                 name=name,
@@ -271,6 +298,7 @@ def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
                 credentials=creds,
                 models=models,
                 profiles=profiles,
+                auth_methods=auth_methods,
             )
         )
 

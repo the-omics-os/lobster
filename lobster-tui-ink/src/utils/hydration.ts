@@ -138,7 +138,7 @@ function convertToThreadMessageLike(msg: DurableMessage): ThreadMessageLike {
 
     return {
       role: role as "user" | "assistant",
-      id: msg.message_id ?? (msg as Record<string, unknown>).id as string,
+      id: msg.message_id ?? ((msg as unknown as Record<string, unknown>).id as string),
       content,
       createdAt: msg.created_at ? new Date(msg.created_at) : new Date(),
       attachments: [],
@@ -148,7 +148,7 @@ function convertToThreadMessageLike(msg: DurableMessage): ThreadMessageLike {
   // Fallback: plain text content
   return {
     role: role as "user" | "assistant",
-    id: msg.message_id ?? (msg as Record<string, unknown>).id as string,
+    id: msg.message_id ?? ((msg as unknown as Record<string, unknown>).id as string),
     content: msg.content ?? "",
     createdAt: msg.created_at ? new Date(msg.created_at) : new Date(),
     attachments: [],

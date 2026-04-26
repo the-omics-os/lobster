@@ -5,7 +5,11 @@
 
 import type { AppConfig } from "../config.js";
 import { apiFetch } from "../api/apiClient.js";
-import { listSessions, type Session as ApiSession } from "../api/sessions.js";
+import {
+  isUuidSessionId,
+  listSessions,
+  type Session as ApiSession,
+} from "../api/sessions.js";
 import type { AppState } from "../utils/stateHandlers.js";
 import { isFeatureEnabled } from "../api/featureFlags.js";
 import { listProjects } from "../api/projects.js";
@@ -208,19 +212,19 @@ async function sessionsListHandler(ctx: CommandContext): Promise<CommandResult> 
     if (sessions.length === 0) {
       return buildTextResult("No sessions found.");
     }
-    const sorted = sessions.sort(
+    const sorted = sessions.slice().sort(
       (a: ApiSession, b: ApiSession) =>
-        new Date(b.updated_at ?? b.created_at).getTime() -
-        new Date(a.updated_at ?? a.created_at).getTime(),
+        new Date(b.last_activity ?? b.created_at).getTime() -
+        new Date(a.last_activity ?? a.created_at).getTime(),
     );
     const lines = [
       "Sessions:",
       "",
       ...sorted.slice(0, 20).map((s: ApiSession) => {
-        const date = (s.updated_at ?? s.created_at).split("T")[0] ?? "?";
-        const name = (s.title ?? "untitled").slice(0, 40).padEnd(42);
+        const date = (s.last_activity ?? s.created_at).split("T")[0] ?? "?";
+        const name = (s.name ?? "untitled").slice(0, 32).padEnd(34);
         const current = s.session_id === ctx.sessionId ? " ←" : "";
-        return `  ${date}  ${name} ${s.session_id.slice(0, 8)}${current}`;
+        return `  ${date}  ${name} ${s.session_id}${current}`;
       }),
     ];
     if (sorted.length > 20) {
@@ -234,13 +238,14 @@ async function sessionsListHandler(ctx: CommandContext): Promise<CommandResult> 
 
 async function sessionArchiveHandler(
   ctx: CommandContext,
-  sessionId: string,
+  sessionArg: string,
 ): Promise<CommandResult> {
   try {
+    const sessionId = await resolveSessionCommandId(ctx, sessionArg);
     await apiFetch(ctx.config, `/sessions/${sessionId}/archive`, {
       method: "POST",
     });
-    return buildTextResult(`Session ${sessionId.slice(0, 8)} archived.`);
+    return buildTextResult(`Session ${sessionId} archived.`);
   } catch (error) {
     return buildTextResult(asErrorMessage(error));
   }
@@ -248,16 +253,48 @@ async function sessionArchiveHandler(
 
 async function sessionDeleteHandler(
   ctx: CommandContext,
-  sessionId: string,
+  sessionArg: string,
 ): Promise<CommandResult> {
   try {
+    const sessionId = await resolveSessionCommandId(ctx, sessionArg);
     await apiFetch(ctx.config, `/sessions/${sessionId}`, {
       method: "DELETE",
     });
-    return buildTextResult(`Session ${sessionId.slice(0, 8)} deleted.`);
+    return buildTextResult(`Session ${sessionId} deleted.`);
   } catch (error) {
     return buildTextResult(asErrorMessage(error));
   }
+}
+
+async function resolveSessionCommandId(
+  ctx: CommandContext,
+  sessionArg: string,
+): Promise<string> {
+  const candidate = sessionArg.trim();
+  if (!candidate) {
+    throw new Error("Session ID is required.");
+  }
+
+  if (!ctx.config.isCloud || isUuidSessionId(candidate)) {
+    return candidate;
+  }
+
+  const sessions = await listSessions(ctx.config);
+  const matches = sessions.filter((session) =>
+    session.session_id.startsWith(candidate),
+  );
+
+  if (matches.length === 1) {
+    return matches[0]!.session_id;
+  }
+
+  if (matches.length > 1) {
+    throw new Error(
+      `Ambiguous session ID "${candidate}". Use more characters from /sessions list.`,
+    );
+  }
+
+  throw new Error("Invalid session ID. Use the full UUID from /sessions list.");
 }
 
 const CLOUD_COMMANDS: CommandDef[] = [

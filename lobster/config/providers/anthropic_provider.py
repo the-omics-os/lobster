@@ -20,7 +20,7 @@ Example:
 
 import logging
 import os
-from typing import Any, List
+from typing import Any, List, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
 
@@ -117,21 +117,22 @@ class AnthropicProvider(ILLMProvider):
 
     def is_configured(self) -> bool:
         """
-        Check if Anthropic API key is present.
+        Check if Anthropic credentials are present (API key OR OAuth).
 
-        Checks for ANTHROPIC_API_KEY environment variable.
-        Does NOT validate the key (use is_available() for that).
+        Priority: ANTHROPIC_API_KEY env var > OAuth credentials.
 
         Returns:
-            bool: True if ANTHROPIC_API_KEY is set
-
-        Example:
-            >>> provider = AnthropicProvider()
-            >>> if not provider.is_configured():
-            ...     print("Set ANTHROPIC_API_KEY=sk-ant-... in .env")
+            bool: True if any valid credential source exists
         """
         api_key = os.environ.get("ANTHROPIC_API_KEY")
-        return bool(api_key and api_key.strip())
+        if api_key and api_key.strip():
+            return True
+        try:
+            from lobster.config.auth import oauth_store
+
+            return oauth_store.has_credentials("anthropic")
+        except Exception:
+            return False
 
     def is_available(self) -> bool:
         """
@@ -234,12 +235,15 @@ class AnthropicProvider(ILLMProvider):
                 f"langchain-anthropic package not installed. " f"Install with: {cmd}"
             )
 
-        # Get API key (prefer kwarg, fallback to environment)
+        # Resolve API key: kwarg > env var > OAuth token
         api_key = kwargs.pop("api_key", None) or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
+            api_key = self._get_oauth_token()
+        if not api_key:
             raise ValueError(
-                "ANTHROPIC_API_KEY not found in environment or kwargs. "
-                "Set it with: export ANTHROPIC_API_KEY=sk-ant-..."
+                "No Anthropic credentials found. Either:\n"
+                "  1. Login with: lobster auth login anthropic\n"
+                "  2. Set env var: export ANTHROPIC_API_KEY=sk-ant-..."
             )
 
         # Create ChatAnthropic instance
@@ -250,6 +254,17 @@ class AnthropicProvider(ILLMProvider):
             max_tokens=max_tokens,
             **kwargs,
         )
+
+    @staticmethod
+    def _get_oauth_token() -> Optional[str]:
+        """Attempt to get an access token from Anthropic OAuth credentials."""
+        try:
+            from lobster.config.auth.anthropic_oauth import get_access_token
+
+            return get_access_token()
+        except Exception as e:
+            logger.debug("Anthropic OAuth token retrieval failed: %s", e)
+            return None
 
     def get_configuration_help(self) -> str:
         """
@@ -264,12 +279,12 @@ class AnthropicProvider(ILLMProvider):
             ...     print(provider.get_configuration_help())
         """
         return (
-            "Configure Anthropic Direct API:\n\n"
-            "1. Get API key from: https://console.anthropic.com/\n"
-            "2. Set environment variable:\n"
-            "   export ANTHROPIC_API_KEY=sk-ant-...\n\n"
-            "Or add to .env file:\n"
-            "   ANTHROPIC_API_KEY=sk-ant-...\n\n"
+            "Configure Anthropic:\n\n"
+            "Option 1 — Login with Claude account (Pro/Max):\n"
+            "   lobster auth login anthropic\n\n"
+            "Option 2 — API key:\n"
+            "   export ANTHROPIC_API_KEY=sk-ant-...\n"
+            "   (Get key from https://console.anthropic.com/)\n\n"
             f"Default model: {self.get_default_model()}\n"
             f"Available models: {', '.join(self.get_model_names())}"
         )

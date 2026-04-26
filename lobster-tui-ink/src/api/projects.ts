@@ -2,7 +2,7 @@
 
 import type { AppConfig } from "../config.js";
 import { apiFetch } from "./apiClient.js";
-import { authHeaders } from "../config.js";
+import { freshAuthHeaders } from "../config.js";
 
 export interface Project {
   id: string;
@@ -50,9 +50,10 @@ export async function pushFile(
   const formData = new FormData();
   formData.append("file", new Blob([fileContent]), filePath);
 
+  const auth = await freshAuthHeaders(config);
   const resp = await fetch(url, {
     method: "POST",
-    headers: authHeaders(config),
+    headers: auth,
     body: formData,
   });
 

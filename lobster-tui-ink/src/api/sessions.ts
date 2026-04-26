@@ -5,10 +5,19 @@ import { freshAuthHeaders } from "../config.js";
 
 export interface Session {
   session_id: string;
-  title?: string;
+  name?: string;
+  status?: string;
   created_at: string;
-  updated_at?: string;
+  last_activity?: string;
   message_count?: number;
+  client_source?: string;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuidSessionId(value: string): boolean {
+  return UUID_RE.test(value);
 }
 
 /** Create a new session on the backend. Returns session_id. */
@@ -63,6 +72,11 @@ export async function listSessions(config: AppConfig): Promise<Session[]> {
 /** Resolve session: use provided ID, or create a new one. */
 export async function resolveSessionId(config: AppConfig): Promise<string> {
   if (config.sessionId) {
+    if (config.isCloud && !isUuidSessionId(config.sessionId)) {
+      throw new Error(
+        `Invalid session ID format: "${config.sessionId}". Expected a UUID.`,
+      );
+    }
     return config.sessionId;
   }
 

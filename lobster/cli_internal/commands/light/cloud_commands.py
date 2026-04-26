@@ -278,6 +278,7 @@ def _browser_login() -> None:
         "access_token": access_token,
         "refresh_token": received_tokens.get("refresh_token", ""),
         "id_token": received_tokens.get("id_token", ""),
+        "client_id": received_tokens.get("client_id", "7lgldp8e72p2lmpmi3gjbnn9uk"),
         "token_expiry": token_expiry,
         "endpoint": endpoint,
         "user_id": data.get("user_id", ""),
@@ -420,6 +421,7 @@ def attempt_login_for_init() -> bool:
         "access_token": access_token,
         "refresh_token": received_tokens.get("refresh_token", ""),
         "id_token": received_tokens.get("id_token", ""),
+        "client_id": received_tokens.get("client_id", "7lgldp8e72p2lmpmi3gjbnn9uk"),
         "token_expiry": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         "endpoint": endpoint,
         "user_id": data.get("user_id", ""),
@@ -432,6 +434,83 @@ def attempt_login_for_init() -> bool:
     email = data.get("email", "")
     console.print(f"[green]Authenticated as {email} (tier: {tier})[/green]")
     return True
+
+
+@cloud_app.command()
+def account() -> None:
+    """Show your Omics-OS Cloud account summary."""
+    from lobster.config.credentials import get_api_key, get_endpoint, load_credentials
+
+    creds = load_credentials()
+    api_key = get_api_key()
+    if not api_key or not creds:
+        console.print(
+            "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
+            "Run: [bold]lobster cloud login[/bold]"
+        )
+        raise typer.Exit(0)
+
+    endpoint = get_endpoint()
+    email = creds.get("email", "unknown")
+    tier = creds.get("tier", "unknown")
+    user_id = creds.get("user_id", "unknown")
+    auth_mode = creds.get("auth_mode", "unknown")
+
+    table = Table(title="Omics-OS Cloud Account", show_header=False, border_style="cyan")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+
+    table.add_row("Email", email)
+    table.add_row("Tier", tier)
+    table.add_row("User ID", user_id)
+    table.add_row("Auth mode", auth_mode)
+    table.add_row("Endpoint", endpoint)
+
+    # Fetch live usage data
+    import httpx
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                f"{endpoint}/api/v1/gateway/usage",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            budget = data.get("budget", {})
+            table.add_row("", "")
+            table.add_row("Budget remaining", f"${budget.get('remaining_usd', '?')}")
+            table.add_row("Period", data.get("period", "?"))
+    except (httpx.ConnectError, httpx.TimeoutException):
+        table.add_row("", "")
+        table.add_row("Status", "[dim]Could not reach cloud[/dim]")
+
+    console.print(table)
+    console.print(
+        "\n[dim]Manage API keys:   https://app.omics-os.com/settings/api-keys[/dim]\n"
+        "[dim]Account settings:  https://app.omics-os.com/account[/dim]"
+    )
+
+
+keys_app = typer.Typer(
+    name="keys",
+    help="API key management (web only)",
+    no_args_is_help=False,
+    invoke_without_command=True,
+)
+cloud_app.add_typer(keys_app, name="keys")
+
+
+@keys_app.callback(invoke_without_command=True)
+def keys_callback(ctx: typer.Context) -> None:
+    """Manage API keys via the Omics-OS Cloud web interface."""
+    if ctx.invoked_subcommand is None:
+        console.print(
+            "API key management is available at:\n\n"
+            "  [bold cyan]https://app.omics-os.com/settings/api-keys[/bold cyan]\n\n"
+            "[dim]For security, API keys are managed through the web interface only.\n"
+            "Terminal sessions can expose key material in scrollback and shell history.[/dim]"
+        )
 
 
 @cloud_app.command()

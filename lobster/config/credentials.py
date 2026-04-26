@@ -77,6 +77,9 @@ def is_token_expired() -> bool:
         return True
 
 
+DEFAULT_CLIENT_ID = "7lgldp8e72p2lmpmi3gjbnn9uk"
+
+
 def refresh_token() -> Optional[str]:
     """Refresh the OAuth access token using the stored refresh_token.
 
@@ -95,6 +98,7 @@ def refresh_token() -> Optional[str]:
         logger.debug("No refresh_token stored, cannot refresh.")
         return None
 
+    client_id = creds.get("client_id", DEFAULT_CLIENT_ID)
     endpoint = creds.get("endpoint", DEFAULT_ENDPOINT).rstrip("/")
     token_url = f"{endpoint}/api/v1/gateway/token/refresh"
 
@@ -104,7 +108,7 @@ def refresh_token() -> Optional[str]:
         with httpx.Client(timeout=15.0) as client:
             resp = client.post(
                 token_url,
-                json={"refresh_token": refresh_tok},
+                json={"refresh_token": refresh_tok, "client_id": client_id},
             )
 
         if resp.status_code != 200:
