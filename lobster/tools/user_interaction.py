@@ -6,6 +6,7 @@ with optional LLM closure for hybrid component selection.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -27,7 +28,7 @@ def create_ask_user_tool(llm: Optional["BaseChatModel"] = None):
     """
 
     @tool
-    def ask_user(question: str, context: Optional[Dict[str, Any]] = None) -> str:
+    async def ask_user(question: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Pause execution and ask the user a question. Use ONLY when user input
         is genuinely required (ambiguous intent, approval gate, or domain choice).
         The question might come from a sub-agent that needs user input and asks you to provide this to them
@@ -48,13 +49,16 @@ def create_ask_user_tool(llm: Optional["BaseChatModel"] = None):
 
         from lobster.services.interaction.component_mapper import map_question
 
-        selection = map_question(question, context, llm=llm)
+        selection = await asyncio.to_thread(map_question, question, context, llm=llm)
         response = interrupt(selection.model_dump())
         return json.dumps(response)
 
     ask_user.metadata = {"categories": ["UTILITY"], "provenance": False}
     ask_user.tags = ["UTILITY"]
-    return ask_user
+
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(ask_user)
 
 
 # Backward-compatible module-level instance (no LLM).

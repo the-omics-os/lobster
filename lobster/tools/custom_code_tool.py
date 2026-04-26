@@ -27,6 +27,7 @@ See Also:
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from langchain_core.tools import tool
@@ -155,7 +156,7 @@ def create_execute_custom_code_tool(
     """
 
     @tool
-    def execute_custom_code(
+    async def execute_custom_code(
         python_code: str,
         modality_name: Optional[str] = None,
         workspace_key: Optional[str] = None,
@@ -207,8 +208,10 @@ def create_execute_custom_code_tool(
             # Convert workspace_key to list (service expects Optional[List[str]])
             workspace_keys_list = [workspace_key] if workspace_key else None
 
-            # Execute via service (single source of truth)
-            result, stats, ir = custom_code_service.execute(
+            # Execute via service in a thread so the event loop stays free for
+            # SSE heartbeats during long-running subprocess calls.
+            result, stats, ir = await asyncio.to_thread(
+                custom_code_service.execute,
                 code=python_code,
                 modality_name=modality_name,
                 load_workspace_files=load_workspace_files,
@@ -313,7 +316,9 @@ def create_execute_custom_code_tool(
                 indent=2,
             )
 
-    return execute_custom_code
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(execute_custom_code)
 
 
 # =============================================================================

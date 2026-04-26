@@ -291,6 +291,10 @@ class DataManagerV2:
         self._session_lock = threading.Lock()
         self._session_lock_path = self.session_file.with_suffix(".lock")
 
+        # Thread-safety for mutable state accessed by concurrent tool calls
+        # (e.g. execute_custom_code via asyncio.to_thread)
+        self._state_lock = threading.Lock()
+
         # Optional callback for modality loaded events: fn(name, adata)
         self.on_modality_loaded = None
 
@@ -633,7 +637,8 @@ class DataManagerV2:
                         f"Created synthetic lineage for legacy file '{modality_name}'"
                     )
 
-                self.modalities[modality_name] = adata
+                with self._state_lock:
+                    self.modalities[modality_name] = adata
                 self._modality_sources[modality_name] = h5ad_file
 
                 loaded_count += 1
@@ -695,7 +700,8 @@ class DataManagerV2:
                     )
                     continue
 
-                self.modalities[modality_name] = adata
+                with self._state_lock:
+                    self.modalities[modality_name] = adata
                 # Track source but do NOT mark dirty — this is the unchanged original
                 self._modality_sources[modality_name] = data_file
 
@@ -872,10 +878,9 @@ class DataManagerV2:
                 )
 
         # Store modality
-        self.modalities[name] = adata
-
-        # Mark as dirty - new data that needs to be saved
-        self._modality_dirty.add(name)
+        with self._state_lock:
+            self.modalities[name] = adata
+            self._modality_dirty.add(name)
 
         # Log provenance
         if self.provenance:
@@ -993,10 +998,9 @@ class DataManagerV2:
         attach_lineage(adata, lineage)
 
         # Store in modalities dict
-        self.modalities[name] = adata
-
-        # Mark as dirty for auto-save
-        self._modality_dirty.add(name)
+        with self._state_lock:
+            self.modalities[name] = adata
+            self._modality_dirty.add(name)
 
         # Log lineage creation
         logger.debug(
@@ -1138,10 +1142,10 @@ class DataManagerV2:
         Raises:
             ValueError: If modality not found
         """
-        if name not in self.modalities:
-            raise ValueError(f"Modality '{name}' not found")
-
-        return self.modalities[name]
+        with self._state_lock:
+            if name not in self.modalities:
+                raise ValueError(f"Modality '{name}' not found")
+            return self.modalities[name]
 
     def list_modalities(self) -> List[str]:
         """
@@ -1150,7 +1154,8 @@ class DataManagerV2:
         Returns:
             List[str]: List of modality names
         """
-        return list(self.modalities.keys())
+        with self._state_lock:
+            return list(self.modalities.keys())
 
     def list_modalities_with_lineage(self) -> List[Dict[str, Any]]:
         """
@@ -1275,10 +1280,10 @@ class DataManagerV2:
         Raises:
             ValueError: If modality not found
         """
-        if name not in self.modalities:
-            raise ValueError(f"Modality '{name}' not found")
-
-        del self.modalities[name]
+        with self._state_lock:
+            if name not in self.modalities:
+                raise ValueError(f"Modality '{name}' not found")
+            del self.modalities[name]
         logger.info(f"Removed modality '{name}'")
 
     def to_mudata(self, modalities: Optional[List[str]] = None) -> Any:
@@ -1709,7 +1714,8 @@ class DataManagerV2:
             modality_name = h5ad_file.stem
             try:
                 adata = anndata_mod.read_h5ad(h5ad_file)
-                self.modalities[modality_name] = adata
+                with self._state_lock:
+                    self.modalities[modality_name] = adata
                 loaded.append(modality_name)
                 logger.debug(f"Loaded modality '{modality_name}' from {h5ad_file}")
             except Exception as e:
@@ -1935,9 +1941,10 @@ class DataManagerV2:
                 json.dump(enhanced_metadata, f, indent=2, default=str)
 
             # Log the processing step
-            self.processing_log.append(
-                f"Saved {processing_step} data: {adata.shape[0]} obs × {adata.shape[1]} vars -> {filename}"
-            )
+            with self._state_lock:
+                self.processing_log.append(
+                    f"Saved {processing_step} data: {adata.shape[0]} obs × {adata.shape[1]} vars -> {filename}"
+                )
 
             logger.info(f"Processed data saved with professional naming: {filepath}")
             logger.info(
@@ -2152,9 +2159,10 @@ class DataManagerV2:
         Args:
             modality_name: Name of the modality that was modified
         """
-        if modality_name in self.modalities:
-            self._modality_dirty.add(modality_name)
-            logger.debug(f"Marked modality '{modality_name}' as dirty")
+        with self._state_lock:
+            if modality_name in self.modalities:
+                self._modality_dirty.add(modality_name)
+        logger.debug(f"Marked modality '{modality_name}' as dirty")
 
     def save_session(self) -> List[str]:
         """
@@ -2566,9 +2574,10 @@ class DataManagerV2:
             self.set_current_dataset(modality_name)
 
             # Log the processing step
-            self.processing_log.append(
-                f"Legacy data loaded: {data.shape[0]} samples × {data.shape[1]} features"
-            )
+            with self._state_lock:
+                self.processing_log.append(
+                    f"Legacy data loaded: {data.shape[0]} samples × {data.shape[1]} features"
+                )
 
             return data
 
@@ -2594,12 +2603,14 @@ class DataManagerV2:
             metadata: Metadata dictionary
             validation_info: Optional validation information
         """
-        self.metadata_store[dataset_id] = {
+        entry = {
             "metadata": metadata,
             "validation_result": validation_info or {},
             "fetch_timestamp": datetime.now().isoformat(),
             "stored_by": "DataManagerV2",
         }
+        with self._state_lock:
+            self.metadata_store[dataset_id] = entry
         logger.info(f"Stored metadata for dataset: {dataset_id}")
 
     def _store_geo_metadata(
@@ -2667,7 +2678,8 @@ class DataManagerV2:
             entry["concatenation_decision"] = kwargs["concatenation_decision"]
 
         # Store with nested structure
-        self.metadata_store[geo_id] = entry
+        with self._state_lock:
+            self.metadata_store[geo_id] = entry
 
         logger.debug(
             f"Stored GEO metadata for {geo_id} with nested structure "
@@ -2695,7 +2707,8 @@ class DataManagerV2:
             logger.warning(f"Cannot enrich metadata for {geo_id}: no existing entry")
             return None
         entry.update(fields)
-        self.metadata_store[geo_id] = entry  # Single controlled re-assignment point
+        with self._state_lock:
+            self.metadata_store[geo_id] = entry  # Single controlled re-assignment point
         logger.debug(
             f"Enriched GEO metadata for {geo_id} with fields: {list(fields.keys())}"
         )
@@ -3471,7 +3484,9 @@ https://github.com/OmicsOS/lobster
 
             try:
                 path = Path(self.available_datasets[name]["path"])
-                self.modalities[name] = _ensure_anndata().read_h5ad(path)
+                adata = _ensure_anndata().read_h5ad(path)
+                with self._state_lock:
+                    self.modalities[name] = adata
 
                 # Update session file
                 self._update_session_file("loaded")
@@ -3530,9 +3545,10 @@ https://github.com/OmicsOS/lobster
                 # Remove non-matching modalities
                 for name in loaded_names:
                     if name not in matching:
-                        if name in self.modalities:
-                            del self.modalities[name]
-                            skipped.append((name, "pattern_mismatch"))
+                        with self._state_lock:
+                            if name in self.modalities:
+                                del self.modalities[name]
+                        skipped.append((name, "pattern_mismatch"))
                 restored = matching
             else:
                 restored = loaded_names

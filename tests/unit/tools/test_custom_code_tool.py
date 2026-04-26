@@ -48,14 +48,15 @@ class TestCreateExecuteCustomCodeTool:
         assert hasattr(tool, "name")
         assert tool.name == "execute_custom_code"
 
-    def test_factory_with_agent_name(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_factory_with_agent_name(self, mock_data_manager, mock_service):
         """Factory accepts agent_name parameter."""
         import json
 
         tool = create_execute_custom_code_tool(
             mock_data_manager, mock_service, agent_name="test_agent"
         )
-        result = tool.invoke({"python_code": "x = 1"})
+        result = await tool.ainvoke({"python_code": "x = 1"})
         result_obj = json.loads(result)
         assert result_obj["success"] is True
 
@@ -63,10 +64,11 @@ class TestCreateExecuteCustomCodeTool:
         call_args = mock_data_manager.log_tool_usage.call_args
         assert call_args.kwargs["parameters"]["agent"] == "test_agent"
 
-    def test_mutual_exclusivity_validation(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_mutual_exclusivity_validation(self, mock_data_manager, mock_service):
         """Cannot specify both modality_name and workspace_key."""
         tool = create_execute_custom_code_tool(mock_data_manager, mock_service)
-        result = tool.invoke(
+        result = await tool.ainvoke(
             {
                 "python_code": "x = 1",
                 "modality_name": "test_modality",
@@ -81,39 +83,43 @@ class TestCreateExecuteCustomCodeTool:
         # Service should NOT be called
         mock_service.execute.assert_not_called()
 
-    def test_workspace_key_converted_to_list(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_workspace_key_converted_to_list(self, mock_data_manager, mock_service):
         """workspace_key string is converted to list for service."""
         tool = create_execute_custom_code_tool(mock_data_manager, mock_service)
-        tool.invoke({"python_code": "x = 1", "workspace_key": "my_key"})
+        await tool.ainvoke({"python_code": "x = 1", "workspace_key": "my_key"})
 
         call_args = mock_service.execute.call_args
         assert call_args.kwargs["workspace_keys"] == ["my_key"]
         assert call_args.kwargs["modality_name"] is None
 
-    def test_modality_name_passed_through(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_modality_name_passed_through(self, mock_data_manager, mock_service):
         """modality_name passed directly to service."""
         tool = create_execute_custom_code_tool(mock_data_manager, mock_service)
-        tool.invoke({"python_code": "x = 1", "modality_name": "my_modality"})
+        await tool.ainvoke({"python_code": "x = 1", "modality_name": "my_modality"})
 
         call_args = mock_service.execute.call_args
         assert call_args.kwargs["modality_name"] == "my_modality"
         assert call_args.kwargs["workspace_keys"] is None
 
-    def test_neither_parameter_passes_none(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_neither_parameter_passes_none(self, mock_data_manager, mock_service):
         """When neither parameter specified, both are None."""
         tool = create_execute_custom_code_tool(mock_data_manager, mock_service)
-        tool.invoke({"python_code": "x = 1"})
+        await tool.ainvoke({"python_code": "x = 1"})
 
         call_args = mock_service.execute.call_args
         assert call_args.kwargs["modality_name"] is None
         assert call_args.kwargs["workspace_keys"] is None
 
-    def test_provenance_logging(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_provenance_logging(self, mock_data_manager, mock_service):
         """Tool logs to provenance with correct parameters."""
         tool = create_execute_custom_code_tool(
             mock_data_manager, mock_service, agent_name="test_agent"
         )
-        tool.invoke(
+        await tool.ainvoke(
             {
                 "python_code": "x = 1",
                 "description": "Test execution",
@@ -130,14 +136,15 @@ class TestCreateExecuteCustomCodeTool:
         assert call_args.kwargs["parameters"]["agent"] == "test_agent"
         assert call_args.kwargs["ir"] is not None
 
-    def test_post_processor_called_on_success(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_post_processor_called_on_success(self, mock_data_manager, mock_service):
         """Post-processor called when execution succeeds."""
         post_proc = MagicMock(return_value="Post-processed message!")
         tool = create_execute_custom_code_tool(
             mock_data_manager, mock_service, post_processor=post_proc
         )
 
-        result = tool.invoke({"python_code": "x = 1", "workspace_key": "test_key"})
+        result = await tool.ainvoke({"python_code": "x = 1", "workspace_key": "test_key"})
 
         # Post-processor should be called
         post_proc.assert_called_once()
@@ -154,7 +161,8 @@ class TestCreateExecuteCustomCodeTool:
         assert result_obj["success"] is True
         assert result_obj.get("post_processor_message") == "Post-processed message!"
 
-    def test_post_processor_not_called_on_failure(
+    @pytest.mark.asyncio
+    async def test_post_processor_not_called_on_failure(
         self, mock_data_manager, mock_service
     ):
         """Post-processor NOT called when execution fails."""
@@ -168,19 +176,20 @@ class TestCreateExecuteCustomCodeTool:
             mock_data_manager, mock_service, post_processor=post_proc
         )
 
-        tool.invoke({"python_code": "x = 1"})
+        await tool.ainvoke({"python_code": "x = 1"})
 
         # Post-processor should NOT be called
         post_proc.assert_not_called()
 
-    def test_post_processor_error_handled(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_post_processor_error_handled(self, mock_data_manager, mock_service):
         """Post-processor errors are caught and logged."""
         post_proc = MagicMock(side_effect=Exception("Post-processor failed"))
         tool = create_execute_custom_code_tool(
             mock_data_manager, mock_service, post_processor=post_proc
         )
 
-        result = tool.invoke({"python_code": "x = 1"})
+        result = await tool.ainvoke({"python_code": "x = 1"})
 
         # Execution should still succeed (JSON response with success=true)
         import json
@@ -190,7 +199,8 @@ class TestCreateExecuteCustomCodeTool:
         # Warning about post-processor failure in post_processor_message
         assert "Post-processing failed" in result_obj.get("post_processor_message", "")
 
-    def test_response_formatting(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_response_formatting(self, mock_data_manager, mock_service):
         """Response includes all expected sections as structured JSON."""
         import json
 
@@ -207,7 +217,7 @@ class TestCreateExecuteCustomCodeTool:
         )
 
         tool = create_execute_custom_code_tool(mock_data_manager, mock_service)
-        result = tool.invoke({"python_code": "x = 1", "persist": False})
+        result = await tool.ainvoke({"python_code": "x = 1", "persist": False})
 
         result_obj = json.loads(result)
         assert result_obj["success"] is True
@@ -218,7 +228,8 @@ class TestCreateExecuteCustomCodeTool:
         assert result_obj["stdout"] == "Processing..."
         assert result_obj["persisted"] is False
 
-    def test_result_truncation(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_result_truncation(self, mock_data_manager, mock_service):
         """Large results are truncated in response."""
         large_result = "x" * 1000
         mock_service.execute.return_value = (
@@ -228,7 +239,7 @@ class TestCreateExecuteCustomCodeTool:
         )
 
         tool = create_execute_custom_code_tool(mock_data_manager, mock_service)
-        result = tool.invoke({"python_code": "x = 1"})
+        result = await tool.ainvoke({"python_code": "x = 1"})
 
         assert "truncated" in result
 
@@ -338,7 +349,8 @@ class TestIntegration:
         )
         return service
 
-    def test_metadata_assistant_workflow(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_metadata_assistant_workflow(self, mock_data_manager, mock_service):
         """Test complete metadata_assistant workflow."""
         tool = create_execute_custom_code_tool(
             data_manager=mock_data_manager,
@@ -347,7 +359,7 @@ class TestIntegration:
             post_processor=metadata_store_post_processor,
         )
 
-        result = tool.invoke(
+        result = await tool.ainvoke(
             {
                 "python_code": "samples = [...]; result = {'samples': samples, 'output_key': 'filtered'}",
                 "workspace_key": "source_key",
@@ -365,7 +377,8 @@ class TestIntegration:
         # Post-processor message should mention the created store entry
         assert result_obj.get("post_processor_message") is not None
 
-    def test_data_expert_workflow(self, mock_data_manager, mock_service):
+    @pytest.mark.asyncio
+    async def test_data_expert_workflow(self, mock_data_manager, mock_service):
         """Test complete data_expert workflow (no post-processing)."""
         mock_service.execute.return_value = (
             np_mean_result := 3.5,
@@ -380,7 +393,7 @@ class TestIntegration:
             post_processor=None,  # No post-processing for data_expert
         )
 
-        result = tool.invoke(
+        result = await tool.ainvoke(
             {
                 "python_code": "result = adata.obs['n_genes'].mean()",
                 "modality_name": "my_modality",

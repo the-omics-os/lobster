@@ -12,6 +12,7 @@ and provenance logging via data_manager.log_tool_usage().
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from langchain_core.tools import tool
@@ -62,7 +63,7 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
         return _ensembl_service
 
     @tool
-    def map_cross_database_ids(
+    async def map_cross_database_ids(
         ids: str,
         from_db: str,
         to_db: str,
@@ -114,7 +115,9 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
                     service = _get_ensembl()
                     # Map to_db to Ensembl external_db filter
                     db_filter = _map_to_ensembl_external_db(to_db)
-                    xrefs = service.get_xrefs(ensembl_id, external_db=db_filter)
+                    xrefs = await asyncio.to_thread(
+                        service.get_xrefs, ensembl_id, external_db=db_filter
+                    )
 
                     if not xrefs:
                         return f"No cross-references found for {ensembl_id} → {to_db}"
@@ -152,7 +155,9 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
 
             # Default: UniProt ID Mapping
             service = _get_uniprot()
-            result = service.map_ids(from_db=from_db, to_db=to_db, ids=id_list)
+            result = await asyncio.to_thread(
+                service.map_ids, from_db=from_db, to_db=to_db, ids=id_list
+            )
 
             results_list = result.get("results", [])
             if not results_list:
@@ -201,7 +206,9 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
             logger.error(f"Cross-database ID mapping error: {e}")
             return f"Error mapping IDs: {str(e)}"
 
-    return map_cross_database_ids
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(map_cross_database_ids)
 
 
 def _map_to_ensembl_external_db(to_db: str) -> Optional[str]:
@@ -247,7 +254,7 @@ def create_variant_consequence_tool(data_manager: DataManagerV2):
         return _ensembl_service
 
     @tool
-    def predict_variant_consequences(
+    async def predict_variant_consequences(
         notation: str,
         species: str = "human",
         notation_type: str = "hgvs",
@@ -281,7 +288,8 @@ def create_variant_consequence_tool(data_manager: DataManagerV2):
         """
         try:
             service = _get_ensembl()
-            results = service.get_variant_consequences(
+            results = await asyncio.to_thread(
+                service.get_variant_consequences,
                 notation=notation,
                 species=species,
                 notation_type=notation_type,
@@ -367,7 +375,9 @@ def create_variant_consequence_tool(data_manager: DataManagerV2):
             logger.error(f"VEP prediction error: {e}")
             return f"Error predicting variant consequences: {str(e)}"
 
-    return predict_variant_consequences
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(predict_variant_consequences)
 
 
 # =============================================================================
@@ -398,7 +408,7 @@ def create_sequence_retrieval_tool(data_manager: DataManagerV2):
         return _ensembl_service
 
     @tool
-    def get_ensembl_sequence(
+    async def get_ensembl_sequence(
         ensembl_id: str,
         seq_type: str = "cdna",
     ) -> str:
@@ -423,7 +433,8 @@ def create_sequence_retrieval_tool(data_manager: DataManagerV2):
         """
         try:
             service = _get_ensembl()
-            result = service.get_sequence(
+            result = await asyncio.to_thread(
+                service.get_sequence,
                 ensembl_id=ensembl_id,
                 seq_type=seq_type,
             )
@@ -464,7 +475,9 @@ def create_sequence_retrieval_tool(data_manager: DataManagerV2):
             logger.error(f"Sequence retrieval error: {e}")
             return f"Error retrieving sequence: {str(e)}"
 
-    return get_ensembl_sequence
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(get_ensembl_sequence)
 
 
 # =============================================================================

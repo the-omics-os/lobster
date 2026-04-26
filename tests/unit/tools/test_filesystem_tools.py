@@ -209,45 +209,50 @@ class TestGrepFiles:
 
 
 class TestShellExecute:
-    """Test shell_execute tool."""
+    """Test shell_execute tool (async)."""
 
-    def test_basic_command(self, workspace):
+    @pytest.mark.asyncio
+    async def test_basic_command(self, workspace):
         from lobster.tools.filesystem_tools import create_filesystem_tools
 
         tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
-        result = tools["shell_execute"].invoke({"command": "echo hello"})
+        result = await tools["shell_execute"].ainvoke({"command": "echo hello"})
         assert "hello" in result
 
-    def test_command_runs_in_workspace(self, workspace):
+    @pytest.mark.asyncio
+    async def test_command_runs_in_workspace(self, workspace):
         from lobster.tools.filesystem_tools import create_filesystem_tools
 
         tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
-        result = tools["shell_execute"].invoke({"command": "ls data/"})
+        result = await tools["shell_execute"].ainvoke({"command": "ls data/"})
         assert "counts.csv" in result
 
-    def test_timeout_enforced(self, workspace):
+    @pytest.mark.asyncio
+    async def test_timeout_enforced(self, workspace):
         from lobster.tools.filesystem_tools import create_filesystem_tools
 
         tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
-        result = tools["shell_execute"].invoke({"command": "sleep 120", "timeout": 2})
+        result = await tools["shell_execute"].ainvoke({"command": "sleep 120", "timeout": 2})
         assert "timeout" in result.lower() or "timed out" in result.lower()
 
-    def test_failed_command_returns_stderr(self, workspace):
+    @pytest.mark.asyncio
+    async def test_failed_command_returns_stderr(self, workspace):
         from lobster.tools.filesystem_tools import create_filesystem_tools
 
         tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
-        result = tools["shell_execute"].invoke({"command": "ls nonexistent_dir_xyz"})
+        result = await tools["shell_execute"].ainvoke({"command": "ls nonexistent_dir_xyz"})
         assert (
             "exit_code" in result.lower()
             or "error" in result.lower()
             or "no such" in result.lower()
         )
 
-    def test_output_truncation(self, workspace):
+    @pytest.mark.asyncio
+    async def test_output_truncation(self, workspace):
         from lobster.tools.filesystem_tools import create_filesystem_tools
 
         tools = {t.name: t for t in create_filesystem_tools(workspace_path=workspace)}
         # Generate large output
-        result = tools["shell_execute"].invoke({"command": "seq 1 100000"})
+        result = await tools["shell_execute"].ainvoke({"command": "seq 1 100000"})
         # Result should be capped, not 100K lines
         assert len(result) < 50000

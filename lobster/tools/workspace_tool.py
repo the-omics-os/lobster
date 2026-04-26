@@ -7,6 +7,7 @@ by multiple agents (research_agent, data_expert, supervisor):
 - list_available_modalities: List loaded modalities with optional filtering
 """
 
+import asyncio
 import json
 from difflib import get_close_matches
 from pathlib import Path
@@ -1332,8 +1333,7 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         WorkspaceContentService,
     )
 
-    @tool
-    def write_to_workspace(
+    def _write_to_workspace_sync(
         identifier: str,
         workspace: str,
         content_type: str = None,
@@ -1341,39 +1341,6 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
         export_mode: str = "auto",
         add_timestamp: bool = True,
     ) -> str:
-        """
-        Cache research content to workspace for later retrieval and specialist handoff.
-
-        Stores publications, datasets, and metadata in organized workspace directories
-        for persistent access. Validates naming conventions and content standardization.
-
-        Workspace Categories:
-        - "literature": Publications, abstracts, methods sections
-        - "data": Dataset metadata, sample information
-        - "metadata": Standardized metadata schemas
-
-        Output Formats:
-        - "json": Structured JSON format (default)
-        - "csv": Tabular CSV format (best for sample metadata tables)
-
-        Export Modes (for CSV):
-        - "auto": Detect publication queue data and apply rich format automatically
-        - "rich": Force rich 28-column format with publication context
-        - "simple": Export samples as-is without enrichment
-        - "strict": MIMARKS-compliant export (excludes non-schema columns + deduplicates by run_accession)
-
-        Args:
-            identifier: Content identifier to cache (must exist in current session)
-            workspace: Target workspace category ("literature", "data", "metadata")
-            content_type: Type of content ("publication", "dataset", "metadata")
-            output_format: Output format ("json" or "csv"). Default: "json"
-            export_mode: CSV export mode ("auto", "rich", "simple", "strict"). Default: "auto"
-            add_timestamp: Auto-append YYYY-MM-DD timestamp to filename. Default: True
-                          Set to False to use identifier as exact filename
-
-        Returns:
-            Confirmation message with storage location and next steps
-        """
         try:
             workspace_service = WorkspaceContentService(data_manager=data_manager)
 
@@ -1854,7 +1821,61 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
             logger.error(f"Error caching to workspace: {e}")
             return f"Error caching content to workspace: {str(e)}"
 
-    return write_to_workspace
+    @tool
+    async def write_to_workspace(
+        identifier: str,
+        workspace: str,
+        content_type: str = None,
+        output_format: str = "json",
+        export_mode: str = "auto",
+        add_timestamp: bool = True,
+    ) -> str:
+        """
+        Cache research content to workspace for later retrieval and specialist handoff.
+
+        Stores publications, datasets, and metadata in organized workspace directories
+        for persistent access. Validates naming conventions and content standardization.
+
+        Workspace Categories:
+        - "literature": Publications, abstracts, methods sections
+        - "data": Dataset metadata, sample information
+        - "metadata": Standardized metadata schemas
+
+        Output Formats:
+        - "json": Structured JSON format (default)
+        - "csv": Tabular CSV format (best for sample metadata tables)
+
+        Export Modes (for CSV):
+        - "auto": Detect publication queue data and apply rich format automatically
+        - "rich": Force rich 28-column format with publication context
+        - "simple": Export samples as-is without enrichment
+        - "strict": MIMARKS-compliant export (excludes non-schema columns + deduplicates by run_accession)
+
+        Args:
+            identifier: Content identifier to cache (must exist in current session)
+            workspace: Target workspace category ("literature", "data", "metadata")
+            content_type: Type of content ("publication", "dataset", "metadata")
+            output_format: Output format ("json" or "csv"). Default: "json"
+            export_mode: CSV export mode ("auto", "rich", "simple", "strict"). Default: "auto"
+            add_timestamp: Auto-append YYYY-MM-DD timestamp to filename. Default: True
+                          Set to False to use identifier as exact filename
+
+        Returns:
+            Confirmation message with storage location and next steps
+        """
+        return await asyncio.to_thread(
+            _write_to_workspace_sync,
+            identifier,
+            workspace,
+            content_type,
+            output_format,
+            export_mode,
+            add_timestamp,
+        )
+
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(write_to_workspace)
 
 
 def create_list_modalities_tool(data_manager: DataManagerV2):
