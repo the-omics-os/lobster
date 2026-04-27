@@ -708,13 +708,29 @@ def validate_startup_or_raise_startup_diagnostic(
 
     resolver = ConfigResolver.get_instance(workspace_path)
     try:
-        resolver.resolve_provider(runtime_override=provider_override)
+        provider_name, _ = resolver.resolve_provider(
+            runtime_override=provider_override
+        )
     except ConfigurationError as exc:
         raise_startup_diagnostic(
             exc,
             workspace=workspace_path,
             provider_override=provider_override,
         )
+
+    from lobster.config.providers.registry import ProviderRegistry
+
+    provider = ProviderRegistry.get(provider_name)
+    if provider is not None:
+        try:
+            provider.check_dependencies()
+        except ImportError as exc:
+            raise_startup_diagnostic(
+                exc,
+                workspace=workspace_path,
+                provider_override=provider_name,
+            )
+
     return workspace_path
 
 

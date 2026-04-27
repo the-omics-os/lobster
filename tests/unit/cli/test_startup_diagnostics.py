@@ -30,7 +30,7 @@ def test_classify_missing_provider_package_preserves_install_hint():
     )
 
     assert diagnostic.code == "missing_provider_package"
-    assert diagnostic.title == "Missing provider package"
+    assert diagnostic.title == "Missing dependency for 'bedrock' provider"
     assert diagnostic.detail_lines == (
         "langchain-aws package not installed. Install with: uv pip install 'lobster-ai[bedrock]'",
     )
@@ -169,6 +169,15 @@ def test_validate_startup_passes_provider_override_to_resolver(monkeypatch, tmp_
     monkeypatch.setattr(
         "lobster.core.config_resolver.ConfigResolver.get_instance",
         lambda workspace_path: _FakeResolver(),
+    )
+
+    class _FakeProvider:
+        def check_dependencies(self):
+            pass
+
+    monkeypatch.setattr(
+        "lobster.config.providers.registry.ProviderRegistry.get",
+        lambda name: _FakeProvider(),
     )
 
     resolved = session_infra.validate_startup_or_raise_startup_diagnostic(

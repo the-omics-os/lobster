@@ -287,6 +287,17 @@ class OpenRouterProvider(ILLMProvider):
     def display_name(self) -> str:
         return "OpenRouter (600+ models)"
 
+    def check_dependencies(self) -> None:
+        try:
+            import langchain_openai  # noqa: F401
+        except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("openrouter", is_extra=True)
+            raise ImportError(
+                f"langchain-openai package not installed. Install with: {cmd}"
+            )
+
     def is_configured(self) -> bool:
         """Check if OPENROUTER_API_KEY is present and non-empty."""
         api_key = os.environ.get(_ENV_VAR)

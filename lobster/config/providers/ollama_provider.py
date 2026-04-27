@@ -89,6 +89,17 @@ class OllamaProvider(ILLMProvider):
         """
         return "Ollama (Local)"
 
+    def check_dependencies(self) -> None:
+        try:
+            import langchain_ollama  # noqa: F401
+        except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("ollama", is_extra=True)
+            raise ImportError(
+                f"langchain-ollama package not installed. Install with: {cmd}"
+            )
+
     def is_configured(self) -> bool:
         """
         Check if Ollama configuration is present.

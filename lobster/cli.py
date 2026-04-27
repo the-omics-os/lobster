@@ -1059,6 +1059,59 @@ def _should_try_go_chat_ui(ui_mode: str, reasoning: bool, verbose: bool) -> bool
     return ui_mode in ("auto", "go") and not reasoning and not verbose and os.isatty(0)
 
 
+def _preflight_provider_check(
+    *,
+    workspace: Optional[Path],
+    provider_override: Optional[str],
+) -> None:
+    """Fast provider + dependency validation before Go TUI spawns.
+
+    Only uses config_resolver and provider registry — no heavy imports.
+    Raises SystemExit with a clean diagnostic on failure.
+    """
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
+    from lobster.core.workspace import resolve_workspace
+
+    workspace_path = resolve_workspace(explicit_path=workspace, create=True)
+    resolver = ConfigResolver.get_instance(workspace_path)
+
+    try:
+        provider_name, _ = resolver.resolve_provider(
+            runtime_override=provider_override
+        )
+    except ConfigurationError as exc:
+        from lobster.cli_internal.startup_diagnostics import (
+            classify_startup_exception,
+            render_startup_diagnostic_rich,
+        )
+        from rich.console import Console
+
+        diag = classify_startup_exception(
+            exc, workspace=workspace_path, provider_override=provider_override
+        )
+        render_startup_diagnostic_rich(Console(stderr=True), diag)
+        raise SystemExit(diag.exit_code)
+
+    from lobster.config.providers.registry import ProviderRegistry
+
+    provider = ProviderRegistry.get(provider_name)
+    if provider is not None:
+        try:
+            provider.check_dependencies()
+        except ImportError as exc:
+            from lobster.cli_internal.startup_diagnostics import (
+                classify_startup_exception,
+                render_startup_diagnostic_rich,
+            )
+            from rich.console import Console
+
+            diag = classify_startup_exception(
+                exc, workspace=workspace_path, provider_override=provider_name
+            )
+            render_startup_diagnostic_rich(Console(stderr=True), diag)
+            raise SystemExit(diag.exit_code)
+
+
 def _resolve_go_chat_binary(ui_mode: str) -> Optional[str]:
     """Return Go TUI binary path, or raise for explicit `--ui go`."""
     from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
@@ -1134,6 +1187,10 @@ def _maybe_launch_go_chat_ui(
                 file=sys.stderr,
             )
         return False
+
+    # Validate provider + deps BEFORE spawning Go binary so errors
+    # render on the raw terminal, not buried under the TUI chrome.
+    _preflight_provider_check(workspace=workspace, provider_override=provider)
 
     try:
         return _launch_go_chat_binary(

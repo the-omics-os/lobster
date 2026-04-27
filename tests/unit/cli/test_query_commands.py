@@ -144,6 +144,12 @@ def test_query_impl_prints_working_indicator_in_reasoning_mode(monkeypatch, tmp_
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("LOBSTER_TEST=1\n")
 
+    monkeypatch.setattr(
+        query_commands,
+        "validate_startup_or_raise_startup_diagnostic",
+        lambda *args, **kwargs: tmp_path,
+    )
+
     recorded_console = Console(record=True, width=120)
     monkeypatch.setattr(query_commands, "console", recorded_console)
     monkeypatch.setattr(
@@ -195,6 +201,12 @@ def test_query_impl_prints_working_indicator_in_reasoning_mode(monkeypatch, tmp_
 def test_query_impl_reports_trace_mode_when_stream_requested(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("LOBSTER_TEST=1\n")
+
+    monkeypatch.setattr(
+        query_commands,
+        "validate_startup_or_raise_startup_diagnostic",
+        lambda *args, **kwargs: tmp_path,
+    )
 
     recorded_console = Console(record=True, width=120)
     monkeypatch.setattr(query_commands, "console", recorded_console)

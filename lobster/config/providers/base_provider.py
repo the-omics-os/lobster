@@ -117,6 +117,15 @@ class ILLMProvider(ABC):
         """
         pass
 
+    def check_dependencies(self) -> None:
+        """Verify required packages are importable.
+
+        Raises ImportError with an install command if a required package
+        is missing.  Called during startup validation so the error
+        surfaces *before* the UI renders.  Default implementation is a
+        no-op — providers with optional deps override this.
+        """
+
     @abstractmethod
     def is_available(self) -> bool:
         """

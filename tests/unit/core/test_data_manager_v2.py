@@ -696,6 +696,568 @@ class TestModalityManagement:
             dm.save_modality("test_modality", "test.h5ad", backend="s3")
             mock_validate.assert_called_once()
 
+    def test_is_backed_returns_false_for_normal_modality(self, temp_workspace):
+        """Test is_backed returns False for in-memory modalities."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm.modalities["test"] = adata
+        assert dm.is_backed("test") is False
+
+    def test_is_backed_returns_false_for_missing_modality(self, temp_workspace):
+        """Test is_backed returns False for non-existent modalities."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        assert dm.is_backed("nonexistent") is False
+
+    def test_is_backed_returns_true_for_backed_modality(self, temp_workspace):
+        """Test is_backed returns True for backed-mode AnnData."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_adata = MagicMock()
+        mock_adata.isbacked = True
+        dm.modalities["backed_test"] = mock_adata
+        assert dm.is_backed("backed_test") is True
+
+    def test_materialize_modality_noop_for_in_memory(self, temp_workspace):
+        """Test materialize_modality is a no-op for in-memory modalities."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm.modalities["test"] = adata
+        result = dm.materialize_modality("test")
+        assert result is adata
+
+    def test_materialize_modality_converts_backed(self, temp_workspace):
+        """Test materialize_modality converts backed AnnData to in-memory."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_in_memory = MagicMock()
+        mock_in_memory.isbacked = False
+        mock_backed.to_memory.return_value = mock_in_memory
+        dm.modalities["backed_test"] = mock_backed
+
+        result = dm.materialize_modality("backed_test")
+        mock_backed.to_memory.assert_called_once()
+        assert dm.modalities["backed_test"] is mock_in_memory
+        assert "backed_test" in dm._modality_dirty
+        assert result is mock_in_memory
+
+    def test_materialize_modality_raises_for_missing(self, temp_workspace):
+        """Test materialize_modality raises ValueError for missing modality."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        with pytest.raises(ValueError, match="not found"):
+            dm.materialize_modality("nonexistent")
+
+    def test_save_modality_materializes_backed(self, temp_workspace):
+        """Test save_modality auto-materializes backed AnnData before saving."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        dm.backends["h5ad"] = mock_backend
+
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_in_memory = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_backed.to_memory.return_value = mock_in_memory
+        dm.modalities["backed_test"] = mock_backed
+
+        with patch(
+            "lobster.core.runtime.data_manager.validate_for_h5ad"
+        ) as mock_validate:
+            mock_validate.return_value = []
+            dm.save_modality("backed_test", "test.h5ad")
+
+        mock_backed.to_memory.assert_called_once()
+        mock_backend.save.assert_called_once()
+
+
+class TestBackedModeHelpers:
+    """Test module-level backed-mode helper functions."""
+
+    def test_should_use_backed_mode_small_file(self, temp_workspace):
+        """Files under 1GB threshold should not use backed mode."""
+        from lobster.core.runtime.data_manager import _should_use_backed_mode
+
+        small_file = temp_workspace / "small.h5ad"
+        small_file.write_bytes(b"x" * 1024)  # 1KB
+        assert _should_use_backed_mode(small_file) is False
+
+    def test_should_use_backed_mode_missing_file(self, temp_workspace):
+        """Missing files should return False."""
+        from lobster.core.runtime.data_manager import _should_use_backed_mode
+
+        assert _should_use_backed_mode(temp_workspace / "nope.h5ad") is False
+
+    def test_should_use_backed_mode_large_file(self, temp_workspace):
+        """Files at or above 1GB threshold should use backed mode."""
+        from lobster.core.runtime.data_manager import (
+            BACKED_MODE_THRESHOLD_BYTES,
+            _should_use_backed_mode,
+        )
+
+        with patch("pathlib.Path.stat") as mock_stat:
+            mock_stat.return_value = MagicMock(
+                st_size=BACKED_MODE_THRESHOLD_BYTES
+            )
+            assert _should_use_backed_mode(temp_workspace / "big.h5ad") is True
+
+    def test_backed_mode_off_by_default(self, temp_workspace):
+        """DataManagerV2 backed_mode defaults to False."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        assert dm.backed_mode is False
+
+    def test_backed_mode_enabled_via_constructor(self, temp_workspace):
+        """DataManagerV2 backed_mode=True enables backed loading."""
+        dm = DataManagerV2(workspace_path=temp_workspace, backed_mode=True)
+        assert dm.backed_mode is True
+
+    def test_backed_mode_enabled_via_env_var(self, temp_workspace):
+        """LOBSTER_BACKED_MODE=1 env var enables backed loading."""
+        with patch.dict(os.environ, {"LOBSTER_BACKED_MODE": "1"}):
+            dm = DataManagerV2(workspace_path=temp_workspace)
+            assert dm.backed_mode is True
+
+    def test_read_h5ad_smart_respects_flag_off(self, temp_workspace):
+        """Large file loads fully when backed_mode_enabled=False."""
+        from lobster.core.runtime.data_manager import _read_h5ad_smart
+
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        h5ad_path = temp_workspace / "data.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        with patch("lobster.core.runtime.data_manager._should_use_backed_mode", return_value=True):
+            loaded = _read_h5ad_smart(h5ad_path, backed_mode_enabled=False)
+        assert not getattr(loaded, "isbacked", False)
+
+    def test_read_h5ad_smart_small_file(self, temp_workspace):
+        """Small files load without backed mode."""
+        from lobster.core.runtime.data_manager import _read_h5ad_smart
+
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        h5ad_path = temp_workspace / "small.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        loaded = _read_h5ad_smart(h5ad_path)
+        assert not getattr(loaded, "isbacked", False)
+        assert loaded.n_obs == adata.n_obs
+
+    def test_read_h5ad_smart_force_backed(self, temp_workspace):
+        """force_backed=True loads even small files in backed mode."""
+        from lobster.core.runtime.data_manager import _read_h5ad_smart
+
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        h5ad_path = temp_workspace / "small.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        loaded = _read_h5ad_smart(h5ad_path, force_backed=True)
+        assert loaded.isbacked
+        assert loaded.n_obs == adata.n_obs
+        loaded.file.close()
+
+
+class TestBackedModeP1Fixes:
+    """Tests for Codex-identified P1 issues: dirty autosave, handle leaks."""
+
+    def test_auto_save_does_not_skip_dirty_backed_modality(self, temp_workspace):
+        """Dirty backed modality must NOT be skipped during auto_save_state."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        dm.backends["h5ad"] = mock_backend
+
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_in_memory = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_backed.to_memory.return_value = mock_in_memory
+        dm.modalities["dirty_backed"] = mock_backed
+        dm._modality_dirty.add("dirty_backed")
+        dm._modality_sources["dirty_backed"] = temp_workspace / "dirty_backed.h5ad"
+
+        with patch(
+            "lobster.core.runtime.data_manager.validate_for_h5ad"
+        ) as mock_validate:
+            mock_validate.return_value = []
+            saved = dm.auto_save_state()
+
+        mock_backed.to_memory.assert_called_once()
+        mock_backend.save.assert_called_once()
+        assert any("dirty_backed" in s for s in saved)
+
+    def test_auto_save_skips_clean_backed_with_source(self, temp_workspace):
+        """Clean backed modality with existing source IS skipped."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        dm.backends["h5ad"] = mock_backend
+
+        source_file = temp_workspace / "modalities" / "clean.h5ad"
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_bytes(b"fake")
+
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        dm.modalities["clean"] = mock_backed
+        dm._modality_sources["clean"] = source_file
+
+        dm.auto_save_state()
+        mock_backend.save.assert_not_called()
+
+    def test_auto_save_does_not_skip_backed_without_source(self, temp_workspace):
+        """Backed modality with NO source tracking must NOT be skipped."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        dm.backends["h5ad"] = mock_backend
+
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_in_memory = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_backed.to_memory.return_value = mock_in_memory
+        dm.modalities["no_source"] = mock_backed
+
+        with patch(
+            "lobster.core.runtime.data_manager.validate_for_h5ad"
+        ) as mock_validate:
+            mock_validate.return_value = []
+            dm.auto_save_state()
+
+        mock_backed.to_memory.assert_called_once()
+
+    def test_clear_closes_backed_handles(self, temp_workspace):
+        """clear() must close HDF5 file handles on backed modalities."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_file = MagicMock()
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_backed.file = mock_file
+        dm.modalities["backed"] = mock_backed
+
+        dm.clear()
+        mock_file.close.assert_called_once()
+        assert len(dm.modalities) == 0
+
+    def test_clear_workspace_closes_backed_handles(self, temp_workspace):
+        """clear_workspace() must close HDF5 file handles."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_file = MagicMock()
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_backed.file = mock_file
+        dm.modalities["backed"] = mock_backed
+
+        dm.clear_workspace(confirm=True)
+        mock_file.close.assert_called_once()
+
+    def test_remove_modality_closes_backed_handle(self, temp_workspace):
+        """remove_modality() must close HDF5 file handle."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_file = MagicMock()
+        mock_backed = MagicMock()
+        mock_backed.isbacked = True
+        mock_backed.file = mock_file
+        dm.modalities["backed"] = mock_backed
+
+        dm.remove_modality("backed")
+        mock_file.close.assert_called_once()
+
+    def test_load_workspace_sets_modality_sources(self, temp_workspace):
+        """load_workspace must populate _modality_sources for backed tracking."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        ws_dir = temp_workspace / "test_ws"
+        ws_dir.mkdir(parents=True)
+
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        h5ad_path = ws_dir / "my_data.h5ad"
+        adata.write_h5ad(h5ad_path)
+
+        dm.load_workspace(workspace_name="test_ws")
+        assert "my_data" in dm._modality_sources
+        assert dm._modality_sources["my_data"] == h5ad_path
+
+
+class TestModalityBackendIntegration:
+    """Test WorkspaceModalityBackend wiring + LRU eviction in DataManagerV2."""
+
+    def test_get_modality_without_backend_uses_dict(self, temp_workspace):
+        """Without backend, get_modality uses plain dict path."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm.modalities["test"] = adata
+        assert dm.get_modality("test") is adata
+
+    def test_set_modality_backend(self, temp_workspace):
+        """set_modality_backend attaches backend and converts to OrderedDict."""
+        from collections import OrderedDict
+
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        dm.set_modality_backend(mock_backend, cache_cap=4)
+        assert dm._modality_backend is mock_backend
+        assert dm._modality_cache_cap == 4
+        assert isinstance(dm.modalities, OrderedDict)
+
+    def test_get_modality_delegates_to_backend_on_miss(self, temp_workspace):
+        """Cache miss delegates to backend.materialize_anndata()."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        expected_adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_backend.exists.return_value = True
+        mock_backend.materialize_anndata.return_value = expected_adata
+        dm.set_modality_backend(mock_backend, cache_cap=4)
+
+        result = dm.get_modality("new_mod")
+        mock_backend.materialize_anndata.assert_called_once_with("new_mod")
+        assert result is expected_adata
+        assert "new_mod" in dm.modalities
+
+    def test_get_modality_cache_hit_no_backend_call(self, temp_workspace):
+        """Cache hit returns from dict without calling backend."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        dm.set_modality_backend(mock_backend, cache_cap=4)
+
+        cached_adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm.modalities["cached"] = cached_adata
+
+        result = dm.get_modality("cached")
+        mock_backend.materialize_anndata.assert_not_called()
+        assert result is cached_adata
+
+    def test_lru_eviction(self, temp_workspace):
+        """When cache exceeds cap, LRU modality is evicted."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        mock_backend.materialize_anndata.side_effect = lambda name: (
+            SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        )
+        dm.set_modality_backend(mock_backend, cache_cap=2)
+
+        dm.get_modality("mod_a")
+        dm.get_modality("mod_b")
+        assert len(dm.modalities) == 2
+
+        dm.get_modality("mod_c")
+        assert len(dm.modalities) == 2
+        assert "mod_a" not in dm.modalities
+        assert "mod_b" in dm.modalities
+        assert "mod_c" in dm.modalities
+
+    def test_lru_access_refreshes_position(self, temp_workspace):
+        """Accessing a modality moves it to end (most recent)."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        mock_backend.materialize_anndata.side_effect = lambda name: (
+            SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        )
+        dm.set_modality_backend(mock_backend, cache_cap=2)
+
+        dm.get_modality("mod_a")
+        dm.get_modality("mod_b")
+        dm.get_modality("mod_a")  # refresh mod_a
+
+        dm.get_modality("mod_c")  # should evict mod_b (LRU), not mod_a
+        assert "mod_a" in dm.modalities
+        assert "mod_b" not in dm.modalities
+        assert "mod_c" in dm.modalities
+
+    def test_backend_missing_modality_raises(self, temp_workspace):
+        """Backend reports modality doesn't exist -> ValueError."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = False
+        dm.set_modality_backend(mock_backend)
+
+        with pytest.raises(ValueError, match="not found"):
+            dm.get_modality("nonexistent")
+
+    def test_lru_eviction_flushes_dirty(self, temp_workspace):
+        """Dirty modalities are flushed to backend before LRU eviction."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        mock_backend.materialize_anndata.side_effect = lambda name: (
+            SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        )
+        dm.set_modality_backend(mock_backend, cache_cap=2)
+
+        dm.get_modality("mod_a")
+        dm._modality_dirty.add("mod_a")
+
+        dm.get_modality("mod_b")
+        dm.get_modality("mod_c")  # evicts mod_a (LRU + dirty)
+
+        mock_backend.ingest_anndata.assert_called_once()
+        call_args = mock_backend.ingest_anndata.call_args
+        assert call_args[0][0] == "mod_a"
+        assert "mod_a" not in dm._modality_dirty
+
+    def test_lru_eviction_keeps_on_flush_failure(self, temp_workspace):
+        """If flush fails, dirty modality stays in cache (no data loss)."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        mock_backend.materialize_anndata.side_effect = lambda name: (
+            SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        )
+        mock_backend.ingest_anndata.side_effect = IOError("disk full")
+        dm.set_modality_backend(mock_backend, cache_cap=2)
+
+        dm.get_modality("mod_a")
+        dm._modality_dirty.add("mod_a")
+
+        dm.get_modality("mod_b")
+        dm.get_modality("mod_c")  # tries to evict mod_a, flush fails
+
+        assert "mod_a" in dm.modalities  # kept due to flush failure
+        assert len(dm.modalities) == 3  # cap exceeded but safe
+
+    # -- Fix #2: list_modalities returns backend + cache union --
+
+    def test_list_modalities_union_with_backend(self, temp_workspace):
+        """list_modalities() returns union of cache + backend names."""
+        from lobster.core.backends.modality_backend import ModalityRecord
+
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.list_modalities.return_value = [
+            ModalityRecord(name="cold_mod", n_obs=100, n_vars=50, storage_size_bytes=1024),
+            ModalityRecord(name="cached_mod", n_obs=50, n_vars=25, storage_size_bytes=512),
+        ]
+        dm.set_modality_backend(mock_backend)
+        dm.modalities["cached_mod"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+
+        names = dm.list_modalities()
+        assert "cold_mod" in names
+        assert "cached_mod" in names
+        assert len(names) == 2
+
+    def test_list_modalities_no_backend_returns_cache_only(self, temp_workspace):
+        """Without backend, list_modalities() returns only cache keys."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        dm.modalities["only_cached"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        assert dm.list_modalities() == ["only_cached"]
+
+    def test_list_modality_records_hot_and_cold(self, temp_workspace):
+        """list_modality_records() returns hot (cached) and cold (backend-only) entries."""
+        from lobster.core.backends.modality_backend import ModalityRecord
+
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.list_modalities.return_value = [
+            ModalityRecord(name="cold_mod", n_obs=200, n_vars=100, storage_size_bytes=2048),
+        ]
+        dm.set_modality_backend(mock_backend)
+        dm.modalities["hot_mod"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+
+        records = dm.list_modality_records()
+        hot = [r for r in records if r["data_status"] == "hot"]
+        cold = [r for r in records if r["data_status"] == "cold"]
+        assert len(hot) == 1
+        assert hot[0]["name"] == "hot_mod"
+        assert len(cold) == 1
+        assert cold[0]["name"] == "cold_mod"
+        assert cold[0]["n_obs"] == 200
+
+    # -- Fix #3: ensure_in_memory auto-marks dirty --
+
+    def test_ensure_in_memory_marks_dirty(self, temp_workspace):
+        """ensure_in_memory() auto-marks modality as dirty (write intent)."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        adata = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm.modalities["test"] = adata
+        assert "test" not in dm._modality_dirty
+
+        dm.ensure_in_memory("test")
+        assert "test" in dm._modality_dirty
+
+    # -- Fix #4: get_modality auto-materializes backed --
+
+    def test_get_modality_auto_materializes_backed(self, temp_workspace):
+        """get_modality() auto-materializes backed AnnData on cache hit."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_adata = MagicMock()
+        mock_adata.isbacked = True
+        materialized = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_adata.to_memory.return_value = materialized
+        mock_adata.file = MagicMock()
+        dm.modalities["backed_mod"] = mock_adata
+
+        result = dm.get_modality("backed_mod")
+        mock_adata.to_memory.assert_called_once()
+        assert result is materialized
+        assert dm.modalities["backed_mod"] is materialized
+        assert "backed_mod" in dm._modality_dirty
+
+    # -- Fix #5: remove_modality calls backend.remove --
+
+    def test_remove_modality_calls_backend_remove(self, temp_workspace):
+        """remove_modality() removes from both cache and backend."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        dm.set_modality_backend(mock_backend)
+
+        dm.modalities["doomed"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        dm._modality_dirty.add("doomed")
+        dm._modality_sources["doomed"] = Path("/some/path")
+
+        dm.remove_modality("doomed")
+        assert "doomed" not in dm.modalities
+        assert "doomed" not in dm._modality_dirty
+        assert "doomed" not in dm._modality_sources
+        mock_backend.remove.assert_called_once_with("doomed")
+
+    def test_remove_cold_modality_from_backend(self, temp_workspace):
+        """remove_modality() can remove backend-only (cold) modalities."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        dm.set_modality_backend(mock_backend)
+
+        dm.remove_modality("cold_only")
+        mock_backend.remove.assert_called_once_with("cold_only")
+
+    def test_remove_modality_no_backend_raises_for_missing(self, temp_workspace):
+        """Without backend, removing non-cached modality raises ValueError."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        with pytest.raises(ValueError, match="not found"):
+            dm.remove_modality("nonexistent")
+
+    def test_remove_modality_backend_failure_propagates(self, temp_workspace):
+        """If backend.remove() fails, error propagates — no silent zombie."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = True
+        mock_backend.remove.side_effect = IOError("permission denied")
+        dm.set_modality_backend(mock_backend)
+        dm.modalities["protected"] = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+
+        with pytest.raises(IOError, match="permission denied"):
+            dm.remove_modality("protected")
+        assert "protected" in dm.modalities  # cache untouched on backend failure
+
+    # -- Fix #3 extra: ensure_in_memory handles cold modalities --
+
+    def test_ensure_in_memory_loads_cold_modality(self, temp_workspace):
+        """ensure_in_memory() loads cold backend-only modalities."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        expected = SingleCellDataFactory(config=SMALL_DATASET_CONFIG)
+        mock_backend.exists.return_value = True
+        mock_backend.materialize_anndata.return_value = expected
+        dm.set_modality_backend(mock_backend, cache_cap=4)
+
+        result = dm.ensure_in_memory("cold_mod")
+        assert result is expected
+        assert "cold_mod" in dm.modalities
+        assert "cold_mod" in dm._modality_dirty
+
+    def test_ensure_in_memory_raises_for_missing(self, temp_workspace):
+        """ensure_in_memory() raises for non-existent modality."""
+        dm = DataManagerV2(workspace_path=temp_workspace)
+        mock_backend = MagicMock()
+        mock_backend.exists.return_value = False
+        dm.set_modality_backend(mock_backend)
+
+        with pytest.raises(ValueError, match="not found"):
+            dm.ensure_in_memory("ghost")
+
 
 # ===============================================================================
 # Quality & Validation Tests

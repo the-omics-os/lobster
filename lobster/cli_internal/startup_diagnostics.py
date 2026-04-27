@@ -113,12 +113,20 @@ def _build_invalid_provider_diagnostic(message: str) -> StartupDiagnostic:
     )
 
 
-def _build_missing_provider_package_diagnostic(message: str) -> StartupDiagnostic:
+def _build_missing_provider_package_diagnostic(
+    message: str,
+    *,
+    provider_name: Optional[str] = None,
+) -> StartupDiagnostic:
     command = _extract_install_command(message)
     fix_lines = (f"Run: {command}",) if command else ()
+    if provider_name:
+        title = f"Missing dependency for '{provider_name}' provider"
+    else:
+        title = "Missing provider dependency"
     return StartupDiagnostic(
         code="missing_provider_package",
-        title="Missing provider package",
+        title=title,
         detail_lines=(message,),
         fix_lines=fix_lines,
     )
@@ -226,7 +234,9 @@ def classify_startup_exception(
     if isinstance(exc, ImportError):
         has_install_command = _extract_install_command(message) is not None
         if has_install_command and "package not installed" in message:
-            return _build_missing_provider_package_diagnostic(message)
+            return _build_missing_provider_package_diagnostic(
+                message, provider_name=provider_override
+            )
         if has_install_command:
             return _build_missing_dependency_diagnostic(message)
 
