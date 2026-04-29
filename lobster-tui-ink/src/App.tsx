@@ -3,6 +3,7 @@ import { Box, Text } from "ink";
 import { AssistantRuntimeProvider } from "@assistant-ui/react-ink";
 import { BrailleSpinner } from "./components/BrailleSpinner.js";
 import { useRuntime } from "./hooks/useRuntime.js";
+import { useCloudStateBridge } from "./hooks/useCloudStateBridge.js";
 import { useCancelHandler } from "./hooks/useCancelHandler.js";
 import { useSlashCommands } from "./hooks/useSlashCommands.js";
 import { useTerminalSize } from "./hooks/useTerminalSize.js";
@@ -31,6 +32,13 @@ import type { PromptTemplate } from "./api/templates.js";
 import type { Resource } from "./api/resources.js";
 import { fetchBootstrap, type RuntimeInfo } from "./api/bootstrap.js";
 import { createFooterStateStore } from "./utils/footerStateStore.js";
+
+import type { AppStateStore } from "./utils/appStateStore.js";
+
+function CloudStateBridgeEffect({ appStateStore, isCloud }: { appStateStore: AppStateStore; isCloud: boolean }) {
+  useCloudStateBridge(appStateStore, isCloud);
+  return null;
+}
 
 export function App({ config }: { config: AppConfig }) {
   const theme = useTheme();
@@ -163,6 +171,7 @@ export function App({ config }: { config: AppConfig }) {
   return (
     <ErrorBoundary>
       <AssistantRuntimeProvider runtime={runtime}>
+        <CloudStateBridgeEffect appStateStore={appStateStore} isCloud={config.isCloud} />
         <Box flexDirection="column" minHeight={rows}>
           <ConfirmPromptUI />
           <SelectPromptUI />
