@@ -12,6 +12,7 @@ Complete reference for the Lobster AI command-line interface.
 |--------|---------|
 | pip (recommended) | `pip install 'lobster-ai[full]' && lobster init` |
 | uv tool (isolated) | `uv tool install 'lobster-ai[full]' && lobster init` |
+| One-line installer | `curl -fsSL https://install.lobsterbio.com \| bash` |
 | Targeted domain | `pip install 'lobster-ai[proteomics]'` (lighter) |
 
 **Targeted extras**: `[proteomics]`, `[genomics]`, `[transcriptomics]` — each includes research + viz agents.
@@ -75,8 +76,9 @@ lobster init --non-interactive --azure-endpoint "$AZURE_AI_ENDPOINT" --azure-cre
 
 **Check if already configured**:
 ```bash
-lobster config-test --json    # Structured status
+lobster config-test --json    # Structured status (local)
 lobster status                # Human-readable
+lobster cloud status          # Cloud tier, usage, budget
 ```
 
 **Config file locations**:
@@ -85,6 +87,7 @@ lobster status                # Human-readable
 |------|--------|-------------|
 | Workspace (default) | `.lobster_workspace/provider_config.json` | `.env` |
 | Global (`--global`) | `~/.config/lobster/providers.json` | `~/.config/lobster/credentials.env` |
+| Cloud | — | `~/.config/omics-os/credentials.json` |
 
 **Priority**: workspace `.env` > global `credentials.env` > environment variables
 
@@ -92,8 +95,9 @@ lobster status                # Human-readable
 
 | Command | Description |
 |---------|-------------|
-| `lobster chat` | Interactive chat (Go TUI by default) |
-| `lobster query "..."` | Single-turn query |
+| `lobster chat` | Interactive chat (Ink TUI or Go TUI) |
+| `lobster query "..."` | Single-turn query (local agents) |
+| `lobster cloud <cmd>` | Omics-OS Cloud commands (see below) |
 | `lobster command <cmd>` | Execute slash command without LLM (~300ms) |
 | `lobster init` | Configuration wizard |
 | `lobster status` | Tier, packages, agents |
@@ -104,12 +108,107 @@ lobster status                # Human-readable
 | `lobster dashboard` | Visual monitoring UI |
 | `lobster purge` | Remove Lobster files (`--dry-run`, `--force`) |
 
-## `lobster chat`
+## `lobster cloud` — Omics-OS Cloud
 
-Interactive mode. **Go TUI** (Charm stack) is the default terminal experience.
+Cloud commands connect to Omics-OS Cloud at `app.omics-os.com`. Agents run on ECS Fargate with managed Bedrock. No local LLM keys needed.
+
+### Authentication
 
 ```bash
-lobster chat                        # Default (Go TUI auto-detected)
+lobster cloud login              # Browser OAuth (opens browser, stores credentials)
+lobster cloud login --api-key    # Paste API key (headless/SSH/CI environments)
+lobster cloud logout             # Clear stored credentials
+```
+
+Credentials stored at `~/.config/omics-os/credentials.json`. OAuth tokens auto-refresh.
+
+### Account & Usage
+
+```bash
+lobster cloud status             # Tier, token usage, budget remaining
+lobster cloud account            # Email, tier, user ID, auth mode, endpoint
+lobster cloud keys               # Manage API keys (web link)
+```
+
+### Projects
+
+```bash
+lobster cloud projects           # List projects (table with full UUIDs)
+lobster cloud projects --json    # Machine-readable JSON
+```
+
+Use project IDs from this output with `--project-id` on `query` and `chat`.
+
+### `lobster cloud query`
+
+Single-turn cloud query. Agents run on ECS Fargate. Returns when complete.
+
+```bash
+lobster cloud query "Search PubMed for CRISPR"
+lobster cloud query "Analyze my data" --json
+lobster cloud query "Continue analysis" --session-id latest --json
+lobster cloud query "Run QC" --project-id <UUID> --json
+lobster cloud query "Quick question" --stream   # Stream text as it arrives
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--session-id, -s <id>` | (new session) | Resume session (UUID or `latest`) |
+| `--project-id, -p <UUID>` | (none) | Associate with a cloud project |
+| `--json, -j` | off | Structured JSON on stdout |
+| `--stream / --no-stream` | off | Stream text as it arrives |
+| `--token` | stored | Override auth token |
+| `--endpoint` | app.omics-os.com | Custom REST API origin |
+| `--stream-endpoint` | stream.omics-os.com | Custom stream origin |
+
+**JSON output schema**:
+```json
+{
+  "success": true,
+  "response": "Analysis complete...",
+  "session_id": "dfcf2a08-adcb-4a8f-8d94-43c9dc494190",
+  "active_agent": "transcriptomics_expert",
+  "token_usage": { "total_cost_usd": 0.0159 },
+  "session_title": "CRISPR Analysis",
+  "finish_reason": null,
+  "workspace_files": [{"name": "results.csv", "size": 1024}]
+}
+```
+
+**Error JSON**: `{"success": false, "error": "...", "session_id": null}`
+
+### `lobster cloud chat`
+
+Interactive cloud chat via Ink TUI. Direct connection to Omics-OS Cloud.
+
+```bash
+lobster cloud chat                              # New session
+lobster cloud chat --session-id <UUID>          # Resume session
+lobster cloud chat --session-id latest          # Resume most recent
+lobster cloud chat --project-id <UUID>          # Associate with project
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--session-id, -s <id>` | (new session) | Resume existing session |
+| `--project-id, -p <UUID>` | (none) | Associate with a cloud project |
+| `--token` | stored | Override auth token |
+| `--endpoint` | app.omics-os.com/api/v1 | Custom API endpoint |
+
+**Inside cloud chat**: `/sessions` lists sessions, `/cloud account` shows account info.
+
+**Ctrl+C**: Cancels both client stream and server-side run (POSTs `/chat/cancel`).
+
+**Session continuity**: Same sessions accessible from both CLI and web app at `app.omics-os.com`.
+
+## `lobster chat` (Local)
+
+Interactive mode. **Ink TUI** (React Ink) is the primary surface; Go TUI is the fallback.
+
+```bash
+lobster chat                        # Default (Ink TUI auto-detected)
+lobster chat --ui ink               # Force React Ink TUI
+lobster chat --ui go                # Force Go/Charm TUI
 lobster chat --ui classic           # Force legacy Rich/Textual mode
 lobster chat --classic              # Shorthand for --ui classic
 lobster chat --no-intro             # Skip welcome animation
@@ -118,16 +217,11 @@ lobster chat -s "my_session"        # Continue named session
 lobster chat --reasoning            # Show agent reasoning
 ```
 
-**Go TUI features**:
-- Tab completion for all 28+ slash commands and subcommands
-- Dynamic completion for file paths and modality names
-- Streaming markdown rendering (Glamour)
-
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-w, --workspace <path>` | auto | Workspace directory |
 | `-s, --session-id <id>` | (none) | Named session to continue |
-| `--ui <mode>` | auto | `go`, `classic`, or `auto` |
+| `--ui <mode>` | auto | `ink`, `go`, `classic`, or `auto` |
 | `--classic` | -- | Shorthand for `--ui classic` |
 | `--no-intro` | off | Skip intro animation |
 | `--reasoning` | off | Show agent reasoning |
@@ -136,9 +230,9 @@ lobster chat --reasoning            # Show agent reasoning
 | `-p, --provider <name>` | config | Override LLM provider |
 | `-m, --model <name>` | config | Override model |
 
-## `lobster query`
+## `lobster query` (Local)
 
-Single-turn queries. Returns complete result by default (no streaming).
+Single-turn queries against local agents. Returns complete result by default.
 
 ```bash
 lobster query "Search PubMed for CRISPR in cancer"
@@ -164,7 +258,7 @@ lobster query --output results.md "Generate report"
 
 ## `lobster command` (Programmatic Access)
 
-Execute slash commands **without starting an LLM session**. No API keys needed. ~300ms.
+Execute slash commands **without starting an LLM session**. No API keys needed. ~300ms. **Local mode only.**
 
 ```bash
 lobster command data --json                          # Current dataset info
@@ -253,6 +347,8 @@ Leading `/` is stripped automatically (`lobster command /data` = `lobster comman
 | Command | Description |
 |---------|-------------|
 | `/session` | Current session info (ID, messages, data) |
+| `/sessions` | List cloud sessions (cloud chat only) |
+| `/cloud account` | Cloud account info (cloud chat only) |
 | `/save [--force]` | Save all modalities to workspace |
 | `/export [--no-png]` | Export session data + plots to `exports/` |
 | `/clear` | Clear conversation history |
@@ -288,21 +384,36 @@ lobster config generate-env   # Generate .env template
 
 ## Session Management
 
+### Local Sessions
+
 ```bash
-# Named session (persisted to disk)
 lobster query --session-id "cancer_project" "Load data"
 lobster query --session-id "cancer_project" "Run QC"
-
-# Continue most recent session
 lobster query --session-id latest "Next step"
-
-# Cross-session pipeline export
 lobster command "pipeline export" --session-id cancer_project
 ```
 
 **Workspace isolation**: different `-w` paths = separate sessions.
 
-## LLM Providers
+### Cloud Sessions
+
+```bash
+lobster cloud query "Start analysis" --json
+# Returns session_id: "dfcf2a08-..."
+
+lobster cloud query "Continue" --session-id latest --json
+# Resolves to most recent session
+
+lobster cloud query "With project" --project-id <UUID> --json
+# Associates session with a cloud project
+
+lobster cloud chat --session-id <UUID>
+# Resume in interactive mode
+```
+
+Cloud sessions persist server-side. Same session accessible from CLI and web app.
+
+## LLM Providers (Local Mode)
 
 7 providers supported:
 
@@ -320,7 +431,7 @@ lobster command "pipeline export" --session-id cancer_project
 
 | Shortcut | Action |
 |----------|--------|
-| Ctrl+C | Cancel current operation |
+| Ctrl+C | Cancel current operation (cloud: also cancels server-side run) |
 | Ctrl+D | Exit |
 | Ctrl+L | Clear screen |
 | Ctrl+R | Search command history |
