@@ -28,6 +28,7 @@ const { values, positionals } = parseArgs({
     "resume-session": { type: "boolean", default: false },
     token: { type: "string" },
     cloud: { type: "boolean", default: false },
+    "project-id": { type: "string" },
     init: { type: "boolean", default: false },
     "manifest-file": { type: "string" },
     "result-file": { type: "string" },
@@ -49,6 +50,7 @@ Options:
   --resume <id>             Alias for --session-id (reconnect after disconnect)
   --token <token>           Authentication token for cloud mode
   --cloud                   Connect to Omics-OS Cloud (app.omics-os.com)
+  --project-id <id>         Associate session with a cloud project
   --init                    Run the init wizard
   --manifest-file <path>    Path to wizard manifest JSON file
   --result-file <path>      Write init wizard result JSON to a file
@@ -103,6 +105,7 @@ if (values.init) {
   const config = resolveConfig({
     apiUrl: values["api-url"],
     sessionId: values["session-id"] ?? values.resume,
+    projectId: values["project-id"],
     token: values.token,
     cloud: values.cloud,
     isResume: values["resume-session"] || Boolean(values.resume),

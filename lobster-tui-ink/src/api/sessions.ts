@@ -30,7 +30,11 @@ export async function createSession(config: AppConfig): Promise<string> {
       "Content-Type": "application/json",
       ...auth,
     },
-    body: JSON.stringify({ name: "CLI Session", client_source: "cli" }),
+    body: JSON.stringify({
+      name: "CLI Session",
+      client_source: "cli",
+      ...(config.projectId ? { project_id: config.projectId } : {}),
+    }),
   });
 
   if (!resp.ok) {
@@ -46,6 +50,9 @@ export async function createSession(config: AppConfig): Promise<string> {
   const id = data.session?.session_id ?? data.session_id ?? data.id;
   if (!id) {
     throw new Error("Backend returned no session_id");
+  }
+  if (config.isCloud && !isUuidSessionId(id)) {
+    throw new Error(`Backend returned invalid session ID: ${id.slice(0, 40)}`);
   }
   return id;
 }
@@ -82,7 +89,7 @@ export async function resolveSessionId(config: AppConfig): Promise<string> {
           new Date(b.last_activity ?? b.created_at).getTime() -
           new Date(a.last_activity ?? a.created_at).getTime(),
       );
-      return sorted[0].session_id;
+      return sorted[0]!.session_id;
     }
 
     if (config.isCloud && !isUuidSessionId(config.sessionId)) {

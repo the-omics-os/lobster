@@ -19,6 +19,7 @@ export type AuthType = "bearer" | "api-key" | "none";
 export interface AppConfig {
   apiUrl: string;
   sessionId?: string;
+  projectId?: string;
   token?: string;
   authType: AuthType;
   isCloud: boolean;
@@ -158,6 +159,7 @@ function detectAuthType(token: string): AuthType {
 export function resolveConfig(args: {
   apiUrl?: string;
   sessionId?: string;
+  projectId?: string;
   token?: string;
   cloud?: boolean;
   isResume?: boolean;
@@ -172,6 +174,7 @@ export function resolveConfig(args: {
     return {
       apiUrl,
       sessionId: args.sessionId,
+      projectId: args.projectId,
       token: envToken,
       authType: detectAuthType(envToken),
       isCloud,
@@ -183,6 +186,7 @@ export function resolveConfig(args: {
     return {
       apiUrl,
       sessionId: args.sessionId,
+      projectId: args.projectId,
       token: args.token,
       authType: detectAuthType(args.token),
       isCloud,
@@ -196,6 +200,7 @@ export function resolveConfig(args: {
       return {
         apiUrl,
         sessionId: args.sessionId,
+        projectId: args.projectId,
         token: stored.token,
         authType: stored.authType,
         isCloud,
@@ -207,6 +212,7 @@ export function resolveConfig(args: {
   return {
     apiUrl,
     sessionId: args.sessionId,
+    projectId: args.projectId,
     authType: "none",
     isCloud,
     isResume,

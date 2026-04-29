@@ -41,11 +41,13 @@ _UUID_RE = re.compile(
 MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
+# P0-MIGRATE: replace with lobster.cloud.errors.CloudError hierarchy
 class CloudQueryError(Exception):
     """Typed error for JSON-safe error reporting."""
     pass
 
 
+# P0-MIGRATE: replace with CloudClient endpoint validation (P0 amendment A9)
 def _validate_endpoint(endpoint: str) -> None:
     """Reject endpoints not in allowlist to prevent token exfiltration."""
     from urllib.parse import urlparse
@@ -72,6 +74,7 @@ def _validate_endpoint(endpoint: str) -> None:
         )
 
 
+# P0-MIGRATE: move to lobster.cloud.output or shared terminal utils
 def strip_ansi(text: str) -> str:
     """Remove ANSI/OSC/C0/C1 escape sequences from text."""
     return _ANSI_ESCAPE_RE.sub("", text)
@@ -84,6 +87,7 @@ def _validate_session_id(sid: str) -> str:
     return sid
 
 
+# P0-MIGRATE: replace with CloudClient._auth_header() + API key detection (P0 amendment A3)
 def resolve_auth(token_override: Optional[str] = None) -> dict:
     """Resolve auth token and build headers. No os.environ mutation.
 
@@ -129,15 +133,19 @@ def derive_stream_base(
 
 
 def create_cloud_session(
-    rest_base: str, headers: dict, name: str = "Cloud Query"
+    rest_base: str, headers: dict, name: str = "Cloud Query",
+    project_id: Optional[str] = None, client_source: str = "cli",
 ) -> str:
     """POST /api/v1/sessions → session_id (UUID)."""
     url = f"{rest_base}/api/v1/sessions"
+    body: dict = {"name": name, "client_source": client_source}
+    if project_id:
+        body["project_id"] = project_id
     try:
         with httpx.Client(timeout=15.0) as client:
             resp = client.post(
                 url,
-                json={"name": name, "client_source": "cli"},
+                json=body,
                 headers={**headers, "Content-Type": "application/json"},
             )
     except httpx.HTTPError as e:
@@ -173,11 +181,13 @@ def create_cloud_session(
 
 
 def resolve_cloud_session(
-    rest_base: str, headers: dict, session_id: Optional[str]
+    rest_base: str, headers: dict, session_id: Optional[str],
+    project_id: Optional[str] = None, client_source: str = "cli",
 ) -> str:
     """Resolve session_id: create new, use provided UUID, or resolve 'latest'."""
+    # P0-MIGRATE: replace with lobster.cloud.sessions.resolve_session_id()
     if not session_id:
-        return create_cloud_session(rest_base, headers)
+        return create_cloud_session(rest_base, headers, project_id=project_id, client_source=client_source)
 
     if session_id.lower() == "latest":
         url = f"{rest_base}/api/v1/sessions"
@@ -326,6 +336,7 @@ def stream_cloud_query(
     return result
 
 
+# P0-MIGRATE: replace with CloudClient.post() fire-and-forget wrapper
 def cancel_cloud_run(rest_base: str, headers: dict, session_id: str) -> None:
     """Fire-and-forget POST /sessions/{id}/chat/cancel on Ctrl+C."""
     def _do_cancel():
@@ -338,6 +349,22 @@ def cancel_cloud_run(rest_base: str, headers: dict, session_id: str) -> None:
 
     t = threading.Thread(target=_do_cancel, daemon=True)
     t.start()
+
+
+def fetch_workspace_files(rest_base: str, headers: dict, session_id: str) -> list:
+    # P0-MIGRATE: replace with CloudClient.request()
+    """Best-effort GET /sessions/{id}/workspace/files/metadata. Returns [] on any error."""
+    url = f"{rest_base}/api/v1/sessions/{session_id}/workspace/files/metadata"
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(url, headers={**headers, "Accept": "application/json"})
+        if resp.is_success:
+            data = resp.json()
+            files = data.get("files", data) if isinstance(data, dict) else data if isinstance(data, list) else []
+            return [f for f in files if isinstance(f, dict)]
+    except Exception:
+        logger.debug("Failed to fetch workspace files", exc_info=True)
+    return []
 
 
 def _parse_datastream_line(

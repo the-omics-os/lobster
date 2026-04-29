@@ -26,6 +26,7 @@ import {
   QCDashboardUI,
 } from "./components/HITL/index.js";
 import type { AppConfig } from "./config.js";
+import { freshAuthHeaders } from "./config.js";
 import type { PromptTemplate } from "./api/templates.js";
 import type { Resource } from "./api/resources.js";
 import { fetchBootstrap, type RuntimeInfo } from "./api/bootstrap.js";
@@ -74,7 +75,16 @@ export function App({ config }: { config: AppConfig }) {
   const { runtime, appStateStore, sessionId, sessionReady, clearThread } = useRuntime(config);
   const handleCancel = useCallback(() => {
     runtime.thread.cancelRun();
-  }, [runtime]);
+    if (config.isCloud && sessionId) {
+      freshAuthHeaders(config).then((auth) => {
+        fetch(`${config.apiUrl}/sessions/${sessionId}/chat/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...auth },
+          signal: AbortSignal.timeout(3000),
+        }).catch(() => {});
+      }).catch(() => {});
+    }
+  }, [runtime, config, sessionId]);
   const cancelState = useCancelHandler(handleCancel);
   const slashCmds = useSlashCommands(appStateStore, config, sessionId);
   const footerStateStoreRef = useRef(createFooterStateStore());
