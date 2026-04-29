@@ -739,7 +739,7 @@ def query(
         headers = resolve_auth(token_override=token)
 
         sid = resolve_cloud_session(rest_base, headers, session_id,
-            project_id=project_id, client_source="cli-query")
+            project_id=project_id, client_source="cli")
 
     except CloudQueryError as e:
         if json_output:
@@ -917,7 +917,7 @@ def projects(
         if not isinstance(p, dict):
             continue
         table.add_row(
-            str(p.get("id", "")),
+            str(p.get("project_id") or p.get("id", "")),
             str(p.get("name", "")),
             str(p.get("dataset_count", "-")),
             str(p.get("created_at", ""))[:10],
