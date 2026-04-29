@@ -69,9 +69,22 @@ export async function listSessions(config: AppConfig): Promise<Session[]> {
   return Array.isArray(data) ? data : (data.sessions ?? []);
 }
 
-/** Resolve session: use provided ID, or create a new one. */
+/** Resolve session: use provided ID (or "latest"), or create a new one. */
 export async function resolveSessionId(config: AppConfig): Promise<string> {
   if (config.sessionId) {
+    if (config.sessionId.toLowerCase() === "latest") {
+      const sessions = await listSessions(config);
+      if (sessions.length === 0) {
+        throw new Error("No existing sessions found. Start a new one first.");
+      }
+      const sorted = sessions.sort(
+        (a, b) =>
+          new Date(b.last_activity ?? b.created_at).getTime() -
+          new Date(a.last_activity ?? a.created_at).getTime(),
+      );
+      return sorted[0].session_id;
+    }
+
     if (config.isCloud && !isUuidSessionId(config.sessionId)) {
       throw new Error(
         `Invalid session ID format: "${config.sessionId}". Expected a UUID.`,

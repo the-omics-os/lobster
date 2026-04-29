@@ -657,3 +657,150 @@ def chat(
         proc.send_signal(signal.SIGTERM)
         proc.wait(timeout=5)
     raise typer.Exit(proc.returncode or 0)
+
+
+@cloud_app.command()
+def query(
+    question: str = typer.Argument(..., help="Question to ask"),
+    session_id: Optional[str] = typer.Option(
+        None, "--session-id", "-s", help="Session UUID to continue (or 'latest')"
+    ),
+    token: Optional[str] = typer.Option(
+        None, "--token", help="Override stored auth token (prefer OMICS_OS_API_KEY env var)"
+    ),
+    endpoint: Optional[str] = typer.Option(
+        None, "--endpoint", help="Custom REST API origin (e.g., https://app.omics-os.com)"
+    ),
+    stream_endpoint: Optional[str] = typer.Option(
+        None, "--stream-endpoint", help="Custom stream origin (e.g., https://stream.omics-os.com)"
+    ),
+    unsafe_endpoint: bool = typer.Option(
+        False, "--unsafe-endpoint", is_flag=True, hidden=True,
+        help="Skip endpoint allowlist validation (DANGEROUS)"
+    ),
+    stream: bool = typer.Option(
+        False, "--stream/--no-stream", help="Stream text as it arrives"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", "-j", is_flag=True, help="Output JSON only on stdout"
+    ),
+) -> None:
+    """Send a single query to Omics-OS Cloud (agents run on ECS Fargate)."""
+    import json as _json
+    import math
+    import sys as _sys
+
+    from lobster.cli_internal.commands.light.cloud_query import (
+        CloudQueryError,
+        cancel_cloud_run,
+        derive_stream_base,
+        resolve_auth,
+        resolve_cloud_session,
+        resolve_rest_base,
+        stream_cloud_query,
+        strip_ansi,
+        _validate_endpoint,
+    )
+
+    def _emit_json_error(error: str, sid: Optional[str] = None) -> None:
+        print(_json.dumps({"success": False, "error": error, "session_id": sid}))
+
+    try:
+        if not question.strip():
+            raise CloudQueryError("Question cannot be empty.")
+
+        # S1 fix: validate endpoints BEFORE resolving auth (which may send refresh token)
+        rest_base = resolve_rest_base(endpoint)
+        stream_base = derive_stream_base(rest_base, stream_endpoint)
+
+        if not unsafe_endpoint:
+            _validate_endpoint(rest_base)
+            _validate_endpoint(stream_base)
+
+        headers = resolve_auth(token_override=token)
+
+        sid = resolve_cloud_session(rest_base, headers, session_id)
+
+    except CloudQueryError as e:
+        if json_output:
+            _emit_json_error(str(e))
+        else:
+            from rich.markup import escape
+            console.print(f"[red]Error:[/red] {escape(str(e))}")
+        raise typer.Exit(1)
+
+    if not json_output:
+        console.print(f"[dim]session: {sid}[/dim]")
+
+    text_callback = None
+    if stream and not json_output:
+        def text_callback(delta: str):
+            try:
+                _sys.stdout.write(delta)
+                _sys.stdout.flush()
+            except BrokenPipeError:
+                raise KeyboardInterrupt
+
+    try:
+        result = stream_cloud_query(
+            stream_base, headers, sid, question, on_text_delta=text_callback
+        )
+    except KeyboardInterrupt:
+        if not json_output:
+            console.print("\n[yellow]Cancelled.[/yellow]")
+        cancel_cloud_run(rest_base, headers, sid)
+        if json_output:
+            _emit_json_error("Cancelled by user", sid)
+        raise typer.Exit(130)
+
+    if stream and not json_output:
+        try:
+            _sys.stdout.write("\n")
+        except BrokenPipeError:
+            pass
+
+    if result.error_detail:
+        if json_output:
+            _emit_json_error(result.error_detail, sid)
+        else:
+            from rich.markup import escape
+            console.print(f"[red]Error:[/red] {escape(result.error_detail)}")
+        raise typer.Exit(1)
+
+    if json_output:
+        print(_json.dumps({
+            "success": result.success,
+            "response": result.display_text,
+            "session_id": sid,
+            "active_agent": result.active_agent,
+            "token_usage": result.token_usage,
+            "session_title": result.session_title,
+            "finish_reason": result.finish_reason,
+        }))
+        return
+
+    from rich.markdown import Markdown
+    from rich.markup import escape
+    from rich.rule import Rule
+
+    # S3 fix: escape backend-controlled agent name before Rich markup interpolation
+    agent_label = result.active_agent or "Supervisor"
+    agent_display = escape(agent_label.replace("_", " ").title())
+
+    if not stream:
+        console.print()
+        console.print(
+            Rule(
+                f"[bold #FF6B35]Lobster · {agent_display}[/bold #FF6B35]",
+                style="grey27",
+            )
+        )
+        console.print(Markdown(strip_ansi(result.display_text)))
+
+    footer_parts = [f"session={sid}"]
+    if result.token_usage:
+        cost = result.token_usage.get("total_cost_usd")
+        if isinstance(cost, (int, float)) and math.isfinite(cost):
+            footer_parts.append(f"cost ${cost:.4f}")
+    footer_parts.append("continue with --session-id latest")
+    console.print(f"\n[dim]{'  ·  '.join(footer_parts)}[/dim]")

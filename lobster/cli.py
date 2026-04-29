@@ -424,7 +424,7 @@ def default_callback(
     """
     # Handle --version flag (fast path - no heavy imports)
     if version:
-        console.print(f"lobster version {__version__}")
+        console.print(f"lobster version {__version__} (react-ink-cli · cloud+ink)")
         raise typer.Exit()
 
     # Check for updates (non-blocking, cached, fails silently if offline)

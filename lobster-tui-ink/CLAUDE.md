@@ -98,14 +98,18 @@ Important bridge behaviors:
 - completed HTTP responses must be closed promptly or the single-threaded bridge can wedge later requests
 - Python-owned stdout/stderr/logging must stay quarantined so background warnings do not leak into the TUI
 
-## Cloud-Direct Mode
+## Cloud-Direct Mode — VALIDATED WORKING (2026-04-28)
 
-The binary itself supports direct cloud connectivity:
-- `--cloud`
-- `--token`
-- stored credentials from `~/.config/omics-os/credentials.json`
+The binary supports direct cloud connectivity, **live-tested end-to-end on 2026-04-28**:
+- `--cloud` + `--api-url=https://app.omics-os.com/api/v1`
+- `--token` (explicit override)
+- stored credentials from `~/.config/omics-os/credentials.json` (OAuth or API key)
 
-In cloud-direct mode, the Ink app talks to the Omics-OS Cloud API directly and uses the same session/message/state model as the web app. This is the architectural basis for CLI/web session continuity.
+Confirmed working: session creation, SSE streaming from ECS Fargate, message send/receive, session resume via `--session-id <UUID>`, `/sessions` and `/cloud account` slash commands inside TUI, full message hydration on resume.
+
+Known bug: `--session-id latest` passes literal "latest" to API instead of resolving to most recent UUID. Fix written in `src/api/sessions.ts:73`, awaiting binary rebuild.
+
+In cloud-direct mode, the Ink app talks to the Omics-OS Cloud API directly and uses the same session/message/state model as the web app. CLI/web session continuity is architecturally real — same session UUIDs, same backend, same agents.
 
 ## Rendering Model
 
@@ -186,12 +190,20 @@ Useful live checks:
 
 ## Current Known Gaps
 
-These are still active parity concerns in this worktree:
+Active parity concerns (last reviewed 2026-04-28):
 - streamed assistant text still redraws more roughly than the Go client in PTY capture
 - startup latency is still higher and more variable than desired
 - some structured outputs remain heavier than the Go/Charm transcript style
 - long multi-agent runs can still expose completion/run-loop edge cases
 - full-height Ink layout can still feel more like a screen-clearing window than the Go client's inline terminal model
+- `--session-id latest` not resolved in cloud mode (fix written in `src/api/sessions.ts`, needs binary rebuild with `bun`)
+- `data_status` (cold/warm/hot) modality state not consumed — merge blocker #11
+
+**No longer gaps (confirmed working 2026-04-28):**
+- Cloud-direct mode: session create, SSE stream, message send/receive — all working
+- Session resume via `--session-id <UUID>` — working with full message hydration
+- OAuth credential flow: login → stored credentials → auto-auth in Ink — working
+- Cloud slash commands (`/sessions`, `/cloud account`) inside TUI — working
 
 ## Related Docs
 
