@@ -38,7 +38,15 @@ export async function createSession(config: AppConfig): Promise<string> {
   });
 
   if (!resp.ok) {
-    throw new Error(`Failed to create session: ${resp.status} ${resp.statusText}`);
+    let detail = "";
+    try {
+      const errBody = (await resp.json()) as Record<string, unknown>;
+      detail = String(errBody.detail ?? errBody.message ?? errBody.error ?? "").slice(0, 200);
+    } catch {
+      // response not JSON
+    }
+    const msg = `Failed to create session: ${resp.status} ${resp.statusText}`;
+    throw new Error(detail ? `${msg} — ${detail}` : msg);
   }
 
   const data = (await resp.json()) as {

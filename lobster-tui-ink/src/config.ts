@@ -15,6 +15,7 @@ const CREDENTIALS_PATH = join(
 );
 
 export type AuthType = "bearer" | "api-key" | "none";
+export type TokenSource = "env" | "cli" | "stored" | "none";
 
 export interface AppConfig {
   apiUrl: string;
@@ -22,6 +23,7 @@ export interface AppConfig {
   projectId?: string;
   token?: string;
   authType: AuthType;
+  tokenSource: TokenSource;
   isCloud: boolean;
   isResume: boolean;
 }
@@ -177,6 +179,7 @@ export function resolveConfig(args: {
       projectId: args.projectId,
       token: envToken,
       authType: detectAuthType(envToken),
+      tokenSource: "env",
       isCloud,
       isResume,
     };
@@ -189,6 +192,7 @@ export function resolveConfig(args: {
       projectId: args.projectId,
       token: args.token,
       authType: detectAuthType(args.token),
+      tokenSource: "cli",
       isCloud,
       isResume,
     };
@@ -203,6 +207,7 @@ export function resolveConfig(args: {
         projectId: args.projectId,
         token: stored.token,
         authType: stored.authType,
+        tokenSource: "stored",
         isCloud,
         isResume,
       };
@@ -214,6 +219,7 @@ export function resolveConfig(args: {
     sessionId: args.sessionId,
     projectId: args.projectId,
     authType: "none",
+    tokenSource: "none",
     isCloud,
     isResume,
   };
@@ -235,18 +241,21 @@ export function authHeaders(config: AppConfig): Record<string, string> {
 
 /** Build fresh auth headers, refreshing expired OAuth tokens if needed. */
 export async function freshAuthHeaders(config: AppConfig): Promise<Record<string, string>> {
-  // If token was provided explicitly (env/CLI flag), use it as-is
-  if (config.token && (process.env.LOBSTER_TOKEN || !config.isCloud)) {
+  // Explicit tokens (env or CLI) are never replaced by stored credentials
+  if (config.tokenSource === "env" || config.tokenSource === "cli") {
     return authHeaders(config);
   }
 
-  // For cloud mode with stored credentials, attempt refresh if needed
-  if (config.isCloud) {
-    const stored = await readStoredCredentialsAsync();
-    if (stored) {
-      const refreshedConfig = { ...config, token: stored.token, authType: stored.authType };
-      return authHeaders(refreshedConfig);
-    }
+  // Non-cloud mode — use whatever token exists as-is
+  if (!config.isCloud) {
+    return authHeaders(config);
+  }
+
+  // Cloud mode with stored credentials — attempt refresh if expired
+  const stored = await readStoredCredentialsAsync();
+  if (stored) {
+    const refreshedConfig = { ...config, token: stored.token, authType: stored.authType };
+    return authHeaders(refreshedConfig);
   }
 
   return authHeaders(config);

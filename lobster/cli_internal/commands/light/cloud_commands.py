@@ -788,10 +788,11 @@ def query(
         raise typer.Exit(1)
 
     workspace_files: list = []
-    try:
-        workspace_files = fetch_workspace_files(rest_base, headers, sid)
-    except Exception:
-        pass
+    if result.tool_calls:
+        try:
+            workspace_files = fetch_workspace_files(rest_base, headers, sid)
+        except Exception:
+            pass
 
     if json_output:
         print(_json.dumps({

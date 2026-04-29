@@ -6,6 +6,7 @@ import type { AppConfig } from "../config.js";
 const baseConfig: AppConfig = {
   apiUrl: "http://localhost:8000",
   authType: "none",
+  tokenSource: "none",
   isCloud: false,
   isResume: false,
 };

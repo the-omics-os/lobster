@@ -132,11 +132,26 @@ def derive_stream_base(
     return rest_base
 
 
+def _validate_project_id(project_id: Optional[str]) -> Optional[str]:
+    """Trim and validate project_id. Returns cleaned value or raises."""
+    if not project_id:
+        return None
+    cleaned = project_id.strip()
+    if not cleaned:
+        raise CloudQueryError("--project-id cannot be empty.")
+    if len(cleaned) > 128:
+        raise CloudQueryError("--project-id too long (max 128 chars).")
+    if not _UUID_RE.match(cleaned):
+        raise CloudQueryError(f"--project-id must be a UUID. Got: {cleaned!r:.40}")
+    return cleaned
+
+
 def create_cloud_session(
     rest_base: str, headers: dict, name: str = "Cloud Query",
     project_id: Optional[str] = None, client_source: str = "cli",
 ) -> str:
     """POST /api/v1/sessions → session_id (UUID)."""
+    project_id = _validate_project_id(project_id)
     url = f"{rest_base}/api/v1/sessions"
     body: dict = {"name": name, "client_source": client_source}
     if project_id:
@@ -160,7 +175,17 @@ def create_cloud_session(
     if resp.status_code == 429:
         raise CloudQueryError("Rate limited (5/min for session creation). Wait and retry.")
     if not resp.is_success:
-        raise CloudQueryError(f"Failed to create session: {resp.status_code}")
+        detail = ""
+        try:
+            err_body = resp.json()
+            if isinstance(err_body, dict):
+                detail = err_body.get("detail") or err_body.get("message") or err_body.get("error") or ""
+        except Exception:
+            detail = resp.text[:200] if resp.text else ""
+        msg = f"Failed to create session: {resp.status_code}"
+        if detail:
+            msg += f" — {str(detail)[:200]}"
+        raise CloudQueryError(msg)
 
     try:
         data = resp.json()
@@ -338,17 +363,18 @@ def stream_cloud_query(
 
 # P0-MIGRATE: replace with CloudClient.post() fire-and-forget wrapper
 def cancel_cloud_run(rest_base: str, headers: dict, session_id: str) -> None:
-    """Fire-and-forget POST /sessions/{id}/chat/cancel on Ctrl+C."""
+    """POST /sessions/{id}/chat/cancel. Blocks up to 2s to ensure delivery."""
     def _do_cancel():
         url = f"{rest_base}/api/v1/sessions/{session_id}/chat/cancel"
         try:
             with httpx.Client(timeout=3.0) as client:
                 client.post(url, headers={**headers, "Content-Type": "application/json"})
         except Exception:
-            logger.debug("Cancel request failed (fire-and-forget)", exc_info=True)
+            logger.debug("Cancel request failed", exc_info=True)
 
-    t = threading.Thread(target=_do_cancel, daemon=True)
+    t = threading.Thread(target=_do_cancel, daemon=False)
     t.start()
+    t.join(timeout=2.0)
 
 
 def fetch_workspace_files(rest_base: str, headers: dict, session_id: str) -> list:
