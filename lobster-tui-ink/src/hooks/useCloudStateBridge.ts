@@ -20,29 +20,13 @@
 import { useEffect, useRef } from "react";
 import { useAuiState } from "@assistant-ui/store";
 import type { AppStateStore } from "../utils/appStateStore.js";
-import type {
-  AppState,
-  ActivityEvent,
-  AlertEvent,
-  ProgressEntry,
-  DataStatusSummary,
+import {
+  summarizeDataStatus,
+  type AppState,
+  type ActivityEvent,
+  type AlertEvent,
+  type ProgressEntry,
 } from "../utils/stateHandlers.js";
-
-function summarizeDataStatus(modalities: unknown[]): DataStatusSummary | null {
-  let cold = 0;
-  let warm = 0;
-  let hot = 0;
-  for (const raw of modalities) {
-    if (!raw || typeof raw !== "object") continue;
-    const status = (raw as Record<string, unknown>).data_status;
-    if (status === "cold") cold++;
-    else if (status === "warm") warm++;
-    else hot++;
-  }
-  const total = cold + warm + hot;
-  if (total === 0) return null;
-  return { cold, warm, hot, total };
-}
 
 function normalizeTokenUsage(
   raw: unknown,

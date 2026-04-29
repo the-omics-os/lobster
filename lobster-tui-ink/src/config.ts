@@ -78,7 +78,7 @@ function isTokenExpired(creds: StoredCredentials): boolean {
   }
 }
 
-const ALLOWED_ENDPOINTS = new Set([
+const ALLOWED_REFRESH_ORIGINS = new Set([
   "https://app.omics-os.com",
   "https://staging.omics-os.com",
   "http://localhost:8000",
@@ -86,11 +86,10 @@ const ALLOWED_ENDPOINTS = new Set([
 ]);
 
 function isAllowedEndpoint(endpoint: string): boolean {
-  const normalized = endpoint.replace(/\/+$/, "");
-  if (ALLOWED_ENDPOINTS.has(normalized)) return true;
   try {
-    const url = new URL(normalized);
-    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const url = new URL(endpoint.replace(/\/+$/, ""));
+    if (url.username || url.password || url.hash) return false;
+    return ALLOWED_REFRESH_ORIGINS.has(url.origin);
   } catch {
     return false;
   }

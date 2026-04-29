@@ -44,16 +44,16 @@ export function CloudOnboarding() {
     <Box flexDirection="column" paddingX={2} marginY={1}>
       <Text bold color={theme.primary}>Local Mode Setup</Text>
       <Text color={theme.textMuted}>
-        Lobster AI local mode requires Python. Run these commands:
+        Lobster AI local mode requires Python 3.12+ and uv.
       </Text>
       <Box marginTop={1} flexDirection="column">
-        <Text>  1. curl -LsSf https://astral.sh/uv/install.sh | sh</Text>
+        <Text>  1. Install uv:  https://docs.astral.sh/uv/getting-started/</Text>
         <Text>  2. uv tool install 'lobster-ai[full]'</Text>
         <Text>  3. lobster init</Text>
         <Text>  4. lobster chat</Text>
       </Box>
       <Text color={theme.textMuted}>
-        Or install via pip: pip install 'lobster-ai[full]'
+        Or: pip install 'lobster-ai[full]'
       </Text>
     </Box>
   );

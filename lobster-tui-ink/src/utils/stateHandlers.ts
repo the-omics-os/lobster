@@ -110,7 +110,7 @@ export function createInitialState(): AppState {
   };
 }
 
-function summarizeDataStatus(modalities: unknown[]): DataStatusSummary | null {
+export function summarizeDataStatus(modalities: unknown[]): DataStatusSummary | null {
   let cold = 0;
   let warm = 0;
   let hot = 0;
