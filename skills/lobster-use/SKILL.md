@@ -59,7 +59,7 @@ credential_note: |
   LOCAL MODE: Exactly ONE LLM provider is required. Choose one and set only that
   provider's env var(s). Paired credentials (AWS, Azure) must both be set.
   CLOUD MODE: No LLM keys needed. Run `lobster cloud login` to authenticate via
-  browser OAuth or `lobster cloud login --api-key` for headless environments.
+  browser OAuth or `lobster cloud login --api-key "$OMICS_OS_API_KEY"` for headless environments.
   Credentials stored at ~/.config/omics-os/credentials.json.
 declared_writes:
   - .lobster_workspace/                        # Workspace data, session state, outputs
@@ -95,7 +95,8 @@ language -- Lobster routes to 22 specialist agents across 10 packages automatica
   - `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (Bedrock)
   - `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL` (Azure)
   - Ollama: no key needed (local models)
-- **Cloud mode**: `lobster cloud login` (browser OAuth or `--api-key`). No LLM keys needed.
+- **Cloud mode**: `lobster cloud login` (browser OAuth or `--api-key "$KEY"`). No LLM keys needed.
+  - Env vars: `OMICS_OS_API_KEY` (cloud query auth), `LOBSTER_TOKEN` (Ink chat auth)
 - **Optional**: `NCBI_API_KEY` for faster PubMed/GEO
 - **Writes**: `.lobster_workspace/` (local), `~/.config/omics-os/credentials.json` (cloud)
 - **Network**: LLM provider (local) or `app.omics-os.com` + `stream.omics-os.com` (cloud)
@@ -196,7 +197,7 @@ To fetch a docs page: `https://docs.omics-os.com/raw/docs/{slug}.md`
 5. **Use `--json` flag** when parsing output programmatically (both local and cloud)
 6. **Cloud mode**: run `lobster cloud login` before `cloud query` / `cloud chat`
 7. **Cloud sessions persist server-side** -- use `--session-id latest` to continue
-8. **Cloud `--project-id`**: must be a UUID from `lobster cloud projects --json`
+8. **Cloud `--project-id`**: must be a UUID from `lobster cloud projects --json`. Only applies when creating a new session — ignored on `--session-id latest` or explicit UUID resume
 9. **Default workspace**: `.lobster_workspace/` (local only) -- override with `-w <path>`
 10. **Fetch docs on demand** from `docs.omics-os.com/raw/docs/{slug}.md` -- don't guess workflows
 

@@ -115,12 +115,19 @@ Cloud commands connect to Omics-OS Cloud at `app.omics-os.com`. Agents run on EC
 ### Authentication
 
 ```bash
-lobster cloud login              # Browser OAuth (opens browser, stores credentials)
-lobster cloud login --api-key    # Paste API key (headless/SSH/CI environments)
-lobster cloud logout             # Clear stored credentials
+lobster cloud login                            # Browser OAuth (opens browser, stores credentials)
+lobster cloud login --api-key "$OMICS_OS_API_KEY"  # Headless/SSH/CI (pass value, not flag alone)
+lobster cloud logout                           # Clear stored credentials
 ```
 
 Credentials stored at `~/.config/omics-os/credentials.json`. OAuth tokens auto-refresh.
+
+**Cloud auth env vars** (alternative to stored credentials):
+- `OMICS_OS_API_KEY` — used by `lobster cloud query` (Python CLI)
+- `LOBSTER_TOKEN` — used by Ink TUI (`lobster cloud chat`), highest priority
+- `--token` flag — explicit override (warning: visible in `ps` output)
+
+**Note**: Agents should always use `lobster cloud login` or `lobster cloud query` — never invoke the `lobster-chat` binary directly (it's an internal implementation detail).
 
 ### Account & Usage
 
@@ -154,12 +161,12 @@ lobster cloud query "Quick question" --stream   # Stream text as it arrives
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--session-id, -s <id>` | (new session) | Resume session (UUID or `latest`) |
-| `--project-id, -p <UUID>` | (none) | Associate with a cloud project |
-| `--json, -j` | off | Structured JSON on stdout |
+| `--project-id, -p <UUID>` | (none) | Associate with project (new sessions only — ignored on resume) |
+| `--json, -j` | off | Structured JSON on stdout (`--stream` has no effect with `--json`) |
 | `--stream / --no-stream` | off | Stream text as it arrives |
-| `--token` | stored | Override auth token |
-| `--endpoint` | app.omics-os.com | Custom REST API origin |
-| `--stream-endpoint` | stream.omics-os.com | Custom stream origin |
+| `--token` | stored | Override auth token (visible in ps — prefer env var) |
+| `--endpoint` | app.omics-os.com | Custom REST origin (allowlisted hosts only) |
+| `--stream-endpoint` | stream.omics-os.com | Custom stream origin (allowlisted hosts only) |
 
 **JSON output schema**:
 ```json

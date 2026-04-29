@@ -46,9 +46,9 @@ RESULT=$(lobster cloud query "Analyze" --project-id "$PROJECT_UUID" --json)
 ```
 
 **Key flags for cloud agents**:
-- `--json` -- structured JSON on stdout
+- `--json` -- structured JSON on stdout (one final object, no streaming deltas)
 - `--session-id <UUID>` or `latest` -- session continuity (server-side)
-- `--project-id <UUID>` -- associate with cloud project
+- `--project-id <UUID>` -- associate with project (first query only — ignored on resume)
 
 ## JSON Output Schema
 
@@ -89,9 +89,11 @@ RESULT=$(lobster cloud query "Analyze" --project-id "$PROJECT_UUID" --json)
 }
 ```
 
-**Parse with**: `jq -r '.response'`
+**Parse with**: `jq -r 'if .success then .response else (.error // .response // "Unknown error") end'`
 
 **Cloud-specific fields**: `active_agent`, `session_title`, `finish_reason`, `workspace_files`
+
+**Note**: Not all failures include `.error` — some set `.success: false` with the error in `.response`. Always check `.success` first, then fall through `.error // .response // .finish_reason`.
 
 ## Workspace Inspection
 
@@ -113,7 +115,11 @@ analysis that requires the agent system.
 ### Cloud
 
 Cloud workspace files appear in the `workspace_files` field of JSON responses
-when agents produce output files during the query.
+when agents invoke tools during the query. **Caveats**:
+- Best-effort only — returns `[]` on any fetch error (not a definitive "no files")
+- Only populated when agents used tools (simple Q&A queries skip the fetch)
+- Not equivalent to local `lobster command files` — it's a hint, not a listing
+- For large outputs, ask Lobster to write files rather than relying on `.response` (10 MB cap)
 
 ```bash
 # Check if agents produced files
@@ -287,10 +293,20 @@ Common failure patterns:
 | Session not found | Local | Missing `--session-id` | Always pass `--session-id` for multi-step |
 | Workspace mismatch | Local | Omitting `-w` on follow-up | Always pass `-w` |
 | Not authenticated | Cloud | No stored credentials | `lobster cloud login` |
-| Budget exhausted | Cloud | Monthly limit reached | `lobster cloud status` to check |
-| Rate limited | Cloud | Too many requests | Wait 10-15 seconds |
+| Budget exhausted (402) | Cloud | Monthly limit reached | `lobster cloud status` to check |
+| Rate limited (429) | Cloud | Too many requests | Wait 10-15 seconds |
+| Session rate limit (5/min) | Cloud | Creating sessions too fast | Reuse existing session_id |
 | Invalid session ID | Cloud | Non-UUID string | Use UUID from `--json` output or `latest` |
-| Invalid project ID | Cloud | Non-UUID string | Get UUIDs from `lobster cloud projects --json` |
+| Invalid project ID | Cloud | Non-UUID or empty | Get UUIDs from `lobster cloud projects --json` |
+| No sessions for `latest` | Cloud | No prior sessions | Omit `--session-id` to create new |
+| Session not found (404) | Cloud | Deleted or expired | Start new session |
+| Empty question | Cloud | Blank query string | Provide non-empty question |
+| Endpoint not in allowlist | Cloud | Custom `--endpoint` rejected | Use default or `--unsafe-endpoint` |
+| Network failure | Cloud | Cannot reach cloud | Check internet, retry |
+| Stream timeout (600s) | Cloud | Backend still processing | Retry or break into smaller queries |
+| Empty stream response | Cloud | No valid DataStream parts | Retry — may be transient |
+| Cancelled by user | Cloud | Ctrl+C during query | Exit 130 + JSON error in `--json` mode |
+| Projects disabled (403/404) | Cloud | Feature not enabled | Contact support or upgrade tier |
 | Agent not available | Both | Package not installed | `lobster agents list` |
 | Config error | Local | Provider misconfigured | `lobster config-test --json` |
 
