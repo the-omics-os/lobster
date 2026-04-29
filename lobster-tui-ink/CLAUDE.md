@@ -18,9 +18,10 @@ This surface is the primary interactive CLI target in this worktree. The Go/Char
 
 | File | Responsibility |
 |------|----------------|
-| `src/cli.tsx` | Parse binary args, resolve config, launch chat app or init wizard |
-| `src/App.tsx` | Shell layout, runtime wiring, backend readiness, empty state, transcript structure |
-| `src/config.ts` | API URL resolution, local vs cloud mode, auth header construction |
+| `src/cli.tsx` | Parse binary args (incl. `--project-id`), resolve config, launch chat app or init wizard |
+| `src/App.tsx` | Shell layout, runtime wiring, backend readiness, cancel (incl. cloud POST), transcript structure |
+| `src/config.ts` | API URL resolution, local vs cloud mode, auth header construction, `tokenSource` tracking |
+| `src/api/sessions.ts` | Session CRUD — create (with `project_id`), list, resolve (incl. `latest`), UUID validation |
 | `src/hooks/useRuntime.ts` | `useDataStreamRuntime`, session resolution, hydration, state patch application |
 | `src/utils/stateHandlers.ts` | Protocol-aware state patch handling with `_v` checks |
 | `src/utils/hydration.ts` | Durable message hydration and `message_id` dedup |
@@ -37,11 +38,15 @@ This surface is the primary interactive CLI target in this worktree. The Go/Char
 - which API base URL to use
 - whether auth is `Bearer`, `X-API-Key`, or none
 - whether the session is a fresh launch or a resume path
+- `tokenSource` (`env` | `cli` | `stored` | `none`) — tracks where the token came from so `freshAuthHeaders` never replaces an explicit `--token` with stored credentials
+- `projectId` — optional project association for session creation
 
 Auth precedence:
-1. `LOBSTER_TOKEN`
-2. `--token`
-3. stored credentials at `~/.config/omics-os/credentials.json` for cloud mode
+1. `LOBSTER_TOKEN` (tokenSource: `env`)
+2. `--token` (tokenSource: `cli`)
+3. stored credentials at `~/.config/omics-os/credentials.json` for cloud mode (tokenSource: `stored`)
+
+`freshAuthHeaders()` only attempts OAuth token refresh when `tokenSource === "stored"`. Explicit env/CLI tokens are used as-is.
 
 ### 2. Session Resolution and Hydration
 
@@ -102,12 +107,13 @@ Important bridge behaviors:
 
 The binary supports direct cloud connectivity, **live-tested end-to-end on 2026-04-28**:
 - `--cloud` + `--api-url=https://app.omics-os.com/api/v1`
-- `--token` (explicit override)
+- `--token` (explicit override — tokenSource tracking ensures it's never replaced by stored creds)
+- `--project-id <UUID>` (associates session with a cloud project)
 - stored credentials from `~/.config/omics-os/credentials.json` (OAuth or API key)
 
-Confirmed working: session creation, SSE streaming from ECS Fargate, message send/receive, session resume via `--session-id <UUID>`, `/sessions` and `/cloud account` slash commands inside TUI, full message hydration on resume.
+Confirmed working: session creation (with project_id), SSE streaming from ECS Fargate, message send/receive, session resume via `--session-id <UUID>`, `--session-id latest` resolution, `/sessions` and `/cloud account` slash commands inside TUI, full message hydration on resume.
 
-Known bug: `--session-id latest` passes literal "latest" to API instead of resolving to most recent UUID. Fix written in `src/api/sessions.ts:73`, awaiting binary rebuild.
+Cloud cancel: `App.tsx` handleCancel POSTs to `/sessions/{id}/chat/cancel` in cloud mode (fire-and-forget with 3s timeout). Backend-returned session IDs are validated as UUIDs before use.
 
 In cloud-direct mode, the Ink app talks to the Omics-OS Cloud API directly and uses the same session/message/state model as the web app. CLI/web session continuity is architecturally real — same session UUIDs, same backend, same agents.
 
@@ -190,20 +196,26 @@ Useful live checks:
 
 ## Current Known Gaps
 
-Active parity concerns (last reviewed 2026-04-28):
+Active parity concerns (last reviewed 2026-04-29):
 - streamed assistant text still redraws more roughly than the Go client in PTY capture
 - startup latency is still higher and more variable than desired
 - some structured outputs remain heavier than the Go/Charm transcript style
 - long multi-agent runs can still expose completion/run-loop edge cases
 - full-height Ink layout can still feel more like a screen-clearing window than the Go client's inline terminal model
-- `--session-id latest` not resolved in cloud mode (fix written in `src/api/sessions.ts`, needs binary rebuild with `bun`)
 - `data_status` (cold/warm/hot) modality state not consumed — merge blocker #11
+- Ink cancel fire-and-forget — no user-visible feedback when server cancel fails (Codex #6)
+- `--project-id` ignored on session resume / `--session-id latest` — needs backend project-scoped filter API (Codex #4)
+- Workspace files endpoint (`/workspace/files/metadata`) may not match backend canonical path — needs API audit (Codex #8)
 
-**No longer gaps (confirmed working 2026-04-28):**
+**No longer gaps (confirmed working 2026-04-28, hardened 2026-04-29):**
 - Cloud-direct mode: session create, SSE stream, message send/receive — all working
 - Session resume via `--session-id <UUID>` — working with full message hydration
+- `--session-id latest` — resolved client-side (fetches list, picks most recent)
 - OAuth credential flow: login → stored credentials → auto-auth in Ink — working
 - Cloud slash commands (`/sessions`, `/cloud account`) inside TUI — working
+- `--token` override — tokenSource tracking prevents stored credential replacement
+- Cloud cancel — POSTs `/chat/cancel` to backend on Ctrl+C
+- `--project-id` — flows through to session creation in both Python and Ink
 
 ## Related Docs
 
