@@ -1,10 +1,11 @@
 /** Central configuration for API connectivity + auth. */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
 
 const CLOUD_API_BASE = "https://app.omics-os.com/api/v1";
+const CLOUD_STREAM_BASE = "https://stream.omics-os.com/api/v1";
 const LOCAL_API_BASE = "http://localhost:8000";
 const DEFAULT_CLIENT_ID = "7lgldp8e72p2lmpmi3gjbnn9uk";
 const CREDENTIALS_PATH = join(
@@ -19,6 +20,7 @@ export type TokenSource = "env" | "cli" | "stored" | "none";
 
 export interface AppConfig {
   apiUrl: string;
+  streamApiUrl: string;
   sessionId?: string;
   projectId?: string;
   token?: string;
@@ -54,8 +56,11 @@ function readFullCredentials(): StoredCredentials | undefined {
 /** Write credentials back to disk. */
 function writeCredentials(creds: StoredCredentials): void {
   try {
-    mkdirSync(dirname(CREDENTIALS_PATH), { recursive: true });
+    const dir = dirname(CREDENTIALS_PATH);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(CREDENTIALS_PATH, JSON.stringify(creds, null, 2) + "\n", "utf-8");
+    chmodSync(CREDENTIALS_PATH, 0o600);
+    chmodSync(dir, 0o700);
   } catch {
     // Non-fatal — token refresh persistence failed
   }
@@ -73,12 +78,31 @@ function isTokenExpired(creds: StoredCredentials): boolean {
   }
 }
 
+const ALLOWED_ENDPOINTS = new Set([
+  "https://app.omics-os.com",
+  "https://staging.omics-os.com",
+  "http://localhost:8000",
+  "http://127.0.0.1:8000",
+]);
+
+function isAllowedEndpoint(endpoint: string): boolean {
+  const normalized = endpoint.replace(/\/+$/, "");
+  if (ALLOWED_ENDPOINTS.has(normalized)) return true;
+  try {
+    const url = new URL(normalized);
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 /** Attempt to refresh the OAuth token via the gateway endpoint. Returns new access_token or undefined. */
 async function refreshOAuthToken(creds: StoredCredentials): Promise<string | undefined> {
   const refreshToken = creds.refresh_token;
   if (!refreshToken) return undefined;
 
   const endpoint = (creds.endpoint ?? "https://app.omics-os.com").replace(/\/+$/, "");
+  if (!isAllowedEndpoint(endpoint)) return undefined;
   const clientId = creds.client_id ?? DEFAULT_CLIENT_ID;
   const url = `${endpoint}/api/v1/gateway/token/refresh`;
 
@@ -138,7 +162,7 @@ async function readStoredCredentialsAsync(): Promise<{ token: string; authType: 
 }
 
 /** Read stored credentials (sync, no refresh — for initial config resolution). */
-function readStoredCredentials(): { token: string; authType: AuthType } | undefined {
+export function readStoredCredentials(): { token: string; authType: AuthType } | undefined {
   const creds = readFullCredentials();
   if (!creds) return undefined;
 
@@ -158,8 +182,21 @@ function detectAuthType(token: string): AuthType {
   return "bearer";
 }
 
+/**
+ * Derive streaming base URL from REST base.
+ * Default cloud REST (app.omics-os.com) routes streams through stream.omics-os.com
+ * to bypass CloudFront OriginReadTimeout (60s). Custom endpoints stream from the
+ * same host to avoid cross-environment credential leakage.
+ */
+function deriveStreamBase(apiUrl: string, streamOverride?: string): string {
+  if (streamOverride) return streamOverride;
+  if (apiUrl === CLOUD_API_BASE) return CLOUD_STREAM_BASE;
+  return apiUrl;
+}
+
 export function resolveConfig(args: {
   apiUrl?: string;
+  streamApiUrl?: string;
   sessionId?: string;
   projectId?: string;
   token?: string;
@@ -168,6 +205,7 @@ export function resolveConfig(args: {
 }): AppConfig {
   const isCloud = args.cloud ?? false;
   const apiUrl = args.apiUrl ?? (isCloud ? CLOUD_API_BASE : LOCAL_API_BASE);
+  const streamApiUrl = deriveStreamBase(apiUrl, args.streamApiUrl);
   const isResume = args.isResume ?? false;
 
   // Token priority: env var > CLI flag > stored credentials > none
@@ -175,6 +213,7 @@ export function resolveConfig(args: {
   if (envToken) {
     return {
       apiUrl,
+      streamApiUrl,
       sessionId: args.sessionId,
       projectId: args.projectId,
       token: envToken,
@@ -188,6 +227,7 @@ export function resolveConfig(args: {
   if (args.token) {
     return {
       apiUrl,
+      streamApiUrl,
       sessionId: args.sessionId,
       projectId: args.projectId,
       token: args.token,
@@ -203,6 +243,7 @@ export function resolveConfig(args: {
     if (stored) {
       return {
         apiUrl,
+        streamApiUrl,
         sessionId: args.sessionId,
         projectId: args.projectId,
         token: stored.token,
@@ -216,6 +257,7 @@ export function resolveConfig(args: {
 
   return {
     apiUrl,
+    streamApiUrl,
     sessionId: args.sessionId,
     projectId: args.projectId,
     authType: "none",
@@ -261,7 +303,7 @@ export async function freshAuthHeaders(config: AppConfig): Promise<Record<string
   return authHeaders(config);
 }
 
-/** Build the stream endpoint URL for a session. */
+/** Build the stream endpoint URL for a session. Uses stream.omics-os.com for cloud. */
 export function streamUrl(config: AppConfig, sessionId: string): string {
-  return `${config.apiUrl}/sessions/${sessionId}/chat/stream`;
+  return `${config.streamApiUrl}/sessions/${sessionId}/chat/stream`;
 }

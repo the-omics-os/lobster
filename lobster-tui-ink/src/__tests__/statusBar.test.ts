@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   buildFooterParts,
   selectVisibleFooterParts,
@@ -10,6 +10,7 @@ describe("StatusBar helpers", () => {
       running: true,
       activeAgent: "data_expert_agent",
       tokenUsage: { promptTokens: 1200, completionTokens: 34, duration: 6.2 },
+      dataStatus: null,
       sessionId: "89d3d9173b87",
       runtimeInfo: {
         provider: "anthropic",
@@ -37,6 +38,7 @@ describe("StatusBar helpers", () => {
       running: false,
       activeAgent: "supervisor",
       tokenUsage: null,
+      dataStatus: null,
       runtimeInfo: undefined,
       completionVisible: false,
       inputBlocked: true,
@@ -49,6 +51,39 @@ describe("StatusBar helpers", () => {
       "respond above",
       "/help",
     ]);
+  });
+
+  it("shows data status when modalities are loading or cold", () => {
+    const parts = buildFooterParts({
+      running: true,
+      activeAgent: "data_expert_agent",
+      tokenUsage: null,
+      dataStatus: { cold: 1, warm: 2, hot: 3, total: 6 },
+      runtimeInfo: undefined,
+      completionVisible: false,
+      inputBlocked: false,
+      multiline: false,
+    });
+
+    const texts = parts.map((p) => p.text);
+    expect(texts).toContain("2 loading, 1 on disk");
+  });
+
+  it("hides data status when all modalities are hot", () => {
+    const parts = buildFooterParts({
+      running: false,
+      activeAgent: null,
+      tokenUsage: null,
+      dataStatus: { cold: 0, warm: 0, hot: 5, total: 5 },
+      runtimeInfo: undefined,
+      completionVisible: false,
+      inputBlocked: false,
+      multiline: false,
+    });
+
+    const texts = parts.map((p) => p.text);
+    expect(texts).not.toContain(expect.stringContaining("loading"));
+    expect(texts).not.toContain(expect.stringContaining("on disk"));
   });
 
   it("drops low-priority parts on narrow terminals", () => {

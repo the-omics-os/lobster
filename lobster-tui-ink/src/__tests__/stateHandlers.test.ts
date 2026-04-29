@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import {
   applyStatePatch,
   createInitialState,
@@ -39,6 +39,15 @@ describe("stateHandlers", () => {
     });
   });
 
+  it("handles null data for known state keys without crashing", () => {
+    const result = processStatePatch("active_agent", null);
+    expect(result).toEqual({ key: "active_agent", data: null });
+
+    const initial = createInitialState();
+    const next = applyStatePatch(initial, "active_agent", null);
+    expect(next.activeAgent).toBeNull();
+  });
+
   it("ignores unknown future schema versions", () => {
     const result = processStatePatch("progress", {
       _v: 999,
@@ -46,6 +55,18 @@ describe("stateHandlers", () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it("derives dataStatus summary from modalities patch", () => {
+    const initial = createInitialState();
+    const next = applyStatePatch(initial, "modalities", [
+      { name: "rna_seq", data_status: "hot" },
+      { name: "proteomics", data_status: "warm" },
+      { name: "genomics", data_status: "cold" },
+      { name: "metabolomics" },
+    ]);
+
+    expect(next.dataStatus).toEqual({ cold: 1, warm: 1, hot: 2, total: 4 });
   });
 
   it("clears per-run activity without resetting other state", () => {

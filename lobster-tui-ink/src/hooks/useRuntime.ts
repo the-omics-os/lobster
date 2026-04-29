@@ -162,6 +162,9 @@ export function useRuntime(config: AppConfig) {
 
   // Finish handler — reset active agent + REST fallback + auto-rename
   const onFinish = useCallback(async () => {
+    // Yield one microtask so the final updateMessage() propagates through
+    // React's render cycle before we wipe activity indicators.
+    await Promise.resolve();
     clearRunActivity(appStateStore);
     await refetchAfterStream();
 
@@ -183,7 +186,7 @@ export function useRuntime(config: AppConfig) {
     return { ...auth, ...reconnect };
   }, []);
 
-  const api = `${config.apiUrl}/sessions/${sessionId ?? "pending"}/chat/stream`;
+  const api = `${config.streamApiUrl}/sessions/${sessionId ?? "pending"}/chat/stream`;
 
   const runtime = useDataStreamRuntime({
     api,
@@ -191,6 +194,9 @@ export function useRuntime(config: AppConfig) {
     // Cloud backend uses assistant-stream DataStreamResponse (no [DONE] marker).
     // Local ink_launcher uses SSE format with [DONE] (ui-message-stream).
     protocol: config.isCloud ? "data-stream" : "ui-message-stream",
+    // Lobster manages multi-agent tool-call loops server-side.
+    // Prevent assistant-ui from triggering unwanted additional roundtrips.
+    maxSteps: 1,
     onData,
     onResponse,
     onError,

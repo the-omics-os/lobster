@@ -8,6 +8,7 @@ import { useTerminalSize } from "../hooks/useTerminalSize.js";
 import type { RuntimeInfo } from "../api/bootstrap.js";
 import type { AppStateStore } from "../utils/appStateStore.js";
 import type { FooterStateStore } from "../utils/footerStateStore.js";
+import type { DataStatusSummary } from "../utils/stateHandlers.js";
 
 interface StatusBarProps {
   appStateStore: AppStateStore;
@@ -35,6 +36,7 @@ interface BuildFooterPartsInput {
         duration?: number;
       }
     | null;
+  dataStatus: DataStatusSummary | null;
   sessionId?: string;
   runtimeInfo?: RuntimeInfo;
   isCloud?: boolean;
@@ -154,10 +156,26 @@ function buildGuidanceParts(input: {
   return parts;
 }
 
+function buildDataStatusPart(
+  dataStatus: DataStatusSummary | null,
+): FooterPart | null {
+  if (!dataStatus) return null;
+  const { cold, warm } = dataStatus;
+  if (cold === 0 && warm === 0) return null;
+  if (warm > 0 && cold > 0) {
+    return { text: `${warm} loading, ${cold} on disk`, tone: "warning" };
+  }
+  if (warm > 0) {
+    return { text: `${warm} loading`, tone: "warning" };
+  }
+  return { text: `${cold} on disk`, tone: "muted" };
+}
+
 export function buildFooterParts({
   running,
   activeAgent,
   tokenUsage,
+  dataStatus,
   sessionId,
   runtimeInfo,
   isCloud,
@@ -166,6 +184,9 @@ export function buildFooterParts({
   multiline,
 }: BuildFooterPartsInput): FooterPart[] {
   const parts: FooterPart[] = [buildStatusPart(running, activeAgent)];
+
+  const dspart = buildDataStatusPart(dataStatus);
+  if (dspart) parts.push(dspart);
 
   parts.push({
     text: buildRuntimeLabel(runtimeInfo, isCloud),
@@ -267,6 +288,7 @@ export function StatusBar({
   const { columns } = useTerminalSize();
   const activeAgent = useStore(appStateStore, (state) => state.activeAgent);
   const tokenUsage = useStore(appStateStore, (state) => state.tokenUsage);
+  const dataStatus = useStore(appStateStore, (state) => state.dataStatus);
   const completionVisible = useStore(
     footerStateStore,
     (state) => state.completionVisible,
@@ -287,6 +309,7 @@ export function StatusBar({
       running,
       activeAgent,
       tokenUsage,
+      dataStatus,
       sessionId,
       runtimeInfo,
       isCloud,

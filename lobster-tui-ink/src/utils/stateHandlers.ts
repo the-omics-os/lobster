@@ -70,10 +70,18 @@ export interface AlertEvent {
   message: string;
 }
 
+export interface DataStatusSummary {
+  cold: number;
+  warm: number;
+  hot: number;
+  total: number;
+}
+
 /** Accumulated state from patches. */
 export interface AppState {
   plots: unknown[];
   modalities: unknown[];
+  dataStatus: DataStatusSummary | null;
   activeAgent: string | null;
   agentStatus: string | null;
   activityEvents: ActivityEvent[];
@@ -89,6 +97,7 @@ export function createInitialState(): AppState {
   return {
     plots: [],
     modalities: [],
+    dataStatus: null,
     activeAgent: null,
     agentStatus: null,
     activityEvents: [],
@@ -99,6 +108,24 @@ export function createInitialState(): AppState {
     files: [],
     errorDetail: null,
   };
+}
+
+function summarizeDataStatus(modalities: unknown[]): DataStatusSummary | null {
+  let cold = 0;
+  let warm = 0;
+  let hot = 0;
+
+  for (const raw of modalities) {
+    if (!raw || typeof raw !== "object") continue;
+    const status = (raw as Record<string, unknown>).data_status;
+    if (status === "cold") cold++;
+    else if (status === "warm") warm++;
+    else hot++;
+  }
+
+  const total = cold + warm + hot;
+  if (total === 0) return null;
+  return { cold, warm, hot, total };
 }
 
 const ACTIVITY_EVENT_LIMIT = 25;
@@ -262,10 +289,10 @@ export function processStatePatch(
   }
 
   const typedKey = key as StateKey;
-  const patch = data as StatePatch;
 
   // Rule 2: Check _v field — if higher than supported, ignore
-  if (patch._v !== undefined && patch._v > SUPPORTED_VERSIONS[typedKey]!) {
+  const version = data && typeof data === "object" ? (data as StatePatch)._v : undefined;
+  if (typeof version === "number" && version > SUPPORTED_VERSIONS[typedKey]!) {
     return null;
   }
 
@@ -285,8 +312,10 @@ export function applyStatePatch(
   switch (key) {
     case "plots":
       return { ...state, plots: Array.isArray(data) ? data : [data] };
-    case "modalities":
-      return { ...state, modalities: Array.isArray(data) ? data : [data] };
+    case "modalities": {
+      const list = Array.isArray(data) ? data : [data];
+      return { ...state, modalities: list, dataStatus: summarizeDataStatus(list) };
+    }
     case "active_agent":
       return { ...state, activeAgent: typeof data === "string" ? data : null };
     case "agent_status":
