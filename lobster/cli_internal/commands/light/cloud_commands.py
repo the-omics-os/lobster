@@ -7,6 +7,7 @@ Commands:
     lobster cloud login   - Authenticate with Omics-OS Cloud
     lobster cloud status  - Show current usage and budget
     lobster cloud logout  - Remove stored credentials
+    lobster cloud chat    - Open interactive cloud chat (launches npm TUI)
 """
 
 import logging
@@ -535,3 +536,20 @@ def logout() -> None:
 
     clear_credentials()
     console.print("Logged out of Omics-OS Cloud.")
+
+
+@cloud_app.command()
+def chat(
+    session_id: Optional[str] = typer.Option(None, help="Resume a cloud session"),
+    project_id: Optional[str] = typer.Option(None, help="Associate with a cloud project"),
+) -> None:
+    """Open interactive cloud chat (launches Omics-OS Cloud TUI)."""
+    from lobster.cli_internal.npm_launcher import find_npm_binary, launch_cloud_chat
+
+    if not find_npm_binary():
+        console.print(
+            "[yellow]Cloud TUI not installed.[/yellow]\n"
+            "Install: [bold]npm install -g @omicsos/lobster[/bold]"
+        )
+        raise typer.Exit(1)
+    launch_cloud_chat(session_id=session_id, project_id=project_id)
