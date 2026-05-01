@@ -33,7 +33,7 @@ def vector_search_all_collections(
         ImportError: If vector backend modules are unavailable in this install.
     """
     try:
-        from lobster.services.vector.service import (
+        from lobster.vector.service import (
             ONTOLOGY_COLLECTIONS,
             VectorSearchService,
         )

@@ -1,9 +1,2 @@
-"""
-Text embedding provider implementations.
-
-Provides BaseEmbedder ABC and provider-specific implementations.
-Implementations are loaded lazily — importing this package does NOT
-trigger torch or sentence-transformers imports.
-"""
-
-__all__ = ["BaseEmbedder"]
+"""DEPRECATED: Use lobster.vector.embeddings instead."""
+from lobster.vector.embeddings import *  # noqa: F401, F403

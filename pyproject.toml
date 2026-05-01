@@ -113,10 +113,7 @@ classic-tui = ["textual>=6.7.1"]
 # Semantic Vector Search (optional, installed via `lobster init`)
 # =============================================================================
 vector-search = [
-    # Backend runtime currently lives in lobster-metadata (development package).
-    # Keep public extra installable by shipping only dependency prerequisites.
-    "chromadb>=1.0.0",
-    "openai>=1.0.0",
+    "lobster-vector[chromadb,openai]~=1.1.0",
 ]
 
 # =============================================================================
@@ -337,6 +334,7 @@ members = [
     "packages/lobster-proteomics",
     "packages/lobster-research",
     "packages/lobster-transcriptomics",
+    "packages/lobster-vector",
     "packages/lobster-visualization",
 ]
 
@@ -349,6 +347,7 @@ lobster-visualization = { workspace = true }
 lobster-genomics = { workspace = true }
 lobster-proteomics = { workspace = true }
 lobster-ai-tui = { workspace = true }
+lobster-vector = { workspace = true }
 
 [tool.setuptools.packages.find]
 # Core lobster-ai package discovery with extracted agent exclusions
@@ -430,8 +429,9 @@ exclude = [
     # Research services
     "lobster.services.data_management.modality_detection_service",
 
-    # Vector search (moved to lobster-metadata)
+    # Vector search (moved to lobster-vector package)
     "lobster.services.vector*",
+    "lobster.vector*",
 ]
 # Core keeps: supervisor, graph.py, state, services, tools, config, prompts
 

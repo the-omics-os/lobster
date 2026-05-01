@@ -750,7 +750,7 @@ def _vector_search_install_command() -> str:
 def _is_vector_search_backend_available() -> bool:
     """Check whether vector backend modules are importable."""
     try:
-        from lobster.services.vector.service import VectorSearchService  # noqa: F401
+        from lobster.vector.service import VectorSearchService  # noqa: F401
     except ImportError:
         return False
     return True
@@ -1281,7 +1281,7 @@ def _download_ontology_databases() -> bool:
         True if at least one collection was downloaded successfully.
     """
     try:
-        from lobster.services.vector.backends.chromadb_backend import (
+        from lobster.vector.backends.chromadb_backend import (
             ONTOLOGY_TARBALLS,
             ChromaDBBackend,
         )

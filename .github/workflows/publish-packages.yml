@@ -124,6 +124,8 @@ jobs:
             path: "packages/lobster-research"
           - name: lobster-visualization
             path: "packages/lobster-visualization"
+          - name: lobster-vector
+            path: "packages/lobster-vector"
           - name: lobster-proteomics
             path: "packages/lobster-proteomics"
           - name: lobster-genomics
@@ -305,6 +307,28 @@ jobs:
           skip-existing: true
           verbose: true
 
+  publish-lobster-vector:
+    name: Publish lobster-vector
+    needs: [validate-version, build, publish-lobster-ai]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.validate-version.outputs.is_test == 'true' && 'testpypi-lobster-vector' || 'pypi-lobster-vector' }}
+      url: ${{ needs.validate-version.outputs.is_test == 'true' && 'https://test.pypi.org/project/lobster-vector/' || 'https://pypi.org/project/lobster-vector/' }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-lobster-vector
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: ${{ needs.validate-version.outputs.is_test == 'true' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
+          packages-dir: dist/
+          skip-existing: true
+          verbose: true
+
   publish-lobster-proteomics:
     name: Publish lobster-proteomics
     needs: [validate-version, build, publish-lobster-ai]
@@ -475,6 +499,7 @@ jobs:
       - publish-lobster-transcriptomics
       - publish-lobster-research
       - publish-lobster-visualization
+      - publish-lobster-vector
       - publish-lobster-proteomics
       - publish-lobster-genomics
       - publish-lobster-metabolomics
@@ -598,6 +623,7 @@ jobs:
       - publish-lobster-transcriptomics
       - publish-lobster-research
       - publish-lobster-visualization
+      - publish-lobster-vector
       - publish-lobster-proteomics
       - publish-lobster-genomics
       - publish-lobster-metabolomics
@@ -627,6 +653,7 @@ jobs:
           echo "| lobster-transcriptomics | ${{ needs.publish-lobster-transcriptomics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| lobster-research | ${{ needs.publish-lobster-research.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| lobster-visualization | ${{ needs.publish-lobster-visualization.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| lobster-vector | ${{ needs.publish-lobster-vector.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| lobster-proteomics | ${{ needs.publish-lobster-proteomics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| lobster-genomics | ${{ needs.publish-lobster-genomics.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| lobster-metabolomics | ${{ needs.publish-lobster-metabolomics.result }} |" >> $GITHUB_STEP_SUMMARY

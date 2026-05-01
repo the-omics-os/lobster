@@ -678,7 +678,7 @@ def _show_workspace_prompt(client):
 
         # Check semantic search backend availability
         try:
-            from lobster.services.vector.service import (  # noqa: F401
+            from lobster.vector.service import (  # noqa: F401
                 VectorSearchService,
             )
 

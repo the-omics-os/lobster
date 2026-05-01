@@ -93,7 +93,21 @@ lobster-{domain}/
 | `lobster-ml` | machine_learning_expert, feature_selection_expert, survival_analysis_expert |
 | `lobster-drug-discovery` | drug_discovery_expert, cheminformatics_expert, clinical_dev_expert, pharmacogenomics_expert |
 | `lobster-metadata` | metadata_assistant |
+| `lobster-vector` | _(no agents — cross-cutting service)_ |
 | `lobster-structural-viz` | protein_structure_visualization_expert |
+
+## packages/lobster-vector/
+
+Semantic vector search engine. Cross-cutting service consumed by multiple agents and CLI.
+
+- `lobster/vector/__init__.py` — Public API with lazy imports (no heavy deps on import)
+- `lobster/vector/service.py` — VectorSearchService (query, query_batch, match_ontology, ONTOLOGY_COLLECTIONS)
+- `lobster/vector/config.py` — VectorSearchConfig (env-driven factory: LOBSTER_VECTOR_BACKEND, LOBSTER_EMBEDDING_PROVIDER)
+- `lobster/vector/artifact.py` — ArtifactMetadata + CollectionUnavailable (compatibility contract)
+- `lobster/vector/ontology_graph.py` — NetworkX OBO graph traversal (OBO_URLS, load_obo_graph)
+- `lobster/vector/backends/` — ChromaDB, FAISS, pgvector implementations (BaseVectorBackend ABC)
+- `lobster/vector/embeddings/` — SapBERT, MiniLM, OpenAI providers (BaseEmbedder ABC)
+- `lobster/vector/rerankers/` — CrossEncoder, Cohere rerankers (BaseReranker ABC)
 
 ## Tests (`tests/`)
 
