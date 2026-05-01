@@ -8,15 +8,21 @@ description: |
   Use when working with biological data, omics analysis, or bioinformatics tasks.
   Covers: H5AD, CSV, VCF, PLINK, 10X, mzML formats, GEO/SRA/PRIDE/MetaboLights accessions.
 
+  Lobster AI works in two deployment modes:
+  - LOCAL: agents run on-device, you provide an LLM API key
+  - CLOUD: agents run on Omics-OS Cloud (ECS Fargate), managed Bedrock, per-user billing
+
   TRIGGER PHRASES: "analyze cells", "search PubMed", "download GEO", "run QC",
   "cluster", "find markers", "differential expression", "UMAP", "volcano plot",
   "single-cell", "RNA-seq", "VCF", "GWAS", "proteomics", "mass spec",
   "metabolomics", "MetaboLights", "LC-MS", "metabolite",
   "feature selection", "survival analysis", "biomarker", "bioinformatics",
-  "drug discovery", "pharmacogenomics", "variant annotation"
+  "drug discovery", "pharmacogenomics", "variant annotation",
+  "cloud chat", "omics-os cloud", "lobster cloud",
+  "cloud login", "cloud session"
 
   ASSUMES: Lobster is installed and configured. For setup issues, tell user to
-  run `lobster config-test` and fix any errors before proceeding.
+  run `lobster config-test` (local) or `lobster cloud status` (cloud) and fix any errors.
 required_binaries:
   - lobster
   - python3
@@ -24,43 +30,49 @@ primary_credential: LLM_PROVIDER_API_KEY
 required_env_vars:
   - name: ANTHROPIC_API_KEY
     required: one_of_provider
-    description: Anthropic Claude API key
+    description: Anthropic Claude API key (local mode)
   - name: GOOGLE_API_KEY
     required: one_of_provider
-    description: Google Gemini API key
+    description: Google Gemini API key (local mode)
   - name: OPENAI_API_KEY
     required: one_of_provider
-    description: OpenAI API key
+    description: OpenAI API key (local mode)
   - name: OPENROUTER_API_KEY
     required: one_of_provider
-    description: OpenRouter API key (600+ models)
+    description: OpenRouter API key (local mode, 600+ models)
   - name: AWS_ACCESS_KEY_ID
     required: one_of_provider
-    description: AWS Bedrock access key (must be paired with AWS_SECRET_ACCESS_KEY)
+    description: AWS Bedrock access key (local mode, must pair with SECRET)
   - name: AWS_SECRET_ACCESS_KEY
     required: one_of_provider
-    description: AWS Bedrock secret key (must be paired with AWS_ACCESS_KEY_ID)
+    description: AWS Bedrock secret key (local mode, must pair with ACCESS_KEY)
   - name: AZURE_AI_ENDPOINT
     required: one_of_provider
-    description: Azure AI endpoint URL (must be paired with AZURE_AI_CREDENTIAL)
+    description: Azure AI endpoint URL (local mode, must pair with CREDENTIAL)
   - name: AZURE_AI_CREDENTIAL
     required: one_of_provider
-    description: Azure AI API credential (must be paired with AZURE_AI_ENDPOINT)
+    description: Azure AI API credential (local mode, must pair with ENDPOINT)
   - name: NCBI_API_KEY
     required: false
     description: NCBI API key for faster PubMed/GEO access (recommended)
 credential_note: |
-  Exactly ONE LLM provider is required (not all). Choose one provider and set
-  only that provider's env var(s). Paired credentials (AWS, Azure) must both be set.
+  LOCAL MODE: Exactly ONE LLM provider is required. Choose one and set only that
+  provider's env var(s). Paired credentials (AWS, Azure) must both be set.
+  CLOUD MODE: No LLM keys needed. Run `lobster cloud login` to authenticate via
+  browser OAuth or `lobster cloud login --api-key "$OMICS_OS_API_KEY"` for headless environments.
+  Credentials stored at ~/.config/omics-os/credentials.json.
 declared_writes:
   - .lobster_workspace/                        # Workspace data, session state, outputs
   - .lobster_workspace/.env                    # Provider credential (workspace-scoped, mode 0600)
   - .lobster_workspace/provider_config.json    # Provider selection config
   - ~/.config/lobster/credentials.env          # ONLY if --global flag is used (not default)
   - ~/.config/lobster/providers.json           # ONLY if --global flag is used (not default)
+  - ~/.config/omics-os/credentials.json        # Cloud OAuth/API key credentials
 network_access:
   - docs.omics-os.com                          # On-demand documentation fetches
-  - LLM provider API endpoint                  # Whichever single provider is configured
+  - app.omics-os.com                           # Omics-OS Cloud REST API (cloud mode)
+  - stream.omics-os.com                        # Omics-OS Cloud streaming (cloud mode)
+  - LLM provider API endpoint                  # Whichever single provider is configured (local mode)
   - eutils.ncbi.nlm.nih.gov                   # PubMed/GEO search (Research Agent only)
   - ftp.ncbi.nlm.nih.gov                      # GEO/SRA dataset downloads (Data Expert only)
   - www.ebi.ac.uk                              # PRIDE/MetaboLights (Research Agent only)
@@ -78,15 +90,16 @@ language -- Lobster routes to 22 specialist agents across 10 packages automatica
 ## Requirements
 
 - **Binaries**: `lobster` CLI (`pip install lobster-ai`), Python 3.12+
-- **Credential**: Exactly ONE LLM provider key as env var (not all — pick one):
+- **Local mode** (one of):
   - `ANTHROPIC_API_KEY` | `GOOGLE_API_KEY` | `OPENAI_API_KEY` | `OPENROUTER_API_KEY`
-  - `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (Bedrock — both required)
-  - `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL` (Azure — both required)
+  - `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (Bedrock)
+  - `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL` (Azure)
   - Ollama: no key needed (local models)
+- **Cloud mode**: `lobster cloud login` (browser OAuth or `--api-key "$KEY"`). No LLM keys needed.
+  - Env var: `OMICS_OS_API_KEY` (cloud auth alternative to stored credentials)
 - **Optional**: `NCBI_API_KEY` for faster PubMed/GEO
-- **Writes**: `.lobster_workspace/` (data, credentials in `.env` mode 0600, outputs)
-- **Global config** (`--global` flag, NOT default): `~/.config/lobster/` — avoid unless needed
-- **Network**: LLM provider API + public bio databases (GEO, SRA, PRIDE, MetaboLights)
+- **Writes**: `.lobster_workspace/` (local), `~/.config/omics-os/credentials.json` (cloud)
+- **Network**: LLM provider (local) or `app.omics-os.com` + `stream.omics-os.com` (cloud)
 
 ## Docs Discovery
 
@@ -102,30 +115,46 @@ The docs site at **docs.omics-os.com** exposes LLM-friendly raw markdown:
 
 Example: `https://docs.omics-os.com/raw/docs/tutorials/single-cell-rnaseq.md`
 
-## Two Modes
+## Three Modes
 
-This skill supports coding agents in two modes:
+### Local Mode
+Agents run on your machine. You provide LLM API key. Data stays local.
+```bash
+lobster init                              # Configure LLM provider
+lobster chat                              # Interactive (Ink or Go TUI)
+lobster query "Analyze my data" --json    # Single-turn
+```
 
-**Orchestrator** -- The agent calls `lobster query --json --session-id` programmatically,
-parses structured output, and chains multi-step analyses. See [agent-patterns.md](references/agent-patterns.md).
+### Cloud Mode (Omics-OS Cloud)
+Agents run on ECS Fargate. Managed Bedrock. Per-user billing. No LLM keys.
+```bash
+lobster cloud login                       # Browser OAuth (one-time)
+lobster cloud chat                        # Interactive (launches npm TUI)
+lobster cloud status                      # Check tier, usage, budget
+lobster cloud logout                      # Clear stored credentials
+```
 
-**Guide** -- The agent teaches a human user what to type in `lobster chat` or `lobster query`.
-See the routing table below for which docs page to fetch.
+### Orchestrator Mode
+Coding agents call `lobster query --json` programmatically, parse structured output,
+and chain multi-step analyses. Cloud mode uses `lobster cloud chat` (interactive npm TUI).
+See [agent-patterns.md](references/agent-patterns.md).
 
 ## Quick Start
 
 ```bash
-# Install (PyPI -- preferred)
+# Install
 pip install 'lobster-ai[full]'
 # or: uv tool install 'lobster-ai[full]'
 
-# Configure (uses env var -- never pass raw keys on command line)
+# === Local mode ===
 lobster init --non-interactive --anthropic-key "$ANTHROPIC_API_KEY" --profile production
-
-# Run analysis (always pass -w and --session-id together)
 lobster query -w ./my_analysis --session-id "proj" --json "Download GSE109564 and run QC"
 
-# Inspect workspace (no tokens burned, ~300ms)
+# === Cloud mode ===
+lobster cloud login                       # One-time browser OAuth
+lobster cloud chat                        # Interactive cloud chat (npm TUI)
+
+# Inspect workspace (no tokens, ~300ms, local mode only)
 lobster command data --json -w ./my_analysis
 ```
 
@@ -138,7 +167,7 @@ lobster command data --json -w ./my_analysis
 |---|---|---|
 | **Install & configure** | `getting-started/installation` | -- |
 | **Configuration options** | `getting-started/configuration` | -- |
-| **Use the CLI** | `guides/cli-commands` | [cli-reference.md](references/cli-reference.md) |
+| **Use the CLI (local + cloud)** | `guides/cli-commands` | [cli-reference.md](references/cli-reference.md) |
 | **Orchestrate programmatically** | -- | [agent-patterns.md](references/agent-patterns.md) |
 | **Analyze scRNA-seq** | `tutorials/single-cell-rnaseq` | -- |
 | **Analyze bulk RNA-seq** | `tutorials/bulk-rnaseq` | -- |
@@ -159,14 +188,30 @@ To fetch a docs page: `https://docs.omics-os.com/raw/docs/{slug}.md`
 
 ## Hard Rules
 
-1. **Always use `--session-id`** for multi-step analyses -- loaded data persists across queries
-2. **Use `lobster command --json`** for workspace inspection (no tokens burned, ~300ms)
+1. **Always use `--session-id`** for multi-step local analyses -- loaded data persists across queries
+2. **Use `lobster command --json`** for workspace inspection (no tokens, ~300ms, local mode only)
 3. **Research Agent is the ONLY agent with internet access** -- all others operate on loaded data
 4. **Never skip QC** before analysis -- always assess quality first
-5. **Use `--json` flag** when parsing output programmatically
-6. **Check data is loaded** before running analysis steps (`lobster command data --json`)
-7. **Default workspace**: `.lobster_workspace/` -- override with `-w <path>`
-8. **Fetch docs on demand** from `docs.omics-os.com/raw/docs/{slug}.md` -- don't guess workflows
+5. **Use `--json` flag** when parsing output programmatically (both local and cloud)
+6. **Cloud mode**: run `lobster cloud login` before `lobster cloud chat`
+7. **Cloud sessions persist server-side** -- managed within the npm TUI
+9. **Default workspace**: `.lobster_workspace/` (local only) -- override with `-w <path>`
+10. **Fetch docs on demand** from `docs.omics-os.com/raw/docs/{slug}.md` -- don't guess workflows
+
+## Local vs Cloud Decision
+
+| Factor | Local | Cloud |
+|--------|-------|-------|
+| LLM keys | You provide | Managed (Bedrock) |
+| Agent execution | Your machine | ECS Fargate |
+| Data storage | Local `.lobster_workspace/` | Cloud workspace |
+| Session persistence | Disk (workspace) | Server-side (UUID) |
+| Billing | Your LLM provider | Omics-OS usage-based |
+| Offline | Yes | No |
+| Multi-device | No | Yes (web + CLI continuity) |
+| Setup | `lobster init` | `lobster cloud login` |
+
+**Rule**: If user has Omics-OS Cloud account, prefer cloud mode. Otherwise local.
 
 ## Agent Overview
 

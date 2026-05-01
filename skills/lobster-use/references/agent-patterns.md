@@ -3,7 +3,23 @@
 How coding agents (Claude Code, Gemini CLI, Codex, OpenClaw) use Lobster AI programmatically
 to offload bioinformatics analysis.
 
-## Core Pattern
+## Local vs Cloud
+
+| Factor | Local (`lobster query`) | Cloud (`lobster cloud chat`) |
+|--------|------------------------|-------------------------------|
+| Setup | `lobster init` + LLM key | `lobster cloud login` (one-time) |
+| Sessions | `--session-id <name>` (disk) | Interactive TUI (server-side sessions) |
+| Workspace | `-w <path>` (local files) | Cloud workspace (server-side) |
+| Inspection | `lobster command --json` | Inside TUI |
+| Offline | Yes | No |
+
+**Decision rule**: If user has Omics-OS Cloud credentials at `~/.config/omics-os/credentials.json`,
+prefer cloud. Otherwise use local.
+
+**Note**: Cloud mode is interactive only (`lobster cloud chat`). For programmatic cloud
+queries, use the `@omicsos/lobster` npm CLI directly.
+
+## Core Pattern — Local
 
 The agent calls `lobster query --json --session-id` and parses structured output:
 
@@ -20,7 +36,8 @@ echo "$RESULT" | jq -r '.response'
 
 ## JSON Output Schema
 
-**Success response**:
+### Local Success
+
 ```json
 {
   "success": true,
@@ -31,87 +48,81 @@ echo "$RESULT" | jq -r '.response'
 }
 ```
 
-**Error response**:
+### Error
+
 ```json
 {
   "success": false,
-  "response": "",
-  "session_id": "proj",
-  "error": "No modality loaded. Load data first."
+  "error": "Not authenticated. Run 'lobster cloud login' first.",
+  "session_id": null
 }
 ```
 
-**Fields**: `success` and `response` always present. `last_agent` and `token_usage` only on success.
-`workspace` is NOT included in the JSON output — track it yourself from `-w`.
+**Parse with**: `jq -r 'if .success then .response else (.error // .response // "Unknown error") end'`
 
-Parse with: `jq -r '.response'`
+**Note**: Not all failures include `.error` — some set `.success: false` with the error in `.response`. Always check `.success` first, then fall through `.error // .response // .finish_reason`.
 
-## Workspace Inspection (No Tokens)
+## Workspace Inspection
 
-Use `lobster command --json` for fast inspection (~300ms, no LLM, no API keys):
+### Local (No Tokens, ~300ms)
+
+Use `lobster command --json` for fast inspection:
 
 ```bash
-# What data is loaded?
 lobster command data --json -w .lobster_workspace | jq '.data'
-
-# List workspace files
 lobster command files --json -w .lobster_workspace | jq '.data.tables'
-
-# List available datasets
 lobster command "workspace list" --json | jq '.data.tables[0].rows'
-
-# Modality details
 lobster command modalities --json | jq '.data'
-
-# Check system status
 lobster config-test --json
 ```
 
 **Rule**: Always use `lobster command` for inspection. Only use `lobster query` for
 analysis that requires the agent system.
 
-## Multi-Step Analysis Pattern
+### Cloud
 
-A typical orchestrated pipeline:
+Cloud workspace files are managed within the interactive TUI (`lobster cloud chat`).
+```bash
+lobster cloud status          # Tier, budget, usage
+```
+
+## Multi-Step Analysis — Local
 
 ```bash
 SESSION="liver_study"
 WORKSPACE="./liver_analysis"
 
-# IMPORTANT: Always pass BOTH -w and --session-id on EVERY call.
-# Omitting -w causes workspace to default to .lobster_workspace/ and lose context.
-
 # Step 1: Search (Research Agent -- online)
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
   "Search PubMed for liver fibrosis scRNA-seq datasets from 2023-2024"
 
-# Step 2: Download (Data Expert -- executes queued download)
+# Step 2: Download (Data Expert)
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
   "Download the top dataset"
 
-# Step 3: Verify data loaded before proceeding
+# Step 3: Verify data loaded
 DATA=$(lobster command data --json -w "$WORKSPACE")
 if ! echo "$DATA" | jq -e '.success' > /dev/null 2>&1; then
-  echo "No data loaded yet -- check download status"
+  echo "No data loaded yet"
   lobster command "queue list" --json -w "$WORKSPACE"
   exit 1
 fi
 
-# Step 4: Analyze (Transcriptomics Expert)
+# Step 4: Analyze
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
   "Run QC, filter low-quality cells, normalize, and cluster"
 
-# Step 5: Annotate (Annotation Expert -- child of Transcriptomics)
+# Step 5: Annotate
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
   "Identify cell types in each cluster"
 
-# Step 6: DE (DE Analysis Expert -- child of Transcriptomics)
+# Step 6: DE
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
-  "Find differentially expressed genes between hepatocytes and stellate cells"
+  "Find DE genes between hepatocytes and stellate cells"
 
-# Step 7: Visualize (Visualization Expert)
+# Step 7: Visualize
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
-  "Create UMAP colored by cell type and export marker genes to CSV"
+  "Create UMAP colored by cell type and export markers to CSV"
 
 # Step 8: Check outputs
 lobster command files --json -w "$WORKSPACE"
@@ -119,31 +130,35 @@ lobster command files --json -w "$WORKSPACE"
 
 ## Non-Interactive Setup
 
-Before first use, initialize Lobster without user interaction.
-**Always pass API keys via environment variables** — never hardcode secrets.
+### Local
 
 ```bash
-# Check if already configured
 if ! lobster config-test --json 2>/dev/null | jq -e '.success' > /dev/null 2>&1; then
-  # Requires ANTHROPIC_API_KEY set in environment
   lobster init --non-interactive --anthropic-key "$ANTHROPIC_API_KEY" --profile production
 fi
 ```
 
-For all provider options, see [cli-reference.md](cli-reference.md) "Initialization" section.
+### Cloud
+
+```bash
+# Check if already authenticated
+if ! lobster cloud status 2>/dev/null | grep -q "Tier"; then
+  echo "Not authenticated. User must run: lobster cloud login"
+  exit 1
+fi
+```
+
+Cloud login requires a browser (OAuth flow) or interactive API key paste.
+Coding agents cannot perform initial cloud login — tell the user to run it manually.
 
 ## Output File Discovery
 
-Lobster writes outputs to the workspace. When you pass `-w ./my_analysis`, the workspace
-root is `./my_analysis/.lobster_workspace/`. When you omit `-w`, the default is
-`.lobster_workspace/` in the current directory.
+### Local
 
 ```bash
-# Use lobster command to discover outputs (preferred -- no tokens)
 lobster command files --json -w "$WORKSPACE"
 lobster command plots --json -w "$WORKSPACE"
 
-# Or find files directly
 WS_DIR="${WORKSPACE}/.lobster_workspace"
 find "$WS_DIR" -name "*.h5ad"   # Processed AnnData objects
 find "$WS_DIR" -name "*.html"   # Interactive Plotly visualizations
@@ -152,72 +167,49 @@ find "$WS_DIR" -name "*.csv"    # Exported tables
 find "$WS_DIR" -name "*.ipynb"  # Reproducible notebooks
 ```
 
-## Pipeline Export
-
-Export a completed analysis as a reproducible Jupyter notebook:
+## Pipeline Export (Local Only)
 
 ```bash
-# Export from a named session
 lobster command "pipeline export" --session-id "$SESSION"
-
-# The notebook appears in the workspace
 ls "$WORKSPACE"/*.ipynb
 ```
 
 ## Error Handling
 
-Check the `success` field in JSON output. **Do NOT redirect stderr** — it contains
-diagnostic information needed for debugging.
+Check the `success` field. **Do NOT redirect stderr** — it contains diagnostics.
 
 ```bash
-# Capture stdout (JSON) and stderr (diagnostics) separately
 RESULT=$(lobster query -w "$WORKSPACE" --session-id "$SESSION" --json "Run clustering" 2>lobster_stderr.log)
-SUCCESS=$(echo "$RESULT" | jq -r '.success // false')
 
+SUCCESS=$(echo "$RESULT" | jq -r '.success // false')
 if [ "$SUCCESS" != "true" ]; then
-  echo "Analysis failed"
+  echo "Failed"
   echo "$RESULT" | jq -r '.error // .response // "Unknown error"'
-  cat lobster_stderr.log  # Check for Python tracebacks or startup errors
+  cat lobster_stderr.log
   exit 1
 fi
 ```
 
-**If `jq` is not available**, use Python as fallback:
+**If `jq` is not available**:
 ```bash
 echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('response',''))"
 ```
 
 Common failure patterns:
-- **No data loaded**: Agent ran analysis before loading data. Use `lobster command data --json -w "$WORKSPACE"` to verify.
-- **Session not found**: Missing `--session-id` on a follow-up query. Data from previous queries is lost.
-- **Workspace mismatch**: Omitting `-w` on a follow-up causes default workspace, losing context. Always pass `-w`.
-- **Agent not available**: Package not installed. Check with `lobster agents list`.
-- **Config error**: Run `lobster config-test --json` to diagnose.
-- **Download pending**: Data queued but not yet downloaded. Check `lobster command "queue list" --json -w "$WORKSPACE"`.
 
-## Combining Lobster with Other Tools
-
-Lobster handles the bioinformatics. The coding agent handles everything else:
-
-```bash
-# Extract specific values from Lobster's response
-CELL_COUNT=$(lobster query --session-id "$SESSION" --json \
-  "How many cells passed QC?" | jq -r '.response' | grep -oP '\d+(?= cells)')
-
-# Use Lobster output files in downstream scripts
-lobster query --session-id "$SESSION" --json "Export DE results to CSV"
-RESULTS_CSV=$(find .lobster_workspace -name "*de_results*" -name "*.csv" | head -1)
-python my_custom_analysis.py "$RESULTS_CSV"
-
-# Feed external data into Lobster
-lobster query -w ./analysis --session-id "ext" --json \
-  "Load the data from /path/to/external_data.h5ad"
-```
+| Error | Mode | Cause | Fix |
+|-------|------|-------|-----|
+| No data loaded | Local | Analysis before loading | `lobster command data --json` to verify |
+| Session not found | Local | Missing `--session-id` | Always pass `--session-id` for multi-step |
+| Workspace mismatch | Local | Omitting `-w` on follow-up | Always pass `-w` |
+| Not authenticated | Cloud | No stored credentials | `lobster cloud login` |
+| Cloud TUI not installed | Cloud | npm binary missing | `npm install -g @omicsos/lobster` |
+| Agent not available | Both | Package not installed | `lobster agents list` |
+| Config error | Local | Provider misconfigured | `lobster config-test --json` |
 
 ## Agent Routing
 
-You don't need to specify which agent to use. Describe the task in natural language
-and Lobster routes automatically. Key routing rules:
+Describe the task in natural language — Lobster routes automatically:
 
 - **Literature/dataset search** -> Research Agent (ONLY agent with internet)
 - **File loading/downloading** -> Data Expert (offline only)
@@ -231,8 +223,12 @@ and Lobster routes automatically. Key routing rules:
 
 ## Session Continuity Best Practices
 
+### Local
 1. **Always name sessions**: `--session-id "descriptive_name"` not random IDs
-2. **One session per analysis**: Don't mix unrelated analyses in one session
+2. **One session per analysis**: Don't mix unrelated analyses
 3. **Check before continuing**: `lobster command data --json` after resuming
-4. **Use `latest` sparingly**: Prefer explicit session names for reproducibility
-5. **Workspace + session together**: `-w ./project --session-id "run_01"`
+4. **Workspace + session together**: `-w ./project --session-id "run_01"`
+
+### Cloud
+1. **Use `lobster cloud chat`** for interactive sessions — managed in the npm TUI
+2. **Sessions are cross-device**: Same session accessible from CLI and web app
