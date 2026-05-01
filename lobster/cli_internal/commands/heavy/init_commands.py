@@ -1427,6 +1427,63 @@ def _install_extended_data() -> None:
         # Don't warn on failure — these all have graceful fallbacks
 
 
+def _offer_npm_cross_install() -> None:
+    """Offer to install @omicsos/lobster npm CLI if not already present."""
+    from lobster.cli_internal.npm_launcher import find_npm_binary
+
+    if find_npm_binary():
+        console.print("[green]✓[/green] Cloud TUI installed (npm)")
+        return
+
+    console.print()
+    console.print(
+        "[bold]Cloud TUI[/bold] enables interactive cloud sessions "
+        "from your terminal."
+    )
+    console.print(
+        "  Install: [bold cyan]npm install -g @omicsos/lobster[/bold cyan]"
+    )
+
+    try:
+        install = Confirm.ask(
+            "  Install now?", default=True, console=console
+        )
+    except (KeyboardInterrupt, EOFError):
+        return
+
+    if not install:
+        console.print(
+            "  [dim]Skipped. Run 'npm install -g @omicsos/lobster' later.[/dim]"
+        )
+        return
+
+    npm = shutil.which("npm")
+    if not npm:
+        console.print(
+            "  [yellow]npm not found.[/yellow] Install Node.js 22+ first, then:\n"
+            "  [bold]npm install -g @omicsos/lobster[/bold]"
+        )
+        return
+
+    import subprocess
+
+    console.print("  [dim]Installing @omicsos/lobster...[/dim]")
+    result = subprocess.run(
+        [npm, "install", "-g", "@omicsos/lobster"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        console.print("  [green]✓[/green] @omicsos/lobster installed")
+    else:
+        console.print(
+            f"  [yellow]Install failed (exit {result.returncode}).[/yellow]\n"
+            "  Run manually: [bold]npm install -g @omicsos/lobster[/bold]"
+        )
+        if result.stderr:
+            console.print(f"  [dim]{result.stderr[:200]}[/dim]")
+
+
 def _ensure_tui_installed() -> None:
     """Install textual for TUI support if not present."""
     try:
@@ -2110,6 +2167,9 @@ def init_impl(
             )
             console.print(f"\n[bold]uv tool command:[/bold] {' '.join(cmd)}")
 
+        if not skip_extras:
+            _offer_npm_cross_install()
+
         raise typer.Exit(0)
 
     # Interactive mode: run wizard
@@ -2235,6 +2295,8 @@ def init_impl(
                 console.print(f"[dim]Questionary wizard failed ({_q_exc}).[/dim]")
 
         if _tui_handled:
+            if not skip_extras:
+                _offer_npm_cross_install()
             raise typer.Exit(0)
 
         # No wizard UI available

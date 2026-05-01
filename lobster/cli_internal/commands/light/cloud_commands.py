@@ -620,22 +620,24 @@ def chat(
     endpoint: Optional[str] = typer.Option(
         None, "--endpoint", help="Custom cloud API endpoint"
     ),
+    stream_endpoint: Optional[str] = typer.Option(
+        None, "--stream-endpoint", help="Custom stream origin (e.g., https://stream.omics-os.com)"
+    ),
     project_id: Optional[str] = typer.Option(
         None, "--project-id", "-p", help="Associate session with a cloud project"
     ),
 ) -> None:
     """Start an interactive cloud chat session (Ink TUI, direct connection)."""
     import os
-    import shutil
     import subprocess
 
-    from lobster.cli_internal.ink_launcher import find_ink_binary
+    from lobster.cli_internal.npm_launcher import find_npm_binary
 
-    binary = find_ink_binary()
+    binary = find_npm_binary()
     if not binary:
         console.print(
-            "[red]Error:[/red] lobster-chat binary not found.\n"
-            "Build with: cd lobster-tui-ink && bun run build"
+            "[red]Error:[/red] Cloud TUI not installed.\n"
+            "Install: [bold]npm install -g @omicsos/lobster[/bold]"
         )
         raise typer.Exit(1)
 
@@ -645,17 +647,27 @@ def chat(
 
     api_url = endpoint or "https://app.omics-os.com/api/v1"
 
+    from lobster.cli_internal.commands.light.cloud_query import (
+        CloudQueryError, _validate_endpoint, derive_stream_base,
+    )
     if endpoint:
-        from lobster.cli_internal.commands.light.cloud_query import (
-            CloudQueryError, _validate_endpoint,
-        )
         try:
             _validate_endpoint(endpoint.rstrip("/"))
         except CloudQueryError as e:
             console.print(f"[red]Error:[/red] {e}")
             raise typer.Exit(1)
+    if stream_endpoint:
+        try:
+            _validate_endpoint(stream_endpoint.rstrip("/"))
+        except CloudQueryError as e:
+            console.print(f"[red]Error:[/red] Stream endpoint: {e}")
+            raise typer.Exit(1)
 
-    cmd = [binary, "--cloud", f"--api-url={api_url}"]
+    stream_base = derive_stream_base(api_url, stream_endpoint)
+
+    cmd = [binary, "chat", "--cloud", f"--api-url={api_url}"]
+    if stream_base != api_url:
+        cmd.append(f"--stream-endpoint={stream_base}")
     if session_id:
         cmd.append(f"--session-id={session_id}")
     if token:
