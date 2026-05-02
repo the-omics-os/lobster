@@ -5,7 +5,6 @@ Extracted from cli.py to enable reuse across interfaces.
 All commands accept OutputAdapter for UI-agnostic rendering.
 """
 
-import os
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -346,7 +345,9 @@ def _build_agent_composition(
             )
 
     if not display_agents:
-        output.print("[dim]No agents are configured or discoverable in this workspace.[/dim]")
+        output.print(
+            "[dim]No agents are configured or discoverable in this workspace.[/dim]"
+        )
         return config_source, 0, 0
 
     output.print_table(agent_table_data)
@@ -644,7 +645,9 @@ def config_provider_list(client: "AgentClient", output: OutputAdapter) -> Option
 
     for provider_obj in all_providers:
         provider_name = provider_obj.name
-        configured = "Configured" if provider_name in available_providers else "Not configured"
+        configured = (
+            "Configured" if provider_name in available_providers else "Not configured"
+        )
         active = "●" if provider_name == current_provider else ""
         rows.append([provider_obj.display_name, configured, active])
 
@@ -848,9 +851,13 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         model_rows = []
 
         if not models:
-            empty_message = f"No models are currently available for {provider_display_name}."
+            empty_message = (
+                f"No models are currently available for {provider_display_name}."
+            )
             if current_provider == "ollama":
-                empty_message = "No Ollama models are installed for the active provider."
+                empty_message = (
+                    "No Ollama models are installed for the active provider."
+                )
             blocks.extend(
                 [
                     section_block(title=title),
@@ -866,14 +873,36 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                     title="Model Commands",
                     width=table_width,
                     columns=[
-                        {"name": "Command", "style": "white", "width": 34, "overflow": "fold"},
-                        {"name": "Purpose", "style": "dim", "width": 62, "overflow": "fold"},
+                        {
+                            "name": "Command",
+                            "style": "white",
+                            "width": 34,
+                            "overflow": "fold",
+                        },
+                        {
+                            "name": "Purpose",
+                            "style": "dim",
+                            "width": 62,
+                            "overflow": "fold",
+                        },
                     ],
                     rows=[
-                        ["/config model <name>", "Switch the active model for the current session only."],
-                        ["/config model <name> --save", "Switch the active model and persist it to this workspace."],
-                        ["/config provider", "List providers and confirm which model catalog is active."],
-                        ["/config provider <name>", "Change providers first when you need a different model catalog."],
+                        [
+                            "/config model <name>",
+                            "Switch the active model for the current session only.",
+                        ],
+                        [
+                            "/config model <name> --save",
+                            "Switch the active model and persist it to this workspace.",
+                        ],
+                        [
+                            "/config provider",
+                            "List providers and confirm which model catalog is active.",
+                        ],
+                        [
+                            "/config provider <name>",
+                            "Change providers first when you need a different model catalog.",
+                        ],
                     ],
                 )
             )
@@ -912,14 +941,36 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                     title="Model Commands",
                     width=table_width,
                     columns=[
-                        {"name": "Command", "style": "white", "width": 34, "overflow": "fold"},
-                        {"name": "Purpose", "style": "dim", "width": 62, "overflow": "fold"},
+                        {
+                            "name": "Command",
+                            "style": "white",
+                            "width": 34,
+                            "overflow": "fold",
+                        },
+                        {
+                            "name": "Purpose",
+                            "style": "dim",
+                            "width": 62,
+                            "overflow": "fold",
+                        },
                     ],
                     rows=[
-                        ["/config model <name>", "Switch the active model for the current session only."],
-                        ["/config model <name> --save", "Switch the active model and persist it to this workspace."],
-                        ["/config provider", "List providers and confirm which model catalog is active."],
-                        ["/config provider <name>", "Change providers first when you need a different model catalog."],
+                        [
+                            "/config model <name>",
+                            "Switch the active model for the current session only.",
+                        ],
+                        [
+                            "/config model <name> --save",
+                            "Switch the active model and persist it to this workspace.",
+                        ],
+                        [
+                            "/config provider",
+                            "List providers and confirm which model catalog is active.",
+                        ],
+                        [
+                            "/config provider <name>",
+                            "Change providers first when you need a different model catalog.",
+                        ],
                     ],
                 ),
             ]
@@ -1020,9 +1071,7 @@ def config_model_switch(
         output.print(
             f"[green]✓ Saved to workspace config ({current_provider}_model)[/green]"
         )
-        output.print(
-            f"[dim]Config file: {workspace_path}/provider_config.json[/dim]"
-        )
+        output.print(f"[dim]Config file: {workspace_path}/provider_config.json[/dim]")
         output.print(
             f"\n[dim]This model will be used for {current_provider} in this workspace[/dim]"
         )
@@ -1046,6 +1095,7 @@ def config_test_impl(output_json: bool = False):
     import os
     from pathlib import Path
 
+    import typer
     from dotenv import load_dotenv
     from rich import box
     from rich.panel import Panel
@@ -1054,14 +1104,8 @@ def config_test_impl(output_json: bool = False):
     from lobster.ui import LobsterTheme
     from lobster.ui.console_manager import get_console_manager
 
-    import typer
-
     console_manager = get_console_manager()
     console = console_manager.console
-
-    import json as json_module
-
-    from dotenv import load_dotenv
 
     # Results structure for JSON output
     test_results = {
@@ -1123,7 +1167,9 @@ def config_test_impl(output_json: bool = False):
         )
         console.print()
         if credential_source == "environment variables":
-            console.print("[yellow]No .env or global credentials found — testing environment variables[/yellow]")
+            console.print(
+                "[yellow]No .env or global credentials found — testing environment variables[/yellow]"
+            )
         else:
             console.print(f"[green]✅ Credentials source:[/green] {credential_source}")
         console.print()
@@ -1366,8 +1412,6 @@ def config_test_impl(output_json: bool = False):
         raise typer.Exit(1)
 
 
-
-
 def list_models_impl():
     """List all available models from registered providers."""
     from rich import box
@@ -1406,8 +1450,6 @@ def list_models_impl():
     console.print(table)
 
 
-
-
 def list_profiles_impl():
     """List available configuration profiles."""
     from lobster.config.agent_defaults import get_current_profile
@@ -1423,23 +1465,19 @@ def list_profiles_impl():
         marker = " [green](active)[/green]" if name == current else ""
         console.print(f"   {name}{marker}")
     console.print()
-    console.print("[dim]Switch profile: lobster config provider --profile <name> --save[/dim]")
-
-
+    console.print(
+        "[dim]Switch profile: lobster config provider --profile <name> --save[/dim]"
+    )
 
 
 def show_config_impl(workspace=None, show_all: bool = False):
     """Show current runtime configuration (extracted from cli.py)."""
-    import os
-    from pathlib import Path
 
     from rich.panel import Panel
 
     from lobster.core.workspace import resolve_workspace
     from lobster.ui import LobsterTheme
     from lobster.ui.console_manager import get_console_manager
-
-    import typer
 
     console = get_console_manager().console
 
@@ -1666,19 +1704,15 @@ def show_config_impl(workspace=None, show_all: bool = False):
     console.print()
 
 
-
-
 def test_impl(profile=None, agent=None):
     """Test LLM provider connectivity and configuration (extracted from cli.py)."""
     import os
-    from pathlib import Path
 
+    import typer
     from rich.panel import Panel
 
     from lobster.ui import LobsterTheme
     from lobster.ui.console_manager import get_console_manager
-
-    import typer
 
     console = get_console_manager().console
 
@@ -1801,17 +1835,15 @@ def test_impl(profile=None, agent=None):
         if agent:
             if agent in agents:
                 params = get_agent_params(agent)
-                console.print(
-                    f"\n[green]Agent '{agent}' configuration valid[/green]"
-                )
+                console.print(f"\n[green]Agent '{agent}' configuration valid[/green]")
                 console.print(f"   Temperature: {params.get('temperature', 1.0)}")
             else:
-                console.print(
-                    f"\n[red]Agent '{agent}' not installed[/red]"
-                )
+                console.print(f"\n[red]Agent '{agent}' not installed[/red]")
                 return False
         else:
-            console.print(f"\n[yellow]Testing {len(agents)} installed agents...[/yellow]")
+            console.print(
+                f"\n[yellow]Testing {len(agents)} installed agents...[/yellow]"
+            )
             all_valid = True
 
             for agent_name in sorted(agents.keys()):
@@ -1840,17 +1872,15 @@ def test_impl(profile=None, agent=None):
         return False
 
 
-
-
 def create_custom_impl():
     """Interactive per-agent model configuration. Use 'lobster config models' instead."""
     from lobster.ui.console_manager import get_console_manager
 
     console = get_console_manager().console
-    console.print("\n[yellow]This command has been replaced by 'lobster config models'.[/yellow]")
+    console.print(
+        "\n[yellow]This command has been replaced by 'lobster config models'.[/yellow]"
+    )
     console.print("[dim]Run: lobster config models[/dim]")
-
-
 
 
 def generate_env_impl():
@@ -1936,7 +1966,6 @@ LOBSTER_CACHE_DIR=data/cache
 
 def config_models_impl(workspace=None):
     """Interactive per-agent model configuration using prompt_toolkit dialogs."""
-    from pathlib import Path
 
     from prompt_toolkit.shortcuts import radiolist_dialog
 
@@ -1971,7 +2000,9 @@ def config_models_impl(workspace=None):
     # Get available models for current provider
     available_models = provider_obj.list_models()
     if not available_models:
-        console.print(f"[yellow]No models available for provider '{provider_name}'.[/yellow]")
+        console.print(
+            f"[yellow]No models available for provider '{provider_name}'.[/yellow]"
+        )
         return
 
     # Discover all installed agents
@@ -2041,12 +2072,12 @@ def config_models_impl(workspace=None):
                 f"[green]Removed model override for {selected_agent} (now uses default: {default_model})[/green]"
             )
         else:
-            console.print(f"[dim]{selected_agent} already uses the default model.[/dim]")
+            console.print(
+                f"[dim]{selected_agent} already uses the default model.[/dim]"
+            )
     else:
         ws_config.per_agent_models[selected_agent] = selected_model
         ws_config.save(workspace_path)
-        console.print(
-            f"[green]Set {selected_agent} → {selected_model}[/green]"
-        )
+        console.print(f"[green]Set {selected_agent} → {selected_model}[/green]")
 
     console.print(f"[dim]Saved to: {workspace_path / 'provider_config.json'}[/dim]")

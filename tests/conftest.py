@@ -302,7 +302,9 @@ def mock_agent_environment(
     }
 
 
-@pytest.fixture(scope="function", autouse=False)  # Apply explicitly or via directory-level conftest
+@pytest.fixture(
+    scope="function", autouse=False
+)  # Apply explicitly or via directory-level conftest
 def auto_mock_provider_config(
     request, monkeypatch, mocker: MockerFixture
 ) -> Dict[str, Any]:

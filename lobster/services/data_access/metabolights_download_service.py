@@ -33,9 +33,9 @@ import numpy as np
 import pandas as pd
 import requests
 
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.interfaces.download_service import IDownloadService
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.utils.logger import get_logger
 

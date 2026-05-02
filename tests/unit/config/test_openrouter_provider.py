@@ -1,8 +1,12 @@
 """Tests for OpenRouter provider implementation."""
+
 import os
+from importlib.util import find_spec
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+pytest.importorskip("langchain_openai", reason="langchain_openai not installed")
 
 from lobster.config.providers.openrouter_provider import OpenRouterProvider
 
@@ -100,10 +104,17 @@ class TestListModels:
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {"data": [
-            {"id": "openai/gpt-4o", "name": "GPT-4o", "description": "",
-             "context_length": 128000, "pricing": {"prompt": "0.0000025", "completion": "0.000010"}}
-        ]}
+        mock_response.json.return_value = {
+            "data": [
+                {
+                    "id": "openai/gpt-4o",
+                    "name": "GPT-4o",
+                    "description": "",
+                    "context_length": 128000,
+                    "pricing": {"prompt": "0.0000025", "completion": "0.000010"},
+                }
+            ]
+        }
         mock_response.raise_for_status = MagicMock()
 
         with patch("httpx.get", return_value=mock_response) as mock_get:
@@ -162,6 +173,7 @@ class TestValidateModel:
     def test_validate_with_cache_known_model(self, provider):
         """Returns True for model in populated cache."""
         from lobster.config.providers.base_provider import ModelInfo
+
         OpenRouterProvider._models_cache = [
             ModelInfo(
                 name="anthropic/claude-sonnet-4-5",
@@ -175,6 +187,7 @@ class TestValidateModel:
     def test_validate_with_cache_unknown_model(self, provider):
         """Returns False for model NOT in populated cache."""
         from lobster.config.providers.base_provider import ModelInfo
+
         OpenRouterProvider._models_cache = [
             ModelInfo(
                 name="openai/gpt-4o",
@@ -215,12 +228,16 @@ class TestCreateChatModel:
         with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
             provider.create_chat_model("anthropic/claude-sonnet-4-5")
 
-    def test_create_chat_model_passes_temperature_max_tokens(self, provider, monkeypatch):
+    def test_create_chat_model_passes_temperature_max_tokens(
+        self, provider, monkeypatch
+    ):
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test-key")
 
         with patch("langchain_openai.ChatOpenAI") as mock_cls:
             mock_cls.return_value = MagicMock()
-            provider.create_chat_model("openai/gpt-4o", temperature=0.5, max_tokens=2048)
+            provider.create_chat_model(
+                "openai/gpt-4o", temperature=0.5, max_tokens=2048
+            )
 
         call_kwargs = mock_cls.call_args[1]
         assert call_kwargs["temperature"] == 0.5
@@ -366,12 +383,14 @@ class TestRegistryIntegration:
     def test_openrouter_in_provider_registry(self):
         """OpenRouterProvider is discoverable via ProviderRegistry."""
         from lobster.config.providers.registry import ProviderRegistry
+
         ProviderRegistry.reset()
         ProviderRegistry._ensure_initialized()
         assert ProviderRegistry.is_registered("openrouter")
 
     def test_get_provider_returns_openrouter(self):
         from lobster.config.providers import get_provider
+
         provider = get_provider("openrouter")
         assert provider is not None
         assert provider.name == "openrouter"
@@ -379,4 +398,5 @@ class TestRegistryIntegration:
     def test_openrouter_importable_from_providers_package(self):
         """OpenRouterProvider can be imported directly from the providers package."""
         from lobster.config.providers import OpenRouterProvider
+
         assert OpenRouterProvider().name == "openrouter"

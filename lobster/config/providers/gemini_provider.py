@@ -98,6 +98,17 @@ class GeminiProvider(ILLMProvider):
         """
         return "Google Gemini"
 
+    def check_dependencies(self) -> None:
+        try:
+            import langchain_google_genai  # noqa: F401
+        except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("gemini", is_extra=True)
+            raise ImportError(
+                f"langchain-google-genai package not installed. Install with: {cmd}"
+            )
+
     def is_configured(self) -> bool:
         """
         Check if Google API key is present.

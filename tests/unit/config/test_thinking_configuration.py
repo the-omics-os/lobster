@@ -104,9 +104,9 @@ class TestThinkingPresets:
     def test_all_presets_are_thinking_config_instances(self):
         """All preset values must be ThinkingConfig instances."""
         for name, preset in THINKING_PRESETS.items():
-            assert isinstance(preset, ThinkingConfig), (
-                f"Preset '{name}' is not a ThinkingConfig instance"
-            )
+            assert isinstance(
+                preset, ThinkingConfig
+            ), f"Preset '{name}' is not a ThinkingConfig instance"
 
     def test_disabled_preset_produces_empty_dict(self):
         """disabled preset must produce an empty dict (no API overhead)."""
@@ -117,9 +117,9 @@ class TestThinkingPresets:
         for name, preset in THINKING_PRESETS.items():
             if preset.enabled:
                 result = preset.to_dict()
-                assert "thinking" in result, (
-                    f"Preset '{name}' did not produce 'thinking' key"
-                )
+                assert (
+                    "thinking" in result
+                ), f"Preset '{name}' did not produce 'thinking' key"
 
 
 # =============================================================================

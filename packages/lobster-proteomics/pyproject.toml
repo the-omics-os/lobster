@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-proteomics"
-version = "1.1.408"
+version = "1.1.411"
 description = "Proteomics agent for Lobster AI (DDA/DIA mass spectrometry, affinity platforms)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -30,6 +30,7 @@ dependencies = [
     "scikit-learn>=1.3.0",
     "statsmodels>=0.14.0",
     "lifelines>=0.27.0",
+    "peptides>=0.3",
 ]
 
 [project.optional-dependencies]
@@ -46,11 +47,13 @@ Repository = "https://github.com/the-omics-os/lobster"
 proteomics_expert = "lobster.agents.proteomics.proteomics_expert:AGENT_CONFIG"
 proteomics_de_analysis_expert = "lobster.agents.proteomics.de_analysis_expert:AGENT_CONFIG"
 biomarker_discovery_expert = "lobster.agents.proteomics.biomarker_discovery_expert:AGENT_CONFIG"
+peptide_expert = "lobster.agents.proteomics.peptide_expert:AGENT_CONFIG"
 
 [project.entry-points."lobster.states"]
 ProteomicsExpertState = "lobster.agents.proteomics.state:ProteomicsExpertState"
 DEAnalysisExpertState = "lobster.agents.proteomics.state:DEAnalysisExpertState"
 BiomarkerDiscoveryExpertState = "lobster.agents.proteomics.state:BiomarkerDiscoveryExpertState"
+PeptideExpertState = "lobster.agents.proteomics.state:PeptideExpertState"
 
 [tool.setuptools]
 packages.find = {where = ["."], include = ["lobster*"], namespaces = true}

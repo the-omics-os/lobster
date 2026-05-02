@@ -51,7 +51,8 @@ def test_provider_registry_initialization():
     assert "azure" in providers
     assert "openai" in providers
     assert "openrouter" in providers
-    assert len(providers) == 7
+    assert "omics-os" in providers
+    assert len(providers) == 8
 
 
 def test_get_provider():
@@ -990,9 +991,9 @@ def test_get_model_info_default_context_window_per_provider():
         provider = get_provider(provider_name)
         info = provider.get_model_info("unknown-model-xyz")
         assert info is not None, f"{provider_name} returned None for unknown model"
-        assert info.context_window == expected_window, (
-            f"{provider_name}: expected {expected_window}, got {info.context_window}"
-        )
+        assert (
+            info.context_window == expected_window
+        ), f"{provider_name}: expected {expected_window}, got {info.context_window}"
 
 
 def test_model_context_windows_config_override(tmp_path):
@@ -1017,7 +1018,9 @@ def test_known_models_renamed():
     """Test that cloud providers use KNOWN_MODELS attribute name."""
     for provider_name in ["anthropic", "bedrock", "openai", "gemini", "azure"]:
         provider = get_provider(provider_name)
-        assert hasattr(provider, "KNOWN_MODELS"), f"{provider_name} missing KNOWN_MODELS"
-        assert not hasattr(provider, "MODELS") or provider_name == "ollama", (
-            f"{provider_name} still has old MODELS attribute"
-        )
+        assert hasattr(
+            provider, "KNOWN_MODELS"
+        ), f"{provider_name} missing KNOWN_MODELS"
+        assert (
+            not hasattr(provider, "MODELS") or provider_name == "ollama"
+        ), f"{provider_name} still has old MODELS attribute"

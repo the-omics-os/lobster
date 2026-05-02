@@ -24,6 +24,7 @@ See Also:
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 from pathlib import Path
@@ -86,13 +87,12 @@ def _resolve_safe_path(workspace_path: Path, relative_path: str) -> Path:
         ValueError: If path escapes workspace boundary
     """
     input_path = Path(relative_path).expanduser()
-    resolved = (
-        input_path.resolve()
-        if input_path.is_absolute()
-        else (workspace_path / input_path).resolve()
-    )
-    workspace_resolved = workspace_path.resolve()
+    if input_path.is_absolute():
+        resolved = input_path.resolve()
+    else:
+        resolved = (workspace_path / input_path).resolve()
 
+    workspace_resolved = workspace_path.resolve()
     if resolved != workspace_resolved and workspace_resolved not in resolved.parents:
         raise ValueError(
             f"Path '{relative_path}' resolves outside workspace boundary. "
@@ -428,24 +428,8 @@ def create_filesystem_tools(workspace_path: Path) -> List:
     # =========================================================================
     # shell_execute
     # =========================================================================
-    @tool
-    def shell_execute(
-        command: str,
-        timeout: int = DEFAULT_EXECUTE_TIMEOUT,
-    ) -> str:
-        """Execute a shell command in the workspace directory.
-
-        Runs the command with the workspace as working directory. Use for
-        file operations not covered by other tools: tar, gunzip, head, wc,
-        file type detection, h5ls, samtools, etc.
-
-        Args:
-            command: Shell command to execute
-            timeout: Maximum execution time in seconds (default: 120, max: 600)
-
-        Returns:
-            Command output (stdout + stderr) with exit code
-        """
+    def _shell_execute_sync(command: str, timeout: int) -> str:
+        """Sync helper — runs subprocess.run in a thread via asyncio.to_thread."""
         timeout = min(timeout, MAX_EXECUTE_TIMEOUT)
 
         try:
@@ -480,17 +464,39 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except Exception as e:
             return f"Error executing command: {e}"
 
+    @tool
+    async def shell_execute(
+        command: str,
+        timeout: int = DEFAULT_EXECUTE_TIMEOUT,
+    ) -> str:
+        """Execute a shell command in the workspace directory.
+
+        Runs the command with the workspace as working directory. Use for
+        file operations not covered by other tools: tar, gunzip, head, wc,
+        file type detection, h5ls, samtools, etc.
+
+        Args:
+            command: Shell command to execute
+            timeout: Maximum execution time in seconds (default: 120, max: 600)
+
+        Returns:
+            Command output (stdout + stderr) with exit code
+        """
+        return await asyncio.to_thread(_shell_execute_sync, command, timeout)
+
     shell_execute.metadata = {"categories": ["UTILITY"], "provenance": False}
     shell_execute.tags = ["UTILITY"]
 
     # =========================================================================
     # Return all tools
     # =========================================================================
+    from lobster.tools._async_compat import enable_sync_fallback
+
     return [
         list_files,
         read_file,
         write_file,
         glob_files,
         grep_files,
-        shell_execute,
+        enable_sync_fallback(shell_execute),
     ]

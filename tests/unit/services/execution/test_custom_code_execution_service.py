@@ -23,7 +23,13 @@ class TestCustomCodeExecutionService:
         """Create mock DataManagerV2 with test workspace."""
         dm = Mock(spec=DataManagerV2)
         dm.workspace_path = tmp_path
+        dm.data_dir = tmp_path / "data"
         dm.list_modalities.return_value = ["test_modality"]
+        # Locality provider for materializer preflight
+        locality = Mock()
+        locality.list_available.return_value = ["test_modality"]
+        locality.is_local.return_value = False
+        dm.locality_provider = locality
         return dm
 
     @pytest.fixture
@@ -137,10 +143,7 @@ result = 42
         mock_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = mock_adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-
-        # Write a real h5ad file so subprocess can read it
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
-        mock_adata.write_h5ad(h5ad_path)
+        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
 
         code = "result = adata.n_obs"
         result, stats, ir = service.execute(
@@ -412,13 +415,11 @@ result = add(5, 3)
         import anndata
         import numpy as np
 
-        # Create a real h5ad file the subprocess can read
+        # Materializer stages h5ad automatically via get_modality + H5ADBackend
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
-        adata.write_h5ad(h5ad_path)
-
         mock_data_manager.get_modality.return_value = adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
 
         # Code that modifies adata (adds a new obs column)
         code = "adata.obs['new_col'] = [1, 2]"
@@ -449,11 +450,9 @@ result = add(5, 3)
         import numpy as np
 
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
-        adata.write_h5ad(h5ad_path)
-
         mock_data_manager.get_modality.return_value = adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
 
         # Code that only reads adata (no modification)
         code = "result = int(adata.n_obs)"
@@ -475,11 +474,9 @@ result = add(5, 3)
         import numpy as np
 
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
-        adata.write_h5ad(h5ad_path)
-
         mock_data_manager.get_modality.return_value = adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
         mock_data_manager.store_modality.side_effect = RuntimeError("disk full")
 
         # Code that modifies adata
@@ -499,25 +496,20 @@ result = add(5, 3)
         assert "disk full" in stats["write_back_error"]
 
     def test_stale_disk_fix(self, service, mock_data_manager):
-        """Test that in-memory modality is always saved to disk before subprocess."""
+        """Test that in-memory modality is always serialized to local disk before subprocess.
+
+        Uses H5ADBackend directly (not save_modality) so it works regardless of
+        configured backend (local, S3, GCS).
+        """
         import anndata
         import numpy as np
 
-        # Create stale h5ad on disk (old data — 1 obs)
-        old_adata = anndata.AnnData(X=np.array([[0, 0]]))
-        h5ad_path = mock_data_manager.workspace_path / "test_modality.h5ad"
-        old_adata.write_h5ad(h5ad_path)
-
-        # In-memory modality has different (newer) data — 3 obs
+        # In-memory modality has fresh data — 3 obs
+        # Materializer always uses in-memory state via get_modality(), not stale disk
         new_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4], [5, 6]]))
         mock_data_manager.get_modality.return_value = new_adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-
-        # Make save_modality actually write the new adata to disk
-        def _save_side_effect(name, path):
-            new_adata.write_h5ad(path)
-
-        mock_data_manager.save_modality.side_effect = _save_side_effect
+        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
 
         # Code that reads n_obs — should see the in-memory version (3 obs), not stale disk (1 obs)
         code = "result = int(adata.n_obs)"
@@ -529,7 +521,7 @@ result = add(5, 3)
 
         assert result == 3  # From fresh in-memory state, not stale disk
         assert stats["success"] is True
-        # save_modality should have been called to sync disk
-        mock_data_manager.save_modality.assert_called_once_with(
-            "test_modality", str(h5ad_path)
-        )
+        # get_modality should have been called to fetch in-memory state
+        mock_data_manager.get_modality.assert_called_with("test_modality")
+        # save_modality should NOT be called — we use local H5ADBackend directly
+        mock_data_manager.save_modality.assert_not_called()

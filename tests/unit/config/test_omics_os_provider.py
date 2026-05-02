@@ -2,15 +2,21 @@
 
 import json
 import os
+from importlib.util import find_spec
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 
+def _has_langchain_aws():
+    return find_spec("langchain_aws") is not None
+
+
 # ---------------------------------------------------------------------------
 # Credentials tests
 # ---------------------------------------------------------------------------
+
 
 class TestCredentials:
     """Tests for lobster.config.credentials module."""
@@ -29,7 +35,11 @@ class TestCredentials:
         monkeypatch.setattr(credentials, "CREDENTIALS_DIR", cred_dir)
         monkeypatch.setattr(credentials, "CREDENTIALS_FILE", cred_file)
 
-        data = {"auth_mode": "api_key", "api_key": "omk_test123", "endpoint": "https://example.com"}
+        data = {
+            "auth_mode": "api_key",
+            "api_key": "omk_test123",
+            "endpoint": "https://example.com",
+        }
         credentials.save_credentials(data)
 
         assert cred_file.exists()
@@ -121,6 +131,7 @@ class TestCredentials:
 # Provider tests
 # ---------------------------------------------------------------------------
 
+
 class TestOmicsOSProvider:
     """Tests for OmicsOSProvider."""
 
@@ -175,6 +186,10 @@ class TestOmicsOSProvider:
         with pytest.raises(ValueError, match="not configured"):
             p.create_chat_model("us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
+    @pytest.mark.skipif(
+        not _has_langchain_aws(),
+        reason="langchain_aws not installed",
+    )
     def test_create_chat_model_returns_bedrock_converse(self, monkeypatch):
         """create_chat_model should return a ChatBedrockConverse via gateway shim."""
         from lobster.config.providers.omics_os_provider import OmicsOSProvider
@@ -193,6 +208,10 @@ class TestOmicsOSProvider:
         assert model.model_id == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
         assert model.temperature == 0.5
 
+    @pytest.mark.skipif(
+        not _has_langchain_aws(),
+        reason="langchain_aws not installed",
+    )
     def test_create_chat_model_alias_resolution(self, monkeypatch):
         """Friendly model names should be resolved to canonical Bedrock IDs."""
         from lobster.config.providers.omics_os_provider import OmicsOSProvider
@@ -216,18 +235,27 @@ class TestOmicsOSProvider:
     def test_model_alias_resolution_static(self):
         from lobster.config.providers.omics_os_provider import OmicsOSProvider
 
-        assert OmicsOSProvider._to_bedrock_model_id("claude-sonnet-4-5-20250514") == \
-            "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-        assert OmicsOSProvider._to_bedrock_model_id("claude-sonnet-4-5-20250929") == \
-            "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        assert (
+            OmicsOSProvider._to_bedrock_model_id("claude-sonnet-4-5-20250514")
+            == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        )
+        assert (
+            OmicsOSProvider._to_bedrock_model_id("claude-sonnet-4-5-20250929")
+            == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        )
         # Already canonical — pass through
-        assert OmicsOSProvider._to_bedrock_model_id("us.anthropic.claude-sonnet-4-5-20250929-v1:0") == \
-            "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        assert (
+            OmicsOSProvider._to_bedrock_model_id(
+                "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+            )
+            == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Provider registration tests
 # ---------------------------------------------------------------------------
+
 
 class TestProviderRegistration:
     """Tests that omics-os provider integrates with the registry."""
@@ -254,6 +282,7 @@ class TestProviderRegistration:
 # ---------------------------------------------------------------------------
 # Gateway shim tests
 # ---------------------------------------------------------------------------
+
 
 class TestGatewayBedrockClient:
     """Tests for the GatewayBedrockClient shim."""
@@ -316,9 +345,11 @@ class TestGatewayBedrockClient:
             endpoint="https://example.com",
             token_fn=lambda: "tok",
         )
-        body = json.dumps({
-            "detail": "Monthly budget exhausted",
-        })
+        body = json.dumps(
+            {
+                "detail": "Monthly budget exhausted",
+            }
+        )
         with pytest.raises(ClientError) as exc_info:
             client._handle_error(402, body)
         assert "BudgetExceeded" in str(exc_info.value)
@@ -362,7 +393,8 @@ class TestGatewayBedrockClient:
 
     def test_converse_raises_rate_limit_after_retries(self):
         """After max retries on 429, should raise RateLimitError."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import MagicMock, patch
+
         from lobster.config.providers.gateway_bedrock_client import GatewayBedrockClient
         from lobster.config.providers.omics_os_provider import RateLimitError
 
@@ -375,8 +407,10 @@ class TestGatewayBedrockClient:
         mock_resp.status_code = 429
         mock_resp.text = "Rate limit exceeded"
 
-        with patch("httpx.Client") as mock_client_cls, \
-             patch("lobster.config.providers.gateway_bedrock_client.time.sleep"):
+        with (
+            patch("httpx.Client") as mock_client_cls,
+            patch("lobster.config.providers.gateway_bedrock_client.time.sleep"),
+        ):
             mock_http = MagicMock()
             mock_client_cls.return_value.__enter__ = MagicMock(return_value=mock_http)
             mock_client_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -393,13 +427,17 @@ class TestStubBedrockControlClient:
     """Tests for the StubBedrockControlClient."""
 
     def test_meta_region(self):
-        from lobster.config.providers.gateway_bedrock_stub import StubBedrockControlClient
+        from lobster.config.providers.gateway_bedrock_stub import (
+            StubBedrockControlClient,
+        )
 
         stub = StubBedrockControlClient()
         assert stub.meta.region_name == "us-east-1"
 
     def test_get_inference_profile_raises(self):
-        from lobster.config.providers.gateway_bedrock_stub import StubBedrockControlClient
+        from lobster.config.providers.gateway_bedrock_stub import (
+            StubBedrockControlClient,
+        )
 
         stub = StubBedrockControlClient()
         with pytest.raises(NotImplementedError):
@@ -409,6 +447,7 @@ class TestStubBedrockControlClient:
 # ---------------------------------------------------------------------------
 # BudgetExhaustedError tests
 # ---------------------------------------------------------------------------
+
 
 class TestBudgetExhaustedError:
     """Tests that BudgetExhaustedError still works after the rewrite."""
@@ -446,6 +485,7 @@ class TestRateLimitError:
 # ---------------------------------------------------------------------------
 # Provider setup config test
 # ---------------------------------------------------------------------------
+
 
 class TestProviderSetupConfig:
     """Tests for create_omics_os_config in provider_setup."""

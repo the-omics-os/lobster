@@ -23,7 +23,6 @@ class BackendSelection:
     reason: Optional[str] = None
 
 
-
 def normalize_ui_backend(value: Optional[str]) -> str:
     """Normalize and validate a UI backend value."""
     candidate = (value or "").strip().lower() or DEFAULT_UI_BACKEND
@@ -31,7 +30,6 @@ def normalize_ui_backend(value: Optional[str]) -> str:
         valid = ", ".join(sorted(VALID_UI_BACKENDS))
         raise ValueError(f"Invalid UI backend '{value}'. Expected one of: {valid}")
     return candidate
-
 
 
 def resolve_ui_backend(requested: Optional[str]) -> str:
@@ -42,7 +40,6 @@ def resolve_ui_backend(requested: Optional[str]) -> str:
     if env_value:
         return normalize_ui_backend(env_value)
     return DEFAULT_UI_BACKEND
-
 
 
 def find_go_tui_binary(explicit_path: Optional[str] = None) -> Optional[str]:
@@ -86,7 +83,6 @@ def find_go_tui_binary(explicit_path: Optional[str] = None) -> Optional[str]:
         pass
 
     return None
-
 
 
 def select_ui_backend(

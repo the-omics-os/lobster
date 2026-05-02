@@ -14,6 +14,8 @@ import anndata as ad
 import numpy as np
 import pytest
 
+pytest.importorskip("networkx", reason="networkx not installed")
+
 from lobster.services.visualization.proteomics_visualization_service import (
     ProteomicsVisualizationError,
     ProteomicsVisualizationService,

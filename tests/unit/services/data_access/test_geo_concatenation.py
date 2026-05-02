@@ -4,11 +4,11 @@ Tests SampleConcatenator methods in isolation via mocked service.
 Part of Phase 4 Plan 03: GEO Service Decomposition.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, PropertyMock
 
 import numpy as np
+import pytest
 
 from lobster.services.data_access.geo.concatenation import SampleConcatenator
 
@@ -64,7 +64,9 @@ class TestAnalyzeGeneCoverageAndDecideJoin:
 
         assert use_inner is True
         assert metadata["decision"] == "inner"
-        assert "CV" in metadata["reasoning"] or "coverage" in metadata["reasoning"].lower()
+        assert (
+            "CV" in metadata["reasoning"] or "coverage" in metadata["reasoning"].lower()
+        )
 
     def test_returns_outer_when_coverage_varies(self, concatenator, mock_service):
         """When gene counts vary significantly, should recommend outer join."""

@@ -33,7 +33,9 @@ class TestExtractSamplesFromWorkspace:
     def test_extraction_with_nested_structure(self, minimal_sra_samples):
         """Test extraction from nested {"data": {"samples": [...]}} structure."""
         # This is the actual structure from WorkspaceContentService
-        from lobster.agents import metadata_assistant
+        from lobster.agents.metadata_assistant import (
+            metadata_assistant as metadata_assistant_module,
+        )
 
         # Create metadata_assistant to access helper function
         with (
@@ -55,7 +57,7 @@ class TestExtractSamplesFromWorkspace:
             mock_dm.metadata_store = {}
             mock_dm.log_tool_usage = Mock()
 
-            agent = metadata_assistant.metadata_assistant(data_manager=mock_dm)
+            agent = metadata_assistant_module.metadata_assistant(data_manager=mock_dm)
 
             # Get the helper function from the closure
             # Note: The function is defined inside metadata_assistant()

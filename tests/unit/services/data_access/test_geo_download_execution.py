@@ -4,9 +4,10 @@ Tests DownloadExecutor methods in isolation via mocked service.
 Part of Phase 4 Plan 03: GEO Service Decomposition.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from lobster.services.data_access.geo.download_execution import DownloadExecutor
 
@@ -66,7 +67,9 @@ class TestDownloadWithStrategy:
             "metadata": {},
             "strategy_config": {"pipeline_type": "supplementary_first"},
         }
-        mock_service._determine_data_type_from_metadata.return_value = "single_cell_rna_seq"
+        mock_service._determine_data_type_from_metadata.return_value = (
+            "single_cell_rna_seq"
+        )
         mock_service.pipeline_engine.determine_pipeline.return_value = (
             MagicMock(name="SUPPLEMENTARY_FIRST"),
             "test",

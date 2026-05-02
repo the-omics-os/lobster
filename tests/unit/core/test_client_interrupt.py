@@ -127,9 +127,7 @@ def test_lingering_interrupt_detected_after_stream(tmp_path):
         id="intr-linger",
     )
     task = SimpleNamespace(interrupts=[lingering_intr])
-    client.graph.get_state = Mock(
-        return_value=SimpleNamespace(tasks=[task])
-    )
+    client.graph.get_state = Mock(return_value=SimpleNamespace(tasks=[task]))
 
     result = list(client.query("test", stream=True))
 
@@ -175,9 +173,7 @@ def test_no_lingering_interrupt_normal_completion(tmp_path):
 def test_resume_from_interrupt_streams_resumed_events(tmp_path):
     """resume_from_interrupt() passes Command(resume=...) to graph."""
     # First query triggers interrupt.
-    interrupt_obj = SimpleNamespace(
-        value={"component": "confirm"}, id="intr-001"
-    )
+    interrupt_obj = SimpleNamespace(value={"component": "confirm"}, id="intr-001")
     initial_events = [
         ((), "updates", {"__interrupt__": [interrupt_obj]}),
     ]
@@ -219,4 +215,5 @@ def test_resume_from_interrupt_streams_resumed_events(tmp_path):
     # Verify graph.stream was called with Command input.
     call_args = client.graph.stream.call_args
     from langgraph.types import Command
+
     assert isinstance(call_args[0][0], Command)

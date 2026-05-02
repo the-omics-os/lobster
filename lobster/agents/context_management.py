@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 # Default context budget if provider info unavailable
 DEFAULT_CONTEXT_WINDOW = 128_000
 
-# Reserve this fraction for model output generation
-OUTPUT_RESERVE_FRACTION = 0.15
+# Reserve this fraction for model output + safety margin against counting drift
+OUTPUT_RESERVE_FRACTION = 0.20
 
 # Absolute minimum budget (prevents degenerate trimming)
 # Must be large enough for system prompt + a few conversation turns
@@ -48,17 +48,41 @@ def approximate_token_count(text: str) -> int:
     return int(len(text) / 4.0 + 3.0)
 
 
+def _message_token_count(msg: BaseMessage) -> int:
+    """Count tokens for a single message including all serialized fields."""
+    parts: list[str] = []
+
+    content = getattr(msg, "content", "")
+    if isinstance(content, str):
+        parts.append(content)
+    elif content:
+        parts.append(json.dumps(content, default=str, separators=(",", ":")))
+
+    tool_calls = getattr(msg, "tool_calls", None)
+    if tool_calls:
+        for tc in tool_calls:
+            if isinstance(tc, dict):
+                parts.append(tc.get("name", ""))
+                args = tc.get("args", {})
+                parts.append(json.dumps(args, default=str, separators=(",", ":")))
+            else:
+                parts.append(str(tc))
+
+    for attr in ("tool_call_id", "name"):
+        value = getattr(msg, attr, None)
+        if value:
+            parts.append(str(value))
+
+    return approximate_token_count("\n".join(parts)) + 4
+
+
 def _message_list_token_counter(messages: list[BaseMessage]) -> int:
     """Token counter compatible with trim_messages (receives list of messages).
 
-    trim_messages calls token_counter([msg1, msg2, ...]) and expects a single
-    int back representing total tokens for the batch.
+    Counts all token-bearing fields: content, tool_calls (name + args JSON),
+    tool_call_id, message name, plus per-message role/framing overhead.
     """
-    total = 0
-    for msg in messages:
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        total += approximate_token_count(content)
-    return total
+    return sum(_message_token_count(msg) for msg in messages)
 
 
 def measure_tool_schema_tokens(tools: Sequence[Any]) -> int:
@@ -93,14 +117,16 @@ def measure_tool_schema_tokens(tools: Sequence[Any]) -> int:
 def resolve_context_budget(
     context_window: Optional[int] = None,
     tools: Optional[Sequence[Any]] = None,
+    system_prompt: Optional[str] = None,
 ) -> int:
     """Resolve the usable context budget for messages.
 
-    budget = context_window - output_reserve - tool_schema_tokens
+    budget = context_window * 0.80 - tool_schema_tokens - system_prompt_tokens
 
     Args:
         context_window: Max tokens for the model. None -> DEFAULT_CONTEXT_WINDOW.
         tools: Tool objects to measure schema overhead.
+        system_prompt: System prompt text to subtract from budget.
 
     Returns:
         Usable token budget for messages (minimum MINIMUM_BUDGET).
@@ -108,17 +134,18 @@ def resolve_context_budget(
     if context_window is None:
         context_window = DEFAULT_CONTEXT_WINDOW
 
-    output_reserve = int(context_window * OUTPUT_RESERVE_FRACTION)
+    input_ceiling = int(context_window * (1.0 - OUTPUT_RESERVE_FRACTION))
     tool_tokens = measure_tool_schema_tokens(tools or [])
-    raw_budget = context_window - output_reserve - tool_tokens
+    prompt_tokens = approximate_token_count(system_prompt) if system_prompt else 0
+    fixed_overhead = tool_tokens + prompt_tokens
+    raw_budget = input_ceiling - fixed_overhead
 
-    # Warn when baseline overhead (tool schemas) consumes too much of the window.
-    # This catches misconfigured small models where schemas alone exceed capacity.
-    baseline_fraction = tool_tokens / context_window if context_window > 0 else 0
+    # Warn when baseline overhead consumes too much of the window.
+    baseline_fraction = fixed_overhead / context_window if context_window > 0 else 0
     if baseline_fraction > BASELINE_WARNING_THRESHOLD:
         logger.warning(
-            f"Tool schemas consume {baseline_fraction:.0%} of context window "
-            f"({tool_tokens}/{context_window} tokens). "
+            f"Fixed overhead consumes {baseline_fraction:.0%} of context window "
+            f"(tools={tool_tokens}, prompt={prompt_tokens}, total={fixed_overhead}/{context_window}). "
             f"Model may struggle with complex conversations. "
             f"Consider reducing tool description sizes or using a larger model."
         )
@@ -127,14 +154,15 @@ def resolve_context_budget(
         logger.warning(
             f"Context budget {raw_budget} < minimum {MINIMUM_BUDGET}. "
             f"Clamping to {MINIMUM_BUDGET} but context overflow is likely "
-            f"(window={context_window}, schemas={tool_tokens}, reserve={output_reserve})."
+            f"(window={context_window}, overhead={fixed_overhead}, ceiling={input_ceiling})."
         )
 
     budget = max(raw_budget, MINIMUM_BUDGET)
 
     logger.debug(
         f"Context budget: {budget} tokens "
-        f"(window={context_window}, reserve={output_reserve}, schemas={tool_tokens})"
+        f"(window={context_window}, ceiling={input_ceiling}, tools={tool_tokens}, "
+        f"prompt={prompt_tokens})"
     )
 
     return budget
@@ -181,8 +209,8 @@ def resolve_context_window(
     # Check config-level context window overrides (highest priority)
     if model_id:
         try:
-            from lobster.config.workspace_config import WorkspaceProviderConfig
             from lobster.config.global_config import GlobalProviderConfig
+            from lobster.config.workspace_config import WorkspaceProviderConfig
 
             # Workspace override (highest priority)
             if workspace_path:
@@ -208,7 +236,9 @@ def resolve_context_window(
             if model_info and model_info.context_window:
                 return model_info.context_window
     except Exception as e:
-        logger.warning(f"Could not resolve context window for {provider_name}/{model_id}: {e}")
+        logger.warning(
+            f"Could not resolve context window for {provider_name}/{model_id}: {e}"
+        )
     return None
 
 
@@ -255,6 +285,75 @@ def _fix_orphaned_tool_messages(messages: list) -> list:
                 continue
         stripping = False
         result.append(msg)
+
+    return result
+
+
+def _wrap_tool_results(messages: list) -> list:
+    """Wrap ToolMessage content in <tool_data> markers (spotlighting defense).
+
+    Ensures the LLM treats tool output as DATA, not instructions.
+    Any directive-like text embedded in tool results (e.g. from GEO metadata,
+    PubMed abstracts, or custom code output) stays inert.
+
+    Handles string content and multi-part list content. Skips messages
+    already wrapped or with empty/None content.
+    """
+    from langchain_core.messages import ToolMessage
+
+    if not messages:
+        return messages
+
+    result = []
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            result.append(msg)
+            continue
+
+        content = msg.content
+
+        # Skip None/empty content
+        if not content:
+            result.append(msg)
+            continue
+
+        if isinstance(content, str):
+            # Skip if already wrapped
+            if content.lstrip().startswith("<tool_data>"):
+                result.append(msg)
+                continue
+            wrapped_content = f"<tool_data>{content}</tool_data>"
+        elif isinstance(content, list):
+            # Multi-part content: wrap each text part
+            wrapped_content = []
+            for part in content:
+                if isinstance(part, str):
+                    if part.lstrip().startswith("<tool_data>"):
+                        wrapped_content.append(part)
+                    else:
+                        wrapped_content.append(f"<tool_data>{part}</tool_data>")
+                elif isinstance(part, dict) and part.get("type") == "text":
+                    text = part.get("text", "")
+                    if text.lstrip().startswith("<tool_data>"):
+                        wrapped_content.append(part)
+                    else:
+                        wrapped_content.append(
+                            {**part, "text": f"<tool_data>{text}</tool_data>"}
+                        )
+                else:
+                    # Non-text parts (images, etc.) pass through unchanged
+                    wrapped_content.append(part)
+        else:
+            result.append(msg)
+            continue
+
+        # Create new ToolMessage preserving tool_call_id and name
+        wrapped_msg = ToolMessage(
+            content=wrapped_content,
+            tool_call_id=msg.tool_call_id,
+            name=getattr(msg, "name", None),
+        )
+        result.append(wrapped_msg)
 
     return result
 
@@ -324,9 +423,17 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
         if not messages:
             return {"llm_input_messages": messages, "store_keys": store_keys}
 
+        # Wrap tool results BEFORE trimming so wrapper overhead is counted
+        wrapped = _wrap_tool_results(messages)
+
+        # Compute post-trim injection overhead and subtract from budget
+        key_index_text = _build_key_index_text(store_keys)
+        key_index_overhead = approximate_token_count(key_index_text) if key_index_text else 0
+        effective_budget = max(_max_tokens - key_index_overhead, 0)
+
         trimmed = trim_messages(
-            messages,
-            max_tokens=_max_tokens,
+            wrapped,
+            max_tokens=effective_budget,
             token_counter=_message_list_token_counter,
             strategy="last",
             include_system=True,
@@ -337,7 +444,7 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
         trimmed = _fix_orphaned_tool_messages(trimmed)
 
         compaction_metadata: dict[str, int] | None = None
-        if len(trimmed) < len(messages):
+        if len(trimmed) < len(wrapped):
             compaction_metadata = {
                 "before_count": len(messages),
                 "after_count": len(trimmed),
@@ -345,12 +452,11 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
             }
             logger.debug(
                 f"pre_model_hook trimmed {len(messages)} -> {len(trimmed)} messages "
-                f"(budget: {_max_tokens} tokens)"
+                f"(budget: {_max_tokens}, effective: {effective_budget})"
             )
 
         # Append key index to existing SystemMessage (single system message
         # for maximum provider compatibility — Anthropic, OpenAI, Ollama, Gemini)
-        key_index_text = _build_key_index_text(store_keys)
         if key_index_text:
             trimmed = list(trimmed)
             for i, msg in enumerate(trimmed):

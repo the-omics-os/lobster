@@ -29,6 +29,7 @@ class TestParentAgentConfig:
         assert PARENT_CONFIG.child_agents == [
             "proteomics_de_analysis_expert",
             "biomarker_discovery_expert",
+            "peptide_expert",
         ]
 
     def test_parent_is_supervisor_accessible(self):
@@ -47,8 +48,8 @@ class TestParentAgentConfig:
 class TestDESubAgentConfig:
     """Tests for DE analysis sub-agent AGENT_CONFIG."""
 
-    def test_de_supervisor_accessible(self):
-        assert DE_CONFIG.supervisor_accessible is True
+    def test_de_not_supervisor_accessible(self):
+        assert DE_CONFIG.supervisor_accessible is False
 
     def test_de_name(self):
         assert DE_CONFIG.name == "proteomics_de_analysis_expert"
@@ -137,14 +138,14 @@ class TestSharedTools:
         )
         assert isinstance(tools, list)
 
-    def test_returns_8_tools(self):
+    def test_returns_17_tools(self):
         tools = create_shared_tools(
             data_manager=MagicMock(),
             quality_service=MagicMock(),
             preprocessing_service=MagicMock(),
             analysis_service=MagicMock(),
         )
-        assert len(tools) == 8
+        assert len(tools) == 17
 
     def test_tool_names(self):
         tools = create_shared_tools(
@@ -157,8 +158,17 @@ class TestSharedTools:
         expected = [
             "check_proteomics_status",
             "assess_proteomics_quality",
+            "import_proteomics_data",
+            "import_ptm_sites",
+            "import_affinity_data",
             "filter_proteomics_data",
             "normalize_proteomics_data",
+            "correct_batch_effects",
+            "summarize_peptide_to_protein",
+            "normalize_ptm_to_protein",
+            "assess_lod_quality",
+            "normalize_bridge_samples",
+            "assess_cross_platform_concordance",
             "analyze_proteomics_patterns",
             "impute_missing_values",
             "select_variable_proteins",

@@ -193,28 +193,36 @@ class _DummyClient:
                         "created_at": "2026-03-01T12:00:00",
                         "n_steps": 7,
                         "size_kb": 43.2,
-                        "path": str(workspace_path / "notebooks" / "analysis_workflow.ipynb"),
+                        "path": str(
+                            workspace_path / "notebooks" / "analysis_workflow.ipynb"
+                        ),
                     }
                 ],
                 "export_notebook": lambda _self, name, description="": workspace_path
                 / "notebooks"
                 / f"{name}.ipynb",
-                "run_notebook": lambda _self, notebook_name, input_modality, dry_run=False: {
-                    "validation": SimpleNamespace(
-                        has_errors=False,
-                        errors=[],
-                        has_warnings=False,
-                        warnings=[],
-                    ),
-                    "steps_to_execute": 4,
-                    "estimated_duration_minutes": 3,
-                }
-                if dry_run
-                else {
-                    "status": "success",
-                    "output_notebook": str(workspace_path / "notebooks" / f"{Path(notebook_name).stem}_executed.ipynb"),
-                    "execution_time": 12.5,
-                },
+                "run_notebook": lambda _self, notebook_name, input_modality, dry_run=False: (
+                    {
+                        "validation": SimpleNamespace(
+                            has_errors=False,
+                            errors=[],
+                            has_warnings=False,
+                            warnings=[],
+                        ),
+                        "steps_to_execute": 4,
+                        "estimated_duration_minutes": 3,
+                    }
+                    if dry_run
+                    else {
+                        "status": "success",
+                        "output_notebook": str(
+                            workspace_path
+                            / "notebooks"
+                            / f"{Path(notebook_name).stem}_executed.ipynb"
+                        ),
+                        "execution_time": 12.5,
+                    }
+                ),
                 "log_tool_usage": lambda _self, **_kwargs: None,
                 "load_dataset": lambda _self, _name: True,
                 "restore_session": lambda _self, pattern="recent": {
@@ -292,7 +300,9 @@ class _DummyClient:
                 "clear_queue": lambda _self: None,
             },
         )()
-        self.publication_queue.queue_file = workspace_path / "queues" / "publication_queue.jsonl"
+        self.publication_queue.queue_file = (
+            workspace_path / "queues" / "publication_queue.jsonl"
+        )
         self.publication_queue.queue_file.parent.mkdir(parents=True, exist_ok=True)
         self.publication_queue.queue_file.write_text(
             '{"title":"demo"}\n', encoding="utf-8"
@@ -300,7 +310,17 @@ class _DummyClient:
 
     def detect_file_type(self, file_path: Path):
         suffix = file_path.suffix.lower()
-        if suffix in {".txt", ".md", ".py", ".json", ".yaml", ".yml", ".csv", ".tsv", ".log"}:
+        if suffix in {
+            ".txt",
+            ".md",
+            ".py",
+            ".json",
+            ".yaml",
+            ".yml",
+            ".csv",
+            ".tsv",
+            ".log",
+        }:
             return {"description": "Text file", "category": "text", "binary": False}
         if suffix == ".h5ad":
             return {
@@ -608,7 +628,9 @@ def test_read_command_protocol_mode_truncates_large_text_preview(tmp_path, monke
     )
 
 
-def test_read_command_protocol_mode_handles_glob_miss_with_structured_output(tmp_path, monkeypatch):
+def test_read_command_protocol_mode_handles_glob_miss_with_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
     monkeypatch.setattr(slash_commands, "current_directory", tmp_path)
@@ -675,7 +697,9 @@ def test_read_command_protocol_mode_renders_binary_file_guidance(tmp_path, monke
     ]
 
 
-def test_read_command_protocol_mode_reports_missing_file_search_paths(tmp_path, monkeypatch):
+def test_read_command_protocol_mode_reports_missing_file_search_paths(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
     monkeypatch.setattr(slash_commands, "current_directory", tmp_path)
@@ -790,10 +814,7 @@ def test_workspace_status_protocol_mode_uses_compact_active_modality_list(tmp_pa
         for message in output.messages
     )
     assert all(
-        not (
-            message[0] == "table"
-            and message[1].get("title") in modality_names
-        )
+        not (message[0] == "table" and message[1].get("title") in modality_names)
         for message in output.messages
     )
     assert (
@@ -1291,7 +1312,9 @@ def test_queue_import_protocol_mode_renders_structured_output(tmp_path, monkeypa
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
     import_path = tmp_path / "import_queue.jsonl"
-    import_path.write_text('{"title":"Paper A"}\n{"title":"Paper B"}\n', encoding="utf-8")
+    import_path.write_text(
+        '{"title":"Paper A"}\n{"title":"Paper B"}\n', encoding="utf-8"
+    )
     monkeypatch.setattr(slash_commands, "current_directory", tmp_path)
 
     import lobster.core.schemas.publication_queue as publication_queue_schema
@@ -1306,13 +1329,11 @@ def test_queue_import_protocol_mode_renders_structured_output(tmp_path, monkeypa
             )
         ),
     )
-    client.publication_queue.import_entries = (
-        lambda entries, skip_duplicates=True: {
-            "imported": len(entries),
-            "skipped": 0,
-            "errors": 0,
-        }
-    )
+    client.publication_queue.import_entries = lambda entries, skip_duplicates=True: {
+        "imported": len(entries),
+        "skipped": 0,
+        "errors": 0,
+    }
 
     summary = slash_commands._execute_command(
         "/queue import import_queue.jsonl",
@@ -1353,7 +1374,9 @@ def test_queue_import_protocol_mode_rejects_non_jsonl_files(tmp_path, monkeypatc
     ]
 
 
-def test_metadata_overview_protocol_mode_renders_structured_output(tmp_path, monkeypatch):
+def test_metadata_overview_protocol_mode_renders_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -1429,7 +1452,9 @@ def test_metadata_overview_protocol_mode_renders_structured_output(tmp_path, mon
     )
 
 
-def test_metadata_publications_protocol_mode_renders_structured_output(tmp_path, monkeypatch):
+def test_metadata_publications_protocol_mode_renders_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -1484,7 +1509,9 @@ def test_metadata_publications_protocol_mode_renders_structured_output(tmp_path,
     )
 
 
-def test_metadata_samples_protocol_mode_renders_structured_output(tmp_path, monkeypatch):
+def test_metadata_samples_protocol_mode_renders_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -1534,7 +1561,9 @@ def test_metadata_samples_protocol_mode_renders_structured_output(tmp_path, monk
     )
 
 
-def test_metadata_workspace_protocol_mode_renders_structured_output(tmp_path, monkeypatch):
+def test_metadata_workspace_protocol_mode_renders_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -1600,7 +1629,9 @@ def test_metadata_workspace_protocol_mode_renders_structured_output(tmp_path, mo
     )
 
 
-def test_metadata_exports_protocol_mode_renders_structured_output(tmp_path, monkeypatch):
+def test_metadata_exports_protocol_mode_renders_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -1789,7 +1820,9 @@ def test_metadata_unknown_subcommand_protocol_mode_uses_structured_output(tmp_pa
     ]
 
 
-def test_workspace_remove_protocol_mode_renders_structured_output(tmp_path, monkeypatch):
+def test_workspace_remove_protocol_mode_renders_structured_output(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
     client.data_manager.list_modalities = lambda: ["rna", "atac"]
@@ -1879,7 +1912,10 @@ def test_config_provider_protocol_mode_renders_structured_output(tmp_path, monke
     assert output.messages[1] == (None, "Usage")
     assert output.messages[2][0] is None
     assert "/config provider <name>" in output.messages[2][1]
-    assert output.messages[3] == ("dim", "Available providers: openai, ollama, anthropic")
+    assert output.messages[3] == (
+        "dim",
+        "Available providers: openai, ollama, anthropic",
+    )
     assert output.messages[4] == ("dim", "Current provider: openai")
 
 
@@ -1934,7 +1970,9 @@ def test_config_model_protocol_mode_renders_structured_output(tmp_path, monkeypa
     import lobster.core.config_resolver as config_resolver
 
     monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
-    monkeypatch.setattr(providers, "get_provider", lambda _provider_name: _FakeProvider())
+    monkeypatch.setattr(
+        providers, "get_provider", lambda _provider_name: _FakeProvider()
+    )
 
     summary = slash_commands._execute_command(
         "/config model",
@@ -1952,7 +1990,9 @@ def test_config_model_protocol_mode_renders_structured_output(tmp_path, monkeypa
     assert output.messages[2][1]["title"] == "Model Commands"
 
 
-def test_config_show_protocol_mode_groups_agent_model_assignments(tmp_path, monkeypatch):
+def test_config_show_protocol_mode_groups_agent_model_assignments(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -2020,18 +2060,20 @@ def test_config_show_protocol_mode_groups_agent_model_assignments(tmp_path, monk
 
     import lobster.config.agent_registry as agent_registry
     import lobster.config.global_config as global_config
+    import lobster.config.providers as providers
     import lobster.config.settings as settings_mod
     import lobster.config.subscription_tiers as subscription_tiers
     import lobster.config.workspace_agent_config as workspace_agent_config
     import lobster.config.workspace_config as workspace_config
-    import lobster.config.providers as providers
     import lobster.core.component_registry as component_registry_mod
     import lobster.core.config_resolver as config_resolver
     import lobster.core.license_manager as license_manager
 
     monkeypatch.setattr(config_resolver, "ConfigResolver", _FakeResolver)
     monkeypatch.setattr(settings_mod, "get_settings", lambda: _FakeSettings())
-    monkeypatch.setattr(providers, "get_provider", lambda _provider_name: _FakeProvider())
+    monkeypatch.setattr(
+        providers, "get_provider", lambda _provider_name: _FakeProvider()
+    )
     monkeypatch.setattr(license_manager, "get_current_tier", lambda: "free")
     monkeypatch.setattr(
         subscription_tiers, "is_agent_available", lambda _agent_name, _tier: True
@@ -2062,7 +2104,9 @@ def test_config_show_protocol_mode_groups_agent_model_assignments(tmp_path, monk
         output=output,
     )
 
-    assert summary == "Displayed configuration (provider: omics-os, profile: production)"
+    assert (
+        summary == "Displayed configuration (provider: omics-os, profile: production)"
+    )
     assert output.messages[0][0] == "table"
     assert output.messages[0][1]["title"] == "⚙️  Current Configuration"
     assert output.messages[1][0] == "table"
@@ -2103,10 +2147,10 @@ def test_build_status_blocks_compact_omits_long_agent_lists(monkeypatch, tmp_pat
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".env").write_text("LOBSTER_LLM_PROVIDER=omics-os\n")
 
-    import lobster.core.license_manager as license_manager
-    import lobster.core.plugin_loader as plugin_loader
     import lobster.config.agent_registry as agent_registry
     import lobster.config.subscription_tiers as subscription_tiers
+    import lobster.core.license_manager as license_manager
+    import lobster.core.plugin_loader as plugin_loader
 
     monkeypatch.setattr(
         license_manager,
@@ -2139,7 +2183,11 @@ def test_build_status_blocks_compact_omits_long_agent_lists(monkeypatch, tmp_pat
     )
 
     blocks = display_helpers.build_status_blocks(compact=True)
-    titles = [block.data.get("title") for block in blocks if block.kind in {"list", "table", "kv", "section"}]
+    titles = [
+        block.data.get("title")
+        for block in blocks
+        if block.kind in {"list", "table", "kv", "section"}
+    ]
 
     assert "Runtime Summary" in titles
     assert "Optional Capabilities" in titles
@@ -2201,7 +2249,9 @@ def test_workspace_info_protocol_mode_renders_workspace_fallback(tmp_path, monke
     ]
 
 
-def test_analysis_dash_protocol_mode_renders_metadata_and_plots_fallback(tmp_path, monkeypatch):
+def test_analysis_dash_protocol_mode_renders_metadata_and_plots_fallback(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
@@ -2275,7 +2325,10 @@ def test_progress_protocol_mode_renders_compact_summary(tmp_path, monkeypatch):
                 "rows": [["Active Operations", "3"]],
             },
         ),
-        ("dim", "Use transcript history and command-family output for detailed progress."),
+        (
+            "dim",
+            "Use transcript history and command-family output for detailed progress.",
+        ),
     ]
 
 
@@ -2330,9 +2383,7 @@ def test_status_protocol_mode_uses_compact_status_blocks(tmp_path):
 
     assert summary is None
     titles = [
-        message[1]["title"]
-        for message in output.messages
-        if message[0] == "table"
+        message[1]["title"] for message in output.messages if message[0] == "table"
     ]
     assert "Initialization" in titles
     assert "Subscription" in titles
@@ -2457,7 +2508,9 @@ def test_pipeline_run_protocol_mode_renders_structured_output(tmp_path):
                 "rows": [
                     [
                         "Output",
-                        str(tmp_path / "notebooks" / "analysis_workflow_executed.ipynb"),
+                        str(
+                            tmp_path / "notebooks" / "analysis_workflow_executed.ipynb"
+                        ),
                     ],
                     ["Duration", "12.5s"],
                 ],
@@ -2491,7 +2544,9 @@ def test_help_protocol_mode_uses_narrow_table_metadata(tmp_path):
         {"name": "Command", "width": 32, "no_wrap": True, "overflow": "ellipsis"},
         {"name": "Description", "max_width": 40, "overflow": "fold"},
     ]
-    assert ["/status-panel", "Status dashboard; Go mode shows /status"] in admin_table["rows"]
+    assert ["/status-panel", "Status dashboard; Go mode shows /status"] in admin_table[
+        "rows"
+    ]
     assert [
         "/analysis-dash",
         "Analysis dashboard; Go mode shows /metadata + /plots",
@@ -2553,10 +2608,14 @@ def test_save_command_protocol_mode_avoids_direct_console_usage(tmp_path, monkey
 
     class _FailingConsole:
         def print(self, *_args, **_kwargs):
-            raise AssertionError("direct console.print should not be used in protocol mode")
+            raise AssertionError(
+                "direct console.print should not be used in protocol mode"
+            )
 
         def status(self, *_args, **_kwargs):
-            raise AssertionError("direct console.status should not be used in protocol mode")
+            raise AssertionError(
+                "direct console.status should not be used in protocol mode"
+            )
 
     monkeypatch.setattr(slash_commands, "console", _FailingConsole())
 
@@ -2596,7 +2655,9 @@ def test_clear_command_protocol_mode_avoids_direct_console_usage(tmp_path, monke
 
     class _FailingConsole:
         def clear(self):
-            raise AssertionError("direct console.clear should not be used in protocol mode")
+            raise AssertionError(
+                "direct console.clear should not be used in protocol mode"
+            )
 
     monkeypatch.setattr(slash_commands, "console", _FailingConsole())
 
@@ -2611,13 +2672,17 @@ def test_clear_command_protocol_mode_avoids_direct_console_usage(tmp_path, monke
     assert output.messages == []
 
 
-def test_exit_command_protocol_mode_avoids_direct_console_and_confirm(tmp_path, monkeypatch):
+def test_exit_command_protocol_mode_avoids_direct_console_and_confirm(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
 
     class _FailingConsole:
         def print(self, *_args, **_kwargs):
-            raise AssertionError("direct console.print should not be used in protocol mode")
+            raise AssertionError(
+                "direct console.print should not be used in protocol mode"
+            )
 
     class _FailingConfirm:
         @staticmethod
@@ -2642,7 +2707,9 @@ def test_exit_command_protocol_mode_avoids_direct_console_and_confirm(tmp_path, 
     assert ("confirm", "exit?") in output.messages
 
 
-def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(tmp_path, monkeypatch):
+def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(
+    tmp_path, monkeypatch
+):
     client = _DummyClient(tmp_path)
     output = ProtocolOutputAdapter()
     saved = {}
@@ -2659,7 +2726,9 @@ def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(tmp
 
     class _FailingConsole:
         def print(self, *_args, **_kwargs):
-            raise AssertionError("direct console.print should not be used in protocol mode")
+            raise AssertionError(
+                "direct console.print should not be used in protocol mode"
+            )
 
     class _FailingConfirm:
         @staticmethod
@@ -2684,7 +2753,9 @@ def test_exit_command_protocol_mode_can_raise_without_rich_interactive_calls(tmp
     assert saved["called"] is True
 
 
-def test_status_command_protocol_mode_resolves_provider_and_model(tmp_path, monkeypatch):
+def test_status_command_protocol_mode_resolves_provider_and_model(
+    tmp_path, monkeypatch
+):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
     captured = {}

@@ -80,7 +80,7 @@ class TestMetadataAssistantFallback:
                 if mod_key.startswith("lobster.agents.metadata_assistant"):
                     del sys.modules[mod_key]
 
-            from lobster.agents.metadata_assistant import (
+            from lobster.agents.metadata_assistant.config import (
                 HAS_ONTOLOGY_SERVICE,
                 phase1_column_rescan,
             )

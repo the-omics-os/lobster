@@ -7,7 +7,6 @@ view available models, switch profiles, and test different setups.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -100,7 +99,9 @@ def show_current_config(profile: str = None):
     if configured:
         print_colored("\nConfigured providers:", "yellow")
         for p in configured:
-            print(f"  {p.name}: {p.display_name if hasattr(p, 'display_name') else p.name}")
+            print(
+                f"  {p.name}: {p.display_name if hasattr(p, 'display_name') else p.name}"
+            )
     else:
         print_colored("\nNo providers configured.", "yellow")
         print("Run 'lobster init' to configure a provider.")
@@ -119,22 +120,16 @@ def test_configuration(profile: str, agent: str = None):
                 print_colored(f"\n Agent '{agent}' configuration is valid", "green")
                 print(f"   Temperature: {params.get('temperature')}")
                 if "additional_model_request_fields" in params:
-                    print(
-                        f"   Thinking: {params['additional_model_request_fields']}"
-                    )
+                    print(f"   Thinking: {params['additional_model_request_fields']}")
             except Exception as exc:
-                print_colored(
-                    f"\n Agent '{agent}' configuration error: {exc}", "red"
-                )
+                print_colored(f"\n Agent '{agent}' configuration error: {exc}", "red")
                 return False
         else:
             print_colored(f"\n Testing Profile: {profile}", "yellow")
             configured = ProviderRegistry.get_configured_providers()
             if configured:
                 for p in configured:
-                    print_colored(
-                        f"   {p.name}: available", "green"
-                    )
+                    print_colored(f"   {p.name}: available", "green")
                 print_colored(
                     f"\n Profile '{profile}' uses configured providers.", "green"
                 )

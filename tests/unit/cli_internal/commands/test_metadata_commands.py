@@ -36,9 +36,15 @@ class TestMetadataList:
 
         # Verify
         assert result == "No metadata available"
-        # Should print but no tables
-        assert output.print.call_count >= 1
-        assert output.print_table.call_count == 0
+        # Should render blocks (no tables — only section/hint blocks emitted)
+        assert output.render_blocks.call_count >= 1
+        # No table blocks should appear in any render_blocks call
+        all_blocks = [
+            block
+            for call in output.render_blocks.call_args_list
+            for block in call[0][0]
+        ]
+        assert not any(b.kind == "table" for b in all_blocks)
 
     def test_with_metadata_store_entries(self):
         """Test metadata_list with populated metadata store."""
@@ -71,13 +77,20 @@ class TestMetadataList:
 
         # Verify
         assert "2 entries" in result
-        # Should print metadata store table
-        assert output.print_table.call_count >= 1
-        # Check table was called with proper structure
-        table_call = output.print_table.call_args[0][0]
-        assert "columns" in table_call
-        assert "rows" in table_call
-        assert len(table_call["rows"]) == 2
+        # Should render at least one call containing a table block
+        assert output.render_blocks.call_count >= 1
+        all_blocks = [
+            block
+            for call in output.render_blocks.call_args_list
+            for block in call[0][0]
+        ]
+        table_blocks = [b for b in all_blocks if b.kind == "table"]
+        assert len(table_blocks) >= 1
+        # Check the metadata-store table has the right structure and row count
+        metadata_table = table_blocks[0]
+        assert "columns" in metadata_table.data
+        assert "rows" in metadata_table.data
+        assert len(metadata_table.data["rows"]) == 2
 
     def test_with_current_metadata(self):
         """Test metadata_list with current_metadata."""
@@ -97,7 +110,14 @@ class TestMetadataList:
 
         # Verify
         assert "3 entries" in result  # 3 keys in current_metadata
-        assert output.print_table.call_count >= 1
+        # Should render blocks; current_metadata is shown as a kv block (not table kind)
+        assert output.render_blocks.call_count >= 1
+        all_blocks = [
+            block
+            for call in output.render_blocks.call_args_list
+            for block in call[0][0]
+        ]
+        assert any(b.kind in ("table", "kv") for b in all_blocks)
 
 
 class TestMetadataClear:
@@ -117,7 +137,7 @@ class TestMetadataClear:
 
         # Verify - updated message reflects clearing memory + disk
         assert result == "Metadata already empty"
-        output.print.assert_called()
+        output.render_blocks.assert_called()
         # confirm should NOT be called for empty store
         output.confirm.assert_not_called()
 
@@ -173,7 +193,7 @@ class TestMetadataClear:
 
         # Verify - with no store AND no current_metadata AND no disk files, returns empty message
         assert result == "Metadata already empty"
-        output.print.assert_called()
+        output.render_blocks.assert_called()
 
 
 class TestMetadataClearExports:

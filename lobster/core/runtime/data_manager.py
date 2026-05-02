@@ -22,8 +22,11 @@ from unittest.mock import Mock
 import pandas as pd
 
 from lobster.core.adapters.base import BaseAdapter
-from lobster.core.provenance.analysis_ir import create_data_loading_ir, create_data_saving_ir
 from lobster.core.plot_manager import PlotManager
+from lobster.core.provenance.analysis_ir import (
+    create_data_loading_ir,
+    create_data_saving_ir,
+)
 
 # Import TranscriptomicsAdapter conditionally (has optional scanpy dependency)
 try:
@@ -47,8 +50,8 @@ from lobster.core.interfaces.backend import IDataBackend
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance.provenance import ProvenanceTracker
 from lobster.core.queues.queue_storage import atomic_write_json, queue_file_lock
-from lobster.core.utils.h5ad_utils import validate_for_h5ad
 from lobster.core.runtime.workspace import resolve_workspace
+from lobster.core.utils.h5ad_utils import validate_for_h5ad
 
 # Import for IR support (TYPE_CHECKING to avoid circular import)
 if TYPE_CHECKING:
@@ -159,6 +162,58 @@ def _ensure_plotly():
     return _plotly_go, _plotly_io
 
 
+BACKED_MODE_THRESHOLD_BYTES = 1 * 1024 * 1024 * 1024  # 1 GB
+
+
+def _close_backed_handle(adata: Any) -> None:
+    """Best-effort close of HDF5 file handle on backed AnnData."""
+    if getattr(adata, "isbacked", False) and hasattr(adata, "file"):
+        try:
+            adata.file.close()
+        except Exception:
+            pass
+
+
+def _should_use_backed_mode(path: Path) -> bool:
+    """Return True if h5ad file is large enough to warrant backed loading."""
+    try:
+        return path.stat().st_size >= BACKED_MODE_THRESHOLD_BYTES
+    except OSError:
+        return False
+
+
+def _is_backed_mode_enabled() -> bool:
+    """Check if backed-mode loading is enabled via env var."""
+    return os.environ.get("LOBSTER_BACKED_MODE", "0") == "1"
+
+
+def _read_h5ad_smart(
+    path: Path,
+    force_backed: bool = False,
+    backed_mode_enabled: bool = False,
+) -> "AnnData":
+    """Load h5ad with automatic backed-mode for large files.
+
+    Files >= 1 GB load with backed='r' to avoid OOM.  The returned AnnData
+    has .X as an HDF5 dataset — callers that mutate .X must call
+    ``DataManagerV2.materialize_modality()`` first.
+
+    Backed mode must be explicitly enabled via ``backed_mode_enabled`` param
+    or ``LOBSTER_BACKED_MODE=1`` env var.
+    """
+    anndata_mod = _ensure_anndata()
+    enabled = backed_mode_enabled or _is_backed_mode_enabled()
+    use_backed = force_backed or (enabled and _should_use_backed_mode(path))
+    if use_backed:
+        try:
+            size_gb = path.stat().st_size / (1024**3)
+            logger.info(f"Loading '{path.name}' in backed mode ({size_gb:.1f} GB)")
+        except OSError:
+            logger.info(f"Loading '{path.name}' in backed mode")
+        return anndata_mod.read_h5ad(path, backed="r")
+    return anndata_mod.read_h5ad(path)
+
+
 class MetadataEntry(TypedDict, total=False):
     """
     TypedDict for GEO metadata store entries.
@@ -219,6 +274,7 @@ class DataManagerV2:
         session_dir: Optional[Union[str, Path]] = None,
         console=None,
         auto_scan: bool = True,
+        backed_mode: bool = False,
     ):
         """
         Initialize DataManagerV2.
@@ -232,6 +288,8 @@ class DataManagerV2:
                 When provided, provenance is persisted to disk and survives process restarts.
             console: Optional Rich console instance for progress tracking
             auto_scan: Whether to automatically scan workspace for available datasets
+            backed_mode: Enable backed-mode loading for large h5ad files (>1GB).
+                Also enabled by LOBSTER_BACKED_MODE=1 env var.
         """
         self.default_backend = default_backend
         self.workspace_path = resolve_workspace(
@@ -240,11 +298,16 @@ class DataManagerV2:
         self.enable_provenance = enable_provenance
         self._session_dir = Path(session_dir) if session_dir else None
         self.console = console  # Store console for progress tracking in tools
+        self.backed_mode = backed_mode or _is_backed_mode_enabled()
 
         # Core storage
         self.backends: Dict[str, IDataBackend] = {}
         self.adapters: Dict[str, IModalityAdapter] = {}
         self.modalities: Dict[str, "AnnData"] = {}
+
+        # WorkspaceModalityBackend integration (feature-flagged)
+        self._modality_backend: Optional[Any] = None
+        self._modality_cache_cap: int = 8
 
         # Track modality sources and dirty state for efficient auto-save
         self._modality_sources: Dict[str, Path] = (
@@ -288,8 +351,16 @@ class DataManagerV2:
         self._session_lock = threading.Lock()
         self._session_lock_path = self.session_file.with_suffix(".lock")
 
+        # Thread-safety for mutable state accessed by concurrent tool calls
+        # (e.g. execute_custom_code via asyncio.to_thread)
+        self._state_lock = threading.Lock()
+
         # Optional callback for modality loaded events: fn(name, adata)
         self.on_modality_loaded = None
+
+        # Locality provider for materializing modalities to local disk
+        # (enables subprocess-based execution on cloud where data lives in S3)
+        self._locality_provider = None
 
         # Current dataset management (for legacy compatibility)
         self.current_dataset: Optional[str] = None  # Name of current active modality
@@ -362,6 +433,19 @@ class DataManagerV2:
             queue_file = self._get_queues_dir() / "publication_queue.jsonl"
             self._publication_queue = PublicationQueue(queue_file=queue_file)
         return self._publication_queue
+
+    @property
+    def locality_provider(self):
+        """Lazy-initialized data locality provider for materializing modalities."""
+        if self._locality_provider is None:
+            from lobster.core.interfaces.locality import LocalDataLocalityProvider
+
+            self._locality_provider = LocalDataLocalityProvider(self)
+        return self._locality_provider
+
+    def set_locality_provider(self, provider) -> None:
+        """Register a custom locality provider (e.g., S3-backed for cloud)."""
+        self._locality_provider = provider
 
     @property
     def notebook_exporter(self):
@@ -587,10 +671,10 @@ class DataManagerV2:
         for h5ad_file in h5ad_files:
             try:
                 file_size_gb = h5ad_file.stat().st_size / (1024**3)
-                if file_size_gb > 2.0:
+                if file_size_gb > 4.0:
                     skipped_large += 1
                     logger.debug(
-                        f"Skipped large file {h5ad_file.name} ({file_size_gb:.1f} GB > 2GB threshold). "
+                        f"Skipped very large file {h5ad_file.name} ({file_size_gb:.1f} GB > 4GB threshold). "
                         f"Use load_modality tool to explicitly load if needed."
                     )
                     continue
@@ -601,9 +685,7 @@ class DataManagerV2:
                     logger.debug(f"Modality '{modality_name}' already loaded, skipping")
                     continue
 
-                import anndata
-
-                adata = anndata.read_h5ad(h5ad_file)
+                adata = _read_h5ad_smart(h5ad_file, backed_mode_enabled=self.backed_mode)
 
                 from lobster.core.lineage import ensure_lineage, has_lineage
 
@@ -613,7 +695,8 @@ class DataManagerV2:
                         f"Created synthetic lineage for legacy file '{modality_name}'"
                     )
 
-                self.modalities[modality_name] = adata
+                with self._state_lock:
+                    self.modalities[modality_name] = adata
                 self._modality_sources[modality_name] = h5ad_file
 
                 loaded_count += 1
@@ -675,7 +758,8 @@ class DataManagerV2:
                     )
                     continue
 
-                self.modalities[modality_name] = adata
+                with self._state_lock:
+                    self.modalities[modality_name] = adata
                 # Track source but do NOT mark dirty — this is the unchanged original
                 self._modality_sources[modality_name] = data_file
 
@@ -852,10 +936,9 @@ class DataManagerV2:
                 )
 
         # Store modality
-        self.modalities[name] = adata
-
-        # Mark as dirty - new data that needs to be saved
-        self._modality_dirty.add(name)
+        with self._state_lock:
+            self.modalities[name] = adata
+            self._modality_dirty.add(name)
 
         # Log provenance
         if self.provenance:
@@ -972,11 +1055,21 @@ class DataManagerV2:
         # Attach lineage to AnnData
         attach_lineage(adata, lineage)
 
-        # Store in modalities dict
-        self.modalities[name] = adata
+        # Store in modalities dict + backend if attached
+        with self._state_lock:
+            self.modalities[name] = adata
+            if hasattr(self.modalities, "move_to_end"):
+                self.modalities.move_to_end(name)
+            self._evict_lru_if_needed()
 
-        # Mark as dirty for auto-save
-        self._modality_dirty.add(name)
+        if self._modality_backend is not None:
+            try:
+                self._modality_backend.ingest_anndata(name, adata)
+            except Exception as e:
+                logger.error(f"Backend ingest failed for '{name}': {e}")
+                self._modality_dirty.add(name)
+        else:
+            self._modality_dirty.add(name)
 
         # Log lineage creation
         logger.debug(
@@ -985,8 +1078,8 @@ class DataManagerV2:
             f"step={lineage.processing_step}"
         )
 
-        # Auto-save if requested
-        if auto_save:
+        # Auto-save if requested (legacy path, no-op when backend handles it)
+        if auto_save and self._modality_backend is None:
             self.save_modality(name, f"{name}.h5ad")
 
         return name
@@ -997,14 +1090,26 @@ class DataManagerV2:
         """
         Save a modality using specified backend.
 
+        Path contract: relative paths are resolved to absolute against
+        ``data_dir`` for provenance/logging, then converted back to a
+        backend-relative path via two-step resolution:
+
+        1. ``relative_to(data_dir)``  — e.g. ``x.h5ad``
+        2. ``relative_to(workspace_path)`` — e.g. ``x.h5ad`` or ``subdir/x.h5ad``
+        3. Keep absolute (fallback for ``/tmp/`` paths outside workspace)
+
+        Backends receive the relative path and resolve it against their
+        own base_path. The return value is always the absolute resolved
+        path (for provenance and caller use).
+
         Args:
             name: Name of modality to save
-            path: Destination path
+            path: Destination path (relative to data_dir, or absolute)
             backend: Backend to use (default: default_backend)
             **kwargs: Additional parameters passed to backend
 
         Returns:
-            str: Path where data was saved
+            str: Absolute path where data was saved
 
         Raises:
             ValueError: If modality or backend not found
@@ -1013,19 +1118,52 @@ class DataManagerV2:
             if name not in self.modalities:
                 raise ValueError(f"Modality '{name}' not loaded")
 
+            adata = self.modalities[name]
+
+            # Backed-mode AnnData must be materialized before save
+            if getattr(adata, "isbacked", False):
+                adata = self.materialize_modality(name)
+
+            # When modality backend is attached, persist through it first
+            if self._modality_backend is not None:
+                try:
+                    self._modality_backend.ingest_anndata(name, adata)
+                    self._modality_dirty.discard(name)
+                except Exception as e:
+                    logger.error(f"Backend save failed for '{name}': {e}")
+
+                # Still write h5ad file at requested path for caller
+                resolved_path = Path(path)
+                if not resolved_path.is_absolute():
+                    resolved_path = self.data_dir / path
+                self._modality_backend.export_h5ad(name, resolved_path)
+                return str(resolved_path)
+
             backend_name = backend or self.default_backend
             if backend_name not in self.backends:
                 raise ValueError(f"Backend '{backend_name}' not registered")
 
             backend_instance = self.backends[backend_name]
-            adata = self.modalities[name]
 
-            # Resolve path
-            if not Path(path).is_absolute():
-                path = self.data_dir / path
+            # Resolve to absolute path for filesystem ops and provenance
+            resolved_path = Path(path)
+            if not resolved_path.is_absolute():
+                resolved_path = self.data_dir / path
+
+            # Compute backend-relative path so remote backends (S3) get
+            # clean keys instead of embedded absolute filesystem paths.
+            # Local backends re-resolve via base_path in _resolve_path().
+            backend_path: Union[str, Path] = resolved_path
+            try:
+                backend_path = resolved_path.relative_to(self.data_dir)
+            except ValueError:
+                try:
+                    backend_path = resolved_path.relative_to(self.workspace_path)
+                except ValueError:
+                    backend_path = resolved_path
 
             # Validate data for H5AD serialization (optional pre-save check)
-            if backend_name in ["h5ad", "H5ADBackend"] and hasattr(adata, "uns"):
+            if hasattr(adata, "uns"):
                 validation_issues = validate_for_h5ad(adata.uns, path="adata.uns")
                 if validation_issues:
                     logger.warning(
@@ -1040,8 +1178,9 @@ class DataManagerV2:
                             f"Set logging to DEBUG for full list."
                         )
 
-            # Save data
-            backend_instance.save(adata, path, **kwargs)
+            # Save data — pass relative path to backend
+            backend_instance.save(adata, backend_path, **kwargs)
+            path = resolved_path
 
             # Log provenance
             if self.provenance:
@@ -1079,32 +1218,210 @@ class DataManagerV2:
             )
             return str(path)
 
+    def set_modality_backend(
+        self,
+        backend: Any,
+        cache_cap: int = 8,
+    ) -> None:
+        """Attach a WorkspaceModalityBackend for lazy modality loading.
+
+        When set, get_modality() delegates to the backend with LRU caching.
+        When None (default), the existing dict path is used.
+        Feature-flagged: only call this when LOBSTER_MODALITY_BACKEND=1.
+        """
+        from collections import OrderedDict
+
+        self._modality_backend = backend
+        self._modality_cache_cap = cache_cap
+
+        existing = dict(self.modalities)
+        self.modalities = OrderedDict()
+
+        for name, adata in existing.items():
+            if name in self._modality_dirty:
+                try:
+                    backend.ingest_anndata(name, adata)
+                    self._modality_dirty.discard(name)
+                    logger.info(f"Migrated dirty modality '{name}' to backend")
+                except Exception as e:
+                    logger.error(f"Failed to migrate '{name}': {e}")
+                    self.modalities[name] = adata
+                    continue
+            _close_backed_handle(adata)
+
+        logger.info(
+            f"Modality backend set: {type(backend).__name__}, LRU cap={cache_cap}"
+        )
+
+    def _evict_lru_if_needed(self) -> None:
+        """Evict least-recently-used modality if cache exceeds cap.
+
+        Dirty modalities are flushed to the backend before eviction
+        to prevent data loss.
+        """
+        if self._modality_backend is None:
+            return
+        while len(self.modalities) > self._modality_cache_cap:
+            evicted_name, evicted_adata = next(iter(self.modalities.items()))
+            if evicted_name in self._modality_dirty:
+                try:
+                    self._modality_backend.ingest_anndata(
+                        evicted_name, evicted_adata
+                    )
+                    self._modality_dirty.discard(evicted_name)
+                    logger.info(f"Flushed dirty modality '{evicted_name}' before eviction")
+                except Exception as e:
+                    logger.error(
+                        f"Failed to flush dirty modality '{evicted_name}' "
+                        f"before eviction: {e}. Keeping in cache."
+                    )
+                    return
+            _close_backed_handle(evicted_adata)
+            del self.modalities[evicted_name]
+            self._modality_sources.pop(evicted_name, None)
+            logger.info(f"LRU evicted modality '{evicted_name}'")
+
     def get_modality(self, name: str) -> "AnnData":
+        """Get a specific modality.
+
+        When a WorkspaceModalityBackend is attached, materializes from
+        the backend on cache miss and applies LRU eviction.
         """
-        Get a specific modality.
+        with self._state_lock:
+            if name in self.modalities:
+                if hasattr(self.modalities, "move_to_end"):
+                    self.modalities.move_to_end(name)
+                adata = self.modalities[name]
+                if getattr(adata, "isbacked", False):
+                    backed = adata
+                    adata = backed.to_memory()
+                    _close_backed_handle(backed)
+                    self.modalities[name] = adata
+                    self._modality_dirty.add(name)
+                    logger.info(f"Auto-materialized backed modality '{name}'")
+                return adata
 
-        Args:
-            name: Name of modality
+            if self._modality_backend is not None:
+                if not self._modality_backend.exists(name):
+                    raise ValueError(f"Modality '{name}' not found")
+                adata = self._modality_backend.materialize_anndata(name)
+                self.modalities[name] = adata
+                if hasattr(self.modalities, "move_to_end"):
+                    self.modalities.move_to_end(name)
+                self._evict_lru_if_needed()
+                return adata
 
-        Returns:
-            AnnData: The requested modality
-
-        Raises:
-            ValueError: If modality not found
-        """
-        if name not in self.modalities:
             raise ValueError(f"Modality '{name}' not found")
 
-        return self.modalities[name]
+    def is_backed(self, name: str) -> bool:
+        """Return True if modality is loaded in HDF5 backed mode."""
+        with self._state_lock:
+            if name not in self.modalities:
+                return False
+            return getattr(self.modalities[name], "isbacked", False)
+
+    def materialize_modality(self, name: str) -> "AnnData":
+        """Convert a backed-mode modality to fully in-memory.
+
+        Safe to call on already-materialized modalities (no-op).
+        Must be called before any operation that writes to .X.
+        On .to_memory() failure, HDF5 handle is left open for retry.
+        """
+        with self._state_lock:
+            if name not in self.modalities:
+                raise ValueError(f"Modality '{name}' not found")
+            adata = self.modalities[name]
+            if getattr(adata, "isbacked", False):
+                logger.info(f"Materializing backed modality '{name}' to memory")
+                backed = adata
+                adata = backed.to_memory()
+                _close_backed_handle(backed)
+                self.modalities[name] = adata
+                self._modality_dirty.add(name)
+            return adata
+
+    def ensure_in_memory(self, name: str) -> "AnnData":
+        """Get modality, materialize if backed, and mark dirty.
+
+        Callers of ensure_in_memory() declare write intent — the modality
+        is auto-marked dirty so LRU eviction flushes it to backend.
+        Handles cold (backend-only) modalities by loading them first.
+        Idempotent. Tools that mutate should call this, not get_modality().
+        """
+        with self._state_lock:
+            if name not in self.modalities:
+                if self._modality_backend is not None and self._modality_backend.exists(name):
+                    adata = self._modality_backend.materialize_anndata(name)
+                    self.modalities[name] = adata
+                    if hasattr(self.modalities, "move_to_end"):
+                        self.modalities.move_to_end(name)
+                    self._evict_lru_if_needed()
+                else:
+                    raise ValueError(f"Modality '{name}' not found")
+            adata = self.modalities[name]
+            if getattr(adata, "isbacked", False):
+                logger.info(f"Materializing backed modality '{name}' to memory")
+                backed = adata
+                try:
+                    adata = backed.to_memory()
+                except Exception:
+                    raise
+                finally:
+                    _close_backed_handle(backed)
+                self.modalities[name] = adata
+            self._modality_dirty.add(name)
+            return adata
 
     def list_modalities(self) -> List[str]:
-        """
-        List all loaded modalities.
+        """List all available modalities (cache + backend union)."""
+        with self._state_lock:
+            names = set(self.modalities.keys())
+            if self._modality_backend is not None:
+                try:
+                    for rec in self._modality_backend.list_modalities():
+                        names.add(rec.name)
+                except Exception as e:
+                    logger.warning(f"Failed to list backend modalities: {e}")
+            return sorted(names)
 
-        Returns:
-            List[str]: List of modality names
+    def list_modality_records(self) -> List[Dict[str, Any]]:
+        """List modalities with rich metadata including data_status.
+
+        Returns records for all modalities (hot=cached, cold=backend-only).
         """
-        return list(self.modalities.keys())
+        with self._state_lock:
+            records: List[Dict[str, Any]] = []
+            seen: set = set()
+
+            for name, adata in self.modalities.items():
+                seen.add(name)
+                is_dirty = name in self._modality_dirty
+                records.append({
+                    "name": name,
+                    "n_obs": getattr(adata, "n_obs", 0),
+                    "n_vars": getattr(adata, "n_vars", 0),
+                    "data_status": "hot",
+                    "is_dirty": is_dirty,
+                    "is_backed": getattr(adata, "isbacked", False),
+                })
+
+            if self._modality_backend is not None:
+                try:
+                    for rec in self._modality_backend.list_modalities():
+                        if rec.name not in seen:
+                            records.append({
+                                "name": rec.name,
+                                "n_obs": rec.n_obs,
+                                "n_vars": rec.n_vars,
+                                "data_status": "cold",
+                                "is_dirty": False,
+                                "is_backed": False,
+                                "storage_size_bytes": rec.storage_size_bytes,
+                            })
+                except Exception as e:
+                    logger.warning(f"Failed to list backend modalities: {e}")
+
+            return records
 
     def list_modalities_with_lineage(self) -> List[Dict[str, Any]]:
         """
@@ -1229,10 +1546,21 @@ class DataManagerV2:
         Raises:
             ValueError: If modality not found
         """
-        if name not in self.modalities:
-            raise ValueError(f"Modality '{name}' not found")
-
-        del self.modalities[name]
+        with self._state_lock:
+            in_cache = name in self.modalities
+            in_backend = (
+                self._modality_backend is not None
+                and self._modality_backend.exists(name)
+            )
+            if not in_cache and not in_backend:
+                raise ValueError(f"Modality '{name}' not found")
+            if in_backend:
+                self._modality_backend.remove(name)
+            if in_cache:
+                _close_backed_handle(self.modalities[name])
+                del self.modalities[name]
+                self._modality_dirty.discard(name)
+                self._modality_sources.pop(name, None)
         logger.info(f"Removed modality '{name}'")
 
     def to_mudata(self, modalities: Optional[List[str]] = None) -> Any:
@@ -1287,13 +1615,16 @@ class DataManagerV2:
         """
         Save modalities as MuData file.
 
+        Uses the same two-step path resolution as ``save_modality()``:
+        backends receive a relative path, return value is absolute.
+
         Args:
-            path: Destination path
+            path: Destination path (relative to data_dir, or absolute)
             modalities: List of modality names to include (default: all)
             **kwargs: Additional parameters passed to MuData backend
 
         Returns:
-            str: Path where data was saved
+            str: Absolute path where data was saved
 
         Raises:
             ValueError: If MuData backend not available
@@ -1304,16 +1635,27 @@ class DataManagerV2:
         # Create MuData object
         mdata = self.to_mudata(modalities=modalities)
 
-        # Resolve path
-        if not Path(path).is_absolute():
-            path = self.data_dir / path
+        # Resolve to absolute path for provenance/logging
+        resolved_path = Path(path)
+        if not resolved_path.is_absolute():
+            resolved_path = self.data_dir / path
+
+        # Compute backend-relative path (same logic as save_modality)
+        backend_path: Union[str, Path] = resolved_path
+        try:
+            backend_path = resolved_path.relative_to(self.data_dir)
+        except ValueError:
+            try:
+                backend_path = resolved_path.relative_to(self.workspace_path)
+            except ValueError:
+                backend_path = resolved_path
 
         # Save using MuData backend
         mudata_backend = self.backends["mudata"]
-        mudata_backend.save(mdata, path, **kwargs)
+        mudata_backend.save(mdata, backend_path, **kwargs)
 
-        logger.info(f"Saved MuData to {path}")
-        return str(path)
+        logger.info(f"Saved MuData to {resolved_path}")
+        return str(resolved_path)
 
     def _match_modality_to_adapter(self, modality_name: str) -> Optional[str]:
         """
@@ -1648,10 +1990,16 @@ class DataManagerV2:
         for h5ad_file in h5ad_files:
             modality_name = h5ad_file.stem
             try:
-                adata = anndata_mod.read_h5ad(h5ad_file)
-                self.modalities[modality_name] = adata
+                adata = _read_h5ad_smart(h5ad_file, backed_mode_enabled=self.backed_mode)
+                with self._state_lock:
+                    old = self.modalities.get(modality_name)
+                    if old is not None:
+                        _close_backed_handle(old)
+                    self.modalities[modality_name] = adata
+                self._modality_sources[modality_name] = h5ad_file
                 loaded.append(modality_name)
-                logger.debug(f"Loaded modality '{modality_name}' from {h5ad_file}")
+                backed_tag = " [backed]" if getattr(adata, "isbacked", False) else ""
+                logger.debug(f"Loaded modality '{modality_name}' from {h5ad_file}{backed_tag}")
             except Exception as e:
                 logger.error(f"Failed to load modality '{modality_name}': {e}")
                 errors.append({"modality": modality_name, "error": str(e)})
@@ -1680,6 +2028,14 @@ class DataManagerV2:
         if not confirm:
             raise ValueError("Must set confirm=True to clear workspace")
 
+        # Close any backed HDF5 handles before clearing
+        for adata in self.modalities.values():
+            _close_backed_handle(adata)
+
+        # Close modality backend if attached
+        if self._modality_backend is not None:
+            self._modality_backend.close()
+
         # Clear modalities from memory
         self.modalities.clear()
 
@@ -1704,6 +2060,14 @@ class DataManagerV2:
         Example:
             >>> dm.clear()  # Simple, no confirmation needed
         """
+        # Close any backed HDF5 handles before clearing
+        for adata in self.modalities.values():
+            _close_backed_handle(adata)
+
+        # Close modality backend if attached
+        if self._modality_backend is not None:
+            self._modality_backend.close()
+
         # Clear modalities from memory
         self.modalities.clear()
 
@@ -1875,9 +2239,10 @@ class DataManagerV2:
                 json.dump(enhanced_metadata, f, indent=2, default=str)
 
             # Log the processing step
-            self.processing_log.append(
-                f"Saved {processing_step} data: {adata.shape[0]} obs × {adata.shape[1]} vars -> {filename}"
-            )
+            with self._state_lock:
+                self.processing_log.append(
+                    f"Saved {processing_step} data: {adata.shape[0]} obs × {adata.shape[1]} vars -> {filename}"
+                )
 
             logger.info(f"Processed data saved with professional naming: {filepath}")
             logger.info(
@@ -1937,6 +2302,35 @@ class DataManagerV2:
 
         return files_by_category
 
+    def _save_processing_log_and_provenance(self) -> None:
+        """Persist processing log and provenance summary to exports dir."""
+        if self.processing_log or (self.provenance and self.provenance.activities):
+            try:
+                log_path = self.exports_dir / "processing_log.json"
+                log_data = {
+                    "processing_log": self.processing_log,
+                    "provenance_summary": {
+                        "n_activities": (
+                            len(self.provenance.activities) if self.provenance else 0
+                        ),
+                        "activities": [
+                            {
+                                "type": act.get("type"),
+                                "timestamp": act.get("timestamp"),
+                                "parameters": act.get("parameters", {}),
+                            }
+                            for act in (
+                                self.provenance.activities if self.provenance else []
+                            )
+                        ],
+                    },
+                    "timestamp": pd.Timestamp.now().isoformat(),
+                }
+                with open(log_path, "w") as f:
+                    json.dump(log_data, f, indent=2, default=str)
+            except Exception as e:
+                logger.error(f"Failed to save processing log: {e}")
+
     def auto_save_state(
         self,
         progress_callback: Optional[callable] = None,
@@ -1960,6 +2354,23 @@ class DataManagerV2:
         saved_items = []
         skipped_items = []
 
+        # When modality backend is attached, flush dirty through it
+        if self._modality_backend is not None:
+            for name in list(self._modality_dirty):
+                if name in self.modalities:
+                    try:
+                        adata = self.modalities[name]
+                        if getattr(adata, "isbacked", False):
+                            adata = self.materialize_modality(name)
+                        self._modality_backend.ingest_anndata(name, adata)
+                        self._modality_dirty.discard(name)
+                        saved_items.append(f"Modality '{name}': backend")
+                    except Exception as e:
+                        logger.error(f"Backend auto-save failed for '{name}': {e}")
+            # Still save processing log/provenance below, but skip h5ad file writes
+            self._save_processing_log_and_provenance()
+            return saved_items
+
         modality_names = list(self.modalities.keys())
         total = len(modality_names)
 
@@ -1980,12 +2391,25 @@ class DataManagerV2:
                 skip_reason = ""
 
                 if not force:
-                    # Case 1: Modality loaded from autosave file AND not dirty
+                    # Compute dirty + source FIRST so all cases can use them
                     source_file = self._modality_sources.get(modality_name)
+                    is_dirty = modality_name in self._modality_dirty
+
+                    # Case 0: Backed-mode modality — skip only if clean AND source exists
+                    adata_obj = self.modalities.get(modality_name)
+                    if (
+                        getattr(adata_obj, "isbacked", False)
+                        and not is_dirty
+                        and source_file is not None
+                        and source_file.exists()
+                    ):
+                        should_skip = True
+                        skip_reason = "backed (on-disk, unmutated)"
+
+                    # Case 1: Modality loaded from autosave file AND not dirty
                     is_from_autosave = source_file is not None and str(
                         source_file
                     ).endswith("_autosave.h5ad")
-                    is_dirty = modality_name in self._modality_dirty
 
                     if is_from_autosave and not is_dirty:
                         # Check if source file still exists and matches target
@@ -2038,35 +2462,8 @@ class DataManagerV2:
                     progress_callback(idx + 1, total, modality_name, "error")
 
         # Save processing log and provenance
-        if self.processing_log or (self.provenance and self.provenance.activities):
-            try:
-                log_path = self.exports_dir / "processing_log.json"
-                log_data = {
-                    "processing_log": self.processing_log,
-                    "provenance_summary": {
-                        "n_activities": (
-                            len(self.provenance.activities) if self.provenance else 0
-                        ),
-                        "activities": [
-                            {
-                                "type": act.get("type"),
-                                "timestamp": act.get("timestamp"),
-                                "parameters": act.get("parameters", {}),
-                            }
-                            for act in (
-                                self.provenance.activities if self.provenance else []
-                            )
-                        ],
-                    },
-                    "timestamp": pd.Timestamp.now().isoformat(),
-                }
-                import json
-
-                with open(log_path, "w") as f:
-                    json.dump(log_data, f, indent=2, default=str)
-                saved_items.append("Processing log")
-            except Exception as e:
-                logger.error(f"Failed to save processing log: {e}")
+        self._save_processing_log_and_provenance()
+        saved_items.append("Processing log")
 
         if saved_items:
             logger.info(f"Auto-saved: {', '.join(saved_items)}")
@@ -2092,9 +2489,10 @@ class DataManagerV2:
         Args:
             modality_name: Name of the modality that was modified
         """
-        if modality_name in self.modalities:
-            self._modality_dirty.add(modality_name)
-            logger.debug(f"Marked modality '{modality_name}' as dirty")
+        with self._state_lock:
+            if modality_name in self.modalities:
+                self._modality_dirty.add(modality_name)
+        logger.debug(f"Marked modality '{modality_name}' as dirty")
 
     def save_session(self) -> List[str]:
         """
@@ -2506,9 +2904,10 @@ class DataManagerV2:
             self.set_current_dataset(modality_name)
 
             # Log the processing step
-            self.processing_log.append(
-                f"Legacy data loaded: {data.shape[0]} samples × {data.shape[1]} features"
-            )
+            with self._state_lock:
+                self.processing_log.append(
+                    f"Legacy data loaded: {data.shape[0]} samples × {data.shape[1]} features"
+                )
 
             return data
 
@@ -2534,12 +2933,14 @@ class DataManagerV2:
             metadata: Metadata dictionary
             validation_info: Optional validation information
         """
-        self.metadata_store[dataset_id] = {
+        entry = {
             "metadata": metadata,
             "validation_result": validation_info or {},
             "fetch_timestamp": datetime.now().isoformat(),
             "stored_by": "DataManagerV2",
         }
+        with self._state_lock:
+            self.metadata_store[dataset_id] = entry
         logger.info(f"Stored metadata for dataset: {dataset_id}")
 
     def _store_geo_metadata(
@@ -2607,7 +3008,8 @@ class DataManagerV2:
             entry["concatenation_decision"] = kwargs["concatenation_decision"]
 
         # Store with nested structure
-        self.metadata_store[geo_id] = entry
+        with self._state_lock:
+            self.metadata_store[geo_id] = entry
 
         logger.debug(
             f"Stored GEO metadata for {geo_id} with nested structure "
@@ -2635,7 +3037,8 @@ class DataManagerV2:
             logger.warning(f"Cannot enrich metadata for {geo_id}: no existing entry")
             return None
         entry.update(fields)
-        self.metadata_store[geo_id] = entry  # Single controlled re-assignment point
+        with self._state_lock:
+            self.metadata_store[geo_id] = entry  # Single controlled re-assignment point
         logger.debug(
             f"Enriched GEO metadata for {geo_id} with fields: {list(fields.keys())}"
         )
@@ -3411,7 +3814,13 @@ https://github.com/OmicsOS/lobster
 
             try:
                 path = Path(self.available_datasets[name]["path"])
-                self.modalities[name] = _ensure_anndata().read_h5ad(path)
+                adata = _read_h5ad_smart(path, backed_mode_enabled=self.backed_mode)
+                with self._state_lock:
+                    old = self.modalities.get(name)
+                    if old is not None:
+                        _close_backed_handle(old)
+                    self.modalities[name] = adata
+                self._modality_sources[name] = path
 
                 # Update session file
                 self._update_session_file("loaded")
@@ -3470,9 +3879,11 @@ https://github.com/OmicsOS/lobster
                 # Remove non-matching modalities
                 for name in loaded_names:
                     if name not in matching:
-                        if name in self.modalities:
-                            del self.modalities[name]
-                            skipped.append((name, "pattern_mismatch"))
+                        with self._state_lock:
+                            if name in self.modalities:
+                                _close_backed_handle(self.modalities[name])
+                                del self.modalities[name]
+                        skipped.append((name, "pattern_mismatch"))
                 restored = matching
             else:
                 restored = loaded_names

@@ -6,7 +6,11 @@ import pytest
 import typer
 from rich.console import Console
 
-from lobster.cli_internal.commands.heavy import chat_commands, query_commands, session_infra
+from lobster.cli_internal.commands.heavy import (
+    chat_commands,
+    query_commands,
+    session_infra,
+)
 from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnostic,
     StartupDiagnosticError,
@@ -26,7 +30,7 @@ def test_classify_missing_provider_package_preserves_install_hint():
     )
 
     assert diagnostic.code == "missing_provider_package"
-    assert diagnostic.title == "Missing provider package"
+    assert diagnostic.title == "Missing dependency for 'bedrock' provider"
     assert diagnostic.detail_lines == (
         "langchain-aws package not installed. Install with: uv pip install 'lobster-ai[bedrock]'",
     )
@@ -116,8 +120,7 @@ def test_classify_missing_credentials_includes_workspace_and_export_hint(
         for line in diagnostic.fix_lines
     )
     assert any(
-        line.strip() == "export AWS_ACCESS_KEY_ID=test"
-        for line in diagnostic.fix_lines
+        line.strip() == "export AWS_ACCESS_KEY_ID=test" for line in diagnostic.fix_lines
     )
 
 
@@ -150,7 +153,11 @@ def test_validate_startup_passes_provider_override_to_resolver(monkeypatch, tmp_
             seen["runtime_override"] = runtime_override
             return "bedrock", "runtime flag --provider"
 
-    monkeypatch.setattr(session_infra, "_maybe_seed_workspace_provider_config", lambda path: seen.setdefault("seed_path", path))
+    monkeypatch.setattr(
+        session_infra,
+        "_maybe_seed_workspace_provider_config",
+        lambda path: seen.setdefault("seed_path", path),
+    )
     monkeypatch.setattr(
         "lobster.core.workspace.resolve_workspace",
         lambda explicit_path=None, create=True: tmp_path,
@@ -162,6 +169,15 @@ def test_validate_startup_passes_provider_override_to_resolver(monkeypatch, tmp_
     monkeypatch.setattr(
         "lobster.core.config_resolver.ConfigResolver.get_instance",
         lambda workspace_path: _FakeResolver(),
+    )
+
+    class _FakeProvider:
+        def check_dependencies(self):
+            pass
+
+    monkeypatch.setattr(
+        "lobster.config.providers.registry.ProviderRegistry.get",
+        lambda name: _FakeProvider(),
     )
 
     resolved = session_infra.validate_startup_or_raise_startup_diagnostic(
@@ -238,7 +254,9 @@ def test_init_client_go_tui_mode_skips_terminal_callbacks(tmp_path, monkeypatch)
 
     session_infra.set_go_tui_active(True)
     try:
-        client = session_infra.init_client_or_raise_startup_diagnostic(workspace=tmp_path)
+        client = session_infra.init_client_or_raise_startup_diagnostic(
+            workspace=tmp_path
+        )
     finally:
         session_infra.set_go_tui_active(False)
 
@@ -297,7 +315,11 @@ def test_chat_impl_surfaces_startup_diagnostic_before_welcome(monkeypatch):
     state = {"welcome_called": False}
 
     monkeypatch.setattr(chat_commands, "console", recorded_console)
-    monkeypatch.setattr(chat_commands, "console_manager", SimpleNamespace(error_console=recorded_console))
+    monkeypatch.setattr(
+        chat_commands,
+        "console_manager",
+        SimpleNamespace(error_console=recorded_console),
+    )
     monkeypatch.setattr(chat_commands, "setup_logging", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         chat_commands,

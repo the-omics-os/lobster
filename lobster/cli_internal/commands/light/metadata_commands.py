@@ -150,7 +150,9 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
         )
 
     blocks.append(
-        hint_block("Commands: /metadata publications | samples | workspace | exports | clear")
+        hint_block(
+            "Commands: /metadata publications | samples | workspace | exports | clear"
+        )
     )
     _render_blocks(output, blocks)
 
@@ -275,7 +277,9 @@ def metadata_publications(
     # Filter hint
     if not status_filter:
         blocks.append(
-            hint_block("Tip: Filter by status with /metadata publications --status=<status>")
+            hint_block(
+                "Tip: Filter by status with /metadata publications --status=<status>"
+            )
         )
     _render_blocks(output, blocks)
 
@@ -416,7 +420,9 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
     if mem_count > 0:
         rows = [("Entries", str(mem_count))]
         categories = inventory.get("metadata_store_categories", {})
-        for cat, count in sorted(categories.items(), key=lambda item: (-item[1], item[0])):
+        for cat, count in sorted(
+            categories.items(), key=lambda item: (-item[1], item[0])
+        ):
             rows.append((cat, str(count)))
         blocks.append(
             kv_block(
@@ -435,7 +441,9 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
             ("Total Files", str(total_files)),
             ("Total Size", f"{size_mb:.1f} MB"),
         ]
-        for cat, count in sorted(ws_files.items(), key=lambda item: (-item[1], item[0])):
+        for cat, count in sorted(
+            ws_files.items(), key=lambda item: (-item[1], item[0])
+        ):
             rows.append((cat, str(count)))
         blocks.append(
             kv_block(
@@ -520,8 +528,17 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
 
     categories = exports.get("categories", {})
     if categories:
-        rows = [(cat, str(count)) for cat, count in sorted(categories.items(), key=lambda item: (-item[1], item[0]))]
-        blocks.append(kv_block(rows, title="File Categories", key_label="Category", value_label="Count"))
+        rows = [
+            (cat, str(count))
+            for cat, count in sorted(
+                categories.items(), key=lambda item: (-item[1], item[0])
+            )
+        ]
+        blocks.append(
+            kv_block(
+                rows, title="File Categories", key_label="Category", value_label="Count"
+            )
+        )
 
     files = exports.get("files", [])
     if files:
@@ -529,7 +546,12 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
             table_block(
                 title="Recent Files",
                 columns=[
-                    {"name": "File", "style": "cyan", "width": 50, "overflow": "ellipsis"},
+                    {
+                        "name": "File",
+                        "style": "cyan",
+                        "width": 50,
+                        "overflow": "ellipsis",
+                    },
                     {"name": "Size", "style": "grey50", "width": 10},
                     {"name": "Modified", "style": "grey50", "width": 18},
                 ],
@@ -707,9 +729,7 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
             )
 
             if len(json_files) > 20:
-                blocks.append(
-                    hint_block(f"... and {len(json_files) - 20} more files")
-                )
+                blocks.append(hint_block(f"... and {len(json_files) - 20} more files"))
             blocks.append(hint_block(f"Path: {metadata_dir}"))
 
     exports_dir = workspace_path / "exports"
@@ -766,11 +786,11 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
                     level="warning",
                 )
             )
+            blocks.append(hint_block("New exports go to: workspace/exports/"))
             blocks.append(
-                hint_block("New exports go to: workspace/exports/")
-            )
-            blocks.append(
-                hint_block("Migration: mv workspace/metadata/exports/* workspace/exports/")
+                hint_block(
+                    "Migration: mv workspace/metadata/exports/* workspace/exports/"
+                )
             )
 
     _render_blocks(output, blocks)
@@ -876,9 +896,7 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
         if deleted_files > 0:
             result_parts.append(f"{deleted_files} disk files")
 
-        blocks = [
-            alert_block(f"Cleared {' + '.join(result_parts)}", level="success")
-        ]
+        blocks = [alert_block(f"Cleared {' + '.join(result_parts)}", level="success")]
         if failures:
             blocks.append(
                 alert_block(

@@ -706,6 +706,87 @@ class AgentContractTestMixin:
             + "\n\nFix: Ensure tools with provenance=True call log_tool_usage(ir=ir) in their implementation."
         )
 
+    def test_tool_params_no_bare_collections(self) -> None:
+        """
+        Verify no tool parameters use bare collection types (list, dict, tuple, set).
+
+        Bare collection types produce JSON schemas without `items`/`properties`
+        fields, which causes 400 INVALID_ARGUMENT on Gemini API. All collection
+        type hints must be parameterized: list[str], dict[str, Any], etc.
+
+        This validates TEST-10: Gemini-compatible tool schemas.
+        """
+        import types
+        import typing
+
+        tools = self._require_tools()
+
+        violations = []
+        # Bare builtin collection types that produce invalid JSON schema
+        bare_builtins = {list, dict, tuple, set}
+        # typing module aliases (unparameterized) — also produce bare schemas
+        bare_typing = {typing.List, typing.Dict, typing.Tuple, typing.Set}
+        bare_builtins | bare_typing
+
+        def _is_bare(hint) -> str | None:
+            """Return type name if hint is a bare collection, else None."""
+            if hint in bare_builtins:
+                return hint.__name__
+            if hint in bare_typing:
+                # e.g. typing.List -> "List"
+                return getattr(hint, "__name__", None) or str(hint).split(".")[-1]
+            return None
+
+        for tool in tools:
+            tool_name = getattr(tool, "name", str(tool))
+
+            # Get the underlying function
+            func = getattr(tool, "func", None)
+            if func is None:
+                continue
+
+            try:
+                hints = typing.get_type_hints(func)
+            except Exception:
+                continue
+
+            sig = inspect.signature(func)
+
+            for param_name, param in sig.parameters.items():
+                if param_name in ("self", "return"):
+                    continue
+
+                hint = hints.get(param_name)
+                if hint is None:
+                    continue
+
+                # Unwrap Optional/Union to check the inner type
+                actual = hint
+                origin = typing.get_origin(actual)
+                if origin is types.UnionType or origin is typing.Union:
+                    # e.g. list | None -> check each arg
+                    for arg in typing.get_args(actual):
+                        if arg is type(None):
+                            continue
+                        name = _is_bare(arg)
+                        if name:
+                            violations.append((tool_name, param_name, name))
+                else:
+                    name = _is_bare(actual)
+                    if name:
+                        violations.append((tool_name, param_name, name))
+
+        assert not violations, (
+            f"Tools in '{self.agent_module}' have bare collection type hints "
+            f"(breaks Gemini API — missing 'items' in JSON schema):\n"
+            + "\n".join(
+                f"  - Tool '{tool}', param '{param}': bare `{typ}` → "
+                f"use `{typ}[str]` or appropriate parameterized type"
+                for tool, param, typ in violations
+            )
+            + "\n\nFix: Replace `list` with `list[str]`, `dict` with `dict[str, Any]`, etc."
+        )
+
     def test_all_contract_requirements(self) -> None:
         """
         Run all contract validation tests together.
@@ -733,3 +814,6 @@ class AgentContractTestMixin:
         # Phase 2: AQUADIF contract tests (advanced)
         self.test_minimum_viable_parent()  # Skips if not parent agent
         self.test_provenance_ast_validation()
+
+        # Phase 3: Schema compatibility tests
+        self.test_tool_params_no_bare_collections()

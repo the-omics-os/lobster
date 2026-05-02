@@ -18,11 +18,10 @@ SYNC NOTE: Standalone equivalent at skills/lobster-dev/scripts/validate_plugin.p
 """
 
 import ast
-import inspect
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List
 
 # Delta 1: Import has_provenance_call from aquadif.py, don't reimplement
 from lobster.config.aquadif import has_provenance_call

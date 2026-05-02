@@ -306,9 +306,7 @@ Dataset: {entry.dataset_id}
                         strategy_override
                     )
                     if explicit_strategy_name:
-                        strategy_override_dict["strategy_name"] = (
-                            explicit_strategy_name
-                        )
+                        strategy_override_dict["strategy_name"] = explicit_strategy_name
                 if not strategy_override_dict:
                     strategy_override_dict = None
 
@@ -462,12 +460,18 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error in execute_download_from_queue: {e}")
             return f"Error processing queue entry '{entry_id}': {str(e)}"
 
-    execute_download_from_queue.metadata = {"categories": ["IMPORT"], "provenance": True}
+    execute_download_from_queue.metadata = {
+        "categories": ["IMPORT"],
+        "provenance": True,
+    }
     execute_download_from_queue.tags = ["IMPORT"]
 
     # Use shared tool from workspace_tool.py (shared with supervisor)
     list_available_modalities = create_list_modalities_tool(data_manager)
-    list_available_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
+    list_available_modalities.metadata = {
+        "categories": ["UTILITY"],
+        "provenance": False,
+    }
     list_available_modalities.tags = ["UTILITY"]
 
     @tool
@@ -522,7 +526,10 @@ You can now analyze this dataset using the appropriate analysis tools.
             return response
 
         except Exception as e:
-            logger.error(f"Error getting modality details for '{modality_name}': {e}", exc_info=True)
+            logger.error(
+                f"Error getting modality details for '{modality_name}': {e}",
+                exc_info=True,
+            )
             try:
                 available = data_manager.list_modalities()
             except Exception:
@@ -637,7 +644,10 @@ You can now analyze this dataset using the appropriate analysis tools.
             logger.error(f"Error validating compatibility: {e}")
             return f"Error validating compatibility: {str(e)}"
 
-    validate_modality_compatibility.metadata = {"categories": ["QUALITY"], "provenance": True}
+    validate_modality_compatibility.metadata = {
+        "categories": ["QUALITY"],
+        "provenance": True,
+    }
     validate_modality_compatibility.tags = ["QUALITY"]
 
     @tool
@@ -743,7 +753,10 @@ You can now analyze this dataset using the appropriate analysis tools.
 
             data_manager.log_tool_usage(
                 tool_name="create_mudata_from_modalities",
-                parameters={"modality_names": modality_names, "output_name": output_name},
+                parameters={
+                    "modality_names": modality_names,
+                    "output_name": output_name,
+                },
                 description=f"Created MuData from {len(modality_names)} modalities → {mudata_path}",
                 ir=None,
             )
@@ -760,7 +773,10 @@ The MuData object contains all selected modalities and is ready for cross-modal 
             logger.error(f"Error creating MuData: {e}")
             return f"Error creating MuData: {str(e)}"
 
-    create_mudata_from_modalities.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    create_mudata_from_modalities.metadata = {
+        "categories": ["PREPROCESS"],
+        "provenance": True,
+    }
     create_mudata_from_modalities.tags = ["PREPROCESS"]
 
     @tool
@@ -923,8 +939,14 @@ To save, run again with save_to_file=True"""
                 available = data_manager.list_modalities()
             except Exception:
                 available = "(unavailable)"
-            samples_str = str(sample_modalities) if sample_modalities else "(auto-detect failed or not provided)"
-            output_str = output_modality_name if output_modality_name else "(not yet determined)"
+            samples_str = (
+                str(sample_modalities)
+                if sample_modalities
+                else "(auto-detect failed or not provided)"
+            )
+            output_str = (
+                output_modality_name if output_modality_name else "(not yet determined)"
+            )
             return (
                 f"Error concatenating samples: {str(e)}\n"
                 f"Parameters: sample_modalities={samples_str}, "

@@ -19,7 +19,9 @@ class TestSharedToolsTemplate:
     def test_uses_string_literals_not_aquadif_import(self):
         """AQUADIF metadata must use string literals, not AquadifCategory import."""
         content = _render_template("shared_tools.py.j2", self.CONTEXT)
-        assert "AquadifCategory" not in content, "Use string literals, not AquadifCategory import"
+        assert (
+            "AquadifCategory" not in content
+        ), "Use string literals, not AquadifCategory import"
         assert '"IMPORT"' in content
         assert '"QUALITY"' in content
         assert '"ANALYZE"' in content

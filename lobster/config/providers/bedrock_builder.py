@@ -61,6 +61,8 @@ def build_bedrock_converse(
     # Pass through remaining kwargs
     params.update(kwargs)
 
-    logger.debug(f"Building ChatBedrockConverse: model={model_id}, gateway={client is not None}")
+    logger.debug(
+        f"Building ChatBedrockConverse: model={model_id}, gateway={client is not None}"
+    )
 
     return ChatBedrockConverse(**params)

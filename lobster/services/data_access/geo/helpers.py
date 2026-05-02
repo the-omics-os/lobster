@@ -15,7 +15,7 @@ import random
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 from lobster.utils.logger import get_logger
 
@@ -124,9 +124,7 @@ _MODALITY_PATTERNS = {
 }
 
 
-def _is_unsupported_modality_file(
-    filename: str, unsupported_types: list
-) -> bool:
+def _is_unsupported_modality_file(filename: str, unsupported_types: list) -> bool:
     """Check if filename matches an unsupported modality pattern."""
     name_lower = filename.lower()
     for mod_type in unsupported_types:
@@ -281,9 +279,7 @@ def _retry_with_backoff(
                     console.print(
                         f"[yellow]⚠ {operation_name} rate limited (attempt {retry_count}/{max_retries})[/yellow]"
                     )
-                    console.print(
-                        f"[yellow]  Retrying in {delay:.1f}s...[/yellow]"
-                    )
+                    console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
 
                 time.sleep(delay)
                 continue
@@ -293,13 +289,9 @@ def _retry_with_backoff(
                     logger.error(
                         f"{operation_name} failed after {max_retries} attempts: {e}"
                     )
-                    return RetryResult(
-                        RetryOutcome.EXHAUSTED, retries_used=retry_count
-                    )
+                    return RetryResult(RetryOutcome.EXHAUSTED, retries_used=retry_count)
 
-                delay = (
-                    base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
-                )
+                delay = base_delay * (2 ** (retry_count - 1)) * (0.5 + random.random())
                 total_delay += delay
 
                 # Progress reporting (if console available)
@@ -308,9 +300,7 @@ def _retry_with_backoff(
                         f"[yellow]⚠ {operation_name} failed (attempt {retry_count}/{max_retries})[/yellow]"
                     )
                     console.print(f"[yellow]  Error: {str(e)[:100]}[/yellow]")
-                    console.print(
-                        f"[yellow]  Retrying in {delay:.1f}s...[/yellow]"
-                    )
+                    console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
                 else:
                     logger.warning(
                         f"{operation_name} failed (attempt {retry_count}/{max_retries}). "
@@ -333,9 +323,7 @@ def _retry_with_backoff(
                     RetryOutcome.SOFT_FILE_MISSING, retries_used=retry_count
                 )
             # Other OSErrors may be transient, fall through to generic handler
-            logger.warning(
-                f"{operation_name} OSError (may retry): {error_str[:100]}"
-            )
+            logger.warning(f"{operation_name} OSError (may retry): {error_str[:100]}")
             retry_count += 1
             if retry_count >= max_retries:
                 logger.error(
@@ -397,9 +385,7 @@ def _retry_with_backoff(
                     f"[yellow]⚠ {operation_name} failed (attempt {retry_count}/{max_retries})[/yellow]"
                 )
                 console.print(f"[yellow]  Error: {str(e)[:100]}[/yellow]")
-                console.print(
-                    f"[yellow]  Retrying in {delay:.1f}s...[/yellow]"
-                )
+                console.print(f"[yellow]  Retrying in {delay:.1f}s...[/yellow]")
             else:
                 logger.warning(
                     f"{operation_name} failed (attempt {retry_count}/{max_retries}). "

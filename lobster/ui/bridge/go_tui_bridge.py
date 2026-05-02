@@ -17,7 +17,6 @@ from lobster.ui.bridge.protocol import (
     PROTOCOL_VERSION,
     MessageType,
     ProtocolMessage,
-    new_message,
     new_request,
 )
 
@@ -99,7 +98,9 @@ class GoTUIBridge:
         self._read_thread.start()
 
         if self._process.stderr:
-            self._stderr_thread = threading.Thread(target=self._stderr_loop, daemon=True)
+            self._stderr_thread = threading.Thread(
+                target=self._stderr_loop, daemon=True
+            )
             self._stderr_thread.start()
 
         handshake = self.recv_event(timeout=5.0)
@@ -150,12 +151,20 @@ class GoTUIBridge:
 
         self._process = None
 
-    def send(self, msg_type: str, payload: Optional[dict] = None, *, msg_id: str | None = None) -> None:
+    def send(
+        self,
+        msg_type: str,
+        payload: Optional[dict] = None,
+        *,
+        msg_id: str | None = None,
+    ) -> None:
         """Send a non-blocking message to the Go process."""
         msg = ProtocolMessage(type=msg_type, id=msg_id, payload=payload)
         self._send_message(msg)
 
-    def request(self, msg_type: str, payload: Optional[dict] = None, *, timeout: float = 30.0) -> Optional[dict]:
+    def request(
+        self, msg_type: str, payload: Optional[dict] = None, *, timeout: float = 30.0
+    ) -> Optional[dict]:
         """Send a blocking request and wait for response with matching id."""
         request = new_request(msg_type, payload)
         slot: "queue.Queue[ProtocolMessage]" = queue.Queue(maxsize=1)
@@ -172,7 +181,9 @@ class GoTUIBridge:
             with self._pending_lock:
                 self._pending.pop(request.id or "", None)
 
-    def recv_event(self, *, timeout: Optional[float] = None) -> Optional[ProtocolMessage]:
+    def recv_event(
+        self, *, timeout: Optional[float] = None
+    ) -> Optional[ProtocolMessage]:
         """Receive next asynchronous event."""
         try:
             return self._events.get(timeout=timeout)
@@ -236,7 +247,6 @@ class GoTUIBridge:
                 except Exception:
                     decoded = str(line).rstrip()
                 logger.debug("lobster-tui: %s", decoded)
-
 
 
 def run_init_wizard(binary_path: str, *, theme: str = "", timeout: int = 300) -> dict:

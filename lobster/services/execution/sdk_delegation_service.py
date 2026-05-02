@@ -26,8 +26,8 @@ except ImportError:
     ClaudeSDKClient = None
     ClaudeAgentOptions = None
 
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -66,8 +66,7 @@ class SDKDelegationService:
         """
         if not SDK_AVAILABLE:
             raise SDKDelegationError(
-                "Claude Agent SDK not available. "
-                f"Please ensure it's installed or available at {sdk_path}"
+                "Claude Agent SDK not available. " "Please ensure it's installed."
             )
 
         self.data_manager = data_manager

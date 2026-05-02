@@ -12,12 +12,25 @@ from lobster.tools.providers.base_provider import (
     PublicationMetadata,
     PublicationSource,
 )
+
+# Biomolecule database providers (peptides)
+from lobster.tools.providers.biomolecule_provider import (
+    BaseBiomoleculeProvider,
+    BiomoleculeSource,
+    PeptideMetadata,
+)
 from lobster.tools.providers.biorxiv_medrxiv_config import BioRxivMedRxivConfig
 from lobster.tools.providers.biorxiv_medrxiv_provider import BioRxivMedRxivProvider
+from lobster.tools.providers.dbaasp_provider import DBAASPProvider, DBAASPProviderConfig
 from lobster.tools.providers.geo_provider import GEOProvider, GEOProviderConfig
+from lobster.tools.providers.iedb_provider import IEDBProvider, IEDBProviderConfig
 from lobster.tools.providers.massive_provider import (
     MassIVEProvider,
     MassIVEProviderConfig,
+)
+from lobster.tools.providers.peptipedia_provider import (
+    PeptipediaProvider,
+    PeptipediaProviderConfig,
 )
 from lobster.tools.providers.pubmed_provider import PubMedProvider, PubMedProviderConfig
 
@@ -42,6 +55,10 @@ __all__ = [
     "DatasetType",
     "PublicationMetadata",
     "DatasetMetadata",
+    # Biomolecule base classes
+    "BaseBiomoleculeProvider",
+    "BiomoleculeSource",
+    "PeptideMetadata",
     # BioRxiv/MedRxiv provider
     "BioRxivMedRxivProvider",
     "BioRxivMedRxivConfig",
@@ -54,6 +71,13 @@ __all__ = [
     # MassIVE provider
     "MassIVEProvider",
     "MassIVEProviderConfig",
+    # Peptide database providers
+    "DBAASPProvider",
+    "DBAASPProviderConfig",
+    "IEDBProvider",
+    "IEDBProviderConfig",
+    "PeptipediaProvider",
+    "PeptipediaProviderConfig",
 ]
 
 # Add PRIDE to exports if available (PREMIUM tier)

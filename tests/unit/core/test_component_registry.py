@@ -119,9 +119,7 @@ class TestRegistryInitialization:
         assert "lobster.agent_configs" not in loaded_groups
 
     @patch("lobster.core.component_registry.ComponentRegistry._load_entry_point_group")
-    def test_list_adapters_only_loads_adapter_group(
-        self, mock_load_ep, fresh_registry
-    ):
+    def test_list_adapters_only_loads_adapter_group(self, mock_load_ep, fresh_registry):
         """Group access should lazy-load only the requested entry-point group."""
         fresh_registry.list_adapters()
 

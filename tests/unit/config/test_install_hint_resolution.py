@@ -36,9 +36,8 @@ def test_openrouter_provider_missing_langchain_openai_uses_dynamic_install_hint(
     with pytest.raises(ImportError) as exc_info:
         provider.create_chat_model("openai/gpt-4o")
 
-    assert (
-        "Install with: uv tool install lobster-ai --with langchain-openai"
-        in str(exc_info.value)
+    assert "Install with: uv tool install lobster-ai --with langchain-openai" in str(
+        exc_info.value
     )
 
 

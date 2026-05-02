@@ -7,16 +7,15 @@ for Rich console, dashboard, JSON, or the Go TUI protocol.
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import re
 from typing import Any, Callable, Dict, Iterable, Optional, Sequence
 
 from rich import box
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
-
 
 _RICH_TAG_RE = re.compile(r"\[([^\[\]]+)\]")
 _ALERT_STYLES = {"error", "warning", "success", "info"}
@@ -529,14 +528,14 @@ class DashboardOutputAdapter(OutputAdapter):
             if not columns or not rows:
                 return
 
-            header = "| " + " | ".join(
-                _strip_markup(str(col.get("name", ""))) for col in columns
-            ) + " |"
+            header = (
+                "| "
+                + " | ".join(_strip_markup(str(col.get("name", ""))) for col in columns)
+                + " |"
+            )
             separator = "|" + "|".join("---" for _ in columns) + "|"
             table_rows = [
-                "| "
-                + " | ".join(_strip_markup(str(cell)) for cell in row)
-                + " |"
+                "| " + " | ".join(_strip_markup(str(cell)) for cell in row) + " |"
                 for row in rows
             ]
             title = data.get("title")
@@ -626,7 +625,9 @@ class ProtocolOutputAdapter(OutputAdapter):
             self._render_block(block)
 
     @staticmethod
-    def _table_payload_columns(columns: Sequence[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    def _table_payload_columns(
+        columns: Sequence[Dict[str, Any]],
+    ) -> list[Dict[str, Any]]:
         payload_columns: list[Dict[str, Any]] = []
         for col in columns:
             payload_col: Dict[str, Any] = {
@@ -728,7 +729,11 @@ class ProtocolOutputAdapter(OutputAdapter):
         if block.kind == "hint":
             title = data.get("title")
             message = data.get("message", "")
-            text = f"{_strip_markup(title)}\n{_strip_markup(message)}" if title else _strip_markup(message)
+            text = (
+                f"{_strip_markup(title)}\n{_strip_markup(message)}"
+                if title
+                else _strip_markup(message)
+            )
             self._send("text", {"content": text + "\n"})
             return
 

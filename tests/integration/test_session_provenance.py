@@ -21,9 +21,9 @@ from unittest.mock import Mock, patch
 import pytest
 
 from lobster.cli import CommandClient
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.client import AgentClient
 from lobster.core.notebook_exporter import NotebookExporter
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
 # Mark all tests as integration
 pytestmark = pytest.mark.integration

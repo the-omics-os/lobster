@@ -597,7 +597,7 @@ def activate_license(
     server_url = (
         license_server_url
         or os.environ.get("LOBSTER_LICENSE_SERVER_URL")
-        or "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1"
+        or "https://license.api.omics-os.com"
     )
 
     try:
@@ -764,7 +764,7 @@ def refresh_entitlement(cloud_key: Optional[str] = None) -> Dict[str, Any]:
 
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1",
+        "https://license.api.omics-os.com",
     )
 
     try:
@@ -856,7 +856,7 @@ def check_revocation_status() -> Dict[str, Any]:
 
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1",
+        "https://license.api.omics-os.com",
     )
 
     try:
@@ -926,7 +926,7 @@ def get_jwks() -> Dict[str, Any]:
     """
     server_url = os.environ.get(
         "LOBSTER_LICENSE_SERVER_URL",
-        "https://x6gm9vfgl5.execute-api.us-east-1.amazonaws.com/v1",
+        "https://license.api.omics-os.com",
     )
 
     try:

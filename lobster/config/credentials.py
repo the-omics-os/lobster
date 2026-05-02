@@ -44,9 +44,7 @@ def save_credentials(data: dict) -> None:
     CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(CREDENTIALS_DIR, 0o700)
 
-    CREDENTIALS_FILE.write_text(
-        json.dumps(data, indent=2) + "\n", encoding="utf-8"
-    )
+    CREDENTIALS_FILE.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.chmod(CREDENTIALS_FILE, 0o600)
 
 

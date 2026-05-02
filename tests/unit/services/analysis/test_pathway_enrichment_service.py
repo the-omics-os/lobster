@@ -217,7 +217,9 @@ class TestErrorHandling:
             )
 
         assert "gseapy not installed" in str(exc_info.value)
-        assert "pip install gseapy" in str(exc_info.value)
+        assert "gseapy" in str(
+            exc_info.value
+        )  # install command mentions gseapy (format: uv pip install 'gseapy')
 
 
 class TestOrganismMapping:

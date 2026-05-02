@@ -117,6 +117,15 @@ class ILLMProvider(ABC):
         """
         pass
 
+    def check_dependencies(self) -> None:
+        """Verify required packages are importable.
+
+        Raises ImportError with an install command if a required package
+        is missing.  Called during startup validation so the error
+        surfaces *before* the UI renders.  Default implementation is a
+        no-op — providers with optional deps override this.
+        """
+
     @abstractmethod
     def is_available(self) -> bool:
         """
@@ -274,7 +283,10 @@ class ILLMProvider(ABC):
         try:
             llm = self.create_chat_model(target_model, temperature=0.0, max_tokens=1)
             llm.invoke("Hi")
-            return True, f"✓ {self.display_name} connection verified (model: {target_model})"
+            return (
+                True,
+                f"✓ {self.display_name} connection verified (model: {target_model})",
+            )
         except Exception as e:
             return False, f"{self.display_name} connection failed: {e}"
 

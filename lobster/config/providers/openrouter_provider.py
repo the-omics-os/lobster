@@ -287,6 +287,17 @@ class OpenRouterProvider(ILLMProvider):
     def display_name(self) -> str:
         return "OpenRouter (600+ models)"
 
+    def check_dependencies(self) -> None:
+        try:
+            import langchain_openai  # noqa: F401
+        except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("openrouter", is_extra=True)
+            raise ImportError(
+                f"langchain-openai package not installed. Install with: {cmd}"
+            )
+
     def is_configured(self) -> bool:
         """Check if OPENROUTER_API_KEY is present and non-empty."""
         api_key = os.environ.get(_ENV_VAR)
@@ -439,14 +450,21 @@ class OpenRouterProvider(ILLMProvider):
                 timeout=5.0,
             )
             if response.status_code == 401:
-                return False, "Invalid API key — check your OPENROUTER_API_KEY at https://openrouter.ai/keys"
+                return (
+                    False,
+                    "Invalid API key — check your OPENROUTER_API_KEY at https://openrouter.ai/keys",
+                )
             response.raise_for_status()
             data = response.json().get("data", {})
 
             limit = data.get("limit")
             limit_remaining = data.get("limit_remaining")
 
-            if limit is not None and limit_remaining is not None and limit_remaining <= 0:
+            if (
+                limit is not None
+                and limit_remaining is not None
+                and limit_remaining <= 0
+            ):
                 return False, (
                     f"Insufficient credits: ${limit_remaining:.4f} remaining of ${limit:.2f} limit. "
                     "Add credits at https://openrouter.ai/credits"

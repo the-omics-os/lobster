@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.core.queues.download_queue instead."""
+
 import warnings as _w
 
 _w.warn(

@@ -181,7 +181,9 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
     env_file = Path.cwd() / ".env"
     is_initialized = env_file.exists()
 
-    init_rows = [("Initialization", "Configured" if is_initialized else "Not configured")]
+    init_rows = [
+        ("Initialization", "Configured" if is_initialized else "Not configured")
+    ]
     if is_initialized:
         try:
             from dotenv import dotenv_values
@@ -299,7 +301,9 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
     try:
         from lobster.services.vector.service import VectorSearchService  # noqa: F401
 
-        capabilities.append(("available", "Semantic Search", "Vector backend available"))
+        capabilities.append(
+            ("available", "Semantic Search", "Vector backend available")
+        )
     except ImportError:
         from lobster.core.component_registry import get_install_command
 
@@ -328,8 +332,7 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
         )
     if compact:
         capability_items = [
-            f"{label}: {status} ({details})"
-            for status, label, details in capabilities
+            f"{label}: {status} ({details})" for status, label, details in capabilities
         ]
         blocks.append(list_block(capability_items, title="Optional Capabilities"))
         blocks.append(

@@ -155,8 +155,12 @@ class SampleConcatenator:
                     )
 
                     save_path = f"{gse_id.lower()}_{gsm_id.lower()}_raw.h5ad"
-                    (self.service.data_manager.data_dir / gse_id.lower()).mkdir(exist_ok=True)
-                    self.service.data_manager.save_modality(name=modality_name, path=save_path)
+                    (self.service.data_manager.data_dir / gse_id.lower()).mkdir(
+                        exist_ok=True
+                    )
+                    self.service.data_manager.save_modality(
+                        name=modality_name, path=save_path
+                    )
 
                     stored_samples.append(modality_name)
                     logger.info(
@@ -264,9 +268,7 @@ class SampleConcatenator:
                 logger.info(
                     "  Effect: Only genes present in ALL samples will be retained"
                 )
-                logger.info(
-                    "  Warning: Genes unique to some samples will be excluded"
-                )
+                logger.info("  Warning: Genes unique to some samples will be excluded")
             else:
                 logger.info("VARIABILITY DETECTED")
                 logger.info("Selected: OUTER JOIN (union of all genes)")
@@ -449,12 +451,12 @@ class SampleConcatenator:
                 assistant = DataExpertAssistant()
 
                 if gse_id:
-                    metadata_for_detection = self.service.data_manager.metadata_store.get(
-                        gse_id, {}
+                    metadata_for_detection = (
+                        self.service.data_manager.metadata_store.get(gse_id, {})
                     )
                 else:
-                    metadata_for_detection = self.service.data_manager.metadata_store.get(
-                        gsm_id, {}
+                    metadata_for_detection = (
+                        self.service.data_manager.metadata_store.get(gsm_id, {})
                     )
 
                 modality_result = assistant.detect_modality(
@@ -510,9 +512,7 @@ class SampleConcatenator:
                 source=matrix,
                 adapter=adapter_name,
                 validate=True,
-                transpose=(
-                    True if adapter_name == "transcriptomics_bulk" else False
-                ),
+                transpose=(True if adapter_name == "transcriptomics_bulk" else False),
                 **enhanced_metadata,
             )
 

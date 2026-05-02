@@ -115,6 +115,17 @@ class AnthropicProvider(ILLMProvider):
         """
         return "Anthropic Direct API"
 
+    def check_dependencies(self) -> None:
+        try:
+            import langchain_anthropic  # noqa: F401
+        except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("anthropic", is_extra=True)
+            raise ImportError(
+                f"langchain-anthropic package not installed. Install with: {cmd}"
+            )
+
     def is_configured(self) -> bool:
         """
         Check if Anthropic credentials are present (API key OR OAuth).
@@ -127,6 +138,7 @@ class AnthropicProvider(ILLMProvider):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if api_key and api_key.strip():
             return True
+        # Check for OAuth credentials (lazy import to avoid circular deps)
         try:
             from lobster.config.auth import oauth_store
 

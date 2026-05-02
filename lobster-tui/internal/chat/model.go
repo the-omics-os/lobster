@@ -116,6 +116,10 @@ type inlinePrintComplete struct{}
 // inlinePrintReset clears the temporary repaint spacer after one frame.
 type inlinePrintReset struct{}
 
+// inlinePrintReady carries pre-rendered scrollback text deferred by one frame
+// tick so BubbleTea can flush the cleared viewport before tea.Println runs.
+type inlinePrintReady struct{ body string }
+
 // protocolErr wraps an error read from the protocol handler's Errs() channel.
 type protocolErr struct{ err error }
 
@@ -427,6 +431,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inlineRepaintPad = false
 		}
 		return m, nil
+
+	case inlinePrintReady:
+		if strings.TrimSpace(msg.body) == "" {
+			return m, nil
+		}
+		redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
+		return m, tea.Sequence(tea.Println(msg.body), redrawCmd)
 
 	case spinnerTick:
 		if !m.spinnerActive || (m.quietStartup && !m.ready) {
@@ -845,12 +856,24 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			// supervisor's question is visible while the component renders.
 			// Do NOT clear tool feed or reset streaming state — the tool
 			// is still logically running (paused at interrupt).
+			hadLiveStream := m.inlineFlowMode() &&
+				m.shouldRenderStreamingTranscript() &&
+				m.streamBuf.Len() > 0
 			m.flushStreamBuffer()
 			toPrint := m.collectLastAssistantMessage()
 			m.rebuildViewportWithMode(true)
-			printCmd := m.inlinePrintMessagesCmd(toPrint)
+			printCmd := m.inlinePrintCmd(toPrint, hadLiveStream)
 			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
+
+		// Snapshot whether live streaming text was visible in viewport
+		// before flush. If so, we must defer tea.Println by one frame
+		// tick so BubbleTea flushes the cleared viewport first —
+		// otherwise the old viewport content gets pushed into scrollback
+		// as a ghost duplicate.
+		hadLiveStream := m.inlineFlowMode() &&
+			m.shouldRenderStreamingTranscript() &&
+			m.streamBuf.Len() > 0
 
 		// Flush any remaining streamed text into typed blocks, then append
 		// buffered handoff lines that belong directly beneath the response.
@@ -869,7 +892,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		m.activeTurn = activeTurnNone
 		m.isCanceling = false
 		m.rebuildViewportWithMode(true)
-		printCmd := m.inlinePrintMessagesCmd(toPrint)
+		printCmd := m.inlinePrintCmd(toPrint, hadLiveStream)
 		return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 
 	case protocol.TypeStatus:
@@ -1695,9 +1718,12 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	}
 }
 
-func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
+// buildInlinePrintBody renders messages into a single string for scrollback
+// printing. It handles the one-time banner (header + runtime summary) on first
+// print. Returns empty string if nothing to print.
+func (m *Model) buildInlinePrintBody(msgs []ChatMessage) string {
 	if !m.inlineFlowMode() {
-		return nil
+		return ""
 	}
 
 	renderedParts := make([]string, 0, len(msgs))
@@ -1710,10 +1736,8 @@ func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
 		renderedParts = append(renderedParts, rendered)
 	}
 	if len(renderedParts) == 0 {
-		return nil
+		return ""
 	}
-
-	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
 
 	if !m.inlineBannerPrinted {
 		m.inlineBannerPrinted = true
@@ -1727,10 +1751,40 @@ func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
 			parts = append(parts, runtimeSummary)
 		}
 		parts = append(parts, renderedParts...)
-		return tea.Sequence(tea.Println(strings.Join(parts, "\n")), redrawCmd)
+		return strings.Join(parts, "\n")
 	}
 
-	return tea.Sequence(tea.Println(strings.Join(renderedParts, "\n")), redrawCmd)
+	return strings.Join(renderedParts, "\n")
+}
+
+// inlinePrintMessagesCmd renders messages and prints them to scrollback
+// immediately. Used for user messages and other non-streaming prints.
+func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
+	body := m.buildInlinePrintBody(msgs)
+	if strings.TrimSpace(body) == "" {
+		return nil
+	}
+	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
+	return tea.Sequence(tea.Println(body), redrawCmd)
+}
+
+// inlinePrintCmd chooses between immediate and deferred scrollback printing.
+// When hadLiveStream is true, the viewport was showing live streaming text
+// that has now been flushed. We must defer tea.Println by one frame tick so
+// BubbleTea can flush the cleared viewport first — otherwise the old viewport
+// content gets pushed into scrollback as a ghost duplicate.
+func (m *Model) inlinePrintCmd(msgs []ChatMessage, hadLiveStream bool) tea.Cmd {
+	body := m.buildInlinePrintBody(msgs)
+	if strings.TrimSpace(body) == "" {
+		return nil
+	}
+	if hadLiveStream {
+		return tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
+			return inlinePrintReady{body: body}
+		})
+	}
+	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
+	return tea.Sequence(tea.Println(body), redrawCmd)
 }
 
 func (m *Model) applyClearTarget(target string) {

@@ -79,7 +79,9 @@ def ot():
 def scorer():
     if not _check_drug_discovery():
         pytest.skip("lobster-drug-discovery not installed")
-    from lobster.services.drug_discovery.target_scoring_service import TargetScoringService
+    from lobster.services.drug_discovery.target_scoring_service import (
+        TargetScoringService,
+    )
 
     return TargetScoringService()
 
@@ -88,7 +90,9 @@ def scorer():
 def syn():
     if not _check_drug_discovery():
         pytest.skip("lobster-drug-discovery not installed")
-    from lobster.services.drug_discovery.synergy_scoring_service import SynergyScoringService
+    from lobster.services.drug_discovery.synergy_scoring_service import (
+        SynergyScoringService,
+    )
 
     return SynergyScoringService()
 

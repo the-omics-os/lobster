@@ -117,7 +117,7 @@ class TestCheckSparseConversionSafe:
 
         # Check error message has actionable guidance
         error_msg = str(excinfo.value)
-        assert "chunked=True" in error_msg or "reduce features" in error_msg
+        assert "chunked processing" in error_msg.lower() or "reduce features" in error_msg.lower()
 
     def test_error_includes_matrix_dimensions(self, monkeypatch):
         """Error message includes matrix dimensions."""

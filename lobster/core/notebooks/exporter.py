@@ -21,12 +21,12 @@ import nbformat
 from nbformat import NotebookNode
 from nbformat.v4 import new_code_cell, new_markdown_cell, new_notebook
 
+from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance.analysis_ir import (
     AnalysisStep,
     extract_unique_helper_code,
     extract_unique_imports,
 )
-from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance.provenance import ProvenanceTracker
 
 logger = logging.getLogger(__name__)

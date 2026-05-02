@@ -98,7 +98,9 @@ def _format_missing_credentials_fix_lines(
 
 def _build_invalid_provider_diagnostic(message: str) -> StartupDiagnostic:
     valid_prefix = "Valid providers:"
-    valid_line = message.split(valid_prefix, 1)[1].strip() if valid_prefix in message else ""
+    valid_line = (
+        message.split(valid_prefix, 1)[1].strip() if valid_prefix in message else ""
+    )
     fix_lines = []
     if valid_line:
         fix_lines.append(f"Use one of: {valid_line}")
@@ -111,12 +113,20 @@ def _build_invalid_provider_diagnostic(message: str) -> StartupDiagnostic:
     )
 
 
-def _build_missing_provider_package_diagnostic(message: str) -> StartupDiagnostic:
+def _build_missing_provider_package_diagnostic(
+    message: str,
+    *,
+    provider_name: Optional[str] = None,
+) -> StartupDiagnostic:
     command = _extract_install_command(message)
     fix_lines = (f"Run: {command}",) if command else ()
+    if provider_name:
+        title = f"Missing dependency for '{provider_name}' provider"
+    else:
+        title = "Missing provider dependency"
     return StartupDiagnostic(
         code="missing_provider_package",
-        title="Missing provider package",
+        title=title,
         detail_lines=(message,),
         fix_lines=fix_lines,
     )
@@ -172,12 +182,18 @@ def _build_provider_not_configured_fix_lines(
         from lobster.core.config_resolver import _find_existing_configs
 
         search_start = workspace.parent if workspace else None
-        found_configs = _find_existing_configs(start=search_start) if search_start else _find_existing_configs()
+        found_configs = (
+            _find_existing_configs(start=search_start)
+            if search_start
+            else _find_existing_configs()
+        )
     except Exception:
         found_configs = []
 
     if found_configs:
-        lines.insert(0, f"Reuse existing workspace: export LOBSTER_WORKSPACE={found_configs[0]}")
+        lines.insert(
+            0, f"Reuse existing workspace: export LOBSTER_WORKSPACE={found_configs[0]}"
+        )
 
     return tuple(lines)
 
@@ -218,7 +234,9 @@ def classify_startup_exception(
     if isinstance(exc, ImportError):
         has_install_command = _extract_install_command(message) is not None
         if has_install_command and "package not installed" in message:
-            return _build_missing_provider_package_diagnostic(message)
+            return _build_missing_provider_package_diagnostic(
+                message, provider_name=provider_override
+            )
         if has_install_command:
             return _build_missing_dependency_diagnostic(message)
 

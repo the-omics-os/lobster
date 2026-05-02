@@ -10,7 +10,6 @@ import inspect
 import subprocess
 from pathlib import Path
 
-
 # Expected domain modules and their classes
 DOMAIN_MODULES = {
     "metadata_fetch": "MetadataFetcher",
@@ -183,9 +182,9 @@ class TestSoftDownloadDeduplication:
             text=True,
             cwd=".",
         )
-        assert result.stdout.strip() == "", (
-            f"SOFT pre-download blocks remain in source files:\n{result.stdout}"
-        )
+        assert (
+            result.stdout.strip() == ""
+        ), f"SOFT pre-download blocks remain in source files:\n{result.stdout}"
 
     def test_domain_modules_import_from_soft_download(self):
         """Domain modules should import pre_download_soft_file from soft_download.py."""
@@ -199,6 +198,6 @@ class TestSoftDownloadDeduplication:
 
         for filepath in files_that_should_import:
             content = Path(filepath).read_text()
-            assert "from lobster.services.data_access.geo.soft_download import" in content, (
-                f"{filepath} should import from soft_download.py"
-            )
+            assert (
+                "from lobster.services.data_access.geo.soft_download import" in content
+            ), f"{filepath} should import from soft_download.py"

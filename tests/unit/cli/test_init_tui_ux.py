@@ -10,13 +10,17 @@ def test_check_and_prompt_install_packages_expands_package_ids(monkeypatch, tmp_
     def _fake_get_installed_agents():
         if installed_agents:
             return installed_agents.pop(0)
-        raise AssertionError("init install path should not rediscover agents in-process")
+        raise AssertionError(
+            "init install path should not rediscover agents in-process"
+        )
 
     def _fake_install(package_name):
         installed_packages.append(package_name)
         return True, "ok"
 
-    monkeypatch.setattr(init_commands, "_get_installed_agents", _fake_get_installed_agents)
+    monkeypatch.setattr(
+        init_commands, "_get_installed_agents", _fake_get_installed_agents
+    )
     monkeypatch.setattr(
         "lobster.core.uv_tool_env.is_uv_tool_env",
         lambda: False,
@@ -139,12 +143,14 @@ def test_noninteractive_preset_selection_filters_unpublished_agents(
         ],
     )
 
-    selected_agents, preset_name = init_commands._perform_agent_selection_non_interactive(
-        agents_flag="",
-        preset_flag="scrna-full",
-        auto_agents_flag=False,
-        agents_description_flag="",
-        workspace_path=tmp_path / ".lobster_workspace",
+    selected_agents, preset_name = (
+        init_commands._perform_agent_selection_non_interactive(
+            agents_flag="",
+            preset_flag="scrna-full",
+            auto_agents_flag=False,
+            agents_description_flag="",
+            workspace_path=tmp_path / ".lobster_workspace",
+        )
     )
 
     assert selected_agents == ["research_agent", "annotation_expert"]
@@ -173,7 +179,9 @@ def test_prompt_smart_standardization_skips_when_backend_unavailable(monkeypatch
     assert env_lines == []
 
 
-def test_postprocess_tui_init_result_normalizes_agents_before_apply(monkeypatch, tmp_path):
+def test_postprocess_tui_init_result_normalizes_agents_before_apply(
+    monkeypatch, tmp_path
+):
     captured = {}
 
     def _fake_apply(result, workspace_path, env_path, global_config=False):
@@ -195,7 +203,9 @@ def test_postprocess_tui_init_result_normalizes_agents_before_apply(monkeypatch,
         "lobster.core.uv_tool_env.is_uv_tool_env",
         lambda: False,
     )
-    monkeypatch.setattr(init_commands, "_ensure_provider_installed", lambda provider: True)
+    monkeypatch.setattr(
+        init_commands, "_ensure_provider_installed", lambda provider: True
+    )
     monkeypatch.setattr(
         init_commands,
         "_install_smart_standardization_dependencies",

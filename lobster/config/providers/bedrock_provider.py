@@ -84,6 +84,26 @@ class BedrockProvider(ILLMProvider):
             input_cost_per_million=15.0,
             output_cost_per_million=75.0,
         ),
+        ModelInfo(
+            name="us.anthropic.claude-sonnet-4-6",
+            display_name="Claude Sonnet 4.6 (Bedrock)",
+            description="Claude 4.6 Sonnet - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
+        ),
+        ModelInfo(
+            name="anthropic.claude-opus-4-6-v1",
+            display_name="Claude Opus 4.6 (Bedrock)",
+            description="Claude 4.6 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=15.0,
+            output_cost_per_million=75.0,
+        ),
     ]
 
     DEFAULT_REGION = "us-east-1"
@@ -97,6 +117,17 @@ class BedrockProvider(ILLMProvider):
     def display_name(self) -> str:
         """Return human-friendly provider name."""
         return "AWS Bedrock"
+
+    def check_dependencies(self) -> None:
+        try:
+            import langchain_aws  # noqa: F401
+        except ImportError:
+            from lobster.core.component_registry import get_install_command
+
+            cmd = get_install_command("bedrock", is_extra=True)
+            raise ImportError(
+                f"langchain-aws package not installed. Install with: {cmd}"
+            )
 
     def is_configured(self) -> bool:
         """
@@ -216,9 +247,9 @@ class BedrockProvider(ILLMProvider):
         aws_access_key = kwargs.pop("aws_access_key_id", None) or os.environ.get(
             "AWS_BEDROCK_ACCESS_KEY"
         )
-        aws_secret_key = kwargs.pop(
-            "aws_secret_access_key", None
-        ) or os.environ.get("AWS_BEDROCK_SECRET_ACCESS_KEY")
+        aws_secret_key = kwargs.pop("aws_secret_access_key", None) or os.environ.get(
+            "AWS_BEDROCK_SECRET_ACCESS_KEY"
+        )
 
         if not (aws_access_key and aws_secret_key):
             raise ValueError(

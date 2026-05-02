@@ -62,7 +62,14 @@ def _build_workspace_list_blocks(
         )
         modified = info["modified"].split("T")[0]
         rows.append(
-            [str(idx), status, truncate_middle(name, max_length=60), size, shape, modified]
+            [
+                str(idx),
+                status,
+                truncate_middle(name, max_length=60),
+                size,
+                shape,
+                modified,
+            ]
         )
 
     return [
@@ -155,7 +162,9 @@ def _build_workspace_status_blocks(
         "Enabled" if workspace_status_dict.get("provenance_enabled") else "Disabled"
     )
     mudata = (
-        "Available" if workspace_status_dict.get("mudata_available") else "Not installed"
+        "Available"
+        if workspace_status_dict.get("mudata_available")
+        else "Not installed"
     )
 
     blocks: list[OutputBlock] = [
@@ -216,8 +225,18 @@ def _build_workspace_status_blocks(
                     title="Directories",
                     columns=[
                         {"name": "Directory", "style": "bold white"},
-                        {"name": "Files", "style": "cyan", "justify": "right", "width": 8},
-                        {"name": "Size", "style": "green", "justify": "right", "width": 10},
+                        {
+                            "name": "Files",
+                            "style": "cyan",
+                            "justify": "right",
+                            "width": 8,
+                        },
+                        {
+                            "name": "Size",
+                            "style": "green",
+                            "justify": "right",
+                            "width": 10,
+                        },
                     ],
                     rows=compact_dir_rows,
                 )
@@ -245,7 +264,12 @@ def _build_workspace_status_blocks(
     modality_names = workspace_status_dict.get("modality_names", [])
     if modality_names:
         visible_modalities = modality_names[:max_visible_modalities]
-        blocks.append(list_block(visible_modalities, title="Active Modalities" if compact else "Loaded Modalities"))
+        blocks.append(
+            list_block(
+                visible_modalities,
+                title="Active Modalities" if compact else "Loaded Modalities",
+            )
+        )
         if len(modality_names) > max_visible_modalities:
             remaining = len(modality_names) - max_visible_modalities
             blocks.append(hint_block(f"... and {remaining} more loaded modalities"))
@@ -393,9 +417,7 @@ def workspace_list(
                     list_block([f.name for f in files[:5]], title="Files found")
                 )
                 if len(files) > 5:
-                    blocks.append(
-                        hint_block(f"... and {len(files) - 5} more")
-                    )
+                    blocks.append(hint_block(f"... and {len(files) - 5} more"))
             else:
                 blocks.append(
                     section_block(
@@ -552,7 +574,8 @@ def workspace_load(
     if file_path.exists() and file_path.is_file():
         # Load file directly into workspace
         _render_blocks(
-            output, [section_block(body=f"Loading file into workspace: {file_path.name}")]
+            output,
+            [section_block(body=f"Loading file into workspace: {file_path.name}")],
         )
 
         try:
@@ -571,9 +594,7 @@ def workspace_load(
                     ],
                 )
                 return f"Loaded file '{file_path.name}' as modality '{result['modality_name']}'"
-            blocks = [
-                alert_block(result.get("error", "Unknown error"), level="error")
-            ]
+            blocks = [alert_block(result.get("error", "Unknown error"), level="error")]
             if result.get("suggestion"):
                 blocks.append(section_block(body=result["suggestion"]))
             _render_blocks(output, blocks)
@@ -600,7 +621,9 @@ def workspace_load(
             output,
             [
                 alert_block("No datasets found in workspace", level="warning"),
-                hint_block(f"Tip: If '{selector}' is a file, ensure the path is correct."),
+                hint_block(
+                    f"Tip: If '{selector}' is a file, ensure the path is correct."
+                ),
             ],
         )
         return None
@@ -641,7 +664,11 @@ def workspace_load(
             return None
         _render_blocks(
             output,
-            [alert_block(f"Index {idx} out of range (1-{len(sorted_names)})", level="error")],
+            [
+                alert_block(
+                    f"Index {idx} out of range (1-{len(sorted_names)})", level="error"
+                )
+            ],
         )
         return None
     # Pattern-based loading (potentially multiple datasets)
@@ -693,7 +720,9 @@ def workspace_remove(
                     ],
                     title="Examples",
                 ),
-                hint_block("Tip: Use '/modalities' to see loaded modalities with indexes"),
+                hint_block(
+                    "Tip: Use '/modalities' to see loaded modalities with indexes"
+                ),
             ],
         )
         return None
@@ -826,9 +855,7 @@ def workspace_remove(
                 # Display success message
                 _render_blocks(
                     output,
-                    [
-                        section_block(body=f"Removed: {stats['removed_modality']}")
-                    ],
+                    [section_block(body=f"Removed: {stats['removed_modality']}")],
                 )
                 if len(modalities_to_remove) == 1:
                     # Show detailed info only for single removal

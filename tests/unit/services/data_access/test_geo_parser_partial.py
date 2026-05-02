@@ -7,12 +7,12 @@ Verifies that:
 - parse_supplementary_file returns ParseResult when delegating
 """
 
+from unittest.mock import MagicMock, PropertyMock, patch
+
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
 
 from lobster.services.data_access.geo.parser import GEOParser, ParseResult
-
 
 # ---------------------------------------------------------------------------
 # ParseResult dataclass property tests
@@ -82,14 +82,14 @@ class TestParseLargeFileInChunksPartial:
 
         # _check_memory_availability: first call True (chunk1 accepted),
         # second call False (chunk2 triggers break)
-        with patch.object(
-            self.parser,
-            "_check_memory_availability",
-            side_effect=[False],  # First chunk fails memory check -> break
-        ), patch.object(
-            self.parser, "_get_adaptive_chunk_size", return_value=100
-        ), patch.object(
-            self.parser, "_log_system_memory"
+        with (
+            patch.object(
+                self.parser,
+                "_check_memory_availability",
+                side_effect=[False],  # First chunk fails memory check -> break
+            ),
+            patch.object(self.parser, "_get_adaptive_chunk_size", return_value=100),
+            patch.object(self.parser, "_log_system_memory"),
         ):
             # mock vm for the percent check (should not reach it since we break first)
             mock_vm.return_value = MagicMock(percent=50)
@@ -115,12 +115,10 @@ class TestParseLargeFileInChunksPartial:
         mock_read_csv.return_value = iter([chunk1, chunk2])
         mock_vm.return_value = MagicMock(percent=50)
 
-        with patch.object(
-            self.parser, "_check_memory_availability", return_value=True
-        ), patch.object(
-            self.parser, "_get_adaptive_chunk_size", return_value=50
-        ), patch.object(
-            self.parser, "_log_system_memory"
+        with (
+            patch.object(self.parser, "_check_memory_availability", return_value=True),
+            patch.object(self.parser, "_get_adaptive_chunk_size", return_value=50),
+            patch.object(self.parser, "_log_system_memory"),
         ):
             from pathlib import Path
 
@@ -139,10 +137,9 @@ class TestParseLargeFileInChunksPartial:
         """No data read returns ParseResult with data=None."""
         mock_read_csv.return_value = iter([])  # Empty iterator
 
-        with patch.object(
-            self.parser, "_get_adaptive_chunk_size", return_value=100
-        ), patch.object(
-            self.parser, "_log_system_memory"
+        with (
+            patch.object(self.parser, "_get_adaptive_chunk_size", return_value=100),
+            patch.object(self.parser, "_log_system_memory"),
         ):
             from pathlib import Path
 
@@ -160,10 +157,9 @@ class TestParseLargeFileInChunksPartial:
         """MemoryError during parsing returns ParseResult with is_partial=True and data=None."""
         mock_read_csv.side_effect = MemoryError("out of memory")
 
-        with patch.object(
-            self.parser, "_get_adaptive_chunk_size", return_value=100
-        ), patch.object(
-            self.parser, "_log_system_memory"
+        with (
+            patch.object(self.parser, "_get_adaptive_chunk_size", return_value=100),
+            patch.object(self.parser, "_log_system_memory"),
         ):
             from pathlib import Path
 
@@ -188,14 +184,18 @@ class TestParseExpressionFileReturnsParseResult:
     def setup_method(self):
         self.parser = GEOParser()
 
-    @patch.object(GEOParser, "_estimate_dimensions_from_file", return_value=(None, None))
+    @patch.object(
+        GEOParser, "_estimate_dimensions_from_file", return_value=(None, None)
+    )
     @patch.object(GEOParser, "_estimate_dataframe_memory", return_value=None)
     @patch.object(GEOParser, "sniff_delimiter", return_value="\t")
     def test_returns_parse_result_on_success(self, mock_sniff, mock_est, mock_dim):
         """parse_expression_file wraps DataFrame in ParseResult."""
         df = pd.DataFrame({"gene1": [1.0, 2.0], "gene2": [3.0, 4.0]})
 
-        with patch("lobster.services.data_access.geo.parser.pd.read_csv", return_value=df):
+        with patch(
+            "lobster.services.data_access.geo.parser.pd.read_csv", return_value=df
+        ):
             with patch.object(self.parser, "_log_system_memory"):
                 from pathlib import Path
 
@@ -213,7 +213,9 @@ class TestParseExpressionFileReturnsParseResult:
         assert isinstance(result, ParseResult)
         assert result.data is None
 
-    @patch.object(GEOParser, "_estimate_dimensions_from_file", return_value=(None, None))
+    @patch.object(
+        GEOParser, "_estimate_dimensions_from_file", return_value=(None, None)
+    )
     @patch.object(GEOParser, "_estimate_dataframe_memory", return_value=None)
     @patch.object(GEOParser, "sniff_delimiter", return_value="\t")
     def test_returns_parse_result_on_exception(self, mock_sniff, mock_est, mock_dim):
@@ -226,7 +228,9 @@ class TestParseExpressionFileReturnsParseResult:
 
             # Force into the basic_pandas fallback that also raises
             with patch.object(
-                self.parser, "parse_with_basic_pandas", side_effect=Exception("still bad")
+                self.parser,
+                "parse_with_basic_pandas",
+                side_effect=Exception("still bad"),
             ):
                 result = self.parser.parse_expression_file(Path("/fake/bad_file.csv"))
 
@@ -249,9 +253,7 @@ class TestParseSupplementaryFileReturnsParseResult:
         """For .txt files, delegates to parse_expression_file which returns ParseResult."""
         expected = ParseResult(data=pd.DataFrame({"a": [1]}), rows_read=1)
 
-        with patch.object(
-            self.parser, "parse_expression_file", return_value=expected
-        ):
+        with patch.object(self.parser, "parse_expression_file", return_value=expected):
             from pathlib import Path
 
             result = self.parser.parse_supplementary_file(Path("/fake/data.txt"))

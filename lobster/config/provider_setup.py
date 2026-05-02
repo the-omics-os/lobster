@@ -492,8 +492,15 @@ def get_provider_priority_warning(
         Optional warning message if multiple providers detected
     """
     providers_count = sum(
-        [has_anthropic, has_bedrock, has_ollama, has_gemini, has_openai,
-         has_openrouter, has_azure]
+        [
+            has_anthropic,
+            has_bedrock,
+            has_ollama,
+            has_gemini,
+            has_openai,
+            has_openrouter,
+            has_azure,
+        ]
     )
 
     if providers_count <= 1:

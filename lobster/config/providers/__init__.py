@@ -23,8 +23,8 @@ Usage:
 """
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
-from lobster.config.providers.registry import ProviderRegistry, get_provider
 from lobster.config.providers.openrouter_provider import OpenRouterProvider
+from lobster.config.providers.registry import ProviderRegistry, get_provider
 
 __all__ = [
     "ILLMProvider",

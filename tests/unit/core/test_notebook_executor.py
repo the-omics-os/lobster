@@ -48,6 +48,17 @@ def test_notebook():
     """Create test notebook."""
     nb = new_notebook()
 
+    # Add kernel/language metadata so papermill can determine the language
+    nb.metadata["kernelspec"] = {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": "python3",
+    }
+    nb.metadata["language_info"] = {
+        "name": "python",
+        "version": "3.12.0",
+    }
+
     # Add header
     nb.cells.append(new_markdown_cell("# Test Notebook"))
 
@@ -254,7 +265,7 @@ class TestNotebookExecutor:
             notebook_path.unlink()
             input_path.unlink()
 
-    @patch("lobster.core.notebook_executor.papermill")
+    @patch("lobster.core.notebooks.executor.papermill")
     def test_execute_success(
         self, mock_papermill, data_manager, test_notebook, test_adata
     ):
@@ -288,7 +299,7 @@ class TestNotebookExecutor:
             notebook_path.unlink()
             input_path.unlink()
 
-    @patch("lobster.core.notebook_executor.papermill")
+    @patch("lobster.core.notebooks.executor.papermill")
     def test_execute_with_parameters(
         self, mock_papermill, data_manager, test_notebook, test_adata
     ):
@@ -325,7 +336,7 @@ class TestNotebookExecutor:
             notebook_path.unlink()
             input_path.unlink()
 
-    @patch("lobster.core.notebook_executor.papermill")
+    @patch("lobster.core.notebooks.executor.papermill")
     def test_execute_validation_failure(
         self, mock_papermill, data_manager, test_notebook, test_adata
     ):
@@ -358,7 +369,7 @@ class TestNotebookExecutor:
             notebook_path.unlink()
             input_path.unlink()
 
-    @patch("lobster.core.notebook_executor.papermill")
+    @patch("lobster.core.notebooks.executor.papermill")
     def test_execute_execution_failure(
         self, mock_papermill, data_manager, test_notebook, test_adata
     ):
@@ -470,7 +481,7 @@ class TestNotebookExecutor:
         custom_output = notebook_path.parent / "custom_output.ipynb"
 
         try:
-            with patch("lobster.core.notebook_executor.papermill") as mock_pm:
+            with patch("lobster.core.notebooks.executor.papermill") as mock_pm:
                 mock_pm.execute_notebook.return_value = None
 
                 result = executor.execute(

@@ -38,14 +38,14 @@ logger = logging.getLogger(__name__)
 
 # Map provider name -> env-var key(s) built by the Go wizard / questionary
 _PROVIDER_ENV_KEYS: Dict[str, list[str]] = {
-    "anthropic":  ["ANTHROPIC_API_KEY"],
-    "bedrock":    ["AWS_BEDROCK_ACCESS_KEY", "AWS_BEDROCK_SECRET_ACCESS_KEY"],
-    "ollama":     [],  # no API keys
-    "gemini":     ["GOOGLE_API_KEY"],
-    "azure":      ["AZURE_AI_ENDPOINT", "AZURE_AI_CREDENTIAL"],
-    "openai":     ["OPENAI_API_KEY"],
+    "anthropic": ["ANTHROPIC_API_KEY"],
+    "bedrock": ["AWS_BEDROCK_ACCESS_KEY", "AWS_BEDROCK_SECRET_ACCESS_KEY"],
+    "ollama": [],  # no API keys
+    "gemini": ["GOOGLE_API_KEY"],
+    "azure": ["AZURE_AI_ENDPOINT", "AZURE_AI_CREDENTIAL"],
+    "openai": ["OPENAI_API_KEY"],
     "openrouter": ["OPENROUTER_API_KEY"],
-    "omics-os":   ["OMICS_OS_API_KEY"],
+    "omics-os": ["OMICS_OS_API_KEY"],
 }
 
 # Providers that support the LOBSTER_PROFILE env var
@@ -84,13 +84,13 @@ def apply_tui_init_result(
             f"Valid: {sorted(_PROVIDER_ENV_KEYS)}"
         )
 
-    api_key           = (result.get("api_key") or "").strip()
+    api_key = (result.get("api_key") or "").strip()
     api_key_secondary = (result.get("api_key_secondary") or "").strip()
-    profile           = (result.get("profile") or "").strip()
-    agents            = result.get("agents") or []
-    ncbi_key          = (result.get("ncbi_key") or "").strip()
-    cloud_key         = (result.get("cloud_key") or "").strip()
-    ollama_model      = (result.get("ollama_model") or "").strip()
+    profile = (result.get("profile") or "").strip()
+    agents = result.get("agents") or []
+    ncbi_key = (result.get("ncbi_key") or "").strip()
+    cloud_key = (result.get("cloud_key") or "").strip()
+    ollama_model = (result.get("ollama_model") or "").strip()
     smart_std_enabled = bool(result.get("smart_standardization_enabled"))
     smart_std_openai_key = (
         result.get("smart_standardization_openai_key") or ""
@@ -219,6 +219,7 @@ def apply_tui_init_result(
 # Private helpers
 # ---------------------------------------------------------------------------
 
+
 def _write_workspace_env(env_path: Path, env_lines: list[str]) -> None:
     """Write the workspace .env file."""
     env_path.parent.mkdir(parents=True, exist_ok=True)
@@ -230,7 +231,9 @@ def _write_workspace_env(env_path: Path, env_lines: list[str]) -> None:
 
 def _write_provider_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """Write .lobster_workspace/provider_config.json via the shared helper."""
-    from lobster.cli_internal.commands.heavy.init_commands import _create_workspace_config
+    from lobster.cli_internal.commands.heavy.init_commands import (
+        _create_workspace_config,
+    )
 
     _create_workspace_config(config_dict, workspace_path)
     logger.info("Wrote provider_config.json in %s", workspace_path)
@@ -249,10 +252,19 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
         if "=" in line and not line.startswith("#"):
             key, _, value = line.partition("=")
             key = key.strip()
-            if any(
-                tok in key
-                for tok in ["API_KEY", "ACCESS_KEY", "SECRET_KEY", "CLOUD_KEY", "CREDENTIAL"]
-            ) or key == "LOBSTER_EMBEDDING_PROVIDER":
+            if (
+                any(
+                    tok in key
+                    for tok in [
+                        "API_KEY",
+                        "ACCESS_KEY",
+                        "SECRET_KEY",
+                        "CLOUD_KEY",
+                        "CREDENTIAL",
+                    ]
+                )
+                or key == "LOBSTER_EMBEDDING_PROVIDER"
+            ):
                 credentials[key] = value.strip()
 
     if credentials:
@@ -270,4 +282,6 @@ def _write_agent_config(agents: list[str], workspace_path: Path) -> None:
     from lobster.cli_internal.commands.heavy.init_commands import _save_agent_config
 
     _save_agent_config(agents, workspace_path)
-    logger.info("Wrote agent_config.json in %s (%d agents)", workspace_path, len(agents))
+    logger.info(
+        "Wrote agent_config.json in %s (%d agents)", workspace_path, len(agents)
+    )

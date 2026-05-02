@@ -27,6 +27,7 @@ See Also:
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from langchain_core.tools import tool
@@ -155,7 +156,7 @@ def create_execute_custom_code_tool(
     """
 
     @tool
-    def execute_custom_code(
+    async def execute_custom_code(
         python_code: str,
         modality_name: Optional[str] = None,
         workspace_key: Optional[str] = None,
@@ -167,8 +168,8 @@ def create_execute_custom_code_tool(
 
         Use ONLY when existing specialized tools don't cover your need.
 
-        Choose ONE data source: modality_name (AnnData as `adata`), workspace_key
-        (JSON/CSV file), or neither (all workspace files auto-loaded).
+        Data sources: pass modality_name to get AnnData as `adata`, workspace_key
+        for a specific JSON/CSV file, or neither to auto-load all workspace files.
 
         Namespace: WORKSPACE, OUTPUT_DIR, adata (if modality_name), auto-loaded files.
         Assign results to `result` variable. Large output (>8K chars) is truncated
@@ -207,8 +208,10 @@ def create_execute_custom_code_tool(
             # Convert workspace_key to list (service expects Optional[List[str]])
             workspace_keys_list = [workspace_key] if workspace_key else None
 
-            # Execute via service (single source of truth)
-            result, stats, ir = custom_code_service.execute(
+            # Execute via service in a thread so the event loop stays free for
+            # SSE heartbeats during long-running subprocess calls.
+            result, stats, ir = await asyncio.to_thread(
+                custom_code_service.execute,
                 code=python_code,
                 modality_name=modality_name,
                 load_workspace_files=load_workspace_files,
@@ -274,7 +277,11 @@ def create_execute_custom_code_tool(
                     "- Check `if value is not None` before .lower()/.upper()\n"
                     "- Check isinstance(data, dict) before dict operations"
                 )
-            elif "numpy" in error_str.lower() or "int64" in error_str or "float64" in error_str:
+            elif (
+                "numpy" in error_str.lower()
+                or "int64" in error_str
+                or "float64" in error_str
+            ):
                 hints = (
                     "\n\nHINT — Convert numpy types:\n"
                     "- int(val), float(val), list(arr), str(val)"
@@ -309,7 +316,9 @@ def create_execute_custom_code_tool(
                 indent=2,
             )
 
-    return execute_custom_code
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(execute_custom_code)
 
 
 # =============================================================================

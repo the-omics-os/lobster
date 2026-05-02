@@ -91,10 +91,10 @@ class TestPromptsTemplate:
 
     def test_has_xml_sections(self):
         content = _render_template("prompts.py.j2", CONTEXT)
-        assert "<Identity_And_Role>" in content
-        assert "<Your_Environment>" in content
-        assert "<Your_Responsibilities>" in content
-        assert "<Your_Tools>" in content
+        assert "<Constraints>" in content
+        assert "<Operational_Rules>" in content
+        assert "<Decision_Trees>" in content
+        assert "<Response_Format>" in content
 
 
 class TestContractTestTemplate:

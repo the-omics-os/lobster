@@ -20,7 +20,7 @@ AGENT_CONFIG = AgentRegistryConfig(
     factory_function="lobster.agents.proteomics.proteomics_expert.proteomics_expert",
     handoff_tool_name="handoff_to_proteomics_expert",
     handoff_tool_description="Assign proteomics tasks: import proteomics data (CSV, MaxQuant, DIA-NN, Spectronaut, Olink NPX, SomaScan ADAT, Luminex MFI), QC assessment, normalization, batch correction, filtering, imputation, differential expression, pathway enrichment, network analysis. Use for ANY task involving protein expression data.",
-    child_agents=["proteomics_de_analysis_expert", "biomarker_discovery_expert"],
+    child_agents=["proteomics_de_analysis_expert", "biomarker_discovery_expert", "peptide_expert"],
     supervisor_accessible=True,
     tier_requirement="free",  # All agents free — commercial value in Omics-OS Cloud
 )

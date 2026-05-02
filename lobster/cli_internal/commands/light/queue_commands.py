@@ -214,7 +214,9 @@ def show_queue_status(client: "AgentClient", output: OutputAdapter) -> Optional[
         if by_level:
             level_items = [f"{lvl}: {cnt}" for lvl, cnt in by_level.items() if cnt > 0]
             if level_items:
-                blocks.append(hint_block(f"Extraction levels: {', '.join(level_items)}"))
+                blocks.append(
+                    hint_block(f"Extraction levels: {', '.join(level_items)}")
+                )
         ids_extracted = pub_stats.get("identifiers_extracted", 0)
         if ids_extracted > 0:
             blocks.append(hint_block(f"Identifiers extracted: {ids_extracted}"))
@@ -266,7 +268,9 @@ def queue_load_file(
         QueueFileTypeNotSupported: For unsupported file types
     """
     if not filename:
-        _render_blocks(output, [alert_block("Usage: /queue load <file>", level="warning")])
+        _render_blocks(
+            output, [alert_block("Usage: /queue load <file>", level="warning")]
+        )
         return None
 
     # Resolve file path
@@ -286,12 +290,15 @@ def queue_load_file(
 
         if not resolved.is_safe:
             _render_blocks(
-                output, [alert_block(f"Security error: {resolved.error}", level="error")]
+                output,
+                [alert_block(f"Security error: {resolved.error}", level="error")],
             )
             return None
 
         if not resolved.exists:
-            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
+            _render_blocks(
+                output, [alert_block(f"File not found: {filename}", level="error")]
+            )
             return None
 
         file_path = resolved.path
@@ -302,14 +309,18 @@ def queue_load_file(
             file_path = client.data_manager.workspace_path / filename
 
         if not file_path.exists():
-            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
+            _render_blocks(
+                output, [alert_block(f"File not found: {filename}", level="error")]
+            )
             return None
 
     ext = file_path.suffix.lower()
 
     # Supported: .ris files
     if ext in [".ris", ".txt"]:
-        _render_blocks(output, [section_block(title=f"Loading into queue: {file_path.name}")])
+        _render_blocks(
+            output, [section_block(title=f"Loading into queue: {file_path.name}")]
+        )
 
         try:
             result = client.load_publication_list(
@@ -379,14 +390,23 @@ def queue_load_file(
                 return f"No new publications added from {file_path.name} - all entries were duplicates."
 
             else:
-                blocks = [alert_block("No items could be loaded from file", level="error")]
+                blocks = [
+                    alert_block("No items could be loaded from file", level="error")
+                ]
                 if result.get("errors"):
-                    blocks.append(list_block([str(error) for error in result["errors"][:3]], title="Errors"))
+                    blocks.append(
+                        list_block(
+                            [str(error) for error in result["errors"][:3]],
+                            title="Errors",
+                        )
+                    )
                 _render_blocks(output, blocks)
                 return None
 
         except Exception as e:
-            _render_blocks(output, [alert_block(f"Failed to load file: {str(e)}", level="error")])
+            _render_blocks(
+                output, [alert_block(f"Failed to load file: {str(e)}", level="error")]
+            )
             return None
 
     # Placeholder: .bib files (BibTeX)
@@ -459,7 +479,9 @@ def _queue_list_publication(
     entries = client.publication_queue.list_entries()
 
     if not entries:
-        _render_blocks(output, [alert_block("Publication queue is empty", level="warning")])
+        _render_blocks(
+            output, [alert_block("Publication queue is empty", level="warning")]
+        )
         return "Publication queue is empty"
 
     # Limit display to first 20 entries
@@ -485,7 +507,9 @@ def _queue_list_publication(
         rows.append([str(i), title, year, status_display, identifier])
 
     blocks: list[OutputBlock] = [
-        section_block(title=f"Publication Queue ({len(display_entries)} of {total_count} shown)"),
+        section_block(
+            title=f"Publication Queue ({len(display_entries)} of {total_count} shown)"
+        ),
         table_block(
             columns=[
                 {"name": "#", "width": 4},
@@ -516,18 +540,24 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
         Summary string for conversation history, or None
     """
     if not hasattr(client, "data_manager") or client.data_manager is None:
-        _render_blocks(output, [alert_block("Data manager not initialized", level="warning")])
+        _render_blocks(
+            output, [alert_block("Data manager not initialized", level="warning")]
+        )
         return None
 
     download_queue = client.data_manager.download_queue
     if download_queue is None:
-        _render_blocks(output, [alert_block("Download queue not initialized", level="warning")])
+        _render_blocks(
+            output, [alert_block("Download queue not initialized", level="warning")]
+        )
         return None
 
     entries = download_queue.list_entries()
 
     if not entries:
-        _render_blocks(output, [alert_block("Download queue is empty", level="warning")])
+        _render_blocks(
+            output, [alert_block("Download queue is empty", level="warning")]
+        )
         return "Download queue is empty"
 
     # Limit display to first 20 entries
@@ -565,7 +595,9 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
             status_summary.append(f"{icon} {status_name}: {count}")
 
     blocks = [
-        section_block(title=f"Download Queue ({len(display_entries)} of {total_count} shown)"),
+        section_block(
+            title=f"Download Queue ({len(display_entries)} of {total_count} shown)"
+        ),
         table_block(
             columns=[
                 {"name": "#", "width": 4},
@@ -677,7 +709,8 @@ def queue_clear(
 
         if total == 0:
             _render_blocks(
-                output, [alert_block("Download queue is already empty", level="warning")]
+                output,
+                [alert_block("Download queue is already empty", level="warning")],
             )
             return "Download queue was already empty"
 
@@ -849,7 +882,9 @@ def queue_import(
     from lobster.core.schemas.publication_queue import PublicationQueueEntry
 
     if not filename:
-        _render_blocks(output, [alert_block("Usage: /queue import <file.jsonl>", level="warning")])
+        _render_blocks(
+            output, [alert_block("Usage: /queue import <file.jsonl>", level="warning")]
+        )
         return None
 
     # Resolve file path
@@ -869,12 +904,15 @@ def queue_import(
 
         if not resolved.is_safe:
             _render_blocks(
-                output, [alert_block(f"Security error: {resolved.error}", level="error")]
+                output,
+                [alert_block(f"Security error: {resolved.error}", level="error")],
             )
             return None
 
         if not resolved.exists:
-            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
+            _render_blocks(
+                output, [alert_block(f"File not found: {filename}", level="error")]
+            )
             return None
 
         file_path = resolved.path
@@ -885,7 +923,9 @@ def queue_import(
             file_path = client.data_manager.workspace_path / filename
 
         if not file_path.exists():
-            _render_blocks(output, [alert_block(f"File not found: {filename}", level="error")])
+            _render_blocks(
+                output, [alert_block(f"File not found: {filename}", level="error")]
+            )
             return None
 
     ext = file_path.suffix.lower()
@@ -910,7 +950,9 @@ def queue_import(
         )
         return None
 
-    _render_blocks(output, [section_block(body=f"Importing queue from: {file_path.name}")])
+    _render_blocks(
+        output, [section_block(body=f"Importing queue from: {file_path.name}")]
+    )
 
     # Parse JSONL file
     entries = []
@@ -949,7 +991,9 @@ def queue_import(
             _render_blocks(output, parse_blocks)
 
         if not entries:
-            _render_blocks(output, [alert_block("No valid entries found in file", level="warning")])
+            _render_blocks(
+                output, [alert_block("No valid entries found in file", level="warning")]
+            )
             return None
 
         # Import entries to queue
@@ -999,7 +1043,9 @@ def queue_import(
                 )
                 # Show first few missing files
                 preview = missing_files[:5]
-                result_blocks.append(list_block(preview, title="Missing Metadata Files"))
+                result_blocks.append(
+                    list_block(preview, title="Missing Metadata Files")
+                )
                 if missing_count > 5:
                     result_blocks.append(
                         hint_block(f"... and {missing_count - 5} more")

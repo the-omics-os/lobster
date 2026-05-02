@@ -14,10 +14,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.notebook_exporter import NotebookExporter
 from lobster.core.provenance import ProvenanceTracker
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 
 
 def create_sample_ir(operation: str, tool_name: str, description: str) -> AnalysisStep:

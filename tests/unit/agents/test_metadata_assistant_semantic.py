@@ -43,12 +43,13 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def mock_data_manager():
+def mock_data_manager(tmp_path):
     """Mock DataManagerV2 with log_tool_usage mock."""
     dm = MagicMock()
     dm.log_tool_usage = MagicMock()
     dm.list_modalities.return_value = []
     dm.metadata_store = {}
+    dm.workspace_path = str(tmp_path)
     return dm
 
 

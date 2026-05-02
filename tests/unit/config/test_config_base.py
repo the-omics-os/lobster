@@ -15,7 +15,8 @@ def test_valid_providers_includes_all():
     assert "azure" in VALID_PROVIDERS
     assert "openai" in VALID_PROVIDERS
     assert "openrouter" in VALID_PROVIDERS
-    assert len(VALID_PROVIDERS) == 7
+    assert "omics-os" in VALID_PROVIDERS
+    assert len(VALID_PROVIDERS) == 8
 
 
 def test_valid_profiles_includes_all():

@@ -10,7 +10,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.outputs import Generation, LLMResult
-
 from rich.console import Console
 
 from lobster.utils.callbacks import (

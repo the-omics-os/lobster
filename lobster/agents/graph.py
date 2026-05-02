@@ -140,7 +140,7 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
     return None
 
 
-def _invoke_and_store(agent, agent_name: str, task_description: str, store) -> str:
+async def _invoke_and_store(agent, agent_name: str, task_description: str, store) -> str:
     """Shared invoke pipeline for all delegation tools.
 
     Constructs config for callback attribution, invokes the agent, extracts
@@ -163,7 +163,7 @@ def _invoke_and_store(agent, agent_name: str, task_description: str, store) -> s
         "metadata": {"agent_name": agent_name},
     }
 
-    result = agent.invoke(
+    result = await agent.ainvoke(
         {"messages": [{"role": "user", "content": task_description}]}, config=config
     )
 
@@ -203,7 +203,7 @@ def _create_agent_tool(
     _store = store
 
     @tool(tool_name, description=description)
-    def invoke_agent(task_description: str) -> str:
+    async def invoke_agent(task_description: str) -> str:
         """Invoke a sub-agent with a task description.
 
         Args:
@@ -214,12 +214,14 @@ def _create_agent_tool(
         logger.info(
             f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ==="
         )
-        return _invoke_and_store(agent, agent_name, task_description, _store)
+        return await _invoke_and_store(agent, agent_name, task_description, _store)
 
     invoke_agent.metadata = {"categories": ["DELEGATE"], "provenance": False}
     invoke_agent.tags = ["DELEGATE"]
 
-    return invoke_agent
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(invoke_agent)
 
 
 def _create_lazy_delegation_tool(
@@ -249,7 +251,7 @@ def _create_lazy_delegation_tool(
     _store = store
 
     @tool(f"handoff_to_{_name}", description=f"Delegate task to {_name}. {_desc}")
-    def invoke_agent_lazy(task_description: str) -> str:
+    async def invoke_agent_lazy(task_description: str) -> str:
         """Invoke a sub-agent with a task description (lazy resolution).
 
         Args:
@@ -289,12 +291,14 @@ def _create_lazy_delegation_tool(
         logger.info(
             f"=== CHILD DELEGATION TO {_name} ===\n{task_description[:500]}\n=== END CHILD DELEGATION ==="
         )
-        return _invoke_and_store(agent, _name, task_description, _store)
+        return await _invoke_and_store(agent, _name, task_description, _store)
 
     invoke_agent_lazy.metadata = {"categories": ["DELEGATE"], "provenance": False}
     invoke_agent_lazy.tags = ["DELEGATE"]
 
-    return invoke_agent_lazy
+    from lobster.tools._async_compat import enable_sync_fallback
+
+    return enable_sync_fallback(invoke_agent_lazy)
 
 
 def _resolve_worker_agents(
@@ -482,7 +486,7 @@ def _create_agents_single_pass(
 
         try:
             created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
-                {"recursion_limit": 50}
+                {"recursion_limit": 200}
             )
         except Exception as e:
             logger.warning(
@@ -717,7 +721,7 @@ def create_bioinformatics_graph(
 
     Note: When invoking this graph, set the recursion_limit in the config to prevent
     hitting the default limit of 25. Example:
-        config = {"recursion_limit": 100, ...}
+        config = {"recursion_limit": 1000, ...}
         graph.invoke(input, config)
     """
     # Auto-detect subscription tier if not provided
@@ -833,6 +837,7 @@ def create_bioinformatics_graph(
         budget = resolve_context_budget(
             context_window=context_window,
             tools=all_supervisor_tools,
+            system_prompt=system_prompt,
         )
         pre_model_hook = create_supervisor_pre_model_hook(max_tokens=budget)
 

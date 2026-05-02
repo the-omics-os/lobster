@@ -58,7 +58,7 @@ Note on factory contract:
 import importlib.metadata
 import logging
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
 logger = logging.getLogger(__name__)
 

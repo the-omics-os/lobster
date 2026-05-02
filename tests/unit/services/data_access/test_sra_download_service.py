@@ -590,5 +590,3 @@ class TestSRADownloadManagerErrorHandling:
                 )
 
                 assert call_count[0] == 2  # Timeout then success
-
-

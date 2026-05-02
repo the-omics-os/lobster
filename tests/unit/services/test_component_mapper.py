@@ -125,9 +125,7 @@ def test_fast_path_clusters_with_llm_still_uses_rules():
 def test_fast_path_threshold_with_llm_still_uses_rules():
     """Threshold context must use rule-based path even when LLM is provided."""
     mock_llm = _make_mock_llm()
-    result = map_question(
-        "Set cutoff", context={"min": 0.0, "max": 1.0}, llm=mock_llm
-    )
+    result = map_question("Set cutoff", context={"min": 0.0, "max": 1.0}, llm=mock_llm)
     assert result.component == "threshold_slider"
     mock_llm.with_structured_output.assert_not_called()
 

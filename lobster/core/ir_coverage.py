@@ -1,4 +1,5 @@
 """Backward-compat shim. Use lobster.core.provenance.ir_coverage instead."""
+
 import warnings as _w
 
 _w.warn(

@@ -4,9 +4,10 @@ Tests ArchiveProcessor methods in isolation via mocked service.
 Part of Phase 4 Plan 03: GEO Service Decomposition.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
 
 from lobster.services.data_access.geo.archive_processing import ArchiveProcessor
 

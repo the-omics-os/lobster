@@ -6,7 +6,7 @@ to translate natural-language questions into typed UI components.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -14,9 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 class ComponentSelection(BaseModel):
     """Result of mapping a question to a UI component."""
 
-    component: str = Field(
-        description="Component type key from COMPONENT_SCHEMAS"
-    )
+    component: str = Field(description="Component type key from COMPONENT_SCHEMAS")
     mode: str = Field(
         default="overlay",
         description="Rendering mode: 'inline', 'overlay', or 'fullscreen'",
@@ -69,9 +67,7 @@ COMPONENT_SCHEMAS: Dict[str, Dict[str, Any]] = {
             "Assign cell type labels to single-cell clusters "
             "with marker gene context"
         ),
-        "input_schema": {
-            "clusters": "[{id: int, size: int, markers: list[str]}]"
-        },
+        "input_schema": {"clusters": "[{id: int, size: int, markers: list[str]}]"},
         "output_schema": {"assignments": "dict[str, str]"},
     },
     "threshold_slider": {

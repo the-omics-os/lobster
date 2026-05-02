@@ -10,7 +10,6 @@ import logging
 import os
 import threading
 import time
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -27,8 +26,8 @@ from lobster.cli_internal.commands.output_adapter import (
 )
 from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
-    render_startup_diagnostic_rich,
     raise_startup_diagnostic,
+    render_startup_diagnostic_rich,
 )
 from lobster.ui.console_manager import get_console_manager
 
@@ -709,13 +708,29 @@ def validate_startup_or_raise_startup_diagnostic(
 
     resolver = ConfigResolver.get_instance(workspace_path)
     try:
-        resolver.resolve_provider(runtime_override=provider_override)
+        provider_name, _ = resolver.resolve_provider(
+            runtime_override=provider_override
+        )
     except ConfigurationError as exc:
         raise_startup_diagnostic(
             exc,
             workspace=workspace_path,
             provider_override=provider_override,
         )
+
+    from lobster.config.providers.registry import ProviderRegistry
+
+    provider = ProviderRegistry.get(provider_name)
+    if provider is not None:
+        try:
+            provider.check_dependencies()
+        except ImportError as exc:
+            raise_startup_diagnostic(
+                exc,
+                workspace=workspace_path,
+                provider_override=provider_name,
+            )
+
     return workspace_path
 
 
@@ -821,9 +836,7 @@ def init_client_or_raise_startup_diagnostic(
                             _startup_console_print(
                                 f"[red]Cloud connection failed after {max_retries} attempts: {error_msg}[/red]"
                             )
-                            raise Exception(
-                                f"Connection test failed: {error_msg}"
-                            )
+                            raise Exception(f"Connection test failed: {error_msg}")
 
                 except Exception as e:
                     if "timeout" in str(e).lower():

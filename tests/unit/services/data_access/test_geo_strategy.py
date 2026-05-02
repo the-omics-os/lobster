@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # TestNullSanitization -- _sanitize_null_values producing "" not "NA"
 # ---------------------------------------------------------------------------
@@ -378,7 +377,11 @@ class TestDeriveAnalysis:
 
         url_data = self._make_url_data()
         result = GEOQueuePreparer._derive_analysis(
-            {"processed_matrix_name": "NA", "raw_UMI_like_matrix_name": "", "raw_data_available": False},
+            {
+                "processed_matrix_name": "NA",
+                "raw_UMI_like_matrix_name": "",
+                "raw_data_available": False,
+            },
             url_data,
         )
         assert result["has_processed_matrix"] is False
@@ -388,7 +391,11 @@ class TestDeriveAnalysis:
 
         url_data = self._make_url_data()
         result = GEOQueuePreparer._derive_analysis(
-            {"processed_matrix_name": "", "raw_UMI_like_matrix_name": "NA", "raw_data_available": False},
+            {
+                "processed_matrix_name": "",
+                "raw_UMI_like_matrix_name": "NA",
+                "raw_data_available": False,
+            },
             url_data,
         )
         assert result["has_raw_matrix"] is False
@@ -398,7 +405,11 @@ class TestDeriveAnalysis:
 
         url_data = self._make_url_data()
         result = GEOQueuePreparer._derive_analysis(
-            {"processed_matrix_name": "", "raw_UMI_like_matrix_name": "", "raw_data_available": "NA"},
+            {
+                "processed_matrix_name": "",
+                "raw_UMI_like_matrix_name": "",
+                "raw_data_available": "NA",
+            },
             url_data,
         )
         assert result["raw_data_available"] is False
@@ -414,7 +425,10 @@ class TestPipelineStepNullGuards:
 
     def _make_geo_service(self):
         """Create a GEOService with mocked data_manager."""
-        with patch("lobster.services.data_access.geo_service.GEOService.__init__", return_value=None):
+        with patch(
+            "lobster.services.data_access.geo_service.GEOService.__init__",
+            return_value=None,
+        ):
             from lobster.services.data_access.geo_service import GEOService
 
             svc = GEOService.__new__(GEOService)
@@ -461,9 +475,9 @@ class TestArchiveFirstRemoved:
         from lobster.services.data_access.geo.strategy import PipelineType
 
         member_names = [m.name for m in PipelineType]
-        assert "ARCHIVE_FIRST" not in member_names, (
-            f"ARCHIVE_FIRST should be removed but found in PipelineType members: {member_names}"
-        )
+        assert (
+            "ARCHIVE_FIRST" not in member_names
+        ), f"ARCHIVE_FIRST should be removed but found in PipelineType members: {member_names}"
 
     def test_unknown_string_falls_back_to_fallback(self):
         """get_pipeline_functions('ARCHIVE_FIRST', ...) must return FALLBACK pipeline, not KeyError."""
@@ -546,9 +560,9 @@ class TestNoDeadBranches:
                 metadata={},
             )
             pipeline_type, _ = engine.determine_pipeline(ctx)
-            assert pipeline_type.name != "ARCHIVE_FIRST", (
-                f"Rule returned ARCHIVE_FIRST for config: {config}"
-            )
+            assert (
+                pipeline_type.name != "ARCHIVE_FIRST"
+            ), f"Rule returned ARCHIVE_FIRST for config: {config}"
 
     def test_geo_service_no_archive_extraction_method(self):
         """GEOService class must NOT have _try_archive_extraction_first attribute."""
@@ -558,6 +572,6 @@ class TestNoDeadBranches:
         ):
             from lobster.services.data_access.geo_service import GEOService
 
-            assert not hasattr(GEOService, "_try_archive_extraction_first"), (
-                "GEOService should not have _try_archive_extraction_first method"
-            )
+            assert not hasattr(
+                GEOService, "_try_archive_extraction_first"
+            ), "GEOService should not have _try_archive_extraction_first method"

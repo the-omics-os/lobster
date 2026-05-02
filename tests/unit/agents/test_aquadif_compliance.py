@@ -188,3 +188,85 @@ class TestMixinEnforcementCatchesViolations:
 
         with pytest.raises(pytest.skip.Exception):
             mixin._require_tools()
+
+    def test_bare_list_param_caught(self):
+        """Mixin catches tool params with bare `list` type (breaks Gemini API)."""
+
+        @tool
+        def bad_tool(modality_name: str, databases: list = None) -> str:
+            """Tool with bare list param."""
+            return "done"
+
+        bad_tool.metadata = {"categories": ["ANALYZE"], "provenance": True}
+
+        mixin = _MockMixin()
+        mixin._mock_tools = [bad_tool]
+
+        with pytest.raises(AssertionError, match="bare collection type hints"):
+            mixin.test_tool_params_no_bare_collections()
+
+    def test_bare_dict_param_caught(self):
+        """Mixin catches tool params with bare `dict` type (breaks Gemini API)."""
+
+        @tool
+        def bad_tool(modality_name: str, annotations: dict = None) -> str:
+            """Tool with bare dict param."""
+            return "done"
+
+        bad_tool.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+
+        mixin = _MockMixin()
+        mixin._mock_tools = [bad_tool]
+
+        with pytest.raises(AssertionError, match="bare collection type hints"):
+            mixin.test_tool_params_no_bare_collections()
+
+    def test_bare_typing_list_param_caught(self):
+        """Mixin catches tool params with bare `typing.List` (breaks Gemini API)."""
+        from typing import List
+
+        @tool
+        def bad_tool(modality_name: str, items: List = None) -> str:
+            """Tool with bare typing.List param."""
+            return "done"
+
+        bad_tool.metadata = {"categories": ["ANALYZE"], "provenance": True}
+
+        mixin = _MockMixin()
+        mixin._mock_tools = [bad_tool]
+
+        with pytest.raises(AssertionError, match="bare collection type hints"):
+            mixin.test_tool_params_no_bare_collections()
+
+    def test_bare_optional_dict_caught(self):
+        """Mixin catches Optional[dict] (bare dict inside Optional)."""
+        from typing import Optional
+
+        @tool
+        def bad_tool(modality_name: str, config: Optional[dict] = None) -> str:
+            """Tool with Optional[dict] param."""
+            return "done"
+
+        bad_tool.metadata = {"categories": ["UTILITY"], "provenance": False}
+
+        mixin = _MockMixin()
+        mixin._mock_tools = [bad_tool]
+
+        with pytest.raises(AssertionError, match="bare collection type hints"):
+            mixin.test_tool_params_no_bare_collections()
+
+    def test_typed_list_param_passes(self):
+        """Properly typed list[str] should pass the collection check."""
+
+        @tool
+        def good_tool(modality_name: str, databases: list[str] | None = None) -> str:
+            """Tool with typed list param."""
+            return "done"
+
+        good_tool.metadata = {"categories": ["ANALYZE"], "provenance": True}
+
+        mixin = _MockMixin()
+        mixin._mock_tools = [good_tool]
+
+        # Should not raise
+        mixin.test_tool_params_no_bare_collections()

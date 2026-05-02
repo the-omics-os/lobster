@@ -383,6 +383,7 @@ Your agent MUST pass these tests. They are implemented in Phase 2 (`lobster/test
 6. **Minimum viable parent** — Parent agents must have at least one IMPORT + one QUALITY + one ANALYZE or DELEGATE tool. If your agent's DELEGATE tools are injected at runtime (via `delegation_tools` parameter from `graph.py`), set `is_parent_agent = False` in the contract test to skip this check — the test cannot see runtime-injected tools.
 7. **No closure scoping drift** — For multi-category tools, ensure metadata is assigned to the correct closure variable
 8. **Metadata uniqueness** — Each tool instance has its own metadata dict (not shared references)
+9. **No bare collection types** — Tool parameters must use parameterized generics (`list[str]`, `dict[str, Any]`), never bare `list`/`dict`/`tuple`/`set`. Bare types produce JSON schemas without `items` fields, causing Gemini API 400 errors.
 
 **How to run contract tests during development:**
 

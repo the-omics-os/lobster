@@ -10,7 +10,6 @@ Commands:
 """
 
 import logging
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -109,7 +108,6 @@ def status() -> None:
     else:
         try:
             from lobster.config.auth import oauth_store
-            from lobster.config.auth.oauth_store import OAuthCredentials
 
             creds = oauth_store.load("anthropic")
             if creds:
@@ -127,9 +125,7 @@ def status() -> None:
                         f"[green]authenticated{email}[/green]",
                     )
             else:
-                table.add_row(
-                    "anthropic", "—", "[dim]not configured[/dim]"
-                )
+                table.add_row("anthropic", "—", "[dim]not configured[/dim]")
         except Exception:
             table.add_row("anthropic", "—", "[dim]not configured[/dim]")
 
@@ -142,9 +138,7 @@ def status() -> None:
             mode = cloud_creds.get("auth_mode", "?")
             email = cloud_creds.get("email", "")
             label = f" ({email})" if email else ""
-            table.add_row(
-                "omics-os", mode, f"[green]configured{label}[/green]"
-            )
+            table.add_row("omics-os", mode, f"[green]configured{label}[/green]")
         else:
             table.add_row("omics-os", "—", "[dim]not configured[/dim]")
     except Exception:
@@ -176,7 +170,6 @@ def status() -> None:
 def _login_anthropic(no_browser: bool, timeout: int) -> None:
     """Run Anthropic OAuth login flow."""
     from lobster.config.auth.anthropic_oauth import (
-        OAuthError,
         is_authenticated,
         login_interactive,
     )
@@ -190,9 +183,7 @@ def _login_anthropic(no_browser: bool, timeout: int) -> None:
 
     def _on_url(url: str):
         if no_browser:
-            console.print(
-                f"\n[bold]Open this URL in your browser:[/bold]\n{url}\n"
-            )
+            console.print(f"\n[bold]Open this URL in your browser:[/bold]\n{url}\n")
         else:
             console.print("[dim]Opening browser for Anthropic login...[/dim]")
             console.print(f"[dim]If browser doesn't open: {url}[/dim]")
@@ -201,9 +192,7 @@ def _login_anthropic(no_browser: bool, timeout: int) -> None:
         console.print(f"[dim]{msg}[/dim]")
 
     def _on_manual_input() -> str:
-        return typer.prompt(
-            "Paste the authorization code or full redirect URL"
-        )
+        return typer.prompt("Paste the authorization code or full redirect URL")
 
     result = login_interactive(
         timeout=timeout,

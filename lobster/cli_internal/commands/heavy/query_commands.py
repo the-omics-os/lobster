@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import typer
 from rich.console import Console
-from rich.markup import escape
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.rule import Rule
 
 from lobster.cli_internal.commands.heavy.session_infra import (
@@ -195,8 +195,10 @@ def _render_human_query_result(
             style="grey27",
         )
     )
-    if reasoning and reasoning_text and not _query_callbacks_displayed_reasoning(
-        trace_callbacks
+    if (
+        reasoning
+        and reasoning_text
+        and not _query_callbacks_displayed_reasoning(trace_callbacks)
     ):
         console.print(f"[dim]{escape(reasoning_text)}[/dim]")
         console.print()
@@ -321,11 +323,10 @@ def query_impl(
     session_id_for_client = None
 
     if session_id:
-        from lobster.core.workspace import resolve_workspace
-
         from lobster.cli_internal.commands.heavy.session_infra import (
             resolve_session_continuation,
         )
+        from lobster.core.workspace import resolve_workspace
 
         workspace_path = resolve_workspace(explicit_path=workspace, create=True)
         (
@@ -457,17 +458,19 @@ def query_impl(
         if "rate limit" in error_msg.lower() or "RateLimitError" in error_msg:
             from rich.panel import Panel
 
-            console.print(Panel(
-                "[bold]Too many API requests in a short window.[/bold]\n\n"
-                "This can happen when multiple browser tabs are open on app.omics-os.com "
-                "(each tab polls the API).\n\n"
-                "[bold]What to do:[/bold]\n"
-                "  \u2022 Wait 10-15 seconds and retry\n"
-                "  \u2022 Close extra browser tabs on app.omics-os.com\n"
-                "  \u2022 Run: [bold]lobster cloud status[/bold]",
-                title="\U0001f6ab Rate Limited",
-                border_style="yellow",
-            ))
+            console.print(
+                Panel(
+                    "[bold]Too many API requests in a short window.[/bold]\n\n"
+                    "This can happen when multiple browser tabs are open on app.omics-os.com "
+                    "(each tab polls the API).\n\n"
+                    "[bold]What to do:[/bold]\n"
+                    "  \u2022 Wait 10-15 seconds and retry\n"
+                    "  \u2022 Close extra browser tabs on app.omics-os.com\n"
+                    "  \u2022 Run: [bold]lobster cloud status[/bold]",
+                    title="\U0001f6ab Rate Limited",
+                    border_style="yellow",
+                )
+            )
         else:
             console.print(
                 f"[bold red on white] \u26a0\ufe0f  Error [/bold red on white] [red]{error_msg}[/red]"

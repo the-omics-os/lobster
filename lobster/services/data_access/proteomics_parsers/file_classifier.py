@@ -281,7 +281,7 @@ class FileClassifier:
     @staticmethod
     def _match_vendor(header_lower: list) -> Optional[str]:
         """Match column names against vendor signatures."""
-        header_joined = " ".join(header_lower)
+        " ".join(header_lower)
 
         for vendor, sigs in _VENDOR_SIGNATURES.items():
             # Check required columns

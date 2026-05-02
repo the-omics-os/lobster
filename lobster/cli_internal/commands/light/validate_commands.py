@@ -43,7 +43,6 @@ def validate_plugin_cmd(
     failed = 0
 
     for result in results:
-        status = "PASS" if result.passed else "FAIL"
         icon = "✓" if result.passed else "✗"
         typer.echo(f"  {icon} [{result.check}] {result.message}")
         if result.passed:

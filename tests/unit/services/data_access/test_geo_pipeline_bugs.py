@@ -16,7 +16,6 @@ from lobster.services.data_access.geo.helpers import (
     _is_unsupported_modality_file,
 )
 
-
 # ---------------------------------------------------------------------------
 # Bug 1: 10X H5 detection and routing
 # ---------------------------------------------------------------------------
@@ -73,17 +72,23 @@ class TestBug1_10xH5:
         assert parser._is_10x_h5(Path("/nonexistent/test.h5")) is False
 
     @patch.object(
-        __import__("lobster.services.data_access.geo.parser", fromlist=["GEOParser"]).GEOParser,
+        __import__(
+            "lobster.services.data_access.geo.parser", fromlist=["GEOParser"]
+        ).GEOParser,
         "_is_10x_h5",
         return_value=True,
     )
     @patch.object(
-        __import__("lobster.services.data_access.geo.parser", fromlist=["GEOParser"]).GEOParser,
+        __import__(
+            "lobster.services.data_access.geo.parser", fromlist=["GEOParser"]
+        ).GEOParser,
         "_parse_10x_h5",
         return_value=MagicMock(),
     )
     @patch.object(
-        __import__("lobster.services.data_access.geo.parser", fromlist=["GEOParser"]).GEOParser,
+        __import__(
+            "lobster.services.data_access.geo.parser", fromlist=["GEOParser"]
+        ).GEOParser,
         "_parse_h5ad_with_fallback",
     )
     def test_h5_routing_prefers_10x(self, mock_h5ad, mock_10x, mock_detect):
@@ -167,7 +172,10 @@ class TestBug2_MultimodalFilter:
         assert _is_unsupported_modality_file("GSM123_atac_counts.h5", ["atac"]) is True
         assert _is_unsupported_modality_file("peaks_matrix.tsv.gz", ["atac"]) is True
         assert _is_unsupported_modality_file("fragments.tsv.gz", ["atac"]) is True
-        assert _is_unsupported_modality_file("chromatin_accessibility.h5ad", ["atac"]) is True
+        assert (
+            _is_unsupported_modality_file("chromatin_accessibility.h5ad", ["atac"])
+            is True
+        )
 
     def test_protein_files_filtered(self):
         """Protein/ADT/CITE-seq filenames should be identified as unsupported."""
@@ -177,8 +185,18 @@ class TestBug2_MultimodalFilter:
     def test_rna_files_not_filtered(self):
         """RNA expression filenames should NOT be filtered."""
         assert _is_unsupported_modality_file("rna_counts.h5", ["atac"]) is False
-        assert _is_unsupported_modality_file("expression_matrix.tsv.gz", ["atac", "protein"]) is False
-        assert _is_unsupported_modality_file("GSM123_filtered_feature_bc_matrix.h5", ["atac"]) is False
+        assert (
+            _is_unsupported_modality_file(
+                "expression_matrix.tsv.gz", ["atac", "protein"]
+            )
+            is False
+        )
+        assert (
+            _is_unsupported_modality_file(
+                "GSM123_filtered_feature_bc_matrix.h5", ["atac"]
+            )
+            is False
+        )
 
     def test_empty_unsupported_types(self):
         """Empty unsupported list should never filter."""
@@ -186,7 +204,10 @@ class TestBug2_MultimodalFilter:
 
     def test_unknown_modality_type(self):
         """Unknown modality types should not filter (no patterns defined)."""
-        assert _is_unsupported_modality_file("atac_counts.h5", ["unknown_modality"]) is False
+        assert (
+            _is_unsupported_modality_file("atac_counts.h5", ["unknown_modality"])
+            is False
+        )
 
     def test_modality_patterns_coverage(self):
         """Verify expected modality types have patterns defined."""
@@ -200,20 +221,22 @@ class TestBug2_MultimodalPassthrough:
 
     def test_process_supplementary_files_accepts_multimodal_info(self):
         """_process_supplementary_files should accept multimodal_info parameter."""
+        import inspect
+
         from lobster.services.data_access.geo.archive_processing import (
             ArchiveProcessor,
         )
-        import inspect
 
         sig = inspect.signature(ArchiveProcessor._process_supplementary_files)
         assert "multimodal_info" in sig.parameters
 
     def test_process_tar_file_accepts_multimodal_info(self):
         """_process_tar_file should accept multimodal_info parameter."""
+        import inspect
+
         from lobster.services.data_access.geo.archive_processing import (
             ArchiveProcessor,
         )
-        import inspect
 
         sig = inspect.signature(ArchiveProcessor._process_tar_file)
         assert "multimodal_info" in sig.parameters
@@ -234,7 +257,9 @@ class TestBug3_LLMModalitySignal:
         )
 
         mock_service = MagicMock()
-        mock_service._determine_data_type_from_metadata.return_value = "single_cell_rna_seq"
+        mock_service._determine_data_type_from_metadata.return_value = (
+            "single_cell_rna_seq"
+        )
         mock_service.pipeline_engine.determine_pipeline.return_value = (
             MagicMock(name="SUPPLEMENTARY_FIRST"),
             "test",
@@ -261,8 +286,10 @@ class TestBug3_LLMModalitySignal:
 
             # Verify create_pipeline_context was called with bulk_rna_seq
             call_kwargs = mock_ctx.call_args
-            assert call_kwargs.kwargs.get("data_type") == "bulk_rna_seq" or \
-                   call_kwargs[1].get("data_type") == "bulk_rna_seq"
+            assert (
+                call_kwargs.kwargs.get("data_type") == "bulk_rna_seq"
+                or call_kwargs[1].get("data_type") == "bulk_rna_seq"
+            )
 
             # Heuristic should NOT have been called
             executor.service._determine_data_type_from_metadata.assert_not_called()

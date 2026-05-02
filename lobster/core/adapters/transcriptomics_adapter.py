@@ -276,6 +276,8 @@ class TranscriptomicsAdapter(BaseAdapter):
                 return self._load_excel_transcriptomics_data(path, **kwargs)
             elif format_type == "h5":
                 return self._load_h5_transcriptomics_data(path, **kwargs)
+            elif format_type == "loom":
+                return self._load_loom_data(path, **kwargs)
             elif format_type == "mtx":
                 return self._load_mtx_data(path, **kwargs)
             else:
@@ -371,6 +373,36 @@ class TranscriptomicsAdapter(BaseAdapter):
                 )
             transpose = kwargs.get("transpose", True)
             return self._create_anndata_from_dataframe(df, transpose=transpose)
+
+    def _load_loom_data(self, path: Union[str, Path], **kwargs) -> anndata.AnnData:
+        """Load transcriptomics data from Loom format.
+
+        Uses scanpy.read_loom() and optionally merges obs_metadata if provided.
+
+        Args:
+            path: Path to .loom file
+            **kwargs: Additional parameters:
+                - obs_metadata: Optional DataFrame to merge into adata.obs
+                - var_metadata: Optional DataFrame to merge into adata.var
+        """
+        sc = _ensure_scanpy()
+        adata = sc.read_loom(str(path))
+
+        # Merge external obs metadata if provided (e.g., GEO SOFT sample metadata)
+        obs_metadata = kwargs.get("obs_metadata")
+        if obs_metadata is not None and isinstance(obs_metadata, pd.DataFrame):
+            for col in obs_metadata.columns:
+                if col not in adata.obs.columns:
+                    adata.obs[col] = obs_metadata[col]
+
+        var_metadata = kwargs.get("var_metadata")
+        if var_metadata is not None and isinstance(var_metadata, pd.DataFrame):
+            for col in var_metadata.columns:
+                if col not in adata.var.columns:
+                    adata.var[col] = var_metadata[col]
+
+        logger.info(f"Loaded Loom file: {adata.n_obs} cells × {adata.n_vars} genes")
+        return adata
 
     def _load_mtx_data(self, path: Union[str, Path], **kwargs) -> anndata.AnnData:
         """Load data from Matrix Market format (10X Genomics style)."""
@@ -498,7 +530,7 @@ class TranscriptomicsAdapter(BaseAdapter):
         Returns:
             List[str]: List of supported file extensions
         """
-        return ["csv", "tsv", "txt", "xlsx", "xls", "h5ad", "h5", "mtx"]
+        return ["csv", "tsv", "txt", "xlsx", "xls", "h5ad", "h5", "mtx", "loom"]
 
     def preprocess_data(self, adata: anndata.AnnData, **kwargs) -> anndata.AnnData:
         """

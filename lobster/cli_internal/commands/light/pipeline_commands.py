@@ -240,10 +240,7 @@ def pipeline_run(
                 output,
                 [
                     list_block(
-                        [
-                            f"{nb['name']} ({nb['n_steps']} steps)"
-                            for nb in notebooks
-                        ],
+                        [f"{nb['name']} ({nb['n_steps']} steps)" for nb in notebooks],
                         title="Available Notebooks",
                         ordered=True,
                     )
@@ -425,9 +422,7 @@ def pipeline_info(client: "AgentClient", output: OutputAdapter) -> Optional[str]
             idx = int(selection) - 1
             nb = notebooks[idx]
         except (ValueError, IndexError):
-            _render_blocks(
-                output, [alert_block("Invalid selection", level="error")]
-            )
+            _render_blocks(output, [alert_block("Invalid selection", level="error")])
             return "Invalid selection"
 
         import nbformat

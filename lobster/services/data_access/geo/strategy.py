@@ -18,9 +18,7 @@ logger = logging.getLogger(__name__)
 # Null-value handling helpers and file-type constants
 # ---------------------------------------------------------------------------
 
-_NULL_STRINGS = frozenset(
-    {"null", "none", "nil", "na", "n/a", "null", ""}
-)
+_NULL_STRINGS = frozenset({"null", "none", "nil", "na", "n/a", "null", ""})
 
 
 def _is_null_value(value: Any) -> bool:
