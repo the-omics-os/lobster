@@ -433,7 +433,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case inlinePrintReady:
-		if strings.TrimSpace(msg.body) == "" {
+		if strings.TrimSpace(msg.body) == "" || m.isCanceling || m.activeTurn == activeTurnNone {
 			return m, nil
 		}
 		redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
@@ -768,10 +768,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.TextPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
+			printCmd := m.flushPendingSegment()
 			m.appendStreamText(p.Content, p.Markdown)
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -780,10 +782,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.MarkdownPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
+			printCmd := m.flushPendingSegment()
 			m.appendStreamText(p.Content, true)
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -792,11 +796,13 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.CodePayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
+			printCmd := m.flushPendingSegment()
 			m.flushStreamBuffer()
 			m.appendBlock(BlockCode{Language: p.Language, Content: p.Content})
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -852,15 +858,20 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		}
 
 		if dp.Summary == "interrupt" {
-			// HITL interrupt: flush streamed text to scrollback so the
-			// supervisor's question is visible while the component renders.
-			// Do NOT clear tool feed or reset streaming state — the tool
-			// is still logically running (paused at interrupt).
+			// HITL interrupt: flush streamed text + pending handoffs to
+			// scrollback so the supervisor's question is visible while the
+			// component renders. Handoffs must be flushed here to prevent
+			// duplicate printing when resumed text triggers flushPendingSegment.
 			hadLiveStream := m.inlineFlowMode() &&
 				m.shouldRenderStreamingTranscript() &&
 				m.streamBuf.Len() > 0
 			m.flushStreamBuffer()
 			toPrint := m.collectLastAssistantMessage()
+			if len(m.pendingHandoffs) > 0 {
+				m.messages = append(m.messages, m.pendingHandoffs...)
+				toPrint = append(toPrint, m.pendingHandoffs...)
+				m.pendingHandoffs = m.pendingHandoffs[:0]
+			}
 			m.rebuildViewportWithMode(true)
 			printCmd := m.inlinePrintCmd(toPrint, hadLiveStream)
 			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
@@ -1074,6 +1085,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.TablePayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil && len(p.Headers) > 0 {
 			m.isStreaming = true
+			printCmd := m.flushPendingSegment()
 			m.flushStreamBuffer()
 			columns := make([]BlockTableColumn, 0, len(p.Columns))
 			for _, col := range p.Columns {
@@ -1090,6 +1102,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
+			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -2107,6 +2120,27 @@ func (m *Model) applyWorkerActivity(p protocol.AgentTransitionPayload) {
 	case "complete", "return":
 		delete(m.activeWorkers, worker)
 	}
+}
+
+// flushPendingSegment flushes the current response segment (streamed text +
+// buffered handoffs) to scrollback when new streaming text arrives after a
+// handoff was buffered. This prevents handoffs from accumulating across an
+// entire multi-agent pipeline and appearing only at the very end.
+// Returns nil if nothing to flush.
+func (m *Model) flushPendingSegment() tea.Cmd {
+	if len(m.pendingHandoffs) == 0 {
+		return nil
+	}
+	hadLiveStream := m.inlineFlowMode() &&
+		m.shouldRenderStreamingTranscript() &&
+		m.streamBuf.Len() > 0
+	m.flushStreamBuffer()
+	toPrint := m.collectLastAssistantMessage()
+	m.messages = append(m.messages, m.pendingHandoffs...)
+	toPrint = append(toPrint, m.pendingHandoffs...)
+	m.pendingHandoffs = m.pendingHandoffs[:0]
+	m.rebuildViewportWithMode(true)
+	return m.inlinePrintCmd(toPrint, hadLiveStream)
 }
 
 func (m *Model) recordHandoff(task string, agent string) tea.Cmd {

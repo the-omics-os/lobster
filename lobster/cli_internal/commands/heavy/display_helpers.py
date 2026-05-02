@@ -299,7 +299,7 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
 
     capabilities = []
     try:
-        from lobster.services.vector.service import VectorSearchService  # noqa: F401
+        from lobster.vector.service import VectorSearchService  # noqa: F401
 
         capabilities.append(
             ("available", "Semantic Search", "Vector backend available")

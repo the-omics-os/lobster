@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lobster-vector"
+version = "1.1.417"
+description = "Semantic vector search engine for biomedical ontologies"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+authors = [
+    {name = "Omics-OS", email = "info@omics-os.com"}
+]
+keywords = [
+    "bioinformatics",
+    "vector-search",
+    "ontology",
+    "semantic-search",
+    "embeddings",
+    "chromadb"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "lobster-ai~=1.1.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+chromadb = ["chromadb>=1.0.0"]
+openai = ["openai>=1.0.0"]
+local = ["sentence-transformers>=2.2.0", "torch>=2.0"]
+cohere = ["cohere>=5.0.0"]
+graph = ["obonet>=0.3.0", "networkx>=3.0"]
+full = ["lobster-vector[chromadb,openai,local,cohere,graph]"]
+
+[project.urls]
+Homepage = "https://omics-os.com"
+Documentation = "https://docs.omics-os.com"
+Repository = "https://github.com/the-omics-os/lobster"
+
+[tool.setuptools]
+packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]

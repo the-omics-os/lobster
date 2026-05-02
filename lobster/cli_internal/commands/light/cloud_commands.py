@@ -7,6 +7,7 @@ Commands:
     lobster cloud login   - Authenticate with Omics-OS Cloud
     lobster cloud status  - Show current usage and budget
     lobster cloud logout  - Remove stored credentials
+    lobster cloud chat    - Open interactive cloud chat (launches npm TUI)
 """
 
 import logging

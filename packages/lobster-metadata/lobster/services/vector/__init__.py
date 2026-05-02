@@ -1,65 +1,19 @@
+"""DEPRECATED: Vector search has moved to lobster.vector.
+
+This module re-exports from lobster.vector for backward compatibility.
+A DeprecationWarning is emitted on first import.
+
+Migration: replace ``from lobster.services.vector import ...``
+with ``from lobster.vector import ...``
 """
-Vector search infrastructure for Lobster AI.
+import warnings as _warnings
 
-Provides pluggable vector database backends and embedding providers
-for semantic search across biomedical ontologies, literature, and datasets.
+_warnings.warn(
+    "lobster.services.vector is deprecated. Use 'from lobster.vector import ...' instead. "
+    "This compatibility shim will be removed in a future release.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-Public API is exposed via __all__ but imports are lazy — importing this
-module does NOT load chromadb, torch, sentence-transformers, or any other
-heavy dependency. Classes are resolved on first access via __getattr__.
-
-Usage::
-
-    from lobster.services.vector import VectorSearchService, VectorSearchConfig
-    from lobster.services.vector import ONTOLOGY_COLLECTIONS
-    from lobster.services.vector.backends.base import BaseVectorBackend
-    from lobster.services.vector.embeddings.base import BaseEmbedder
-"""
-
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from lobster.services.vector.backends.base import BaseVectorBackend
-    from lobster.services.vector.config import VectorSearchConfig
-    from lobster.services.vector.embeddings.base import BaseEmbedder
-    from lobster.services.vector.rerankers.base import BaseReranker
-    from lobster.services.vector.service import VectorSearchService
-
-__all__ = [
-    "BaseReranker",
-    "BaseVectorBackend",
-    "BaseEmbedder",
-    "ONTOLOGY_COLLECTIONS",
-    "VectorSearchService",
-    "VectorSearchConfig",
-]
-
-
-def __getattr__(name: str):
-    if name == "VectorSearchService":
-        from lobster.services.vector.service import VectorSearchService
-
-        return VectorSearchService
-    if name == "VectorSearchConfig":
-        from lobster.services.vector.config import VectorSearchConfig
-
-        return VectorSearchConfig
-    if name == "BaseVectorBackend":
-        from lobster.services.vector.backends.base import BaseVectorBackend
-
-        return BaseVectorBackend
-    if name == "BaseEmbedder":
-        from lobster.services.vector.embeddings.base import BaseEmbedder
-
-        return BaseEmbedder
-    if name == "BaseReranker":
-        from lobster.services.vector.rerankers.base import BaseReranker
-
-        return BaseReranker
-    if name == "ONTOLOGY_COLLECTIONS":
-        from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
-
-        return ONTOLOGY_COLLECTIONS
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+from lobster.vector import *  # noqa: F401, F403
+from lobster.vector import __all__  # noqa: F401

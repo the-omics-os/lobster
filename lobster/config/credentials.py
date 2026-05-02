@@ -17,6 +17,7 @@ CREDENTIALS_DIR = Path.home() / ".config" / "omics-os"
 CREDENTIALS_FILE = CREDENTIALS_DIR / "credentials.json"
 
 DEFAULT_ENDPOINT = "https://app.omics-os.com"
+DEFAULT_CLIENT_ID = "7lgldp8e72p2lmpmi3gjbnn9uk"
 
 
 def load_credentials() -> Optional[dict]:
@@ -69,13 +70,9 @@ def is_token_expired() -> bool:
         from datetime import datetime, timedelta, timezone
 
         expiry_dt = datetime.fromisoformat(expiry)
-        # Consider expired 60s early to avoid edge-case failures
         return expiry_dt < datetime.now(timezone.utc) + timedelta(seconds=60)
     except (ValueError, TypeError):
         return True
-
-
-DEFAULT_CLIENT_ID = "7lgldp8e72p2lmpmi3gjbnn9uk"
 
 
 def refresh_token() -> Optional[str]:
@@ -96,7 +93,6 @@ def refresh_token() -> Optional[str]:
         logger.debug("No refresh_token stored, cannot refresh.")
         return None
 
-    client_id = creds.get("client_id", DEFAULT_CLIENT_ID)
     endpoint = creds.get("endpoint", DEFAULT_ENDPOINT).rstrip("/")
     token_url = f"{endpoint}/api/v1/gateway/token/refresh"
 
@@ -104,6 +100,7 @@ def refresh_token() -> Optional[str]:
         import httpx
 
         with httpx.Client(timeout=15.0) as client:
+            client_id = creds.get("client_id", DEFAULT_CLIENT_ID)
             resp = client.post(
                 token_url,
                 json={"refresh_token": refresh_tok, "client_id": client_id},

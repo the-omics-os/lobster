@@ -74,7 +74,7 @@ class DiseaseOntologyService:
         self._vector_service = None
         if self._config.backend == "embeddings":
             try:
-                from lobster.services.vector.service import VectorSearchService
+                from lobster.vector.service import VectorSearchService
 
                 self._vector_service = VectorSearchService()
                 logger.info("DiseaseOntologyService using embeddings backend")

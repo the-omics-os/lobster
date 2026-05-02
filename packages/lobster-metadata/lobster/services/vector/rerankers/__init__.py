@@ -1,7 +1,2 @@
-"""
-Result reranker implementations.
-
-Provides BaseReranker ABC and reranker-specific implementations.
-Implementations are loaded lazily — importing this package does NOT
-trigger torch, sentence-transformers, or cohere imports.
-"""
+"""DEPRECATED: Use lobster.vector.rerankers instead."""
+from lobster.vector.rerankers import *  # noqa: F401, F403

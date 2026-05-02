@@ -111,7 +111,7 @@ except ImportError:
 
 # Optional vector search for semantic standardization
 try:
-    from lobster.services.vector.service import VectorSearchService  # noqa: F401
+    from lobster.vector.service import VectorSearchService  # noqa: F401
 
     HAS_VECTOR_SEARCH = True
 except ImportError:
@@ -3241,7 +3241,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
     def _get_vector_service():
         nonlocal _vector_service
         if _vector_service is None:
-            from lobster.services.vector.service import VectorSearchService
+            from lobster.vector.service import VectorSearchService
 
             _vector_service = VectorSearchService()
         return _vector_service
@@ -3291,12 +3291,12 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
                 library="lobster.services.vector",
                 description="Semantic tissue term standardization via Uberon ontology",
                 code_template=(
-                    'from lobster.services.vector.service import VectorSearchService\n'
+                    'from lobster.vector.service import VectorSearchService\n'
                     'service = VectorSearchService()\n'
                     'matches = service.match_ontology("{{ term }}", "uberon", k={{ k }})\n'
                     'filtered = [m for m in matches if m.score >= {{ min_confidence }}]'
                 ),
-                imports=["from lobster.services.vector.service import VectorSearchService"],
+                imports=["from lobster.vector.service import VectorSearchService"],
                 parameters={"term": term, "k": k, "min_confidence": min_confidence},
                 parameter_schema={},
             )

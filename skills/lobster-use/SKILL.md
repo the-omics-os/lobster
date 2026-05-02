@@ -18,8 +18,8 @@ description: |
   "metabolomics", "MetaboLights", "LC-MS", "metabolite",
   "feature selection", "survival analysis", "biomarker", "bioinformatics",
   "drug discovery", "pharmacogenomics", "variant annotation",
-  "cloud query", "cloud chat", "omics-os cloud", "lobster cloud",
-  "cloud login", "cloud projects", "cloud session"
+  "cloud chat", "omics-os cloud", "lobster cloud",
+  "cloud login", "cloud session"
 
   ASSUMES: Lobster is installed and configured. For setup issues, tell user to
   run `lobster config-test` (local) or `lobster cloud status` (cloud) and fix any errors.
@@ -96,7 +96,7 @@ language -- Lobster routes to 22 specialist agents across 10 packages automatica
   - `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL` (Azure)
   - Ollama: no key needed (local models)
 - **Cloud mode**: `lobster cloud login` (browser OAuth or `--api-key "$KEY"`). No LLM keys needed.
-  - Env vars: `OMICS_OS_API_KEY` (cloud query auth), `LOBSTER_TOKEN` (Ink chat auth)
+  - Env var: `OMICS_OS_API_KEY` (cloud auth alternative to stored credentials)
 - **Optional**: `NCBI_API_KEY` for faster PubMed/GEO
 - **Writes**: `.lobster_workspace/` (local), `~/.config/omics-os/credentials.json` (cloud)
 - **Network**: LLM provider (local) or `app.omics-os.com` + `stream.omics-os.com` (cloud)
@@ -129,15 +129,14 @@ lobster query "Analyze my data" --json    # Single-turn
 Agents run on ECS Fargate. Managed Bedrock. Per-user billing. No LLM keys.
 ```bash
 lobster cloud login                       # Browser OAuth (one-time)
-lobster cloud chat                        # Interactive (Ink TUI, direct)
-lobster cloud query "Analyze data" --json # Single-turn
+lobster cloud chat                        # Interactive (launches npm TUI)
 lobster cloud status                      # Check tier, usage, budget
-lobster cloud projects                    # List projects
+lobster cloud logout                      # Clear stored credentials
 ```
 
 ### Orchestrator Mode
-Coding agents call `lobster query --json` or `lobster cloud query --json` programmatically,
-parse structured output, and chain multi-step analyses.
+Coding agents call `lobster query --json` programmatically, parse structured output,
+and chain multi-step analyses. Cloud mode uses `lobster cloud chat` (interactive npm TUI).
 See [agent-patterns.md](references/agent-patterns.md).
 
 ## Quick Start
@@ -153,8 +152,7 @@ lobster query -w ./my_analysis --session-id "proj" --json "Download GSE109564 an
 
 # === Cloud mode ===
 lobster cloud login                       # One-time browser OAuth
-lobster cloud query "Search PubMed for CRISPR" --json
-lobster cloud query "Download first dataset" --session-id latest --json
+lobster cloud chat                        # Interactive cloud chat (npm TUI)
 
 # Inspect workspace (no tokens, ~300ms, local mode only)
 lobster command data --json -w ./my_analysis
@@ -195,9 +193,8 @@ To fetch a docs page: `https://docs.omics-os.com/raw/docs/{slug}.md`
 3. **Research Agent is the ONLY agent with internet access** -- all others operate on loaded data
 4. **Never skip QC** before analysis -- always assess quality first
 5. **Use `--json` flag** when parsing output programmatically (both local and cloud)
-6. **Cloud mode**: run `lobster cloud login` before `cloud query` / `cloud chat`
-7. **Cloud sessions persist server-side** -- use `--session-id latest` to continue
-8. **Cloud `--project-id`**: must be a UUID from `lobster cloud projects --json`. Only applies when creating a new session — ignored on `--session-id latest` or explicit UUID resume
+6. **Cloud mode**: run `lobster cloud login` before `lobster cloud chat`
+7. **Cloud sessions persist server-side** -- managed within the npm TUI
 9. **Default workspace**: `.lobster_workspace/` (local only) -- override with `-w <path>`
 10. **Fetch docs on demand** from `docs.omics-os.com/raw/docs/{slug}.md` -- don't guess workflows
 

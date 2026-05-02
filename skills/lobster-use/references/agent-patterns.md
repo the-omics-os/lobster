@@ -5,17 +5,19 @@ to offload bioinformatics analysis.
 
 ## Local vs Cloud
 
-| Factor | Local (`lobster query`) | Cloud (`lobster cloud query`) |
+| Factor | Local (`lobster query`) | Cloud (`lobster cloud chat`) |
 |--------|------------------------|-------------------------------|
 | Setup | `lobster init` + LLM key | `lobster cloud login` (one-time) |
-| Sessions | `--session-id <name>` (disk) | `--session-id <UUID>` (server) |
+| Sessions | `--session-id <name>` (disk) | Interactive TUI (server-side sessions) |
 | Workspace | `-w <path>` (local files) | Cloud workspace (server-side) |
-| Inspection | `lobster command --json` | `workspace_files` in JSON response |
-| Projects | N/A | `--project-id <UUID>` |
+| Inspection | `lobster command --json` | Inside TUI |
 | Offline | Yes | No |
 
 **Decision rule**: If user has Omics-OS Cloud credentials at `~/.config/omics-os/credentials.json`,
 prefer cloud. Otherwise use local.
+
+**Note**: Cloud mode is interactive only (`lobster cloud chat`). For programmatic cloud
+queries, use the `@omicsos/lobster` npm CLI directly.
 
 ## Core Pattern — Local
 
@@ -32,24 +34,6 @@ echo "$RESULT" | jq -r '.response'
 - `-w <path>` -- explicit workspace path
 - `--no-stream` -- default for `query`, returns complete result
 
-## Core Pattern — Cloud
-
-```bash
-RESULT=$(lobster cloud query "Your analysis request" --json)
-echo "$RESULT" | jq -r '.response'
-
-# With session continuity
-RESULT=$(lobster cloud query "Continue" --session-id latest --json)
-
-# With project context
-RESULT=$(lobster cloud query "Analyze" --project-id "$PROJECT_UUID" --json)
-```
-
-**Key flags for cloud agents**:
-- `--json` -- structured JSON on stdout (one final object, no streaming deltas)
-- `--session-id <UUID>` or `latest` -- session continuity (server-side)
-- `--project-id <UUID>` -- associate with project (first query only — ignored on resume)
-
 ## JSON Output Schema
 
 ### Local Success
@@ -64,22 +48,7 @@ RESULT=$(lobster cloud query "Analyze" --project-id "$PROJECT_UUID" --json)
 }
 ```
 
-### Cloud Success
-
-```json
-{
-  "success": true,
-  "response": "Analysis complete...",
-  "session_id": "dfcf2a08-adcb-4a8f-8d94-43c9dc494190",
-  "active_agent": "transcriptomics_expert",
-  "token_usage": { "total_cost_usd": 0.0159, "input_tokens": 5270, "output_tokens": 7 },
-  "session_title": "CRISPR Analysis",
-  "finish_reason": null,
-  "workspace_files": [{"name": "results.csv", "size": 1024}]
-}
-```
-
-### Error (both modes)
+### Error
 
 ```json
 {
@@ -90,8 +59,6 @@ RESULT=$(lobster cloud query "Analyze" --project-id "$PROJECT_UUID" --json)
 ```
 
 **Parse with**: `jq -r 'if .success then .response else (.error // .response // "Unknown error") end'`
-
-**Cloud-specific fields**: `active_agent`, `session_title`, `finish_reason`, `workspace_files`
 
 **Note**: Not all failures include `.error` — some set `.success: false` with the error in `.response`. Always check `.success` first, then fall through `.error // .response // .finish_reason`.
 
@@ -114,23 +81,9 @@ analysis that requires the agent system.
 
 ### Cloud
 
-Cloud workspace files appear in the `workspace_files` field of JSON responses
-when agents invoke tools during the query. **Caveats**:
-- Best-effort only — returns `[]` on any fetch error (not a definitive "no files")
-- Only populated when agents used tools (simple Q&A queries skip the fetch)
-- Not equivalent to local `lobster command files` — it's a hint, not a listing
-- For large outputs, ask Lobster to write files rather than relying on `.response` (10 MB cap)
-
-```bash
-# Check if agents produced files
-RESULT=$(lobster cloud query "Run analysis" --json)
-echo "$RESULT" | jq '.workspace_files'
-```
-
-Cloud account/usage inspection:
+Cloud workspace files are managed within the interactive TUI (`lobster cloud chat`).
 ```bash
 lobster cloud status          # Tier, budget, usage
-lobster cloud projects --json # List projects with UUIDs
 ```
 
 ## Multi-Step Analysis — Local
@@ -175,39 +128,6 @@ lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
 lobster command files --json -w "$WORKSPACE"
 ```
 
-## Multi-Step Analysis — Cloud
-
-```bash
-# Step 1: Get project UUID (optional)
-PROJECT=$(lobster cloud projects --json | jq -r '.projects[0].project_id')
-
-# Step 2: Start analysis
-RESULT=$(lobster cloud query "Search PubMed for CRISPR cancer datasets" \
-  --project-id "$PROJECT" --json)
-SID=$(echo "$RESULT" | jq -r '.session_id')
-echo "Session: $SID"
-
-# Step 3: Continue in same session
-lobster cloud query "Download the top dataset" --session-id "$SID" --json
-
-# Step 4: Analyze (session context preserved server-side)
-lobster cloud query "Run QC and cluster" --session-id "$SID" --json
-
-# Step 5: Continue with 'latest' shorthand
-lobster cloud query "Identify cell types" --session-id latest --json
-
-# Step 6: Check workspace files
-RESULT=$(lobster cloud query "Export DE results to CSV" --session-id latest --json)
-echo "$RESULT" | jq '.workspace_files'
-```
-
-**Key differences from local**:
-- No `-w` flag — workspace is server-side
-- Session IDs are UUIDs, not friendly names
-- `--session-id latest` resolves to most recent session by last_activity
-- `workspace_files` in JSON response shows agent output files
-- No `lobster command` equivalent — use the JSON response fields
-
 ## Non-Interactive Setup
 
 ### Local
@@ -247,11 +167,6 @@ find "$WS_DIR" -name "*.csv"    # Exported tables
 find "$WS_DIR" -name "*.ipynb"  # Reproducible notebooks
 ```
 
-### Cloud
-
-Cloud workspace files are listed in `workspace_files` of the JSON response.
-Files are stored server-side. Future: `lobster cloud files download <session-id> <path>`.
-
 ## Pipeline Export (Local Only)
 
 ```bash
@@ -264,13 +179,8 @@ ls "$WORKSPACE"/*.ipynb
 Check the `success` field. **Do NOT redirect stderr** — it contains diagnostics.
 
 ```bash
-# Local
 RESULT=$(lobster query -w "$WORKSPACE" --session-id "$SESSION" --json "Run clustering" 2>lobster_stderr.log)
 
-# Cloud
-RESULT=$(lobster cloud query "Run clustering" --session-id "$SID" --json 2>lobster_stderr.log)
-
-# Both
 SUCCESS=$(echo "$RESULT" | jq -r '.success // false')
 if [ "$SUCCESS" != "true" ]; then
   echo "Failed"
@@ -293,20 +203,7 @@ Common failure patterns:
 | Session not found | Local | Missing `--session-id` | Always pass `--session-id` for multi-step |
 | Workspace mismatch | Local | Omitting `-w` on follow-up | Always pass `-w` |
 | Not authenticated | Cloud | No stored credentials | `lobster cloud login` |
-| Budget exhausted (402) | Cloud | Monthly limit reached | `lobster cloud status` to check |
-| Rate limited (429) | Cloud | Too many requests | Wait 10-15 seconds |
-| Session rate limit (5/min) | Cloud | Creating sessions too fast | Reuse existing session_id |
-| Invalid session ID | Cloud | Non-UUID string | Use UUID from `--json` output or `latest` |
-| Invalid project ID | Cloud | Non-UUID or empty | Get UUIDs from `lobster cloud projects --json` |
-| No sessions for `latest` | Cloud | No prior sessions | Omit `--session-id` to create new |
-| Session not found (404) | Cloud | Deleted or expired | Start new session |
-| Empty question | Cloud | Blank query string | Provide non-empty question |
-| Endpoint not in allowlist | Cloud | Custom `--endpoint` rejected | Use default or `--unsafe-endpoint` |
-| Network failure | Cloud | Cannot reach cloud | Check internet, retry |
-| Stream timeout (600s) | Cloud | Backend still processing | Retry or break into smaller queries |
-| Empty stream response | Cloud | No valid DataStream parts | Retry — may be transient |
-| Cancelled by user | Cloud | Ctrl+C during query | Exit 130 + JSON error in `--json` mode |
-| Projects disabled (403/404) | Cloud | Feature not enabled | Contact support or upgrade tier |
+| Cloud TUI not installed | Cloud | npm binary missing | `npm install -g @omicsos/lobster` |
 | Agent not available | Both | Package not installed | `lobster agents list` |
 | Config error | Local | Provider misconfigured | `lobster config-test --json` |
 
@@ -333,7 +230,5 @@ Describe the task in natural language — Lobster routes automatically:
 4. **Workspace + session together**: `-w ./project --session-id "run_01"`
 
 ### Cloud
-1. **Capture session_id from first query**: Store the UUID for follow-ups
-2. **Use `latest` for sequential chains**: Only when you're the sole user
-3. **Use `--project-id` for organization**: Group related sessions under projects
-4. **Sessions are cross-device**: Same session accessible from CLI and web app
+1. **Use `lobster cloud chat`** for interactive sessions — managed in the npm TUI
+2. **Sessions are cross-device**: Same session accessible from CLI and web app

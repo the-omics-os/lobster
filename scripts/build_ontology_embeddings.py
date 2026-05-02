@@ -60,9 +60,9 @@ _BATCH_SIZE = 5000
 
 # Embedder name -> (dimension, module_path, class_name, install_hint)
 _EMBEDDER_INFO: dict[str, tuple[int, str, str, str]] = {
-    "openai": (1536, "lobster.services.vector.embeddings.openai_embedder", "OpenAIEmbedder", "pip install openai"),
-    "sapbert": (768, "lobster.services.vector.embeddings.sapbert", "SapBERTEmbedder", "pip install sentence-transformers torch"),
-    "minilm": (384, "lobster.services.vector.embeddings.minilm", "MiniLMEmbedder", "pip install sentence-transformers torch"),
+    "openai": (1536, "lobster.vector.embeddings.openai_embedder", "OpenAIEmbedder", "pip install openai"),
+    "sapbert": (768, "lobster.vector.embeddings.sapbert", "SapBERTEmbedder", "pip install sentence-transformers torch"),
+    "minilm": (384, "lobster.vector.embeddings.minilm", "MiniLMEmbedder", "pip install sentence-transformers torch"),
 }
 
 
@@ -438,7 +438,7 @@ def dry_run(
 
     # Check ONTOLOGY_COLLECTIONS consistency
     try:
-        from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
+        from lobster.vector.service import ONTOLOGY_COLLECTIONS
         collections_available = True
     except ImportError:
         ONTOLOGY_COLLECTIONS = {}
@@ -554,7 +554,7 @@ def main() -> None:
 
     # Import OBO_URLS for ontology URL resolution
     try:
-        from lobster.services.vector.ontology_graph import OBO_URLS
+        from lobster.vector.ontology_graph import OBO_URLS
     except ImportError:
         # Fallback if lobster isn't installed (shouldn't happen in dev)
         OBO_URLS = {
@@ -587,7 +587,7 @@ def main() -> None:
 
         # Validate against ONTOLOGY_COLLECTIONS if default version tag
         try:
-            from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
+            from lobster.vector.service import ONTOLOGY_COLLECTIONS
             expected = ONTOLOGY_COLLECTIONS.get(ont_name)
             if expected and collection_name != expected:
                 logger.warning(

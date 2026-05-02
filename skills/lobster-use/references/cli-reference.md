@@ -122,91 +122,32 @@ lobster cloud logout                           # Clear stored credentials
 
 Credentials stored at `~/.config/omics-os/credentials.json`. OAuth tokens auto-refresh.
 
-**Cloud auth env vars** (alternative to stored credentials):
-- `OMICS_OS_API_KEY` — used by `lobster cloud query` (Python CLI)
-- `LOBSTER_TOKEN` — used by Ink TUI (`lobster cloud chat`), highest priority
-- `--token` flag — explicit override (warning: visible in `ps` output)
+**Cloud auth env var**: `OMICS_OS_API_KEY` — alternative to stored credentials.
 
-**Note**: Agents should always use `lobster cloud login` or `lobster cloud query` — never invoke the `lobster-chat` binary directly (it's an internal implementation detail).
+**Note**: Agents should use `lobster cloud login` then `lobster cloud chat`. The `lobster-cli` and `lobster-chat` binaries are internal implementation details.
 
 ### Account & Usage
 
 ```bash
 lobster cloud status             # Tier, token usage, budget remaining
-lobster cloud account            # Email, tier, user ID, auth mode, endpoint
-lobster cloud keys               # Manage API keys (web link)
 ```
-
-### Projects
-
-```bash
-lobster cloud projects           # List projects (table with full UUIDs)
-lobster cloud projects --json    # Machine-readable JSON
-```
-
-Use project IDs from this output with `--project-id` on `query` and `chat`.
-
-### `lobster cloud query`
-
-Single-turn cloud query. Agents run on ECS Fargate. Returns when complete.
-
-```bash
-lobster cloud query "Search PubMed for CRISPR"
-lobster cloud query "Analyze my data" --json
-lobster cloud query "Continue analysis" --session-id latest --json
-lobster cloud query "Run QC" --project-id <UUID> --json
-lobster cloud query "Quick question" --stream   # Stream text as it arrives
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--session-id, -s <id>` | (new session) | Resume session (UUID or `latest`) |
-| `--project-id, -p <UUID>` | (none) | Associate with project (new sessions only — ignored on resume) |
-| `--json, -j` | off | Structured JSON on stdout (`--stream` has no effect with `--json`) |
-| `--stream / --no-stream` | off | Stream text as it arrives |
-| `--token` | stored | Override auth token (visible in ps — prefer env var) |
-| `--endpoint` | app.omics-os.com | Custom REST origin (allowlisted hosts only) |
-| `--stream-endpoint` | stream.omics-os.com | Custom stream origin (allowlisted hosts only) |
-
-**JSON output schema**:
-```json
-{
-  "success": true,
-  "response": "Analysis complete...",
-  "session_id": "dfcf2a08-adcb-4a8f-8d94-43c9dc494190",
-  "active_agent": "transcriptomics_expert",
-  "token_usage": { "total_cost_usd": 0.0159 },
-  "session_title": "CRISPR Analysis",
-  "finish_reason": null,
-  "workspace_files": [{"name": "results.csv", "size": 1024}]
-}
-```
-
-**Error JSON**: `{"success": false, "error": "...", "session_id": null}`
 
 ### `lobster cloud chat`
 
-Interactive cloud chat via Ink TUI. Direct connection to Omics-OS Cloud.
+Interactive cloud chat. Launches the `@omicsos/lobster` npm TUI (`lobster-cli` binary).
 
 ```bash
 lobster cloud chat                              # New session
 lobster cloud chat --session-id <UUID>          # Resume session
-lobster cloud chat --session-id latest          # Resume most recent
 lobster cloud chat --project-id <UUID>          # Associate with project
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--session-id, -s <id>` | (new session) | Resume existing session |
-| `--project-id, -p <UUID>` | (none) | Associate with a cloud project |
-| `--token` | stored | Override auth token |
-| `--endpoint` | app.omics-os.com/api/v1 | Custom API endpoint |
+| `--session-id` | (new session) | Resume existing session |
+| `--project-id` | (none) | Associate with a cloud project |
 
-**Inside cloud chat**: `/sessions` lists sessions, `/cloud account` shows account info.
-
-**Ctrl+C**: Cancels both client stream and server-side run (POSTs `/chat/cancel`).
-
-**Session continuity**: Same sessions accessible from both CLI and web app at `app.omics-os.com`.
+**Requires**: `npm install -g @omicsos/lobster` (binary discovered via `lobster-cli` in PATH).
 
 ## `lobster chat` (Local)
 
@@ -354,8 +295,7 @@ Leading `/` is stripped automatically (`lobster command /data` = `lobster comman
 | Command | Description |
 |---------|-------------|
 | `/session` | Current session info (ID, messages, data) |
-| `/sessions` | List cloud sessions (cloud chat only) |
-| `/cloud account` | Cloud account info (cloud chat only) |
+| `/sessions` | List cloud sessions (npm TUI only) |
 | `/save [--force]` | Save all modalities to workspace |
 | `/export [--no-png]` | Export session data + plots to `exports/` |
 | `/clear` | Clear conversation history |
@@ -405,17 +345,9 @@ lobster command "pipeline export" --session-id cancer_project
 ### Cloud Sessions
 
 ```bash
-lobster cloud query "Start analysis" --json
-# Returns session_id: "dfcf2a08-..."
-
-lobster cloud query "Continue" --session-id latest --json
-# Resolves to most recent session
-
-lobster cloud query "With project" --project-id <UUID> --json
-# Associates session with a cloud project
-
-lobster cloud chat --session-id <UUID>
-# Resume in interactive mode
+lobster cloud chat                         # New interactive session
+lobster cloud chat --session-id <UUID>     # Resume session
+lobster cloud chat --project-id <UUID>     # Associate with project
 ```
 
 Cloud sessions persist server-side. Same session accessible from CLI and web app.

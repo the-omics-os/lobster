@@ -134,7 +134,7 @@ def annotation_expert(
     if vector_search_cls is None:
         # Fallback: try direct import as lazy check (NOT at module level)
         try:
-            from lobster.services.vector.service import VectorSearchService
+            from lobster.vector.service import VectorSearchService
 
             vector_search_cls = VectorSearchService
         except ImportError:
@@ -1420,7 +1420,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
             if svc_cls is None:
                 # Fallback: try direct import
                 try:
-                    from lobster.services.vector.service import VectorSearchService
+                    from lobster.vector.service import VectorSearchService
 
                     svc_cls = VectorSearchService
                 except ImportError:
@@ -1531,7 +1531,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     # Optional graph validation
                     if validate_graph and top_match.ontology_id:
                         try:
-                            from lobster.services.vector.ontology_graph import (
+                            from lobster.vector.ontology_graph import (
                                 get_neighbors,
                                 load_ontology_graph,
                             )
@@ -1626,7 +1626,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                 ),
                 library="lobster.services.vector",
                 code_template=(
-                    "from lobster.services.vector.service import VectorSearchService\n"
+                    "from lobster.vector.service import VectorSearchService\n"
                     "vs = VectorSearchService()\n"
                     "# For each cluster, build query from marker genes and match to Cell Ontology\n"
                     "matches = vs.match_ontology(\n"
@@ -1636,7 +1636,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     '# Apply top match to adata.obs["cell_type"]'
                 ),
                 imports=[
-                    "from lobster.services.vector.service import VectorSearchService",
+                    "from lobster.vector.service import VectorSearchService",
                 ],
                 parameters=params,
                 parameter_schema={
