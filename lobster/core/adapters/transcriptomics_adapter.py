@@ -242,8 +242,8 @@ class TranscriptomicsAdapter(BaseAdapter):
             {
                 "transpose_applied": True,
                 "transpose_reason": f"{metadata.get('quantification_tool', 'Quantification')} format specification (genes × samples)",
-                "original_shape": (n_rows, n_cols),  # tuple → will be converted to list
-                "final_shape": adata.shape,  # tuple → will be converted to list
+                "original_shape": [n_rows, n_cols],
+                "final_shape": list(adata.shape),
                 "data_type": data_type,
                 "format_specific": True,  # Not heuristic
             }

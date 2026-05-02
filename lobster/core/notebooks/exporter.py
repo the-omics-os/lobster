@@ -178,6 +178,15 @@ class NotebookExporter:
         notebook.metadata["lobster"] = self._create_metadata(
             exportable_count, len(activities)
         )
+        notebook.metadata["kernelspec"] = {
+            "display_name": "Python 3",
+            "language": "python",
+            "name": "python3",
+        }
+        notebook.metadata["language_info"] = {
+            "name": "python",
+            "pygments_lexer": "ipython3",
+        }
 
         # Save to workspace notebooks directory
         output_dir = self.data_manager.workspace_path / "notebooks"

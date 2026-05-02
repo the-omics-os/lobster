@@ -405,6 +405,8 @@ class ComponentRegistry:
                         continue
 
                 loaded = entry.load()
+                if group == "lobster.agents":
+                    self._annotate_agent_package(entry.name, loaded, dist_name)
                 target_dict[entry.name] = loaded
                 logger.info(
                     f"Loaded {group.split('.')[-1]} '{entry.name}' from {entry.value}"
@@ -412,6 +414,27 @@ class ComponentRegistry:
             except Exception as e:
                 self._failed_entries[(group, entry.name)] = str(e)
                 logger.warning(f"Failed to load {group} '{entry.name}': {e}")
+
+    def _annotate_agent_package(
+        self, entry_name: str, config: Any, dist_name: Optional[str]
+    ) -> None:
+        """Populate package metadata from the entry point distribution.
+
+        Agent packages historically omitted ``package_name`` from AGENT_CONFIG and
+        relied on entry point ownership instead. Runtime commands and integration
+        tests need the owning package to be available from the config object.
+        """
+        if getattr(config, "package_name", None):
+            return
+
+        package_name = dist_name or AGENT_TO_PACKAGE.get(entry_name)
+        if package_name and package_name != "lobster-ai":
+            try:
+                config.package_name = package_name
+            except Exception:
+                logger.debug(
+                    "Could not annotate package_name for agent '%s'", entry_name
+                )
 
     # =========================================================================
     # SERVICE API
@@ -479,7 +502,10 @@ class ComponentRegistry:
         agent = self._agents.get(name)
 
         if agent is None and required:
-            raise ValueError(diagnose_missing_agent(name))
+            message = diagnose_missing_agent(name)
+            if self._agents:
+                message += f"\nAvailable agents: {list(self._agents.keys())}"
+            raise ValueError(message)
 
         return agent
 
@@ -518,7 +544,19 @@ class ComponentRegistry:
             Dict[str, AgentRegistryConfig] - All available agents
         """
         self._ensure_group_loaded("lobster.agents")
+        self._check_agent_name_collisions()
         return dict(self._agents)
+
+    def _check_agent_name_collisions(self) -> None:
+        """Reject custom agents that shadow known first-party agent names."""
+        for name, config in self._agents.items():
+            package_name = getattr(config, "package_name", None)
+            first_party_package = AGENT_TO_PACKAGE.get(name)
+            if package_name and first_party_package and package_name != first_party_package:
+                raise ComponentConflictError(
+                    f"Agent name collision: '{name}' is provided by custom package "
+                    f"'{package_name}' but is reserved for '{first_party_package}'."
+                )
 
     # =========================================================================
     # ADAPTER API (factory callables returning configured instances)
@@ -670,6 +708,7 @@ class ComponentRegistry:
     def get_info(self) -> Dict[str, Any]:
         """Get comprehensive registry info for diagnostics."""
         self.load_components()
+        custom_agents = self.list_custom_agents()
 
         return {
             "services": {
@@ -680,6 +719,11 @@ class ComponentRegistry:
                 "count": len(self._agents),
                 "names": list(self._agents.keys()),
             },
+            "custom_agents": {
+                "count": len(custom_agents),
+                "names": list(custom_agents.keys()),
+            },
+            "total_agents": len(self._agents),
             "adapters": {
                 "count": len(self._adapters),
                 "names": list(self._adapters.keys()),

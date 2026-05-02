@@ -1432,6 +1432,9 @@ print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matc
                     # Ensure values are below the minimum observed value
                     min_obs = np.min(observed_values)
                     impute_values = np.minimum(impute_values, min_obs - 0.1 * std_obs)
+                    impute_values = self._preserve_observed_value_domain(
+                        impute_values, observed_values
+                    )
                     X_imputed[np.isnan(protein_values), i] = impute_values
 
         return X_imputed
@@ -1473,9 +1476,26 @@ print(f"Normalized {stats['n_sites_matched']} sites (matching rate: {stats['matc
 
                         n_missing = np.isnan(protein_values).sum()
                         impute_values = np.random.normal(mnar_mean, mnar_std, n_missing)
+                        impute_values = self._preserve_observed_value_domain(
+                            impute_values, observed_values
+                        )
                         X_imputed[np.isnan(protein_values), i] = impute_values
 
         return X_imputed
+
+    def _preserve_observed_value_domain(
+        self, impute_values: np.ndarray, observed_values: np.ndarray
+    ) -> np.ndarray:
+        """Keep MNAR draws valid for strictly positive raw intensity data."""
+        if len(observed_values) == 0:
+            return impute_values
+
+        min_observed = np.nanmin(observed_values)
+        if min_observed > 0:
+            positive_floor = max(min_observed * 0.1, np.finfo(float).tiny)
+            return np.maximum(impute_values, positive_floor)
+
+        return impute_values
 
     # Helper methods for normalization
     def _median_normalization(self, X: np.ndarray) -> np.ndarray:

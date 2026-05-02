@@ -449,6 +449,7 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
                 "sample_threshold": sample_threshold,
                 "protein_threshold": protein_threshold,
                 "missing_value_patterns": missing_patterns,
+                **missing_patterns,
                 "mnar_proteins": int(mnar_mcar_analysis["n_mnar"]),
                 "mcar_proteins": int(mnar_mcar_analysis["n_mcar"]),
                 "samples_processed": adata_qc.n_obs,
@@ -521,6 +522,16 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
             )
 
             X = adata_qc.X.copy()
+            sample_cvs = []
+            for sample_values in X:
+                valid_values = sample_values[np.isfinite(sample_values)]
+                if len(valid_values) >= min_observations:
+                    mean_val = np.mean(valid_values)
+                    std_val = np.std(valid_values, ddof=1)
+                    sample_cvs.append((std_val / mean_val) if mean_val > 0 else np.nan)
+                else:
+                    sample_cvs.append(np.nan)
+            adata_qc.obs["intensity_cv"] = sample_cvs
 
             # Calculate protein-level CVs
             if replicate_column is not None:
@@ -572,6 +583,7 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
                 # Add CV metrics to variables (proteins)
                 adata_qc.var["cv_mean"] = protein_cv_means
                 adata_qc.var["cv_median"] = protein_cv_medians
+                adata_qc.var["intensity_cv"] = protein_cv_means
                 adata_qc.var["high_cv_protein"] = (
                     np.array(protein_cv_means) > cv_threshold
                 )
@@ -629,6 +641,7 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
                 adata_qc.var["cv_overall"] = protein_cvs
                 adata_qc.var["cv_mean"] = protein_cvs  # Alias for consistency
                 adata_qc.var["cv_median"] = protein_cvs  # Same as mean for overall
+                adata_qc.var["intensity_cv"] = protein_cvs
                 adata_qc.var["high_cv_protein"] = np.array(protein_cvs) > cv_threshold
 
                 valid_protein_cvs = [
@@ -655,6 +668,9 @@ print(f"Replicate correlation: {stats['median_replicate_correlation']:.3f}, CV: 
                     "proteins_processed": adata_qc.n_vars,
                     "analysis_type": "coefficient_variation_assessment",
                 }
+
+            cv_stats["mean_protein_cv"] = cv_stats["mean_cv_across_proteins"]
+            cv_stats["median_protein_cv"] = cv_stats["median_cv_across_proteins"]
 
             logger.info(
                 f"CV assessment completed: mean protein CV = {cv_stats['mean_cv_across_proteins']:.3f}"

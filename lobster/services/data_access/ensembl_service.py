@@ -279,7 +279,13 @@ class EnsemblService:
         url = f"{BASE_URL}/xrefs/id/{ensembl_id}"
         params = {}
         if external_db:
-            params["external_db"] = external_db
+            xref_db_aliases = {
+                "uniprot/swissprot": "Uniprot_gn",
+                "uniprotkb/swiss-prot": "Uniprot_gn",
+            }
+            params["external_db"] = xref_db_aliases.get(
+                external_db.lower(), external_db
+            )
 
         return self._request("GET", url, params=params)
 
@@ -364,5 +370,7 @@ class EnsemblService:
                 detail = response.json().get("error", response.text)
             except Exception:
                 detail = response.text
+            if "not found" in str(detail).lower():
+                raise EnsemblNotFoundError(f"Not found: {response.url}")
             raise EnsemblServiceError(f"Bad request ({response.status_code}): {detail}")
         response.raise_for_status()

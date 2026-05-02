@@ -71,6 +71,16 @@ class DownloadExecutor:
         """
         try:
             logger.info(f"Processing GEO query with modular strategy: {geo_id}")
+            caller_data_manager = kwargs.pop("data_manager", None)
+            kwargs.pop("force", None)
+            if (
+                caller_data_manager is not None
+                and caller_data_manager is not self.service.data_manager
+            ):
+                logger.debug(
+                    "Ignoring download_dataset data_manager override; GEOService "
+                    "uses the DataManagerV2 instance provided at construction time."
+                )
 
             # Clean the GEO ID
             clean_geo_id = geo_id.strip().upper()

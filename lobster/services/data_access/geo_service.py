@@ -168,6 +168,52 @@ class GEOService:
             console=getattr(self, "console", None),
         )
 
+    def _fetch_geo_metadata(self, geo_id: str) -> Dict[str, Any]:
+        """Backward-compatible metadata fetch hook used by older tests."""
+        metadata, _validation = self.fetch_metadata_only(geo_id)
+        return metadata
+
+    def _extract_geo_metadata(self, geo_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch metadata and normalize empty/error responses to None."""
+        metadata = self._fetch_geo_metadata(geo_id)
+        return metadata if metadata else None
+
+    def _validate_metadata(self, metadata: Dict[str, Any]) -> bool:
+        """Validate the minimum metadata fields expected for display/use."""
+        required = ("accession", "title")
+        return all(bool(metadata.get(field)) for field in required)
+
+    def _format_metadata_display(self, metadata: Dict[str, Any]) -> str:
+        """Format GEO metadata into a compact human-readable string."""
+        lines = []
+        for key, value in metadata.items():
+            if isinstance(value, (list, tuple, set)):
+                rendered = f"{len(value)} items"
+            elif isinstance(value, dict):
+                rendered = f"{len(value)} fields"
+            else:
+                rendered = str(value)
+            lines.append(f"{key}: {rendered}")
+        return "\n".join(lines)
+
+    def _normalize_accession(self, accession: str) -> Optional[str]:
+        """Normalize GEO series accessions, returning None for invalid formats."""
+        normalized = accession.strip().upper()
+        if normalized.startswith("GSE") and normalized[3:].isdigit():
+            return normalized
+        return None
+
+    def _detect_accession_type(self, accession: str) -> Optional[str]:
+        """Detect common GEO accession prefixes."""
+        normalized = accession.strip().upper()
+        if normalized.startswith("GSE"):
+            return "gse"
+        if normalized.startswith("GSM"):
+            return "gsm"
+        if normalized.startswith("GPL"):
+            return "gpl"
+        return None
+
     # ------------------------------------------------------------------
     # Public API -- explicit delegation for discoverability
     # ------------------------------------------------------------------
@@ -175,6 +221,35 @@ class GEOService:
     def fetch_metadata_only(self, geo_id: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Fetch and validate GEO metadata with fallback mechanisms."""
         return self._metadata_fetcher.fetch_metadata_only(geo_id)
+
+    def get_metadata(self, geo_id: str) -> Dict[str, Any]:
+        """Backward-compatible public alias for metadata-only GEO lookups."""
+        metadata, _validation = self.fetch_metadata_only(geo_id)
+        return metadata
+
+    def list_files(self, geo_id: str) -> list[Dict[str, Any]]:
+        """List GEO supplementary files with best-effort size metadata."""
+        clean_geo_id = geo_id.strip().upper()
+        entries = []
+        for url in self.geo_downloader.get_supplementary_files(clean_geo_id):
+            entry: Dict[str, Any] = {
+                "name": Path(url).name,
+                "url": url,
+            }
+            try:
+                response = self.geo_downloader.session.head(
+                    url, allow_redirects=True, timeout=10
+                )
+                size_bytes = int(response.headers.get("content-length", "0") or 0)
+            except Exception:
+                size_bytes = 0
+
+            if size_bytes > 0:
+                size_mb = size_bytes / (1024 * 1024)
+                entry["size_bytes"] = size_bytes
+                entry["size"] = f"{size_mb:.1f} MB"
+            entries.append(entry)
+        return entries
 
     def download_dataset(self, geo_id: str, adapter: str = None, **kwargs) -> str:
         """Download and process a dataset using modular strategy with fallbacks."""

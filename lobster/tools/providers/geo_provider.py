@@ -249,6 +249,41 @@ class GEOProvider(BasePublicationProvider):
         resolver = get_accession_resolver()
         return resolver.is_geo_identifier(identifier)
 
+    def fetch_dataset_metadata(self, geo_id: str) -> Dict[str, Any]:
+        """
+        Fetch structured metadata for a GEO accession.
+
+        This compatibility wrapper preserves the historical provider API used by
+        live integration benchmarks while delegating to the current eSearch and
+        eSummary implementation.
+        """
+        if not geo_id or not isinstance(geo_id, str):
+            raise ValueError(f"Invalid GEO ID: {geo_id}")
+
+        accession = geo_id.upper().strip()
+        if not self.validate_identifier(accession):
+            raise ValueError(f"Invalid GEO ID: {geo_id}")
+
+        search_result = self.search_geo_datasets(
+            f"{accession}[ACCN]", GEOSearchFilters(max_results=1)
+        )
+        if search_result.count == 0:
+            raise ValueError(f"GEO dataset not found: {accession}")
+
+        summaries = self.get_dataset_summaries(search_result)
+        if not summaries:
+            raise ValueError(f"Failed to retrieve GEO metadata: {accession}")
+
+        metadata = dict(summaries[0])
+        metadata["accession"] = accession
+        if "sample_count" not in metadata:
+            metadata["sample_count"] = metadata.get("n_samples")
+        if "organism" not in metadata:
+            metadata["organism"] = metadata.get("taxon")
+        if "description" not in metadata:
+            metadata["description"] = metadata.get("summary")
+        return metadata
+
     def get_supported_features(self) -> Dict[str, bool]:
         """Return features supported by GEO provider."""
         return {

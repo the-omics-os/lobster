@@ -8,6 +8,9 @@ VENV_NAME := .venv
 VENV_PATH := $(VENV_NAME)
 PYTHON_VERSION_MIN := 3.11
 PROJECT_NAME := lobster-ai
+DEV_INSTALL_EXTRAS := dev,transcriptomics,genomics,proteomics,research,classic-tui,extended-data,hdf5
+DEV_INSTALL_SPEC := .[$(DEV_INSTALL_EXTRAS)]
+DEV_LOCAL_PACKAGES := packages/lobster-metadata packages/lobster-ml packages/lobster-structural-viz
 
 # Smart Python Discovery
 # Check for conda environment first (avoid conflicts)
@@ -89,7 +92,7 @@ help:
 	@echo ""
 	@echo "Installation:"
 	@echo "  make install        Install Lobster AI in virtual environment (minimum: Python 3.11, prefers 3.13)"
-	@echo "  make dev-install    Install with development dependencies"
+	@echo "  make dev-install    Install with development dependencies and local domain packages"
 	@echo "  make install-global Install lobster command globally (macOS/Linux)"
 	@echo "  make clean-install  Clean install (remove existing installation)"
 	@echo "  make setup-env      Setup environment configuration"
@@ -541,7 +544,13 @@ dev-install: $(VENV_PATH) setup-env
 	@echo "🦞 Installing Lobster AI with development dependencies..."
 	@if [ "$(USE_UV)" = "true" ]; then \
 		echo "📦 Using uv for faster installation..."; \
-		uv pip install -e ".[dev]"; \
+		uv pip install -e "$(DEV_INSTALL_SPEC)"; \
+		for package in $(DEV_LOCAL_PACKAGES); do \
+			if [ -f "$$package/pyproject.toml" ]; then \
+				echo "📦 Installing local package $$package..."; \
+				uv pip install -e "$$package"; \
+			fi; \
+		done; \
 	else \
 		echo "📦 Upgrading pip and installing build tools..."; \
 		if [ -f "$(VENV_PATH)/bin/pip3" ]; then \
@@ -551,9 +560,21 @@ dev-install: $(VENV_PATH) setup-env
 		fi; \
 		echo "📦 Installing development dependencies..."; \
 		if [ -f "$(VENV_PATH)/bin/pip3" ]; then \
-			$(VENV_PATH)/bin/pip3 install -e ".[dev]"; \
+			$(VENV_PATH)/bin/pip3 install -e "$(DEV_INSTALL_SPEC)"; \
+			for package in $(DEV_LOCAL_PACKAGES); do \
+				if [ -f "$$package/pyproject.toml" ]; then \
+					echo "📦 Installing local package $$package..."; \
+					$(VENV_PATH)/bin/pip3 install -e "$$package"; \
+				fi; \
+			done; \
 		else \
-			$(VENV_PATH)/bin/pip install -e ".[dev]"; \
+			$(VENV_PATH)/bin/pip install -e "$(DEV_INSTALL_SPEC)"; \
+			for package in $(DEV_LOCAL_PACKAGES); do \
+				if [ -f "$$package/pyproject.toml" ]; then \
+					echo "📦 Installing local package $$package..."; \
+					$(VENV_PATH)/bin/pip install -e "$$package"; \
+				fi; \
+			done; \
 		fi; \
 	fi
 	@echo "🔧 Installing pre-commit git hooks..."
@@ -632,7 +653,7 @@ test-fast: $(VENV_PATH)
 
 test-integration: $(VENV_PATH)
 	@echo "🧪 Running integration tests..."
-	$(VENV_PATH)/bin/pytest tests/integration/ -v -m integration
+	$(VENV_PATH)/bin/pytest tests/integration/ -v
 
 # Code quality targets
 format: $(VENV_PATH)

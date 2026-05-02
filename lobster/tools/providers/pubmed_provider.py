@@ -235,6 +235,48 @@ class PubMedProvider(BasePublicationProvider):
 
         return False
 
+    def fetch_abstract(self, identifier: str) -> Dict[str, Any]:
+        """
+        Fetch a PubMed abstract by PMID.
+
+        Kept as a compatibility wrapper for older benchmark and integration
+        tests. It uses direct EFetch by PMID instead of a search+fetch round
+        trip, which matches the provider capability contract for fast abstract
+        retrieval.
+        """
+        pmid = identifier.strip()
+        if pmid.upper().startswith("PMID:"):
+            pmid = pmid[5:].strip()
+
+        if not pmid.isdigit():
+            raise ValueError(f"Invalid PMID: {identifier}")
+
+        url = self.build_ncbi_url(
+            "efetch",
+            {"db": "pubmed", "retmode": "xml", "id": pmid},
+        )
+        xml_content = self._make_ncbi_request(url, f"fetch abstract {pmid}")
+        xml_text = xml_content.decode("utf-8")
+        text_dict = self.parse(xml_text)
+
+        article_set = text_dict.get("PubmedArticleSet", {})
+        articles = article_set.get("PubmedArticle") if article_set else None
+        if not articles:
+            raise ValueError(f"PMID not found: {pmid}")
+
+        article_data = articles[0] if isinstance(articles, list) else articles
+        article = self._parse_article_from_data(pmid, article_data)
+        if article.get("Title") == "Could not parse article":
+            raise ValueError(f"PMID not found: {pmid}")
+
+        return {
+            "pmid": pmid,
+            "title": article.get("Title", ""),
+            "abstract": article.get("Summary", ""),
+            "journal": article.get("Journal", ""),
+            "published": article.get("Published", ""),
+        }
+
     def get_supported_features(self) -> Dict[str, bool]:
         """Return features supported by PubMed provider."""
         return {

@@ -393,6 +393,7 @@ print(f"Significant correlations: {stats['n_significant_results']}")""",
                     "min_samples_per_group": min_samples_per_group,
                 },
             }
+            adata_de.uns["de_results"] = adata_de.uns["differential_expression"]
 
             # Add significance flags to var
             self._add_significance_flags(adata_de, significant_results)
