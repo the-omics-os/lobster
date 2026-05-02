@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { dispatchCommand } from "../commands/dispatcher.js";
 import { createInitialState } from "../utils/stateHandlers.js";
 import type { AppConfig } from "../config.js";
 
 const baseConfig: AppConfig = {
   apiUrl: "http://localhost:8000",
+  streamApiUrl: "http://localhost:8000",
   authType: "none",
   tokenSource: "none",
   isCloud: false,
@@ -160,7 +161,7 @@ describe("dispatchCommand", () => {
 
     const result = dispatchCommand(`/sessions delete ${targetSessionId.slice(0, 8)}`, {
       state: createInitialState(),
-      config: { ...baseConfig, isCloud: true },
+      config: { ...baseConfig, isCloud: true, tokenSource: "cli", token: "test", authType: "bearer" },
       sessionId: targetSessionId,
     });
 

@@ -1,9 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { resolveSessionId } from "../api/sessions.js";
 import type { AppConfig } from "../config.js";
 
 const baseConfig: AppConfig = {
   apiUrl: "http://localhost:8000",
+  streamApiUrl: "http://localhost:8000",
   authType: "none",
   tokenSource: "none",
   isCloud: true,

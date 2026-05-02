@@ -8,14 +8,10 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "dist",
-    "rootDir": "src",
     "declaration": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["bun-types"]
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+    "types": ["@types/node"]
+  }
 }
