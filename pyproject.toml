@@ -494,7 +494,7 @@ filterwarnings = [
 ]
 minversion = "7.0"
 timeout = 300
-collect_ignore = ["setup.py", "build/", "dist/", ".tox/", ".eggs/", "venv/", ".venv/", "env/", ".env/", "tests/archive/"]
+collect_ignore = ["build/", "dist/", ".tox/", ".eggs/", "venv/", ".venv/", "env/", ".env/", "tests/archive/"]
 collect_ignore_glob = ["**/.*", "**/__pycache__/**", "**/node_modules/**", "**/.DS_Store", "tests/archive/**", "kevin_notes/**", "kevin_notes_completed/**", "tests/manual/**"]
 norecursedirs = [".git", ".tox", ".eggs", "venv", ".venv", "build", "dist", "node_modules", "__pycache__", "tests/archive", "tests/manual", "kevin_notes", "kevin_notes_completed"]
 

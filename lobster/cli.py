@@ -1031,10 +1031,10 @@ def _display_streaming_response(
 
 def _validate_chat_ui_mode(ui_mode: str) -> None:
     """Validate `lobster chat --ui` values early with CLI-friendly errors."""
-    if ui_mode in {"auto", "go", "ink", "classic"}:
+    if ui_mode in {"auto", "go", "classic"}:
         return
     _raise_cli_error(
-        f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, ink, go, classic"
+        f"Error: Invalid --ui value '{ui_mode}'. Must be one of: auto, go, classic"
     )
 
 
@@ -1155,51 +1155,6 @@ def _launch_go_chat_binary(
     return True
 
 
-def _maybe_launch_ink_chat_ui(
-    *,
-    ui_mode: str,
-    workspace: Optional[Path],
-    session_id: Optional[str],
-    provider: Optional[str],
-    model: Optional[str],
-    debug: bool,
-) -> bool:
-    """Launch Ink chat UI when requested/available, else return False."""
-    if ui_mode not in ("auto", "ink"):
-        return False
-    if not os.isatty(0):
-        if ui_mode == "ink":
-            _raise_cli_error("Error: Ink TUI requires an interactive terminal (stdin is not a TTY)")
-        return False
-
-    from lobster.cli_internal.ink_bootstrap import find_or_download_ink_binary
-    from lobster.cli_internal.ink_launcher import launch_ink_chat
-
-    binary = find_or_download_ink_binary()
-    if not binary:
-        if ui_mode == "ink":
-            _raise_cli_error("Error: Ink TUI binary not found. Install lobster-ai-tui or use --ui auto.")
-        return False
-
-    _preflight_provider_check(workspace=workspace, provider_override=provider)
-
-    try:
-        launch_ink_chat(
-            workspace=str(workspace) if workspace else None,
-            session_id=session_id,
-            provider=provider,
-            model=model,
-            debug=debug,
-        )
-        return True
-    except Exception as exc:
-        if ui_mode == "ink":
-            import sys
-            print(f"\033[31mError:\033[0m Ink TUI failed: {exc}", file=sys.stderr)
-            return False
-        import sys
-        print(f"\033[33mNote:\033[0m Ink TUI failed ({exc}), trying Go TUI...", file=sys.stderr)
-        return False
 
 
 def _maybe_launch_go_chat_ui(
@@ -1320,7 +1275,7 @@ def chat(
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode: auto (Ink first, then Go TUI), ink (React Ink), go (Go TUI), classic (Rich terminal)",
+        help="UI mode: auto (Go TUI, then classic), go (Go TUI), classic (Rich terminal)",
     ),
     classic: bool = typer.Option(
         False,
@@ -1343,18 +1298,7 @@ def chat(
         ui_mode = "classic"
     _validate_chat_ui_mode(ui_mode)
 
-    # Try Ink first
-    if _maybe_launch_ink_chat_ui(
-        ui_mode=ui_mode,
-        workspace=workspace,
-        session_id=session_id,
-        provider=provider,
-        model=model,
-        debug=debug,
-    ):
-        return
-
-    # Try Go TUI second
+    # Try Go TUI first
     if _maybe_launch_go_chat_ui(
         ui_mode=ui_mode,
         workspace=workspace,
@@ -1373,7 +1317,7 @@ def chat(
     # Classic Rich terminal — final fallback
     if ui_mode == "auto":
         import sys
-        print("\033[33mNote:\033[0m Using classic terminal (Ink and Go TUI unavailable).", file=sys.stderr)
+        print("\033[33mNote:\033[0m Using classic terminal (Go TUI unavailable).", file=sys.stderr)
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
 
     chat_impl(

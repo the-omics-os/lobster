@@ -10,17 +10,16 @@ class TestDualWriteInDelegation:
 
     def test_agent_tool_stores_result(self):
         """Verify _create_agent_tool stores content when store is provided."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.graph import _create_agent_tool
 
         store = InMemoryStore()
 
-        # Create a mock agent that returns a fixed response
-        mock_agent = MagicMock()
         mock_msg = MagicMock()
         mock_msg.content = "Full analysis: 50K chars of data here"
-        mock_agent.invoke.return_value = {"messages": [mock_msg]}
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
 
         tool_fn = _create_agent_tool(
             agent_name="test_agent",
@@ -44,14 +43,14 @@ class TestDualWriteInDelegation:
 
     def test_agent_tool_no_store_graceful(self):
         """Verify _create_agent_tool works without store (backward compat)."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.graph import _create_agent_tool
 
-        mock_agent = MagicMock()
         mock_msg = MagicMock()
         mock_msg.content = "Analysis result"
-        mock_agent.invoke.return_value = {"messages": [mock_msg]}
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
 
         tool_fn = _create_agent_tool(
             agent_name="test_agent",
@@ -67,7 +66,7 @@ class TestDualWriteInDelegation:
 
     def test_lazy_delegation_tool_stores_result(self):
         """Verify _create_lazy_delegation_tool stores content when store is provided."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.graph import _create_lazy_delegation_tool
 
@@ -83,10 +82,10 @@ class TestDualWriteInDelegation:
         )
 
         # Register the mock agent after tool creation
-        mock_agent = MagicMock()
         mock_msg = MagicMock()
         mock_msg.content = "Detailed child analysis result"
-        mock_agent.invoke.return_value = {"messages": [mock_msg]}
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
         agents_dict["child_agent"] = mock_agent
 
         result = tool_fn.invoke({"task_description": "Run child analysis"})
@@ -100,7 +99,7 @@ class TestDualWriteInDelegation:
 
     def test_lazy_delegation_tool_no_store_graceful(self):
         """Verify _create_lazy_delegation_tool works without store."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.graph import _create_lazy_delegation_tool
 
@@ -113,10 +112,10 @@ class TestDualWriteInDelegation:
             store=None,
         )
 
-        mock_agent = MagicMock()
         mock_msg = MagicMock()
         mock_msg.content = "Child result"
-        mock_agent.invoke.return_value = {"messages": [mock_msg]}
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
         agents_dict["child_agent"] = mock_agent
 
         result = tool_fn.invoke({"task_description": "Run analysis"})
@@ -150,7 +149,7 @@ class TestRetrievalRoundTrip:
     def test_delegation_then_retrieve_end_to_end(self):
         """Full round-trip: delegation tool stores, retrieval tool reads back."""
         import re
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.graph import _create_agent_tool
         from lobster.tools.store_tools import create_retrieve_agent_result_tool
@@ -158,12 +157,12 @@ class TestRetrievalRoundTrip:
         store = InMemoryStore()
 
         # Create delegation tool
-        mock_agent = MagicMock()
         mock_msg = MagicMock()
         mock_msg.content = (
             "Gene list: BRCA1, TP53, EGFR with p-values 0.001, 0.003, 0.01"
         )
-        mock_agent.invoke.return_value = {"messages": [mock_msg]}
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
 
         delegation_tool = _create_agent_tool(
             agent_name="de_analysis_expert",
@@ -202,7 +201,7 @@ class TestRetrievalRoundTrip:
 
     def test_multiple_delegations_independent_keys(self):
         """Multiple delegation results get distinct store keys."""
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.graph import _create_agent_tool
 
@@ -210,10 +209,10 @@ class TestRetrievalRoundTrip:
 
         results = []
         for i in range(3):
-            mock_agent = MagicMock()
             mock_msg = MagicMock()
             mock_msg.content = f"Result from agent {i}"
-            mock_agent.invoke.return_value = {"messages": [mock_msg]}
+            mock_agent = AsyncMock()
+            mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
 
             tool_fn = _create_agent_tool(
                 agent_name=f"agent_{i}",
@@ -318,7 +317,7 @@ class TestEndToEndContextFlow:
     def test_store_survives_trimming(self):
         """Results stored in InMemoryStore remain accessible even after trimming drops the message."""
         import re
-        from unittest.mock import MagicMock
+        from unittest.mock import AsyncMock, MagicMock
 
         from lobster.agents.context_management import create_supervisor_pre_model_hook
         from lobster.agents.graph import _create_agent_tool
@@ -327,11 +326,11 @@ class TestEndToEndContextFlow:
         store = InMemoryStore()
 
         # Step 1: Delegation stores a large result
-        mock_agent = MagicMock()
         mock_msg = MagicMock()
         large_content = "Comprehensive analysis: " + ("data " * 2000)
         mock_msg.content = large_content
-        mock_agent.invoke.return_value = {"messages": [mock_msg]}
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"messages": [mock_msg]}
 
         delegation_tool = _create_agent_tool(
             agent_name="research_agent",

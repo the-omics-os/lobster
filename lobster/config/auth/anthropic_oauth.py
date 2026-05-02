@@ -230,7 +230,7 @@ def login_interactive(
         timeout: Seconds to wait for the browser callback.
         open_browser: Whether to auto-open the browser.
         on_url: Callback(url: str) — called with the authorize URL.
-            Frontends (Go TUI, Ink CLI) use this to display/open the URL.
+            Frontends (Go TUI, lobster-cli) use this to display/open the URL.
         on_progress: Callback(msg: str) — status updates.
         on_manual_input: Callback() -> str — called to get manual code/URL input
             as fallback when browser callback doesn't arrive.

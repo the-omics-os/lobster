@@ -1637,7 +1637,7 @@ def init_impl(
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode: auto (Ink first, then Go TUI, questionary, classic), ink (React Ink), go (Go TUI), classic (Rich prompts)",
+        help="UI mode: auto (Go TUI, then questionary, classic), go (Go TUI), classic (Rich prompts)",
     ),
 ):
     """
@@ -1694,6 +1694,10 @@ def init_impl(
     import datetime
 
     from lobster.config.global_config import GlobalProviderConfig
+
+    if ui_mode not in ("auto", "go", "classic"):
+        console.print(f"[red]Error:[/red] Invalid --ui value '{ui_mode}'. Must be one of: auto, go, classic")
+        raise typer.Exit(1)
 
     # Determine paths based on global vs workspace mode
     if global_config:
@@ -2190,56 +2194,6 @@ def init_impl(
     # =========================================================================
     if ui_mode != "classic" and not non_interactive:
         _tui_handled = False
-
-        # ---- Try Ink TUI (new default) ----
-        if ui_mode in ("auto", "ink"):
-            try:
-                from lobster.cli_internal.ink_launcher import run_ink_init_wizard
-
-                _ink_result = run_ink_init_wizard()
-                if _ink_result.get("cancelled", False):
-                    console.print("[yellow]Setup cancelled.[/yellow]")
-                    raise typer.Exit(0)
-                _ws_path = Path.cwd() / ".lobster_workspace"
-                _ev_path = Path.cwd() / ".env"
-                _ink_result = _postprocess_tui_init_result(
-                    _ink_result,
-                    workspace_path=_ws_path,
-                    env_path=_ev_path,
-                    global_config=global_config,
-                    skip_extras=skip_extras,
-                )
-                console.print(
-                    "[bold green]Configuration saved![/bold green] "
-                    "Run [bold]lobster chat[/bold] to start analyzing."
-                )
-                from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
-
-                if _is_uv():
-                    _uv_tool_env_handoff(
-                        provider_name=(_ink_result.get("provider") or "")
-                        .strip()
-                        .lower()
-                        or None,
-                        selected_agents=_ink_result.get("agents") or [],
-                        skip_extras=skip_extras,
-                        include_vector_search=bool(
-                            _ink_result.get("smart_standardization_enabled")
-                        )
-                        and not skip_extras,
-                    )
-                _tui_handled = True
-            except typer.Exit:
-                raise
-            except ImportError:
-                if ui_mode == "ink":
-                    console.print("[red]Ink TUI binary not found. Use --ui auto.[/red]")
-                    raise typer.Exit(1)
-            except Exception as _ink_exc:
-                if ui_mode == "ink":
-                    console.print(f"[red]Ink TUI init failed: {_ink_exc}[/red]")
-                    raise typer.Exit(1)
-                console.print(f"[dim]Ink TUI unavailable ({_ink_exc}), falling back.[/dim]")
 
         # ---- Try Go TUI ----
         if not _tui_handled and ui_mode in ("auto", "go"):

@@ -638,7 +638,7 @@ class TestProtocolCallbackTransitions:
                 "agent_transition",
                 {
                     "from": "research_agent",
-                    "to": "research_agent",
+                    "to": "supervisor",
                     "reason": "return",
                     "kind": "activity",
                     "status": "complete",

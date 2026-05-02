@@ -636,7 +636,7 @@ def chat(
         None, "--project-id", "-p", help="Associate session with a cloud project"
     ),
 ) -> None:
-    """Start an interactive cloud chat session (Ink TUI, direct connection)."""
+    """Start an interactive cloud chat session (lobster-cli, direct connection)."""
     import os
     import subprocess
 

@@ -1,7 +1,7 @@
 """WizardManifest — single source of truth for init wizard data.
 
 Consumed by:
-- Ink TUI wizard (via JSON over stdin)
+- Go TUI wizard (via JSON over stdin)
 - questionary fallback (Python)
 - non-interactive mode (CLI flags)
 
@@ -106,7 +106,7 @@ class ProviderDef:
 class WizardManifest:
     """Complete init wizard manifest — single source of truth.
 
-    JSON-serializable for transport to Ink TUI or other consumers.
+    JSON-serializable for transport to Go TUI or other consumers.
     """
 
     providers: list[ProviderDef] = field(default_factory=list)
