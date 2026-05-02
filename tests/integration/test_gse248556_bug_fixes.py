@@ -352,15 +352,21 @@ class TestGSE248556AllBugFixes:
             # Create VDJ-like data with problematic metadata
             X = np.random.randint(0, 100, (n_total_rows, 30)).astype(np.float32)
 
+            clone_sizes = ([10, None, "large", 5, None] * ((n_total_rows // 5) + 1))[
+                :n_total_rows
+            ]
+            confidences = (
+                [0.95, None, "high", 0.87, None] * ((n_total_rows // 5) + 1)
+            )[:n_total_rows]
+
             obs = pd.DataFrame(
                 {
                     "cell_barcode": all_barcodes,
                     "is_productive": np.random.choice(
                         [True, False, None], n_total_rows
                     ),
-                    "clone_size": [10, None, "large", 5, None] * (n_total_rows // 5),
-                    "confidence": [0.95, None, "high", 0.87, None]
-                    * (n_total_rows // 5),
+                    "clone_size": clone_sizes,
+                    "confidence": confidences,
                     "chain_type": np.random.choice(
                         ["TRA", "TRB", "IGH", "IGL"], n_total_rows
                     ),
@@ -479,9 +485,7 @@ class TestIndividualBugFixes:
 
         Tests the retry mechanism without requiring full dataset download.
         """
-        from lobster.services.data_access.geo.downloader import GEODownloadManager
-
-        manager = GEODownloadManager()
+        manager = geo_service.geo_downloader
 
         # Verify retry methods exist and have correct signatures
         assert hasattr(manager, "_download_with_retry")

@@ -205,8 +205,12 @@ class TestEdgeCases:
         """Test behavior when no significant enrichment."""
         service = PathwayEnrichmentService()
 
-        # Random genes unlikely to enrich
-        genes = ["ZZZ1", "ZZZ2", "ZZZ3"]
+        # Synthetic identifiers should not map to known Enrichr gene sets.
+        genes = [
+            "LOBSTER_NO_GENE_A_20260502",
+            "LOBSTER_NO_GENE_B_20260502",
+            "LOBSTER_NO_GENE_C_20260502",
+        ]
 
         adata = ad.AnnData(X=np.random.rand(10, 50))
         result_adata, stats, _ = service.over_representation_analysis(
@@ -263,7 +267,58 @@ class TestGSEA:
         service = PathwayEnrichmentService()
 
         # Create realistic ranked genes (e.g., from differential expression)
-        genes = [f"GENE{i}" for i in range(1, 51)]
+        genes = [
+            "TP53",
+            "EGFR",
+            "KRAS",
+            "PIK3CA",
+            "AKT1",
+            "MTOR",
+            "PTEN",
+            "MYC",
+            "CDKN1A",
+            "MDM2",
+            "BAX",
+            "BCL2",
+            "CASP3",
+            "CASP8",
+            "FAS",
+            "TNF",
+            "IL6",
+            "STAT3",
+            "JAK2",
+            "IFNG",
+            "IL2",
+            "CD3D",
+            "CD4",
+            "CD8A",
+            "GZMB",
+            "PRF1",
+            "FOXP3",
+            "CTLA4",
+            "PDCD1",
+            "CD274",
+            "VEGFA",
+            "HIF1A",
+            "BRCA1",
+            "BRCA2",
+            "ATM",
+            "CHEK2",
+            "RB1",
+            "CCND1",
+            "CDK4",
+            "CDK6",
+            "ESR1",
+            "ERBB2",
+            "MAPK1",
+            "MAPK3",
+            "JUN",
+            "FOS",
+            "NFKB1",
+            "RELA",
+            "TLR4",
+            "MYD88",
+        ]
         scores = np.linspace(5, -5, 50)  # Fold changes from high to low
 
         ranked_genes = pd.DataFrame({"gene": genes, "score": scores})
@@ -273,6 +328,8 @@ class TestGSEA:
             adata=adata,
             ranked_genes=ranked_genes,
             databases=["GO_Biological_Process_2023"],
+            min_size=5,
+            permutation_num=100,
         )
 
         # Verify GSEA results

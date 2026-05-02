@@ -213,7 +213,7 @@ class TestClusteringServiceIRWorkflow:
 
         # Verify IR is returned
         assert ir is not None
-        assert ir.operation == "scanpy.tl.cluster_pipeline"
+        assert ir.operation == "scanpy.tl.leiden"
         assert ir.code_template is not None
         assert len(ir.parameters) > 0
 
@@ -221,10 +221,16 @@ class TestClusteringServiceIRWorkflow:
         assert (
             "highly_variable_genes" in ir.code_template
             or "sc.pp.highly_variable_genes" in ir.code_template
+            or "highly_deviant" in ir.code_template
+            or "calculate_deviance" in ir.code_template
         )
         assert "pca" in ir.code_template or "sc.tl.pca" in ir.code_template
         assert "neighbors" in ir.code_template or "sc.pp.neighbors" in ir.code_template
-        assert "leiden" in ir.code_template or "sc.tl.leiden" in ir.code_template
+        assert (
+            "leiden" in ir.code_template
+            or "sc.tl.leiden" in ir.code_template
+            or "sc.tl.{{ algorithm }}" in ir.code_template
+        )
         assert "umap" in ir.code_template or "sc.tl.umap" in ir.code_template
 
     def test_clustering_ir_with_batch_correction(self):
@@ -252,7 +258,7 @@ class TestClusteringServiceIRWorkflow:
         # Verify IR is generated correctly
         # (batch_key parameter handling tested separately in unit tests)
         assert ir is not None
-        assert ir.operation == "scanpy.tl.cluster_pipeline"
+        assert ir.operation == "scanpy.tl.leiden"
         assert "resolution" in ir.parameters
 
 

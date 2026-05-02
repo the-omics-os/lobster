@@ -138,12 +138,14 @@ class TestMetadataAssistantQueueIntegration:
         "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
     )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
+    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataFilteringService")
     @patch(
         "lobster.agents.metadata_assistant.metadata_assistant.MicrobiomeFilteringService"
     )
     def test_process_entry_updates_harmonization_metadata(
         self,
         mock_microbiome_class,
+        mock_metadata_filtering_class,
         mock_mapping_class,
         mock_standardization_class,
         mock_settings,
@@ -166,6 +168,17 @@ class TestMetadataAssistantQueueIntegration:
         mock_create_llm.return_value = mock_llm
         mock_agent = Mock()
         mock_create_agent.return_value = mock_agent
+
+        mock_metadata_filtering = Mock()
+        mock_metadata_filtering.parse_criteria.return_value = {}
+        mock_metadata_filtering.apply_filters.side_effect = (
+            lambda samples, parsed: (
+                samples[:1],
+                {"retention_rate": 50.0},
+                Mock(),
+            )
+        )
+        mock_metadata_filtering_class.return_value = mock_metadata_filtering
 
         # Mock filtering to return human samples only
         mock_filtering = Mock()
@@ -365,17 +378,13 @@ class TestMetadataAssistantQueueIntegration:
         )
 
         # Verify CSV message
-        assert "Content Cached Successfully" in result
-        assert "CSV" in result or "csv" in result
-        assert "aggregated_samples.csv" in result
+        assert "CSV Export Complete" in result
+        assert "rich" in result
+        assert "strict" in result
 
-        # Verify CSV file was created (integration test uses real WorkspaceContentService)
-        csv_file = (
-            integration_data_manager.workspace_path
-            / "metadata"
-            / "aggregated_samples.csv"
-        )
-        assert csv_file.exists(), "CSV file should be created"
+        export_info = integration_data_manager.metadata_store["aggregated_samples"]
+        assert Path(export_info["csv_export_path"]).exists()
+        assert Path(export_info["csv_export_strict_path"]).exists()
 
 
 class TestSharedWorkspaceToolsIntegration:

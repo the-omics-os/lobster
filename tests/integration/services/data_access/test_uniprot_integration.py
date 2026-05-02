@@ -45,7 +45,7 @@ def test_get_protein_p04637(service):
 def test_get_protein_not_found(service):
     """Invalid accession should raise UniProtNotFoundError."""
     with pytest.raises(UniProtNotFoundError):
-        service.get_protein("INVALID_ACCESSION_999")
+        service.get_protein("Q00000")
 
 
 # =========================================================================

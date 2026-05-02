@@ -43,6 +43,7 @@ import pytest
 
 from lobster.config.settings import get_settings
 from lobster.core.client import AgentClient
+from lobster.core.config_resolver import ConfigurationError
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
 
@@ -69,13 +70,16 @@ def data_manager(test_workspace):
 
 
 @pytest.fixture(scope="module")
-def agent_client(data_manager, test_workspace):
+def agent_client(data_manager, test_workspace, check_api_keys):
     """Create AgentClient for testing multi-agent coordination via full graph."""
-    return AgentClient(
-        data_manager=data_manager,
-        enable_reasoning=False,
-        workspace_path=test_workspace,
-    )
+    try:
+        return AgentClient(
+            data_manager=data_manager,
+            enable_reasoning=False,
+            workspace_path=test_workspace,
+        )
+    except ConfigurationError as exc:
+        pytest.skip(f"LLM provider not configured for real handoff tests: {exc}")
 
 
 @pytest.fixture(scope="module")

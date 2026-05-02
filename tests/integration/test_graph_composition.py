@@ -16,7 +16,7 @@ import inspect
 import json
 import logging
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -31,6 +31,22 @@ from lobster.config.workspace_agent_config import WorkspaceAgentConfig
 
 class TestGraphCompositionPhase5:
     """Test suite for Phase 5 graph composition requirements."""
+
+    @pytest.fixture(autouse=True)
+    def mock_graph_llm_runtime(self):
+        """Graph composition tests validate wiring, not real provider setup."""
+        mock_agent = MagicMock(name="mock_agent")
+        mock_agent.with_config.return_value = mock_agent
+
+        def fake_agent_factory(**kwargs):
+            return mock_agent
+
+        with (
+            patch("lobster.agents.graph.create_llm", return_value=MagicMock()),
+            patch("lobster.agents.graph.create_react_agent", return_value=mock_agent),
+            patch("lobster.agents.graph.import_agent_factory", return_value=fake_agent_factory),
+        ):
+            yield
 
     @pytest.fixture
     def mock_data_manager(self, tmp_path):
@@ -127,7 +143,10 @@ class TestGraphCompositionPhase5:
         from lobster.core.component_registry import component_registry
 
         research_config = component_registry.list_agents().get("research_agent")
-        expected_children = set(research_config.child_agents or [])
+        all_agents = component_registry.list_agents()
+        expected_children = {
+            child for child in (research_config.child_agents or []) if child in all_agents
+        }
         expected_count = 1 + len(expected_children)
         assert len(agent_names) == expected_count, (
             f"Expected {expected_count} agents (1 enabled + {len(expected_children)} children), "
@@ -326,9 +345,11 @@ class TestGraphCompositionPhase5:
 
         # Now add agent to dict (simulating creation)
         mock_agent = MagicMock()
-        mock_agent.invoke.return_value = {
-            "messages": [MagicMock(content="Success from child")]
-        }
+        mock_agent.ainvoke = AsyncMock(
+            return_value={
+                "messages": [MagicMock(content="Success from child")]
+            }
+        )
         agents_dict["test_child"] = mock_agent
 
         # Second invocation - should now work
@@ -351,7 +372,9 @@ class TestGraphCompositionPhase5:
         # The dict should be captured by reference
         # Adding to dict after tool creation should affect tool behavior
         mock_agent = MagicMock()
-        mock_agent.invoke.return_value = {"messages": [MagicMock(content="OK")]}
+        mock_agent.ainvoke = AsyncMock(
+            return_value={"messages": [MagicMock(content="OK")]}
+        )
         agents_dict["child"] = mock_agent
 
         result = tool.invoke("task")

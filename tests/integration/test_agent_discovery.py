@@ -94,9 +94,9 @@ class TestDynamicAgentDiscovery:
 
         genomics = agents.get("genomics_expert")
         assert genomics is not None
-        assert genomics.tier_requirement == "premium"
+        assert genomics.tier_requirement == "free"
 
-        assert not is_agent_available("genomics_expert", "free")
+        assert is_agent_available("genomics_expert", "free")
         assert is_agent_available("genomics_expert", "premium")
 
         research = agents.get("research_agent")
@@ -214,7 +214,7 @@ class TestBackwardCompatibility:
 
         # Dynamic checking should work
         assert is_agent_available_dynamic("research_agent", "free")
-        assert not is_agent_available_dynamic("genomics_expert", "free")
+        assert is_agent_available_dynamic("genomics_expert", "free")
         assert is_agent_available_dynamic("genomics_expert", "premium")
 
         # is_agent_available should use dynamic checking
@@ -224,7 +224,7 @@ class TestBackwardCompatibility:
         # get_available_agents_dynamic should return correct lists
         free_agents = get_available_agents_dynamic("free")
         assert "research_agent" in free_agents
-        assert "genomics_expert" not in free_agents
+        assert "genomics_expert" in free_agents
 
         premium_agents = get_available_agents_dynamic("premium")
         assert "research_agent" in premium_agents

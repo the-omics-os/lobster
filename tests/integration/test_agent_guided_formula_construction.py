@@ -25,9 +25,10 @@ class TestAgentGuidedFormulaConstruction:
     """Test suite for agent-guided formula construction workflow."""
 
     @pytest.fixture
-    def mock_data_manager(self):
+    def mock_data_manager(self, tmp_path):
         """Create mock data manager with test data."""
         data_manager = MagicMock(spec=DataManagerV2)
+        data_manager.workspace_path = tmp_path
 
         # Create mock pseudobulk data
         n_samples = 24
@@ -259,7 +260,19 @@ class TestAgentGuidedFormulaConstruction:
                 "model_kwargs": {},
             }
 
-            with patch("langchain_aws.ChatBedrockConverse"):
+            with (
+                patch(
+                    "lobster.agents.transcriptomics.transcriptomics_expert.create_llm"
+                ) as mock_create_llm,
+                patch(
+                    "lobster.agents.transcriptomics.transcriptomics_expert.create_react_agent"
+                ) as mock_create_react_agent,
+            ):
+                mock_create_llm.return_value = MagicMock(name="mock_llm")
+                mock_create_react_agent.return_value = MagicMock(
+                    name="mock_transcriptomics_agent"
+                )
+
                 # This test verifies the tools can be instantiated without errors
                 agent_func = transcriptomics_expert(mock_data_manager)
                 assert agent_func is not None

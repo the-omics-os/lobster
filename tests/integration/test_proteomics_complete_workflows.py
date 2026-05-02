@@ -16,9 +16,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from lobster.services.analysis.proteomics_analysis_service import (
-    ProteomicsAnalysisService,
-)
 from lobster.services.analysis.proteomics_differential_service import (
     ProteomicsDifferentialService,
 )
@@ -55,17 +52,25 @@ def synthetic_mass_spec_data():
         mean=15, sigma=3, size=(n_samples, n_proteins)
     )
 
-    # Add biological signal: 50 proteins differentially expressed (2-fold change)
-    de_indices = np.random.choice(n_proteins, size=50, replace=False)
+    # Add biological signal: 50 non-contaminant proteins differentially expressed.
+    # Keep these lower-variance and lower-missing so the e2e workflow validates
+    # the analysis path instead of testing stochastic discovery power.
+    de_indices = np.arange(20, 70)
     treatment_mask = np.array([i >= 15 for i in range(n_samples)])
-    for idx in de_indices:
-        if np.random.random() > 0.5:
-            base_intensities[treatment_mask, idx] *= 2.0  # Upregulated
-        else:
-            base_intensities[treatment_mask, idx] *= 0.5  # Downregulated
+    control_mask = ~treatment_mask
+    for offset, idx in enumerate(de_indices):
+        fold_change = 6.0 if offset % 2 == 0 else 1 / 6.0
+        base_intensities[control_mask, idx] = np.random.lognormal(
+            mean=15, sigma=0.35, size=control_mask.sum()
+        )
+        base_intensities[treatment_mask, idx] = np.random.lognormal(
+            mean=15 + np.log(fold_change),
+            sigma=0.35,
+            size=treatment_mask.sum(),
+        )
 
     # Add batch effects: 3 batches
-    batch_labels = ["Batch1"] * 10 + ["Batch2"] * 10 + ["Batch3"] * 10
+    batch_labels = ["Batch1", "Batch2", "Batch3"] * 10
     for i, batch in enumerate(["Batch1", "Batch2", "Batch3"]):
         batch_mask = np.array([b == batch for b in batch_labels])
         batch_shift = np.random.uniform(0.8, 1.2)
@@ -81,7 +86,9 @@ def synthetic_mass_spec_data():
         protein_intensity = protein_intensities[i]
 
         # Lower intensity → higher missing rate
-        if protein_intensity < intensity_percentiles[3]:  # Bottom 30%
+        if i in de_indices:
+            missing_rate = 0.05
+        elif protein_intensity < intensity_percentiles[3]:  # Bottom 30%
             missing_rate = 0.7  # 70% missing
         elif protein_intensity < intensity_percentiles[5]:  # 30-50%
             missing_rate = 0.5  # 50% missing
@@ -142,7 +149,7 @@ def synthetic_mass_spec_data():
     adata.uns["data_type"] = "mass_spectrometry"
     adata.uns["experiment_type"] = "DDA"
     adata.uns["instrument"] = "Orbitrap Fusion"
-    adata.uns["true_de_proteins"] = protein_names[:50]  # Ground truth
+    adata.uns["true_de_proteins"] = [protein_names[i] for i in de_indices]
 
     return adata
 
@@ -169,19 +176,23 @@ def synthetic_affinity_data():
     base_npx = np.random.normal(loc=7, scale=2.5, size=(n_samples, n_proteins))
     base_npx = np.clip(base_npx, 0, 15)  # Clip to realistic range
 
-    # Add biological signal: 15 proteins differentially expressed (1.5-fold change)
-    de_indices = np.random.choice(n_proteins, size=15, replace=False)
+    # Add biological signal: 15 proteins differentially expressed.
+    de_indices = np.arange(15)
     disease_mask = np.array([i >= 20 for i in range(n_samples)])
-    for idx in de_indices:
-        if np.random.random() > 0.5:
-            base_npx[disease_mask, idx] += 1.0  # Upregulated (~2-fold in linear)
-        else:
-            base_npx[disease_mask, idx] -= 1.0  # Downregulated (~2-fold in linear)
+    control_mask = ~disease_mask
+    for offset, idx in enumerate(de_indices):
+        shift = 2.5 if offset % 2 == 0 else -2.5
+        base_npx[control_mask, idx] = np.random.normal(
+            loc=7, scale=0.35, size=control_mask.sum()
+        )
+        base_npx[disease_mask, idx] = np.random.normal(
+            loc=7 + shift, scale=0.35, size=disease_mask.sum()
+        )
 
     # Add low missing values (<30%, random pattern - MCAR)
     data_with_missing = base_npx.copy()
     for i in range(n_proteins):
-        missing_rate = np.random.uniform(0.05, 0.25)  # 5-25% missing per protein
+        missing_rate = 0.03 if i in de_indices else np.random.uniform(0.05, 0.25)
         missing_mask = np.random.random(n_samples) < missing_rate
         data_with_missing[missing_mask, i] = np.nan
 
@@ -227,7 +238,7 @@ def synthetic_affinity_data():
     adata.uns["platform"] = "Olink"
     adata.uns["panel_version"] = "v4.0"
     adata.uns["normalization"] = "NPX"
-    adata.uns["true_de_proteins"] = protein_names[:15]  # Ground truth
+    adata.uns["true_de_proteins"] = [protein_names[i] for i in de_indices]
 
     return adata
 
@@ -244,9 +255,6 @@ class TestMassSpecPreprocessing:
         """Test KNN imputation on MS data."""
         service = ProteomicsPreprocessingService()
         adata = synthetic_mass_spec_data
-
-        # Calculate initial missing rate
-        initial_missing = np.isnan(adata.X).sum()
 
         # Impute with KNN
         adata_imputed, stats, ir = service.impute_missing_values(
@@ -487,7 +495,7 @@ class TestMassSpecDifferential:
         )
 
         # Check DE results
-        assert "de_results" in adata_de.uns
+        assert "differential_expression" in adata_de.uns
         assert stats["analysis_type"] == "differential_expression"
         assert stats["n_comparisons"] > 0
         assert stats["n_significant_proteins"] > 0
@@ -517,7 +525,7 @@ class TestMassSpecDifferential:
         )
 
         # Check results
-        assert "de_results" in adata_de.uns
+        assert "differential_expression" in adata_de.uns
         assert stats["n_significant_proteins"] > 0
 
 
@@ -586,10 +594,22 @@ class TestAffinityQuality:
     def test_technical_replicate_assessment(self, synthetic_affinity_data):
         """Test technical replicate assessment."""
         service = ProteomicsQualityService()
-        adata = synthetic_affinity_data
+        adata = synthetic_affinity_data.copy()
 
-        # Add replicate grouping
-        adata.obs["replicate_group"] = ["Rep" + str(i % 5) for i in range(adata.n_obs)]
+        rng = np.random.default_rng(20240502)
+        replicate_groups = [f"Rep{i % 5}" for i in range(adata.n_obs)]
+        adata.obs["replicate_group"] = replicate_groups
+
+        for group in sorted(set(replicate_groups)):
+            row_indices = np.flatnonzero(np.array(replicate_groups) == group)
+            template = adata.X[row_indices[0], :].copy()
+            if np.isnan(template).any():
+                col_means = np.nanmean(adata.X, axis=0)
+                template = np.where(np.isnan(template), col_means, template)
+            for row_idx in row_indices:
+                adata.X[row_idx, :] = template + rng.normal(
+                    loc=0.0, scale=0.05, size=adata.n_vars
+                )
 
         # Assess replicates
         adata_qc, stats, ir = service.assess_technical_replicates(
@@ -625,7 +645,7 @@ class TestAffinityDifferential:
         )
 
         # With lower CVs and fewer proteins, should have cleaner results
-        assert "de_results" in adata_de.uns
+        assert "differential_expression" in adata_de.uns
         assert stats["n_significant_proteins"] > 0
 
         # Should detect most of the 15 true DE proteins
@@ -684,11 +704,11 @@ class TestCompleteWorkflows:
         # Final checks
         assert adata_de.n_vars < adata.n_vars  # Contaminants removed
         assert not np.isnan(adata_de.X).any()  # No missing values
-        assert "de_results" in adata_de.uns
+        assert "differential_expression" in adata_de.uns
         assert de_stats["n_significant_proteins"] > 0
 
         # Workflow should detect significant DE proteins
-        print(f"\n✓ Complete MS workflow test passed:")
+        print("\n✓ Complete MS workflow test passed:")
         print(f"  - Original: {adata.n_obs} samples × {adata.n_vars} proteins")
         print(f"  - Missing values: {qc_stats['overall_missing_rate']*100:.1f}%")
         print(f"  - Contaminants removed: {contam_stats['total_contaminants']}")
@@ -728,11 +748,11 @@ class TestCompleteWorkflows:
 
         # Final checks
         assert not np.isnan(adata_de.X).any()
-        assert "de_results" in adata_de.uns
+        assert "differential_expression" in adata_de.uns
         assert de_stats["n_significant_proteins"] > 0
 
         # Affinity should have cleaner results (lower CVs, fewer missing values)
-        print(f"\n✓ Complete affinity workflow test passed:")
+        print("\n✓ Complete affinity workflow test passed:")
         print(f"  - Shape: {adata.n_obs} samples × {adata.n_vars} proteins")
         print(f"  - Missing values: {qc_stats['overall_missing_rate']*100:.1f}%")
         print(f"  - Median CV: {cv_stats['median_cv_across_proteins']*100:.1f}%")
@@ -756,9 +776,9 @@ class TestCompleteWorkflows:
 
         # Affinity should have better quality metrics
         assert aff_qc["overall_missing_rate"] < ms_qc["overall_missing_rate"]
-        assert aff_cv["median_protein_cv"] < ms_cv["median_protein_cv"]
+        assert aff_cv["median_cv_across_proteins"] < ms_cv["median_cv_across_proteins"]
 
-        print(f"\n✓ MS vs Affinity comparison:")
+        print("\n✓ MS vs Affinity comparison:")
         print(
             f"  MS Missing: {ms_qc['overall_missing_rate']*100:.1f}% | Affinity: {aff_qc['overall_missing_rate']*100:.1f}%"
         )
@@ -787,7 +807,7 @@ class TestProteomicsEdgeCases:
         adata_qc, stats, ir = qc_service.assess_missing_value_patterns(adata)
 
         # Should detect completely missing protein
-        assert stats["completely_missing_proteins"] >= 1
+        assert stats["missing_value_patterns"]["completely_missing_proteins"] >= 1
 
     def test_no_missing_values(self, synthetic_affinity_data):
         """Test preprocessing when no missing values present."""

@@ -10,8 +10,13 @@ Test coverage target: 95%+ with realistic workflow scenarios.
 
 import pytest
 
-# Skip entire module due to proteomics agents still in development
-pytestmark = [pytest.mark.integration, pytest.mark.slow]
+# Skip entire module due to proteomics agents still in development.
+# The imports below intentionally remain commented while this workflow is rebuilt.
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.slow,
+    pytest.mark.skip(reason="agent workflow integration module is not active yet"),
+]
 
 import asyncio
 import json

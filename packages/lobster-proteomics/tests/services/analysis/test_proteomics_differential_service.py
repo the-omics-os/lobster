@@ -222,6 +222,7 @@ class TestDifferentialExpressionAnalysis:
 
         # DE results should be stored in uns
         assert "differential_expression" in result_adata.uns
+        assert "de_results" in result_adata.uns
         assert "significant_proteins" in result_adata.var.columns
 
     def test_perform_differential_expression_custom_pairs(

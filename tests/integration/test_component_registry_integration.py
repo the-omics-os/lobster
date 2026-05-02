@@ -141,8 +141,9 @@ class TestCustomAgentOverride:
             factory_function="custom.module:research_agent",
             handoff_tool_name="handoff_to_custom_research",
             handoff_tool_description="Custom handoff description",
+            package_name="lobster-custom-test",
         )
-        fresh_registry._custom_agents["research_agent"] = custom_agent_config
+        fresh_registry._agents["research_agent"] = custom_agent_config
 
         # Attempting to list agents should raise ComponentConflictError
         with pytest.raises(ComponentConflictError) as exc_info:
@@ -162,8 +163,9 @@ class TestCustomAgentOverride:
             display_name="My Custom Agent",
             description="A custom agent",
             factory_function="custom.module:my_agent",
+            package_name="lobster-custom-test",
         )
-        fresh_registry._custom_agents["my_custom_agent"] = custom_config
+        fresh_registry._agents["my_custom_agent"] = custom_config
 
         custom_agents = fresh_registry.list_custom_agents()
 
@@ -190,8 +192,9 @@ class TestCustomAgentOverride:
             display_name="Custom Agent",
             description="Custom",
             factory_function="custom:agent",
+            package_name="lobster-custom-test",
         )
-        fresh_registry._custom_agents["my_custom_agent"] = custom_config
+        fresh_registry._agents["my_custom_agent"] = custom_config
 
         all_agents = fresh_registry.list_agents()
 
@@ -274,10 +277,9 @@ class TestRegistryInfo:
         assert set(info["services"]["names"]) == set(fresh_registry._services.keys())
 
         # Custom agent count should match actual custom agents
-        assert info["custom_agents"]["count"] == len(fresh_registry._custom_agents)
-        assert set(info["custom_agents"]["names"]) == set(
-            fresh_registry._custom_agents.keys()
-        )
+        custom_agents = fresh_registry.list_custom_agents()
+        assert info["custom_agents"]["count"] == len(custom_agents)
+        assert set(info["custom_agents"]["names"]) == set(custom_agents.keys())
 
         # Total agents should include core + custom
         all_agents = fresh_registry.list_agents()
@@ -313,7 +315,7 @@ class TestRealEntryPointDiscovery:
         """Multiple load_components() calls should produce stable results."""
         fresh_registry.load_components()
         first_services = dict(fresh_registry._services)
-        first_agents = dict(fresh_registry._custom_agents)
+        first_agents = dict(fresh_registry._agents)
 
         # Reset and reload
         fresh_registry.reset()
@@ -321,7 +323,7 @@ class TestRealEntryPointDiscovery:
 
         # Results should be the same
         assert set(fresh_registry._services.keys()) == set(first_services.keys())
-        assert set(fresh_registry._custom_agents.keys()) == set(first_agents.keys())
+        assert set(fresh_registry._agents.keys()) == set(first_agents.keys())
 
 
 # =============================================================================
@@ -388,8 +390,9 @@ class TestErrorHandling:
             display_name="Available Custom",
             description="Test",
             factory_function="test:agent",
+            package_name="lobster-custom-test",
         )
-        fresh_registry._custom_agents["available_custom"] = custom_config
+        fresh_registry._agents["available_custom"] = custom_config
 
         with pytest.raises(ValueError) as exc_info:
             fresh_registry.get_agent("nonexistent", required=True)

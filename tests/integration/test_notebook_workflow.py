@@ -18,6 +18,7 @@ from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.notebook_executor import NotebookExecutor
 from lobster.core.notebook_exporter import NotebookExporter
 from lobster.core.provenance import ProvenanceTracker
+from lobster.core.provenance.analysis_ir import AnalysisStep
 
 
 @pytest.fixture
@@ -68,12 +69,41 @@ def data_manager_with_data(workspace_dir, test_adata):
     # Add test data
     dm.modalities["test_dataset"] = test_adata
 
-    # Simulate some analysis activities using correct API
+    def make_ir(
+        operation: str,
+        tool_name: str,
+        description: str,
+        code_template: str,
+        parameters: dict,
+    ) -> AnalysisStep:
+        return AnalysisStep(
+            operation=operation,
+            tool_name=tool_name,
+            description=description,
+            library="scanpy",
+            code_template=code_template,
+            imports=["import scanpy as sc"],
+            parameters=parameters,
+            parameter_schema={},
+            input_entities=["adata"],
+            output_entities=["adata"],
+            validates_on_export=False,
+            exportable=True,
+        )
+
+    # Simulate analysis activities with exportable IR.
     dm.provenance.create_activity(
         activity_type="quality_control",
         agent="test",
         description="QC metrics",
         outputs=[{"id": "qc", "type": "done"}],
+        ir=make_ir(
+            operation="scanpy.pp.calculate_qc_metrics",
+            tool_name="calculate_qc_metrics",
+            description="QC metrics",
+            code_template="sc.pp.calculate_qc_metrics(adata, inplace=True)",
+            parameters={},
+        ),
     )
 
     dm.provenance.create_activity(
@@ -82,6 +112,13 @@ def data_manager_with_data(workspace_dir, test_adata):
         description="Filter cells",
         parameters={"min_genes": 200, "max_mito_percent": 20.0},
         outputs=[{"id": "filtered", "type": "done"}],
+        ir=make_ir(
+            operation="scanpy.pp.filter_cells",
+            tool_name="filter_cells",
+            description="Filter cells",
+            code_template="sc.pp.filter_cells(adata, min_genes={{ min_genes }})",
+            parameters={"min_genes": 200},
+        ),
     )
 
     dm.provenance.create_activity(
@@ -90,6 +127,13 @@ def data_manager_with_data(workspace_dir, test_adata):
         description="Normalize data",
         parameters={"target_sum": 10000},
         outputs=[{"id": "normalized", "type": "done"}],
+        ir=make_ir(
+            operation="scanpy.pp.normalize_total",
+            tool_name="normalize_total",
+            description="Normalize data",
+            code_template="sc.pp.normalize_total(adata, target_sum={{ target_sum }})",
+            parameters={"target_sum": 10000},
+        ),
     )
 
     return dm
@@ -194,7 +238,7 @@ class TestNotebookWorkflow:
         assert "validation" in dry_result
         assert "estimated_duration_minutes" in dry_result
 
-    @patch("lobster.core.notebook_executor.papermill")
+    @patch("lobster.core.notebooks.executor.papermill")
     def test_export_and_execute(
         self, mock_papermill, data_manager_with_data, test_adata
     ):
@@ -321,7 +365,7 @@ class TestNotebookWorkflow:
 
         dm.modalities["test_data"] = test_adata
 
-        with patch("lobster.core.notebook_executor.papermill") as mock_pm:
+        with patch("lobster.core.notebooks.executor.papermill") as mock_pm:
             mock_pm.execute_notebook.return_value = None
 
             # Execute with custom parameters
@@ -336,7 +380,7 @@ class TestNotebookWorkflow:
             assert params["random_seed"] == 999
             assert params["custom_value"] == "test"
 
-    @patch("lobster.core.notebook_executor.papermill")
+    @patch("lobster.core.notebooks.executor.papermill")
     def test_execution_failure_handling(
         self, mock_papermill, data_manager_with_data, test_adata
     ):
@@ -405,7 +449,7 @@ class TestNotebookWorkflow:
             assert any(nb["name"] == "multi_dataset_workflow" for nb in notebooks)
 
             # Execute with different dataset
-            with patch("lobster.core.notebook_executor.papermill") as mock_pm:
+            with patch("lobster.core.notebooks.executor.papermill") as mock_pm:
                 mock_pm.execute_notebook.return_value = None
 
                 result = dm.run_notebook(str(notebook_path), "dataset_2")

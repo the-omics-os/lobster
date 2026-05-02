@@ -154,6 +154,7 @@ def test_get_xrefs_uniprot_filter(service):
     assert isinstance(result, list)
     assert len(result) > 0
 
-    # All results should be from UniProt
+    # All results should be from UniProt. Ensembl currently reports these as
+    # "Uniprot_gn" for gene-level xrefs.
     for xref in result:
-        assert "UniProt" in xref.get("dbname", "")
+        assert "uniprot" in xref.get("dbname", "").lower()

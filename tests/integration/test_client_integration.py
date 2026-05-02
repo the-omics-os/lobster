@@ -220,9 +220,14 @@ class TestAgentClientIntegration:
             "plots": 0,
         }
 
+        mock_graph = Mock()
+        mock_graph.stream.return_value = [
+            {"supervisor": {"messages": [Mock(content="Test response 1")]}}
+        ]
+
         with patch(
             "lobster.core.client.create_bioinformatics_graph",
-            return_value=_mock_create_graph_return(Mock()),
+            return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(
                 data_manager=mock_data_manager,

@@ -15,7 +15,9 @@ Requires: configured LLM provider (omics-os, anthropic, or openai)
 
 import json
 import tempfile
+import importlib
 from pathlib import Path
+from unittest.mock import Mock
 
 import anndata as ad
 import numpy as np
@@ -84,6 +86,10 @@ def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
     import langgraph.prebuilt
 
     original_cra = langgraph.prebuilt.create_react_agent
+    factory_module = importlib.import_module(factory_fn.__module__)
+    original_module_cra = getattr(factory_module, "create_react_agent", None)
+    original_create_llm = getattr(factory_module, "create_llm", None)
+    original_get_settings = getattr(factory_module, "get_settings", None)
 
     def interceptor(*args, **kwargs):
         tools = kwargs.get("tools", args[1] if len(args) > 1 else [])
@@ -96,14 +102,16 @@ def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
         return "INTERCEPTED"
 
     langgraph.prebuilt.create_react_agent = interceptor
-    # Also patch the module-level import in the factory module
-    import lobster.agents.data_expert.data_expert as data_mod
-    import lobster.agents.proteomics.de_analysis_expert as de_mod
+    factory_module.create_react_agent = interceptor
 
-    orig_de = getattr(de_mod, "create_react_agent", None)
-    orig_data = getattr(data_mod, "create_react_agent", None)
-    de_mod.create_react_agent = interceptor
-    data_mod.create_react_agent = interceptor
+    dummy_llm = Mock()
+    dummy_llm.with_config.return_value = dummy_llm
+    dummy_settings = Mock()
+    dummy_settings.get_agent_llm_params.return_value = {}
+    if original_create_llm is not None:
+        factory_module.create_llm = Mock(return_value=dummy_llm)
+    if original_get_settings is not None:
+        factory_module.get_settings = Mock(return_value=dummy_settings)
 
     try:
         factory_fn(data_manager=data_manager, **factory_kwargs)
@@ -111,10 +119,12 @@ def _extract_tool(factory_fn, data_manager, tool_name, **factory_kwargs):
         pass  # Factory might fail on LLM creation, that's OK
     finally:
         langgraph.prebuilt.create_react_agent = original_cra
-        if orig_de is not None:
-            de_mod.create_react_agent = orig_de
-        if orig_data is not None:
-            data_mod.create_react_agent = orig_data
+        if original_module_cra is not None:
+            factory_module.create_react_agent = original_module_cra
+        if original_create_llm is not None:
+            factory_module.create_llm = original_create_llm
+        if original_get_settings is not None:
+            factory_module.get_settings = original_get_settings
 
     for t in captured_tools:
         if t.name == tool_name:

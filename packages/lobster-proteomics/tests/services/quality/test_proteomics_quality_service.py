@@ -268,9 +268,12 @@ class TestCoefficientVariation:
         assert stats["analysis_type"] == "coefficient_variation_assessment"
         assert "mean_cv_across_proteins" in stats
         assert "median_cv_across_proteins" in stats
+        assert "median_protein_cv" in stats
         assert "n_high_cv_proteins" in stats
 
         # CV metrics should be added to variables
+        assert "intensity_cv" in result_adata.obs.columns
+        assert "intensity_cv" in result_adata.var.columns
         assert "cv_mean" in result_adata.var.columns
         assert "cv_median" in result_adata.var.columns
         assert "high_cv_protein" in result_adata.var.columns

@@ -127,6 +127,16 @@ class TestClientMemoryLeaks:
             "lobster.core.client.create_bioinformatics_graph",
             return_value=_mock_create_graph_return(mock_graph),
         ):
+            warmup_client = AgentClient(workspace_path=temp_perf_workspace / "warmup")
+            warmup_result = warmup_client.query("Warmup query")
+            assert warmup_result["success"] is True
+            del warmup_client
+            gc.collect()
+            time.sleep(0.1)
+            baseline_mb = memory_monitor.process.memory_info().rss / 1024 / 1024
+            memory_monitor.initial_memory = baseline_mb
+            memory_monitor.peak_memory = baseline_mb
+
             clients = []
 
             # Create and use multiple clients
@@ -393,6 +403,14 @@ class TestClientPerformanceBenchmarks:
             return_value=_mock_create_graph_return(mock_graph),
         ):
             client = AgentClient(workspace_path=temp_perf_workspace)
+            warmup_result = client.query("Warmup load test")
+            assert warmup_result["success"] is True
+            client.reset()
+            gc.collect()
+            time.sleep(0.1)
+            baseline_mb = memory_monitor.process.memory_info().rss / 1024 / 1024
+            memory_monitor.initial_memory = baseline_mb
+            memory_monitor.peak_memory = baseline_mb
 
             # Sustained load test
             for batch in range(10):

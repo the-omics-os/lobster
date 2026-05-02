@@ -297,6 +297,22 @@ class TestImputationHelperMethods:
         assert not np.any(np.isnan(result))
         assert result.shape == X.shape
 
+    def test_mixed_mnar_imputation_keeps_positive_data_log_safe(self, service):
+        """Positive raw intensities should stay positive before log transform."""
+        rng = np.random.default_rng(20240502)
+        X = rng.lognormal(mean=15, sigma=3, size=(30, 8))
+        X[:20, 0] = np.nan
+        X[:18, 1] = np.nan
+        adata = ad.AnnData(X=X)
+
+        adata_imputed, _, _ = service.impute_missing_values(adata, method="mixed")
+        assert np.nanmin(adata_imputed.X) > 0
+
+        adata_normalized, _, _ = service.normalize_intensities(
+            adata_imputed, method="median", log_transform=True
+        )
+        assert not np.any(np.isnan(adata_normalized.X))
+
 
 # ===============================================================================
 # Intensity Normalization Tests

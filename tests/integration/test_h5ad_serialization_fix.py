@@ -196,7 +196,11 @@ class TestH5ADSerializationFix:
             )
 
             # Verify dataset was loaded
-            modality_name = f"geo_{geo_id.lower()}_None"
+            modality_name = next(
+                name
+                for name in data_manager.modalities
+                if name.startswith(f"geo_{geo_id.lower()}_")
+            )
             assert modality_name in data_manager.modalities
 
             # Save to H5AD - this was failing before the fix
@@ -368,11 +372,11 @@ class TestAdapterSanitization:
         if "files" in quant_meta:
             assert all(isinstance(f, str) for f in quant_meta["files"])
 
-        # transpose_info should have lists, not tuples
+        # transpose_info should have H5AD-safe sequence values, not tuples
         assert "transpose_info" in adata.uns
         transpose_info = adata.uns["transpose_info"]
-        assert isinstance(transpose_info.get("original_shape"), list)
-        assert isinstance(transpose_info.get("final_shape"), list)
+        assert isinstance(transpose_info.get("original_shape"), (list, np.ndarray))
+        assert isinstance(transpose_info.get("final_shape"), (list, np.ndarray))
 
         # Save to verify no serialization errors
         backend = H5ADBackend()

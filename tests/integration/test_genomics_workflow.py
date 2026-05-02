@@ -15,6 +15,7 @@ Requires:
 """
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pytest
@@ -40,7 +41,7 @@ def data_manager(test_workspace):
 
 
 @pytest.fixture(scope="module")
-def agent_client(data_manager, test_workspace):
+def agent_client(check_api_keys, data_manager, test_workspace):
     """Create AgentClient for integration testing."""
     return AgentClient(
         data_manager=data_manager,
@@ -50,24 +51,21 @@ def agent_client(data_manager, test_workspace):
 
 
 @pytest.fixture(scope="module")
-def check_api_keys():
+def check_api_keys(test_workspace):
     """Verify required API keys are present."""
     import os
 
-    # Check for at least one LLM provider
-    has_anthropic = os.getenv("ANTHROPIC_API_KEY")
-    has_bedrock = os.getenv("AWS_BEDROCK_ACCESS_KEY") and os.getenv(
-        "AWS_BEDROCK_SECRET_ACCESS_KEY"
-    )
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
 
-    if not (has_anthropic or has_bedrock):
-        pytest.skip(
-            "Missing LLM provider API keys (ANTHROPIC_API_KEY or AWS_BEDROCK_*)"
-        )
+    ConfigResolver.reset_instance()
+    try:
+        ConfigResolver.get_instance(test_workspace).resolve_provider()
+    except ConfigurationError as exc:
+        pytest.skip(f"Missing configured LLM provider: {exc}")
 
     # NCBI key optional but recommended
     if not os.getenv("NCBI_API_KEY"):
-        pytest.warn(
+        warnings.warn(
             pytest.PytestWarning("NCBI_API_KEY not set - rate limits will be slower")
         )
 

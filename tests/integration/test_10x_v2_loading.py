@@ -16,6 +16,7 @@ Investigation proved the code is correct, but these tests ensure it stays correc
 import gzip
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -28,6 +29,15 @@ from lobster.core.data_manager_v2 import DataManagerV2
 
 class Test10XV2Loading:
     """Integration tests for 10X V2 format (genes.tsv)."""
+
+    @pytest.fixture(autouse=True)
+    def mock_agent_graph(self):
+        """Keep file-loading regression tests independent from LLM configuration."""
+        with patch(
+            "lobster.core.client.create_bioinformatics_graph",
+            return_value=(MagicMock(name="mock_graph"), {"agents": []}),
+        ):
+            yield
 
     @pytest.fixture
     def temp_workspace(self):
