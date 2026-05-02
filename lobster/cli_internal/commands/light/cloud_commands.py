@@ -773,18 +773,43 @@ def query(
     if not json_output:
         console.print(f"[dim]session: {sid}[/dim]")
 
+    saw_text_delta = False
+    last_worker_status_line: Optional[str] = None
     text_callback = None
+    worker_status_callback = None
     if stream and not json_output:
         def text_callback(delta: str):
+            nonlocal saw_text_delta
+            saw_text_delta = True
             try:
                 _sys.stdout.write(delta)
                 _sys.stdout.flush()
             except BrokenPipeError:
                 raise KeyboardInterrupt
 
+        def worker_status_callback(status: Optional[dict]):
+            nonlocal last_worker_status_line
+            if saw_text_delta or not status:
+                return
+            phase = str(status.get("phase") or status.get("status") or "starting")
+            message = str(status.get("message") or "Starting analysis worker")
+            transport = status.get("transport")
+            label = "cloud worker" if transport == "ecs" else "worker"
+            line = f"{label}: {phase.replace('_', ' ')} - {message}"
+            if line == last_worker_status_line:
+                return
+            last_worker_status_line = line
+            _sys.stderr.write(f"{line}\n")
+            _sys.stderr.flush()
+
     try:
         result = stream_cloud_query(
-            stream_base, headers, sid, question, on_text_delta=text_callback
+            stream_base,
+            headers,
+            sid,
+            question,
+            on_text_delta=text_callback,
+            on_worker_status=worker_status_callback,
         )
     except KeyboardInterrupt:
         if not json_output:
@@ -824,6 +849,7 @@ def query(
             "token_usage": result.token_usage,
             "session_title": result.session_title,
             "finish_reason": result.finish_reason,
+            "worker_status": result.worker_status,
             "workspace_files": workspace_files,
         }))
         return

@@ -266,6 +266,7 @@ class CloudStreamResult:
         self.token_usage: Optional[dict] = None
         self.session_title: Optional[str] = None
         self.error_detail: Optional[str] = None
+        self.worker_status: Optional[dict] = None
         self.finish_reason: Optional[str] = None
         self.tool_calls: list = []
         self._saw_valid_line: bool = False
@@ -308,6 +309,7 @@ def stream_cloud_query(
     session_id: str,
     question: str,
     on_text_delta: Optional[Callable[[str], None]] = None,
+    on_worker_status: Optional[Callable[[Optional[dict]], None]] = None,
 ) -> CloudStreamResult:
     """POST /api/v1/sessions/{id}/chat/stream via DataStream protocol.
 
@@ -345,7 +347,12 @@ def stream_cloud_query(
                     line = line.strip()
                     if not line:
                         continue
-                    _parse_datastream_line(line, result, on_text_delta)
+                    _parse_datastream_line(
+                        line,
+                        result,
+                        on_text_delta,
+                        on_worker_status,
+                    )
 
     except httpx.ConnectError as e:
         result.set_error(f"Cannot reach cloud: {e}")
@@ -394,7 +401,10 @@ def fetch_workspace_files(rest_base: str, headers: dict, session_id: str) -> lis
 
 
 def _parse_datastream_line(
-    line: str, result: CloudStreamResult, on_text_delta: Optional[Callable] = None
+    line: str,
+    result: CloudStreamResult,
+    on_text_delta: Optional[Callable] = None,
+    on_worker_status: Optional[Callable[[Optional[dict]], None]] = None,
 ) -> None:
     """Parse a single DataStream line (newline-delimited prefix:payload).
 
@@ -432,6 +442,10 @@ def _parse_datastream_line(
                 result.session_title = value
             elif key == "error_detail" and isinstance(value, str):
                 result.set_error(value)
+            elif key == "worker_status" and (value is None or isinstance(value, dict)):
+                result.worker_status = value
+                if on_worker_status:
+                    on_worker_status(value)
             # B5: error_detail=null patches are ignored (don't clear errors)
         return
 
