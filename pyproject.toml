@@ -506,7 +506,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [tool.bumpversion]
-current_version = "0.3.3"
+current_version = "1.1.418"
 commit = true
 tag = true
 
