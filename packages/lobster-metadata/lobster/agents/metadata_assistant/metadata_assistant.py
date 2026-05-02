@@ -3445,8 +3445,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
 
     formatted_prompt = system_prompt.format(current_date=datetime.today().isoformat())
 
-    # Import AgentState for state_schema
-    from lobster.agents.state import AgentState
+    from lobster.agents.metadata_assistant.state import MetadataAssistantState
 
     # Add delegation tools if provided
     if delegation_tools:
@@ -3458,5 +3457,5 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
         tools=tools,
         prompt=formatted_prompt,
         name=agent_name,
-        state_schema=AgentState,
+        state_schema=MetadataAssistantState,
     )

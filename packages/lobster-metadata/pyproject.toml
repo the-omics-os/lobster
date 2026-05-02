@@ -49,6 +49,9 @@ dev = [
 [project.entry-points."lobster.agents"]
 metadata_assistant = "lobster.agents.metadata_assistant:AGENT_CONFIG"
 
+[project.entry-points."lobster.states"]
+MetadataAssistantState = "lobster.agents.metadata_assistant.state:MetadataAssistantState"
+
 [tool.setuptools]
 packages.find = {where = ["."], include = ["lobster*"], namespaces = true}
 
