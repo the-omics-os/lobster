@@ -83,6 +83,7 @@ from lobster.cli_internal.commands import (
 from lobster.cli_internal.commands.light.agent_commands import agents_app
 from lobster.cli_internal.commands.light.auth_commands import auth_app
 from lobster.cli_internal.commands.light.cloud_commands import cloud_app
+from lobster.cli_internal.commands.light.init_protocol import init_protocol_app
 from lobster.cli_internal.commands.light.scaffold_commands import scaffold_app
 from lobster.cli_internal.commands.light.validate_commands import validate_app
 
@@ -359,6 +360,9 @@ app.add_typer(scaffold_app, name="scaffold")
 
 # Register validate-plugin command
 app.add_typer(validate_app, name="validate-plugin")
+
+# Register init protocol commands (hidden — used by npm CLI for wizard handoff)
+app.add_typer(init_protocol_app)
 
 
 # App callback to show help when no subcommand is provided
