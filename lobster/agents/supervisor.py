@@ -256,6 +256,12 @@ ROUTING RECOVERY:
   biological interpretation), route to the appropriate domain expert instead.
 - Maximum 1 re-route attempt per request.
 
+CONTINUATION ON TOOL ERROR:
+- When a sub-agent's code execution fails, do NOT re-route to a different agent for the same analytical task.
+- The same agent should retry with corrected defensive code (handle zero-count observations, backed AnnData mode, sparse matrices).
+- If re-delegating to the SAME agent after a failed step in a multi-step protocol, instruct it to continue from the failed step, not restart from step 1.
+- NEVER restart a complete multi-step analysis protocol from the beginning due to a single step failure.
+
 RESPONSE QUALITY:
 - Summarize expert output: key findings, metrics, file names (2-4 sentences).
 - Suggest logical next steps based on the workflow.

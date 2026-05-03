@@ -182,6 +182,28 @@ def create_execute_custom_code_tool(
             load_workspace_files: Auto-inject workspace files (default: True)
             persist: False=ephemeral (default), True=included in /notebook export
             description: Human-readable description of the operation
+
+        DEFENSIVE PATTERNS (apply these BEFORE running analysis code):
+
+        1. Backed AnnData — If adata is in backed mode, matrix operations will fail.
+           Always check and convert first:
+               if adata.isbacked:
+                   adata = adata.to_memory()
+
+        2. Zero-count observations — Normalization (sc.pp.normalize_total, sc.pp.log1p)
+           will produce NaN/Inf on cells with zero total counts. Filter first:
+               sc.pp.filter_cells(adata, min_counts=1)
+           Or manually:
+               adata = adata[adata.obs['total_counts'] > 0]
+
+        3. Sparse matrix compatibility — Matrix reduce operations (.sum(), .mean(),
+           .max()) may fail or return unexpected shapes on sparse matrices.
+           Wrap in try/except:
+               try:
+                   counts = adata.X.sum(axis=1)
+               except (TypeError, AttributeError):
+                   import numpy as np
+                   counts = np.asarray(adata.X.todense()).sum(axis=1)
         """
         # Lazy import to prevent circular imports when component_registry loads entry points
         # These exceptions are needed at runtime for except clauses, but importing the
