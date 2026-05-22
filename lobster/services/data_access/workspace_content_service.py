@@ -1058,6 +1058,58 @@ class WorkspaceContentService:
             return []  # Graceful degradation
 
     # =========================================================================
+    # Raw Data File Discovery (P0 File Detection)
+    # =========================================================================
+
+    _RAW_DATA_EXTENSIONS = {".csv", ".tsv", ".json", ".txt", ".flatprottable", ".xlsx"}
+
+    def list_data_files(self, pattern: str = "*") -> List[Dict[str, Any]]:
+        """
+        List raw uploaded files in data/ directory.
+
+        Scans the workspace data/ subdirectory for files matching supported
+        extensions. Returns metadata about each file for display in workspace
+        tool output.
+
+        Args:
+            pattern: Glob pattern for filtering (default: "*" = all files)
+
+        Returns:
+            List[Dict[str, Any]]: List of file metadata dicts with keys:
+                id, name, type, path, extension, size, size_mb, modified
+
+        Examples:
+            >>> files = service.list_data_files()
+            >>> for f in files:
+            ...     print(f"{f['name']} ({f['size_mb']} MB)")
+            counts.csv (12.5 MB)
+            metadata.tsv (0.3 MB)
+        """
+        from datetime import datetime
+
+        data_dir = self.workspace_base / "data"
+        if not data_dir.exists():
+            return []
+
+        files = []
+        for path in sorted(data_dir.glob(pattern)):
+            if not path.is_file() or path.suffix.lower() not in self._RAW_DATA_EXTENSIONS:
+                continue
+            stat = path.stat()
+            files.append({
+                "id": path.stem,
+                "name": path.name,
+                "type": "uploaded_file",
+                "path": f"data/{path.name}",
+                "extension": path.suffix.lower(),
+                "size": stat.st_size,
+                "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+
+        return files
+
+    # =========================================================================
     # Export File Discovery Methods (v1.0+ - Centralized Exports)
     # =========================================================================
 

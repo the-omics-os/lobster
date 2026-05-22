@@ -1008,56 +1008,70 @@ Path = Path
             else:
                 # Full loading: load all files (backward compatible)
                 setup_code += """
-# Auto-load CSV and JSON files
+# Auto-load data files from workspace with size guards
+import os
 import pandas as pd
 
+# Size guard constants (configurable via env)
+_AUTOLOAD_MAX_FILE_BYTES = int(os.getenv("LOBSTER_AUTOLOAD_MAX_FILE_BYTES", str(50 * 1024**2)))  # 50MB
+_AUTOLOAD_MAX_TOTAL_BYTES = int(os.getenv("LOBSTER_AUTOLOAD_TOTAL_BYTES", str(200 * 1024**2)))  # 200MB
+_SUPPORTED_EXTENSIONS = {".csv", ".tsv", ".json", ".txt", ".flatprottable"}
+_SCAN_DIRS = ["data", "exports", "."]  # data first (uploads), exports, then root
+
+def _infer_separator(path):
+    ext = path.suffix.lower()
+    if ext in (".tsv", ".flatprottable"):
+        return "\\t"
+    return ","
+
+# Build workspace_files manifest + selective auto-load
+workspace_files = []
+autoloaded_bytes = 0
 csv_data = {}
 json_data = {}
 
-# Load CSV files from workspace root
-for csv_file in WORKSPACE.glob('*.csv'):
-    var_name = csv_file.stem.replace('-', '_').replace(' ', '_')
-    if var_name and var_name[0].isdigit():
-        var_name = 'data_' + var_name
-    var_name = ''.join(c for c in var_name if c.isalnum() or c == '_') or 'data'
-
-    try:
-        globals()[var_name] = pd.read_csv(csv_file)
-        csv_data[var_name] = csv_file.name
-    except Exception as e:
-        print(f"Warning: Could not load {csv_file.name}: {e}")
-
-# Also scan exports/ subdirectory (v1.0+ centralized exports)
-exports_dir = WORKSPACE / 'exports'
-if exports_dir.exists():
-    for csv_file in exports_dir.glob('*.csv'):
-        var_name = csv_file.stem.replace('-', '_').replace(' ', '_')
-        if var_name and var_name[0].isdigit():
-            var_name = 'data_' + var_name
-        var_name = ''.join(c for c in var_name if c.isalnum() or c == '_') or 'data'
-
-        try:
-            globals()[var_name] = pd.read_csv(csv_file)
-            csv_data[var_name] = f"exports/{csv_file.name}"
-        except Exception as e:
-            print(f"Warning: Could not load exports/{csv_file.name}: {e}")
-
-# Load JSON files (skip hidden files)
-for json_file in WORKSPACE.glob('*.json'):
-    if json_file.name.startswith('.'):
+for dir_name in _SCAN_DIRS:
+    scan_dir = WORKSPACE if dir_name == "." else WORKSPACE / dir_name
+    if not scan_dir.exists():
         continue
+    for path in sorted(scan_dir.glob("*")):
+        if not path.is_file() or path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
+            continue
+        if path.name.startswith('.'):
+            continue
+        rel = path.relative_to(WORKSPACE).as_posix()
+        size = path.stat().st_size
+        entry = {"path": rel, "name": path.stem, "ext": path.suffix.lower(),
+                 "size": size, "loaded": False}
 
-    var_name = json_file.stem.replace('-', '_').replace(' ', '_')
-    if var_name and var_name[0].isdigit():
-        var_name = 'data_' + var_name
-    var_name = ''.join(c for c in var_name if c.isalnum() or c == '_') or 'data'
+        if size <= _AUTOLOAD_MAX_FILE_BYTES and autoloaded_bytes + size <= _AUTOLOAD_MAX_TOTAL_BYTES:
+            # Dir-prefixed variable name to prevent collision
+            prefix = dir_name.replace(".", "") + "_" if dir_name != "." else ""
+            var_name = prefix + path.stem.replace('-', '_').replace(' ', '_')
+            var_name = ''.join(c for c in var_name if c.isalnum() or c == '_') or 'data'
+            if var_name[0].isdigit():
+                var_name = 'f_' + var_name
 
-    try:
-        with open(json_file) as f:
-            globals()[var_name] = json.load(f)
-            json_data[var_name] = json_file.name
-    except Exception as e:
-        print(f"Warning: Could not load {json_file.name}: {e}")
+            try:
+                if path.suffix.lower() == ".json":
+                    with open(path) as f:
+                        globals()[var_name] = json.load(f)
+                    json_data[var_name] = rel
+                else:
+                    sep = _infer_separator(path)
+                    globals()[var_name] = pd.read_csv(path, sep=sep)
+                    csv_data[var_name] = rel
+
+                autoloaded_bytes += size
+                entry["loaded"] = True
+                entry["variable"] = var_name
+            except Exception as e:
+                print(f"Warning: Could not load {rel}: {e}")
+        else:
+            if size > _AUTOLOAD_MAX_FILE_BYTES:
+                print(f"Skipped {rel}: {size / (1024**2):.1f} MB exceeds per-file limit")
+
+        workspace_files.append(entry)
 
 # Load JSONL queue files
 for queue_file in ['download_queue.jsonl', 'publication_queue.jsonl']:
@@ -1074,8 +1088,13 @@ for queue_file in ['download_queue.jsonl', 'publication_queue.jsonl']:
         except Exception as e:
             print(f"Warning: Could not load {queue_file}: {e}")
 
-if csv_data or json_data:
-    print(f"Loaded workspace files: {len(csv_data)} CSV, {len(json_data)} JSON")
+loaded_count = len(csv_data) + len(json_data)
+if loaded_count:
+    print(f"Loaded {loaded_count} workspace files: {len(csv_data)} tabular, {len(json_data)} JSON")
+if workspace_files:
+    skipped = sum(1 for f in workspace_files if not f.get("loaded"))
+    if skipped:
+        print(f"Manifest: {len(workspace_files)} files found, {skipped} skipped (size limits)")
 
 # Convenience imports
 workspace_path = WORKSPACE

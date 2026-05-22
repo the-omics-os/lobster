@@ -338,6 +338,31 @@ Rules:
 </Agent Result Memory>"""
 
 
+def _list_raw_workspace_files(workspace_path, limit: int = 20) -> list:
+    """List raw uploaded files in workspace data/ directory (capped).
+
+    Args:
+        workspace_path: Path to the workspace root
+        limit: Maximum number of files to list (prevents prompt bloat)
+
+    Returns:
+        List of dicts with path and size_mb keys
+    """
+    from pathlib import Path as _Path
+
+    data_dir = _Path(str(workspace_path)) / "data"
+    if not data_dir.exists():
+        return []
+    files = []
+    _supported = {".csv", ".tsv", ".json", ".txt", ".flatprottable"}
+    for p in sorted(data_dir.iterdir()):
+        if p.is_file() and p.suffix.lower() in _supported:
+            files.append({"path": f"data/{p.name}", "size_mb": round(p.stat().st_size / 1048576, 2)})
+            if len(files) >= limit:
+                break
+    return files
+
+
 def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -> str:
     """Build live context: loaded modalities and optional system info.
 
@@ -360,6 +385,19 @@ def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -
                 sections.append("\n".join(lines))
         except Exception as e:
             logger.debug(f"Could not add data context: {e}")
+
+    # Raw workspace files (P0 File Detection)
+    if config.include_data_context:
+        try:
+            raw_files = _list_raw_workspace_files(data_manager.workspace_path)
+            if raw_files:
+                lines = ["\nUploaded files in workspace:"]
+                for f in raw_files:
+                    lines.append(f"- {f['path']} ({f['size_mb']:.1f} MB)")
+                lines.append("\nUse get_content_from_workspace(workspace='data') to inspect, or execute_custom_code to load them.")
+                sections.append("\n".join(lines))
+        except Exception as e:
+            logger.debug(f"Could not add raw file context: {e}")
 
     # System info (optional, off by default)
     if config.include_system_info:

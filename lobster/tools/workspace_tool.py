@@ -874,6 +874,19 @@ def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
 
                 response += truncation_msg
 
+                # --- Raw data files (appended when listing "data" workspace) ---
+                # Surfaces uploaded files that are NOT JSON datasets (csv, tsv, etc.)
+                if workspace == "data" or workspace is None:
+                    try:
+                        raw_files = workspace_service.list_data_files()
+                        if raw_files:
+                            response += "\n## Uploaded Data Files\n\n"
+                            for f in raw_files:
+                                response += f"- {f['name']} ({f['size_mb']} MB, {f['extension']})\n"
+                            response += "\nUse execute_custom_code with workspace_key to load these files.\n"
+                    except Exception as e:
+                        logger.debug(f"Raw data file listing skipped: {e}")
+
                 # --- Plot Manager summary (appended to overview) ---
                 # Surfaces generated plots so the supervisor knows child
                 # agents already created visualizations and doesn't retry.
