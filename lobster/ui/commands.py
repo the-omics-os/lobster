@@ -601,12 +601,6 @@ class LobsterCommands(Provider):
             if len(available) > 5:
                 lines.append(f"- ... and {len(available) - 5} more")
 
-        if restricted:
-            lines.append(f"\n**Premium Agents ({len(restricted)}):**")
-            for agent in sorted(restricted)[:3]:  # Show first 3
-                lines.append(f"- {agent} (upgrade required)")
-            if len(restricted) > 3:
-                lines.append(f"- ... and {len(restricted) - 3} more")
 
         self._show_result("\n".join(lines))
 

@@ -279,7 +279,6 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
                     ("Development Packages", str(package_counts["development"])),
                     ("Missing Packages", str(package_counts["missing"])),
                     ("Available Agents", str(len(available))),
-                    ("Premium Agents", str(len(restricted))),
                 ],
                 title="Runtime Summary",
             )
@@ -368,26 +367,6 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
                 )
             )
 
-    if restricted:
-        restricted_names = sorted(restricted)
-        restricted_preview = restricted_names[:4] if compact else restricted_names
-        blocks.append(
-            list_block(
-                restricted_preview,
-                title=f"Premium Agents ({len(restricted)})",
-            )
-        )
-        if compact and len(restricted_names) > len(restricted_preview):
-            blocks.append(
-                hint_block(
-                    f"... and {len(restricted_names) - len(restricted_preview)} more premium agents"
-                )
-            )
-        blocks.append(
-            hint_block(
-                f"Upgrade to Premium to unlock {len(restricted)} additional agents. Visit https://omics-os.com/pricing or run 'lobster activate <code>'."
-            )
-        )
 
     features = entitlement.get("features", [])
     if features:

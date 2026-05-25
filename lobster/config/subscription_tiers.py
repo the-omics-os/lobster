@@ -1,23 +1,13 @@
 """
-Subscription tier definitions for feature gating.
+Subscription tier definitions.
 
 All official Lobster agents are free and open source. The tier system exists
 for Omics-OS Cloud features and custom enterprise packages.
 
-This module defines the three-tier subscription model:
+Three tiers:
 - FREE: All official agents (11 agents, all open source)
 - PREMIUM: Cloud features, priority support
 - ENTERPRISE: Custom packages, dedicated compute, SLA
-
-Tier Configuration:
-- agents: List of agent names available at this tier
-- restricted_handoffs: Dict mapping agent_name -> list of blocked handoff targets
-- features: List of feature flags enabled at this tier
-- compute_limits: Resource constraints for this tier
-
-Runtime Tier Checking:
-- TierRestrictedError: Exception raised when tier is insufficient
-- check_tier_access(): Function to validate tier at agent factory invocation
 """
 
 from typing import Any, Dict, List, Optional
@@ -352,83 +342,3 @@ def get_available_agents_dynamic(user_tier: str) -> List[str]:
     return available
 
 
-# =============================================================================
-# RUNTIME TIER CHECKING
-# =============================================================================
-
-
-class TierRestrictedError(Exception):
-    """Raised when user's subscription tier doesn't allow access to a feature.
-
-    This exception provides clear guidance for upgrading, including:
-    - The specific agent that requires a higher tier
-    - The user's current tier
-    - URL to pricing page
-    - CLI command for activation
-
-    Attributes:
-        agent_name: Name of the restricted agent
-        required_tier: Minimum tier required for access
-        current_tier: User's current subscription tier
-    """
-
-    def __init__(self, agent_name: str, required_tier: str, current_tier: str):
-        self.agent_name = agent_name
-        self.required_tier = required_tier
-        self.current_tier = current_tier
-
-        message = self._build_message()
-        super().__init__(message)
-
-    def _build_message(self) -> str:
-        """Build a user-friendly error message with upgrade guidance."""
-        return (
-            f"Agent '{self.agent_name}' requires {self.required_tier.title()} tier.\n"
-            f"Your current tier: {self.current_tier.title()}.\n\n"
-            f"Upgrade at https://omics-os.com/pricing\n"
-            f"Or activate with: lobster activate <your-key>"
-        )
-
-
-def check_tier_access(agent_name: str, required_tier: str = "free") -> None:
-    """
-    Check if the current user's tier allows access to a feature.
-
-    This function is designed to be called at agent factory invocation time
-    (not at discovery or graph creation) to enforce runtime tier gating.
-
-    The check passes silently if access is granted. If access is denied,
-    a TierRestrictedError is raised with clear upgrade guidance.
-
-    Special cases:
-    - Enterprise tier bypasses all checks (always returns without error)
-    - Free tier requirement always passes regardless of user tier
-
-    Args:
-        agent_name: Name of the agent being accessed (for error message)
-        required_tier: Minimum tier required ("free", "premium", "enterprise")
-
-    Raises:
-        TierRestrictedError: If user's tier is insufficient for access
-
-    Example:
-        >>> from lobster.config.subscription_tiers import check_tier_access
-        >>> # In premium agent factory:
-        >>> check_tier_access("proteomics_expert", required_tier="premium")
-        >>> # Raises TierRestrictedError if user is on free tier
-    """
-    # Lazy import to avoid circular dependencies
-    from lobster.core.license_manager import get_current_tier
-
-    current_tier = get_current_tier()
-
-    # Enterprise tier bypasses all tier checks (per STATE.md decision)
-    if current_tier.lower() == "enterprise":
-        return
-
-    # Check if current tier meets the requirement
-    if is_tier_at_least(current_tier, required_tier):
-        return
-
-    # Access denied - raise with helpful message
-    raise TierRestrictedError(agent_name, required_tier, current_tier)

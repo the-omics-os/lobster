@@ -664,45 +664,6 @@ def metadata_command(
 
 
 @app.command()
-def activate(
-    access_code: str = typer.Argument(
-        ..., help="Premium activation code from Omics-OS"
-    ),
-    server_url: Optional[str] = typer.Option(
-        None,
-        "--server",
-        help="License server URL (defaults to https://licenses.omics-os.com)",
-    ),
-):
-    """
-    Activate a premium license using an access code.
-
-    This command contacts the Omics-OS license server to validate your
-    access code and activate premium features on this machine.
-
-    Examples:
-      lobster activate ABC123-XYZ789
-      lobster activate ABC123-XYZ789 --server https://custom.server.com
-    """
-    from lobster.cli_internal.commands.heavy.slash_commands import activate_impl
-
-    activate_impl(access_code=access_code, server_url=server_url)
-
-
-@app.command()
-def deactivate():
-    """
-    Deactivate the current premium license.
-
-    This removes the local license file and reverts to the free tier.
-    Your license can be re-activated on another machine or re-used later.
-    """
-    from lobster.cli_internal.commands.heavy.slash_commands import deactivate_impl
-
-    deactivate_impl()
-
-
-@app.command()
 def purge(
     scope: str = typer.Option(
         "all",
@@ -715,11 +676,6 @@ def purge(
         "--workspace",
         "-w",
         help="Workspace directory to purge (default: current workspace)",
-    ),
-    keep_license: bool = typer.Option(
-        False,
-        "--keep-license",
-        help="Preserve license file (~/.lobster/license.json)",
     ),
     dry_run: bool = typer.Option(
         False,
@@ -741,7 +697,6 @@ def purge(
 
     \b
     GLOBAL FILES (~/.lobster/, ~/.config/lobster/):
-      • license.json - Premium license entitlement
       • providers.json - LLM provider configuration
       • credentials.env - API keys (securely stored)
       • lobster_history - Command history
@@ -764,7 +719,6 @@ def purge(
       lobster purge --dry-run          # Preview what would be deleted
       lobster purge --scope global     # Remove only global config files
       lobster purge --scope workspace  # Remove only current workspace
-      lobster purge --keep-license     # Preserve your license file
       lobster purge --force            # Skip confirmation prompt
     """
     from lobster.cli_internal.commands import purge as purge_cmd
@@ -784,7 +738,6 @@ def purge(
         output=output,
         scope=scope,
         workspace_path=workspace,
-        keep_license=keep_license,
         dry_run=dry_run,
         force=force,
     )

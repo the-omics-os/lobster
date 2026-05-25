@@ -49,11 +49,6 @@ SHIM_PAIRS = [
         "NotebookValidator",
     ),
     (
-        "lobster.core.license_manager",
-        "lobster.core.governance.license_manager",
-        "get_current_tier",
-    ),
-    (
         "lobster.core.aquadif_monitor",
         "lobster.core.governance.aquadif_monitor",
         "AquadifMonitor",

@@ -590,14 +590,6 @@ class AnalysisScreen(Screen):
                 if len(available) > 5:
                     status_text += f"\n- ... and {len(available) - 5} more"
 
-            if restricted:
-                status_text += (
-                    f"\n\n**Premium Agents ({len(restricted)}):** (upgrade required)"
-                )
-                for agent in sorted(restricted)[:3]:
-                    status_text += f"\n- {agent}"
-                if len(restricted) > 3:
-                    status_text += f"\n- ... and {len(restricted) - 3} more"
 
             results.append_system_message(status_text)
 

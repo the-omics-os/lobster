@@ -272,7 +272,6 @@ def discover_purge_targets(
 
 def execute_purge(
     targets: List[PurgeTarget],
-    keep_license: bool = False,
     dry_run: bool = False,
 ) -> PurgeResult:
     """
@@ -280,7 +279,6 @@ def execute_purge(
 
     Args:
         targets: List of PurgeTarget objects to remove
-        keep_license: If True, preserve ~/.lobster/license.json
         dry_run: If True, don't actually delete anything
 
     Returns:
@@ -289,7 +287,6 @@ def execute_purge(
     result = PurgeResult(success=True)
 
     for target in targets:
-        # Skip unverified directories for safety
         if not target.is_verified:
             result.targets_skipped.append(target)
             continue
@@ -300,28 +297,10 @@ def execute_purge(
             continue
 
         try:
-            # Special handling for ~/.lobster/ with --keep-license
-            if keep_license and target.path == LobsterPaths.get_lobster_home_dir():
-                license_path = target.path / "license.json"
-                license_backup = None
-
-                # Backup license if it exists
-                if license_path.exists():
-                    license_backup = license_path.read_text()
-
-                # Remove directory
+            if target.path.is_dir():
                 shutil.rmtree(target.path)
-
-                # Restore license
-                if license_backup:
-                    target.path.mkdir(parents=True, exist_ok=True)
-                    license_path.write_text(license_backup)
             else:
-                # Normal removal
-                if target.path.is_dir():
-                    shutil.rmtree(target.path)
-                else:
-                    target.path.unlink()
+                target.path.unlink()
 
             result.targets_removed.append(target)
             result.total_size_freed += target.size_bytes
@@ -340,7 +319,6 @@ def purge(
     output: "OutputAdapter",
     scope: str = "all",
     workspace_path: Optional[Path] = None,
-    keep_license: bool = False,
     dry_run: bool = False,
     force: bool = False,
 ) -> Optional[str]:
@@ -348,7 +326,7 @@ def purge(
     Remove all Lobster AI files from the system.
 
     This command removes:
-    - ~/.lobster/ (license, command history, version cache)
+    - ~/.lobster/ (command history, version cache)
     - ~/.config/lobster/ (global provider config, credentials)
     - .lobster_workspace/ (workspace data, cache, sessions)
 
@@ -359,7 +337,6 @@ def purge(
         output: OutputAdapter for rendering
         scope: What to purge - "global", "workspace", or "all"
         workspace_path: Optional explicit workspace path
-        keep_license: If True, preserve license.json
         dry_run: If True, show what would be deleted without deleting
         force: If True, skip confirmation prompt
 
@@ -423,9 +400,6 @@ def purge(
         f"[bold]Total to remove:[/bold] {_format_size(total_size)} across {total_files} files"
     )
 
-    if keep_license:
-        output.print("[dim]License file will be preserved[/dim]")
-
     # Dry run - don't actually delete
     if dry_run:
         output.print("\n[yellow]Dry run complete. No files were deleted.[/yellow]")
@@ -442,7 +416,7 @@ def purge(
 
     # Execute purge
     output.print("\n[bold]Purging...[/bold]")
-    result = execute_purge(verified_targets, keep_license=keep_license, dry_run=False)
+    result = execute_purge(verified_targets, dry_run=False)
 
     # Report results
     if result.success:
