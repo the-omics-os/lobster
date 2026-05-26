@@ -359,6 +359,16 @@ class ComponentRegistry:
         time, not at discovery time (tools require factory instantiation).
         """
         for name, config in self._agents.items():
+            package_name = getattr(config, "package_name", None)
+            first_party_package = AGENT_TO_PACKAGE.get(name)
+            is_first_party = (
+                package_name is None
+                or package_name == "lobster-ai"
+                or package_name == first_party_package
+            )
+            if is_first_party:
+                continue
+
             if not hasattr(config, "tier_requirement"):
                 logger.warning(
                     f"Agent '{name}' missing tier_requirement field. "
@@ -424,10 +434,11 @@ class ComponentRegistry:
         relied on entry point ownership instead. Runtime commands and integration
         tests need the owning package to be available from the config object.
         """
-        if getattr(config, "package_name", None):
-            return
-
-        package_name = dist_name or AGENT_TO_PACKAGE.get(entry_name)
+        package_name = (
+            getattr(config, "package_name", None)
+            or dist_name
+            or AGENT_TO_PACKAGE.get(entry_name)
+        )
         if package_name and package_name != "lobster-ai":
             try:
                 config.package_name = package_name
@@ -435,6 +446,12 @@ class ComponentRegistry:
                 logger.debug(
                     "Could not annotate package_name for agent '%s'", entry_name
                 )
+
+        if getattr(config, "name", None) != entry_name:
+            try:
+                config.name = entry_name
+            except Exception:
+                logger.debug("Could not normalize name for agent '%s'", entry_name)
 
     # =========================================================================
     # SERVICE API
@@ -524,12 +541,13 @@ class ComponentRegistry:
         (agents from packages other than lobster-ai).
         """
         self._ensure_group_loaded("lobster.agents")
-        # For backward compatibility, filter to non-core agents
-        # Core agents have package_name=None (from lobster-ai)
+        # For backward compatibility, filter to third-party/custom agents only.
+        # First-party modular packages carry package_name but are not "custom".
+        first_party_packages = set(AGENT_TO_PACKAGE.values()) | {"lobster-ai", None}
         return {
             name: config
             for name, config in self._agents.items()
-            if getattr(config, "package_name", None) is not None
+            if getattr(config, "package_name", None) not in first_party_packages
         }
 
     def list_agents(self) -> Dict[str, Any]:
