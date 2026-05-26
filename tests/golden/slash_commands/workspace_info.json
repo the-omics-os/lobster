@@ -8,6 +8,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Property"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
           "Property",
           "Value"

@@ -38,12 +38,11 @@ Phase 7 - Task Group 1: Research Agent Real API Integration Tests
 
 import os
 import time
-from pathlib import Path
 
 import pytest
 
 from lobster.agents.research.research_agent import research_agent
-from lobster.config.settings import get_settings
+from lobster.core.config_resolver import ConfigurationError
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.utils.logger import get_logger
 
@@ -64,17 +63,19 @@ def test_workspace(tmp_path_factory):
 @pytest.fixture(scope="module")
 def data_manager(test_workspace):
     """Initialize DataManagerV2 with test workspace."""
-    settings = get_settings()
     dm = DataManagerV2(workspace_path=test_workspace, console=None)
     return dm
 
 
 @pytest.fixture(scope="module")
-def agent(data_manager):
+def agent(data_manager, check_api_keys):
     """Create research_agent instance for testing."""
-    return research_agent(
-        data_manager=data_manager, callback_handler=None, delegation_tools=None
-    )
+    try:
+        return research_agent(
+            data_manager=data_manager, callback_handler=None, delegation_tools=None
+        )
+    except ConfigurationError as exc:
+        pytest.skip(f"No LLM provider configured for research-agent real API tests: {exc}")
 
 
 @pytest.fixture(scope="module")
@@ -850,9 +851,7 @@ class TestWriteToWorkspace:
         from langchain_core.messages import HumanMessage
 
         # First read a publication
-        result1 = agent.invoke(
-            {"messages": [HumanMessage(content="Read abstract for PMID:35042229")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Read abstract for PMID:35042229")]})
 
         # Then cache it
         result2 = agent.invoke(
@@ -873,9 +872,7 @@ class TestWriteToWorkspace:
         from langchain_core.messages import HumanMessage
 
         # Get dataset metadata
-        result1 = agent.invoke(
-            {"messages": [HumanMessage(content="Get metadata for GSE180759")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Get metadata for GSE180759")]})
 
         # Cache to workspace
         result2 = agent.invoke(
@@ -918,9 +915,7 @@ class TestWriteToWorkspace:
         from langchain_core.messages import HumanMessage
 
         # Cache once
-        result1 = agent.invoke(
-            {"messages": [HumanMessage(content="Cache PMID:35042229 to workspace")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Cache PMID:35042229 to workspace")]})
 
         # Try caching again (duplicate)
         result2 = agent.invoke(
@@ -973,9 +968,7 @@ class TestGetContentFromWorkspace:
         from langchain_core.messages import HumanMessage
 
         # First cache something
-        result1 = agent.invoke(
-            {"messages": [HumanMessage(content="Cache metadata for GSE180759")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Cache metadata for GSE180759")]})
 
         # Then retrieve it
         result2 = agent.invoke(
@@ -1011,9 +1004,7 @@ class TestGetContentFromWorkspace:
         from langchain_core.messages import HumanMessage
 
         # Cache publication first
-        result1 = agent.invoke(
-            {"messages": [HumanMessage(content="Cache PMID:35042229 to workspace")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Cache PMID:35042229 to workspace")]})
 
         # Retrieve methods
         result2 = agent.invoke(
@@ -1036,9 +1027,7 @@ class TestGetContentFromWorkspace:
         from langchain_core.messages import HumanMessage
 
         # Cache dataset first
-        result1 = agent.invoke(
-            {"messages": [HumanMessage(content="Cache GSE180759 to workspace")]}
-        )
+        agent.invoke({"messages": [HumanMessage(content="Cache GSE180759 to workspace")]})
 
         # Retrieve samples
         result2 = agent.invoke(

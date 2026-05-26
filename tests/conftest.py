@@ -45,8 +45,8 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional
-from unittest.mock import MagicMock, Mock, patch
+from typing import Any, Dict, Generator
+from unittest.mock import Mock
 
 import anndata as ad
 import numpy as np
@@ -87,6 +87,16 @@ pytest_plugins = [
 # ==============================================================================
 
 
+def pytest_addoption(parser):
+    """Register test-suite command-line switches."""
+    parser.addoption(
+        "--runreal",
+        action="store_true",
+        default=False,
+        help="run tests marked real_api against external services",
+    )
+
+
 def pytest_configure(config):
     """Configure pytest with custom markers and settings.
 
@@ -103,6 +113,16 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     """Automatically mark tests based on their location."""
+    run_real_api = config.getoption("--runreal") or os.getenv(
+        "LOBSTER_RUN_REAL_API", ""
+    ).lower() in {"1", "true", "yes"}
+    skip_real_api = pytest.mark.skip(
+        reason=(
+            "real_api test skipped by default; pass --runreal or set "
+            "LOBSTER_RUN_REAL_API=1"
+        )
+    )
+
     for item in items:
         # Auto-mark based on test path
         if "unit" in str(item.fspath):
@@ -113,6 +133,9 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.system)
         elif "performance" in str(item.fspath):
             item.add_marker(pytest.mark.performance)
+
+        if "real_api" in item.keywords and not run_real_api:
+            item.add_marker(skip_real_api)
 
 
 # ==============================================================================

@@ -8,6 +8,27 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "#",
+            "width": 4
+          },
+          {
+            "name": "Accession"
+          },
+          {
+            "name": "Database"
+          },
+          {
+            "name": "Status"
+          },
+          {
+            "name": "Strategy"
+          },
+          {
+            "name": "Priority"
+          }
+        ],
         "headers": [
           "#",
           "Accession",

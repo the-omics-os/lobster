@@ -14,6 +14,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Category"
+          },
+          {
+            "name": "Count"
+          }
+        ],
         "headers": [
           "Category",
           "Count"
@@ -39,6 +47,21 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "File",
+            "overflow": "ellipsis",
+            "width": 50
+          },
+          {
+            "name": "Size",
+            "width": 10
+          },
+          {
+            "name": "Modified",
+            "width": 18
+          }
+        ],
         "headers": [
           "File",
           "Size",
@@ -67,6 +90,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Action"
+          },
+          {
+            "name": "Command"
+          }
+        ],
         "headers": [
           "Action",
           "Command"

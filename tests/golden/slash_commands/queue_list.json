@@ -8,6 +8,25 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "#",
+            "width": 4
+          },
+          {
+            "name": "Title"
+          },
+          {
+            "name": "Year",
+            "width": 6
+          },
+          {
+            "name": "Status"
+          },
+          {
+            "name": "PMID/DOI"
+          }
+        ],
         "headers": [
           "#",
           "Title",

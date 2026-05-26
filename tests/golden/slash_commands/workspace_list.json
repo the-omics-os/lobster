@@ -8,6 +8,32 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "#",
+            "width": 4
+          },
+          {
+            "name": "Status",
+            "width": 10
+          },
+          {
+            "name": "Name",
+            "no_wrap": false
+          },
+          {
+            "name": "Size",
+            "width": 10
+          },
+          {
+            "name": "Shape",
+            "width": 15
+          },
+          {
+            "name": "Modified",
+            "width": 12
+          }
+        ],
         "headers": [
           "#",
           "Status",

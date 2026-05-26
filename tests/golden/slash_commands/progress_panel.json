@@ -3,13 +3,42 @@
     {
       "payload": {
         "level": "warning",
-        "message": "/progress renders Rich live panels and is not available in Go TUI."
+        "message": "/progress renders Rich live panels and is not available in Go TUI. Showing compact summary."
       },
       "type": "alert"
     },
     {
       "payload": {
-        "content": "Use command-family output and transcript history instead.\n"
+        "content": "Progress Summary\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Active Operations",
+            "0"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Use transcript history and command-family output for detailed progress.\n"
       },
       "type": "text"
     }

@@ -360,7 +360,28 @@ class TestEndToEndWorkflow:
 class TestAgentToolCount:
     """Verify research_agent has exactly 12 tools."""
 
-    def test_agent_has_12_base_tools(self, data_manager):
+    @pytest.fixture
+    def mock_research_agent_runtime(self):
+        """Tool-count tests inspect wiring, not real provider configuration."""
+
+        def fake_create_react_agent(**kwargs):
+            agent = Mock(name="mock_research_agent")
+            agent.tools = kwargs["tools"]
+            return agent
+
+        with (
+            patch(
+                "lobster.agents.research.research_agent.create_llm",
+                return_value=Mock(name="mock_llm"),
+            ),
+            patch(
+                "lobster.agents.research.research_agent.create_react_agent",
+                side_effect=fake_create_react_agent,
+            ),
+        ):
+            yield
+
+    def test_agent_has_12_base_tools(self, data_manager, mock_research_agent_runtime):
         """Verify research_agent has exactly 12 base tools (excluding handoff tools)."""
         agent = research_agent(data_manager, delegation_tools=None)
 
@@ -371,7 +392,7 @@ class TestAgentToolCount:
         # Note: Actual tool count verification would require inspecting
         # the agent's internal tool list, which depends on LangGraph internals
 
-    def test_agent_with_handoff_tools(self, data_manager):
+    def test_agent_with_handoff_tools(self, data_manager, mock_research_agent_runtime):
         """Verify handoff tools are properly added to base tools."""
 
         # Create mock handoff tool

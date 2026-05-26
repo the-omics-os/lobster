@@ -14,7 +14,7 @@ Test coverage target: Complete user workflow scenarios with realistic data.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd
@@ -251,16 +251,32 @@ class TestAgentIntegrationWorkflow:
 
     def test_agent_tool_availability(self, data_manager):
         """Test that bulk RNA-seq agent has quantification loading tool."""
-        agent_graph = transcriptomics_expert(
-            data_manager=data_manager,
-            callback_handler=None,
-        )
+        def fake_create_react_agent(**kwargs):
+            agent = Mock(name="mock_transcriptomics_agent")
+            agent.tools = kwargs["tools"]
+            return agent
+
+        with (
+            patch(
+                "lobster.agents.transcriptomics.transcriptomics_expert.create_llm",
+                return_value=Mock(name="mock_llm"),
+            ),
+            patch(
+                "lobster.agents.transcriptomics.transcriptomics_expert.create_react_agent",
+                side_effect=fake_create_react_agent,
+            ),
+        ):
+            agent_graph = transcriptomics_expert(
+                data_manager=data_manager,
+                callback_handler=None,
+            )
 
         # Verify agent was created
         assert agent_graph is not None
 
-        # The agent should have load_quantification_files tool
-        # (This is verified by the fact that the agent factory doesn't raise an error)
+        # The agent should expose bulk count/quantification import tooling.
+        tool_names = {getattr(tool, "name", "") for tool in agent_graph.tools}
+        assert "import_bulk_counts" in tool_names
 
     def test_agent_workflow_with_quantification_data(
         self, realistic_kallisto_dataset, data_manager

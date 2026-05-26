@@ -8,6 +8,20 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Setting",
+            "width": 16
+          },
+          {
+            "name": "Value",
+            "width": 36
+          },
+          {
+            "name": "Source",
+            "overflow": "fold"
+          }
+        ],
         "headers": [
           "Setting",
           "Value",
@@ -36,6 +50,24 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Model",
+            "width": 24
+          },
+          {
+            "name": "Display Name",
+            "width": 26
+          },
+          {
+            "name": "Status",
+            "width": 18
+          },
+          {
+            "name": "Description",
+            "overflow": "fold"
+          }
+        ],
         "headers": [
           "Model",
           "Display Name",
@@ -67,6 +99,18 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Command",
+            "overflow": "fold",
+            "width": 34
+          },
+          {
+            "name": "Purpose",
+            "overflow": "fold",
+            "width": 62
+          }
+        ],
         "headers": [
           "Command",
           "Purpose"

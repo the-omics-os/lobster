@@ -14,6 +14,25 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Dataset ID"
+          },
+          {
+            "name": "Type"
+          },
+          {
+            "max_width": 40,
+            "name": "Title",
+            "overflow": "ellipsis"
+          },
+          {
+            "name": "Samples"
+          },
+          {
+            "name": "Cached"
+          }
+        ],
         "headers": [
           "Dataset ID",
           "Type",
@@ -41,6 +60,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Key"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
           "Key",
           "Value"
@@ -70,6 +97,21 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "File",
+            "overflow": "ellipsis",
+            "width": 50
+          },
+          {
+            "name": "Size",
+            "width": 10
+          },
+          {
+            "name": "Modified",
+            "width": 20
+          }
+        ],
         "headers": [
           "File",
           "Size",
@@ -79,7 +121,7 @@
           [
             "study_metadata.json",
             "0.0 KB",
-            "2026-03-06 03:15"
+            "2026-03-01 12:00"
           ]
         ]
       },
@@ -99,6 +141,21 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "File",
+            "overflow": "ellipsis",
+            "width": 50
+          },
+          {
+            "name": "Size",
+            "width": 10
+          },
+          {
+            "name": "Modified",
+            "width": 20
+          }
+        ],
         "headers": [
           "File",
           "Size",
@@ -108,7 +165,7 @@
           [
             "analysis_summary.csv",
             "0.0 KB",
-            "2026-03-06 03:15"
+            "2026-03-01 12:00"
           ]
         ]
       },

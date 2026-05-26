@@ -5,7 +5,9 @@ Tests the complete workflow from Transcriptomics Expert → ML Expert → back t
 with conditional testing based on scVI availability.
 """
 
-from unittest.mock import MagicMock, Mock, patch
+import importlib.util
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import anndata
 import numpy as np
@@ -15,17 +17,14 @@ import pytest
 from lobster.core.data_manager_v2 import DataManagerV2
 
 # Check if scVI is available for conditional testing
-try:
-    import scvi
-    import torch
-
-    SCVI_AVAILABLE = True
-except ImportError:
-    SCVI_AVAILABLE = False
+SCVI_AVAILABLE = (
+    importlib.util.find_spec("scvi") is not None
+    and importlib.util.find_spec("torch") is not None
+)
 
 
 @pytest.fixture
-def mock_data_manager():
+def mock_data_manager(tmp_path):
     """Create a mock DataManagerV2 instance."""
     data_manager = MagicMock(spec=DataManagerV2)
 
@@ -51,9 +50,51 @@ def mock_data_manager():
     data_manager.list_modalities.return_value = ["test_modality"]
     data_manager.get_modality.return_value = mock_adata
     data_manager.modalities = {"test_modality": mock_adata}
+    data_manager.workspace_path = tmp_path
+    data_manager.cache_dir = tmp_path / ".cache"
+    data_manager.cache_dir.mkdir(exist_ok=True)
     data_manager.log_tool_usage = MagicMock()
 
     return data_manager, mock_adata
+
+
+@pytest.fixture(autouse=True)
+def mock_agent_runtime():
+    """scVI handoff tests inspect tool wiring, not real provider configuration."""
+
+    def fake_create_react_agent(**kwargs):
+        tools_by_name = {tool.name: tool for tool in kwargs.get("tools", [])}
+        graph = SimpleNamespace(
+            nodes={
+                "tools": SimpleNamespace(
+                    data=SimpleNamespace(tools_by_name=tools_by_name)
+                )
+            }
+        )
+        agent = MagicMock(name=f"mock_{kwargs.get('name', 'agent')}")
+        agent.tools = kwargs.get("tools", [])
+        agent.get_graph.return_value = graph
+        return agent
+
+    with (
+        patch(
+            "lobster.agents.transcriptomics.transcriptomics_expert.create_llm",
+            return_value=MagicMock(name="mock_transcriptomics_llm"),
+        ),
+        patch(
+            "lobster.agents.transcriptomics.transcriptomics_expert.create_react_agent",
+            side_effect=fake_create_react_agent,
+        ),
+        patch(
+            "lobster.agents.machine_learning.machine_learning_expert.create_llm",
+            return_value=MagicMock(name="mock_ml_llm"),
+        ),
+        patch(
+            "lobster.agents.machine_learning.machine_learning_expert.create_react_agent",
+            side_effect=fake_create_react_agent,
+        ),
+    ):
+        yield
 
 
 class TestScviHandoffWorkflow:
@@ -143,7 +184,7 @@ class TestScviHandoffWorkflow:
     @pytest.mark.skipif(not SCVI_AVAILABLE, reason="scVI dependencies not installed")
     def test_ml_expert_scvi_availability_check(self, mock_data_manager):
         """Test ML Expert scVI availability checking."""
-        from lobster.agents.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -169,7 +210,7 @@ class TestScviHandoffWorkflow:
     )
     def test_ml_expert_scvi_unavailable_message(self, mock_data_manager):
         """Test ML Expert provides installation guidance when scVI unavailable."""
-        from lobster.agents.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -215,9 +256,9 @@ class TestScviHandoffWorkflow:
         # Mock scanpy functions
         with (
             patch("scanpy.pp.neighbors") as mock_neighbors,
-            patch("scanpy.tl.leiden") as mock_leiden,
-            patch("scanpy.tl.umap") as mock_umap,
-            patch("scanpy.tl.rank_genes_groups") as mock_rank_genes,
+            patch("scanpy.tl.leiden"),
+            patch("scanpy.tl.umap"),
+            patch("scanpy.tl.rank_genes_groups"),
         ):
 
             # Configure mocks to simulate successful clustering
@@ -251,7 +292,7 @@ class TestEndToEndWorkflow:
 
     def test_complete_workflow_without_scvi(self, mock_data_manager):
         """Test complete workflow when scVI is not available."""
-        from lobster.agents.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
         from lobster.agents.transcriptomics.transcriptomics_expert import (
             transcriptomics_expert,
         )
@@ -298,7 +339,7 @@ class TestEndToEndWorkflow:
     @pytest.mark.skipif(not SCVI_AVAILABLE, reason="Requires scVI installation")
     def test_ml_expert_train_scvi_tool_structure(self, mock_data_manager):
         """Test ML Expert scVI training tool exists and has correct structure."""
-        from lobster.agents.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -319,24 +360,14 @@ class TestEndToEndWorkflow:
         # Get train_scvi_embedding tool
         train_tool = tools_by_name["train_scvi_embedding"]
 
-        # Test tool accepts expected parameters
+        # Test tool exposes expected parameters.
         # Note: We won't actually run training in tests, just verify tool structure
-        try:
-            # This should not raise an error for parameter validation
-            # The tool should accept these parameters even if training fails
-            tool_params = {
-                "modality_name": "test_modality",
-                "n_latent": 10,
-                "batch_key": "sample",
-                "use_gpu": False,
-            }
-
-            # Tool should exist and be callable (even if it fails due to setup)
-            assert callable(train_tool.func)
-
-        except Exception as e:
-            # Tool should exist even if execution fails
-            assert "not found" not in str(e).lower()
+        expected_params = {"modality_name", "n_latent", "batch_key", "use_gpu"}
+        tool_args = set(getattr(train_tool, "args", {}).keys())
+        assert expected_params.issubset(
+            tool_args
+        ), f"Missing scVI train params: {expected_params - tool_args}"
+        assert callable(train_tool.func)
 
     def test_clustering_service_custom_embeddings_integration(self):
         """Test clustering service integrates properly with custom embeddings."""
@@ -359,8 +390,8 @@ class TestEndToEndWorkflow:
         # Mock scanpy operations
         with (
             patch("scanpy.pp.neighbors") as mock_neighbors,
-            patch("scanpy.tl.leiden") as mock_leiden,
-            patch("scanpy.tl.umap") as mock_umap,
+            patch("scanpy.tl.leiden"),
+            patch("scanpy.tl.umap"),
         ):
 
             # Setup mocks to simulate successful execution
@@ -418,7 +449,7 @@ class TestAgentToolIntegration:
 
     def test_ml_expert_has_scvi_tools(self, mock_data_manager):
         """Test ML Expert includes scVI tools."""
-        from lobster.agents.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
 
         data_manager, mock_adata = mock_data_manager
 
@@ -436,8 +467,8 @@ class TestAgentToolIntegration:
             "train_scvi_embedding" in tools_by_name
         ), f"train_scvi_embedding not found. Available: {list(tools_by_name.keys())}"
 
-    def test_transcriptomics_expert_cluster_modality_use_rep(self, mock_data_manager):
-        """Test Transcriptomics Expert cluster_modality accepts use_rep parameter."""
+    def test_transcriptomics_expert_cluster_cells_use_rep(self, mock_data_manager):
+        """Test Transcriptomics Expert cluster_cells accepts use_rep parameter."""
         from lobster.agents.transcriptomics.transcriptomics_expert import (
             transcriptomics_expert,
         )
@@ -456,7 +487,7 @@ class TestAgentToolIntegration:
             mock_service = MagicMock()
             mock_ir = AnalysisStep(
                 operation="clustering",
-                tool_name="cluster_modality",
+                tool_name="cluster_cells",
                 description="Mock clustering",
                 library="scanpy",
                 code_template="# mock",
@@ -488,9 +519,9 @@ class TestAgentToolIntegration:
             tools_by_name = agent.get_graph().nodes["tools"].data.tools_by_name
 
             assert (
-                "cluster_modality" in tools_by_name
-            ), f"cluster_modality not found. Available: {list(tools_by_name.keys())}"
-            cluster_tool = tools_by_name["cluster_modality"]
+                "cluster_cells" in tools_by_name
+            ), f"cluster_cells not found. Available: {list(tools_by_name.keys())}"
+            cluster_tool = tools_by_name["cluster_cells"]
 
             # Test clustering with use_rep parameter
             result = cluster_tool.invoke(
@@ -593,7 +624,7 @@ class TestDocumentationExamples:
 
     def test_typical_scvi_workflow_structure(self, mock_data_manager):
         """Test the structure of a typical scVI workflow."""
-        from lobster.agents.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
         from lobster.agents.transcriptomics.transcriptomics_expert import (
             transcriptomics_expert,
         )
@@ -610,7 +641,7 @@ class TestDocumentationExamples:
         # Essential Transcriptomics tools
         essential_sc_tools = [
             "request_scvi_embedding",  # New scVI handoff (may be commented out)
-            "cluster_modality",  # Updated with use_rep support
+            "cluster_cells",  # Updated with use_rep support
             "check_data_status",
         ]
 

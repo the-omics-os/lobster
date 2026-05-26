@@ -3,13 +3,180 @@
     {
       "payload": {
         "level": "warning",
-        "message": "/status-panel renders Rich dashboard panels and is not available in Go TUI."
+        "message": "/status-panel renders Rich dashboard panels and is not available in Go TUI. Showing /status fallback."
       },
       "type": "alert"
     },
     {
       "payload": {
-        "content": "Use /status instead.\n"
+        "content": "Lobster Status\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Initialization\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Initialization",
+            "Configured"
+          ],
+          [
+            "Provider",
+            "openai"
+          ],
+          [
+            "Config File",
+            "/tmp/lobster_ws/.env"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Subscription\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Subscription Tier",
+            "Free"
+          ],
+          [
+            "Source",
+            "default"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Installed Packages\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Package"
+          },
+          {
+            "name": "Version"
+          },
+          {
+            "name": "Status"
+          }
+        ],
+        "headers": [
+          "Package",
+          "Version",
+          "Status"
+        ],
+        "rows": [
+          [
+            "lobster-ai",
+            "1.1.2",
+            "Installed"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Optional Capabilities\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Status"
+          },
+          {
+            "name": "Capability"
+          },
+          {
+            "name": "Details"
+          }
+        ],
+        "headers": [
+          "Status",
+          "Capability",
+          "Details"
+        ],
+        "rows": [
+          [
+            "available",
+            "Semantic Search",
+            "Vector backend available"
+          ],
+          [
+            "available",
+            "Document Intelligence",
+            "docling"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Available Agents (2)\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- data_expert_agent\n- research_agent\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Enabled Features\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- community_support\n- local_only\n"
       },
       "type": "text"
     }

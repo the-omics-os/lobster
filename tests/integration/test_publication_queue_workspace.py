@@ -17,6 +17,8 @@ pytest tests/integration/test_publication_queue_workspace.py::test_research_agen
 ```
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 
 from lobster.core.client import AgentClient
@@ -29,6 +31,19 @@ from lobster.core.schemas.publication_queue import (
 
 
 @pytest.fixture
+def mock_agent_graph():
+    """Queue workspace tests exercise tools, not LLM graph construction."""
+    mock_metadata = Mock()
+    mock_metadata.subscription_tier = "free"
+    mock_metadata.to_dict.return_value = {}
+    with patch(
+        "lobster.core.client.create_bioinformatics_graph",
+        return_value=(Mock(name="mock_graph"), mock_metadata),
+    ):
+        yield
+
+
+@pytest.fixture
 def test_workspace(tmp_path):
     """Create temporary workspace for testing."""
     workspace = tmp_path / "workspace"
@@ -37,7 +52,7 @@ def test_workspace(tmp_path):
 
 
 @pytest.fixture
-def agent_client(test_workspace):
+def agent_client(test_workspace, mock_agent_graph):
     """Create AgentClient with DataManagerV2 for integration testing."""
     data_manager = DataManagerV2(workspace_path=test_workspace)
     return AgentClient(
@@ -87,7 +102,9 @@ def test_research_agent_reads_publication_queue_via_tool(agent_client):
     )
 
     # Test listing publication queue
-    result = get_workspace_content.invoke({"workspace": "publication_queue"})
+    result = get_workspace_content.invoke(
+        {"workspace": "publication_queue", "level": "metadata"}
+    )
 
     # Step 3: Verify response
     assert "35042229" in result  # PMID
@@ -179,7 +196,11 @@ def test_research_agent_filters_queue_by_status(agent_client):
     )
 
     result = get_workspace_content.invoke(
-        {"workspace": "publication_queue", "status_filter": "PENDING"}
+        {
+            "workspace": "publication_queue",
+            "status_filter": "PENDING",
+            "level": "metadata",
+        }
     )
 
     # Verify only pending entries are shown

@@ -8,6 +8,17 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Setting"
+          },
+          {
+            "name": "Value"
+          },
+          {
+            "name": "Source"
+          }
+        ],
         "headers": [
           "Setting",
           "Value",
@@ -36,6 +47,18 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Location"
+          },
+          {
+            "name": "Status"
+          },
+          {
+            "name": "Path",
+            "overflow": "ellipsis"
+          }
+        ],
         "headers": [
           "Location",
           "Status",
@@ -58,27 +81,42 @@
     },
     {
       "payload": {
-        "content": "\ud83e\udd16 Agent Models\n"
+        "content": "\ud83e\udd16 Agent Model Assignments\n"
       },
       "type": "text"
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Model",
+            "width": 28
+          },
+          {
+            "name": "Source",
+            "width": 26
+          },
+          {
+            "name": "#",
+            "width": 4
+          },
+          {
+            "name": "Examples",
+            "overflow": "fold"
+          }
+        ],
         "headers": [
-          "Agent",
           "Model",
-          "Source"
+          "Source",
+          "#",
+          "Examples"
         ],
         "rows": [
           [
-            "Supervisor",
             "llama3.2:latest",
-            "workspace config"
-          ],
-          [
-            "Research Agent",
-            "llama3.2:latest",
-            "workspace config"
+            "workspace config",
+            "2",
+            "Research Agent, Supervisor"
           ]
         ]
       },
@@ -86,45 +124,48 @@
     },
     {
       "payload": {
-        "content": "\n\ud83d\udce6 Agent Composition\n"
+        "content": "Agent Configuration Summary\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "content": "------------------------------------------------------------------------------------------------\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "  Configuration: defaults\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "  All available agents enabled (no config.toml or empty)\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
-          "Agent",
-          "Status",
-          "Tier"
+          "Field",
+          "Value"
         ],
         "rows": [
           [
-            "Research Agent",
-            "Installed",
+            "Tier",
             "Free"
           ],
           [
-            "Supervisor",
-            "Installed",
-            "Free"
+            "Config source",
+            "Defaults"
+          ],
+          [
+            "Configured agents",
+            "2"
+          ],
+          [
+            "Installed agents",
+            "2/2"
+          ],
+          [
+            "Distinct model configs",
+            "1"
+          ],
+          [
+            "Config detail",
+            "All available agents enabled"
           ]
         ]
       },
@@ -132,62 +173,15 @@
     },
     {
       "payload": {
-        "content": "\n\u2713 2 of 2 agents installed and ready\n"
+        "content": "Use /status for the full agent roster and /config model for provider model catalogs.\n"
       },
       "type": "text"
     },
     {
       "payload": {
-        "content": "\ud83d\udca1 Config Commands\n"
+        "content": "Use /config provider and /config model for focused follow-up commands.\n"
       },
       "type": "text"
-    },
-    {
-      "payload": {
-        "headers": [
-          "Area",
-          "Command",
-          "Purpose"
-        ],
-        "rows": [
-          [
-            "Provider",
-            "/config provider",
-            "List providers and show the active runtime provider."
-          ],
-          [
-            "Provider",
-            "/config provider <name>",
-            "Switch provider for the current session only."
-          ],
-          [
-            "Provider",
-            "/config provider <name> --save",
-            "Switch provider and persist it to this workspace."
-          ],
-          [
-            "Model",
-            "/config model",
-            "List models available for the active provider."
-          ],
-          [
-            "Model",
-            "/config model <name>",
-            "Switch model for the current session only."
-          ],
-          [
-            "Model",
-            "/config model <name> --save",
-            "Switch model and persist it to this workspace."
-          ],
-          [
-            "Display",
-            "/config or /config show",
-            "Show the full configuration summary."
-          ]
-        ]
-      },
-      "type": "table"
     }
   ],
   "summary": "Displayed configuration (provider: ollama, profile: production)"

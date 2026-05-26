@@ -26,6 +26,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
           "Field",
           "Value"
@@ -63,6 +71,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Package"
+          },
+          {
+            "name": "Version"
+          }
+        ],
         "headers": [
           "Package",
           "Version"

@@ -32,8 +32,6 @@ Task 2.2D: Integration Tests for End-to-End Queue Workflow
 
 import os
 import time
-from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -41,6 +39,7 @@ from lobster.agents.data_expert.data_expert import data_expert
 from lobster.agents.research.research_agent import research_agent
 
 # from lobster.agents.supervisor import supervisor  # FIXME: supervisor no longer exported this way
+from lobster.core.config_resolver import ConfigurationError
 from lobster.core.data_manager_v2 import DataManagerV2
 
 # Mark entire file as skipped due to obsolete supervisor import pattern
@@ -71,12 +70,16 @@ def data_manager(test_workspace):
 
 
 @pytest.fixture(scope="module")
-def integrated_system(data_manager):
+def integrated_system(data_manager, check_api_keys):
     """Create complete agent system for integration testing."""
-    # Create agents with shared data_manager
-    research = research_agent(data_manager=data_manager)
-    data_exp = data_expert(data_manager=data_manager)
-    sup = supervisor(data_manager=data_manager)
+    try:
+        # Create agents with shared data_manager
+        research = research_agent(data_manager=data_manager)
+        data_exp = data_expert(data_manager=data_manager)
+    except ConfigurationError as exc:
+        pytest.skip(f"No LLM provider configured for real-agent E2E: {exc}")
+
+    sup = None  # Supervisor is exercised via workspace_tool in this module.
 
     # Create workspace query tool for supervisor
     workspace_tool = create_get_content_from_workspace_tool(data_manager)
@@ -222,8 +225,8 @@ class TestCompleteQueueWorkflow:
         modality_name = updated_entry.modality_name
         adata = dm.get_modality(modality_name)
 
-        assert adata.n_obs > 0, f"Modality has 0 observations"
-        assert adata.n_vars > 0, f"Modality has 0 variables"
+        assert adata.n_obs > 0, "Modality has 0 observations"
+        assert adata.n_vars > 0, "Modality has 0 variables"
 
         logger.info(
             f"✓ Complete workflow successful: {adata.n_obs} obs × {adata.n_vars} vars"
@@ -248,15 +251,9 @@ class TestCompleteQueueWorkflow:
             (t for t in research.tools if t.name == "validate_dataset_metadata"), None
         )
 
-        initial_pending = len(
-            dm.download_queue.list_entries(status=DownloadStatus.PENDING)
-        )
-
         for dataset_id in datasets:
             logger.info(f"Queuing {dataset_id}...")
-            result = validate_tool.invoke(
-                {"dataset_id": dataset_id, "add_to_queue": True}
-            )
+            validate_tool.invoke({"dataset_id": dataset_id, "add_to_queue": True})
             # Allow some delay between requests to respect rate limits
             time.sleep(1)
 
@@ -281,7 +278,7 @@ class TestCompleteQueueWorkflow:
         for entry in our_entries:
             logger.info(f"Downloading {entry.dataset_id} from queue...")
             start_time = time.time()
-            result = download_tool.invoke({"entry_id": entry.entry_id})
+            download_tool.invoke({"entry_id": entry.entry_id})
             logger.info(f"Download completed in {time.time() - start_time:.1f}s")
 
             # Allow some delay between downloads
@@ -303,7 +300,6 @@ class TestCompleteQueueWorkflow:
         self, integrated_system, check_api_keys, known_datasets
     ):
         """Test supervisor can query download_queue workspace."""
-        dm = integrated_system["data_manager"]
         research = integrated_system["research_agent"]
         workspace_tool = integrated_system["workspace_tool"]
 
@@ -315,7 +311,7 @@ class TestCompleteQueueWorkflow:
         validate_tool = next(
             (t for t in research.tools if t.name == "validate_dataset_metadata"), None
         )
-        result1 = validate_tool.invoke({"dataset_id": dataset_id, "add_to_queue": True})
+        validate_tool.invoke({"dataset_id": dataset_id, "add_to_queue": True})
 
         # ===== STEP 2: Supervisor queries workspace =====
         logger.info("Step 2: Supervisor querying download_queue workspace")
@@ -352,7 +348,7 @@ class TestCompleteQueueWorkflow:
         validate_tool = next(
             (t for t in research.tools if t.name == "validate_dataset_metadata"), None
         )
-        result = validate_tool.invoke({"dataset_id": dataset_id, "add_to_queue": True})
+        validate_tool.invoke({"dataset_id": dataset_id, "add_to_queue": True})
 
         # ===== STEP 2: Verify queue entry has URLs =====
         queue_entries = dm.download_queue.list_entries()
@@ -388,7 +384,6 @@ class TestErrorRecoveryWorkflow:
 
     def test_invalid_dataset_id(self, integrated_system, check_api_keys):
         """Test error handling for invalid GEO ID."""
-        dm = integrated_system["data_manager"]
         research = integrated_system["research_agent"]
 
         invalid_id = "GSE_INVALID_999999999"
@@ -463,7 +458,7 @@ class TestErrorRecoveryWorkflow:
 class TestWorkspacePersistence:
     """Test workspace persistence and restoration."""
 
-    def test_queue_persistence_across_sessions(self, test_workspace, check_api_keys):
+    def test_queue_persistence_across_sessions(self, test_workspace):
         """Test that queue entries persist across DataManager instances."""
         dataset_id = "GSE123456_test"
 
@@ -471,7 +466,6 @@ class TestWorkspacePersistence:
         logger.info("Session 1: Creating queue entry")
 
         dm1 = DataManagerV2(workspace_path=test_workspace)
-        research1 = research_agent(data_manager=dm1)
 
         # Create a simple queue entry (without full validation to avoid API call)
         from lobster.core.schemas.download_queue import DownloadQueueEntry
@@ -546,7 +540,7 @@ class TestProvenanceTracking:
                 (t for t in data_exp.tools if t.name == "execute_download_from_queue"),
                 None,
             )
-            result = download_tool.invoke({"entry_id": entry.entry_id})
+            download_tool.invoke({"entry_id": entry.entry_id})
 
             # ===== STEP 3: Verify provenance logged =====
             # Check that data_manager has tool usage history
@@ -616,7 +610,7 @@ class TestPerformanceBenchmarks:
             )
 
             start_download = time.time()
-            result = download_tool.invoke({"entry_id": entry.entry_id})
+            download_tool.invoke({"entry_id": entry.entry_id})
             download_time = time.time() - start_download
 
             logger.info(f"Download time: {download_time:.2f}s")

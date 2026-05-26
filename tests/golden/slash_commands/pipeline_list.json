@@ -8,6 +8,23 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Name"
+          },
+          {
+            "name": "Steps"
+          },
+          {
+            "name": "Created By"
+          },
+          {
+            "name": "Created"
+          },
+          {
+            "name": "Size"
+          }
+        ],
         "headers": [
           "Name",
           "Steps",

@@ -3,16 +3,138 @@
     {
       "payload": {
         "level": "warning",
-        "message": "/workspace-info renders Rich dashboard panels and is not available in Go TUI."
+        "message": "/workspace-info renders Rich dashboard panels and is not available in Go TUI. Showing /workspace fallback."
       },
       "type": "alert"
     },
     {
       "payload": {
-        "content": "Use /workspace or /files instead.\n"
+        "content": "Workspace Status\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Summary\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
+        "headers": [
+          "Field",
+          "Value"
+        ],
+        "rows": [
+          [
+            "Workspace",
+            "/tmp/lobster_ws"
+          ],
+          [
+            "Datasets Available",
+            "2"
+          ],
+          [
+            "Modalities Loaded",
+            "2"
+          ],
+          [
+            "Provenance",
+            "Enabled"
+          ],
+          [
+            "MuData",
+            "Available"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "Directories\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "columns": [
+          {
+            "name": "Directory"
+          },
+          {
+            "justify": "right",
+            "name": "Files",
+            "width": 8
+          },
+          {
+            "justify": "right",
+            "name": "Size",
+            "width": 10
+          }
+        ],
+        "headers": [
+          "Directory",
+          "Files",
+          "Size"
+        ],
+        "rows": [
+          [
+            "Data",
+            "-",
+            "-"
+          ],
+          [
+            "Exports",
+            "-",
+            "-"
+          ],
+          [
+            "Metadata",
+            "-",
+            "-"
+          ],
+          [
+            "Notebooks",
+            "-",
+            "-"
+          ]
+        ]
+      },
+      "type": "table"
+    },
+    {
+      "payload": {
+        "content": "... and 1 more workspace directories\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Active Modalities\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "- rna\n- atac\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details.\n"
       },
       "type": "text"
     }
   ],
-  "summary": null
+  "summary": "Displayed workspace status and information"
 }

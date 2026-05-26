@@ -8,13 +8,33 @@ Verifies that the multiomics-full preset:
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lobster.agents.graph import GraphMetadata, create_bioinformatics_graph
+from lobster.agents.graph import create_bioinformatics_graph
 from lobster.config.agent_presets import AGENT_PRESETS, expand_preset
 from lobster.testing import MockDataManager
+
+
+@pytest.fixture(autouse=True)
+def mock_graph_llm_runtime():
+    """Preset tests validate graph wiring, not real provider configuration."""
+    mock_agent = MagicMock(name="mock_agent")
+    mock_agent.with_config.return_value = mock_agent
+
+    def fake_agent_factory(**kwargs):
+        return mock_agent
+
+    with (
+        patch("lobster.agents.graph.create_llm", return_value=MagicMock()),
+        patch("lobster.agents.graph.create_react_agent", return_value=mock_agent),
+        patch(
+            "lobster.agents.graph.import_agent_factory",
+            return_value=fake_agent_factory,
+        ),
+    ):
+        yield
 
 
 class TestMultiomicsFullPresetExpansion:

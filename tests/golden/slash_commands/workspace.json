@@ -14,6 +14,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
           "Field",
           "Value"
@@ -22,6 +30,10 @@
           [
             "Workspace",
             "/tmp/lobster_ws"
+          ],
+          [
+            "Datasets Available",
+            "2"
           ],
           [
             "Modalities Loaded",
@@ -47,42 +59,46 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Directory"
+          },
+          {
+            "justify": "right",
+            "name": "Files",
+            "width": 8
+          },
+          {
+            "justify": "right",
+            "name": "Size",
+            "width": 10
+          }
+        ],
         "headers": [
           "Directory",
           "Files",
-          "Size",
-          "Path"
+          "Size"
         ],
         "rows": [
           [
             "Data",
             "-",
-            "-",
-            "/__lobster_test__/data (not created)"
+            "-"
           ],
           [
             "Exports",
             "-",
-            "-",
-            "/__lobster_test__/exports (not created)"
+            "-"
           ],
           [
             "Metadata",
             "-",
-            "-",
-            "/__lobster_test__/metadata (not created)"
+            "-"
           ],
           [
             "Notebooks",
             "-",
-            "-",
-            "/__lobster_test__/notebooks (not created)"
-          ],
-          [
-            "Queues",
-            "-",
-            "-",
-            "/__lobster_test__/queues (not created)"
+            "-"
           ]
         ]
       },
@@ -90,7 +106,13 @@
     },
     {
       "payload": {
-        "content": "Loaded Modalities\n"
+        "content": "... and 1 more workspace directories\n"
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "content": "Active Modalities\n"
       },
       "type": "text"
     },
@@ -102,118 +124,9 @@
     },
     {
       "payload": {
-        "content": "System Capabilities\n"
+        "content": "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details.\n"
       },
       "type": "text"
-    },
-    {
-      "payload": {
-        "headers": [
-          "Field",
-          "Value"
-        ],
-        "rows": [
-          [
-            "Backends",
-            "h5ad, mudata"
-          ],
-          [
-            "Adapters",
-            "transcriptomics, chromatin, multimodal, proteomics, metadata"
-          ]
-        ]
-      },
-      "type": "table"
-    },
-    {
-      "payload": {
-        "content": "... and 1 more adapters\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "Modality Details\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "content": "rna\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "headers": [
-          "Property",
-          "Value"
-        ],
-        "rows": [
-          [
-            "Shape",
-            "1,024 obs \u00d7 2,048 vars"
-          ],
-          [
-            "Obs Columns",
-            "cell_type, batch, condition"
-          ],
-          [
-            "Var Columns",
-            "gene_name, feature_type"
-          ],
-          [
-            "Layers",
-            "counts"
-          ],
-          [
-            "Obsm",
-            "X_pca, X_umap"
-          ],
-          [
-            "Uns Keys",
-            "neighbors, rank_genes_groups"
-          ]
-        ]
-      },
-      "type": "table"
-    },
-    {
-      "payload": {
-        "content": "atac\n"
-      },
-      "type": "text"
-    },
-    {
-      "payload": {
-        "headers": [
-          "Property",
-          "Value"
-        ],
-        "rows": [
-          [
-            "Shape",
-            "512 obs \u00d7 1,024 vars"
-          ],
-          [
-            "Obs Columns",
-            "cluster, sample"
-          ],
-          [
-            "Var Columns",
-            "peak_id"
-          ],
-          [
-            "Obsm",
-            "X_lsi"
-          ],
-          [
-            "Uns Keys",
-            "peaks"
-          ]
-        ]
-      },
-      "type": "table"
     }
   ],
   "summary": "Displayed workspace status and information"

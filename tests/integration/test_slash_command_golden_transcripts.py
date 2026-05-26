@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -494,6 +495,16 @@ class _DummyClient:
 
 
 def _apply_deterministic_family_mocks(monkeypatch):
+    class _FixedDateTime:
+        @classmethod
+        def fromisoformat(cls, value):
+            return datetime.fromisoformat(value)
+
+        @classmethod
+        def fromtimestamp(cls, timestamp):
+            _ = timestamp
+            return datetime(2026, 3, 1, 12, 0)
+
     class _FakeMetadataOverviewService:
         def __init__(self, data_manager):
             self.data_manager = data_manager
@@ -631,6 +642,7 @@ def _apply_deterministic_family_mocks(monkeypatch):
                 {"op": "remove", "modality": modality_name},
             )
 
+    import lobster.cli_internal.commands.light.metadata_commands as metadata_commands
     import lobster.config.agent_defaults as agent_defaults
     import lobster.config.llm_factory as llm_factory
     import lobster.config.providers as providers
@@ -638,6 +650,7 @@ def _apply_deterministic_family_mocks(monkeypatch):
     import lobster.services.metadata.metadata_overview_service as metadata_overview_service
     import lobster.utils as lobster_utils
 
+    monkeypatch.setattr(metadata_commands, "datetime", _FixedDateTime)
     monkeypatch.setattr(agent_defaults, "get_current_profile", lambda: "semantic")
     monkeypatch.setattr(
         metadata_overview_service,
@@ -673,7 +686,7 @@ def _apply_deterministic_family_mocks(monkeypatch):
     monkeypatch.setattr(
         slash_commands,
         "build_status_blocks",
-        lambda: [
+        lambda *args, **kwargs: [
             section_block(title="Lobster Status"),
             kv_block(
                 [

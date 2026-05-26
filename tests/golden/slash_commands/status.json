@@ -14,6 +14,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
           "Field",
           "Value"
@@ -43,6 +51,14 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Field"
+          },
+          {
+            "name": "Value"
+          }
+        ],
         "headers": [
           "Field",
           "Value"
@@ -68,6 +84,17 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Package"
+          },
+          {
+            "name": "Version"
+          },
+          {
+            "name": "Status"
+          }
+        ],
         "headers": [
           "Package",
           "Version",
@@ -91,6 +118,17 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Status"
+          },
+          {
+            "name": "Capability"
+          },
+          {
+            "name": "Details"
+          }
+        ],
         "headers": [
           "Status",
           "Capability",

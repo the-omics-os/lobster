@@ -8,6 +8,17 @@
     },
     {
       "payload": {
+        "columns": [
+          {
+            "name": "Provider"
+          },
+          {
+            "name": "Status"
+          },
+          {
+            "name": "Active"
+          }
+        ],
         "headers": [
           "Provider",
           "Status",

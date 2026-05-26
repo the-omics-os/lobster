@@ -21,13 +21,11 @@ import io
 import socket
 import tarfile
 import tempfile
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -599,15 +597,15 @@ class TestConcurrentDownloadOperations:
 
         def mock_download_with_failure(accession, should_fail):
             """Mock download with controlled failure."""
+            if should_fail:
+                raise socket.timeout("Simulated failure")
+
             mock_ftp = MagicMock()
 
-            if should_fail:
-                mock_ftp.retrbinary.side_effect = socket.timeout("Simulated failure")
-            else:
-                mock_ftp.size.return_value = 0
-                mock_ftp.retrbinary = lambda cmd, callback, blocksize: callback(
-                    f"Data for {accession}".encode()
-                )
+            mock_ftp.size.return_value = 0
+            mock_ftp.retrbinary = lambda cmd, callback, blocksize: callback(
+                f"Data for {accession}".encode()
+            )
 
             mock_ftp_class.return_value = mock_ftp
 
@@ -704,9 +702,6 @@ class TestPartialDownloadRecovery:
         partial_file = temp_cache_dir / "partial_download.gz"
         partial_content = b"Partial data " * 10
         partial_file.write_bytes(partial_content)
-
-        partial_size = len(partial_content)
-        total_size = partial_size + 100
 
         mock_ftp = MagicMock()
         mock_ftp.size.return_value = 0
