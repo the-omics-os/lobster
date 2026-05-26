@@ -198,7 +198,7 @@ class BioPythonEntrezWrapper:
         # Configure from settings if not provided
         settings = get_settings()
         self._entrez.email = email or settings.NCBI_EMAIL or "your-email@example.com"
-        self._entrez.api_key = api_key or settings.NCBI_API_KEY
+        self._entrez.api_key = api_key or settings.NCBI_API_KEY or None
 
         # Rate limiting (Bio.Entrez handles this automatically)
         # - Without API key: 3 requests/second (0.34s delay)

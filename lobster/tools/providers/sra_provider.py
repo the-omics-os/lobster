@@ -1112,6 +1112,16 @@ class SRAProvider(BasePublicationProvider):
         resolver = get_accession_resolver()
         return resolver.is_sra_identifier(query)
 
+    @staticmethod
+    def _database_for_accession(accession: str) -> str:
+        """Return the source archive namespace implied by an SRA-family accession."""
+        prefix = accession.strip().upper()[:3]
+        if prefix in {"ERR", "ERX", "ERP", "ERS"}:
+            return "ena"
+        if prefix in {"DRR", "DRX", "DRP", "DRS"}:
+            return "ddbj"
+        return "sra"
+
     def _enrich_accession_metadata(
         self, df: pd.DataFrame, accession: str
     ) -> pd.DataFrame:
@@ -1636,7 +1646,7 @@ class SRAProvider(BasePublicationProvider):
 
             return DownloadUrlResult(
                 accession=accession,
-                database="sra",
+                database=self._database_for_accession(accession),
                 raw_files=raw_files,
                 ftp_base="ftp.sra.ebi.ac.uk",
                 mirror="ena",

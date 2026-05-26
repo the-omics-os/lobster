@@ -267,7 +267,14 @@ class SRADownloadService(IDownloadService):
         self._check_download_size(url_info["total_size_bytes"], accession)
 
         # Step 5: Create output directory in workspace
-        output_dir = self.data_manager.workspace_dir / "downloads" / "sra" / accession
+        workspace_path = getattr(self.data_manager, "workspace_path", None) or getattr(
+            self.data_manager, "workspace_dir", None
+        )
+        if workspace_path is None:
+            raise AttributeError(
+                "Data manager must expose workspace_path or workspace_dir"
+            )
+        output_dir = Path(workspace_path) / "downloads" / "sra" / accession
         output_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Download directory: {output_dir}")
 
@@ -302,7 +309,7 @@ class SRADownloadService(IDownloadService):
         total_time = time.time() - start_time
         stats = {
             "dataset_id": accession,
-            "database": "sra",
+            "database": queue_entry.database.lower(),
             "strategy_used": strategy_name,
             "n_files": len(fastq_paths),
             "total_size_mb": url_info["total_size_bytes"] / 1e6,
@@ -508,7 +515,7 @@ for f in fastq_files:
                 "layout": url_info["layout"],
                 "platform": url_info["platform"],
                 "total_size_bytes": url_info["total_size_bytes"],
-                "database": "sra",
+                "database": url_info.get("database", "sra"),
             },
         )
 

@@ -962,7 +962,9 @@ class ContentAccessService:
 
             # Filter by source if specified
             if source:
-                source_filter = source.lower()
+                source_filter = (
+                    source.value if hasattr(source, "value") else str(source)
+                ).lower()
                 providers = [
                     p
                     for p in providers
