@@ -65,6 +65,7 @@ from lobster.services.execution.registry import (
 from lobster.tools.custom_code_tool import create_execute_custom_code_tool
 from lobster.tools.download_orchestrator import DownloadOrchestrator
 from lobster.tools.filesystem_tools import create_filesystem_tools
+from lobster.tools.plot_tools import create_plot_tools
 from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 
@@ -1171,6 +1172,10 @@ To save, run again with save_to_file=True"""
     fs_workspace = _resolve_filesystem_root(data_manager, workspace_path)
     filesystem_tools = create_filesystem_tools(workspace_path=fs_workspace) if fs_workspace else []
 
+    # Create interactive plot tools for general-purpose visualization
+    plot_workspace = fs_workspace or (Path(data_manager.workspace_path) if getattr(data_manager, "workspace_path", None) else None)
+    plot_tools = create_plot_tools(data_manager, plot_workspace) if plot_workspace else []
+
     base_tools = [
         # CORE (3 tools)
         execute_download_from_queue,
@@ -1189,6 +1194,8 @@ To save, run again with save_to_file=True"""
         # delegate_complex_reasoning, #TODO needs further security validation
         # FILESYSTEM (DeepAgent-inspired file-level tools)
         *filesystem_tools,
+        # VISUALIZATION (general-purpose interactive plots)
+        *plot_tools,
     ]
     # create_mudata_from_modalities: Combine modalities into MuData for integrated analysis
 

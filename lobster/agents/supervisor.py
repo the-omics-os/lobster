@@ -254,6 +254,9 @@ ROUTING RECOVERY:
   re-check the Agent Directory and try the correct domain expert.
 - If data_expert_agent returns an error for a domain-specific task (QC, statistics,
   biological interpretation), route to the appropriate domain expert instead.
+- If visualization_expert_agent reports "no modality loaded" or cannot visualize
+  non-AnnData results (CSVs, computed tables, JSON data), route to data_expert_agent
+  with instruction to use create_interactive_plot for tabular visualization.
 - Maximum 1 re-route attempt per request.
 
 CONTINUATION ON TOOL ERROR:
