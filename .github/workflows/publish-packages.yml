@@ -700,10 +700,24 @@ jobs:
       - name: Wait for PyPI index propagation
         run: sleep 60
 
+      # Mint a short-lived GitHub App installation token scoped to lobster-cloud.
+      # Replaces the expiry-prone LOBSTER_CLOUD_DEPLOY_TOKEN PAT — the app token
+      # is generated per-run and expires in ~1h, so there is nothing to rotate.
+      # Uses the org "lobster-the-dev" app (contents:write), which is what
+      # repository_dispatch requires.
+      - name: Mint lobster-cloud deploy token
+        id: cloud_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: the-omics-os
+          repositories: lobster-cloud
+
       - name: Dispatch to lobster-cloud
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.LOBSTER_CLOUD_DEPLOY_TOKEN }}
+          token: ${{ steps.cloud_token.outputs.token }}
           repository: the-omics-os/lobster-cloud
           event-type: lobster-packages-published
           client-payload: >-
