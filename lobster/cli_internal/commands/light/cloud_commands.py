@@ -48,6 +48,16 @@ def _validate_credentials(
     """Validate credentials against the gateway. Returns usage data or None on failure."""
     import httpx
 
+    from lobster.config.endpoint_policy import EndpointPolicyError, validate_endpoint
+
+    # Fail closed before attaching the bearer token — a poisoned endpoint would
+    # otherwise exfiltrate the token during "validation". (Codex P0)
+    try:
+        validate_endpoint(endpoint)
+    except EndpointPolicyError as e:
+        console.print(f"[red]Refusing to send token to disallowed endpoint: {e}[/red]")
+        return None
+
     usage_url = f"{endpoint}/api/v1/gateway/usage"
     console.print(f"[dim]Validating {token_type}...[/dim]")
 
@@ -96,7 +106,7 @@ def _print_login_success(data: dict) -> None:
 
 def _api_key_login(api_key: Optional[str]) -> None:
     """Authenticate with an API key (interactive prompt if not provided)."""
-    from lobster.config.credentials import get_endpoint, save_credentials
+    from lobster.config.credentials import _save_active_profile, get_endpoint
 
     if not api_key:
         api_key = typer.prompt(
@@ -131,7 +141,20 @@ def _api_key_login(api_key: Optional[str]) -> None:
         "tier": data.get("tier", "free"),
     }
 
-    save_credentials(creds)
+    # V2-safe write: merge into the active profile (preserves siblings). Clear
+    # stale omics_cli/oauth fields so the profile stays token-model-coherent.
+    _save_active_profile(
+        creds,
+        remove=(
+            "cli_token",
+            "credential_id",
+            "credential_type",
+            "access_token",
+            "refresh_token",
+            "id_token",
+            "token_expiry",
+        ),
+    )
     _print_login_success(data)
 
 
@@ -144,9 +167,18 @@ def _browser_login() -> None:
     import webbrowser
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
-    from lobster.config.credentials import get_endpoint, save_credentials
+    from lobster.config.credentials import (
+        _save_active_profile,
+        get_endpoint,
+        get_platform_endpoint,
+    )
 
     endpoint = get_endpoint()
+    # Broker/OAuth flow is ALWAYS the platform host — never the active profile's
+    # (possibly tenant/poisoned) data endpoint. This constant can't be poisoned
+    # via the credential file or OMICS_OS_ENDPOINT, so the browser OAuth flow +
+    # its CORS origin stay trustworthy. (D5 / Codex P1)
+    broker_endpoint = get_platform_endpoint()
     if not _is_secure_endpoint(endpoint):
         console.print(
             f"[red]Refusing to authenticate over insecure connection: {endpoint}[/red]\n"
@@ -161,7 +193,9 @@ def _browser_login() -> None:
 
     class CallbackHandler(BaseHTTPRequestHandler):
         def _send_cors_headers(self):
-            self.send_header("Access-Control-Allow-Origin", endpoint)
+            # Must match the broker page origin (platform) or the callback POST
+            # is CORS-blocked.
+            self.send_header("Access-Control-Allow-Origin", broker_endpoint)
             self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Access-Control-Allow-Private-Network", "true")
@@ -227,7 +261,7 @@ def _browser_login() -> None:
 
     server.timeout = 120
 
-    auth_url = f"{endpoint}/auth/cli?port={port}&state={state}"
+    auth_url = f"{broker_endpoint}/auth/cli?port={port}&state={state}"
     console.print("[dim]Opening browser for authentication...[/dim]")
     console.print(f"[dim]If the browser doesn't open, visit:[/dim] {auth_url}")
 
@@ -295,7 +329,12 @@ def _browser_login() -> None:
         "tier": data.get("tier", "free"),
     }
 
-    save_credentials(creds)
+    # V2-safe write: merge into the active profile (preserves siblings). Clear
+    # stale omics_cli fields so a Cognito login over an omics_cli profile
+    # doesn't leave refresh mis-branching to the omc_ path (Codex P1).
+    _save_active_profile(
+        creds, remove=("cli_token", "credential_id", "credential_type", "api_key")
+    )
     _print_login_success(data)
 
 
@@ -316,9 +355,15 @@ def attempt_login_for_init() -> bool:
     import webbrowser
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
-    from lobster.config.credentials import get_endpoint, save_credentials
+    from lobster.config.credentials import (
+        _save_active_profile,
+        get_endpoint,
+        get_platform_endpoint,
+    )
 
     endpoint = get_endpoint()
+    # Broker/OAuth flow is ALWAYS the platform host (un-poisonable). (D5 / Codex P1)
+    broker_endpoint = get_platform_endpoint()
     if not _is_secure_endpoint(endpoint):
         console.print(
             f"[red]Refusing to authenticate over insecure connection: {endpoint}[/red]"
@@ -331,7 +376,8 @@ def attempt_login_for_init() -> bool:
 
     class _CallbackHandler(BaseHTTPRequestHandler):
         def _send_cors_headers(self):
-            self.send_header("Access-Control-Allow-Origin", endpoint)
+            # Must match the broker page origin (platform) or the callback is blocked.
+            self.send_header("Access-Control-Allow-Origin", broker_endpoint)
             self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Access-Control-Allow-Private-Network", "true")
@@ -386,7 +432,7 @@ def attempt_login_for_init() -> bool:
 
     server.timeout = 120
 
-    auth_url = f"{endpoint}/auth/cli?port={port}&state={state}"
+    auth_url = f"{broker_endpoint}/auth/cli?port={port}&state={state}"
     console.print("[dim]Opening browser for Omics-OS Cloud login...[/dim]")
     console.print(f"[dim]If browser doesn't open: {auth_url}[/dim]")
 
@@ -437,7 +483,10 @@ def attempt_login_for_init() -> bool:
         "email": data.get("email", ""),
         "tier": data.get("tier", "free"),
     }
-    save_credentials(creds)
+    # V2-safe write (preserves siblings); clear stale omics_cli fields (Codex P1).
+    _save_active_profile(
+        creds, remove=("cli_token", "credential_id", "credential_type", "api_key")
+    )
 
     tier = data.get("tier", "free")
     email = data.get("email", "")
@@ -448,9 +497,13 @@ def attempt_login_for_init() -> bool:
 @cloud_app.command()
 def account() -> None:
     """Show your Omics-OS Cloud account summary."""
-    from lobster.config.credentials import get_api_key, get_endpoint, load_credentials
+    from lobster.config.credentials import (
+        get_api_key,
+        get_endpoint,
+        load_active_profile,
+    )
 
-    creds = load_credentials()
+    creds = load_active_profile()
     api_key = get_api_key()
     if not api_key or not creds:
         console.print(
@@ -465,7 +518,9 @@ def account() -> None:
     user_id = creds.get("user_id", "unknown")
     auth_mode = creds.get("auth_mode", "unknown")
 
-    table = Table(title="Omics-OS Cloud Account", show_header=False, border_style="cyan")
+    table = Table(
+        title="Omics-OS Cloud Account", show_header=False, border_style="cyan"
+    )
     table.add_column("Field", style="bold")
     table.add_column("Value")
 
@@ -478,7 +533,11 @@ def account() -> None:
     # Fetch live usage data
     import httpx
 
+    from lobster.config.endpoint_policy import EndpointPolicyError, validate_endpoint
+
     try:
+        # Fail closed before attaching the bearer token (poisoned-endpoint exfil).
+        validate_endpoint(endpoint)
         with httpx.Client(timeout=10.0) as client:
             resp = client.get(
                 f"{endpoint}/api/v1/gateway/usage",
@@ -490,6 +549,9 @@ def account() -> None:
             table.add_row("", "")
             table.add_row("Budget remaining", f"${budget.get('remaining_usd', '?')}")
             table.add_row("Period", data.get("period", "?"))
+    except EndpointPolicyError:
+        table.add_row("", "")
+        table.add_row("Usage", "[red]endpoint not in allowlist[/red]")
     except (httpx.ConnectError, httpx.TimeoutException):
         table.add_row("", "")
         table.add_row("Status", "[dim]Could not reach cloud[/dim]")
@@ -550,6 +612,7 @@ def status() -> None:
     import httpx
 
     from lobster.config.credentials import get_api_key, get_endpoint
+    from lobster.config.endpoint_policy import EndpointPolicyError, validate_endpoint
 
     api_key = get_api_key()
     if not api_key:
@@ -560,6 +623,12 @@ def status() -> None:
         raise typer.Exit(0)
 
     endpoint = get_endpoint()
+    # Fail closed before attaching the bearer token (poisoned-endpoint exfil). (Codex P0)
+    try:
+        validate_endpoint(endpoint)
+    except EndpointPolicyError as e:
+        console.print(f"[red]Endpoint not in allowlist: {e}[/red]")
+        raise typer.Exit(1)
     usage_url = f"{endpoint}/api/v1/gateway/usage"
 
     try:
@@ -604,7 +673,10 @@ def status() -> None:
     table.add_row("Remaining", f"${budget.get('remaining_usd', 0):.2f}")
     table.add_row("Utilization", f"{budget.get('utilization_pct', 0):.1f}%")
     table.add_row("", "")
-    table.add_row("Max tokens/req", f"{limits.get('max_tokens_per_request', '?'):,}")
+    max_tokens = limits.get("max_tokens_per_request")
+    table.add_row(
+        "Max tokens/req", f"{max_tokens:,}" if isinstance(max_tokens, int) else "?"
+    )
 
     console.print(table)
 
@@ -612,9 +684,11 @@ def status() -> None:
 @cloud_app.command()
 def logout() -> None:
     """Log out of Omics-OS Cloud."""
-    from lobster.config.credentials import clear_credentials
+    from lobster.config.credentials import _clear_active_profile
 
-    clear_credentials()
+    # Active-profile-only logout: on a V2 multi-profile file this removes the
+    # active profile and preserves siblings (Codex P1). On V1 it deletes the file.
+    _clear_active_profile()
     console.print("Logged out of Omics-OS Cloud.")
 
 
@@ -630,7 +704,9 @@ def chat(
         None, "--endpoint", help="Custom cloud API endpoint"
     ),
     stream_endpoint: Optional[str] = typer.Option(
-        None, "--stream-endpoint", help="Custom stream origin (e.g., https://stream.omics-os.com)"
+        None,
+        "--stream-endpoint",
+        help="Custom stream origin (e.g., https://stream.omics-os.com)",
     ),
     project_id: Optional[str] = typer.Option(
         None, "--project-id", "-p", help="Associate session with a cloud project"
@@ -657,8 +733,11 @@ def chat(
     api_url = endpoint or "https://app.omics-os.com/api/v1"
 
     from lobster.cli_internal.commands.light.cloud_query import (
-        CloudQueryError, _validate_endpoint, derive_stream_base,
+        CloudQueryError,
+        _validate_endpoint,
+        derive_stream_base,
     )
+
     if endpoint:
         try:
             _validate_endpoint(endpoint.rstrip("/"))
@@ -702,17 +781,26 @@ def query(
         None, "--session-id", "-s", help="Session UUID to continue (or 'latest')"
     ),
     token: Optional[str] = typer.Option(
-        None, "--token", help="Override stored auth token (prefer OMICS_OS_API_KEY env var)"
+        None,
+        "--token",
+        help="Override stored auth token (prefer OMICS_OS_API_KEY env var)",
     ),
     endpoint: Optional[str] = typer.Option(
-        None, "--endpoint", help="Custom REST API origin (e.g., https://app.omics-os.com)"
+        None,
+        "--endpoint",
+        help="Custom REST API origin (e.g., https://app.omics-os.com)",
     ),
     stream_endpoint: Optional[str] = typer.Option(
-        None, "--stream-endpoint", help="Custom stream origin (e.g., https://stream.omics-os.com)"
+        None,
+        "--stream-endpoint",
+        help="Custom stream origin (e.g., https://stream.omics-os.com)",
     ),
     unsafe_endpoint: bool = typer.Option(
-        False, "--unsafe-endpoint", is_flag=True, hidden=True,
-        help="Skip endpoint allowlist validation (DANGEROUS)"
+        False,
+        "--unsafe-endpoint",
+        is_flag=True,
+        hidden=True,
+        help="Skip endpoint allowlist validation (DANGEROUS)",
     ),
     stream: bool = typer.Option(
         False, "--stream/--no-stream", help="Stream text as it arrives"
@@ -721,7 +809,10 @@ def query(
         False, "--json", "-j", is_flag=True, help="Output JSON only on stdout"
     ),
     project_id: Optional[str] = typer.Option(
-        None, "--project-id", "-p", help="Associate session with a cloud project (personal projects only)"
+        None,
+        "--project-id",
+        "-p",
+        help="Associate session with a cloud project (personal projects only)",
     ),
 ) -> None:
     """Send a single query to Omics-OS Cloud (agents run on ECS Fargate)."""
@@ -731,6 +822,7 @@ def query(
 
     from lobster.cli_internal.commands.light.cloud_query import (
         CloudQueryError,
+        _validate_endpoint,
         cancel_cloud_run,
         derive_stream_base,
         fetch_workspace_files,
@@ -739,7 +831,6 @@ def query(
         resolve_rest_base,
         stream_cloud_query,
         strip_ansi,
-        _validate_endpoint,
     )
 
     def _emit_json_error(error: str, sid: Optional[str] = None) -> None:
@@ -759,14 +850,16 @@ def query(
 
         headers = resolve_auth(token_override=token)
 
-        sid = resolve_cloud_session(rest_base, headers, session_id,
-            project_id=project_id, client_source="cli")
+        sid = resolve_cloud_session(
+            rest_base, headers, session_id, project_id=project_id, client_source="cli"
+        )
 
     except CloudQueryError as e:
         if json_output:
             _emit_json_error(str(e))
         else:
             from rich.markup import escape
+
             console.print(f"[red]Error:[/red] {escape(str(e))}")
         raise typer.Exit(1)
 
@@ -778,6 +871,7 @@ def query(
     text_callback = None
     worker_status_callback = None
     if stream and not json_output:
+
         def text_callback(delta: str):
             nonlocal saw_text_delta
             saw_text_delta = True
@@ -830,6 +924,7 @@ def query(
             _emit_json_error(result.error_detail, sid)
         else:
             from rich.markup import escape
+
             console.print(f"[red]Error:[/red] {escape(result.error_detail)}")
         raise typer.Exit(1)
 
@@ -841,17 +936,21 @@ def query(
             pass
 
     if json_output:
-        print(_json.dumps({
-            "success": result.success,
-            "response": result.display_text,
-            "session_id": sid,
-            "active_agent": result.active_agent,
-            "token_usage": result.token_usage,
-            "session_title": result.session_title,
-            "finish_reason": result.finish_reason,
-            "worker_status": result.worker_status,
-            "workspace_files": workspace_files,
-        }))
+        print(
+            _json.dumps(
+                {
+                    "success": result.success,
+                    "response": result.display_text,
+                    "session_id": sid,
+                    "active_agent": result.active_agent,
+                    "token_usage": result.token_usage,
+                    "session_title": result.session_title,
+                    "finish_reason": result.finish_reason,
+                    "worker_status": result.worker_status,
+                    "workspace_files": workspace_files,
+                }
+            )
+        )
         return
 
     from rich.markdown import Markdown
@@ -882,17 +981,24 @@ def query(
 
     if workspace_files:
         file_count = len(workspace_files)
-        console.print(f"[dim]{file_count} file{'s' if file_count != 1 else ''} in workspace · "
-                      f"download: lobster cloud files download {sid} <path>[/dim]")
+        console.print(
+            f"[dim]{file_count} file{'s' if file_count != 1 else ''} in workspace · "
+            f"download: lobster cloud files download {sid} <path>[/dim]"
+        )
 
 
 @cloud_app.command("projects")
 def projects(
-    json_output: bool = typer.Option(False, "--json", "-j", is_flag=True, help="Output JSON"),
+    json_output: bool = typer.Option(
+        False, "--json", "-j", is_flag=True, help="Output JSON"
+    ),
 ) -> None:
     """List your Omics-OS Cloud projects."""
     from lobster.cli_internal.commands.light.cloud_query import (
-        CloudQueryError, resolve_auth, resolve_rest_base, _validate_endpoint,
+        CloudQueryError,
+        _validate_endpoint,
+        resolve_auth,
+        resolve_rest_base,
     )
 
     try:
@@ -902,12 +1008,14 @@ def projects(
     except CloudQueryError as e:
         if json_output:
             import json as _json
+
             print(_json.dumps({"success": False, "error": str(e)}))
         else:
             console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)
 
     import httpx
+
     try:
         with httpx.Client(timeout=15.0) as client:
             resp = client.get(
@@ -916,14 +1024,21 @@ def projects(
             )
         if resp.status_code in (403, 404):
             if json_output:
-                print('{"success": false, "error": "Projects not available (feature may be disabled)"}')
+                print(
+                    '{"success": false, "error": "Projects not available (feature may be disabled)"}'
+                )
             else:
-                console.print("[yellow]Projects not available.[/yellow] Feature may not be enabled for your account.")
+                console.print(
+                    "[yellow]Projects not available.[/yellow] Feature may not be enabled for your account."
+                )
             raise typer.Exit(0)
         if not resp.is_success:
             if json_output:
                 import json as _json
-                print(_json.dumps({"success": False, "error": f"HTTP {resp.status_code}"}))
+
+                print(
+                    _json.dumps({"success": False, "error": f"HTTP {resp.status_code}"})
+                )
             else:
                 console.print(f"[red]Error:[/red] {resp.status_code}")
             raise typer.Exit(1)
@@ -932,22 +1047,31 @@ def projects(
         except (ValueError, Exception):
             if json_output:
                 import json as _json
-                print(_json.dumps({"success": False, "error": "Invalid JSON from server"}))
+
+                print(
+                    _json.dumps({"success": False, "error": "Invalid JSON from server"})
+                )
             else:
                 console.print("[red]Error:[/red] Invalid response from server")
             raise typer.Exit(1)
     except httpx.HTTPError as e:
         if json_output:
             import json as _json
+
             print(_json.dumps({"success": False, "error": str(e)}))
         else:
             console.print(f"[red]Cannot reach cloud:[/red] {e}")
         raise typer.Exit(1)
 
-    project_list = data.get("projects", data) if isinstance(data, dict) else data if isinstance(data, list) else []
+    project_list = (
+        data.get("projects", data)
+        if isinstance(data, dict)
+        else data if isinstance(data, list) else []
+    )
 
     if json_output:
         import json as _json
+
         print(_json.dumps({"success": True, "projects": project_list}))
         return
 

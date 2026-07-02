@@ -9,28 +9,28 @@ from typing import Callable, Optional
 import httpx
 
 from lobster.config.credentials import get_api_key, get_endpoint
+from lobster.config.endpoint_policy import (
+    _ALLOWED_HOSTS,
+    EndpointPolicyError,
+)
+from lobster.config.endpoint_policy import is_allowed_host as _is_allowed_host
+from lobster.config.endpoint_policy import (
+    validate_endpoint as _policy_validate_endpoint,
+)
 
 logger = logging.getLogger(__name__)
 
 REST_API_BASE = "https://app.omics-os.com"
 STREAM_API_BASE = "https://stream.omics-os.com"
 
-_ALLOWED_HOSTS = frozenset({
-    "app.omics-os.com",
-    "stream.omics-os.com",
-    "localhost",
-    "127.0.0.1",
-    "::1",
-})
-
 # Covers CSI, OSC (BEL and ST terminated), C1 controls, single-char ESC sequences
 _ANSI_ESCAPE_RE = re.compile(
-    r"\x1b\[[0-9;?]*[A-Za-z]"       # CSI (including private-mode ?-prefixed)
+    r"\x1b\[[0-9;?]*[A-Za-z]"  # CSI (including private-mode ?-prefixed)
     r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC (BEL or ST terminated)
-    r"|\x1b[PX^_][^\x1b]*\x1b\\"    # DCS/SOS/PM/APC strings
-    r"|\x1b[A-Z@-_]"                # single-char ESC sequences
-    r"|[\x00-\x08\x0e-\x1f\x7f]"   # C0 controls (except \t \n \r)
-    r"|[\x80-\x9f]"                 # C1 controls
+    r"|\x1b[PX^_][^\x1b]*\x1b\\"  # DCS/SOS/PM/APC strings
+    r"|\x1b[A-Z@-_]"  # single-char ESC sequences
+    r"|[\x00-\x08\x0e-\x1f\x7f]"  # C0 controls (except \t \n \r)
+    r"|[\x80-\x9f]"  # C1 controls
 )
 
 _UUID_RE = re.compile(
@@ -44,34 +44,26 @@ MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10 MB
 # P0-MIGRATE: replace with lobster.cloud.errors.CloudError hierarchy
 class CloudQueryError(Exception):
     """Typed error for JSON-safe error reporting."""
+
     pass
 
 
 # P0-MIGRATE: replace with CloudClient endpoint validation (P0 amendment A9)
 def _validate_endpoint(endpoint: str) -> None:
-    """Reject endpoints not in allowlist to prevent token exfiltration."""
-    from urllib.parse import urlparse
+    """Reject endpoints not in allowlist to prevent token exfiltration.
 
-    parsed = urlparse(endpoint)
-    hostname = parsed.hostname or ""
-    if hostname not in _ALLOWED_HOSTS:
-        raise CloudQueryError(
-            f"Endpoint '{hostname}' not in allowlist. "
-            f"Allowed: {', '.join(sorted(_ALLOWED_HOSTS))}. "
-            f"Use --unsafe-endpoint to override."
-        )
-    if parsed.scheme not in ("https", "http"):
-        raise CloudQueryError("Only https:// and http:// endpoints supported.")
-    if parsed.scheme == "http" and hostname not in ("localhost", "127.0.0.1", "::1"):
-        raise CloudQueryError("HTTP only allowed for localhost. Use HTTPS.")
-    if parsed.path and parsed.path != "/":
-        raise CloudQueryError(
-            f"Endpoint must be an origin (no path). Got: {endpoint}"
-        )
-    if parsed.query or parsed.fragment:
-        raise CloudQueryError(
-            f"Endpoint must be an origin (no query/fragment). Got: {endpoint}"
-        )
+    Thin wrapper over the shared :func:`endpoint_policy.validate_endpoint` so all
+    surfaces share ONE policy (Codex P0). Maps the shared error to the local
+    ``CloudQueryError`` type (which existing callers catch) and appends the
+    ``--unsafe-endpoint`` hint that is specific to this CLI path.
+    """
+    try:
+        _policy_validate_endpoint(endpoint)
+    except EndpointPolicyError as e:
+        msg = str(e)
+        if "not in allowlist" in msg:
+            msg += " Use --unsafe-endpoint to override."
+        raise CloudQueryError(msg) from e
 
 
 # P0-MIGRATE: move to lobster.cloud.output or shared terminal utils
@@ -100,9 +92,7 @@ def resolve_auth(token_override: Optional[str] = None) -> dict:
 
     token = token or get_api_key()
     if not token:
-        raise CloudQueryError(
-            "Not authenticated. Run 'lobster cloud login' first."
-        )
+        raise CloudQueryError("Not authenticated. Run 'lobster cloud login' first.")
 
     if token.startswith("omk_"):
         return {"X-API-Key": token}
@@ -116,9 +106,7 @@ def resolve_rest_base(endpoint_override: Optional[str] = None) -> str:
     return get_endpoint()
 
 
-def derive_stream_base(
-    rest_base: str, stream_override: Optional[str] = None
-) -> str:
+def derive_stream_base(rest_base: str, stream_override: Optional[str] = None) -> str:
     """Derive stream base from explicit override or REST base.
 
     If REST was overridden but stream was not, use REST base for streaming
@@ -147,8 +135,11 @@ def _validate_project_id(project_id: Optional[str]) -> Optional[str]:
 
 
 def create_cloud_session(
-    rest_base: str, headers: dict, name: str = "Cloud Query",
-    project_id: Optional[str] = None, client_source: str = "cli",
+    rest_base: str,
+    headers: dict,
+    name: str = "Cloud Query",
+    project_id: Optional[str] = None,
+    client_source: str = "cli",
 ) -> str:
     """POST /api/v1/sessions → session_id (UUID)."""
     project_id = _validate_project_id(project_id)
@@ -173,13 +164,20 @@ def create_cloud_session(
             "Monthly budget exhausted. Check usage: lobster cloud status"
         )
     if resp.status_code == 429:
-        raise CloudQueryError("Rate limited (5/min for session creation). Wait and retry.")
+        raise CloudQueryError(
+            "Rate limited (5/min for session creation). Wait and retry."
+        )
     if not resp.is_success:
         detail = ""
         try:
             err_body = resp.json()
             if isinstance(err_body, dict):
-                detail = err_body.get("detail") or err_body.get("message") or err_body.get("error") or ""
+                detail = (
+                    err_body.get("detail")
+                    or err_body.get("message")
+                    or err_body.get("error")
+                    or ""
+                )
         except Exception:
             detail = resp.text[:200] if resp.text else ""
         msg = f"Failed to create session: {resp.status_code}"
@@ -206,13 +204,18 @@ def create_cloud_session(
 
 
 def resolve_cloud_session(
-    rest_base: str, headers: dict, session_id: Optional[str],
-    project_id: Optional[str] = None, client_source: str = "cli",
+    rest_base: str,
+    headers: dict,
+    session_id: Optional[str],
+    project_id: Optional[str] = None,
+    client_source: str = "cli",
 ) -> str:
     """Resolve session_id: create new, use provided UUID, or resolve 'latest'."""
     # P0-MIGRATE: replace with lobster.cloud.sessions.resolve_session_id()
     if not session_id:
-        return create_cloud_session(rest_base, headers, project_id=project_id, client_source=client_source)
+        return create_cloud_session(
+            rest_base, headers, project_id=project_id, client_source=client_source
+        )
 
     if session_id.lower() == "latest":
         url = f"{rest_base}/api/v1/sessions"
@@ -232,10 +235,16 @@ def resolve_cloud_session(
         except (json.JSONDecodeError, ValueError) as e:
             raise CloudQueryError(f"Invalid JSON from session list: {e}") from e
 
-        sessions = data if isinstance(data, list) else data.get("sessions", []) if isinstance(data, dict) else []
+        sessions = (
+            data
+            if isinstance(data, list)
+            else data.get("sessions", []) if isinstance(data, dict) else []
+        )
         valid = [
-            s for s in sessions
-            if isinstance(s, dict) and isinstance(s.get("session_id"), str)
+            s
+            for s in sessions
+            if isinstance(s, dict)
+            and isinstance(s.get("session_id"), str)
             and _UUID_RE.match(s["session_id"])
         ]
         if not valid:
@@ -324,20 +333,30 @@ def stream_cloud_query(
     try:
         with httpx.Client(timeout=httpx.Timeout(600.0, connect=15.0)) as client:
             with client.stream(
-                "POST", url, json=body,
+                "POST",
+                url,
+                json=body,
                 headers={**headers, "Content-Type": "application/json"},
             ) as resp:
                 if resp.status_code == 401:
-                    result.set_error("Authentication failed (401). Run 'lobster cloud login'.")
+                    result.set_error(
+                        "Authentication failed (401). Run 'lobster cloud login'."
+                    )
                     return result
                 if resp.status_code == 402:
-                    result.set_error("Monthly budget exhausted. Check: lobster cloud status")
+                    result.set_error(
+                        "Monthly budget exhausted. Check: lobster cloud status"
+                    )
                     return result
                 if resp.status_code == 429:
-                    result.set_error("Rate limited (10/min). Wait 10-15 seconds and retry.")
+                    result.set_error(
+                        "Rate limited (10/min). Wait 10-15 seconds and retry."
+                    )
                     return result
                 if resp.status_code == 404:
-                    result.set_error("Session not found. It may have been deleted or expired.")
+                    result.set_error(
+                        "Session not found. It may have been deleted or expired."
+                    )
                     return result
                 if not resp.is_success:
                     result.set_error(f"Stream failed: {resp.status_code}")
@@ -363,7 +382,9 @@ def stream_cloud_query(
 
     # B4: detect empty/truncated streams that would falsely report success
     if not result._saw_valid_line and result.error_detail is None:
-        result.set_error("Empty response from cloud (no valid DataStream parts received).")
+        result.set_error(
+            "Empty response from cloud (no valid DataStream parts received)."
+        )
 
     return result
 
@@ -371,11 +392,14 @@ def stream_cloud_query(
 # P0-MIGRATE: replace with CloudClient.post() fire-and-forget wrapper
 def cancel_cloud_run(rest_base: str, headers: dict, session_id: str) -> None:
     """POST /sessions/{id}/chat/cancel. Blocks up to 2s to ensure delivery."""
+
     def _do_cancel():
         url = f"{rest_base}/api/v1/sessions/{session_id}/chat/cancel"
         try:
             with httpx.Client(timeout=3.0) as client:
-                client.post(url, headers={**headers, "Content-Type": "application/json"})
+                client.post(
+                    url, headers={**headers, "Content-Type": "application/json"}
+                )
         except Exception:
             logger.debug("Cancel request failed", exc_info=True)
 
@@ -393,7 +417,11 @@ def fetch_workspace_files(rest_base: str, headers: dict, session_id: str) -> lis
             resp = client.get(url, headers={**headers, "Accept": "application/json"})
         if resp.is_success:
             data = resp.json()
-            files = data.get("files", data) if isinstance(data, dict) else data if isinstance(data, list) else []
+            files = (
+                data.get("files", data)
+                if isinstance(data, dict)
+                else data if isinstance(data, list) else []
+            )
             return [f for f in files if isinstance(f, dict)]
     except Exception:
         logger.debug("Failed to fetch workspace files", exc_info=True)
@@ -413,7 +441,7 @@ def _parse_datastream_line(
     aui-state: state patches. Unknown prefixes silently ignored.
     """
     if line.startswith("aui-state:"):
-        patch_str = line[len("aui-state:"):]
+        patch_str = line[len("aui-state:") :]
         try:
             patches = json.loads(patch_str)
         except (json.JSONDecodeError, TypeError):
@@ -454,7 +482,7 @@ def _parse_datastream_line(
         return
 
     prefix = line[:colon_idx]
-    payload = line[colon_idx + 1:]
+    payload = line[colon_idx + 1 :]
 
     if prefix == "0":
         try:
@@ -496,11 +524,13 @@ def _parse_datastream_line(
             data = json.loads(payload)
             if isinstance(data, dict):
                 result._saw_valid_line = True
-                result.tool_calls.append({
-                    "id": data.get("toolCallId"),
-                    "name": data.get("toolName"),
-                    "status": "started",
-                })
+                result.tool_calls.append(
+                    {
+                        "id": data.get("toolCallId"),
+                        "name": data.get("toolName"),
+                        "status": "started",
+                    }
+                )
         except (json.JSONDecodeError, TypeError):
             pass
 

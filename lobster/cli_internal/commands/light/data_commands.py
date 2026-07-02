@@ -79,7 +79,9 @@ def _fetch_events(
                 )
                 return None
             if resp.status_code == 403:
-                console.print(f"[red]Access denied for {entity_type[:-1]} {entity_id}.[/red]")
+                console.print(
+                    f"[red]Access denied for {entity_type[:-1]} {entity_id}.[/red]"
+                )
                 return None
         except (httpx.ConnectError, httpx.TimeoutException):
             console.print("[red]Cannot reach Omics-OS Cloud.[/red]")
@@ -96,7 +98,9 @@ def _fetch_events(
 def events(
     entity_id: str = typer.Argument(help="Dataset or session ID"),
     limit: int = typer.Option(50, "--limit", "-n", help="Max events to fetch (1-200)"),
-    format: str = typer.Option("table", "--format", "-f", help="Output format: table or csv"),
+    format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table or csv"
+    ),
 ) -> None:
     """Show provenance events for a dataset or session.
 
@@ -121,7 +125,15 @@ def events(
         raise typer.Exit(0)
 
     limit = max(1, min(limit, 200))
+    # Validate before attaching the bearer token (poisoned-endpoint exfil). (Codex P0)
+    from lobster.config.endpoint_policy import EndpointPolicyError, validate_endpoint
+
     endpoint = get_endpoint()
+    try:
+        validate_endpoint(endpoint)
+    except EndpointPolicyError as e:
+        console.print(f"[red]Refusing to send token to disallowed endpoint: {e}[/red]")
+        raise typer.Exit(1)
     data = _fetch_events(endpoint, api_key, entity_id, limit)
     if data is None:
         raise typer.Exit(1)
@@ -136,10 +148,14 @@ def events(
     if format == "csv":
         _print_csv(events_list)
     else:
-        _print_table(events_list, entity_type, entity_id, data.get("count", len(events_list)))
+        _print_table(
+            events_list, entity_type, entity_id, data.get("count", len(events_list))
+        )
 
 
-def _print_table(events_list: list, entity_type: str, entity_id: str, count: int) -> None:
+def _print_table(
+    events_list: list, entity_type: str, entity_id: str, count: int
+) -> None:
     """Render events as a Rich table."""
     table = Table(
         title=f"Events for {entity_type} {entity_id} ({count} shown)",
@@ -157,9 +173,11 @@ def _print_table(events_list: list, entity_type: str, entity_id: str, count: int
         event_type = event.get("event_type", "?")
         actor = event.get("actor", "?")
         payload = event.get("payload", {})
-        details = ", ".join(
-            f"{k}={_strip_control_chars(str(v))}" for k, v in payload.items()
-        ) if payload else ""
+        details = (
+            ", ".join(f"{k}={_strip_control_chars(str(v))}" for k, v in payload.items())
+            if payload
+            else ""
+        )
         table.add_row(timestamp, event_type, actor, details)
 
     console.print(table)
@@ -171,14 +189,18 @@ def _print_csv(events_list: list) -> None:
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["timestamp", "event_id", "event_type", "entity_type", "actor", "payload"])
+    writer.writerow(
+        ["timestamp", "event_id", "event_type", "entity_type", "actor", "payload"]
+    )
     for event in events_list:
-        writer.writerow([
-            _sanitize_cell(str(event.get("timestamp", ""))),
-            _sanitize_cell(str(event.get("event_id", ""))),
-            _sanitize_cell(str(event.get("event_type", ""))),
-            _sanitize_cell(str(event.get("entity_type", ""))),
-            _sanitize_cell(str(event.get("actor", ""))),
-            _sanitize_cell(json.dumps(event.get("payload", {}))),
-        ])
+        writer.writerow(
+            [
+                _sanitize_cell(str(event.get("timestamp", ""))),
+                _sanitize_cell(str(event.get("event_id", ""))),
+                _sanitize_cell(str(event.get("event_type", ""))),
+                _sanitize_cell(str(event.get("entity_type", ""))),
+                _sanitize_cell(str(event.get("actor", ""))),
+                _sanitize_cell(json.dumps(event.get("payload", {}))),
+            ]
+        )
     sys.stdout.write(output.getvalue())

@@ -131,9 +131,9 @@ def status() -> None:
 
     # Omics-OS Cloud
     try:
-        from lobster.config.credentials import load_credentials
+        from lobster.config.credentials import load_active_profile
 
-        cloud_creds = load_credentials()
+        cloud_creds = load_active_profile()
         if cloud_creds:
             mode = cloud_creds.get("auth_mode", "?")
             email = cloud_creds.get("email", "")

@@ -128,9 +128,9 @@ def _detect_existing_state() -> dict:
     }
 
     try:
-        from lobster.config.credentials import load_credentials
+        from lobster.config.credentials import load_active_profile
 
-        creds = load_credentials()
+        creds = load_active_profile()
         if creds and creds.get("access_token"):
             state["has_cloud_credentials"] = True
             state["cloud_user_email"] = creds.get("email")

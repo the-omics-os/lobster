@@ -136,7 +136,13 @@ class OmicsOSProvider(ILLMProvider):
                 "Run 'lobster cloud login' or set OMICS_OS_API_KEY."
             )
 
+        # Validate the endpoint before attaching the token: this is the default
+        # `lobster chat` path, so a poisoned profile/env endpoint would exfil the
+        # bearer token to an attacker host on every session. Fail closed. (Codex P0)
+        from lobster.config.endpoint_policy import validate_endpoint
+
         endpoint = kwargs.pop("endpoint", None) or get_endpoint()
+        validate_endpoint(endpoint)
         bedrock_model_id = self._to_bedrock_model_id(model_id)
 
         gateway_client = GatewayBedrockClient(

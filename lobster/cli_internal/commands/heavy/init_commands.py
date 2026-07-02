@@ -1225,10 +1225,9 @@ def _validate_oauth_credentials() -> None:
     """
     try:
         from lobster.config.credentials import (
+            _save_active_profile,
             get_api_key,
             get_endpoint,
-            load_credentials,
-            save_credentials,
         )
 
         token = get_api_key()
@@ -1252,12 +1251,15 @@ def _validate_oauth_credentials() -> None:
             )
             return
 
-        # Enrich the existing credentials with gateway data.
-        creds = load_credentials() or {}
-        creds["user_id"] = data.get("user_id", "")
-        creds["email"] = data.get("email", "")
-        creds["tier"] = data.get("tier", "free")
-        save_credentials(creds)
+        # Enrich the active profile with gateway data (V2-safe: preserves
+        # siblings + version + active_profile; enrich-only, no token fields).
+        _save_active_profile(
+            {
+                "user_id": data.get("user_id", ""),
+                "email": data.get("email", ""),
+                "tier": data.get("tier", "free"),
+            }
+        )
 
         email = data.get("email", "")
         tier = data.get("tier", "free")
@@ -1444,9 +1446,7 @@ def _offer_npm_cross_install() -> None:
         "[bold]Cloud TUI[/bold] enables interactive cloud sessions "
         "from your terminal."
     )
-    console.print(
-        "  Install: [bold cyan]npm install -g @omicsos/lobster[/bold cyan]"
-    )
+    console.print("  Install: [bold cyan]npm install -g @omicsos/lobster[/bold cyan]")
 
     try:
         install = Confirm.ask("  Install now?", default=True, console=console)
@@ -1454,7 +1454,9 @@ def _offer_npm_cross_install() -> None:
         return
 
     if not install:
-        console.print("  [dim]Skipped. Run 'npm install -g @omicsos/lobster' later.[/dim]")
+        console.print(
+            "  [dim]Skipped. Run 'npm install -g @omicsos/lobster' later.[/dim]"
+        )
         return
 
     npm = shutil.which("npm")
@@ -1466,10 +1468,12 @@ def _offer_npm_cross_install() -> None:
         return
 
     import subprocess
+
     console.print("  [dim]Installing @omicsos/lobster...[/dim]")
     result = subprocess.run(
         [npm, "install", "-g", "@omicsos/lobster"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         console.print("  [green]✓[/green] @omicsos/lobster installed")
@@ -1696,7 +1700,9 @@ def init_impl(
     from lobster.config.global_config import GlobalProviderConfig
 
     if ui_mode not in ("auto", "go", "classic"):
-        console.print(f"[red]Error:[/red] Invalid --ui value '{ui_mode}'. Must be one of: auto, go, classic")
+        console.print(
+            f"[red]Error:[/red] Invalid --ui value '{ui_mode}'. Must be one of: auto, go, classic"
+        )
         raise typer.Exit(1)
 
     # Determine paths based on global vs workspace mode
