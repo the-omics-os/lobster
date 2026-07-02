@@ -513,7 +513,7 @@ def test_openai_provider_list_models():
     provider = get_provider("openai")
     models = provider.list_models()
 
-    assert len(models) == 5  # gpt-4o, gpt-4o-mini, o1, o1-mini, o3-mini
+    assert len(models) == 6  # gpt-4o, gpt-4o-mini, o1, o1-mini, o3-mini, gpt-5.5
     assert all(isinstance(m, ModelInfo) for m in models)
     assert all(m.provider == "openai" for m in models)
 

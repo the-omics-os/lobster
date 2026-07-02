@@ -104,6 +104,16 @@ class OpenAIProvider(ILLMProvider):
             input_cost_per_million=1.10,
             output_cost_per_million=4.40,
         ),
+        ModelInfo(
+            name="gpt-5.5-2026-04-23",
+            display_name="GPT-5.5",
+            description="Most capable GPT model - multimodal reasoning",
+            provider="openai",
+            context_window=1048576,
+            is_default=False,
+            input_cost_per_million=5.00,
+            output_cost_per_million=30.00,
+        ),
     ]
 
     @property
@@ -208,20 +218,15 @@ class OpenAIProvider(ILLMProvider):
 
     def _is_reasoning_model(self, model_id: str) -> bool:
         """
-        Check if model is an o-series reasoning model.
-
-        Reasoning models (o1, o3) don't support temperature or max_tokens
-        parameters. They use different completion behavior.
+        Check if model doesn't support temperature/max_tokens params.
 
         Args:
             model_id: Model identifier
 
         Returns:
-            bool: True if model is an o1/o3 reasoning model
+            bool: True if model rejects temperature/max_tokens
         """
-        # Reasoning model prefixes — update when OpenAI adds new o-series
-        # models, until LangChain exposes a capability flag
-        return model_id.startswith(("o1", "o3", "o4-mini"))
+        return model_id.startswith(("o1", "o3", "o4-mini", "gpt-5.5"))
 
     def create_chat_model(
         self,
