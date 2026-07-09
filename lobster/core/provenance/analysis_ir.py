@@ -12,7 +12,29 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from jinja2 import Environment
+
 logger = logging.getLogger(__name__)
+
+# Shared Jinja2 environment for rendering AnalysisStep code templates.
+#
+# ``autoescape=False`` because templates produce Python source, not HTML
+# (matches the PromptComposer environment in lobster/prompts/composer.py).
+#
+# The ``repr`` filter is required: analysis templates across the codebase use
+# ``{{ value | repr }}`` to emit Python literals safely (e.g. quoted strings,
+# lists). jinja2 has no built-in ``repr`` filter, so a bare ``Template(...)``
+# raises "No filter named 'repr'" at parse time (jinja >= 3.1) for every such
+# template — which is every genomics/GWAS export and the scRNA sub-clustering
+# export. Registering it here fixes all call sites at the AnalysisStep level.
+#
+# ``| repr`` param contract: values passed to templates are expected to be
+# JSON/literal-shaped (str, int, float, bool, None, list/dict of those). A
+# custom object with a hostile ``__repr__`` could inject into a generated
+# notebook cell; current callers only pass literal-shaped params. A
+# python-literal-hardening filter is tracked as separate future work.
+_JINJA_ENV = Environment(autoescape=False)
+_JINJA_ENV.filters["repr"] = repr
 
 
 @dataclass
@@ -260,9 +282,7 @@ class AnalysisStep:
             ValueError: If template has invalid syntax
         """
         try:
-            from jinja2 import Template
-
-            Template(self.code_template)
+            _JINJA_ENV.from_string(self.code_template)
             return True
         except Exception as e:
             raise ValueError(f"Invalid Jinja2 template: {e}") from e
@@ -281,12 +301,10 @@ class AnalysisStep:
             ValueError: If template rendering fails
         """
         try:
-            from jinja2 import Template
-
             # Merge parameters with overrides
             params = {**self.parameters, **override_params}
 
-            template = Template(self.code_template)
+            template = _JINJA_ENV.from_string(self.code_template)
             code = template.render(**params)
 
             return code

@@ -334,6 +334,77 @@ class TestAnalysisStep:
         assert "5000" in code
         assert "10000" not in code
 
+    def test_render_with_repr_filter(self):
+        """The ``repr`` filter must be registered on the render environment.
+
+        Regression: genomics/GWAS/sub-clustering templates use ``{{ x | repr }}``
+        to emit Python literals. jinja2 has no built-in ``repr`` filter, so a bare
+        ``Template(...)`` raised "No filter named 'repr'" for every such template.
+        """
+        ir = AnalysisStep(
+            operation="cyvcf2.VCF.load",
+            tool_name="load_vcf",
+            description="Load a VCF",
+            library="cyvcf2",
+            code_template="source = {{ file_path | repr }}\nregion = {{ region | repr }}",
+            imports=[],
+            parameters={"file_path": "/data/HG002.vcf.gz", "region": None},
+            parameter_schema={},
+        )
+
+        code = ir.render()
+
+        # repr() quotes strings and renders None as the literal None
+        assert "source = '/data/HG002.vcf.gz'" in code
+        assert "region = None" in code
+        assert "{{" not in code
+
+    def test_render_repr_filter_output_is_valid_python(self):
+        """Rendered ``| repr`` output must parse as Python (round-trips a literal)."""
+        import ast
+
+        ir = AnalysisStep(
+            operation="test.repr_literals",
+            tool_name="test",
+            description="repr of assorted literal-shaped params",
+            library="test",
+            code_template=(
+                "s = {{ s | repr }}\n"
+                "n = {{ n | repr }}\n"
+                "flag = {{ flag | repr }}\n"
+                "items = {{ items | repr }}"
+            ),
+            imports=[],
+            parameters={
+                "s": "it's a string",
+                "n": 42,
+                "flag": True,
+                "items": ["a", "b"],
+            },
+            parameter_schema={},
+        )
+
+        code = ir.render()
+
+        ast.parse(code)  # must not raise
+        # repr must have escaped the embedded apostrophe safely
+        assert "it's a string" in code or "it\\'s a string" in code
+
+    def test_validate_template_with_repr_filter(self):
+        """validate_template() must also accept ``| repr`` (jinja raises at parse time)."""
+        ir = AnalysisStep(
+            operation="cyvcf2.VCF.load",
+            tool_name="load_vcf",
+            description="Load a VCF",
+            library="cyvcf2",
+            code_template="source = {{ file_path | repr }}",
+            imports=[],
+            parameters={"file_path": "/data/x.vcf.gz"},
+            parameter_schema={},
+        )
+
+        assert ir.validate_template() is True
+
     def test_render_invalid_template(self):
         """Test that invalid template raises error during render."""
         ir = AnalysisStep(
