@@ -10,10 +10,8 @@ import httpx
 
 from lobster.config.credentials import get_api_key, get_endpoint
 from lobster.config.endpoint_policy import (
-    _ALLOWED_HOSTS,
     EndpointPolicyError,
 )
-from lobster.config.endpoint_policy import is_allowed_host as _is_allowed_host
 from lobster.config.endpoint_policy import (
     validate_endpoint as _policy_validate_endpoint,
 )
