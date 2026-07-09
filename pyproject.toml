@@ -494,8 +494,10 @@ filterwarnings = [
 ]
 minversion = "7.0"
 timeout = 300
-collect_ignore = ["build/", "dist/", ".tox/", ".eggs/", "venv/", ".venv/", "env/", ".env/", "tests/archive/"]
-collect_ignore_glob = ["**/.*", "**/__pycache__/**", "**/node_modules/**", "**/.DS_Store", "tests/archive/**", "kevin_notes/**", "kevin_notes_completed/**", "tests/manual/**"]
+# NOTE: collect_ignore / collect_ignore_glob are conftest.py module-level hooks,
+# NOT valid [tool.pytest.ini_options] keys. Under pytest >= 9.1 with --strict-config
+# they raise "Unknown config option" and hard-fail (exit 4). Directory exclusion is
+# handled by norecursedirs below (valid) — these keys were dead here.
 norecursedirs = [".git", ".tox", ".eggs", "venv", ".venv", "build", "dist", "node_modules", "__pycache__", "tests/archive", "tests/manual", "kevin_notes", "kevin_notes_completed"]
 
 [tool.mypy]

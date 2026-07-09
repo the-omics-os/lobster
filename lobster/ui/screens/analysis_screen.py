@@ -549,12 +549,8 @@ class AnalysisScreen(Screen):
                 available = [
                     name for name in worker_agents if is_agent_available(name, tier)
                 ]
-                restricted = [
-                    name for name in worker_agents if not is_agent_available(name, tier)
-                ]
             except ImportError:
                 available = []
-                restricted = []
 
             tier_display = entitlement.get("tier_display", "Free")
             tier_emoji = {"free": "🆓", "premium": "⭐", "enterprise": "🏢"}.get(
@@ -589,7 +585,6 @@ class AnalysisScreen(Screen):
                     status_text += f"\n- {agent}"
                 if len(available) > 5:
                     status_text += f"\n- ... and {len(available) - 5} more"
-
 
             results.append_system_message(status_text)
 

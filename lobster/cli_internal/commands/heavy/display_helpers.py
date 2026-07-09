@@ -234,7 +234,6 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
     worker_agents = get_worker_agents()
     tier = entitlement.get("tier", "free")
     available = [name for name in worker_agents if is_agent_available(name, tier)]
-    restricted = [name for name in worker_agents if not is_agent_available(name, tier)]
 
     tier_rows = [
         ("Subscription Tier", entitlement.get("tier_display", "Free")),
@@ -366,7 +365,6 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
                     f"... and {len(available_names) - len(available_preview)} more available agents"
                 )
             )
-
 
     features = entitlement.get("features", [])
     if features:

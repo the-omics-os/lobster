@@ -559,12 +559,8 @@ class LobsterCommands(Provider):
             available = [
                 name for name in worker_agents if is_agent_available(name, tier)
             ]
-            restricted = [
-                name for name in worker_agents if not is_agent_available(name, tier)
-            ]
         except ImportError:
             available = []
-            restricted = []
 
         # Build output
         tier_display = entitlement.get("tier_display", "Free")
@@ -600,7 +596,6 @@ class LobsterCommands(Provider):
                 lines.append(f"- {agent}")
             if len(available) > 5:
                 lines.append(f"- ... and {len(available) - 5} more")
-
 
         self._show_result("\n".join(lines))
 

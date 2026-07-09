@@ -1973,7 +1973,7 @@ class DataManagerV2:
                 f"Workspace '{workspace_name}' not found at {workspace_dir}"
             )
 
-        anndata_mod = _ensure_anndata()
+        _ensure_anndata()
         loaded = []
         errors = []
 

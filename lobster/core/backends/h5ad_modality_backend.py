@@ -18,12 +18,10 @@ Metadata is read from HDF5 headers without loading X into memory.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 import h5py
-import numpy as np
 import pandas as pd
 from anndata import AnnData
 
