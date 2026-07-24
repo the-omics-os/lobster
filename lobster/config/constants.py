@@ -17,6 +17,7 @@ VALID_PROVIDERS: Final[List[str]] = [
     "openai",
     "openrouter",
     "omics-os",
+    "nebius",
 ]
 
 # Valid agent configuration profiles
@@ -44,4 +45,5 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "openai": "OpenAI",
     "openrouter": "OpenRouter (600+ models)",
     "omics-os": "Omics-OS Cloud",
+    "nebius": "Nebius AI Studio",
 }
