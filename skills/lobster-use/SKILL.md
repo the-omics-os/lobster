@@ -40,6 +40,9 @@ required_env_vars:
   - name: OPENROUTER_API_KEY
     required: one_of_provider
     description: OpenRouter API key (local mode, 600+ models)
+  - name: NEBIUS_API_KEY
+    required: one_of_provider
+    description: Nebius AI Studio API key (local mode, open-weight models)
   - name: AWS_ACCESS_KEY_ID
     required: one_of_provider
     description: AWS Bedrock access key (local mode, must pair with SECRET)
@@ -91,7 +94,7 @@ language -- Lobster routes to 22 specialist agents across 10 packages automatica
 
 - **Binaries**: `lobster` CLI (`pip install lobster-ai`), Python 3.12+
 - **Local mode** (one of):
-  - `ANTHROPIC_API_KEY` | `GOOGLE_API_KEY` | `OPENAI_API_KEY` | `OPENROUTER_API_KEY`
+  - `ANTHROPIC_API_KEY` | `GOOGLE_API_KEY` | `OPENAI_API_KEY` | `OPENROUTER_API_KEY` | `NEBIUS_API_KEY`
   - `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` (Bedrock)
   - `AZURE_AI_ENDPOINT` + `AZURE_AI_CREDENTIAL` (Azure)
   - Ollama: no key needed (local models)

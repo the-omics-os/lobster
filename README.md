@@ -216,7 +216,9 @@ Configure via `lobster init` or environment variables. All providers use the sam
 |----------|------|-------|-------|
 | **Anthropic** | Cloud | API key | Claude models — recommended default |
 | **Ollama** | Local | `ollama pull <model>` | Fully offline, no data leaves the machine |
+| **OpenAI** | Cloud | API key | GPT and o-series models |
 | **OpenRouter** | Cloud | API key | Access 200+ models via a single endpoint |
+| **Nebius AI Studio** | Cloud | API key | Open-weight models (Qwen, DeepSeek, GLM, Kimi) |
 | **Google Gemini** | Cloud | Google API key | Long context window |
 | **AWS Bedrock** | Cloud | AWS credentials | Enterprise compliance, IAM-based auth |
 | **Azure AI** | Cloud | Endpoint + credential | Azure-hosted deployments |

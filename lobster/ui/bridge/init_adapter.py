@@ -4,7 +4,7 @@ The Go wizard (and the questionary fallback) both return a dict with this
 contract::
 
     {
-        "provider":           str,   # "anthropic"|"bedrock"|"ollama"|"gemini"|"azure"|"openai"|"openrouter"
+        "provider":           str,   # "anthropic"|"bedrock"|"ollama"|"gemini"|"azure"|"openai"|"openrouter"|"nebius"
         "api_key":            str,   # primary API key (empty for Ollama/Bedrock)
         "api_key_secondary":  str,   # secondary key (e.g. AWS secret; empty otherwise)
         "profile":            str,   # "development"|"production"|"performance"|"max"|""
@@ -46,6 +46,7 @@ _PROVIDER_ENV_KEYS: Dict[str, list[str]] = {
     "openai": ["OPENAI_API_KEY"],
     "openrouter": ["OPENROUTER_API_KEY"],
     "omics-os": ["OMICS_OS_API_KEY"],
+    "nebius": ["NEBIUS_API_KEY"],
 }
 
 # Providers that support the LOBSTER_PROFILE env var
@@ -146,6 +147,10 @@ def apply_tui_init_result(
     elif provider == "openrouter":
         if api_key:
             env_lines.append(f"OPENROUTER_API_KEY={api_key}")
+
+    elif provider == "nebius":
+        if api_key:
+            env_lines.append(f"NEBIUS_API_KEY={api_key}")
 
     elif provider == "omics-os":
         if api_key:

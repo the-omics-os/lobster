@@ -87,7 +87,14 @@ bedrock = ["langchain-aws>=0.1.0", "boto3>=1.26.0"]
 ollama = ["langchain-ollama>=0.3.10", "ollama>=0.6.0"]
 gemini = ["langchain-google-genai>=4.1.2"]
 openai = ["langchain-openai>=0.3.0"]
-all-providers = ["lobster-ai[anthropic,bedrock,ollama,gemini,azure,openai]"]
+# OpenAI-wire-compatible gateways — same client package, distinct extras so
+# `lobster-ai[openrouter]` / `[nebius]` resolve instead of silently no-op'ing
+# (uv ignores unknown extras without error).
+openrouter = ["langchain-openai>=0.3.0"]
+nebius = ["langchain-openai>=0.3.0"]
+all-providers = [
+    "lobster-ai[anthropic,bedrock,ollama,gemini,azure,openai,openrouter,nebius]"
+]
 
 # =============================================================================
 # Document Intelligence (optional, installed via `lobster init`)
@@ -508,7 +515,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [tool.bumpversion]
-current_version = "1.1.420"
+current_version = "1.1.421"
 commit = true
 tag = true
 

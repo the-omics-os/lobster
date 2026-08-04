@@ -838,14 +838,9 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
 
         models = provider_obj.list_models()
 
-        provider_icons = {
-            "anthropic": "🤖",
-            "bedrock": "☁️",
-            "ollama": "🦙",
-            "gemini": "✨",
-            "azure": "🔷",
-        }
-        icon = provider_icons.get(current_provider, "🤖")
+        from lobster.config.constants import PROVIDER_ICONS
+
+        icon = PROVIDER_ICONS.get(current_provider, "🤖")
         title = f"{icon} Available {provider_display_name} Models"
 
         model_rows = []
