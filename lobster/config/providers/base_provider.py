@@ -32,7 +32,7 @@ class ModelInfo:
         name: Model identifier (e.g., "claude-sonnet-4-20250514")
         display_name: Human-friendly name (e.g., "Claude Sonnet 4")
         description: Model description with capabilities
-        provider: Provider name (anthropic | bedrock | ollama)
+        provider: Provider name (any entry in VALID_PROVIDERS)
         context_window: Maximum context window size (tokens)
         is_default: Whether this is the provider's default model
         input_cost_per_million: Cost per million input tokens (USD)

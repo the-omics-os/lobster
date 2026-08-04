@@ -643,14 +643,12 @@ def _show_workspace_prompt(client):
                 runtime_override=getattr(client, "provider_override", None)
             )
 
-            # Provider icon mapping
-            provider_icons = {
-                "anthropic": "🔵",
-                "bedrock": "🟠",
-                "ollama": "🦙",
-                "gemini": "🔷",
-            }
-            provider_icon = provider_icons.get(current_provider, "⚪")
+            from lobster.config.constants import (
+                PROVIDER_ICON_FALLBACK,
+                PROVIDER_ICONS,
+            )
+
+            provider_icon = PROVIDER_ICONS.get(current_provider, PROVIDER_ICON_FALLBACK)
             provider_display = f"{provider_icon} {current_provider}"
         except Exception:
             # Fallback to unknown if resolution fails
@@ -818,7 +816,7 @@ def chat_impl(
         None,
         "--provider",
         "-p",
-        help="LLM provider to use (bedrock, anthropic, ollama). Overrides auto-detection.",
+        help="LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, omics-os). Overrides auto-detection.",
     ),
     model: Optional[str] = typer.Option(
         None,
@@ -981,14 +979,14 @@ def chat_impl(
                         runtime_override=getattr(client, "provider_override", None)
                     )
 
-                    # Provider icon mapping
-                    provider_icons = {
-                        "anthropic": "🔵",
-                        "bedrock": "🟠",
-                        "ollama": "🦙",
-                        "gemini": "🔷",
-                    }
-                    provider_icon = provider_icons.get(current_provider, "⚪")
+                    from lobster.config.constants import (
+                        PROVIDER_ICON_FALLBACK,
+                        PROVIDER_ICONS,
+                    )
+
+                    provider_icon = PROVIDER_ICONS.get(
+                        current_provider, PROVIDER_ICON_FALLBACK
+                    )
 
                     if current_provider == "ollama":
                         # Ollama is free - show icon, FREE, and token count

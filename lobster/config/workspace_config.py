@@ -47,7 +47,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
     Workspace-scoped provider and model configuration.
 
     Attributes:
-        global_provider: LLM provider for all agents (bedrock | anthropic | ollama | gemini)
+        global_provider: LLM provider for all agents (any entry in VALID_PROVIDERS)
         anthropic_model: Anthropic model to use (e.g., "claude-sonnet-4-20250514")
         bedrock_model: Bedrock model ID to use (e.g., "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
         ollama_model: Ollama model to use (e.g., "llama3:70b-instruct")
@@ -77,7 +77,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
 
     global_provider: Optional[str] = Field(
         None,
-        description="Global LLM provider (bedrock | anthropic | ollama | gemini | azure | openai | openrouter)",
+        description="Global LLM provider (bedrock | anthropic | ollama | gemini | azure | openai | openrouter | nebius)",
     )
 
     # Per-provider model settings
@@ -111,6 +111,11 @@ class WorkspaceProviderConfig(ProviderConfigBase):
     openrouter_model: Optional[str] = Field(
         None,
         description="OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
+    )
+
+    nebius_model: Optional[str] = Field(
+        None,
+        description="Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507', 'deepseek-ai/DeepSeek-V4-Pro')",
     )
 
     ollama_host: str = Field("http://localhost:11434", description="Ollama server URL")
@@ -245,6 +250,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         self.azure_model = None
         self.openai_model = None
         self.openrouter_model = None
+        self.nebius_model = None
         self.ollama_host = "http://localhost:11434"
         self.model_context_windows = {}
         self.per_agent_providers = {}

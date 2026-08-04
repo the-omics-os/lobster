@@ -305,6 +305,37 @@ def create_openrouter_config(api_key: str) -> ProviderConfig:
     )
 
 
+def create_nebius_config(api_key: str) -> ProviderConfig:
+    """
+    Create configuration for Nebius AI Studio.
+
+    Nebius AI Studio (Token Factory) hosts open-weight models via an
+    OpenAI-compatible API. Browse models at: https://nebius.com
+
+    Args:
+        api_key: Nebius API key
+
+    Returns:
+        ProviderConfig with environment variables
+    """
+    if not api_key or not api_key.strip():
+        return ProviderConfig(
+            provider_type="nebius",
+            env_vars={},
+            success=False,
+            message="API key cannot be empty",
+        )
+
+    return ProviderConfig(
+        provider_type="nebius",
+        env_vars={
+            "LOBSTER_LLM_PROVIDER": "nebius",
+            "NEBIUS_API_KEY": api_key.strip(),
+        },
+        success=True,
+    )
+
+
 def create_omics_os_config(api_key: str) -> ProviderConfig:
     """
     Create configuration for Omics-OS Cloud gateway.
@@ -433,6 +464,7 @@ def validate_provider_choice(
     has_gemini: bool = False,
     has_openai: bool = False,
     has_openrouter: bool = False,
+    has_nebius: bool = False,
     has_azure: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
@@ -445,6 +477,7 @@ def validate_provider_choice(
         has_gemini: Whether Gemini API key is provided
         has_openai: Whether OpenAI API key is provided
         has_openrouter: Whether OpenRouter API key is provided
+        has_nebius: Whether Nebius API key is provided
         has_azure: Whether Azure AI credentials are provided
 
     Returns:
@@ -457,6 +490,7 @@ def validate_provider_choice(
         and not has_gemini
         and not has_openai
         and not has_openrouter
+        and not has_nebius
         and not has_azure
     ):
         return (
@@ -474,10 +508,14 @@ def get_provider_priority_warning(
     has_gemini: bool = False,
     has_openai: bool = False,
     has_openrouter: bool = False,
+    has_nebius: bool = False,
     has_azure: bool = False,
 ) -> Optional[str]:
     """
     Get warning message if multiple providers are configured.
+
+    The order below mirrors the non-interactive dispatch chain in
+    ``init_impl`` — the provider named here is the one that actually wins.
 
     Args:
         has_anthropic: Whether Anthropic is configured
@@ -486,6 +524,7 @@ def get_provider_priority_warning(
         has_gemini: Whether Gemini is configured
         has_openai: Whether OpenAI is configured
         has_openrouter: Whether OpenRouter is configured
+        has_nebius: Whether Nebius is configured
         has_azure: Whether Azure AI is configured
 
     Returns:
@@ -499,6 +538,7 @@ def get_provider_priority_warning(
             has_gemini,
             has_openai,
             has_openrouter,
+            has_nebius,
             has_azure,
         ]
     )
@@ -511,15 +551,19 @@ def get_provider_priority_warning(
         return "Multiple providers specified. Using Claude API (highest priority)."
     elif has_bedrock:
         return "Multiple providers specified. Using AWS Bedrock (second priority)."
-    elif has_gemini:
-        return "Multiple providers specified. Using Gemini (third priority)."
-    elif has_openai:
-        return "Multiple providers specified. Using OpenAI (fourth priority)."
-    elif has_openrouter:
-        return "Multiple providers specified. Using OpenRouter (fifth priority)."
-    elif has_azure:
-        return "Multiple providers specified. Using Azure AI (sixth priority)."
     elif has_ollama:
-        return "Multiple providers specified. Using Ollama (seventh priority)."
+        return "Multiple providers specified. Using Ollama (third priority)."
+    elif has_gemini:
+        return "Multiple providers specified. Using Gemini (fourth priority)."
+    elif has_openai:
+        return "Multiple providers specified. Using OpenAI (fifth priority)."
+    elif has_openrouter:
+        return "Multiple providers specified. Using OpenRouter (sixth priority)."
+    elif has_nebius:
+        return (
+            "Multiple providers specified. Using Nebius AI Studio (seventh priority)."
+        )
+    elif has_azure:
+        return "Multiple providers specified. Using Azure AI (eighth priority)."
 
     return None

@@ -24,13 +24,10 @@ Example:
     ...     llm = provider.create_chat_model("Qwen/Qwen3-30B-A3B-Instruct-2507")
 """
 
-import logging
 import os
 from typing import Any, ClassVar, List
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
-
-logger = logging.getLogger(__name__)
 
 # Nebius AI Studio (Token Factory) API constants
 _BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
@@ -64,6 +61,11 @@ class NebiusProvider(ILLMProvider):
         >>> models = provider.list_models()
         >>> llm = provider.create_chat_model("Qwen/Qwen3-30B-A3B-Instruct-2507")
     """
+
+    # Conservative window for Nebius model IDs absent from KNOWN_MODELS.
+    # Open-weight windows vary from 8k to 1M; the inherited 200k default would
+    # over-promise and invite context overflow on a small unlisted model.
+    _default_context_window = 128_000
 
     # Static catalog — pricing (USD per 1M tokens) verified against Nebius.
     KNOWN_MODELS: ClassVar[List[ModelInfo]] = [

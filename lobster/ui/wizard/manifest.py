@@ -93,9 +93,7 @@ class ProviderDef:
     name: str  # e.g. "anthropic"
     display_name: str
     description: str = ""
-    model_selection: Literal["explicit", "profile", "local", "managed"] = (
-        "explicit"
-    )
+    model_selection: Literal["explicit", "profile", "local", "managed"] = "explicit"
     credentials: list[CredentialField] = field(default_factory=list)
     models: list[ModelDef] = field(default_factory=list)
     profiles: list[ProfileDef] = field(default_factory=list)
@@ -154,6 +152,7 @@ _MODEL_SELECTION: dict[str, Literal["explicit", "profile", "local", "managed"]] 
     "openai": "explicit",
     "openrouter": "explicit",
     "omics-os": "managed",
+    "nebius": "explicit",
 }
 
 _PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
@@ -165,6 +164,7 @@ _PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
     "openai": ("OpenAI", "GPT models via OpenAI API"),
     "openrouter": ("OpenRouter", "Multi-provider model proxy"),
     "omics-os": ("Omics-OS Cloud", "Managed models via Omics-OS"),
+    "nebius": ("Nebius AI Studio", "Open-weight models via Nebius"),
 }
 
 _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
@@ -203,6 +203,9 @@ _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
     ],
     "omics-os": [
         CredentialField(key="OMICS_OS_API_KEY", label="Omics-OS API Key"),
+    ],
+    "nebius": [
+        CredentialField(key="NEBIUS_API_KEY", label="Nebius API Key"),
     ],
 }
 

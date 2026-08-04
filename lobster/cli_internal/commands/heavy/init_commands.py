@@ -942,6 +942,7 @@ _PROVIDER_PACKAGES = {
     "azure": "langchain-azure-ai",
     "openai": "langchain-openai",
     "openrouter": "langchain-openai",
+    "nebius": "langchain-openai",
 }
 
 # Map provider choice → Python import module name
@@ -953,6 +954,7 @@ _PROVIDER_IMPORT_NAMES = {
     "azure": "langchain_azure_ai",
     "openai": "langchain_openai",
     "openrouter": "langchain_openai",
+    "nebius": "langchain_openai",
 }
 
 
@@ -1059,7 +1061,7 @@ def _ensure_provider_installed(provider_name: str) -> bool:
     """Check if provider package is installed; install if missing.
 
     Args:
-        provider_name: Provider key (anthropic, bedrock, ollama, gemini, azure)
+        provider_name: Provider key (any key of _PROVIDER_PACKAGES)
 
     Returns:
         True if package is available (already installed or successfully installed)
@@ -1556,6 +1558,9 @@ def init_impl(
     openrouter_key: Optional[str] = typer.Option(
         None, "--openrouter-key", help="OpenRouter API key (non-interactive mode)"
     ),
+    nebius_key: Optional[str] = typer.Option(
+        None, "--nebius-key", help="Nebius AI Studio API key (non-interactive mode)"
+    ),
     azure_endpoint: Optional[str] = typer.Option(
         None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
     ),
@@ -1692,6 +1697,8 @@ def init_impl(
       lobster init --non-interactive \\
         --openrouter-key=sk-or-xxx                   # CI/CD: OpenRouter (600+ models)
       lobster init --non-interactive \\
+        --nebius-key=xxx                             # CI/CD: Nebius AI Studio (open-weight models)
+      lobster init --non-interactive \\
         --azure-endpoint=https://xxx.inference.ai.azure.com/ \\
         --azure-credential=xxx                       # CI/CD: Azure AI
     """
@@ -1825,6 +1832,7 @@ def init_impl(
         has_gemini = gemini_key is not None
         has_openai = openai_key is not None
         has_openrouter = openrouter_key is not None
+        has_nebius = nebius_key is not None
         has_azure = azure_endpoint is not None and azure_credential is not None
 
         # Validate at least one provider
@@ -1835,6 +1843,7 @@ def init_impl(
             has_gemini,
             has_openai,
             has_openrouter=has_openrouter,
+            has_nebius=has_nebius,
             has_azure=has_azure,
         )
         if not valid:
@@ -1849,6 +1858,7 @@ def init_impl(
             console.print("  • Google Gemini: --gemini-key=xxx")
             console.print("  • OpenAI: --openai-key=xxx")
             console.print("  • OpenRouter: --openrouter-key=xxx")
+            console.print("  • Nebius AI Studio: --nebius-key=xxx")
             console.print("  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx")
             raise typer.Exit(1)
 
@@ -1860,6 +1870,7 @@ def init_impl(
             has_gemini,
             has_openai,
             has_openrouter=has_openrouter,
+            has_nebius=has_nebius,
             has_azure=has_azure,
         )
         if priority_warning:
@@ -1947,6 +1958,13 @@ def init_impl(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openrouter"
                 console.print("[green]✓ OpenRouter provider configured[/green]")
+        elif has_nebius:
+            config = provider_setup.create_nebius_config(nebius_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "nebius"
+                console.print("[green]✓ Nebius AI Studio provider configured[/green]")
         elif has_azure:
             config = provider_setup.create_azure_config(
                 azure_endpoint, azure_credential
@@ -2043,6 +2061,12 @@ def init_impl(
                 _ensure_provider_installed("gemini")
             elif has_openai:
                 _ensure_provider_installed("openai")
+            elif has_openrouter:
+                _ensure_provider_installed("openrouter")
+            elif has_nebius:
+                _ensure_provider_installed("nebius")
+            elif has_azure:
+                _ensure_provider_installed("azure")
 
             # Install docling if requested
             if install_docling:
@@ -2165,10 +2189,18 @@ def init_impl(
                 provider_name_ni = "anthropic"
             elif has_bedrock:
                 provider_name_ni = "bedrock"
+            elif has_ollama:
+                provider_name_ni = "ollama"
             elif has_gemini:
                 provider_name_ni = "gemini"
             elif has_openai:
                 provider_name_ni = "openai"
+            elif has_openrouter:
+                provider_name_ni = "openrouter"
+            elif has_nebius:
+                provider_name_ni = "nebius"
+            elif has_azure:
+                provider_name_ni = "azure"
             cmd = _build_uv_tool_init_command(
                 provider_name_ni,
                 locals().get("installed_agents"),
@@ -2399,11 +2431,14 @@ def init_impl(
         console.print(
             "  [cyan]8[/cyan] - OpenRouter              — 600+ models via one API key"
         )
+        console.print(
+            "  [cyan]9[/cyan] - Nebius AI Studio        — open-weight models (Qwen, DeepSeek)"
+        )
         console.print()
 
         provider = Prompt.ask(
             "[bold white]Choose provider[/bold white]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8"],
+            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"],
             default="1",
         )
 
@@ -2416,6 +2451,7 @@ def init_impl(
             "6": "azure",
             "7": "openai",
             "8": "openrouter",
+            "9": "nebius",
         }
         provider_name = provider_map[provider]
 
@@ -2630,6 +2666,27 @@ def init_impl(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openrouter"
                 console.print("[green]✓ OpenRouter provider configured[/green]")
+            else:
+                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                raise typer.Exit(1)
+
+        elif provider_name == "nebius":
+            console.print(
+                "\n[bold white]🧬 Nebius AI Studio Configuration[/bold white]"
+            )
+            console.print("Get your API key from: [link]https://nebius.com[/link]\n")
+            api_key = Prompt.ask(
+                "[bold white]Enter your Nebius API key[/bold white]", password=True
+            )
+            if not api_key.strip():
+                console.print("[red]❌ API key cannot be empty[/red]")
+                raise typer.Exit(1)
+            config = provider_setup.create_nebius_config(api_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "nebius"
+                console.print("[green]✓ Nebius AI Studio provider configured[/green]")
             else:
                 console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
                 raise typer.Exit(1)

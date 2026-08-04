@@ -124,8 +124,10 @@ LLM_PROVIDER_PACKAGES: Dict[str, Tuple[str, str]] = {
     "bedrock": ("bedrock", "langchain-aws"),
     "ollama": ("ollama", "langchain-ollama"),
     "gemini": ("gemini", "langchain-google-genai"),
-    "azure": ("azure", "langchain-openai"),
+    "azure": ("azure", "langchain-azure-ai"),
     "openai": ("openai", "langchain-openai"),
+    "openrouter": ("openrouter", "langchain-openai"),
+    "nebius": ("nebius", "langchain-openai"),
 }
 
 
@@ -570,7 +572,11 @@ class ComponentRegistry:
         for name, config in self._agents.items():
             package_name = getattr(config, "package_name", None)
             first_party_package = AGENT_TO_PACKAGE.get(name)
-            if package_name and first_party_package and package_name != first_party_package:
+            if (
+                package_name
+                and first_party_package
+                and package_name != first_party_package
+            ):
                 raise ComponentConflictError(
                     f"Agent name collision: '{name}' is provided by custom package "
                     f"'{package_name}' but is reserved for '{first_party_package}'."

@@ -396,7 +396,7 @@ class ConfigResolver:
         Args:
             agent_name: Name of agent (e.g., "supervisor", "data_expert")
             runtime_override: Explicit model from CLI flag (highest priority)
-            provider: LLM provider (bedrock, anthropic, ollama)
+            provider: LLM provider (any entry in VALID_PROVIDERS)
 
         Returns:
             Tuple[Optional[str], str]: (model_name, decision_source)

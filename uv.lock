@@ -3088,6 +3088,9 @@ genomics = [
 hdf5 = [
     { name = "tables" },
 ]
+nebius = [
+    { name = "langchain-openai" },
+]
 observability = [
     { name = "langfuse" },
     { name = "redis" },
@@ -3097,6 +3100,9 @@ ollama = [
     { name = "ollama" },
 ]
 openai = [
+    { name = "langchain-openai" },
+]
+openrouter = [
     { name = "langchain-openai" },
 ]
 plink = [
@@ -3182,12 +3188,14 @@ requires-dist = [
     { name = "langchain-core", specifier = ">=0.3.79" },
     { name = "langchain-google-genai", marker = "extra == 'gemini'", specifier = ">=4.1.2" },
     { name = "langchain-ollama", marker = "extra == 'ollama'", specifier = ">=0.3.10" },
+    { name = "langchain-openai", marker = "extra == 'nebius'", specifier = ">=0.3.0" },
     { name = "langchain-openai", marker = "extra == 'openai'", specifier = ">=0.3.0" },
+    { name = "langchain-openai", marker = "extra == 'openrouter'", specifier = ">=0.3.0" },
     { name = "langfuse", marker = "extra == 'dev'", specifier = ">=2.0.0" },
     { name = "langfuse", marker = "extra == 'observability'", specifier = ">=3.2.6" },
     { name = "langgraph", specifier = ">=1.0.5" },
     { name = "lobster-ai", extras = ["all-providers", "classic-tui", "docling", "extended-data", "hdf5"], marker = "extra == 'full'", editable = "." },
-    { name = "lobster-ai", extras = ["anthropic", "azure", "bedrock", "gemini", "ollama", "openai"], marker = "extra == 'all-providers'", editable = "." },
+    { name = "lobster-ai", extras = ["anthropic", "azure", "bedrock", "gemini", "nebius", "ollama", "openai", "openrouter"], marker = "extra == 'all-providers'", editable = "." },
     { name = "lobster-ai", extras = ["anthropic", "classic-tui", "extended-data", "transcriptomics"], marker = "extra == 'recommended'", editable = "." },
     { name = "lobster-ai", extras = ["azure", "batteries", "bulk-rnaseq", "dev", "genomics", "ml", "transcriptomics"], marker = "extra == 'all'", editable = "." },
     { name = "lobster-ai", extras = ["genomics", "proteomics", "transcriptomics"], marker = "extra == 'full'", editable = "." },
@@ -3260,7 +3268,7 @@ requires-dist = [
     { name = "uvicorn", marker = "extra == 'server'", specifier = ">=0.23.0" },
     { name = "xmltodict", specifier = ">=0.13.0" },
 ]
-provides-extras = ["anthropic", "bedrock", "ollama", "gemini", "openai", "all-providers", "docling", "hdf5", "server", "classic-tui", "vector-search", "observability", "extended-data", "transcriptomics", "doublet-detection", "genomics", "proteomics", "research", "plink", "azure", "recommended", "full", "dev", "all"]
+provides-extras = ["anthropic", "bedrock", "ollama", "gemini", "openai", "openrouter", "nebius", "all-providers", "docling", "hdf5", "server", "classic-tui", "vector-search", "observability", "extended-data", "transcriptomics", "doublet-detection", "genomics", "proteomics", "research", "plink", "azure", "recommended", "full", "dev", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3271,12 +3279,12 @@ dev = [
 
 [[package]]
 name = "lobster-ai-tui"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-ai-tui" }
 
 [[package]]
 name = "lobster-drug-discovery"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-drug-discovery" }
 dependencies = [
     { name = "anndata" },
@@ -3328,7 +3336,7 @@ provides-extras = ["chemistry", "docking", "plm", "full"]
 
 [[package]]
 name = "lobster-genomics"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-genomics" }
 dependencies = [
     { name = "anndata" },
@@ -3366,7 +3374,7 @@ provides-extras = ["genebe"]
 
 [[package]]
 name = "lobster-metabolomics"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-metabolomics" }
 dependencies = [
     { name = "anndata" },
@@ -3391,7 +3399,7 @@ requires-dist = [
 
 [[package]]
 name = "lobster-proteomics"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-proteomics" }
 dependencies = [
     { name = "anndata" },
@@ -3429,7 +3437,7 @@ provides-extras = ["network-analysis"]
 
 [[package]]
 name = "lobster-research"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-research" }
 dependencies = [
     { name = "lobster-ai" },
@@ -3446,7 +3454,7 @@ requires-dist = [
 
 [[package]]
 name = "lobster-transcriptomics"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-transcriptomics" }
 dependencies = [
     { name = "anndata" },
@@ -3492,7 +3500,7 @@ provides-extras = ["seurat-v3", "doublet-detection", "batch-integration"]
 
 [[package]]
 name = "lobster-vector"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-vector" }
 dependencies = [
     { name = "lobster-ai" },
@@ -3544,7 +3552,7 @@ provides-extras = ["chromadb", "openai", "local", "cohere", "graph", "full"]
 
 [[package]]
 name = "lobster-visualization"
-version = "1.1.420"
+version = "1.1.421"
 source = { editable = "packages/lobster-visualization" }
 dependencies = [
     { name = "lobster-ai" },

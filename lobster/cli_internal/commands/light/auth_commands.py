@@ -150,6 +150,7 @@ def status() -> None:
         ("openai", "OPENAI_API_KEY"),
         ("gemini", "GOOGLE_API_KEY"),
         ("openrouter", "OPENROUTER_API_KEY"),
+        ("nebius", "NEBIUS_API_KEY"),
         ("azure", "AZURE_AI_CREDENTIAL"),
     ]
     for name, env_var in _env_providers:

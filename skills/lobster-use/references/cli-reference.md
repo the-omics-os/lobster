@@ -49,6 +49,9 @@ lobster init --non-interactive --use-ollama --ollama-model "llama3:8b-instruct"
 # OpenRouter (600+ models)
 lobster init --non-interactive --openrouter-key "$OPENROUTER_API_KEY"
 
+# Nebius AI Studio (open-weight models)
+lobster init --non-interactive --nebius-key "$NEBIUS_API_KEY"
+
 # Azure AI
 lobster init --non-interactive --azure-endpoint "$AZURE_AI_ENDPOINT" --azure-credential "$AZURE_AI_CREDENTIAL"
 ```
@@ -354,7 +357,7 @@ Cloud sessions persist server-side. Same session accessible from CLI and web app
 
 ## LLM Providers (Local Mode)
 
-7 providers supported:
+8 providers supported for local mode (a 9th, `omics-os`, is the managed Cloud provider):
 
 | Provider | Init flag | Env var |
 |----------|-----------|---------|
@@ -364,7 +367,8 @@ Cloud sessions persist server-side. Same session accessible from CLI and web app
 | OpenAI | `--openai-key` | `OPENAI_API_KEY` |
 | Ollama (local) | `--use-ollama` | -- |
 | OpenRouter | `--openrouter-key` | `OPENROUTER_API_KEY` |
-| Azure AI | `--azure-endpoint` + `--azure-key` | `AZURE_ENDPOINT` |
+| Nebius AI Studio | `--nebius-key` | `NEBIUS_API_KEY` |
+| Azure AI | `--azure-endpoint` + `--azure-credential` | `AZURE_OPENAI_ENDPOINT` |
 
 ## Keyboard Shortcuts (Interactive)
 

@@ -648,12 +648,9 @@ if PROMPT_TOOLKIT_AVAILABLE:
                     try:
                         providers = ProviderRegistry.get_provider_names()
                     except Exception:
-                        providers = [
-                            "anthropic",
-                            "bedrock",
-                            "ollama",
-                            "gemini",
-                        ]  # Fallback
+                        from lobster.config.constants import VALID_PROVIDERS
+
+                        providers = list(VALID_PROVIDERS)  # Fallback
 
                     for provider in providers:
                         meta = f"Switch to {provider}"
@@ -713,12 +710,9 @@ if PROMPT_TOOLKIT_AVAILABLE:
                     try:
                         providers = ProviderRegistry.get_provider_names()
                     except Exception:
-                        providers = [
-                            "anthropic",
-                            "bedrock",
-                            "ollama",
-                            "gemini",
-                        ]  # Fallback
+                        from lobster.config.constants import VALID_PROVIDERS
+
+                        providers = list(VALID_PROVIDERS)  # Fallback
 
                     for provider in providers:
                         if provider.lower().startswith(prefix.lower()):
@@ -1401,14 +1395,12 @@ def _show_workspace_prompt(client):
                 runtime_override=getattr(client, "provider_override", None)
             )
 
-            # Provider icon mapping
-            provider_icons = {
-                "anthropic": "🔵",
-                "bedrock": "🟠",
-                "ollama": "🦙",
-                "gemini": "🔷",
-            }
-            provider_icon = provider_icons.get(current_provider, "⚪")
+            from lobster.config.constants import (
+                PROVIDER_ICON_FALLBACK,
+                PROVIDER_ICONS,
+            )
+
+            provider_icon = PROVIDER_ICONS.get(current_provider, PROVIDER_ICON_FALLBACK)
             provider_display = f"{provider_icon} {current_provider}"
         except Exception:
             # Fallback to unknown if resolution fails
@@ -3289,7 +3281,6 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
     except Exception as e:
         output.print(f"Error: {e}", style="error")
         raise typer.Exit(1)
-
 
 
 def command_cmd_impl(

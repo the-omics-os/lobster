@@ -2780,6 +2780,8 @@ func normalizeProviderName(p string) string {
 	return p
 }
 
+// providerIcon mirrors PROVIDER_ICONS in lobster/config/constants.py — keep the
+// two in sync so a provider looks the same in the Go TUI and the Python CLI.
 func providerIcon(provider string) string {
 	switch normalizeProviderName(provider) {
 	case "bedrock":
@@ -2789,13 +2791,17 @@ func providerIcon(provider string) string {
 	case "anthropic":
 		return "🟣"
 	case "ollama":
-		return "🟡"
+		return "🦙"
 	case "openrouter":
 		return "🔵"
+	case "nebius":
+		return "🔹"
 	case "azure":
 		return "🔷"
 	case "gemini":
 		return "🔶"
+	case "omics-os":
+		return "🦞"
 	default:
 		return "⚪"
 	}

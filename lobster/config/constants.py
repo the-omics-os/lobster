@@ -47,3 +47,20 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "omics-os": "Omics-OS Cloud",
     "nebius": "Nebius AI Studio",
 }
+
+# Provider icons for UI. Single palette shared by every surface (status line,
+# /config model list, /status panel) and mirrored by the Go TUI's providerIcon().
+# Use PROVIDER_ICON_FALLBACK for unknown providers.
+PROVIDER_ICONS: Final[dict] = {
+    "anthropic": "🟣",
+    "bedrock": "🟠",
+    "ollama": "🦙",
+    "gemini": "🔶",
+    "azure": "🔷",
+    "openai": "🟢",
+    "openrouter": "🔵",
+    "omics-os": "🦞",
+    "nebius": "🔹",
+}
+
+PROVIDER_ICON_FALLBACK: Final[str] = "⚪"

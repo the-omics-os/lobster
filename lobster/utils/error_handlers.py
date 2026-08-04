@@ -24,6 +24,27 @@ from typing import Any, Callable, Dict, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 
+# Per-provider documentation links surfaced in error guidance. Keys are
+# ``VALID_PROVIDERS`` names; a provider without an entry simply gets no link.
+_RATE_LIMIT_DOC_URLS: Dict[str, str] = {
+    "gemini": "https://ai.google.dev/gemini-api/docs/rate-limits",
+    "anthropic": "https://docs.anthropic.com/en/api/rate-limits",
+    "bedrock": "https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+    "openai": "https://platform.openai.com/docs/guides/rate-limits",
+    "openrouter": "https://openrouter.ai/docs/api-reference/limits",
+    "nebius": "https://docs.nebius.com/studio/inference/quotas-limits",
+}
+
+_CONTEXT_LIMIT_DOC_URLS: Dict[str, str] = {
+    "gemini": "https://ai.google.dev/gemini-api/docs/tokens",
+    "anthropic": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
+    "bedrock": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters.html",
+    "openai": "https://platform.openai.com/docs/models",
+    "openrouter": "https://openrouter.ai/docs/limits",
+    "nebius": "https://docs.nebius.com/studio/inference",
+}
+
+
 # =============================================================================
 # Structured Error Detection (Type-Safe Pattern)
 # =============================================================================
@@ -218,6 +239,10 @@ class StructuredErrorParser:
             return "bedrock"
         if "ollama" in error_lower:
             return "ollama"
+        if "openrouter" in error_lower:
+            return "openrouter"
+        if "nebius" in error_lower or "tokenfactory" in error_lower:
+            return "nebius"
 
         return None
 
@@ -384,9 +409,7 @@ class StructuredErrorParser:
             message = str(
                 error_data.get("Message", error_data.get("message", ""))
             ).lower()
-            code = str(
-                error_data.get("Code", error_data.get("code", ""))
-            ).lower()
+            code = str(error_data.get("Code", error_data.get("code", ""))).lower()
             status = error_data.get("status", "")
 
             if code == "validationexception" and any(
@@ -1030,9 +1053,10 @@ class RateLimitErrorHandler(ErrorHandler):
             if "hint" in info.additional_info:
                 solutions.append(info.additional_info["hint"])
 
-        solutions.append(
-            "Consider switching to another provider (anthropic, bedrock, ollama, gemini)"
-        )
+        from lobster.config.constants import VALID_PROVIDERS
+
+        alternatives = ", ".join(p for p in VALID_PROVIDERS if p != info.provider)
+        solutions.append(f"Consider switching to another provider ({alternatives})")
         solutions.append("Contact us for assistance: info@omics-os.com")
 
         return ErrorGuidance(
@@ -1065,14 +1089,16 @@ class RateLimitErrorHandler(ErrorHandler):
             provider = "anthropic"
         elif os.environ.get("AWS_BEDROCK_ACCESS_KEY"):
             provider = "bedrock"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.environ.get("NEBIUS_API_KEY"):
+            provider = "nebius"
 
-        # Determine documentation URL based on detected provider
-        doc_urls = {
-            "gemini": "https://ai.google.dev/gemini-api/docs/rate-limits",
-            "anthropic": "https://docs.anthropic.com/en/api/rate-limits",
-            "bedrock": "https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
-        }
-        documentation_url = doc_urls.get(provider)
+        from lobster.config.constants import PROVIDER_DISPLAY_NAMES
+
+        documentation_url = _RATE_LIMIT_DOC_URLS.get(provider)
 
         return ErrorGuidance(
             error_type="rate_limit",
@@ -1083,9 +1109,10 @@ class RateLimitErrorHandler(ErrorHandler):
             ),
             solutions=[
                 "Wait 60 seconds and try again (limits reset periodically)",
-                "Gemini: https://ai.google.dev/gemini-api/docs/rate-limits",
-                "Anthropic: https://docs.anthropic.com/en/api/rate-limits",
-                "AWS Bedrock: https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                *(
+                    f"{PROVIDER_DISPLAY_NAMES.get(name, name)}: {url}"
+                    for name, url in _RATE_LIMIT_DOC_URLS.items()
+                ),
                 "Consider switching to another provider",
                 "Contact us for assistance: info@omics-os.com",
             ],
@@ -1342,6 +1369,11 @@ class ContextLimitErrorHandler(ErrorHandler):
                     "Consider a model with larger context window",
                 ]
             )
+        elif provider in ("openai", "openrouter", "nebius", "azure"):
+            solutions.append(
+                "Switch to a larger-context model: '/config model' lists each "
+                "model's context window"
+            )
 
         solutions.extend(
             [
@@ -1354,12 +1386,7 @@ class ContextLimitErrorHandler(ErrorHandler):
 
     def _get_documentation_url(self, provider: str) -> Optional[str]:
         """Get provider-specific documentation URL."""
-        urls = {
-            "gemini": "https://ai.google.dev/gemini-api/docs/tokens",
-            "anthropic": "https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching",
-            "bedrock": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters.html",
-        }
-        return urls.get(provider)
+        return _CONTEXT_LIMIT_DOC_URLS.get(provider)
 
 
 class QuotaExceededErrorHandler(ErrorHandler):
