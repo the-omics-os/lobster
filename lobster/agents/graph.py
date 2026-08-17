@@ -140,7 +140,9 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
     return None
 
 
-async def _invoke_and_store(agent, agent_name: str, task_description: str, store) -> str:
+async def _invoke_and_store(
+    agent, agent_name: str, task_description: str, store
+) -> str:
     """Shared invoke pipeline for all delegation tools.
 
     Constructs config for callback attribution, invokes the agent, extracts
@@ -675,6 +677,66 @@ def _build_graph_metadata(
     return metadata
 
 
+# Packages whose resolved version changes analysis behaviour or breaks imports.
+_OBSERVED_DEPENDENCIES = (
+    "lobster-ai",
+    "anndata",
+    "pandas",
+    "numpy",
+    "scanpy",
+    "setuptools",
+    "sgkit",
+)
+
+_dependency_versions_logged = False
+
+
+def _log_dependency_versions() -> None:
+    """Emit the resolved scientific stack once per process.
+
+    Both cloud Dockerfiles install the engine as ``git+...@main`` with no
+    constraints file and a cache-busting build arg, so every image re-resolves
+    this stack from PyPI at build time. Without this line there is no way to
+    tell, from outside a running container, which versions it actually got.
+
+    ``pkg_resources`` presence is tracked because setuptools >=82 removed it and
+    sgkit imports it at module load — that combination silently disables GWAS.
+    """
+    global _dependency_versions_logged
+
+    # Set the flag before doing the work: this is diagnostics, and a failure here
+    # must never re-run per session or block graph construction.
+    if _dependency_versions_logged:
+        return
+    _dependency_versions_logged = True
+
+    try:
+        import importlib.metadata as importlib_metadata
+        import importlib.util
+        import sys as _sys
+
+        parts = [
+            f"python=={_sys.version_info.major}.{_sys.version_info.minor}.{_sys.version_info.micro}"
+        ]
+        for name in _OBSERVED_DEPENDENCIES:
+            try:
+                parts.append(f"{name}=={importlib_metadata.version(name)}")
+            except Exception:
+                parts.append(f"{name}=absent")
+
+        # find_spec does not execute the module, so this does not itself trigger
+        # the pkg_resources deprecation warning.
+        try:
+            has_pkg_resources = importlib.util.find_spec("pkg_resources") is not None
+        except Exception:
+            has_pkg_resources = False
+        parts.append(f"pkg_resources={'present' if has_pkg_resources else 'ABSENT'}")
+
+        logger.info("Resolved dependency stack: %s", " ".join(parts))
+    except Exception as exc:  # pragma: no cover - diagnostics must never break startup
+        logger.debug("Could not report dependency versions: %s", exc)
+
+
 def create_bioinformatics_graph(
     data_manager: DataManagerV2,
     checkpointer: InMemorySaver = None,
@@ -724,6 +786,8 @@ def create_bioinformatics_graph(
         config = {"recursion_limit": 1000, ...}
         graph.invoke(input, config)
     """
+    _log_dependency_versions()
+
     # Auto-detect subscription tier if not provided
     if subscription_tier is None:
         try:

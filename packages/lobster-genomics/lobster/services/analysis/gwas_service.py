@@ -27,8 +27,20 @@ try:
 
     sg = _sg
     SGKIT_AVAILABLE = True
-except ImportError:
-    pass  # sgkit is optional for GWAS
+except ImportError as exc:
+    # Distinguish a deliberate opt-out from a broken install. Both used to be
+    # silent, which made a hard dependency break look identical to "sgkit is an
+    # optional extra and this deployment skipped it".
+    if getattr(exc, "name", None) == "sgkit":
+        logger.debug("sgkit not installed; GWAS tools unavailable.", exc_info=True)
+    else:
+        logger.warning(
+            "sgkit is installed but failed to import (missing %r); GWAS tools "
+            "will be unavailable. Known cause: setuptools >=82 removed "
+            "pkg_resources, which sgkit imports at module load.",
+            getattr(exc, "name", None),
+            exc_info=True,
+        )
 
 
 class GWASError(Exception):
@@ -221,7 +233,9 @@ class GWASService:
 
             # Compile statistics
             try:
-                n_significant = int(adata_gwas.var["gwas_significant"].astype(bool).sum())
+                n_significant = int(
+                    adata_gwas.var["gwas_significant"].astype(bool).sum()
+                )
             except (TypeError, ValueError):
                 n_significant = 0
             n_tested = valid_mask.sum()

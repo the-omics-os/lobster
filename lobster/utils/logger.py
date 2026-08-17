@@ -1,68 +1,124 @@
 """
 Logging configuration for the application.
 
-This module sets up consistent logging across all components of the application,
-making it easier to track events and debug issues.
+Lobster attaches at most **one** handler, on the ``lobster`` namespace logger,
+and never disables propagation. That lets whichever process hosts the engine own
+its log output — the CLI's ConsoleManager, a uvicorn/FastAPI worker, pytest —
+while a bare script still gets readable output with zero setup.
+
+Two consequences worth knowing:
+
+1. Module loggers are left at ``NOTSET`` so they inherit from the ``lobster``
+   namespace logger. One ``LOBSTER_LOG_LEVEL`` (or one ``setLevel`` on
+   ``logging.getLogger("lobster")``) therefore controls the whole engine,
+   including the ~131 modules that call ``logging.getLogger(__name__)``
+   directly instead of going through :func:`get_logger`.
+2. Records propagate to the root logger, so a host that calls
+   ``logging.basicConfig()`` before importing the engine captures them.
 """
 
 import logging
+import os
 import sys
+import threading
+
+_NAMESPACE = "lobster"
+
+# Unset LOBSTER_LOG_LEVEL keeps the historical behaviour (engine modules emit
+# INFO). Setting it explicitly is what makes it a real knob — before this module
+# was consolidated, get_logger hardcoded INFO per module and the variable only
+# ever moved the root/Rich level, so it could not quieten the engine at all.
+_DEFAULT_LEVEL = logging.INFO
+
+_LEVEL_NAMES = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "WARN": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+_configure_lock = threading.Lock()
+_namespace_configured = False
 
 
-def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+class _FallbackHandler(logging.StreamHandler):
+    """Stream handler that stands down once the host configures root logging.
+
+    The stand-down cannot be decided at import time. ``lobster/cli.py`` imports
+    engine modules — which call :func:`get_logger` — at lines 70-290, but only
+    installs the RichHandler on root at ``cli.py:293``. An import-time check
+    would see a bare root, attach this handler, and then double-print every
+    record once Rich arrives. Deciding per-record is order-independent, so it
+    also covers any other host that configures root after importing the engine.
     """
-    Configure a logger with consistent formatting.
 
-    Handles two scenarios:
-    1. CLI usage: ConsoleManager sets up RichHandler on root logger.
-       We detect this and let logs propagate to root (single output).
-    2. Direct usage: No RichHandler on root. We add our own StreamHandler
-       and disable propagation to prevent duplicate output.
+    def emit(self, record: logging.LogRecord) -> None:
+        # Root's own handlers, not hasHandlers(): the latter walks up from this
+        # logger and would count this handler itself.
+        if logging.getLogger().handlers:
+            return
+        super().emit(record)
+
+
+def _resolve_level() -> int:
+    """Resolve the engine-wide log level from ``LOBSTER_LOG_LEVEL``."""
+    return _LEVEL_NAMES.get(
+        os.environ.get("LOBSTER_LOG_LEVEL", "").strip().upper(), _DEFAULT_LEVEL
+    )
+
+
+def _configure_namespace() -> logging.Logger:
+    """Configure the ``lobster`` namespace logger exactly once per process."""
+    global _namespace_configured
+
+    namespace = logging.getLogger(_NAMESPACE)
+    if _namespace_configured:
+        return namespace
+
+    with _configure_lock:
+        if _namespace_configured:
+            return namespace
+
+        namespace.setLevel(_resolve_level())
+
+        if not any(isinstance(h, _FallbackHandler) for h in namespace.handlers):
+            handler = _FallbackHandler(sys.stdout)
+            handler.setFormatter(
+                logging.Formatter(
+                    "[%(asctime)s] %(levelname)s - [%(name)s] - %(message)s"
+                )
+            )
+            namespace.addHandler(handler)
+
+        _namespace_configured = True
+
+    return namespace
+
+
+def setup_logger(name: str, level: int = None) -> logging.Logger:
+    """
+    Get a logger that participates in the engine's shared logging setup.
 
     Args:
-        name: Name of the logger
-        level: Logging level (default: INFO)
+        name: Name of the logger. Names under the ``lobster`` namespace inherit
+            their level from it; anything else gets the resolved level set
+            directly, since it has no lobster ancestor to inherit from.
+        level: Optional explicit level for this logger only. Leave unset so the
+            logger inherits — that is what keeps one knob in control.
 
     Returns:
-        logging.Logger: Configured logger instance
+        logging.Logger: Logger instance.
     """
+    _configure_namespace()
+
     logger = logging.getLogger(name)
 
-    # Only configure if it hasn't been configured yet
-    if not logger.handlers:
+    if level is not None:
         logger.setLevel(level)
-
-        # Check if RichHandler is already configured on root logger
-        # This indicates CLI mode where ConsoleManager is active
-        root_logger = logging.getLogger()
-        has_rich_handler = False
-
-        try:
-            from rich.logging import RichHandler
-
-            has_rich_handler = any(
-                isinstance(handler, RichHandler) for handler in root_logger.handlers
-            )
-        except ImportError:
-            # RichHandler not available, proceed with standard handler
-            pass
-
-        if has_rich_handler:
-            # CLI mode: Let logs propagate to root's RichHandler
-            # No additional handler needed, propagation handles output
-            pass
-        else:
-            # Direct usage (tests, scripts): Add our own handler
-            # and disable propagation to prevent duplicate output
-            handler = logging.StreamHandler(sys.stdout)
-            formatter = logging.Formatter(
-                "[%(asctime)s] %(levelname)s - [%(name)s] - %(message)s"
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-            # CRITICAL: Disable propagation to prevent root logger's
-            # basicConfig handler from also outputting the same message
-            logger.propagate = False
+    elif name != _NAMESPACE and not name.startswith(_NAMESPACE + "."):
+        logger.setLevel(_resolve_level())
 
     return logger
 
@@ -70,8 +126,6 @@ def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
 def get_logger(name: str) -> logging.Logger:
     """
     Get a logger with the given name.
-
-    This function retrieves an existing logger or creates a new one.
 
     Args:
         name: Name of the logger
