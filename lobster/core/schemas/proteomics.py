@@ -558,8 +558,12 @@ def _validate_ms_metrics(adata) -> "ValidationResult":
 
     # Check for contaminants
     if "is_contaminant" in adata.var.columns:
+        from lobster.core.utils.dtype_guards import boolean_flag_mask
+
         try:
-            contaminants = int(adata.var["is_contaminant"].astype(bool).sum())
+            # boolean_flag_mask, not astype(bool): a string flag column would
+            # count every non-empty value and inflate the contaminant total.
+            contaminants = int(boolean_flag_mask(adata.var["is_contaminant"]).sum())
         except (TypeError, ValueError):
             contaminants = 0
         contaminant_pct = (contaminants / len(adata.var)) * 100

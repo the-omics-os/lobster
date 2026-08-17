@@ -17,6 +17,7 @@ import pandas as pd
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.proteomics import ProteomicsSchema
+from lobster.core.utils.dtype_guards import boolean_flag_mask, is_text_dtype
 
 logger = logging.getLogger(__name__)
 
@@ -351,10 +352,14 @@ class ProteomicsAdapter(BaseAdapter):
             col_lower = str(col).lower()
             if any(pattern in col_lower for pattern in metadata_patterns):
                 metadata_cols.append(col)
-            elif df[col].dtype == "object" and not self._is_numeric_string_column(
+            elif is_text_dtype(df[col]) and not self._is_numeric_string_column(
                 df[col]
             ):
-                # Non-numeric string columns are likely metadata
+                # Non-numeric text columns are likely metadata. Test the dtype
+                # semantically via is_text_dtype (object incl. object-with-NaN,
+                # StringDtype, and the pandas-3 str dtype); a bare ``== "object"``
+                # misses the string dtypes, leaving a text column classified as
+                # intensity and silently coerced to all-NaN by pd.to_numeric.
                 metadata_cols.append(col)
 
         # Intensity columns are the remaining ones
@@ -373,8 +378,14 @@ class ProteomicsAdapter(BaseAdapter):
         return intensity_df, metadata_df
 
     def _is_numeric_string_column(self, series: pd.Series) -> bool:
-        """Check if a string column contains numeric values."""
-        if series.dtype != "object":
+        """Check if a text column actually holds numeric values.
+
+        Uses ``is_text_dtype`` (object incl. object-with-NaN, StringDtype,
+        pandas-3 str) rather than ``dtype == "object"`` so a numeric-encoded
+        ``string``/``str`` column is still recognized as intensity data, not
+        routed to metadata.
+        """
+        if not is_text_dtype(series):
             return False
 
         # Try to convert a sample to numeric
@@ -703,7 +714,10 @@ class ProteomicsAdapter(BaseAdapter):
         # Contaminant and reverse metrics
         if "is_contaminant" in adata.var.columns:
             try:
-                contaminant_sum = int(adata.var["is_contaminant"].astype(bool).sum())
+                # boolean_flag_mask, not astype(bool): a string flag column
+                # ('+'/''/'0'/'False') would otherwise count every non-empty
+                # value as a contaminant and inflate the reported total.
+                contaminant_sum = int(boolean_flag_mask(adata.var["is_contaminant"]).sum())
             except (TypeError, ValueError):
                 contaminant_sum = 0
             metrics["contaminant_proteins"] = contaminant_sum
@@ -714,7 +728,7 @@ class ProteomicsAdapter(BaseAdapter):
         if "is_reverse" in adata.var.columns:
             try:
                 metrics["reverse_hits"] = int(
-                    adata.var["is_reverse"].astype(bool).sum()
+                    boolean_flag_mask(adata.var["is_reverse"]).sum()
                 )
             except (TypeError, ValueError):
                 metrics["reverse_hits"] = 0

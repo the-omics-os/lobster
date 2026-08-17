@@ -1143,12 +1143,14 @@ print(f"Format: {{ format_type }}, Missing: {stats['missing_percentage']:.1f}%")
             reverse_pattern, case=False, na=False, regex=True
         )
 
+        from lobster.core.utils.dtype_guards import boolean_flag_mask
+
         try:
-            n_contaminants = adata.var["is_contaminant"].astype(bool).sum()
+            n_contaminants = boolean_flag_mask(adata.var["is_contaminant"]).sum()
         except (TypeError, ValueError):
             n_contaminants = 0
         try:
-            n_reverse = adata.var["is_reverse"].astype(bool).sum()
+            n_reverse = boolean_flag_mask(adata.var["is_reverse"]).sum()
         except (TypeError, ValueError):
             n_reverse = 0
 

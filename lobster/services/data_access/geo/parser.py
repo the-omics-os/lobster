@@ -590,8 +590,14 @@ class GEOParser:
                 # Convert to pandas for downstream compatibility
                 df = df_polars.to_pandas()
 
-                # Set first column as index if it looks like gene/feature names
-                if df.shape[1] > 1 and df.iloc[:, 0].dtype == "object":
+                # Set first column as index if it looks like gene/feature names.
+                # Test the dtype semantically via is_text_dtype (object incl.
+                # object-with-NaN, StringDtype, and the pandas-3 str dtype that
+                # Polars->pandas can produce); `== "object"` would skip promotion
+                # under pandas 3.
+                from lobster.core.utils.dtype_guards import is_text_dtype
+
+                if df.shape[1] > 1 and is_text_dtype(df.iloc[:, 0]):
                     df = df.set_index(df.columns[0])
 
                 logger.debug(f"Successfully parsed with Polars: {df.shape}")

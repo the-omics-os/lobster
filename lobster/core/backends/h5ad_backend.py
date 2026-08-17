@@ -272,7 +272,14 @@ class H5ADBackend(BaseBackend):
                             f"Sanitized column '{col}' - converted None to 'NA'"
                         )
 
-                # Step 4: Handle mixed-type columns (object dtype)
+                # Step 4: Handle mixed-type columns (object dtype only).
+                # Intentionally NOT broadened to pandas-3 ``str`` / StringDtype:
+                # the single-type branch below calls ``pd.to_numeric`` and would
+                # rewrite numeric-looking string IDs (e.g. "001" -> 1, losing the
+                # leading zero). pandas-3 str columns are already natively
+                # H5AD-writable, so routing them here corrupts identifiers for no
+                # benefit. (The same coercion is a latent bug for object ID
+                # columns; fixing it conservatively is a separate change.)
                 if df[col].dtype == "object":
                     # Check if column has multiple types
                     non_null_values = df[col].dropna()

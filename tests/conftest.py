@@ -87,6 +87,25 @@ pytest_plugins = [
 # ==============================================================================
 
 
+@pytest.fixture(params=[False, True], ids=["infer_string_off", "infer_string_on"])
+def pandas_infer_string(request):
+    """Run a test under both pandas string-inference regimes.
+
+    This module pins ``pd.options.future.infer_string = False`` at import so the
+    4800+ existing string fixtures keep producing ``object`` dtype — which is
+    also why the ``StringDtype`` / pandas-3 ``str`` corruption paths were never
+    exercised. A test that must see both regimes requests this fixture: it runs
+    once with the option off (``object``) and once on (``string``/``str``),
+    restoring the previous value on teardown so no other test is affected.
+    """
+    previous = pd.options.future.infer_string
+    pd.options.future.infer_string = request.param
+    try:
+        yield request.param
+    finally:
+        pd.options.future.infer_string = previous
+
+
 def pytest_addoption(parser):
     """Register test-suite command-line switches."""
     parser.addoption(
