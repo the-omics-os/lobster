@@ -4,6 +4,7 @@ Covers the two predicates that replace ``dtype == "object"`` across the engine,
 including the object-with-NaN and object-numeric edge cases that a naive
 ``is_string_dtype``-only swap gets wrong.
 """
+
 import warnings
 
 import numpy as np
@@ -17,8 +18,8 @@ from lobster.core.utils.dtype_guards import boolean_flag_mask, is_text_dtype
     "data,expected",
     [
         (pd.Series(["a", "b"], dtype=object), True),
-        (pd.Series(["a", np.nan, "b"], dtype=object), True),   # object-with-NaN
-        (pd.Series([1, 2, None], dtype=object), True),         # non-string object
+        (pd.Series(["a", np.nan, "b"], dtype=object), True),  # object-with-NaN
+        (pd.Series([1, 2, None], dtype=object), True),  # non-string object
         (pd.Series(pd.array(["a", "b"], dtype="string")), True),
         (pd.Series([1.0, 2.0]), False),
         (pd.Series([True, False]), False),
@@ -39,8 +40,16 @@ def _keep(col):
 
 def test_flag_mask_object_numeric_values():
     # object dtype holding python numbers: nonzero flagged, 0/NaN not.
-    assert list(boolean_flag_mask(pd.Series([2, 0, None], dtype=object))) == [True, False, False]
-    assert list(boolean_flag_mask(pd.Series([1.0, 0.0, np.nan], dtype=object))) == [True, False, False]
+    assert list(boolean_flag_mask(pd.Series([2, 0, None], dtype=object))) == [
+        True,
+        False,
+        False,
+    ]
+    assert list(boolean_flag_mask(pd.Series([1.0, 0.0, np.nan], dtype=object))) == [
+        True,
+        False,
+        False,
+    ]
 
 
 def test_flag_mask_object_string_with_nan():
@@ -49,7 +58,10 @@ def test_flag_mask_object_string_with_nan():
 
 
 def test_flag_mask_all_missing_and_empty():
-    assert list(boolean_flag_mask(pd.Series([None, None], dtype=object))) == [False, False]
+    assert list(boolean_flag_mask(pd.Series([None, None], dtype=object))) == [
+        False,
+        False,
+    ]
     assert list(boolean_flag_mask(pd.Series([], dtype=object))) == []
 
 
@@ -59,7 +71,10 @@ def test_flag_mask_all_missing_and_empty():
         (pd.Series(["+", "", "+", ""]), [True, False, True, False]),
         (pd.Series(["1", "0", "1", "0"]), [True, False, True, False]),
         (pd.Series(["True", "False", "True", "False"]), [True, False, True, False]),
-        (pd.Series(["YES", "no", "y", "Nope"]), [True, False, False, False]),  # 'y' not a token
+        (
+            pd.Series(["YES", "no", "y", "Nope"]),
+            [True, False, False, False],
+        ),  # 'y' not a token
         (pd.Series([True, False, True, False]), [True, False, True, False]),
         (pd.Series([True, pd.NA, False], dtype="boolean"), [True, False, False]),
         (pd.Series([1, 0, 2, 0]), [True, False, True, False]),
@@ -68,6 +83,16 @@ def test_flag_mask_all_missing_and_empty():
         (pd.Series(pd.Categorical(["+", "", "+"])), [True, False, True]),
         (pd.Series(pd.Categorical([1, 0, 1])), [True, False, True]),
         (pd.Series(pd.Categorical([True, False])), [True, False]),
+        # Categorical whose CATEGORIES are numeric-/bool-strings (['0','1'],
+        # ['True','False']): categories.dtype is object -> _from_text route.
+        # These are the encodings that TypeError under the old
+        # fillna("")-on-categorical path; this closes the accepted-cut coverage
+        # gap (correctness was proven by execution; this guards regression).
+        (pd.Series(pd.Categorical(["1", "0", "1", "0"])), [True, False, True, False]),
+        (
+            pd.Series(pd.Categorical(["True", "False", "True", "False"])),
+            [True, False, True, False],
+        ),
     ],
 )
 def test_flag_mask_matrix_no_downcast_warning(col, expected):

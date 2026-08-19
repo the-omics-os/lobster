@@ -436,18 +436,27 @@ def validate_for_h5ad(
 def is_arrow_dtype(series_or_index) -> bool:
     """Check if a pandas Series or Index uses ArrowExtensionArray.
 
-    Detects pyarrow-backed string columns introduced in pandas >=2.2.0
-    which are incompatible with anndata's H5AD/HDF5 writer.
+    Detects pandas string extension dtypes that anndata's H5AD/HDF5 writer
+    cannot serialize under ``infer_string=False``: pyarrow-backed strings
+    (pandas >=2.2.0), the ``StringDtype`` opt-in, and the pandas-3 default
+    ``str`` dtype. ``convert_arrow_to_standard`` materializes these to object.
     """
     # Check 1: Direct __arrow_array__ attribute
     if hasattr(series_or_index, "__arrow_array__"):
         return True
-    # Check 2: Check dtype string
-    if hasattr(series_or_index, "dtype"):
-        dtype_str = str(series_or_index.dtype)
+    dtype = getattr(series_or_index, "dtype", None)
+    # Check 2: pandas string EXTENSION dtypes. Catches StringDtype ("string")
+    # AND the pandas-3 default ``str`` dtype -- which stringifies as "str" (so
+    # the substring check below misses it) and whose array class is StringArray
+    # (not "Arrow"), so this isinstance check is the only one that catches it.
+    if isinstance(dtype, pd.StringDtype):
+        return True
+    # Check 3: dtype string (pyarrow-backed)
+    if dtype is not None:
+        dtype_str = str(dtype)
         if "string" in dtype_str or "pyarrow" in dtype_str:
             return True
-    # Check 3: Check underlying array type
+    # Check 4: underlying array type
     if hasattr(series_or_index, "array"):
         array_type = type(series_or_index.array).__name__
         if "Arrow" in array_type or "arrow" in array_type:

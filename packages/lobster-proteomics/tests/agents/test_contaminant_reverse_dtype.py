@@ -12,6 +12,7 @@ Every case is asserted on **features retained**, not "no exception", and runs
 under both ``pd.options.future.infer_string`` regimes via ``pandas_infer_string``
 so the vulnerable path is exercised, not just the object path.
 """
+
 import anndata as ad
 import numpy as np
 import pandas as pd
@@ -30,7 +31,9 @@ def _col(values, encoding):
     if encoding == "text_plus":
         return pd.Series([tokens[v] for v in values])
     if encoding == "text_truefalse":
-        return pd.Series([{True: "True", False: "False", None: None}[v] for v in values])
+        return pd.Series(
+            [{True: "True", False: "False", None: None}[v] for v in values]
+        )
     if encoding == "text_10":
         return pd.Series([{True: "1", False: "0", None: None}[v] for v in values])
     if encoding == "string_dtype":
@@ -40,20 +43,45 @@ def _col(values, encoding):
     if encoding == "nullable_boolean":
         return pd.Series([pd.NA if v is None else v for v in values], dtype="boolean")
     if encoding == "numeric":
-        return pd.Series([np.nan if v is None else nums[v] for v in values], dtype="float64")
+        return pd.Series(
+            [np.nan if v is None else nums[v] for v in values], dtype="float64"
+        )
     if encoding == "categorical_text":
         return pd.Series(pd.Categorical([tokens[v] for v in values]))
     if encoding == "categorical_numeric":
         return pd.Series(pd.Categorical([nums[v] for v in values]))
     if encoding == "categorical_bool":
-        return pd.Series(pd.Categorical([None if v is None else bool(v) for v in values]))
+        return pd.Series(
+            pd.Categorical([None if v is None else bool(v) for v in values])
+        )
+    if encoding == "categorical_numeric_string":
+        # Categorical over the STRINGS "0"/"1" (categories.dtype == object).
+        return pd.Series(
+            pd.Categorical([{True: "1", False: "0", None: None}[v] for v in values])
+        )
+    if encoding == "categorical_bool_string":
+        # Categorical over the STRINGS "True"/"False" (categories.dtype == object).
+        return pd.Series(
+            pd.Categorical(
+                [{True: "True", False: "False", None: None}[v] for v in values]
+            )
+        )
     raise AssertionError(encoding)
 
 
 ENCODINGS = [
-    "text_plus", "text_truefalse", "text_10", "string_dtype", "bool",
-    "nullable_boolean", "numeric", "categorical_text", "categorical_numeric",
+    "text_plus",
+    "text_truefalse",
+    "text_10",
+    "string_dtype",
+    "bool",
+    "nullable_boolean",
+    "numeric",
+    "categorical_text",
+    "categorical_numeric",
     "categorical_bool",
+    "categorical_numeric_string",
+    "categorical_bool_string",
 ]
 
 
@@ -78,8 +106,11 @@ def test_missing_is_not_flagged(encoding, pandas_infer_string):
 @pytest.mark.parametrize("encoding", ["string_dtype", "text_plus"])
 def test_zero_and_false_tokens_are_not_flagged(encoding, pandas_infer_string):
     """The exact corruption case: '0' and 'False' must NOT count as flagged."""
-    col = pd.Series(pd.array(["0", "False", "+"], dtype="string")) \
-        if encoding == "string_dtype" else pd.Series(["0", "False", "+"])
+    col = (
+        pd.Series(pd.array(["0", "False", "+"], dtype="string"))
+        if encoding == "string_dtype"
+        else pd.Series(["0", "False", "+"])
+    )
     mask = boolean_flag_mask(col)
     assert list(mask) == [False, False, True]
 
@@ -92,7 +123,10 @@ def test_categorical_without_empty_string_does_not_raise(pandas_infer_string):
     assert list(mask) == [True, False, True, False]
 
 
-@pytest.mark.parametrize("encoding", ["string_dtype", "text_plus", "categorical_text"])
+@pytest.mark.parametrize(
+    "encoding",
+    ["string_dtype", "text_plus", "categorical_text", "categorical_numeric_string"],
+)
 def test_anndata_features_retained_through_filter(encoding, pandas_infer_string):
     """Integration: apply the exact call-site expression to a real AnnData and
     assert the non-contaminant features survive (not a zeroed matrix)."""

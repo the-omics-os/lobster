@@ -12,6 +12,7 @@ NOT recognized as metadata, stayed in the intensity set, and was silently
 coerced to all-NaN. These tests assert the text column lands in metadata under
 both ``pd.options.future.infer_string`` regimes.
 """
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -80,3 +81,54 @@ def test_numeric_string_column_not_blanked(cls, pandas_infer_string):
     assert "abundance" in intensity_df.columns
     assert list(intensity_df["abundance"]) == [100.0, 200.0]
     assert metadata_df is not None and "label" in metadata_df.columns
+
+
+@pytest.mark.parametrize("cls", [ProteomicsAdapter, MetabolomicsAdapter])
+def test_late_text_value_routes_column_to_metadata(cls, pandas_infer_string):
+    """Position-independence (follow-on to the P0 fix). A real text token AFTER
+    the first ten numeric-looking rows must still route the column to metadata,
+    not intensity. The prior ``head(10)`` sampling classified it as intensity
+    and the downstream coerce blanked the token to NaN."""
+    values = [str(i) for i in range(10)] + ["control"]  # 10 numeric, then text
+    df = pd.DataFrame(
+        {
+            "mostly_numeric": pd.Series(values),  # matches no name pattern
+            "s1": [float(i) for i in range(11)],
+        }
+    )
+    adapter = _adapter(cls)
+    # The predicate itself must be position-independent.
+    assert adapter._is_numeric_string_column(df["mostly_numeric"]) is False
+    intensity_df, metadata_df = adapter._separate_intensity_metadata_columns(df)
+    assert metadata_df is not None and "mostly_numeric" in metadata_df.columns
+    assert "mostly_numeric" not in intensity_df.columns
+    # The text token is preserved, not silently coerced to NaN.
+    assert "control" in list(metadata_df["mostly_numeric"])
+
+
+@pytest.mark.parametrize("cls", [ProteomicsAdapter, MetabolomicsAdapter])
+def test_fully_numeric_string_column_beyond_ten_rows_is_intensity(
+    cls, pandas_infer_string
+):
+    """The full scan must not create false metadata: a column of >10
+    numeric-encoded strings stays intensity and coerces to real numbers."""
+    values = [str(float(i)) for i in range(15)]
+    df = pd.DataFrame({"abundance": pd.Series(values), "label": pd.Series(["x"] * 15)})
+    adapter = _adapter(cls)
+    assert adapter._is_numeric_string_column(df["abundance"]) is True
+    intensity_df, _ = adapter._separate_intensity_metadata_columns(df)
+    assert "abundance" in intensity_df.columns
+    assert not intensity_df["abundance"].isna().all()
+
+
+@pytest.mark.parametrize("cls", [ProteomicsAdapter, MetabolomicsAdapter])
+def test_empty_string_token_routes_column_to_metadata(cls, pandas_infer_string):
+    """'' coerces to NaN WITHOUT raising, so a column containing it is not fully
+    numeric and must route to metadata (token preserved), not intensity where
+    the empty string would be blanked. Codex follow-on finding."""
+    df = pd.DataFrame({"maybe_num": pd.Series(["1", "2", ""]), "s1": [1.0, 2.0, 3.0]})
+    adapter = _adapter(cls)
+    assert adapter._is_numeric_string_column(df["maybe_num"]) is False
+    intensity_df, metadata_df = adapter._separate_intensity_metadata_columns(df)
+    assert metadata_df is not None and "maybe_num" in metadata_df.columns
+    assert "maybe_num" not in intensity_df.columns

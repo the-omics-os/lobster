@@ -123,6 +123,50 @@ class H5ADBackend(BaseBackend):
         Note: Uses centralized sanitization utilities from lobster.core.utils.h5ad_utils
         """
 
+        def _numeric_coercion_is_lossless(original, coerced):
+            """True if numeric coercion preserves each string value's textual
+            identity, so identifier columns are never silently rewritten.
+
+            "001" -> 1 (leading zero), " 1 " -> 1 (whitespace), "1e3" -> 1000.0,
+            "+1" -> 1, "1.50" -> 1.5, and "" -> NaN all CHANGE the text and are
+            rejected (the column is kept as strings). Canonical spellings ("1",
+            "1.0", "-1", exact large integers) are accepted. Non-string originals
+            (python int/float objects) are lossless by construction.
+
+            The comparison is against the ORIGINAL string, not a stripped copy --
+            whitespace is part of identity. ``int()`` is never called on a
+            non-finite float: ``float.is_integer()`` is False for inf/nan, so
+            "inf"/"-inf" match via ``repr`` and coerce (as before) without
+            raising.
+
+            This is a conservative SPELLING-preservation heuristic, not a
+            complete identifier-vs-measurement classifier: "1" is coerced whether
+            it denotes a measurement or an ID, and "1e3" is preserved whether it
+            denotes an ID or a measurement. Value alone cannot decide that;
+            deciding it belongs at ingestion or behind a column-role signal
+            (tracked follow-on). The only guarantee here is that an accepted
+            coercion never changes a value's text.
+            """
+            from numbers import Integral
+
+            for orig, num in zip(original.tolist(), coerced.tolist()):
+                if not isinstance(orig, str):
+                    continue
+                # A string that parsed to a missing value (e.g. "") is NOT
+                # lossless -- coercing it would destroy the token.
+                if pd.isna(num):
+                    return False
+                if isinstance(num, Integral):
+                    candidates = {str(int(num))}
+                else:
+                    as_float = float(num)
+                    candidates = {repr(as_float)}
+                    if as_float.is_integer():
+                        candidates.add(str(int(as_float)))
+                if orig not in candidates:
+                    return False
+            return True
+
         # Sanitize uns (unstructured metadata) using centralized utility
         adata.uns = {
             util_sanitize_key(k, slash_replacement): util_sanitize_value(
@@ -278,9 +322,14 @@ class H5ADBackend(BaseBackend):
                 # rewrite numeric-looking string IDs (e.g. "001" -> 1, losing the
                 # leading zero). pandas-3 str columns are already natively
                 # H5AD-writable, so routing them here corrupts identifiers for no
-                # benefit. (The same coercion is a latent bug for object ID
-                # columns; fixing it conservatively is a separate change.)
-                if df[col].dtype == "object":
+                # benefit. The object-path coercion in the single-type branch
+                # below is now conservative: it coerces only when the numeric
+                # form round-trips to the original text, so object ID columns
+                # like "001" are preserved here too (see
+                # _numeric_coercion_is_lossless). is_object_dtype asks the same
+                # representation-level question as ``== "object"`` but states the
+                # intent in code and deliberately excludes StringDtype / str.
+                if pd.api.types.is_object_dtype(df[col]):
                     # Check if column has multiple types
                     non_null_values = df[col].dropna()
                     if len(non_null_values) > 0:
@@ -297,14 +346,35 @@ class H5ADBackend(BaseBackend):
                                 f"Sanitized column '{col}' - mixed types {unique_types} converted to string"
                             )
                         else:
-                            # Single type but object dtype - try numeric conversion
+                            # Single type, object dtype. Coerce to numeric ONLY
+                            # when it is lossless. This guards identifier columns:
+                            # pd.to_numeric rewrites "001" -> 1 (leading zero lost)
+                            # and "1e3" -> 1000.0, corrupting IDs. Coerce only if
+                            # every value round-trips to its original text;
+                            # otherwise keep the column as strings, which anndata
+                            # writes natively.
+                            #
+                            # Do NOT "fix" the gate above by broadening it to
+                            # str/StringDtype. pandas-3 str columns are already
+                            # H5AD-writable, and routing them through pd.to_numeric
+                            # is this exact corruption: ["001","002"] -> Int64 [1,2].
+                            # (Deploy postmortem error 11: widening the gate turned
+                            # a silent write skip into active ID corruption on every
+                            # managed write.) The revert-guard test stays red against
+                            # any widening.
                             try:
-                                # Attempt numeric conversion
-                                df[col] = pd.to_numeric(df[col])
+                                coerced = pd.to_numeric(df[col])
+                            except (ValueError, TypeError):
+                                coerced = None
+
+                            if coerced is not None and _numeric_coercion_is_lossless(
+                                df[col], coerced
+                            ):
+                                df[col] = coerced
                                 logger.debug(
                                     f"Sanitized column '{col}' - converted to numeric"
                                 )
-                            except (ValueError, TypeError):
+                            elif coerced is None:
                                 # Not numeric — check if values are non-string types
                                 # that HDF5 can't serialize (bool, int, etc.).
                                 # Do NOT use astype(str) — pandas >=2.2 re-creates
@@ -319,6 +389,9 @@ class H5ADBackend(BaseBackend):
                                     logger.debug(
                                         f"Sanitized column '{col}' - non-string object type '{first_type}' converted to string"
                                     )
+                            # else: numeric-looking strings that do NOT round-trip
+                            # (identifiers like "001") -> leave as object strings so
+                            # the identifier survives; anndata writes them natively.
 
             # Drop columns that are entirely None/NaN
             if columns_to_drop:
