@@ -685,30 +685,30 @@ jobs:
           fi
 
   # ===========================================================================
-  # Step 6: Trigger Omics-OS Cloud Deployment
+  # Step 6: (removed) Trigger Omics-OS Cloud Deployment
   # ===========================================================================
-  trigger-cloud-deploy:
-    name: Trigger Cloud Deploy
-    needs:
-      - validate-version
-      - publish-lobster-ai
-    # Only fire when core package published successfully
-    if: needs.publish-lobster-ai.result == 'success'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Wait for PyPI index propagation
-        run: sleep 60
-
-      - name: Dispatch to lobster-cloud
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.LOBSTER_CLOUD_DEPLOY_TOKEN }}
-          repository: the-omics-os/lobster-cloud
-          event-type: lobster-packages-published
-          client-payload: >-
-            {
-              "version": "${{ needs.validate-version.outputs.version }}",
-              "is_test": "${{ needs.validate-version.outputs.is_test }}",
-              "source_run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+  #
+  # A `trigger-cloud-deploy` job used to live here. On every `v*.*.*` tag it
+  # sent a `repository_dispatch` of type `lobster-packages-published` to
+  # the-omics-os/lobster-cloud, which ran a production ECS deploy with no engine
+  # pin — so publishing this package redeployed the Cloud backend from whatever
+  # this repository's `main` happened to be at that minute, with no human in the
+  # loop. That is the mechanism behind the 2026-08-17 pandas-3 production outage.
+  # It was not merely theoretical: the consumer succeeded 17 times, most recently
+  # 2026-03-26 and 2026-03-27, both after the Cloud Dockerfile had switched to an
+  # unpinned `@main` install. The payload's `is_test` was read and never used to
+  # skip, so a `-test` tag deployed production too.
+  #
+  # The consumer trigger was removed in lobster-cloud (be81078b, 2026-08-17), so
+  # the event now lands with nothing listening. This job is removed as well
+  # because an inert dispatch is a loaded one: the next person to add any
+  # `repository_dispatch` listener over there re-arms it without knowing it
+  # exists.
+  #
+  # Cloud deploys are a deliberate act from a workstation: `cli deploy core-api`,
+  # which injects the tracked engine pin (lobster-cloud engine-pin.txt) and fails
+  # closed if it is missing. Do not restore automatic cross-repo deployment.
+  #
+  # `secrets.LOBSTER_CLOUD_DEPLOY_TOKEN` is now unused by this workflow. It is a
+  # cross-repo credential carrying production-deploy intent; it is flagged for a
+  # decision rather than rotated here.
