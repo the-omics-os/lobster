@@ -1210,3 +1210,177 @@ class TestSelectFeaturesHVG:
         assert isinstance(stats["top_10_genes"], list)
         assert len(stats["top_10_genes"]) <= 10
         assert len(stats["top_10_genes"]) > 0
+
+
+class TestSelectFeaturesDevianceTemplate:
+    """Guard the emitted deviance code (bug #27).
+
+    This template is rendered into exported notebooks, which run under a plain
+    ``python3`` kernel (``lobster/core/notebooks/executor.py`` passes
+    ``kernel_name="python3"``). It must therefore stay self-contained: importing
+    the engine would make the notebook fail where lobster is absent, or silently
+    run an OLDER implementation where an out-of-date lobster is present — this
+    package only requires ``lobster-ai~=1.1.0``, which admits releases carrying
+    the bug. So the maths is inlined on purpose.
+
+    An inlined copy can drift from the library, and previously did, carrying the
+    floor-then-mask defect (``X = np.maximum(X, 1e-10)`` before ``mask = X > 0``)
+    into every generated script. String assertions alone cannot catch drift, so
+    ``test_rendered_template_matches_library`` executes the emitted code and
+    compares its scores against ``lobster.utils.deviance``.
+    """
+
+    @staticmethod
+    def _render(ir, n_top_genes=5):
+        from jinja2 import Template
+
+        return Template(ir.code_template).render(n_top_genes=n_top_genes)
+
+    @staticmethod
+    def _code_only(text):
+        """Strip ``#`` comments so guards match executable code, not prose.
+
+        The template deliberately documents the bug #27 anti-pattern in a warning
+        comment, and names the library it mirrors. A guard that fired on those
+        would punish the documentation it depends on.
+        """
+        return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+    def test_template_is_self_contained(self, preprocessing_service, raw_count_adata):
+        """Emitted code must not depend on lobster being importable."""
+        _, _, ir = preprocessing_service.select_features_deviance(raw_count_adata)
+        code = self._code_only(ir.code_template)
+
+        assert "import lobster" not in code and "from lobster" not in code, (
+            "emitted notebook code must not import lobster; it runs under a bare "
+            "python3 kernel and an installed lobster may predate the bug #27 fix"
+        )
+        assert not any("lobster" in imp.lower() for imp in ir.imports)
+        assert "import numpy as np" in ir.imports
+        assert "import scipy.sparse as spr" in ir.imports
+
+    def test_template_inlines_the_implementation(
+        self, preprocessing_service, raw_count_adata
+    ):
+        _, _, ir = preprocessing_service.select_features_deviance(raw_count_adata)
+
+        assert (
+            "def calculate_deviance" in ir.code_template
+        ), "template must carry its own self-contained implementation"
+
+    def test_template_does_not_floor_the_observed_matrix(
+        self, preprocessing_service, raw_count_adata
+    ):
+        """The exact bug #27 signature must not reappear in emitted code."""
+        _, _, ir = preprocessing_service.select_features_deviance(raw_count_adata)
+        code = self._code_only(ir.code_template)
+
+        assert "np.maximum(X, 1e-10)" not in code
+        assert "mask = X > 0" not in code
+
+    def test_rendered_template_enforces_the_count_domain(
+        self, preprocessing_service, raw_count_adata
+    ):
+        """The inlined copy must reject non-count input, like the library.
+
+        Neither existing guard can see this. ``test_template_does_not_floor_the
+        _observed_matrix`` matches the two bug #27 strings, not the denominator
+        floors, and ``test_rendered_template_matches_library`` compares scores on
+        valid counts -- where an epsilon floor never fires and both implementations
+        agree regardless. So a future edit re-adding ``np.maximum(..., 1e-10)`` to
+        the template's ``p_null``/``expected`` would pass every other test here.
+
+        Executing with negative input is what discriminates: the floors and the
+        domain check are mutually exclusive designs, so if this raises, the floors
+        are gone.
+        """
+        import numpy as np
+
+        _, _, ir = preprocessing_service.select_features_deviance(raw_count_adata)
+
+        adata = raw_count_adata.copy()
+        # Scaled, not merely shifted: this is what adata.X actually looks like after
+        # sc.pp.scale, which is the realistic way non-counts reach this code.
+        dense = np.asarray(
+            adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X,
+            dtype=np.float64,
+        )
+        adata.X = dense - dense.mean(axis=0)
+        adata.raw = None
+        assert adata.X.min() < 0, "fixture must actually contain negatives"
+
+        namespace = {"adata": adata}
+        with pytest.raises(ValueError, match="raw counts"):
+            exec(self._render(ir, n_top_genes=5), namespace)  # noqa: S102
+
+    def test_rendered_template_matches_library(
+        self, preprocessing_service, raw_count_adata
+    ):
+        """Execute the emitted code; its scores must equal the library's.
+
+        This is the guard that catches drift between the inlined snapshot and
+        ``lobster.utils.deviance``. The text assertions above cannot.
+        """
+        import numpy as np
+
+        from lobster.utils.deviance import calculate_deviance as library_deviance
+
+        _, _, ir = preprocessing_service.select_features_deviance(raw_count_adata)
+
+        adata = raw_count_adata.copy()
+        namespace = {"adata": adata}
+        exec(self._render(ir, n_top_genes=5), namespace)  # noqa: S102
+
+        counts = adata.raw.X if adata.raw is not None else adata.X
+        np.testing.assert_allclose(
+            namespace["deviance_scores"],
+            library_deviance(counts),
+            rtol=1e-12,
+            atol=1e-12,
+        )
+        assert adata.var["highly_deviant"].sum() == min(5, adata.n_vars)
+
+    def test_rendered_template_stays_sparse(
+        self, preprocessing_service, raw_count_adata
+    ):
+        """The inlined copy must not densify a sparse input either.
+
+        Uses a genuinely sparse matrix rather than ``raw_count_adata``, which is
+        ``negative_binomial(5, 0.3)`` and therefore ~99.8% dense (P(zero) =
+        0.3**5). On that fixture a densifying implementation touches only 1.0024x
+        ``nnz``, so the guard would technically fail it but with no margin -- and
+        any future variant touching marginally fewer elements would slip through.
+        At 6% density the separation is ~16.7x, which is the real amplification
+        factor (exactly ``1 / density``).
+        """
+        import anndata as ad
+        import numpy as np
+        import scipy.sparse as spr
+
+        _, _, ir = preprocessing_service.select_features_deviance(raw_count_adata)
+
+        counts = spr.random(300, 200, density=0.06, format="csr", random_state=11)
+        counts.data = np.ceil(counts.data * 30)
+        adata = ad.AnnData(X=counts)
+        adata.var_names = [f"Gene_{i}" for i in range(counts.shape[1])]
+        nnz = int(adata.X.nnz)
+        assert 0 < nnz < np.prod(adata.shape) * 0.2, "fixture must be truly sparse"
+
+        sizes = []
+        real_log = np.log
+
+        def spy(values, *args, **kwargs):
+            sizes.append(np.size(values))
+            return real_log(values, *args, **kwargs)
+
+        namespace = {"adata": adata}
+        np.log = spy
+        try:
+            exec(self._render(ir, n_top_genes=5), namespace)  # noqa: S102
+        finally:
+            np.log = real_log
+
+        assert sum(sizes) <= nnz, (
+            f"emitted code sent {sum(sizes)} elements to np.log, exceeding "
+            f"nnz={nnz}; the inlined copy has regressed to floor-then-mask"
+        )
