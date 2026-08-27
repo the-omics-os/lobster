@@ -7,7 +7,7 @@ This service provides functionality for:
 - Filtering samples by clinical trial timepoints
 - RECIST 1.1 response normalization
 
-Used by proteomics_expert agent for the Biognosys pilot (SAKK17/18).
+Used by proteomics_expert agent for clinical proteomics workflows.
 
 Follows Lobster architecture:
 - Receives DataManagerV2 in __init__

@@ -13,7 +13,7 @@ Key features:
 
 Used by:
 - ClinicalMetadataService for metadata processing
-- proteomics_expert for clinical proteomics analysis (Biognosys pilot)
+- proteomics_expert for clinical proteomics analysis
 """
 
 import logging

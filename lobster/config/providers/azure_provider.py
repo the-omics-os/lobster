@@ -3,7 +3,7 @@ Azure AI provider implementation.
 
 Provides access to models in Azure AI Foundry including OpenAI GPT-4o,
 DeepSeek R1, Cohere, Phi, and Mistral via customer-managed Azure resources.
-Enables enterprise customers (e.g., Biognosys) to use their Azure credentials.
+Enables enterprise customers to use their own Azure credentials.
 
 Architecture:
     - Implements ILLMProvider interface
