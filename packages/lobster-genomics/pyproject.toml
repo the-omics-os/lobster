@@ -24,11 +24,15 @@ dependencies = [
     "lobster-ai~=1.1.0",
     "anndata>=0.9.0",
     "numpy>=1.23.0",
-    "pandas>=1.5.0",
+    "pandas>=1.5.0,<3",
     "requests>=2.31.0",
     "scipy>=1.10.0",
     "xarray",
     "sgkit>=0.7.0",
+    # sgkit imports pkg_resources at runtime; setuptools 82.0.0 removed it, so an
+    # unconstrained resolve makes `import sgkit` raise ModuleNotFoundError. Declared
+    # here rather than at root because sgkit is only pulled by this package.
+    "setuptools<82",
     "statsmodels>=0.14.0",
     "cyvcf2>=0.30.0",
 ]

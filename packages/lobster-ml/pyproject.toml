@@ -36,7 +36,12 @@ dependencies = [
     "anndata>=0.9.0",
     "h5py>=3.9.0",
     "numpy>=1.23.0",
-    "pandas>=1.5.0",
+    # This ceiling is load-bearing, not parity: docs/backend/pandas3-dtype-followons.md
+    # D6 records 15 unguarded `dtype == object` sites in this package (9 live comparisons
+    # plus 6 inside code-template strings that ship into exported notebooks). They were
+    # deferred on the rationale "not installed in the Cloud image", which is Cloud-scoped
+    # and does not cover a standalone `pip install lobster-ml`.
+    "pandas>=1.5.0,<3",
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
 ]
