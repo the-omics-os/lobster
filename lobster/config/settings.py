@@ -43,7 +43,7 @@ class Settings:
 
         # CDK variables (used by lobster-cloud deployment)
         self.STACK_NAME = "LobsterStack"
-        self.CDK_DEPLY_ACCOUNT = "649207544517"
+        self.CDK_DEPLY_ACCOUNT = os.environ.get("CDK_DEPLOY_ACCOUNT", "")
         # AWS Fargate CPU/Memory options summary:
         # - 256 (.25 vCPU): 512 MiB, 1 GB, 2 GB (Linux)
         # - 512 (.5 vCPU): 1 GB, 2 GB, 3 GB, 4 GB (Linux)
