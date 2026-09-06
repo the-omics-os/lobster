@@ -1119,6 +1119,8 @@ def research_agent(
                     if entry.dataset_id == identifier
                 ]
 
+                has_ncbi_rnaseq_counts = False
+
                 # Add to queue if requested and not already present
                 if add_to_queue and not queue_entries:
                     try:
@@ -1134,6 +1136,8 @@ def research_agent(
                             f"Successfully added cached dataset {identifier} to download queue "
                             f"with entry_id: {result.queue_entry.entry_id}"
                         )
+
+                        has_ncbi_rnaseq_counts = result.has_ncbi_rnaseq_counts
 
                         # Update queue_entries list for response building
                         queue_entries = [result.queue_entry]
@@ -1158,6 +1162,12 @@ def research_agent(
                     f"**Database**: {metadata.get('database', 'GEO')}",
                     "",
                 ]
+
+                if has_ncbi_rnaseq_counts:
+                    response_parts.append(
+                        "has_ncbi_rnaseq_counts=True: "
+                        "An NCBI-generated raw count source is also available."
+                    )
 
                 # Add queue status if exists
                 if queue_entries:
@@ -1291,6 +1301,12 @@ def research_agent(
                                 if result.url_data:
                                     report += f"- **Files found**: {result.url_data.file_count}\n"
 
+                                if result.has_ncbi_rnaseq_counts:
+                                    report += (
+                                        "has_ncbi_rnaseq_counts=True: "
+                                        "An NCBI-generated raw count source is also available.\n"
+                                    )
+
                                 # Add warnings if validation status has warnings
                                 if (
                                     validation_status
@@ -1421,6 +1437,12 @@ def research_agent(
                 f"**Entry ID**: `{entry.entry_id}`",
                 f"**Status**: {entry.status}",
             ]
+
+            if result.has_ncbi_rnaseq_counts:
+                report_parts.append(
+                    "has_ncbi_rnaseq_counts=True: "
+                    "An NCBI-generated raw count source is also available."
+                )
 
             if strategy:
                 report_parts.extend(
@@ -2257,7 +2279,10 @@ Could not extract content for: {identifier}
         )
         return outcome.response_markdown
 
-    process_publication_entry.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    process_publication_entry.metadata = {
+        "categories": ["PREPROCESS"],
+        "provenance": True,
+    }
     process_publication_entry.tags = ["PREPROCESS"]
 
     @tool
@@ -2382,7 +2407,10 @@ Could not extract content for: {identifier}
             )
             return result
 
-    process_publication_queue.metadata = {"categories": ["PREPROCESS"], "provenance": True}
+    process_publication_queue.metadata = {
+        "categories": ["PREPROCESS"],
+        "provenance": True,
+    }
     process_publication_queue.tags = ["PREPROCESS"]
 
     # ============================================================
@@ -2394,7 +2422,10 @@ Could not extract content for: {identifier}
     write_to_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
     write_to_workspace.tags = ["UTILITY"]
     get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
-    get_content_from_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
+    get_content_from_workspace.metadata = {
+        "categories": ["UTILITY"],
+        "provenance": False,
+    }
     get_content_from_workspace.tags = ["UTILITY"]
 
     # ============================================================
@@ -2430,7 +2461,9 @@ Could not extract content for: {identifier}
         elif db_lower in providers_map:
             selected = [(db_lower, providers_map[db_lower])]
         else:
-            return f"Unknown database '{database}'. Use: dbaasp, iedb, peptipedia, or all"
+            return (
+                f"Unknown database '{database}'. Use: dbaasp, iedb, peptipedia, or all"
+            )
 
         all_results = []
         for db_name, provider_cls in selected:

@@ -24,7 +24,10 @@ def mock_data_manager():
 @pytest.fixture
 def preparer(mock_data_manager):
     """Create a GEOQueuePreparer with mocked dependencies."""
-    return GEOQueuePreparer(data_manager=mock_data_manager)
+    preparer = GEOQueuePreparer(data_manager=mock_data_manager)
+    preparer._geo_provider = MagicMock()
+    preparer._geo_provider.has_ncbi_rnaseq_counts.return_value = False
+    return preparer
 
 
 class TestGDSCanonToGSE:
@@ -153,3 +156,55 @@ class TestGDSCanonToGSE:
 
                 mock_super.assert_called_once_with("GDS5826", 5)
                 assert "original_accession" not in result.queue_entry.metadata
+
+
+@pytest.mark.parametrize("available", [True, False, RuntimeError("NCBI unavailable")])
+def test_ncbi_availability_does_not_change_queue(preparer, available, caplog):
+    from lobster.core.interfaces.queue_preparer import QueuePreparationResult
+    from lobster.core.schemas.download_queue import DownloadQueueEntry
+
+    entry = DownloadQueueEntry(
+        entry_id="test",
+        dataset_id="GSE123",
+        database="geo",
+        matrix_url="https://example.org/author.txt",
+        metadata={"title": "Author data"},
+    )
+    before = entry.model_dump()
+    prepared = QueuePreparationResult(queue_entry=entry)
+    check = preparer._geo_provider.has_ncbi_rnaseq_counts
+    if isinstance(available, Exception):
+        check.side_effect = available
+    else:
+        check.return_value = available
+    with patch(
+        "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry",
+        return_value=prepared,
+    ) as normal_prepare:
+        result = preparer.prepare_queue_entry("GSE123")
+    normal_prepare.assert_called_once_with("GSE123", 5)
+    check.assert_called_once_with("GSE123")
+    assert result is prepared
+    assert result.has_ncbi_rnaseq_counts is (available is True)
+    assert entry.model_dump() == before
+    if isinstance(available, Exception):
+        assert "Could not check NCBI RNA-seq counts" in caplog.text
+
+
+def test_ncbi_availability_uses_canonical_gse(preparer):
+    with (
+        patch.object(preparer, "_resolve_gds_to_gse", return_value="GSE123"),
+        patch(
+            "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
+        ),
+    ):
+        preparer.prepare_queue_entry("GDS123")
+    preparer._geo_provider.has_ncbi_rnaseq_counts.assert_called_once_with("GSE123")
+
+
+def test_ncbi_availability_skipped_for_non_gse(preparer):
+    with patch(
+        "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
+    ):
+        preparer.prepare_queue_entry("GPL570")
+    preparer._geo_provider.has_ncbi_rnaseq_counts.assert_not_called()
