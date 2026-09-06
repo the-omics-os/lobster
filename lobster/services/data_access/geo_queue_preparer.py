@@ -300,6 +300,17 @@ class GEOQueuePreparer(IQueuePreparer):
             else:
                 result.queue_entry.metadata = {"original_accession": original_accession}
 
+        # Check only after normal preparation; availability must not affect downloads.
+        if canonical.upper().startswith("GSE"):
+            try:
+                result.has_ncbi_rnaseq_counts = (
+                    self._get_geo_provider().has_ncbi_rnaseq_counts(canonical)
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Could not check NCBI RNA-seq counts for {canonical}: {e}"
+                )
+
         return result
 
     def _resolve_gds_to_gse(self, gds_id: str) -> Optional[str]:

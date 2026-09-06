@@ -382,6 +382,20 @@ def _build_response_behavior(config: SupervisorConfig, interactive: bool = True)
                 "- Fetch metadata preview first and confirm before downloading datasets."
             )
 
+        if (
+            config.require_download_confirmation or config.require_metadata_preview
+        ) and not config.admin_mode:
+            rules.append(
+                "- At the existing pre-download confirmation, when research reports "
+                "has_ncbi_rnaseq_counts=True for the dataset, tell the user: "
+                "'An NCBI-generated raw count source is also available. "
+                "Do you prefer the author-provided GEO source or the NCBI-generated "
+                "raw counts?' Explain that the preference is informational for now. "
+                "Do not persist or act on the answer, or change the queue, selected "
+                "strategy, URLs, files, or download execution. If the flag is false "
+                "or absent, keep the existing confirmation behavior unchanged."
+            )
+
     if config.summarize_expert_output:
         rules.append(
             "- Summarize expert output with key findings, metrics, and file names (2-4 sentences)."

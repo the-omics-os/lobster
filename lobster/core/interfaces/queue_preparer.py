@@ -56,12 +56,14 @@ class QueuePreparationResult:
         url_data: DownloadUrlResult from the provider (for inspection/logging)
         metadata: Raw metadata dict from the database
         validation_summary: Human-readable summary of preparation
+        has_ncbi_rnaseq_counts: Informational availability flag, not persisted in queue
     """
 
     queue_entry: "DownloadQueueEntry"
     url_data: Optional["DownloadUrlResult"] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
     validation_summary: str = ""
+    has_ncbi_rnaseq_counts: bool = False
 
 
 class IQueuePreparer(ABC):
