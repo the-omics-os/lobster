@@ -175,32 +175,6 @@ async def _invoke_and_store(
         return f"Agent {agent_name} returned no response."
 
     content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
-    if agent_name == "research_agent":
-        # The model's final summary may omit availability from preparation tools.
-        # Preserve it explicitly at the supervisor handoff, without queue storage.
-        preparation_calls = {
-            call["id"]: call["args"].get("accession")
-            or call["args"].get("identifier")
-            for message in result.get("messages", [])
-            for call in getattr(message, "tool_calls", [])
-            if call["name"]
-            in {"prepare_dataset_download", "validate_dataset_metadata"}
-        }
-        availability = []
-        for message in result.get("messages", []):
-            accession = preparation_calls.get(getattr(message, "tool_call_id", None))
-            if accession and (
-                "has_ncbi_rnaseq_counts=True: "
-                "An NCBI-generated raw count source is also available."
-            ) in str(getattr(message, "content", "")):
-                notice = (
-                    f"{accession}: has_ncbi_rnaseq_counts=True: "
-                    "An NCBI-generated raw count source is also available."
-                )
-                if notice not in availability and notice not in content:
-                    availability.append(notice)
-        if availability:
-            content = f"{content}\n\n" + "\n".join(availability)
     logger.debug(f"Agent {agent_name} completed. Response length: {len(content)}")
 
     # Dual-write: store full result for later retrieval
