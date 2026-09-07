@@ -45,6 +45,7 @@ class OllamaProvider(ILLMProvider):
         - OLLAMA_BASE_URL: Ollama server URL (default: "http://localhost:11434")
         - OLLAMA_DEFAULT_MODEL: Explicit model override (bypasses auto-selection)
         - OLLAMA_NUM_CTX: Explicit context window override (bypasses auto-detection)
+        - OLLAMA_API_KEY: Bearer token for Ollama Cloud (optional; local needs none)
 
     Auto-Selection Priority:
         1. OLLAMA_DEFAULT_MODEL environment variable (explicit override)
@@ -134,7 +135,11 @@ class OllamaProvider(ILLMProvider):
         try:
             import requests
 
-            response = requests.get(f"{self._base_url}/api/tags", timeout=2)
+            response = requests.get(
+                f"{self._base_url}/api/tags",
+                headers=self._auth_headers(),
+                timeout=2,
+            )
             return response.status_code == 200
         except Exception as e:
             logger.debug(f"Ollama server not accessible at {self._base_url}: {e}")
@@ -151,7 +156,11 @@ class OllamaProvider(ILLMProvider):
         try:
             import requests
 
-            response = requests.get(f"{self._base_url}/api/tags", timeout=5)
+            response = requests.get(
+                f"{self._base_url}/api/tags",
+                headers=self._auth_headers(),
+                timeout=5,
+            )
 
             if response.status_code != 200:
                 logger.warning(
@@ -310,6 +319,12 @@ class OllamaProvider(ILLMProvider):
                 f"langchain-ollama package not installed. " f"Install with: {cmd}"
             )
 
+        # Resolve an Ollama Cloud API key. An explicit api_key kwarg wins over
+        # the OLLAMA_API_KEY env var (matches the OpenAI/Nebius providers and
+        # the auth-precedence rule). Pop it BEFORE spreading **kwargs so it is
+        # not passed to ChatOllama, which has no api_key field.
+        api_key = kwargs.pop("api_key", None) or self._get_api_key()
+
         # Build parameters for ChatOllama
         ollama_params = {
             "model": model_id,
@@ -320,6 +335,15 @@ class OllamaProvider(ILLMProvider):
         # Add base URL if custom endpoint
         if self._base_url != "http://localhost:11434":
             ollama_params["base_url"] = self._base_url
+
+        # Attach Ollama Cloud bearer auth. ChatOllama has no api_key field;
+        # auth flows through client_kwargs -> the underlying ollama Client
+        # (langchain_ollama chat_models.py: client_kwargs "Pass headers in
+        # here"). Only set when a key is present so local mode is unchanged.
+        if api_key:
+            ollama_params["client_kwargs"] = {
+                "headers": {"Authorization": f"Bearer {api_key}"}
+            }
 
         # Set keep_alive to prevent Ollama from evicting the model mid-session.
         # Ollama's default is 5 minutes, which causes re-loads during longer
@@ -360,6 +384,7 @@ class OllamaProvider(ILLMProvider):
             resp = requests.post(
                 f"{self._base_url}/api/generate",
                 json={"model": model_id, "prompt": "", "keep_alive": keep_alive},
+                headers=self._auth_headers(),
                 timeout=120,
             )
             if resp.status_code == 200:
@@ -423,7 +448,8 @@ class OllamaProvider(ILLMProvider):
             "Environment Variables:\n"
             "  OLLAMA_BASE_URL: Server URL (default: http://localhost:11434)\n"
             "  OLLAMA_DEFAULT_MODEL: Model name (default: auto-select best)\n"
-            "  OLLAMA_NUM_CTX: Context window override (default: auto-detect from model)\n\n"
+            "  OLLAMA_NUM_CTX: Context window override (default: auto-detect from model)\n"
+            "  OLLAMA_API_KEY: Bearer token for Ollama Cloud (local Ollama needs none)\n\n"
             "Current Configuration:\n"
             f"  Base URL: {self._base_url}\n"
             f"  Server Available: {self.is_available()}\n"
@@ -431,6 +457,36 @@ class OllamaProvider(ILLMProvider):
         )
 
     # ---- Private Helper Methods ----
+
+    def _get_api_key(self) -> Optional[str]:
+        """
+        Resolve the Ollama Cloud API key from the environment.
+
+        Ollama Cloud authenticates with a bearer token. The official ``ollama``
+        client reads ``OLLAMA_API_KEY`` and sends ``Authorization: Bearer
+        <key>``; we read the same variable so our direct ``requests`` calls
+        stay consistent with the ChatOllama path (which uses that client).
+        Read live, not cached in ``__init__``, so a key set after import still
+        takes effect.
+
+        Returns:
+            The API key, or None for local Ollama (no auth needed).
+        """
+        return os.environ.get("OLLAMA_API_KEY")
+
+    def _auth_headers(self) -> Optional[dict]:
+        """
+        Build the Authorization header for direct HTTP calls, if a key is set.
+
+        Returns:
+            ``{"Authorization": "Bearer <key>"}`` when OLLAMA_API_KEY is set,
+            else None — local mode, so requests sends no custom header
+            (identical to prior behavior).
+        """
+        key = self._get_api_key()
+        if key:
+            return {"Authorization": f"Bearer {key}"}
+        return None
 
     def _format_display_name(self, model_name: str) -> str:
         """
@@ -591,6 +647,7 @@ class OllamaProvider(ILLMProvider):
             resp = requests.post(
                 f"{self._base_url}/api/show",
                 json={"model": model_id},
+                headers=self._auth_headers(),
                 timeout=5,
             )
             if resp.status_code != 200:
