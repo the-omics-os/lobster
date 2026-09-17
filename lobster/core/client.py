@@ -609,6 +609,13 @@ class AgentClient(BaseClient):
                     if isinstance(chunk, dict):
                         # HITL interrupt detection (Phase 2).
                         if "__interrupt__" in chunk:
+                            logger.info(
+                                "[GEO preference] chat stream received interrupt session=%s interactive=%s namespace=%s count=%s",
+                                self.session_id,
+                                self.interactive,
+                                namespace,
+                                len(chunk["__interrupt__"]),
+                            )
                             if not self.interactive:
                                 logger.warning(
                                     "HITL interrupt fired in non-interactive streaming mode"
@@ -757,6 +764,12 @@ class AgentClient(BaseClient):
             "callbacks": self.callbacks,
             "recursion_limit": 1000,
         }
+        logger.info(
+            "[GEO preference] chat resume requested session=%s response_type=%s stream=%s",
+            self.session_id,
+            type(response).__name__,
+            stream,
+        )
         stream_input = Command(resume=response)
         if stream:
             yield from self._stream_query(
