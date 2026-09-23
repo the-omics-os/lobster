@@ -46,18 +46,22 @@ class StrategyConfig(BaseModel):
     summary_file_type: str = Field(
         default="", description="Filetype of the Summary File. Example: 'xlsx'"
     )
+
     processed_matrix_name: str = Field(
         default="",
-        description="name of the TARGET processed (log2, tpm, normalized, etc) matrix file (preference is non R objects). Example: 'GSE131907_Lung_Cancer_normalized_log2TPM_matrix'",
+        description="name of the TARGET processed (log2, tpm, fpkm, normalized, etc) matrix file, including bulk RNA-seq normalized matrices (preference is non R objects). Example: 'GSE131907_Lung_Cancer_normalized_log2TPM_matrix'",
     )
+
     processed_matrix_filetype: str = Field(
         default="",
         description="filetype of the TARGET processed file (preference is non R objects). Example: 'txt'",
     )
+
     raw_UMI_like_matrix_name: str = Field(
         default="",
-        description="name of the raw TARGET UMI-like (UMI, raw, tar) matrix file (preference is non R objects). Example: 'GSE131907_Lung_Cancer_raw_UMI_matrix'",
+        description="name of the raw TARGET UMI-like (UMI, raw, tar) or bulk unnormalized/gene count matrix file; if a file has raw integer counts (names with 'raw', 'counts', 'unnormalised') it belongs here, not in processed (preference is non R objects). Example: 'GSE131907_Lung_Cancer_raw_UMI_matrix'",
     )
+
     raw_UMI_like_matrix_filetype: str = Field(
         default="",
         description="filetype of the TARGET raw UMI-like file (preference is non R objects). Example: 'txt'",
