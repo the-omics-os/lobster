@@ -184,7 +184,7 @@ func matchDeepSubcommands(cmd, sub, typed string) []string {
 	case "/workspace save":
 		candidates = []string{"--force"}
 	case "/config provider":
-		candidates = []string{"list", "switch", "anthropic", "bedrock", "ollama", "gemini", "azure", "openai", "openrouter"}
+		candidates = []string{"list", "switch", "anthropic", "bedrock", "ollama", "gemini", "azure", "openai", "openrouter", "nebius"}
 	case "/config model":
 		candidates = []string{"list", "switch"}
 	default:

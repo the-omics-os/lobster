@@ -29,7 +29,9 @@ classifiers = [
 keywords = ["bioinformatics", "RNA-seq", "single-cell", "AI", "machine-learning", "data-analysis", "genomics"]
 dependencies = [
     # Core data
-    "pandas>=1.5.0",
+    # pandas<3: PDEP-14 makes string columns report dtype "str", so `col.dtype == object`
+    # is False and metadata columns get coerced with errors="coerce" into all-NaN.
+    "pandas>=1.5.0,<3",
     "numpy>=2.2,<2.5",
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
@@ -87,7 +89,14 @@ bedrock = ["langchain-aws>=0.1.0", "boto3>=1.26.0"]
 ollama = ["langchain-ollama>=0.3.10", "ollama>=0.6.0"]
 gemini = ["langchain-google-genai>=4.1.2"]
 openai = ["langchain-openai>=0.3.0"]
-all-providers = ["lobster-ai[anthropic,bedrock,ollama,gemini,azure,openai]"]
+# OpenAI-wire-compatible gateways — same client package, distinct extras so
+# `lobster-ai[openrouter]` / `[nebius]` resolve instead of silently no-op'ing
+# (uv ignores unknown extras without error).
+openrouter = ["langchain-openai>=0.3.0"]
+nebius = ["langchain-openai>=0.3.0"]
+all-providers = [
+    "lobster-ai[anthropic,bedrock,ollama,gemini,azure,openai,openrouter,nebius]"
+]
 
 # =============================================================================
 # Document Intelligence (optional, installed via `lobster init`)
@@ -250,8 +259,14 @@ dev = [
     "pipdeptree>=2.25",
 ]
 all = [
-    # Complete installation: all domain extras + dev tools
-    "lobster-ai[transcriptomics,bulk-rnaseq,genomics,ml,azure,batteries,dev]",
+    # Complete installation: everything [full] installs, plus dev tools.
+    # Was `[transcriptomics,bulk-rnaseq,genomics,ml,azure,batteries,dev]`, of which
+    # bulk-rnaseq, ml and batteries were never declared as extras. Same failure mode as the
+    # openrouter/nebius note above -- they silently resolved to nothing (pip warns, uv is
+    # silent when the undeclared name is referenced transitively rather than requested
+    # directly), which made [all] a strict SUBSET of [full]: no proteomics.
+    # Referencing [full] rather than re-listing domains keeps the two from diverging again.
+    "lobster-ai[full,dev]",
 ]
 
 [project.urls]
@@ -508,7 +523,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [tool.bumpversion]
-current_version = "1.1.420"
+current_version = "1.1.422"
 commit = true
 tag = true
 
@@ -523,6 +538,11 @@ dev = [
 line-length = 88
 
 [tool.ruff.lint]
+# Explicit: this was ruff's built-in default rule set through 0.15. Ruff 0.16.0 widened
+# the default to 413 rules, which broke CI overnight with 6587 findings and zero source
+# changes. Do not delete this as boilerplate — without it, rule selection silently
+# inherits whatever default the installed ruff happens to ship.
+select = ["E4", "E7", "E9", "F"]
 ignore = [
     "E402",  # module-import-not-at-top-of-file (intentional lazy loading)
 ]

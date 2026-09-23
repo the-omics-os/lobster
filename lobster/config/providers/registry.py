@@ -181,6 +181,7 @@ class ProviderRegistry:
             ("lobster.config.providers.openai_provider", "OpenAIProvider"),
             ("lobster.config.providers.openrouter_provider", "OpenRouterProvider"),
             ("lobster.config.providers.omics_os_provider", "OmicsOSProvider"),
+            ("lobster.config.providers.nebius_provider", "NebiusProvider"),
         ]
 
         import sys

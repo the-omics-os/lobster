@@ -57,7 +57,7 @@ def get_friendly_model_name(model_id: str, provider: str) -> str:
 
     Args:
         model_id: Full model identifier (e.g., "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
-        provider: Provider name ("bedrock", "anthropic", "ollama")
+        provider: Provider name (any entry in ``VALID_PROVIDERS``)
 
     Returns:
         Friendly name (e.g., "sonnet 4.5", "gptoss:20b")

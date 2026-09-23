@@ -326,6 +326,19 @@ class AgentClient(BaseClient):
                         "session_id": self.session_id,
                     }
 
+                if event.get("__interrupt__"):
+                    return {
+                        "success": False,
+                        "interrupts": [
+                            {
+                                "data": getattr(intr, "value", intr),
+                                "interrupt_id": getattr(intr, "id", None),
+                            }
+                            for intr in event["__interrupt__"]
+                        ],
+                        "session_id": self.session_id,
+                    }
+
                 # Track which agent is responding
                 if event:
                     for node_name in event.keys():
@@ -439,6 +452,7 @@ class AgentClient(BaseClient):
             seen_content_hashes: set = set()
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
             was_cancelled = False
+            pending_interrupts = {}
 
             # Active speaker tracks which agent currently owns the
             # narrative.  Updated by handoff tool calls (start) and
@@ -610,14 +624,13 @@ class AgentClient(BaseClient):
                                 }
                                 return
                             for interrupt_obj in chunk["__interrupt__"]:
-                                yield {
-                                    "type": "interrupt",
-                                    "data": getattr(
-                                        interrupt_obj, "value", interrupt_obj
-                                    ),
-                                    "interrupt_id": getattr(interrupt_obj, "id", None),
-                                }
-                            return  # Stream ends at interrupt checkpoint.
+                                interrupt_id = getattr(interrupt_obj, "id", None)
+                                pending_interrupts[
+                                    interrupt_id or id(interrupt_obj)
+                                ] = interrupt_obj
+                            # Drain the graph so parallel tasks finish checkpointing.
+                            # Nested and parent updates can report the same interrupt.
+                            continue
 
                         for node_name, node_update in chunk.items():
                             if isinstance(node_update, dict):
@@ -660,6 +673,15 @@ class AgentClient(BaseClient):
             if was_cancelled:
                 if pre_query_msg_count is not None:
                     self._rollback_cancelled_query(config, pre_query_msg_count)
+                return
+
+            if pending_interrupts:
+                for intr in pending_interrupts.values():
+                    yield {
+                        "type": "interrupt",
+                        "data": getattr(intr, "value", intr),
+                        "interrupt_id": getattr(intr, "id", None),
+                    }
                 return
 
             # Check for lingering HITL interrupts that didn't appear in the

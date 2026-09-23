@@ -69,10 +69,15 @@ Options:
   --anthropic-key KEY       Claude API key (non-interactive)
   --gemini-key KEY          Google Gemini API key (non-interactive)
   --openai-key KEY          OpenAI API key (non-interactive)
+  --openrouter-key KEY      OpenRouter API key (non-interactive)
+  --nebius-key KEY          Nebius AI Studio API key (non-interactive)
+  --azure-endpoint URL      Azure AI endpoint URL (non-interactive, pair with credential)
+  --azure-credential KEY    Azure AI API credential (non-interactive, pair with endpoint)
   --bedrock-access-key KEY  AWS Bedrock access key (non-interactive)
   --bedrock-secret-key KEY  AWS Bedrock secret key (non-interactive)
   --use-ollama              Use Ollama local LLM (non-interactive)
   --ollama-model MODEL      Ollama model name (default: llama3:8b-instruct)
+  --model, -m MODEL         Default model ID for the selected provider
   --profile PROFILE         Agent profile: development, production, performance, max
   --ncbi-key KEY            NCBI API key (optional)
   --cloud-key KEY           Omics-OS Cloud API key (optional)

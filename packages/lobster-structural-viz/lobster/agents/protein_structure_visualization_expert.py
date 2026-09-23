@@ -14,7 +14,13 @@ AGENT_CONFIG = AgentRegistryConfig(
     description="Fetches protein structures from RCSB PDB, creates high-quality 3D visualizations using PyMOL, performs structural analysis (RMSD, secondary structure, geometry), and links structures to gene expression and proteomics data",
     factory_function="lobster.agents.protein_structure_visualization_expert.protein_structure_visualization_expert",
     handoff_tool_name="handoff_to_protein_structure_visualization_expert_agent",
-    handoff_tool_description="Delegate protein structure visualization and analysis tasks to the protein structure visualization expert",
+    handoff_tool_description=(
+        "Assign 3D protein structure tasks: fetch structures from RCSB PDB by "
+        "PDB ID, render high-quality 3D visualizations with PyMOL, run structural "
+        "analysis (RMSD, secondary structure, geometry), and link structures to "
+        "gene-expression or proteomics results. Use for protein structure "
+        "rendering, structural comparison, or structure-to-omics mapping."
+    ),
 )
 
 # === Heavy imports below ===

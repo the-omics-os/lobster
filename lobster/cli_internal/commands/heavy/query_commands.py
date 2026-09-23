@@ -248,7 +248,7 @@ def query_impl(
         None,
         "--provider",
         "-p",
-        help="LLM provider to use (bedrock, anthropic, ollama). Overrides auto-detection.",
+        help="LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, omics-os). Overrides auto-detection.",
     ),
     model: Optional[str] = typer.Option(
         None,

@@ -11,10 +11,10 @@ from typing import Any
 import pytest
 
 from lobster.core.schemas.search import OntologyMatch
-from lobster.services.vector.backends.base import BaseVectorBackend
-from lobster.services.vector.config import VectorSearchConfig
-from lobster.services.vector.embeddings.base import BaseEmbedder
-from lobster.services.vector.service import ONTOLOGY_COLLECTIONS, VectorSearchService
+from lobster.vector.backends.base import BaseVectorBackend
+from lobster.vector.config import VectorSearchConfig
+from lobster.vector.embeddings.base import BaseEmbedder
+from lobster.vector.service import ONTOLOGY_COLLECTIONS, VectorSearchService
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +437,7 @@ class TestMatchOntologyIntegration:
         """End-to-end: embed terms, add to ChromaDB, query via match_ontology()."""
         import chromadb
 
-        from lobster.services.vector.backends.chromadb_backend import (
+        from lobster.vector.backends.chromadb_backend import (
             ChromaDBBackend,
         )
 

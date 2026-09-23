@@ -43,7 +43,7 @@ def test_provider_registry_initialization():
     # Trigger initialization
     providers = ProviderRegistry.get_provider_names()
 
-    # Should have all 7 providers registered
+    # Should have all 9 providers registered
     assert "anthropic" in providers
     assert "bedrock" in providers
     assert "ollama" in providers
@@ -52,7 +52,8 @@ def test_provider_registry_initialization():
     assert "openai" in providers
     assert "openrouter" in providers
     assert "omics-os" in providers
-    assert len(providers) == 8
+    assert "nebius" in providers
+    assert len(providers) == 9
 
 
 def test_get_provider():

@@ -11,10 +11,20 @@ from lobster.config.agent_registry import AgentRegistryConfig
 AGENT_CONFIG = AgentRegistryConfig(
     name="visualization_expert_agent",
     display_name="Visualization Expert",
-    description="Creates publication-quality visualizations through supervisor-mediated workflows",
+    description=(
+        "Creates publication-quality plots from loaded AnnData modalities: "
+        "UMAP/t-SNE/PCA embeddings, QC plots, violin, feature, dot plots, "
+        "heatmaps, elbow, and cluster-composition figures."
+    ),
     factory_function="lobster.agents.visualization_expert.visualization_expert",
     handoff_tool_name="handoff_to_visualization_expert_agent",
-    handoff_tool_description="Delegate visualization tasks to the visualization expert agent",
+    handoff_tool_description=(
+        "Assign figure/plot generation from loaded single-cell or expression "
+        "modalities: UMAP, t-SNE, PCA embeddings, QC plots (violin of counts/"
+        "genes/mito), violin plots, feature/gene expression plots, dot plots, "
+        "heatmaps, elbow plots, and cluster-composition bar charts. Use when the "
+        "user asks to plot, visualize, or draw a figure of AnnData results."
+    ),
 )
 
 # === Heavy imports below ===

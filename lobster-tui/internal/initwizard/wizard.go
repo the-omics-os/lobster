@@ -61,6 +61,7 @@ const (
 	providerOpenAI     = "openai"
 	providerOmicsOS    = "omics-os"
 	providerOpenRouter = "openrouter"
+	providerNebius     = "nebius"
 	customOllamaModel  = "__custom_ollama_model__"
 	defaultOllamaModel = "gpt-oss:20b"
 )
@@ -194,6 +195,11 @@ var providerModels = map[string][]struct {
 		{Name: "anthropic/claude-sonnet-4-5", Description: "Claude Sonnet 4.5 via OpenRouter", IsDefault: true},
 		{Name: "openai/gpt-4o", Description: "GPT-4o via OpenRouter"},
 		{Name: "google/gemini-3-pro-preview", Description: "Gemini 3 Pro via OpenRouter"},
+	},
+	providerNebius: {
+		{Name: "Qwen/Qwen3-30B-A3B-Instruct-2507", Description: "Qwen3 30B A3B — versatile, 262k context", IsDefault: true},
+		{Name: "Qwen/Qwen3-235B-A22B-Instruct-2507", Description: "Qwen3 235B — flagship general reasoning"},
+		{Name: "deepseek-ai/DeepSeek-V4-Pro", Description: "DeepSeek V4 Pro — advanced reasoning, 1M context"},
 	},
 }
 
@@ -560,6 +566,7 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 			{label: "Azure AI            -- Enterprise Azure deployments", value: providerAzure},
 			{label: "OpenAI              -- GPT-4o, reasoning models", value: providerOpenAI},
 			{label: "OpenRouter          -- 600+ models via one API key", value: providerOpenRouter},
+			{label: "Nebius AI Studio    -- Open-weight models (Qwen, DeepSeek)", value: providerNebius},
 		},
 	}
 
@@ -742,6 +749,14 @@ func (m *WizardModel) initAPIKeyStep() {
 		ti.Focus()
 		m.apiKeyInputs = []textinput.Model{ti}
 		m.apiKeyLabels = []string{"OpenRouter API Key"}
+
+	case providerNebius:
+		ti := textinput.New()
+		ti.Placeholder = "your-nebius-api-key"
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"Nebius API Key"}
 
 	case providerOmicsOS:
 		ti := textinput.New()

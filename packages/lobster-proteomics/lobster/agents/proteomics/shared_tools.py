@@ -20,6 +20,7 @@ from lobster.agents.proteomics.config import (
 )
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.core.utils.dtype_guards import boolean_flag_mask
 from lobster.services.analysis.proteomics_analysis_service import (
     ProteomicsAnalysisService,
 )
@@ -659,25 +660,13 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                 # NaN means not a contaminant. Normalize to boolean mask.
                 if platform_config.platform_specific.get("remove_contaminants", True):
                     if "is_contaminant" in adata_filtered.var.columns:
-                        col = adata_filtered.var["is_contaminant"]
-                        if col.dtype == object or col.dtype.name == "category":
-                            mask = col.fillna("").astype(str).isin(
-                                ["+", "True", "true", "1", "yes", "Yes"]
-                            )
-                        else:
-                            mask = col.fillna(False).astype(bool)
+                        mask = boolean_flag_mask(adata_filtered.var["is_contaminant"])
                         adata_filtered = adata_filtered[:, ~mask].copy()
 
                 # MS: Remove reverse hits (same convention as contaminants)
                 if platform_config.platform_specific.get("remove_reverse_hits", True):
                     if "is_reverse" in adata_filtered.var.columns:
-                        col = adata_filtered.var["is_reverse"]
-                        if col.dtype == object or col.dtype.name == "category":
-                            mask = col.fillna("").astype(str).isin(
-                                ["+", "True", "true", "1", "yes", "Yes"]
-                            )
-                        else:
-                            mask = col.fillna(False).astype(bool)
+                        mask = boolean_flag_mask(adata_filtered.var["is_reverse"])
                         adata_filtered = adata_filtered[:, ~mask].copy()
             else:
                 # Affinity: Filter by CV (column added by external Olink/SomaScan metadata, not by Lobster tools)

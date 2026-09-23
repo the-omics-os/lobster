@@ -17,6 +17,7 @@ import pandas as pd
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.schemas.metabolomics import MetabolomicsSchema
+from lobster.core.utils.dtype_guards import is_text_dtype
 
 logger = logging.getLogger(__name__)
 
@@ -255,10 +256,12 @@ class MetabolomicsAdapter(BaseAdapter):
             col_lower = str(col).lower()
             if any(pattern in col_lower for pattern in metadata_patterns):
                 metadata_cols.append(col)
-            elif df[col].dtype == "object" and not self._is_numeric_string_column(
-                df[col]
-            ):
-                # Non-numeric string columns are likely metadata
+            elif is_text_dtype(df[col]) and not self._is_numeric_string_column(df[col]):
+                # Non-numeric text columns are likely metadata. Test the dtype
+                # semantically via is_text_dtype (object incl. object-with-NaN,
+                # StringDtype, and the pandas-3 str dtype); a bare ``== "object"``
+                # misses the string dtypes, leaving a text column classified as
+                # intensity and silently coerced to all-NaN by pd.to_numeric.
                 metadata_cols.append(col)
 
         # Intensity columns are the remaining ones
@@ -277,20 +280,41 @@ class MetabolomicsAdapter(BaseAdapter):
         return intensity_df, metadata_df
 
     def _is_numeric_string_column(self, series: pd.Series) -> bool:
-        """Check if a string column contains numeric values."""
-        if series.dtype != "object":
+        """Return True only if EVERY non-null value is numeric-coercible.
+
+        Uses ``is_text_dtype`` (object incl. object-with-NaN, StringDtype,
+        pandas-3 str) rather than ``dtype == "object"`` so a numeric-encoded
+        ``string``/``str`` column is still recognized as intensity data, not
+        routed to metadata.
+
+        Policy: the whole non-null column is tested, NOT a leading sample. The
+        prior ``.head(10)`` was position-dependent — a text value at row 11
+        after ten numeric-looking rows classified the column as intensity, and
+        the downstream ``pd.to_numeric(errors="coerce")`` then silently blanked
+        that text to NaN (the same silent-corruption class this guard exists to
+        stop). Scanning every value removes the positional bias, and the
+        fail-safe direction is deliberate: a column with ANY non-numeric token
+        is routed to metadata (text preserved, recoverable) rather than treated
+        as intensity (where the token is silently lost). A genuine intensity
+        column that encodes missingness as a non-numeric STRING marker (e.g.
+        "NA", "<LOD") therefore lands in metadata; normalizing such markers to
+        real NaN at load time is the correct upstream fix, tracked separately.
+        """
+        if not is_text_dtype(series):
             return False
 
-        # Try to convert a sample to numeric
-        sample = series.dropna().head(10)
-        if len(sample) == 0:
+        non_null = series.dropna()
+        if len(non_null) == 0:
             return False
 
         try:
-            pd.to_numeric(sample, errors="raise")
-            return True
+            coerced = pd.to_numeric(non_null, errors="raise")
         except (ValueError, TypeError):
             return False
+        # An empty string coerces to NaN WITHOUT raising; a column containing one
+        # is not fully numeric, so route it to metadata (preserve the token)
+        # rather than to intensity where the token would be silently lost.
+        return bool(coerced.notna().all())
 
     def _standardize_metabolomics_metadata(
         self, metadata_df: pd.DataFrame

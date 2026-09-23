@@ -800,6 +800,9 @@ def init(
     openrouter_key: Optional[str] = typer.Option(
         None, "--openrouter-key", help="OpenRouter API key (non-interactive mode)"
     ),
+    nebius_key: Optional[str] = typer.Option(
+        None, "--nebius-key", help="Nebius AI Studio API key (non-interactive mode)"
+    ),
     azure_endpoint: Optional[str] = typer.Option(
         None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
     ),
@@ -936,6 +939,8 @@ def init(
       lobster init --non-interactive \\
         --openrouter-key=sk-or-xxx                   # CI/CD: OpenRouter (600+ models)
       lobster init --non-interactive \\
+        --nebius-key=xxx                             # CI/CD: Nebius AI Studio (open-weight models)
+      lobster init --non-interactive \\
         --azure-endpoint=https://xxx.inference.ai.azure.com/ \\
         --azure-credential=xxx                       # CI/CD: Azure AI
     """
@@ -954,6 +959,7 @@ def init(
         gemini_key=gemini_key,
         openai_key=openai_key,
         openrouter_key=openrouter_key,
+        nebius_key=nebius_key,
         azure_endpoint=azure_endpoint,
         azure_credential=azure_credential,
         profile=profile,
@@ -1033,15 +1039,14 @@ def _preflight_provider_check(
     resolver = ConfigResolver.get_instance(workspace_path)
 
     try:
-        provider_name, _ = resolver.resolve_provider(
-            runtime_override=provider_override
-        )
+        provider_name, _ = resolver.resolve_provider(runtime_override=provider_override)
     except ConfigurationError as exc:
+        from rich.console import Console
+
         from lobster.cli_internal.startup_diagnostics import (
             classify_startup_exception,
             render_startup_diagnostic_rich,
         )
-        from rich.console import Console
 
         diag = classify_startup_exception(
             exc, workspace=workspace_path, provider_override=provider_override
@@ -1056,11 +1061,12 @@ def _preflight_provider_check(
         try:
             provider.check_dependencies()
         except ImportError as exc:
+            from rich.console import Console
+
             from lobster.cli_internal.startup_diagnostics import (
                 classify_startup_exception,
                 render_startup_diagnostic_rich,
             )
-            from rich.console import Console
 
             diag = classify_startup_exception(
                 exc, workspace=workspace_path, provider_override=provider_name
@@ -1110,8 +1116,6 @@ def _launch_go_chat_binary(
         stream=stream,
     )
     return True
-
-
 
 
 def _maybe_launch_go_chat_ui(
@@ -1210,7 +1214,7 @@ def chat(
         None,
         "--provider",
         "-p",
-        help="LLM provider to use (bedrock, anthropic, ollama). Overrides auto-detection.",
+        help="LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, omics-os). Overrides auto-detection.",
     ),
     model: Optional[str] = typer.Option(
         None,
@@ -1274,7 +1278,11 @@ def chat(
     # Classic Rich terminal — final fallback
     if ui_mode == "auto":
         import sys
-        print("\033[33mNote:\033[0m Using classic terminal (Go TUI unavailable).", file=sys.stderr)
+
+        print(
+            "\033[33mNote:\033[0m Using classic terminal (Go TUI unavailable).",
+            file=sys.stderr,
+        )
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
 
     chat_impl(

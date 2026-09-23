@@ -204,7 +204,7 @@ class GlobalProviderConfig(ProviderConfigBase):
     by workspace-specific configurations.
 
     Attributes:
-        default_provider: Default LLM provider (bedrock | anthropic | ollama | gemini | azure)
+        default_provider: Default LLM provider (any entry in VALID_PROVIDERS)
         default_profile: Default agent configuration profile
         anthropic_default_model: Default Anthropic model for all projects
         bedrock_default_model: Default Bedrock model for all projects
@@ -231,7 +231,8 @@ class GlobalProviderConfig(ProviderConfigBase):
         return "_default_model"
 
     default_provider: Optional[str] = Field(
-        None, description="Default LLM provider (bedrock | anthropic | ollama | gemini)"
+        None,
+        description="Default LLM provider (bedrock | anthropic | ollama | gemini | azure | openai | openrouter | nebius)",
     )
 
     default_profile: str = Field(
@@ -264,6 +265,11 @@ class GlobalProviderConfig(ProviderConfigBase):
     openrouter_default_model: Optional[str] = Field(
         None,
         description="Default OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
+    )
+
+    nebius_default_model: Optional[str] = Field(
+        None,
+        description="Default Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507')",
     )
 
     ollama_default_host: str = Field(
@@ -381,6 +387,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.gemini_default_model = None
         self.azure_default_model = None
         self.openrouter_default_model = None
+        self.nebius_default_model = None
         self.ollama_default_host = "http://localhost:11434"
         self.model_context_windows = {}
         logger.info("Reset global config to defaults")

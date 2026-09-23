@@ -1036,9 +1036,16 @@ def _validate_gene_symbols(adata) -> "ValidationResult":
         if missing > 0:
             result.add_warning(f"{missing} missing gene symbols")
 
-        # Basic format check (starts with letter)
-        if symbols.dtype == "object":
-            invalid_format = ~symbols.str.match(r"^[A-Za-z]", na=False).sum()
+        # Basic format check (starts with letter). Test the dtype semantically:
+        # is_text_dtype covers object (incl. object-with-NaN), StringDtype, and
+        # the pandas-3 str dtype, whereas `== "object"` silently skips the check
+        # under pandas 3 (and is_string_dtype alone would skip object-with-NaN).
+        from lobster.core.utils.dtype_guards import is_text_dtype
+
+        if is_text_dtype(symbols):
+            # Parenthesize before .sum(): ``~series.sum()`` would bit-invert the
+            # scalar count (always negative, so the warning never fires).
+            invalid_format = (~symbols.str.match(r"^[A-Za-z]", na=False)).sum()
             if invalid_format > 0:
                 result.add_warning(f"{invalid_format} gene symbols with unusual format")
 

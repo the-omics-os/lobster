@@ -187,7 +187,7 @@ class LLMFactory:
         Check if a specific provider is available.
 
         Args:
-            provider_name: Provider to check (anthropic, bedrock, ollama)
+            provider_name: Provider to check (any entry in VALID_PROVIDERS)
 
         Returns:
             bool: True if provider is available
