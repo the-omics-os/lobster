@@ -141,7 +141,7 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
 
 
 async def _invoke_and_store(
-    agent, agent_name: str, task_description: str, store
+    agent, agent_name: str, task_description: str, store, data_manager=None
 ) -> str:
     """Shared invoke pipeline for all delegation tools.
 
@@ -165,31 +165,105 @@ async def _invoke_and_store(
         "metadata": {"agent_name": agent_name},
     }
 
-    result = await agent.ainvoke(
-        {"messages": [{"role": "user", "content": task_description}]}, config=config
-    )
+    from langgraph.errors import GraphInterrupt
 
-    # Extract the final message content
-    final_msg = result.get("messages", [])[-1] if result.get("messages") else None
-    if final_msg is None:
-        return f"Agent {agent_name} returned no response."
+    stage = "invoke_agent"
+    logger.info("[GEO preference] handoff start agent=%s", agent_name)
+    try:
+        result = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": task_description}]}, config=config
+        )
 
-    content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
-    logger.debug(f"Agent {agent_name} completed. Response length: {len(content)}")
+        logger.info(
+            "[GEO preference] handoff invocation returned agent=%s result_type=%s",
+            agent_name,
+            type(result).__name__,
+        )
+        stage = "extract_final_message"
+        # Extract the final message content
+        final_msg = result.get("messages", [])[-1] if result.get("messages") else None
+        if final_msg is None:
+            logger.warning(
+                "[GEO preference] handoff has no final message agent=%s", agent_name
+            )
+            return f"Agent {agent_name} returned no response."
 
-    # Dual-write: store full result for later retrieval
-    if store is not None:
-        from lobster.tools.store_tools import store_delegation_result
+        content = final_msg.content if hasattr(final_msg, "content") else str(final_msg)
+        if agent_name == "research_agent" and data_manager is not None:
+            stage = "append_geo_availability"
+            logger.info(
+                "[GEO preference] availability summary start agent=%s", agent_name
+            )
+            accessions = {
+                str(
+                    call.get("args", {}).get("accession")
+                    or call.get("args", {}).get("identifier")
+                    or ""
+                ).upper()
+                for message in result.get("messages", [])
+                for call in getattr(message, "tool_calls", [])
+                if call.get("name")
+                in {"prepare_dataset_download", "validate_dataset_metadata"}
+            }
+            logger.info(
+                "[GEO preference] preparation accessions=%s", sorted(accessions)
+            )
+            notices = []
+            for entry in data_manager.download_queue.list_entries():
+                original = str(entry.metadata.get("original_accession", "")).upper()
+                if entry.database.lower() == "geo" and (
+                    entry.dataset_id.upper() in accessions
+                    or (original and original in accessions)
+                ):
+                    available = entry.has_ncbi_rnaseq_counts
+                    notices.append(
+                        f"{entry.dataset_id} (entry_id={entry.entry_id}): "
+                        f"has_ncbi_rnaseq_counts={available}; "
+                        f"selected_source={entry.selected_source}; "
+                        f"source_preference_answered={entry.source_preference_answered}. "
+                        "Preference is informational; download execution is unchanged."
+                    )
+            logger.info(
+                "[GEO preference] availability summary completed notices=%s",
+                len(notices),
+            )
+            if notices:
+                content = (
+                    str(content) + "\n\nGEO source availability:\n" + "\n".join(notices)
+                )
 
-        store_key = store_delegation_result(store, agent_name, content)
-        if store_key:
-            content = f"{content}\n\n[store_key={store_key}]"
+        logger.debug(f"Agent {agent_name} completed. Response length: {len(content)}")
 
-    return content
+        stage = "store_handoff_result"
+        # Dual-write: store full result for later retrieval
+        if store is not None:
+            from lobster.tools.store_tools import store_delegation_result
+
+            store_key = store_delegation_result(store, agent_name, content)
+            if store_key:
+                content = f"{content}\n\n[store_key={store_key}]"
+
+        logger.info("[GEO preference] handoff complete agent=%s", agent_name)
+        return content
+    except GraphInterrupt:
+        logger.info(
+            "[GEO preference] handoff paused agent=%s stage=%s", agent_name, stage
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "[GEO preference] handoff failed agent=%s stage=%s", agent_name, stage
+        )
+        raise
 
 
 def _create_agent_tool(
-    agent_name: str, agent, tool_name: str, description: str, store=None
+    agent_name: str,
+    agent,
+    tool_name: str,
+    description: str,
+    store=None,
+    data_manager=None,
 ):
     """Create a tool that invokes a sub-agent (Tool Calling pattern).
 
@@ -216,7 +290,9 @@ def _create_agent_tool(
         logger.info(
             f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ==="
         )
-        return await _invoke_and_store(agent, agent_name, task_description, _store)
+        return await _invoke_and_store(
+            agent, agent_name, task_description, _store, data_manager
+        )
 
     invoke_agent.metadata = {"categories": ["DELEGATE"], "provenance": False}
     invoke_agent.tags = ["DELEGATE"]
@@ -584,6 +660,7 @@ def _build_supervisor_tools(
                 tool_name=agent_config.handoff_tool_name,
                 description=desc,
                 store=store,
+                data_manager=data_manager,
             )
             agent_tools.append(agent_tool)
             supervisor_accessible_names.append(agent_config.name)
@@ -786,6 +863,7 @@ def create_bioinformatics_graph(
         config = {"recursion_limit": 1000, ...}
         graph.invoke(input, config)
     """
+    data_manager._interactive = interactive
     _log_dependency_versions()
 
     # Auto-detect subscription tier if not provided

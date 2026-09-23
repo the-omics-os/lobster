@@ -8,7 +8,7 @@ by the research_agent and executed by the data_expert.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -261,6 +261,11 @@ class DownloadQueueEntry(BaseModel):
     recommended_strategy: Optional[StrategyConfig] = Field(
         None, description="Strategy configuration recommended by research_agent"
     )
+
+    # GEO-only informational preference; execution does not consume these fields.
+    has_ncbi_rnaseq_counts: Optional[bool] = None
+    selected_source: Optional[Literal["author", "ncbi"]] = None
+    source_preference_answered: bool = False
 
     # Execution metadata
     created_at: datetime = Field(
