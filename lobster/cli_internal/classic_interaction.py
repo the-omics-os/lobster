@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 
-def handle_interrupt_classic(interrupt_data: Dict[str, Any]) -> Dict[str, Any]:
+def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
     """Render an interrupt as a terminal prompt and collect the response.
 
     Args:
@@ -19,13 +19,30 @@ def handle_interrupt_classic(interrupt_data: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         User's response as a dict matching the component's output_schema.
     """
+    if not isinstance(interrupt_data, dict):
+        question = interrupt_data if isinstance(interrupt_data, str) else ""
+        return _handle_text_input(question or "Please provide input", {})
+
     component = interrupt_data.get("component", "text_input")
     fallback = interrupt_data.get("fallback_prompt", "Please provide input:")
     data = interrupt_data.get("data", {})
+    if not isinstance(fallback, str) or not fallback.strip():
+        fallback = "Please provide input"
+    if not isinstance(data, dict):
+        return _handle_text_input(fallback, {})
+    if not isinstance(data.get("question"), str) or not data["question"].strip():
+        data = {**data, "question": fallback}
 
     if component == "confirm":
         return _handle_confirm(fallback, data)
     elif component == "select":
+        options = data.get("options")
+        if not (
+            isinstance(options, list)
+            and options
+            and all(isinstance(option, str) and option.strip() for option in options)
+        ):
+            return _handle_text_input(fallback, data)
         return _handle_select(fallback, data)
     elif component == "threshold_slider":
         return _handle_threshold(fallback, data)

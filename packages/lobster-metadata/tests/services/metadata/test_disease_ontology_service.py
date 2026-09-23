@@ -320,7 +320,7 @@ class TestBackendSwitching:
 
         # Patch where VectorSearchService is imported from (lazy import inside __init__)
         with patch(
-            "lobster.services.vector.service.VectorSearchService",
+            "lobster.vector.service.VectorSearchService",
             return_value=mock_vector_service,
         ):
             svc = DiseaseOntologyService(config_path=config_path)
@@ -340,7 +340,7 @@ class TestBackendSwitching:
         config_path = _create_embeddings_config(tmp_path)
 
         with patch(
-            "lobster.services.vector.service.VectorSearchService",
+            "lobster.vector.service.VectorSearchService",
             return_value=mock_vector_service,
         ):
             svc = DiseaseOntologyService(config_path=config_path)
@@ -357,7 +357,7 @@ class TestBackendSwitching:
         config_path = _create_embeddings_config(tmp_path)
 
         with patch(
-            "lobster.services.vector.service.VectorSearchService",
+            "lobster.vector.service.VectorSearchService",
             return_value=mock_vector_service,
         ):
             svc = DiseaseOntologyService(config_path=config_path)
@@ -385,7 +385,7 @@ class TestBackendSwitching:
         ]
 
         with patch(
-            "lobster.services.vector.service.VectorSearchService",
+            "lobster.vector.service.VectorSearchService",
             return_value=mock_vector_service,
         ):
             svc = DiseaseOntologyService(config_path=config_path)
@@ -478,7 +478,7 @@ class TestFallbackBehavior:
         real_import = builtins.__import__
 
         def import_raiser(name, *args, **kwargs):
-            if name == "lobster.services.vector.service":
+            if name == "lobster.vector.service":
                 raise ImportError("No module named 'chromadb'")
             return real_import(name, *args, **kwargs)
 
@@ -501,7 +501,7 @@ class TestFallbackBehavior:
         real_import = builtins.__import__
 
         def import_raiser(name, *args, **kwargs):
-            if name == "lobster.services.vector.service":
+            if name == "lobster.vector.service":
                 raise ImportError("No module named 'chromadb'")
             return real_import(name, *args, **kwargs)
 

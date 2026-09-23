@@ -584,6 +584,7 @@ def _validate_variant_positions(adata) -> "ValidationResult":
 def _validate_vcf_fields(adata) -> "ValidationResult":
     """Validate VCF-specific fields."""
     from lobster.core.interfaces.validator import ValidationResult
+    from lobster.core.utils.dtype_guards import is_text_dtype
 
     result = ValidationResult()
 
@@ -599,7 +600,7 @@ def _validate_vcf_fields(adata) -> "ValidationResult":
         ref_alleles = adata.var["REF"]
         # Check if REF alleles are valid (A, C, G, T, N)
         valid_bases = {"A", "C", "G", "T", "N"}
-        if ref_alleles.dtype == "object":
+        if is_text_dtype(ref_alleles):
             invalid_ref = sum(
                 not all(base in valid_bases for base in str(allele))
                 for allele in ref_alleles
@@ -613,7 +614,7 @@ def _validate_vcf_fields(adata) -> "ValidationResult":
     if "ALT" in adata.var.columns:
         alt_alleles = adata.var["ALT"]
         # Check if ALT alleles are valid
-        if alt_alleles.dtype == "object":
+        if is_text_dtype(alt_alleles):
             invalid_alt = sum(
                 not all(base in valid_bases for base in str(allele))
                 for allele in alt_alleles

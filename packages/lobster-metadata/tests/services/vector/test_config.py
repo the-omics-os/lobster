@@ -10,8 +10,8 @@ import os
 import pytest
 
 from lobster.core.schemas.search import EmbeddingProvider, RerankerType, SearchBackend
-from lobster.services.vector.config import VectorSearchConfig
-from lobster.services.vector.service import ONTOLOGY_COLLECTIONS
+from lobster.vector.config import VectorSearchConfig
+from lobster.vector.service import ONTOLOGY_COLLECTIONS
 
 
 class TestFromEnv:
@@ -89,7 +89,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(backend=SearchBackend.faiss)
         backend = config.create_backend()
 
-        from lobster.services.vector.backends.faiss_backend import FAISSBackend
+        from lobster.vector.backends.faiss_backend import FAISSBackend
 
         assert isinstance(backend, FAISSBackend)
 
@@ -98,7 +98,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(backend=SearchBackend.pgvector)
         backend = config.create_backend()
 
-        from lobster.services.vector.backends.pgvector_backend import PgVectorBackend
+        from lobster.vector.backends.pgvector_backend import PgVectorBackend
 
         assert isinstance(backend, PgVectorBackend)
 
@@ -111,7 +111,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(embedding_provider=EmbeddingProvider.minilm)
         embedder = config.create_embedder()
 
-        from lobster.services.vector.embeddings.minilm import MiniLMEmbedder
+        from lobster.vector.embeddings.minilm import MiniLMEmbedder
 
         assert isinstance(embedder, MiniLMEmbedder)
 
@@ -124,7 +124,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(embedding_provider=EmbeddingProvider.openai)
         embedder = config.create_embedder()
 
-        from lobster.services.vector.embeddings.openai_embedder import OpenAIEmbedder
+        from lobster.vector.embeddings.openai_embedder import OpenAIEmbedder
 
         assert isinstance(embedder, OpenAIEmbedder)
 
@@ -147,7 +147,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(persist_path=str(tmp_path / "vectors"))
         backend = config.create_backend()
 
-        from lobster.services.vector.backends.chromadb_backend import (
+        from lobster.vector.backends.chromadb_backend import (
             ChromaDBBackend,
         )
 
@@ -162,7 +162,7 @@ class TestFactoryMethods:
         config = VectorSearchConfig(embedding_provider=EmbeddingProvider.sapbert)
         embedder = config.create_embedder()
 
-        from lobster.services.vector.embeddings.sapbert import SapBERTEmbedder
+        from lobster.vector.embeddings.sapbert import SapBERTEmbedder
 
         assert isinstance(embedder, SapBERTEmbedder)
 
@@ -222,7 +222,7 @@ class TestMetadataFallback:
 
     def test_ontology_id_key(self):
         """Standard 'ontology_id' metadata key is preferred."""
-        from lobster.services.vector.service import VectorSearchService
+        from lobster.vector.service import VectorSearchService
 
         service = VectorSearchService.__new__(VectorSearchService)
         raw = self._make_raw([{"ontology_id": "MONDO:0005015"}])
@@ -231,7 +231,7 @@ class TestMetadataFallback:
 
     def test_id_key_fallback(self):
         """SRAgent-style 'id' metadata key is used when 'ontology_id' is absent."""
-        from lobster.services.vector.service import VectorSearchService
+        from lobster.vector.service import VectorSearchService
 
         service = VectorSearchService.__new__(VectorSearchService)
         raw = self._make_raw([{"id": "MONDO:0005015"}])
@@ -240,7 +240,7 @@ class TestMetadataFallback:
 
     def test_term_id_key_fallback(self):
         """Build-script-style 'term_id' metadata key is used as last named fallback."""
-        from lobster.services.vector.service import VectorSearchService
+        from lobster.vector.service import VectorSearchService
 
         service = VectorSearchService.__new__(VectorSearchService)
         raw = self._make_raw([{"term_id": "CL:0000084"}])
@@ -249,7 +249,7 @@ class TestMetadataFallback:
 
     def test_doc_id_fallback(self):
         """Falls back to document ID when no recognized metadata keys exist."""
-        from lobster.services.vector.service import VectorSearchService
+        from lobster.vector.service import VectorSearchService
 
         service = VectorSearchService.__new__(VectorSearchService)
         raw = self._make_raw([{"name": "some name"}])
@@ -258,7 +258,7 @@ class TestMetadataFallback:
 
     def test_none_metadata_fallback(self):
         """Falls back to document ID when metadata is None."""
-        from lobster.services.vector.service import VectorSearchService
+        from lobster.vector.service import VectorSearchService
 
         service = VectorSearchService.__new__(VectorSearchService)
         raw = self._make_raw([None])
@@ -323,7 +323,7 @@ class TestRerankerConfig:
         config = VectorSearchConfig(reranker=RerankerType.cross_encoder)
         reranker = config.create_reranker()
 
-        from lobster.services.vector.rerankers.cross_encoder_reranker import (
+        from lobster.vector.rerankers.cross_encoder_reranker import (
             CrossEncoderReranker,
         )
 
@@ -338,6 +338,6 @@ class TestRerankerConfig:
         config = VectorSearchConfig(reranker=RerankerType.cohere)
         reranker = config.create_reranker()
 
-        from lobster.services.vector.rerankers.cohere_reranker import CohereReranker
+        from lobster.vector.rerankers.cohere_reranker import CohereReranker
 
         assert isinstance(reranker, CohereReranker)

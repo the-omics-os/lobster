@@ -4,8 +4,10 @@ Unit tests for NotebookExporter.
 Tests notebook generation from provenance records.
 """
 
+import ast
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import anndata
@@ -17,7 +19,11 @@ import pytest
 from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.notebook_exporter import NotebookExporter
 from lobster.core.provenance import ProvenanceTracker
-from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.provenance.analysis_ir import (
+    AnalysisStep,
+    ParameterSpec,
+    create_data_saving_ir,
+)
 
 
 def create_sample_ir(operation: str, tool_name: str, description: str) -> AnalysisStep:
@@ -221,7 +227,9 @@ class TestNotebookExporter:
         """Test provenance summary cell creation."""
         exporter = NotebookExporter(provenance_tracker, data_manager)
         cell = exporter._create_provenance_summary_cell(
-            total_activities=100, exportable_count=5
+            total_activities=100,
+            exportable_count=5,
+            excluded_activity_types=["unrecorded_analysis"] * 95,
         )
 
         assert cell.cell_type == "markdown"
@@ -857,3 +865,213 @@ class TestNotebookExporter:
         # Only the exportable IR should remain
         assert len(pairs) == 1
         assert pairs[0][1].operation == "scanpy.pp.normalize_total"
+
+
+@pytest.fixture
+def ledger_exporter(tmp_path):
+    """Export synthetic activities without a dataset or real tool invocation."""
+    tracker = ProvenanceTracker(namespace="export-characterization")
+    data_manager = SimpleNamespace(workspace_path=tmp_path, modalities={})
+    return NotebookExporter(tracker, data_manager)
+
+
+@pytest.fixture
+def notebook_with_only_save_ir(ledger_exporter):
+    # Use the same IR factory as DataManagerV2.save_modality, without saving data.
+    ledger_exporter.provenance.activities = [
+        {"id": "analysis", "type": "unrecorded_analysis", "ir": None},
+        {
+            "id": "save",
+            "type": "save_dataset",
+            "ir": create_data_saving_ir().to_dict(),
+        },
+    ]
+    path = ledger_exporter.export(name="save_only_ir")
+    return nbformat.read(path, as_version=4)
+
+
+class TestNotebookExportCharacterization:
+    """Characterize export behavior and the limits reported in notebook text."""
+
+    def test_save_ir_alone_bypasses_zero_ir_guard(self, notebook_with_only_save_ir):
+        notebook = notebook_with_only_save_ir
+
+        assert notebook.metadata.lobster.ir_statistics == {
+            "n_irs_extracted": 1,
+            "n_activities": 2,
+            "coverage_percent": 50.0,
+        }
+        assert any(
+            "adata.write_h5ad" in cell.source
+            for cell in notebook.cells
+            if cell.cell_type == "code"
+        )
+        # Export succeeds even though there is no analysis step in the notebook.
+        assert not any(cell.source.startswith("## Step ") for cell in notebook.cells)
+
+    @pytest.mark.parametrize("activity_type", ["load_dataset", "save_dataset"])
+    @pytest.mark.parametrize("serialized", [False, True], ids=["object", "dict"])
+    def test_dedicated_io_renders_non_exportable_ir(
+        self, ledger_exporter, activity_type, serialized
+    ):
+        hidden_ir = create_sample_ir("ledger.hidden_io", activity_type, "Hidden IO")
+        hidden_ir.exportable = False
+        hidden_ir.code_template = f'io_bypass_marker = "{activity_type}"'
+        visible_ir = create_sample_ir(
+            "ledger.visible_analysis", "visible_analysis", "Positive control"
+        )
+        ledger_exporter.provenance.activities = [
+            {
+                "id": "hidden-io",
+                "type": activity_type,
+                "ir": hidden_ir.to_dict() if serialized else hidden_ir,
+            },
+            {
+                "id": "visible-analysis",
+                "type": "visible_analysis",
+                "ir": visible_ir.to_dict(),
+            },
+        ]
+
+        path = ledger_exporter.export(name="non_exportable_io")
+        notebook = nbformat.read(path, as_version=4)
+        code = [cell.source for cell in notebook.cells if cell.cell_type == "code"]
+
+        # Only the analysis qualifies, but the dedicated IO cell still renders.
+        assert notebook.metadata.lobster.ir_statistics["n_irs_extracted"] == 1
+        assert notebook.metadata.lobster.ir_statistics["n_activities"] == 2
+        assert code.count(visible_ir.render()) == 1
+        assert code.count(hidden_ir.render()) == 1
+
+    def test_comment_only_ir_exports_a_valid_cell_without_executable_statements(
+        self, ledger_exporter
+    ):
+        ir = AnalysisStep(
+            operation="ledger.suggest_de_formula",
+            tool_name="suggest_de_formula",
+            description="A suggested formula represented only by comments",
+            library="python",
+            code_template=(
+                "# Formula: {{ formula }}\n"
+                "# Main variable: {{ groupby }}\n"
+                "# Covariates: {{ covariates }}"
+            ),
+            imports=[],
+            parameters={
+                "formula": "~ condition",
+                "groupby": "condition",
+                "covariates": [],
+            },
+            parameter_schema={},
+        )
+        ledger_exporter.provenance.activities = [
+            {"id": "comment-only", "type": "suggest_de_formula", "ir": ir.to_dict()}
+        ]
+
+        path = ledger_exporter.export(name="comment_only_ir", validate_syntax=True)
+        notebook = nbformat.read(path, as_version=4)
+        matching_cells = [
+            cell
+            for cell in notebook.cells
+            if cell.cell_type == "code" and cell.source == ir.render()
+        ]
+
+        assert ir.exportable and ir.validates_on_export
+        assert notebook.metadata.lobster.ir_statistics["n_irs_extracted"] == 1
+        assert len(matching_cells) == 1
+        assert ast.parse(matching_cells[0].source).body == []
+
+    def test_footer_reports_excluded_activities_without_claiming_completeness(
+        self, notebook_with_only_save_ir
+    ):
+        notebook = notebook_with_only_save_ir
+        headers = [
+            cell
+            for cell in notebook.cells
+            if cell.cell_type == "markdown" and "**IR Coverage:**" in cell.source
+        ]
+        footers = [
+            cell
+            for cell in notebook.cells
+            if cell.cell_type == "markdown" and "## Results Export" in cell.source
+        ]
+
+        assert len(headers) == len(footers) == 1
+        assert "**IR Coverage:** 1/2 activities (50.0%)" in headers[0].source
+        assert "This analysis is now complete." not in footers[0].source
+        assert "Notebook export is complete." not in footers[0].source
+        assert "unrecorded_analysis" in footers[0].source
+        assert "⚠ No IR" not in footers[0].source
+        assert "IR-enabled steps are fully reproducible." not in footers[0].source
+        assert (
+            "IR coverage alone does not establish reproducibility." in footers[0].source
+        )
+
+    def test_footer_scopes_complete_export_to_ir_coverage(self, ledger_exporter):
+        ledger_exporter.provenance.activities = [
+            {"type": "save_dataset", "ir": create_data_saving_ir().to_dict()}
+        ]
+        path = ledger_exporter.export(name="all_activities_have_ir")
+        notebook = nbformat.read(path, as_version=4)
+        footers = [
+            cell
+            for cell in notebook.cells
+            if cell.cell_type == "markdown" and "## Results Export" in cell.source
+        ]
+
+        assert len(footers) == 1
+        assert (
+            "Notebook export is complete. All selected activities have exportable IR."
+            in footers[0].source
+        )
+        assert "This analysis is now complete." not in footers[0].source
+
+    def test_excluded_activity_types_are_unique_and_keep_first_seen_order(
+        self, ledger_exporter
+    ):
+        ledger_exporter.provenance.activities = [
+            {"type": "second_step", "ir": None},
+            {"type": "first_step", "ir": None},
+            {"type": "second_step", "ir": None},
+            {
+                # A qualifying activity must not hide excluded ones of the same type.
+                "type": "second_step",
+                "ir": create_sample_ir(
+                    "ledger.second_step", "second_step", "Qualifying activity"
+                ).to_dict(),
+            },
+        ]
+        path = ledger_exporter.export(name="repeated_excluded_types")
+        notebook = nbformat.read(path, as_version=4)
+
+        assert notebook.metadata.lobster.ir_statistics == {
+            "n_irs_extracted": 1,
+            "n_activities": 4,
+            "coverage_percent": 25.0,
+        }
+        for marker in ("## Results Export", "## Provenance & Reproducibility"):
+            cells = [
+                cell
+                for cell in notebook.cells
+                if cell.cell_type == "markdown" and marker in cell.source
+            ]
+            assert len(cells) == 1
+            assert cells[0].source.count("`second_step`") == 1
+            assert cells[0].source.count("`first_step`") == 1
+            assert "`second_step`, `first_step`" in cells[0].source
+            if marker == "## Provenance & Reproducibility":
+                assert "| **Provenance-Only Activities** | 3 |" in cells[0].source
+
+    def test_summary_names_excluded_activities_without_attributing_a_cause(
+        self, notebook_with_only_save_ir
+    ):
+        summaries = [
+            cell
+            for cell in notebook_with_only_save_ir.cells
+            if cell.cell_type == "markdown"
+            and "## Provenance & Reproducibility" in cell.source
+        ]
+
+        assert len(summaries) == 1
+        assert "orchestration activities" not in summaries[0].source
+        assert "unrecorded_analysis" in summaries[0].source

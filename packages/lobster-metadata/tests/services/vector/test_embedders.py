@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from lobster.services.vector.embeddings.base import BaseEmbedder
-from lobster.services.vector.embeddings.minilm import MiniLMEmbedder
-from lobster.services.vector.embeddings.openai_embedder import OpenAIEmbedder
-from lobster.services.vector.embeddings.sapbert import SapBERTEmbedder
+from lobster.vector.embeddings.base import BaseEmbedder
+from lobster.vector.embeddings.minilm import MiniLMEmbedder
+from lobster.vector.embeddings.openai_embedder import OpenAIEmbedder
+from lobster.vector.embeddings.sapbert import SapBERTEmbedder
 
 
 # ---------------------------------------------------------------------------
@@ -41,13 +41,13 @@ class TestSapBERTEmbedderLazyLoading:
         mock_st.encode.return_value = np.zeros(768)
 
         with patch(
-            "lobster.services.vector.embeddings.sapbert.SentenceTransformer",
+            "lobster.vector.embeddings.sapbert.SentenceTransformer",
             create=True,
         ) as mock_st_cls, patch(
-            "lobster.services.vector.embeddings.sapbert.Transformer",
+            "lobster.vector.embeddings.sapbert.Transformer",
             create=True,
         ) as mock_t_cls, patch(
-            "lobster.services.vector.embeddings.sapbert.Pooling",
+            "lobster.vector.embeddings.sapbert.Pooling",
             create=True,
         ) as mock_p_cls, patch.dict(
             "sys.modules",

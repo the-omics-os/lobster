@@ -9,8 +9,6 @@ Tests cover:
 - Edge cases and error handling
 """
 
-import math
-
 import pandas as pd
 import pytest
 
@@ -19,8 +17,6 @@ from lobster.core.schemas.clinical_schema import (
     RECIST_RESPONSES,
     RESPONDER_GROUP,
     RESPONSE_SYNONYMS,
-    SPECIAL_TIMEPOINTS,
-    TIMEPOINT_PATTERNS,
     ClinicalSample,
     classify_response_group,
     is_non_responder,
@@ -140,7 +136,9 @@ class TestNormalizeResponse:
         """'responder' is a GROUP, not a code - should return None with debug log."""
         import logging
 
-        caplog.set_level(logging.DEBUG)
+        # Scope to the "lobster" namespace: engine loggers inherit their level
+        # from it, so a root-only set_level no longer reaches them.
+        caplog.set_level(logging.DEBUG, logger="lobster")
         result = normalize_response("responder")
         assert result is None
         # Check debug log was emitted

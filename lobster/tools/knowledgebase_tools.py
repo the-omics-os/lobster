@@ -587,8 +587,10 @@ def create_summarize_modality_tool(data_manager: DataManagerV2):
                             f"  - Mean sample call rate: {adata.obs['call_rate'].mean():.4f}"
                         )
                     if "qc_pass" in adata.var.columns:
+                        from lobster.core.utils.dtype_guards import boolean_flag_mask
+
                         try:
-                            n_pass = int(adata.var["qc_pass"].astype(bool).sum())
+                            n_pass = int(boolean_flag_mask(adata.var["qc_pass"]).sum())
                         except (TypeError, ValueError):
                             n_pass = 0
                         lines.append(

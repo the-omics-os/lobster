@@ -217,3 +217,26 @@ def test_resume_from_interrupt_streams_resumed_events(tmp_path):
     from langgraph.types import Command
 
     assert isinstance(call_args[0][0], Command)
+
+
+def test_nonstreaming_interrupt_returns_pause_without_saving_response(tmp_path):
+    payload = {"component": "text_input", "data": {"question": "Name?"}}
+    client = _make_client_with_stream_events(
+        tmp_path, [{"__interrupt__": [SimpleNamespace(value=payload, id="question-1")]}]
+    )
+    client._save_session_json = Mock()
+    result = client.query("hello", stream=False)
+    assert result["interrupts"] == [{"data": payload, "interrupt_id": "question-1"}]
+    assert len(client.messages) == 1
+    client._save_session_json.assert_not_called()
+
+
+def test_noninteractive_interrupt_still_returns_actionable_error(tmp_path):
+    client = _make_client_with_stream_events(
+        tmp_path, [{"__interrupt__": [SimpleNamespace(value={}, id="question-1")]}]
+    )
+    client.interactive = False
+    result = client.query("hello", stream=False)
+    assert result["success"] is False
+    assert "non-interactive" in result["error"]
+    assert "interrupts" not in result

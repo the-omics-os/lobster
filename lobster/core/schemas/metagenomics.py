@@ -675,6 +675,7 @@ class MetagenomicsSchema:
 def _validate_taxonomy(adata) -> "ValidationResult":
     """Validate taxonomic hierarchy consistency and completeness."""
     from lobster.core.interfaces.validator import ValidationResult
+    from lobster.core.utils.dtype_guards import is_text_dtype
 
     result = ValidationResult()
 
@@ -702,7 +703,7 @@ def _validate_taxonomy(adata) -> "ValidationResult":
 
     # Check for "Unassigned" or "Unknown" entries
     for level in present_levels:
-        if adata.var[level].dtype == "object":
+        if is_text_dtype(adata.var[level]):
             unassigned = (
                 adata.var[level]
                 .str.contains("unassigned|unknown", case=False, na=False)
@@ -814,8 +815,12 @@ def _validate_sequences(adata) -> "ValidationResult":
 
     # Check for chimeras if flag is present
     if "is_chimera" in adata.var.columns:
+        from lobster.core.utils.dtype_guards import boolean_flag_mask
+
         try:
-            chimeras = int(adata.var["is_chimera"].astype(bool).sum())
+            # boolean_flag_mask, not astype(bool): a string flag would count
+            # every non-empty value as a chimera and inflate the total.
+            chimeras = int(boolean_flag_mask(adata.var["is_chimera"]).sum())
         except (TypeError, ValueError):
             chimeras = 0
         if chimeras > 0:

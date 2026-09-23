@@ -578,29 +578,74 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
 import numpy as np
 import scipy.sparse as spr
 
-# Helper function to calculate deviance
+
+# Self-contained binomial deviance, kept INLINE deliberately. An exported notebook
+# runs under a plain `python3` kernel with no guarantee that lobster is importable
+# or that an installed lobster is new enough, so importing the engine here would
+# make the notebook either fail or silently run an older implementation. This
+# mirrors lobster.utils.deviance.calculate_deviance; change both together.
+#
+# WARNING: do NOT "avoid log(0)" by flooring the matrix (np.maximum(X, 1e-10))
+# before masking with X > 0. The floor makes every element positive, so the mask
+# selects the whole matrix and a sparse input densifies by a factor of 1/density.
+# Only strictly-positive counts contribute: x*log(x/mu) -> 0 as x -> 0.
+#
+# Input domain: raw counts, non-negative and finite. Anything else raises. Deviance
+# on normalized or log-transformed input returns a finite number that looks valid
+# and means nothing, so this refuses rather than warns. Rejecting negatives is also
+# what makes the denominators safe without an epsilon floor: a positive observed
+# count guarantees its cell total and gene share are both strictly positive.
 def calculate_deviance(count_matrix):
+    n_cells, n_genes = count_matrix.shape
     if spr.issparse(count_matrix):
-        X = count_matrix.toarray()
+        matrix = count_matrix.tocsr()
+        if not matrix.has_canonical_format:
+            # Duplicate (cell, gene) entries must be summed: x*log(x) is nonlinear.
+            matrix = matrix.copy()
+            matrix.sum_duplicates()
+        entries = matrix.tocoo()
+        rows, cols = entries.row, entries.col
+        values = entries.data.astype(np.float64, copy=False)
     else:
-        X = count_matrix.copy()
+        X = np.asarray(count_matrix)
+        rows, cols = np.nonzero(X != 0)
+        values = X[rows, cols].astype(np.float64, copy=False)
 
-    X = np.maximum(X, 1e-10)
-    cell_totals = X.sum(axis=1, keepdims=True)
-    gene_totals = X.sum(axis=0)
-    total_counts = X.sum()
+    # Every non-zero entry is materialised above, so checking `values` covers both
+    # branches. Absent entries are zero, which is a legal count.
+    if values.size:
+        if not np.isfinite(values).all():
+            raise ValueError(
+                "calculate_deviance expects raw counts, but the matrix contains "
+                "non-finite values (NaN or +/-inf). Pass the raw count matrix "
+                "(e.g. adata.raw.X or adata.layers['counts'])."
+            )
+        if values.min() < 0:
+            raise ValueError(
+                "calculate_deviance expects raw counts, but the matrix contains "
+                "negative values (minimum %r). This normally means the matrix was "
+                "normalized, log-transformed or scaled upstream; deviance on such "
+                "input is meaningless. Pass the raw count matrix "
+                "(e.g. adata.raw.X or adata.layers['counts'])." % float(values.min())
+            )
 
+    # Accumulate marginals in float64. scipy's sparse .sum() reduces in the stored
+    # dtype and casts afterwards, losing float32 precision and wrapping int64.
+    cell_totals = np.bincount(rows, weights=values, minlength=n_cells)
+    gene_totals = np.bincount(cols, weights=values, minlength=n_genes)
+    total_counts = gene_totals.sum()
+    if total_counts <= 0:
+        return np.zeros(n_genes, dtype=np.float64)
     p_null = gene_totals / total_counts
-    p_null = np.maximum(p_null, 1e-10)
 
-    expected = cell_totals @ p_null.reshape(1, -1)
-    expected = np.maximum(expected, 1e-10)
+    observed = values > 0
+    expected = cell_totals[rows[observed]] * p_null[cols[observed]]
+    terms = 2.0 * values[observed] * np.log(values[observed] / expected)
+    return np.asarray(
+        np.bincount(cols[observed], weights=terms, minlength=n_genes),
+        dtype=np.float64,
+    )
 
-    mask = X > 0
-    deviance_terms = np.zeros_like(X)
-    deviance_terms[mask] = 2 * X[mask] * np.log(X[mask] / expected[mask])
-
-    return deviance_terms.sum(axis=0)
 
 # Calculate binomial deviance from multinomial null model
 count_data = adata.raw.X if adata.raw is not None else adata.X
@@ -632,7 +677,10 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
             description=f"Select top {n_top_genes} highly deviant genes using binomial deviance from multinomial null model",
             library="numpy",
             code_template=code_template,
-            imports=["import numpy as np", "import scipy.sparse as spr"],
+            imports=[
+                "import numpy as np",
+                "import scipy.sparse as spr",
+            ],
             parameters={
                 "n_top_genes": n_top_genes,
             },

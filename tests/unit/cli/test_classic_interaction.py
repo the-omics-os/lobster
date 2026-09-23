@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from lobster.cli_internal.classic_interaction import handle_interrupt_classic
 
 
@@ -133,3 +135,27 @@ def test_cell_type_selector():
     with patch("builtins.input", side_effect=inputs):
         result = handle_interrupt_classic(data)
     assert result == {"assignments": {"0": "T cells", "1": "B cells"}}
+
+
+@pytest.mark.parametrize("options", [None, [], "A", {}, [None], [1], [""], ["A", " "]])
+def test_invalid_select_options_fall_back_to_text(options, capsys):
+    data = {"component": "select", "data": {"question": "Choose?", "options": options}}
+    with patch("builtins.input", return_value="custom answer") as prompt:
+        assert handle_interrupt_classic(data) == {"answer": "custom answer"}
+    prompt.assert_called_once_with("\nChoose?: ")
+    assert "between" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("data", [{}, {"options": []}, None, []])
+def test_missing_or_malformed_select_data_falls_back_to_text(data):
+    payload = {"component": "select", "fallback_prompt": "Choose?", "data": data}
+    with patch("builtins.input", return_value="answer") as prompt:
+        assert handle_interrupt_classic(payload) == {"answer": "answer"}
+    prompt.assert_called_once_with("\nChoose?: ")
+
+
+@pytest.mark.parametrize("payload", [None, [], "Choose?"])
+def test_malformed_payload_falls_back_to_text(payload):
+    with patch("builtins.input", return_value="answer") as prompt:
+        assert handle_interrupt_classic(payload) == {"answer": "answer"}
+    prompt.assert_called_once()

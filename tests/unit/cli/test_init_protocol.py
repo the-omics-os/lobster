@@ -1,6 +1,7 @@
 """Tests for init protocol commands (npm CLI ↔ Python handoff)."""
 
 import json
+import sys
 
 from typer.testing import CliRunner
 
@@ -30,7 +31,7 @@ def test_init_manifest_schema_v1(monkeypatch):
     assert "environment" in data
     assert isinstance(data["existing_state"]["npm_cli_available"], bool)
     assert isinstance(data["environment"]["is_venv"], bool)
-    assert data["environment"]["platform"] == "darwin"
+    assert data["environment"]["platform"] == sys.platform
 
 
 def test_init_manifest_rejects_unknown_schema():
