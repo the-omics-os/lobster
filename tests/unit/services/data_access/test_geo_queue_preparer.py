@@ -24,7 +24,10 @@ def mock_data_manager():
 @pytest.fixture
 def preparer(mock_data_manager):
     """Create a GEOQueuePreparer with mocked dependencies."""
-    return GEOQueuePreparer(data_manager=mock_data_manager)
+    preparer = GEOQueuePreparer(data_manager=mock_data_manager)
+    preparer._geo_provider = MagicMock()
+    preparer._geo_provider.has_ncbi_rnaseq_counts.return_value = False
+    return preparer
 
 
 class TestGDSCanonToGSE:
@@ -153,3 +156,38 @@ class TestGDSCanonToGSE:
 
                 mock_super.assert_called_once_with("GDS5826", 5)
                 assert "original_accession" not in result.queue_entry.metadata
+
+
+@pytest.mark.parametrize("available", [True, False, RuntimeError("NCBI unavailable")])
+def test_ncbi_availability_source_fields(preparer, available, caplog):
+    check = preparer._geo_provider.has_ncbi_rnaseq_counts
+    if isinstance(available, Exception):
+        check.side_effect = available
+    else:
+        check.return_value = available
+    selector = MagicMock(return_value="ncbi")
+    preparer.source_selector = selector
+    fields = preparer.prepare_source("GSE123")
+    check.assert_called_once_with("GSE123")
+    assert fields["has_ncbi_rnaseq_counts"] == (
+        None if isinstance(available, Exception) else available
+    )
+    assert fields["selected_source"] == ("ncbi" if available is True else "author")
+    assert fields["source_preference_answered"] is (available is True)
+    assert selector.call_count == int(available is True)
+
+
+def test_ncbi_availability_uses_canonical_gse(preparer):
+    with (
+        patch.object(preparer, "_resolve_gds_to_gse", return_value="GSE123"),
+        patch(
+            "lobster.core.interfaces.queue_preparer.IQueuePreparer.prepare_queue_entry"
+        ) as base,
+    ):
+        preparer.prepare_queue_entry("GDS123")
+    base.assert_called_once_with("GSE123", 5)
+
+
+def test_ncbi_availability_skipped_for_non_gse(preparer):
+    preparer.prepare_source("GPL570")
+    preparer._geo_provider.has_ncbi_rnaseq_counts.assert_not_called()

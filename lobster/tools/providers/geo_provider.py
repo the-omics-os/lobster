@@ -249,6 +249,21 @@ class GEOProvider(BasePublicationProvider):
         resolver = get_accession_resolver()
         return resolver.is_geo_identifier(identifier)
 
+    def has_ncbi_rnaseq_counts(self, geo_id: str) -> bool:
+        """Check a GSE for NCBI-generated RNA-seq counts using ESearch."""
+        if not geo_id or not isinstance(geo_id, str):
+            raise ValueError(f"Invalid GSE ID: {geo_id}")
+
+        accession = geo_id.strip().upper()
+        if not accession.startswith("GSE") or not self.validate_identifier(accession):
+            raise ValueError(f"Invalid GSE ID: {geo_id}")
+
+        result = self.search_geo_datasets(
+            f'{accession}[ACCN] AND "rnaseq counts"[Filter]',
+            GEOSearchFilters(max_results=1),
+        )
+        return result.count > 0
+
     def fetch_dataset_metadata(self, geo_id: str) -> Dict[str, Any]:
         """
         Fetch structured metadata for a GEO accession.

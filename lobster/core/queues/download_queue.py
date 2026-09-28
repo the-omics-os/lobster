@@ -141,6 +141,40 @@ class DownloadQueue:
 
             raise EntryNotFoundError(f"Entry '{entry_id}' not found in queue")
 
+    def update_geo_preference(
+        self, entry_id: str, availability: Optional[bool], source: str, answered: bool
+    ) -> DownloadQueueEntry:
+        """Atomically persist GEO preference without changing execution fields."""
+        logger.info(
+            "[GEO preference] queue preference update start entry_id=%s", entry_id
+        )
+        with self._locked():
+            entries = self._load_entries()
+            for entry in entries:
+                if entry.entry_id == entry_id:
+                    if entry.database.lower() != "geo":
+                        raise ValueError("Source preference applies only to GEO")
+                    updated = DownloadQueueEntry.model_validate(
+                        {
+                            **entry.model_dump(),
+                            "has_ncbi_rnaseq_counts": availability,
+                            "selected_source": source,
+                            "source_preference_answered": answered,
+                            "updated_at": datetime.now(),
+                        }
+                    )
+                    entries[entries.index(entry)] = updated
+                    self._backup_queue()
+                    self._write_entries_atomic(entries)
+                    logger.info(
+                        "[GEO preference] queue preference update persisted entry_id=%s source=%s answered=%s",
+                        entry_id,
+                        source,
+                        answered,
+                    )
+                    return updated
+            raise EntryNotFoundError(entry_id)
+
     def update_status(
         self,
         entry_id: str,

@@ -302,6 +302,53 @@ class GEOQueuePreparer(IQueuePreparer):
 
         return result
 
+    # Installed by the research tool layer; non-agent callers do not prompt.
+    source_selector = None
+
+    def prepare_source(self, accession: str) -> Dict[str, Any]:
+        logger.info("[GEO preference] availability check start accession=%s", accession)
+        fields = {
+            "has_ncbi_rnaseq_counts": None,
+            "selected_source": "author",
+            "source_preference_answered": False,
+        }
+        if accession.upper().startswith("GSE"):
+            try:
+                fields["has_ncbi_rnaseq_counts"] = (
+                    self._get_geo_provider().has_ncbi_rnaseq_counts(accession)
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not check NCBI RNA-seq counts for %s: %s", accession, exc
+                )
+        logger.info(
+            "[GEO preference] availability check complete accession=%s available=%s selector_installed=%s",
+            accession,
+            fields["has_ncbi_rnaseq_counts"],
+            self.source_selector is not None,
+        )
+        # Deliberately outside the exception handler: interrupts must propagate.
+        if fields["has_ncbi_rnaseq_counts"] is True and self.source_selector:
+            logger.info(
+                "[GEO preference] calling source selector accession=%s", accession
+            )
+            preference = self.source_selector(accession)
+            logger.info(
+                "[GEO preference] source selector returned accession=%s preference=%s",
+                accession,
+                preference,
+            )
+            if preference is not None:
+                fields["selected_source"] = preference
+                fields["source_preference_answered"] = True
+        logger.info(
+            "[GEO preference] source preparation complete accession=%s source=%s answered=%s",
+            accession,
+            fields["selected_source"],
+            fields["source_preference_answered"],
+        )
+        return fields
+
     def _resolve_gds_to_gse(self, gds_id: str) -> Optional[str]:
         """Resolve a GDS accession to its canonical GSE via NCBI Entrez.
 
