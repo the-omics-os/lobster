@@ -469,8 +469,14 @@ def _validate_chromosome_format(adata) -> "ValidationResult":
         chroms = adata.var["CHROM"]
 
         # Valid chromosome values
+        canonical_chroms = [str(i) for i in range(1, 23)] + [
+            "X",
+            "Y",
+            "MT",
+            "M",
+        ]
         valid_chroms = set(
-            [str(i) for i in range(1, 23)] + ["X", "Y", "MT", "M", "chr1"]
+            canonical_chroms + [f"chr{chrom}" for chrom in canonical_chroms]
         )
 
         # Check for invalid chromosomes
