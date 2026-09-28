@@ -1635,6 +1635,57 @@ func TestDoneNormalStillFlushesStreamBuf(t *testing.T) {
 	}
 }
 
+func TestInlineCompletedResponseDeferredPrint(t *testing.T) {
+	for _, action := range []string{"complete", "clear", "cancel", "cancel_pending"} {
+		t.Run(action, func(t *testing.T) {
+			m := newTestModel()
+			m.inline = true
+			m.isStreaming = true
+			m.activeTurn = activeTurnChat
+			m.streamBuf.WriteString("final answer")
+			m.rebuildViewport()
+
+			updated, cmd := m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{}))
+			m = updated.(Model)
+			if m.activeTurn != activeTurnNone {
+				t.Fatal("expected completed turn to be inactive")
+			}
+			batch, ok := cmd().(tea.BatchMsg)
+			if !ok || len(batch) != 2 {
+				t.Fatal("expected protocol wait and deferred print commands")
+			}
+			ready, ok := batch[1]().(inlinePrintReady)
+			if !ok || !strings.Contains(ready.body, "final answer") {
+				t.Fatal("expected deferred print to contain the completed response")
+			}
+
+			switch action {
+			case "clear":
+				m.applyClearTarget("output")
+			case "cancel":
+				updated, _ = m.handleProtocol(testProtocolMsg(t, protocol.TypeDone, protocol.DonePayload{Summary: "cancelled"}))
+				m = updated.(Model)
+			case "cancel_pending":
+				m.isCanceling = true
+			}
+
+			_, printCmd := m.Update(ready)
+			if action != "complete" {
+				if printCmd != nil {
+					t.Fatal("expected cleared or cancelled response not to print")
+				}
+				return
+			}
+			if printCmd == nil {
+				t.Fatal("completed response disappeared: expected terminal print command")
+			}
+			if got := fmt.Sprintf("%T", printCmd()); got != "tea.sequenceMsg" {
+				t.Fatalf("expected terminal print sequence, got %s", got)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Cancel vs Quit tests (Phase 1: Query Cancellation)
 // ---------------------------------------------------------------------------

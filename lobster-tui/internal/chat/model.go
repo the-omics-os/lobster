@@ -118,7 +118,10 @@ type inlinePrintReset struct{}
 
 // inlinePrintReady carries pre-rendered scrollback text deferred by one frame
 // tick so BubbleTea can flush the cleared viewport before tea.Println runs.
-type inlinePrintReady struct{ body string }
+type inlinePrintReady struct {
+	body  string
+	epoch uint64
+}
 
 // protocolErr wraps an error read from the protocol handler's Errs() channel.
 type protocolErr struct{ err error }
@@ -254,6 +257,7 @@ type Model struct {
 	inlineFlow          bool
 	inlineBannerPrinted bool
 	inlineRepaintPad    bool
+	inlinePrintEpoch    uint64 // Invalidates deferred prints on clear or cancellation.
 	mouseCapture        bool
 	quitting            bool
 	isCanceling         bool // Two-phase cancel: first Ctrl+C arms, second fires.
@@ -433,7 +437,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case inlinePrintReady:
-		if strings.TrimSpace(msg.body) == "" || m.isCanceling || m.activeTurn == activeTurnNone {
+		if strings.TrimSpace(msg.body) == "" || m.isCanceling || msg.epoch != m.inlinePrintEpoch {
 			return m, nil
 		}
 		redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
@@ -844,6 +848,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		_ = protocol.DecodePayload(msg.Message, &dp)
 
 		if dp.Summary == "cancelled" {
+			m.inlinePrintEpoch++
 			// Cancel: discard partial stream, don't append to chat history.
 			m.streamBuf.Reset()
 			m.streamBufMarkdown = false
@@ -1792,8 +1797,9 @@ func (m *Model) inlinePrintCmd(msgs []ChatMessage, hadLiveStream bool) tea.Cmd {
 		return nil
 	}
 	if hadLiveStream {
+		epoch := m.inlinePrintEpoch
 		return tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
-			return inlinePrintReady{body: body}
+			return inlinePrintReady{body: body, epoch: epoch}
 		})
 	}
 	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
@@ -1803,6 +1809,7 @@ func (m *Model) inlinePrintCmd(msgs []ChatMessage, hadLiveStream bool) tea.Cmd {
 func (m *Model) applyClearTarget(target string) {
 	switch target {
 	case "output", "all", "":
+		m.inlinePrintEpoch++
 		m.messages = m.messages[:0]
 		m.pendingHandoffs = m.pendingHandoffs[:0]
 		m.streamBuf.Reset()
