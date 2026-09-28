@@ -273,7 +273,7 @@ def de_analysis_expert(
                 )
 
             # Use pseudobulk service (it uses raw counts internally)
-            pseudobulk_adata = pseudobulk_service.aggregate_to_pseudobulk(
+            pseudobulk_adata, _stats, ir = pseudobulk_service.aggregate_to_pseudobulk(
                 adata=adata,
                 sample_col=sample_col,
                 celltype_col=celltype_col,
@@ -312,6 +312,7 @@ def de_analysis_expert(
                     "min_cells": min_cells,
                 },
                 description=f"Created pseudobulk matrix: {pseudobulk_adata.n_obs} samples x {pseudobulk_adata.n_vars} genes",
+                ir=ir,
             )
 
             # Format response

@@ -49,6 +49,7 @@ from lobster.agents.transcriptomics.de_analysis_expert import (
     de_analysis_expert,
 )
 from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from tests.mock_data.base import SMALL_DATASET_CONFIG
 from tests.mock_data.factories import SingleCellDataFactory
 
@@ -225,6 +226,86 @@ class TestDEAnalysisExpertCreation:
 @pytest.mark.unit
 class TestPseudobulkTools:
     """Test pseudobulk aggregation tools for single-cell to bulk conversion."""
+
+    def test_create_pseudobulk_matrix_stores_adata_and_forwards_service_ir(
+        self, mock_provider_config, tmp_path
+    ):
+        single_cell = ad.AnnData(X=np.ones((4, 3), dtype=int))
+        single_cell.obs["sample"] = ["sample_1"] * 2 + ["sample_2"] * 2
+        single_cell.obs["cell_type"] = ["T cell"] * 4
+        pseudobulk_adata = ad.AnnData(X=np.full((2, 3), 2, dtype=int))
+        pseudobulk_adata.uns["aggregation_stats"] = {
+            "n_samples": 2,
+            "n_cell_types": 1,
+            "total_cells_aggregated": 4,
+            "mean_cells_per_pseudobulk": 2.0,
+        }
+        ir = AnalysisStep(
+            operation="pseudobulk.aggregate",
+            tool_name="create_pseudobulk_matrix",
+            description="Pseudobulk aggregation",
+            library="anndata",
+            code_template="pseudobulk_adata = adata.copy()",
+            imports=[],
+            parameters={},
+            parameter_schema={},
+        )
+        data_manager = Mock(spec=DataManagerV2)
+        data_manager.workspace_path = tmp_path
+        data_manager.list_modalities.return_value = ["single_cell"]
+        data_manager.get_modality.return_value = single_cell
+        module = "lobster.agents.transcriptomics.de_analysis_expert"
+
+        with (
+            patch(f"{module}.PseudobulkService") as service_class,
+            patch(f"{module}.create_react_agent") as build_agent,
+        ):
+            service = service_class.return_value
+            # Keep returned stats distinct to detect changing the response's source.
+            service.aggregate_to_pseudobulk.return_value = (
+                pseudobulk_adata,
+                {"n_samples": 999},
+                ir,
+            )
+            de_analysis_expert(data_manager)
+            pseudobulk_tool = next(
+                registered_tool
+                for registered_tool in build_agent.call_args.kwargs["tools"]
+                if registered_tool.name == "create_pseudobulk_matrix"
+            )
+            response = pseudobulk_tool.invoke(
+                {
+                    "modality_name": "single_cell",
+                    "sample_col": "sample",
+                    "celltype_col": "cell_type",
+                    "min_cells": 2,
+                    "min_genes": 1,
+                    "save_result": False,
+                }
+            )
+
+        assert response.startswith("Pseudobulk matrix created"), response
+        service.aggregate_to_pseudobulk.assert_called_once_with(
+            adata=single_cell,
+            sample_col="sample",
+            celltype_col="cell_type",
+            layer=None,
+            min_cells=2,
+            aggregation_method="sum",
+            min_genes=1,
+            filter_zeros=True,
+        )
+        data_manager.store_modality.assert_called_once_with(
+            name="single_cell_pseudobulk",
+            adata=pseudobulk_adata,
+            parent_name="single_cell",
+            step_summary="Created pseudobulk: 2 samples x 3 genes",
+        )
+        data_manager.save_modality.assert_not_called()
+        data_manager.log_tool_usage.assert_called_once()
+        assert data_manager.log_tool_usage.call_args.kwargs["ir"] is ir
+        assert "- Unique samples: 2" in response
+        assert "- Total cells aggregated: 4" in response
 
     def test_create_pseudobulk_matrix_exists(self, mock_data_manager):
         """Test that create_pseudobulk_matrix tool is registered."""

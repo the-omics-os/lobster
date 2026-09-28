@@ -255,7 +255,12 @@ class AgentClient(BaseClient):
             cancel_event: Optional threading.Event — set to cooperatively cancel streaming
 
         Returns:
-            Dictionary with response and metadata
+            With stream=False, a dictionary: success=True with response on
+            completion; success=False with error on failure; or success=False
+            with interrupts on pause (no response or error keys). Each interrupt
+            contains data and interrupt_id; resume with {interrupt_id: answer}.
+            With stream=True, an event generator (see _stream_query). Drain the
+            current batch before resuming; a pause emits no complete event.
         """
         # Capture pre-query state so cancellation can cleanly rollback.
         pre_query_msg_count = len(self.messages)
@@ -441,8 +446,13 @@ class AgentClient(BaseClient):
         - {"type": "content_delta", "delta": "...", "source": "supervisor"} - Supervisor text (user-visible)
         - {"type": "agent_content", "delta": "...", "source": "<agent>"} - Specialist text (activity lane, not shown by default)
         - {"type": "agent_change", "agent": "...", "status": "working|complete"} - Agent transitions
+        - {"type": "interrupt", "data": ..., "interrupt_id": "..."} - Paused for user input
         - {"type": "complete", ...} - Final completion event
         - {"type": "error", ...} - Error events
+
+        Interrupt events have no response or error keys. Drain the current batch
+        to collect pending interrupts before resuming with {interrupt_id: answer}.
+        A pause ends the batch without a complete event.
         """
         try:
             start_time = datetime.now()
@@ -746,9 +756,17 @@ class AgentClient(BaseClient):
         """Resume graph execution after an HITL interrupt.
 
         Args:
-            response: The user's response data (dict or primitive).
+            response: Answers keyed by interrupt ID: {interrupt_id: answer}.
+                A primitive response is also accepted.
             stream: Whether to stream the resumed execution.
             cancel_event: Optional threading.Event for cooperative cancellation.
+
+        Yields:
+            With stream=True, events as in _stream_query. Drain the current batch
+            before resuming again; a pause emits no complete event.
+            With stream=False, exactly one result dictionary as in query(),
+            which may complete, fail, or pause again with interrupts and no
+            response or error keys.
         """
         from langgraph.types import Command
 

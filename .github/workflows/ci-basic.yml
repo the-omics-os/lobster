@@ -298,7 +298,13 @@ jobs:
 
     # Generate summary only echoes results, so this job used to report success on every
     # failing run. A check that structurally cannot fail green-lights everything the
-    # moment someone makes it a required status check. Same pattern as ci-testing.yml.
+    # moment someone makes it a required status check.
+    #
+    # Require success rather than checking for "failure": all three jobs above are
+    # unconditional, so anything other than success — skipped, cancelled, or an empty
+    # result — means this run did not prove what the check claims. Testing for
+    # "failure" exits 0 on every one of those. ci-testing.yml's Test Summary carried the
+    # same weak predicate and is repaired in this PR; keep the two in step.
     - name: Check job results
       run: |
         QUALITY_RESULT="${{ needs.quality-and-tests.result }}"
@@ -309,9 +315,9 @@ jobs:
         echo "Build Verification:   $BUILD_RESULT"
         echo "Go TUI Verify:        $GO_TUI_RESULT"
 
-        if [ "$QUALITY_RESULT" = "failure" ] || [ "$BUILD_RESULT" = "failure" ] || [ "$GO_TUI_RESULT" = "failure" ]; then
+        if [ "$QUALITY_RESULT" != "success" ] || [ "$BUILD_RESULT" != "success" ] || [ "$GO_TUI_RESULT" != "success" ]; then
           echo ""
-          echo "One or more CI jobs failed. See individual job logs for details."
+          echo "One or more required CI jobs did not succeed. See individual job logs for details."
           exit 1
         fi
 

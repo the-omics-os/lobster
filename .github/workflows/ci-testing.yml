@@ -312,9 +312,15 @@ jobs:
           echo "Passed: $TOTAL_PASS"
           echo "Failed: $TOTAL_FAIL"
 
+      # Require success rather than testing for "failure". None of the three jobs
+      # above is conditional, so anything other than success — skipped, cancelled,
+      # or an empty result — means this run did not prove what this check claims,
+      # and testing for "failure" exits 0 on every one of those. preset-tests and
+      # integration-tests both `needs: [package-tests]`, so they report "skipped"
+      # whenever package-tests does not succeed: the old predicate passed a
+      # cancelled run outright and reported "All test jobs completed successfully!".
       - name: Check job results
         run: |
-          # Check if any upstream jobs failed
           PACKAGE_RESULT="${{ needs.package-tests.result }}"
           PRESET_RESULT="${{ needs.preset-tests.result }}"
           INTEGRATION_RESULT="${{ needs.integration-tests.result }}"
@@ -323,9 +329,9 @@ jobs:
           echo "Preset tests: $PRESET_RESULT"
           echo "Integration tests: $INTEGRATION_RESULT"
 
-          if [ "$PACKAGE_RESULT" = "failure" ] || [ "$PRESET_RESULT" = "failure" ] || [ "$INTEGRATION_RESULT" = "failure" ]; then
+          if [ "$PACKAGE_RESULT" != "success" ] || [ "$PRESET_RESULT" != "success" ] || [ "$INTEGRATION_RESULT" != "success" ]; then
             echo ""
-            echo "One or more test jobs failed. See individual job logs for details."
+            echo "One or more test jobs did not succeed. See individual job logs for details."
             exit 1
           fi
 

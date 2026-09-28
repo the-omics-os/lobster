@@ -104,6 +104,12 @@ class NotebookExporter:
         exportable_pairs = self._get_exportable_activity_ir_pairs(activities)
         exportable_count = len(exportable_pairs)
         filtered_count = len(activities) - exportable_count
+        exportable_activity_ids = {id(activity) for activity, _ in exportable_pairs}
+        excluded_activity_types = [
+            str(activity.get("type") or "unknown")
+            for activity in activities
+            if id(activity) not in exportable_activity_ids
+        ]
 
         logger.info(
             f"Extracted {exportable_count} exportable IR objects "
@@ -168,11 +174,13 @@ class NotebookExporter:
 
         # Add provenance summary cell (explains what's in notebook vs provenance)
         notebook.cells.append(
-            self._create_provenance_summary_cell(len(activities), exportable_count)
+            self._create_provenance_summary_cell(
+                len(activities), exportable_count, excluded_activity_types
+            )
         )
 
         # Add footer cell
-        notebook.cells.append(self._create_footer_cell())
+        notebook.cells.append(self._create_footer_cell(excluded_activity_types))
 
         # Add notebook metadata
         notebook.metadata["lobster"] = self._create_metadata(
@@ -847,18 +855,35 @@ print(f"Saved processed data to: {output_path}")
             logger.error(f"Failed to render code for {ir.operation}: {e}")
             raise ValueError(f"Failed to render IR for {ir.operation}: {e}") from e
 
-    def _create_footer_cell(self) -> NotebookNode:
+    def _create_footer_cell(self, excluded_activity_types: List[str]) -> NotebookNode:
         """
         Create markdown footer cell.
+
+        Args:
+            excluded_activity_types: Activity types excluded from the exportable IR count
 
         Returns:
             Markdown cell with export instructions
         """
-        footer_content = """---
+        if excluded_activity_types:
+            activity_names = ", ".join(
+                f"`{name}`" for name in dict.fromkeys(excluded_activity_types)
+            )
+            export_status = (
+                "The following activities are excluded from the exportable IR count: "
+                f"{activity_names}. Review the IR coverage and provenance summary."
+            )
+        else:
+            export_status = (
+                "Notebook export is complete. "
+                "All selected activities have exportable IR."
+            )
+
+        footer_content = f"""---
 
 ## Results Export
 
-This analysis is now complete. Results have been saved with provenance tracking.
+{export_status}
 
 ### Next Steps
 
@@ -878,9 +903,9 @@ papermill notebook.ipynb output.ipynb \\
 
 ### IR Coverage Note
 
-This notebook was generated using Service-Emitted IR. Steps marked with "⚠ No IR"
-require manual review, as the corresponding service hasn't been updated yet to emit
-AnalysisStep objects. IR-enabled steps are fully reproducible.
+This notebook was generated using Service-Emitted IR. Review the IR coverage and
+provenance summary for activity counts and excluded activity types.
+IR coverage alone does not establish reproducibility.
 
 ---
 
@@ -893,6 +918,7 @@ AnalysisStep objects. IR-enabled steps are fully reproducible.
         self,
         total_activities: int,
         exportable_count: int,
+        excluded_activity_types: List[str],
     ) -> NotebookNode:
         """
         Create summary cell explaining provenance vs notebook content.
@@ -904,11 +930,16 @@ AnalysisStep objects. IR-enabled steps are fully reproducible.
         Args:
             total_activities: Total number of activities in provenance
             exportable_count: Number of activities with exportable IR
+            excluded_activity_types: Activity types excluded from the exportable IR count
 
         Returns:
             Markdown cell with provenance summary
         """
         filtered_count = total_activities - exportable_count
+        activity_names = (
+            ", ".join(f"`{name}`" for name in dict.fromkeys(excluded_activity_types))
+            or "None"
+        )
 
         content = f"""---
 
@@ -921,8 +952,9 @@ AnalysisStep objects. IR-enabled steps are fully reproducible.
 | **Total Activities** | {total_activities} |
 
 **What's Included:**
-- This notebook contains **{exportable_count} executable analysis steps** that can be reproduced
-- **{filtered_count} orchestration activities** (publication processing, metadata extraction, etc.) are logged in provenance for audit trail but are not part of the executable workflow
+- **{exportable_count} activities** have exportable IR.
+- **{filtered_count} activities** are excluded from the exportable IR count.
+- **Excluded activity types:** {activity_names}
 
 **Full Provenance Record:**
 - Session ID: `{self.provenance.namespace}`
