@@ -655,6 +655,29 @@ test-integration: $(VENV_PATH)
 	@echo "🧪 Running integration tests..."
 	$(VENV_PATH)/bin/pytest tests/integration/ -v
 
+# Contract tests: AQUADIF tool/provenance compliance (pytest -m contract).
+# Six pre-existing stale test files are ignored below because they raise
+# collection errors (import failures) that abort the run before any contract
+# test executes. None of the six is a contract test. Root causes:
+#   - geo_service refactor: GEODataSource was renamed to GEOService, and
+#     ARCHIVE_EXTENSIONS, _is_archive_url, _score_expression_file, RetryOutcome
+#     were removed/moved, so five tests import names that no longer exist.
+#   - vector package mismatch: lobster.vector.backends exposes no
+#     BaseVectorBackend, so test_annotation_expert_semantic fails to import.
+# Removing an --ignore line when its file is fixed is safe; a leftover
+# --ignore pointing at a missing path is harmless (pytest ignores it silently).
+CONTRACT_IGNORES = \
+	--ignore=tests/unit/services/data_access/test_geo_archive_classifier.py \
+	--ignore=tests/unit/services/data_access/test_geo_fallback_service.py \
+	--ignore=tests/unit/services/data_access/test_geo_file_scoring.py \
+	--ignore=tests/unit/services/data_access/test_geo_retry_types.py \
+	--ignore=tests/unit/tools/test_geo_quantification_integration.py \
+	--ignore=tests/unit/agents/transcriptomics/test_annotation_expert_semantic.py
+
+test-contract: $(VENV_PATH)
+	@echo "🧪 Running contract tests (AQUADIF compliance)..."
+	$(VENV_PATH)/bin/pytest -m contract $(CONTRACT_IGNORES) -v
+
 # Code quality targets
 format: $(VENV_PATH)
 	@echo "🎨 Formatting code..."
