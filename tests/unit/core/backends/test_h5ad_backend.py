@@ -369,7 +369,12 @@ class TestH5ADDataSanitization:
         assert "Gene1__1" in var_names_loaded or "Gene1-1" in var_names_loaded
 
     def test_sanitize_boolean_columns(self):
-        """Test Bug #3: Boolean columns are converted to strings for HDF5 compatibility."""
+        """Boolean columns survive the round trip as booleans.
+
+        Native boolean dtypes can be serialized directly; object columns that hold boolean
+        objects still require conversion. Applying the conversion only to affected columns
+        keeps the read/write path symmetric.
+        """
         # Create AnnData with boolean column
         X = np.random.randn(10, 5)
         obs = pd.DataFrame(
@@ -401,28 +406,24 @@ class TestH5ADDataSanitization:
         self.backend.save(adata, file_path)
         adata_loaded = self.backend.load(file_path)
 
-        # Verify boolean columns were converted to strings or categorical with string values
-        # After H5AD round-trip, booleans may become categorical with string categories
+        # A plain `bool` column round-trips as bool, and the values are preserved.
         is_treated_col = adata_loaded.obs["is_treated"]
-        if hasattr(is_treated_col, "cat"):
-            # Categorical - verify categories are strings
-            assert all(isinstance(cat, str) for cat in is_treated_col.cat.categories)
-            assert set(is_treated_col.cat.categories) == {"True", "False"}
-        else:
-            # Object or string type
-            assert is_treated_col.dtype in [object, str]
-            assert all(is_treated_col.isin(["True", "False"]))
+        assert is_treated_col.dtype == bool
+        assert list(is_treated_col) == list(adata.obs["is_treated"])
 
+        # A nullable `boolean` column keeps its extension dtype.
         is_control_col = adata_loaded.obs["is_control"]
-        if hasattr(is_control_col, "cat"):
-            assert all(isinstance(cat, str) for cat in is_control_col.cat.categories)
-            assert set(is_control_col.cat.categories) == {"True", "False"}
-        else:
-            assert is_control_col.dtype in [object, str]
-            assert all(is_control_col.isin(["True", "False"]))
+        assert is_control_col.dtype == "boolean"
+        assert list(is_control_col) == list(adata.obs["is_control"])
+
+        # The regression as callers actually hit it: masking on the column.
+        assert (
+            adata_loaded.obs_names[is_treated_col].tolist()
+            == adata.obs_names[adata.obs["is_treated"]].tolist()
+        )
 
     def test_sanitize_mixed_type_columns(self):
-        """Test Bug #3: Mixed-type columns (int + None + str) are converted to strings."""
+        """Mixed-type columns (int + None + str) are converted to strings."""
         # Create AnnData with mixed-type columns
         X = np.random.randn(10, 5)
         obs = pd.DataFrame(
@@ -461,7 +462,7 @@ class TestH5ADDataSanitization:
             assert "batch3" in batch_col.values
 
     def test_sanitize_none_to_na(self):
-        """Test Bug #3: None values in object columns are converted to 'NA'."""
+        """None values in object columns are converted to 'NA'."""
         # Create AnnData with None values in object columns
         X = np.random.randn(10, 5)
         obs = pd.DataFrame(
@@ -522,7 +523,7 @@ class TestH5ADDataSanitization:
         assert np.issubdtype(adata_loaded.obs["cell_count"].dtype, np.number)
 
     def test_sanitize_categorical_non_string_categories(self):
-        """Test Bug #3: Categorical columns with non-string categories are converted."""
+        """Categorical columns with non-string categories are converted."""
         # Create AnnData with categorical columns containing non-string categories
         X = np.random.randn(10, 5)
         obs = pd.DataFrame(
@@ -555,7 +556,7 @@ class TestH5ADDataSanitization:
             assert adata_loaded.obs["numeric_cat"].dtype == object
 
     def test_sanitize_uns_metadata_bool_and_none(self):
-        """Test Bug #3: uns metadata with bool and None values are sanitized."""
+        """uns metadata with bool and None values are sanitized."""
         # Create AnnData with problematic uns metadata
         X = np.random.randn(10, 5)
         adata = anndata.AnnData(X=X)
@@ -589,7 +590,7 @@ class TestH5ADDataSanitization:
         assert adata_loaded.uns["nested_config"]["threshold"] == ""
 
     def test_sanitize_completely_empty_columns(self):
-        """Test Bug #3: Completely empty columns (all None/NaN) are dropped."""
+        """Completely empty columns (all None/NaN) are dropped."""
         # Create AnnData with completely empty columns
         X = np.random.randn(10, 5)
         obs = pd.DataFrame(
@@ -627,7 +628,7 @@ class TestH5ADDataSanitization:
             assert "NA" in mostly_empty_col.values or "" in mostly_empty_col.values
 
     def test_sanitize_numpy_arrays_in_uns(self):
-        """Test Bug #3: numpy arrays with mixed types in uns are sanitized."""
+        """numpy arrays with mixed types in uns are sanitized."""
         # Create AnnData with problematic numpy arrays in uns
         X = np.random.randn(10, 5)
         adata = anndata.AnnData(X=X)
@@ -668,7 +669,10 @@ class TestH5ADDataSanitization:
 
         # Add Path objects that would cause serialization errors
         adata.uns["data_file_path"] = PathType("/path/to/data.h5ad")
-        adata.uns["workspace_path"] = PathType("/Users/user/workspace")
+        # Synthetic machine-shaped path: the point of this fixture is that path handling
+        # itself is exercised, so the literal must survive. synthetic-path-ok
+        _synthetic_ws = "/Users/user/workspace"  # synthetic-path-ok
+        adata.uns["workspace_path"] = PathType(_synthetic_ws)
         adata.uns["nested_metadata"] = {
             "file_path": PathType("/path/to/file.txt"),
             "directory": PathType("/path/to/dir"),
@@ -685,7 +689,7 @@ class TestH5ADDataSanitization:
         assert adata_loaded.uns["data_file_path"] == "/path/to/data.h5ad"
 
         assert isinstance(adata_loaded.uns["workspace_path"], str)
-        assert adata_loaded.uns["workspace_path"] == "/Users/user/workspace"
+        assert adata_loaded.uns["workspace_path"] == _synthetic_ws
 
         # Verify nested Path objects were also converted
         assert isinstance(adata_loaded.uns["nested_metadata"]["file_path"], str)
@@ -985,7 +989,7 @@ class TestH5ADS3Functionality:
             bucket="test-bucket",
             region="us-west-2",
             access_key="access",
-            secret_key="secret",
+            secret_key="secret",  # nosec B106 # Fake credentials for a mocked storage client, never a live request.
         )
 
         assert self.backend.s3_config["bucket"] == "test-bucket"

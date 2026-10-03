@@ -169,6 +169,66 @@ class ProvenanceTracker:
         with open(self._metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
 
+    def attach_session_dir(self, session_dir: Union[str, Path]) -> Path:
+        """
+        Enable disk persistence on a tracker that was created without it.
+
+        Activities recorded *before* this call are already in ``self.activities`` but were
+        never written, so they are flushed now. Without that flush, attaching late would
+        silently lose the head of the session -- which is the same class of quiet data loss
+        this method exists to fix.
+
+        Needed because a tracker constructed with ``session_dir=None`` disables persistence
+        with no warning, and a caller cannot always know the session directory at
+        construction time: ``AgentClient`` computes it *after* accepting an injected
+        ``DataManagerV2``. Without attachment, activities remain in memory and
+        are not persisted across process exits.
+
+        Idempotent: re-attaching the same directory does not duplicate lines, because the
+        file is reloaded and the already-written activities are recognised by count.
+
+        Args:
+            session_dir: Directory to persist into. Created if absent.
+
+        Returns:
+            Path to the provenance file now in use.
+        """
+        session_dir = Path(session_dir)
+        session_dir.mkdir(parents=True, exist_ok=True)
+        target = session_dir / "provenance.jsonl"
+
+        # Already persisting here: nothing to do. Returning early keeps this idempotent
+        # rather than re-appending the in-memory list on every call.
+        if self._provenance_file is not None and self._provenance_file == target:
+            return target
+
+        pending = list(self.activities)
+
+        self.session_dir = session_dir
+        self._provenance_file = target
+        self._metadata_file = session_dir / "metadata.json"
+        if self._created_at is None:
+            self._created_at = datetime.datetime.now(datetime.timezone.utc)
+
+        # Pick up anything a previous process left here, then re-add what this process has
+        # buffered. Loading first means a resumed session keeps its history.
+        self.activities = []
+        self._load_from_disk()
+        already_on_disk = len(self.activities)
+
+        for activity in pending:
+            self.activities.append(activity)
+            self._persist_activity(activity)
+
+        self.logger.info(
+            "Provenance persistence attached at %s "
+            "(%d activity(ies) flushed from memory, %d already on disk)",
+            target,
+            len(pending),
+            already_on_disk,
+        )
+        return target
+
     @property
     def provenance_path(self) -> Optional[Path]:
         """
@@ -209,6 +269,57 @@ class ProvenanceTracker:
             "can_export_notebook": has_ir,
         }
 
+    #: IR entity names that are code-local variables rather than artifacts. Analysis tools
+    #: emit these because their `code_template` operates on a variable called `adata`; the
+    #: modality it actually refers to lives in `parameters["modality_name"]`. Lifting the
+    #: IR verbatim would therefore produce a DAG whose nodes are all one variable —
+    #: **wrong**, not merely incomplete.
+    _PLACEHOLDER_ENTITIES = frozenset({"adata", "mdata", "df", "data"})
+
+    #: Parameter keys that name the real INPUT artifact, in preference order.
+    _ENTITY_PARAM_KEYS = ("modality_name", "name", "dataset_id")
+
+    #: Parameter keys that name the real OUTPUT artifact. Analysis tools choose
+    #: their own result name (`result_name = f"{modality_name}_pca"`), so the *service* that
+    #: emits the IR cannot know it — which is why `output_entities` is the placeholder
+    #: `["adata"]` at 45 call sites and an output edge resolved to its own INPUT name. Tools
+    #: pass the name they stored under one of these keys; the service layer is untouched.
+    _OUTPUT_PARAM_KEYS = ("result_modality_name", "output_modality_name", "result_name")
+
+    def _resolve_entities(
+        self,
+        names: Optional[List[str]],
+        parameters: Optional[Dict[str, Any]],
+        param_keys: Optional[tuple] = None,
+    ) -> List[Dict[str, Any]]:
+        """Turn IR entity names into activity input/output records.
+
+        Substitutes the real modality name for a code-local placeholder when the parameters
+        carry one, and marks the substitution so a consumer can tell a resolved edge from a
+        declared one. When nothing better is available the placeholder is kept with
+        ``resolved: False`` rather than dropped — an unresolvable edge is still evidence that
+        the step touched *something*, and silently omitting it would make the DAG look
+        complete when it is not.
+        """
+        resolved: List[Dict[str, Any]] = []
+        params = parameters or {}
+        substitute = None
+        for key in param_keys or self._ENTITY_PARAM_KEYS:
+            value = params.get(key)
+            if isinstance(value, str) and value:
+                substitute = value
+                break
+
+        for name in names or []:
+            text = str(name)
+            if text in self._PLACEHOLDER_ENTITIES and substitute:
+                resolved.append({"name": substitute, "resolved": True, "ir_name": text})
+            elif text in self._PLACEHOLDER_ENTITIES:
+                resolved.append({"name": text, "resolved": False})
+            else:
+                resolved.append({"name": text, "resolved": True})
+        return resolved
+
     def create_activity(
         self,
         activity_type: str,
@@ -242,8 +353,30 @@ class ProvenanceTracker:
         activity_id = f"{self.namespace}:activity:{uuid.uuid4()}"
         timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
+        # Monotonic sequence number. Timestamps may not uniquely order a session, so `seq`
+        # is assigned at append time alongside `self.activities` to remain total and gap-free.
+        seq = len(self.activities)
+
+        # Lift the IR's entity lists into the activity's own inputs/outputs.
+        # The DAG edges were already being recorded — one level down, in `ir.input_entities`
+        # / `ir.output_entities` — while the top-level fields a consumer would read stayed
+        # `[]` on every record. Explicit arguments still win, so a caller that knows better
+        # than the IR is never overridden.
+        if ir is not None:
+            if not inputs:
+                inputs = self._resolve_entities(
+                    getattr(ir, "input_entities", None), parameters
+                )
+            if not outputs:
+                outputs = self._resolve_entities(
+                    getattr(ir, "output_entities", None),
+                    parameters,
+                    param_keys=self._OUTPUT_PARAM_KEYS,
+                )
+
         activity = {
             "id": activity_id,
+            "seq": seq,
             "type": activity_type,
             "agent": agent,
             "timestamp": timestamp,

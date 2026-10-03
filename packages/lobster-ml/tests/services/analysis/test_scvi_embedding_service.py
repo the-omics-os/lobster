@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.services.analysis.scvi_embedding_service import ScviEmbeddingService
 
 # Check if scVI is available for conditional testing
@@ -240,12 +241,15 @@ class TestScviTrainingIntegration:
             mock_setup_device.return_value = "cpu"
 
             # Train the model
-            model, training_info = service.train_scvi_embedding(
+            result_adata, training_info, ir = service.train_scvi_embedding(
                 adata=mock_adata, n_latent=10, max_epochs=100
             )
 
             # Verify results
-            assert model == mock_model
+            assert result_adata is mock_adata
+            np.testing.assert_array_equal(result_adata.obsm["X_scvi"], mock_embeddings)
+            assert isinstance(ir, AnalysisStep)
+            assert ir.operation == "scvi.model.SCVI.train"
             assert training_info["n_latent"] == 10
             assert training_info["device"] == "cpu"
             assert training_info["n_cells"] == 100
@@ -293,9 +297,14 @@ class TestScviTrainingIntegration:
             mock_import.return_value = mock_torch
             mock_setup_device.return_value = "cpu"
 
-            model, training_info = service.train_scvi_embedding(
+            result_adata, training_info, ir = service.train_scvi_embedding(
                 adata=mock_adata, batch_key="sample", n_latent=15
             )
+
+            assert result_adata is mock_adata
+            np.testing.assert_array_equal(result_adata.obsm["X_scvi"], mock_embeddings)
+            assert isinstance(ir, AnalysisStep)
+            assert ir.operation == "scvi.model.SCVI.train"
 
             # Verify batch key was used
             assert training_info["batch_key"] == "sample"

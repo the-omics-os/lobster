@@ -404,7 +404,7 @@ feature_names = adata.var_names.tolist()
 # Discover per-class SHAP layers
 per_class_layers = {}
 for layer_name in adata.layers.keys():
-    if layer_name.startswith('shap_class_'):
+    if isinstance(layer_name, str) and layer_name.startswith('shap_class_'):
         try:
             class_idx = int(layer_name.split('_')[-1])
             per_class_layers[class_idx] = layer_name
@@ -863,7 +863,7 @@ print(f"{'=' * 60}")
         # Discover per-class SHAP layers
         per_class_layers = {}
         for layer_name in adata.layers.keys():
-            if layer_name.startswith("shap_class_"):
+            if isinstance(layer_name, str) and layer_name.startswith("shap_class_"):
                 try:
                     class_idx = int(layer_name.split("_")[-1])
                     per_class_layers[class_idx] = layer_name

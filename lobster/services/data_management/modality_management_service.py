@@ -512,17 +512,11 @@ class ModalityManagementService:
                 + (f" matching pattern '{filter_pattern}'" if filter_pattern else "")
             ),
             library="lobster",
-            imports=[
-                "from lobster.services.data_management.modality_management_service import ModalityManagementService"
-            ],
-            code_template="""# List modalities
-service = ModalityManagementService(data_manager)
-modality_info, stats, ir = service.list_modalities(
-    filter_pattern={{ filter_pattern if filter_pattern else 'None' }}
-)
-print(f"Found {stats['matched_modalities']} modalities")
-for info in modality_info:
-    print(f"  - {info['name']}: {info['n_obs']} × {info['n_vars']}")
+            imports=[],
+            code_template="""# List modalities{{ " matching '" ~ filter_pattern ~ "'" if filter_pattern else "" }}
+# Read-only introspection recorded from the original session. It changed no state,
+# so the replay has nothing to re-run: the session's registry does not exist here.
+print("provenance: modalities listed here (read-only, no-op in replay)")
 """,
             parameters={"filter_pattern": filter_pattern},
             parameter_schema={
@@ -544,15 +538,12 @@ for info in modality_info:
             tool_name="ModalityManagementService.get_modality_info",
             description=f"Retrieve detailed information for modality '{modality_name}'",
             library="lobster",
-            imports=[
-                "from lobster.services.data_management.modality_management_service import ModalityManagementService"
-            ],
-            code_template="""# Get modality info
-service = ModalityManagementService(data_manager)
-info, stats, ir = service.get_modality_info(modality_name="{{ modality_name }}")
-print(f"Modality: {info['name']}")
-print(f"Shape: {info['shape']['n_obs']} × {info['shape']['n_vars']}")
-print(f"Layers: {', '.join(info['layers'])}")
+            imports=[],
+            code_template="""# Inspect modality: '{{ modality_name }}'
+# Read-only introspection recorded from the original session. It changed no state.
+# The closest equivalent available here is the working object's own shape.
+print("provenance: modality '{{ modality_name }}' inspected here (read-only)")
+print(f"current working object: {adata.n_obs} x {adata.n_vars}")
 """,
             parameters={"modality_name": modality_name},
             parameter_schema={
@@ -571,18 +562,25 @@ print(f"Layers: {', '.join(info['layers'])}")
         return AnalysisStep(
             operation="modality_management.remove_modality",
             exportable=False,
+            # State mutation: required to reproduce the session even though it is not
+            # published in a curated notebook. Must never be coupled to `exportable`
+            # or a replay silently diverges — the artefact still exists afterwards.
+            replayable=True,
             tool_name="ModalityManagementService.remove_modality",
             description=f"Remove modality '{modality_name}' from workspace",
             library="lobster",
-            imports=[
-                "from lobster.services.data_management.modality_management_service import ModalityManagementService"
-            ],
-            code_template="""# Remove modality
-service = ModalityManagementService(data_manager)
-success, stats, ir = service.remove_modality(modality_name="{{ modality_name }}")
-if success:
-    print(f"Removed modality: {stats['removed_modality']}")
-    print(f"Remaining modalities: {stats['remaining_modalities']}")
+            imports=[],
+            code_template="""# Remove modality: '{{ modality_name }}'
+# Recorded state change from the original session.
+#
+# remove_modality() drops a NAMED REGISTRY ENTRY from the session's modality
+# registry. This notebook works on a single `adata` object, which is not that
+# entry, so there is nothing here to delete — and deleting `adata` would destroy
+# the object the remaining cells need.
+#
+# Effect in the original session: '{{ modality_name }}' was unavailable from this
+# point on. If you are re-deriving the session's artefact set, do not expect it.
+print("provenance: modality '{{ modality_name }}' removed here (no-op in replay)")
 """,
             parameters={"modality_name": modality_name},
             parameter_schema={
@@ -604,17 +602,11 @@ if success:
             tool_name="ModalityManagementService.validate_compatibility",
             description=f"Validate compatibility between {len(modality_names)} modalities",
             library="lobster",
-            imports=[
-                "from lobster.services.data_management.modality_management_service import ModalityManagementService"
-            ],
-            code_template="""# Validate modality compatibility
-service = ModalityManagementService(data_manager)
-validation, stats, ir = service.validate_compatibility(
-    modality_names={{ modality_names }}
-)
-print(f"Compatibility: {'Compatible' if validation['compatible'] else 'Issues detected'}")
-print(f"Observation overlap: {validation['observation_overlap_rate']:.1%}")
-print(f"Recommendations: {', '.join(validation['recommendations'])}")
+            imports=[],
+            code_template="""# Validate modality compatibility: {{ modality_names }}
+# Read-only check recorded from the original session. It changed no state, and it
+# compared registry entries that do not exist in this notebook.
+print("provenance: compatibility checked here for {{ modality_names }} (read-only)")
 """,
             parameters={"modality_names": modality_names},
             parameter_schema={
@@ -638,21 +630,29 @@ print(f"Recommendations: {', '.join(validation['recommendations'])}")
             tool_name="ModalityManagementService.load_modality",
             description=f"Load data file as modality '{modality_name}' using {adapter} adapter",
             library="lobster",
-            imports=[
-                "from lobster.services.data_management.modality_management_service import ModalityManagementService"
-            ],
-            code_template="""# Load modality from file
-service = ModalityManagementService(data_manager)
-adata, stats, ir = service.load_modality(
-    modality_name="{{ modality_name }}",
-    file_path="{{ file_path }}",
-    adapter="{{ adapter }}",
-    dataset_type="{{ dataset_type }}",
-    validate=True
-)
-print(f"Loaded modality: {stats['modality_name']}")
-print(f"Shape: {stats['shape']['n_obs']} × {stats['shape']['n_vars']}")
-print(f"Adapter: {stats['adapter']}")
+            # State change: brings data into the session, so it belongs in a replay
+            # regardless of whether a curated notebook would publish it.
+            replayable=True,
+            imports=["import anndata as ad", "from pathlib import Path"],
+            code_template="""# Load modality '{{ modality_name }}' from file
+# Recorded data entry point from the original session, loaded with the
+# '{{ adapter }}' adapter (dataset_type='{{ dataset_type }}').
+#
+# The read is attempted directly rather than through the adapter, because a
+# notebook has no live session to hold the modality registry. It is guarded: a
+# missing file prints and continues instead of aborting the replay, since the
+# original path is specific to the machine the session ran on.
+_src = Path(r"{{ file_path }}")
+if _src.exists() and _src.suffix == ".h5ad":
+    _loaded = ad.read_h5ad(_src)
+    print(f"Loaded '{{ modality_name }}': {_loaded.n_obs} x {_loaded.n_vars}")
+elif _src.exists():
+    print("provenance: '{{ modality_name }}' came from "
+          f"{_src.name} via the '{{ adapter }}' adapter; "
+          "load it with that adapter to reproduce this step")
+else:
+    print(f"provenance: '{{ modality_name }}' was loaded here from {_src} "
+          "(not present; supply it to reproduce this step)")
 """,
             parameters={
                 "modality_name": modality_name,

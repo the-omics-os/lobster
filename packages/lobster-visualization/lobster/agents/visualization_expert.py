@@ -235,6 +235,7 @@ def visualization_expert(
                 },
                 description=f"Created UMAP plot (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ UMAP plot created successfully!
@@ -371,6 +372,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created QC plots (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ QC plots created successfully!
@@ -479,6 +481,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created violin plot (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ Violin plot created successfully!
@@ -586,6 +589,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created feature plot (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ Feature plot created successfully!
@@ -706,6 +710,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created dot plot (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ Dot plot created successfully!
@@ -825,6 +830,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created heatmap (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ Heatmap created successfully!
@@ -910,6 +916,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created elbow plot (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ Elbow plot created successfully!
@@ -1022,6 +1029,7 @@ For DE results, use volcano plots, MA plots, or heatmaps instead.
                 },
                 description=f"Created cluster composition plot (ID: {plot_id})",
                 ir=None,
+                agent=agent_name,
             )
 
             return f"""✅ Cluster composition plot created successfully!

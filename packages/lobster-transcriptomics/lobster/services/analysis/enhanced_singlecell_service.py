@@ -13,9 +13,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import scanpy as sc
+from scipy import sparse
 from scipy.stats import pearsonr
 
 from lobster.core.provenance.analysis_ir import AnalysisStep
+from lobster.core.utils.cluster_keys import ClusterKeyError, resolve_cluster_key
 
 # Pathway enrichment is a PREMIUM feature - lazy import to avoid breaking FREE tier
 # The service is imported inside run_pathway_enrichment() method
@@ -46,7 +48,7 @@ except ImportError:
     scr = None
 
 try:
-    import harmonypy  # noqa: F401 — presence check for scanpy.external.pp.harmony_integrate
+    import harmonypy
 
     HARMONY_AVAILABLE = True
 except ImportError:
@@ -65,6 +67,40 @@ class SingleCellError(Exception):
     """Base exception for single-cell analysis operations."""
 
     pass
+
+
+def _looks_like_raw_counts(matrix: Any) -> bool:
+    """Heuristic: does this matrix hold un-normalized integer counts?
+
+    Used to decide whether to logarithmize before
+    ``rank_genes_groups``.  Mirrors scanpy's own check (non-negative integers)
+    but is implemented here rather than importing ``scanpy._utils`` — that is
+    private API and has moved between releases.
+
+    Two conditions must both hold, which keeps the false-positive rate low:
+    the values are non-negative integers, AND the maximum exceeds a threshold
+    no log1p-transformed expression matrix reaches.  log1p of even a 10,000-count
+    gene is ~9.2, so a maximum above 50 with integral values is counts.
+    """
+    if matrix is None:
+        return False
+    try:
+        data = matrix.data if sparse.issparse(matrix) else np.asarray(matrix)
+        if data.size == 0:
+            return False
+        finite = data[np.isfinite(data)]
+        if finite.size == 0:
+            return False
+        if float(finite.min()) < 0:
+            return False
+        if float(finite.max()) <= 50:
+            return False
+        # Integral within floating-point tolerance.
+        sample = finite if finite.size <= 100_000 else finite[:100_000]
+        return bool(np.allclose(sample, np.round(sample)))
+    except Exception:  # pragma: no cover - never block ranking on the check
+        logger.debug("Raw-count detection failed; assuming data is transformed")
+        return False
 
 
 class EnhancedSingleCellService:
@@ -398,13 +434,23 @@ adata.obs['predicted_doublet'] = predicted_doublets
                         "Install with: pip install 'lobster-transcriptomics[batch-integration]'\n"
                         "Or directly: pip install harmonypy"
                     )
-                sc.external.pp.harmony_integrate(
-                    adata,
-                    key=batch_key,
-                    basis="X_pca",
-                    adjusted_basis="X_pca_harmony",
-                    max_iter_harmony=max_iter,
+                # Scanpy's wrapper always transposes Z_corr, but harmonypy can
+                # return either cells x PCs or (legacy) PCs x cells.
+                pca = adata.obsm["X_pca"].astype(np.float64)
+                harmony_out = harmonypy.run_harmony(
+                    pca, adata.obs, batch_key, max_iter_harmony=max_iter
                 )
+                corrected = np.asarray(harmony_out.Z_corr)
+                if corrected.shape == pca.shape:
+                    pass
+                elif corrected.shape == pca.T.shape:
+                    corrected = corrected.T
+                else:
+                    raise SingleCellError(
+                        f"Unexpected Harmony embedding shape {corrected.shape}; "
+                        f"expected {pca.shape} or {pca.T.shape}"
+                    )
+                adata.obsm["X_pca_harmony"] = corrected
                 integrated_key = "X_pca_harmony"
             elif method == "combat":
                 sc.pp.combat(adata, key=batch_key)
@@ -525,14 +571,23 @@ if "X_pca" not in adata.obsm:
     sc.tl.pca(adata, n_comps={{ n_pcs }})
 
 {% if method == "harmony" %}
-# Harmony integration
-sc.external.pp.harmony_integrate(
-    adata,
-    key='{{ batch_key }}',
-    basis='X_pca',
-    adjusted_basis='X_pca_harmony',
-    max_iter_harmony={{ max_iter }},
+# Harmony integration (supports current and legacy output layouts)
+import harmonypy
+pca = adata.obsm['X_pca'].astype(np.float64)
+harmony_out = harmonypy.run_harmony(
+    pca, adata.obs, {{ batch_key | repr }}, max_iter_harmony={{ max_iter }},
 )
+corrected = np.asarray(harmony_out.Z_corr)
+if corrected.shape == pca.shape:
+    pass
+elif corrected.shape == pca.T.shape:
+    corrected = corrected.T
+else:
+    raise ValueError(
+        f"Unexpected Harmony embedding shape {corrected.shape}; "
+        f"expected {pca.shape} or {pca.T.shape}"
+    )
+adata.obsm['X_pca_harmony'] = corrected
 integrated_key = 'X_pca_harmony'
 {% else %}
 # ComBat batch correction
@@ -604,7 +659,9 @@ print(f"Batch silhouette: {sil:.3f}")
         adata: anndata.AnnData,
         root_cell: Optional[int] = None,
         root_group: Optional[str] = None,
-        cluster_key: str = "leiden",
+        # Cluster keys are resolved from adata.obs when omitted, rather than defaulting to a
+        # literal 'leiden' the clustering writer does not guarantee.
+        cluster_key: Optional[str] = None,
         n_dcs: int = 15,
         method: str = "dpt",
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
@@ -631,6 +688,21 @@ print(f"Batch silhouette: {sil:.3f}")
             )
 
             adata = adata.copy()
+
+            # Resolve the real cluster column. Trajectory inference does
+            # not require clusters — PAGA and root_group are optional — so an
+            # unresolvable key is tolerated here and only the cluster-dependent
+            # steps are skipped. root_group below still errors explicitly.
+            if root_group is not None:
+                cluster_key = resolve_cluster_key(adata, cluster_key)
+            else:
+                try:
+                    cluster_key = resolve_cluster_key(adata, cluster_key)
+                except ClusterKeyError as e:
+                    logger.info(
+                        f"No cluster column resolved; PAGA will be skipped: {e}"
+                    )
+                    cluster_key = None
 
             # Ensure neighbors are computed
             if "neighbors" not in adata.uns:
@@ -816,7 +888,7 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
     def annotate_cell_types(
         self,
         adata: anndata.AnnData,
-        cluster_key: str = "leiden",
+        cluster_key: Optional[str] = None,
         reference_markers: Optional[Dict[str, List[str]]] = None,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
@@ -826,6 +898,10 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
             adata: AnnData object with clustering results
             cluster_key: Column name in adata.obs containing cluster assignments
                 (e.g., 'leiden', 'louvain', 'seurat_clusters', 'RNA_snn_res.1').
+                When omitted it is resolved from adata.obs — see
+                ``resolve_cluster_key``. This used to default to the
+                literal 'leiden', which the clustering writer does not
+                guarantee, so annotation failed after clustering succeeded.
                 Use check_data_status() to inspect available obs columns.
             reference_markers: Optional custom marker genes dictionary
 
@@ -838,15 +914,12 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
         try:
             logger.info("Starting cell type annotation using marker genes")
 
-            # Validate input
-            if cluster_key not in adata.obs.columns:
-                available_cols = list(adata.obs.columns)
-                raise SingleCellError(
-                    f"No clustering results found. "
-                    f"Cluster column '{cluster_key}' not found in adata.obs. "
-                    f"Available columns: {available_cols}. "
-                    f"Run clustering (e.g., leiden) before annotation."
-                )
+            # Validate input — resolve before use so the IR records the column
+            # that was actually read, not a default that may not exist.
+            try:
+                cluster_key = resolve_cluster_key(adata, cluster_key)
+            except ClusterKeyError as e:
+                raise SingleCellError(f"No clustering results found. {e}") from e
 
             # Create working copy
             adata_annotated = adata.copy()
@@ -912,6 +985,10 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
 
             annotation_stats = {
                 "analysis_type": "cell_type_annotation",
+                # Report the column actually read. Its absence from the
+                # stats is part of why the writer/reader mismatch was hard to
+                # see: a successful annotation never said what it clustered on.
+                "cluster_key": cluster_key,
                 "markers_used": list(markers.keys()),
                 "n_marker_sets": len(markers),
                 "n_clusters": len(adata_annotated.obs[cluster_key].unique()),
@@ -980,8 +1057,6 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
             - top3_predictions: Array of top-3 cell type predictions (str)
             - entropy_scores: Array of Shannon entropy values (lower = more confident)
         """
-        from scipy.stats import entropy as shannon_entropy
-
         n_cells = adata.n_obs
         confidence_scores = np.zeros(n_cells)
         top3_predictions = np.empty(n_cells, dtype=object)
@@ -1004,99 +1079,157 @@ sc.tl.paga(adata, groups='{{ cluster_key }}')
             else:
                 signatures[ct] = np.zeros(0)
 
-        # Calculate correlation for each cell against all signatures
-        for i in range(n_cells):
-            correlations = {}
-            for ct, sig in signatures.items():
-                if np.std(sig) > 0:  # Avoid division by zero
-                    # Pearson correlation between cell i and signature
-                    cell_expr = adata[i, :].X
-                    if hasattr(cell_expr, "toarray"):
-                        cell_expr = cell_expr.toarray().flatten()
-                    else:
-                        cell_expr = np.array(cell_expr).flatten()
+        if not signatures:
+            # No cell types at all: every cell scores 0 with maximum entropy, matching
+            # the per-cell path's behaviour when `correlations` ends up empty.
+            top3_predictions[:] = ""
+            entropy_scores[:] = np.log(3)
+            return confidence_scores, top3_predictions, entropy_scores
 
-                    # Use only marker genes for correlation
-                    markers = [m for m in reference_markers[ct] if m in adata.var_names]
-                    if len(markers) > 0:
-                        # Absolute indices for cell expression (indexing into full gene vector)
-                        abs_marker_indices = [
-                            list(adata.var_names).index(m) for m in markers
-                        ]
-                        cell_marker_expr = cell_expr[abs_marker_indices]
-                        # sig is already per-marker (same order as valid_markers == markers)
-                        sig_marker_expr = sig
+        # ------------------------------------------------------------------ vectorised
+        # Resolve marker column positions once per cell type, rather than
+        # rebuilding and scanning the gene-name list for every cell.
+        #
+        # Everything the inner loop did except the correlation itself was
+        # loop-invariant: the marker set and its column positions depend only on the
+        # cell type, never on `i`. So resolve columns once, slice each cell type's
+        # marker columns once for ALL cells, and compute Pearson as a centred dot
+        # product -- which is exactly what Pearson against a shared signature is.
+        ct_names = list(signatures.keys())
+        corr_matrix = np.zeros((n_cells, len(ct_names)), dtype=float)
 
-                        if np.std(cell_marker_expr) > 0:
-                            corr, _ = pearsonr(cell_marker_expr, sig_marker_expr)
-                            correlations[ct] = max(
-                                0, corr
-                            )  # Clip negative correlations
-                        else:
-                            correlations[ct] = 0.0
-                    else:
-                        correlations[ct] = 0.0
-                else:
-                    correlations[ct] = 0.0
+        # Gene name -> column index, resolved ONCE.
+        #
+        # Built to return the FIRST occurrence of a duplicated name, because the loop it
+        # replaces used `list(adata.var_names).index(m)`, which returns the first match.
+        # A plain `{g: i for i, g in enumerate(...)}` keeps the LAST occurrence, so on any
+        # object with duplicate var_names it would silently read a different gene's column
+        # and produce a plausible-looking wrong correlation. `var_names_make_unique()` is
+        # not guaranteed to have been called on data reaching this service.
+        gene_pos: Dict[str, int] = {}
+        for pos, gene in enumerate(adata.var_names):
+            if gene not in gene_pos:
+                gene_pos[gene] = pos
 
-            # Get top 3 predictions
-            sorted_cts = sorted(correlations.items(), key=lambda x: x[1], reverse=True)
-            top3 = [ct for ct, _ in sorted_cts[:3]]
-            top3_scores = np.array([correlations[ct] for ct in top3])
+        for col, ct in enumerate(ct_names):
+            sig = signatures[ct]
 
-            # Confidence = max correlation
-            confidence_scores[i] = (
-                correlations[sorted_cts[0][0]] if len(sorted_cts) > 0 else 0.0
+            # Same guard as the per-cell path: a constant signature has no correlation
+            # defined (this is what raised scipy's ConstantInputWarning).
+            if sig.size == 0 or np.std(sig) == 0:
+                continue
+
+            marker_cols = np.array(
+                [gene_pos[m] for m in reference_markers[ct] if m in gene_pos],
+                dtype=int,
             )
+            if marker_cols.size == 0:
+                continue
 
-            # Top 3 as comma-separated string
-            top3_predictions[i] = ",".join(top3)
+            # ONE slice for every cell, instead of one AnnData view per cell.
+            marker_block = adata[:, marker_cols].X
+            if hasattr(marker_block, "toarray"):
+                marker_block = marker_block.toarray()
+            marker_block = np.asarray(marker_block, dtype=float)
 
-            # Shannon entropy of top-3 probabilities (normalized)
-            if np.sum(top3_scores) > 0:
-                top3_probs = top3_scores / np.sum(top3_scores)
-                entropy_scores[i] = shannon_entropy(top3_probs)
-            else:
-                entropy_scores[i] = np.log(3)  # Max entropy for uniform distribution
+            # Pearson r = centred dot product / product of centred norms. Centring is
+            # along axis=1 (per cell, across that cell's markers) to match correlating
+            # one cell's marker vector against the signature. Centring along axis=0
+            # would compute a different statistic and still return plausible numbers.
+            centred = marker_block - marker_block.mean(axis=1, keepdims=True)
+            sig_centred = sig - sig.mean()
+
+            denom = np.linalg.norm(centred, axis=1) * np.linalg.norm(sig_centred)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                r = (centred @ sig_centred) / denom
+
+            # denom == 0 means the cell's marker expression was constant, which the
+            # per-cell path caught with `np.std(cell_marker_expr) > 0` and scored 0.0.
+            r = np.nan_to_num(r, nan=0.0, posinf=0.0, neginf=0.0)
+
+            r = np.clip(r, -1.0, 1.0)  # r is a correlation; bound it as scipy does
+            corr_matrix[:, col] = np.clip(r, 0.0, None)  # was max(0, corr)
+
+        # Quantise for RANKING ONLY -- never for the returned scores.
+        #
+        # A centred dot product and scipy's pearsonr need not agree bit-for-bit:
+        # they use different arithmetic, including different edge-case handling.
+        # Tiny score differences can still reorder analytically tied labels.
+        # Round to 6 decimals for ranking while leaving returned scores exact.
+        #
+        # Rounding `corr_matrix` itself would be the wrong fix: `cell_type_confidence`
+        # goes into .obs and feeds the quality thresholds (c > 0.5, c > 0.3), so
+        # quantising the output would trade a cosmetic tie-order difference for a real
+        # change in the data. 6 dp sits four orders of magnitude above the ~1e-16 noise
+        # being suppressed and five below those thresholds, so it cannot merge genuinely
+        # distinct scores.
+        ranking_matrix = np.round(corr_matrix, 6)
+
+        # `kind="stable"` on the NEGATED scores reproduces Python's
+        # `sorted(..., reverse=True)`, which is stable and therefore leaves tied cell
+        # types in insertion order. Sorting ascending and reversing would INVERT tie
+        # order -- and ties are the common case here, since every cell type that fails a
+        # guard scores exactly 0.0.
+        order = np.argsort(-ranking_matrix, axis=1, kind="stable")
+        top_k = min(3, len(ct_names))
+        top_idx = order[:, :top_k]
+        top_scores = np.take_along_axis(corr_matrix, top_idx, axis=1)
+
+        confidence_scores = corr_matrix[np.arange(n_cells), order[:, 0]]
+
+        ct_array = np.array(ct_names, dtype=object)
+        top3_predictions = np.array(
+            [",".join(row) for row in ct_array[top_idx]], dtype=object
+        )
+
+        # Shannon entropy of the normalised top-3 scores, computed directly rather than
+        # via scipy so it stays vectorised. scipy.stats.entropy normalises internally and
+        # uses the natural log; both are reproduced here.
+        totals = top_scores.sum(axis=1)
+        positive = totals > 0
+        entropy_scores = np.full(n_cells, np.log(3))  # max entropy, as before
+        if np.any(positive):
+            probs = top_scores[positive] / totals[positive, None]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                terms = np.where(probs > 0, probs * np.log(probs), 0.0)
+            entropy_scores[positive] = -terms.sum(axis=1)
 
         return confidence_scores, top3_predictions, entropy_scores
 
     def _create_annotation_ir(
         self,
         reference_markers: Optional[Dict[str, List[str]]] = None,
-        cluster_key: str = "leiden",
+        # Required in practice: the caller resolves the real cluster column so the
+        # exported notebook does not assume a column the writer may not create.
+        cluster_key: Optional[str] = None,
     ) -> AnalysisStep:
         """Create AnalysisStep IR for cell type annotation."""
 
+        # Use the service implementation in the template rather than maintaining
+        # a second copy of its confidence-scoring algorithm. This keeps replayed
+        # notebooks aligned with the code that produced the annotations.
         code_template = """
 # Cell type annotation with confidence scoring
-import scanpy as sc
-import numpy as np
-from scipy.stats import pearsonr, entropy
+from lobster.services.analysis.enhanced_singlecell_service import (
+    EnhancedSingleCellService,
+)
 
 # Define marker genes (user-provided or default)
 reference_markers = {{ reference_markers }}
 
-# Calculate mean expression per cluster
-cluster_col = '{{ cluster_key }}'
-for cluster in adata.obs[cluster_col].unique():
-    cluster_mask = adata.obs[cluster_col] == cluster
-    cluster_cells = adata[cluster_mask]
+adata, _annotation_stats, _annotation_ir = EnhancedSingleCellService().annotate_cell_types(
+    adata,
+    cluster_key='{{ cluster_key }}',
+    reference_markers=reference_markers,
+)
 
-    # Score against each cell type
-    scores = {}
-    for cell_type, markers in reference_markers.items():
-        valid_markers = [m for m in markers if m in adata.var_names]
-        if valid_markers:
-            expr = cluster_cells[:, valid_markers].X.mean(axis=0)
-            scores[cell_type] = float(np.mean(expr))
-
-    # Assign cell type with highest score
-    best_type = max(scores, key=scores.get)
-    adata.obs.loc[cluster_mask, 'cell_type'] = best_type
-
-# Calculate per-cell confidence (Pearson correlation with signatures)
-# ... (confidence calculation logic) ...
+# `cluster_key` is interpolated on the call above; annotate_cell_types does NOT
+# return it in its stats dict, which holds analysis_type, markers_used,
+# n_marker_sets, n_clusters, n_cell_types_identified, cluster_to_celltype,
+# cell_type_counts, marker_scores and a quality breakdown. Reading it from there
+# raised KeyError and aborted the replay at this stage.
+print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
+      f"on '{{ cluster_key }}'")
 
 # Results stored in:
 # - adata.obs['cell_type']: Assigned cell type
@@ -1317,6 +1450,37 @@ for cluster in adata.obs[cluster_col].unique():
                     raw_adata.X = raw_adata.X.astype(np.float32)
                     adata_markers.raw = raw_adata
 
+            # rank_genes_groups must run on log-normalized values.
+            # Wilcoxon/t-test log fold-changes are computed as a difference of
+            # means on whatever matrix is passed, so on raw counts the ranking is
+            # dominated by sequencing depth and highly expressed genes, and the
+            # reported logFC is not a log fold-change at all. Scanpy only warns
+            # ("It seems you use rank_genes_groups on the raw count data"), and
+            # the warning went to the child log where it was not acted on.
+            #
+            # use_raw was also hardcoded True, which fails outright when .raw is
+            # unset; it now follows whether .raw actually exists.
+            use_raw = adata_markers.raw is not None
+            matrix_used = adata_markers.raw.X if use_raw else adata_markers.X
+
+            if _looks_like_raw_counts(matrix_used):
+                target = ".raw.X" if use_raw else ".X"
+                logger.warning(
+                    f"Marker gene ranking received raw counts in {target}; "
+                    f"normalizing and log1p-transforming before ranking. "
+                    f"Ranking raw counts produces depth-driven marker sets."
+                )
+                if use_raw:
+                    # Log-normalize .raw in place of itself so the full gene
+                    # universe is preserved — that is the point of .raw.
+                    raw_adata = adata_markers.raw.to_adata()
+                    sc.pp.normalize_total(raw_adata, target_sum=1e4)
+                    sc.pp.log1p(raw_adata)
+                    adata_markers.raw = raw_adata
+                else:
+                    sc.pp.normalize_total(adata_markers, target_sum=1e4)
+                    sc.pp.log1p(adata_markers)
+
             # Run differential expression analysis
             # Note: Only pass 'groups' parameter if explicitly set (not None)
             # Scanpy distinguishes between "parameter not provided" vs "parameter=None"
@@ -1325,7 +1489,7 @@ for cluster in adata.obs[cluster_col].unique():
                 "groupby": groupby,
                 "method": method,
                 "n_genes": n_genes,
-                "use_raw": True,
+                "use_raw": use_raw,
             }
 
             if groups is not None:
@@ -1540,7 +1704,8 @@ sc.tl.filter_rank_genes_groups(
         self,
         adata: anndata.AnnData,
         markers: Dict[str, List[str]],
-        cluster_key: str = "leiden",
+        # Resolved by the caller — no 'leiden' default to fall back to.
+        cluster_key: Optional[str] = None,
     ) -> Dict[str, Dict[str, float]]:
         """
         Calculate marker gene scores for each cluster from AnnData object.
@@ -1554,6 +1719,8 @@ sc.tl.filter_rank_genes_groups(
             Dict[str, Dict[str, float]]: Cluster scores for each cell type
         """
         logger.info("Calculating marker scores from AnnData")
+
+        cluster_key = resolve_cluster_key(adata, cluster_key)
 
         # Ensure unique names to prevent reindexing errors
         if not adata.obs_names.is_unique:
@@ -1726,7 +1893,8 @@ sc.tl.filter_rank_genes_groups(
         self,
         adata: anndata.AnnData,
         marker_genes: Optional[List[str]] = None,
-        cluster_key: str = "leiden",
+        # Resolve the cluster key from the available observations when omitted.
+        cluster_key: Optional[str] = None,
         databases: Optional[List[str]] = None,
         p_value_threshold: float = 0.05,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
@@ -1768,6 +1936,7 @@ sc.tl.filter_rank_genes_groups(
 
             # Auto-extract marker genes if not provided
             if marker_genes is None:
+                cluster_key = resolve_cluster_key(adata, cluster_key)
                 marker_genes = self._extract_marker_gene_list(adata, cluster_key)
                 logger.info(f"Auto-extracted {len(marker_genes)} marker genes")
 

@@ -38,7 +38,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 
 # === Heavy imports below ===
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -83,6 +83,102 @@ class ModalityNotFoundError(TranscriptomicsAgentError):
     """Raised when requested modality doesn't exist."""
 
     pass
+
+
+#: Keys that ``format_subcluster_response`` reads out of
+#: ``ClusteringService.subcluster_cells``' stats dict.  This IS the contract
+#: between the two files, and it is asserted by
+#: tests/unit/core/test_subcluster_stats_contract.py.
+SUBCLUSTER_STATS_KEYS = (
+    "n_cells_subclustered",
+    "parent_clusters",
+    "resolutions_tested",
+    "subclustering_results",
+    "primary_subcluster_key",
+    "execution_time_seconds",
+    "cluster_sizes",
+)
+
+
+def _format_subcluster_sizes(sizes: Dict[str, int], indent: str = "  ") -> str:
+    """Render at most ten sub-cluster sizes, then a count of the remainder."""
+    text = ""
+    for cluster_id, size in list(sizes.items())[:10]:
+        text += f"\n{indent}- {cluster_id}: {size} cells"
+    if len(sizes) > 10:
+        text += f"\n{indent}... and {len(sizes) - 10} more sub-clusters"
+    return text
+
+
+def format_subcluster_response(
+    new_name: str,
+    cluster_key: str,
+    resolution: float,
+    stats: Dict[str, Any],
+) -> str:
+    """Render the sub-clustering summary using the service's stats contract.
+
+    The response formatter and service must agree on the keys they exchange. Keeping this
+    conversion in a standalone function makes the contract directly testable.
+    """
+    resolutions_tested = stats.get("resolutions_tested") or [resolution]
+    subclustering_results = stats.get("subclustering_results") or {}
+    primary_column = stats.get("primary_subcluster_key") or cluster_key
+    execution_time = stats.get("execution_time_seconds") or 0.0
+    # cluster_sizes maps column name -> {sub-cluster id: n_cells}
+    subcluster_sizes = (stats.get("cluster_sizes") or {}).get(primary_column, {})
+    # column name -> number of sub-clusters, one entry per resolution tested
+    resolution_summary = {
+        res_data.get("key_name", str(res_key)): res_data.get("n_total_subclusters", 0)
+        for res_key, res_data in subclustering_results.items()
+    }
+    n_cells = stats.get("n_cells_subclustered", 0)
+    parent_clusters = stats.get("parent_clusters") or []
+    n_subclusters = resolution_summary.get(primary_column, len(subcluster_sizes))
+
+    header = (
+        f"Sub-clustering complete! Created '{new_name}' modality.\n\n"
+        f"**Results:**\n"
+        f"- Processed {n_cells:,} cells from {len(parent_clusters)} "
+        f"parent cluster(s): {parent_clusters}"
+    )
+
+    if len(resolutions_tested) > 1:
+        response = (
+            f"{header}\n"
+            f"- Tested {len(resolutions_tested)} resolutions: {resolutions_tested}\n"
+            f"- New columns in adata.obs:"
+        )
+        for res_key, n_clusters in resolution_summary.items():
+            primary_marker = " (primary)" if res_key == primary_column else ""
+            response += f"\n  * {res_key}: {n_clusters} sub-clusters{primary_marker}"
+        response += f"\n- Execution time: {execution_time:.2f} seconds\n"
+        response += f"\n**Primary sub-clustering ({primary_column}):**"
+        response += _format_subcluster_sizes(subcluster_sizes)
+        response += """
+
+**Interpretation:**
+- Lower resolutions (0.25) = broader populations
+- Higher resolutions (1.0) = finer-grained clusters
+- Compare results across resolutions to determine optimal granularity"""
+        return response
+
+    resolution_used = stats.get("resolution_used") or resolution
+    response = (
+        f"{header}\n"
+        f"- Generated {n_subclusters} sub-clusters at resolution {resolution_used}\n"
+        f"- New column: '{primary_column}' in adata.obs\n"
+        f"- Execution time: {execution_time:.2f} seconds\n\n"
+        f"**Sub-cluster sizes:**"
+    )
+    response += _format_subcluster_sizes(subcluster_sizes)
+    response += """
+
+**Next steps:**
+- Use visualization to display sub-clusters on UMAP
+- Use find_marker_genes() to characterize each sub-cluster
+- INVOKE handoff_to_annotation_expert immediately if annotation requested (do NOT just suggest it)"""
+    return response
 
 
 def transcriptomics_expert(
@@ -143,6 +239,10 @@ def transcriptomics_expert(
         quality_service,
         preprocessing_service,
         clustering_service=clustering_service,
+        # Thread the agent's identity so its tools can name themselves in provenance
+        # (). `agent_name` is already a mandatory factory parameter; it simply was
+        # never passed down, so every activity recorded agent="data_manager".
+        agent_name=agent_name,
     )
 
     # Analysis results storage (for clustering tools)
@@ -238,6 +338,7 @@ def transcriptomics_expert(
                 tool_name="cluster_cells",
                 parameters={
                     "modality_name": modality_name,
+                    "result_modality_name": clustered_modality_name,
                     "resolution": resolution,
                     "resolutions": resolutions,
                     "batch_correction": batch_correction,
@@ -248,6 +349,7 @@ def transcriptomics_expert(
                 },
                 description=f"Single-cell clustered {modality_name} into {clustering_stats['n_clusters']} clusters using {algorithm_lower} with {feature_selection_method} feature selection",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format professional response
@@ -386,7 +488,7 @@ def transcriptomics_expert(
                 algorithm=algorithm_lower,
             )
 
-            # Compute cluster count safely (BUG-01 fix: clusters_to_refine may be None)
+            # Safely handle an omitted clusters_to_refine argument.
             n_refined = len(clusters_to_refine) if clusters_to_refine else "all"
 
             # Store result with descriptive suffix
@@ -413,75 +515,15 @@ def transcriptomics_expert(
                 },
                 description=f"Subclustered {n_refined} clusters from {cluster_key} using {algorithm_lower}",
                 ir=ir,
+                agent=agent_name,
             )
 
-            # Format response based on single vs multi-resolution
-            n_resolutions_tested = len(stats.get("resolutions_tested", [resolution]))
-
-            if n_resolutions_tested > 1:
-                # Multi-resolution formatting
-                response = f"""Sub-clustering complete! Created '{new_name}' modality.
-
-**Results:**
-- Processed {stats["n_cells_subclustered"]:,} cells from {len(stats["parent_clusters"])} parent cluster(s): {stats["parent_clusters"]}
-- Tested {n_resolutions_tested} resolutions: {stats["resolutions_tested"]}
-- New columns in adata.obs:"""
-
-                # Show all resolution results
-                for res_key, n_clusters in stats["multi_resolution_summary"].items():
-                    primary_marker = (
-                        " (primary)" if res_key == stats["primary_column"] else ""
-                    )
-                    response += (
-                        f"\n  * {res_key}: {n_clusters} sub-clusters{primary_marker}"
-                    )
-
-                response += (
-                    f"\n- Execution time: {stats['execution_time']:.2f} seconds\n"
-                )
-
-                # Show primary sub-clustering results
-                response += (
-                    f"\n**Primary sub-clustering ({stats['primary_column']}):**\n"
-                )
-                for cluster_id, size in list(stats["subcluster_sizes"].items())[:10]:
-                    response += f"  - {cluster_id}: {size} cells\n"
-
-                if len(stats["subcluster_sizes"]) > 10:
-                    remaining = len(stats["subcluster_sizes"]) - 10
-                    response += f"  ... and {remaining} more sub-clusters\n"
-
-                response += """
-**Interpretation:**
-- Lower resolutions (0.25) = broader populations
-- Higher resolutions (1.0) = finer-grained clusters
-- Compare results across resolutions to determine optimal granularity"""
-
-            else:
-                # Single-resolution formatting
-                response = f"""Sub-clustering complete! Created '{new_name}' modality.
-
-**Results:**
-- Processed {stats["n_cells_subclustered"]:,} cells from {len(stats["parent_clusters"])} parent cluster(s): {stats["parent_clusters"]}
-- Generated {stats["n_subclusters"]} sub-clusters at resolution {stats.get("resolution", resolution)}
-- New column: '{stats["primary_column"]}' in adata.obs
-- Execution time: {stats["execution_time"]:.2f} seconds
-
-**Sub-cluster sizes:**"""
-
-                for cluster_id, size in list(stats["subcluster_sizes"].items())[:10]:
-                    response += f"\n  - {cluster_id}: {size} cells"
-
-                if len(stats["subcluster_sizes"]) > 10:
-                    remaining = len(stats["subcluster_sizes"]) - 10
-                    response += f"\n  ... and {remaining} more sub-clusters"
-
-                response += """
-
-**Next steps:**
-- Use visualization to display sub-clusters on UMAP
-- Use find_marker_genes() to characterize each sub-cluster
-- INVOKE handoff_to_annotation_expert immediately if annotation requested (do NOT just suggest it)"""
+            response = format_subcluster_response(
+                new_name=new_name,
+                cluster_key=cluster_key,
+                resolution=resolution,
+                stats=stats,
+            )
 
             analysis_results["details"]["sub_clustering"] = response
             return response
@@ -498,7 +540,18 @@ Please check:
             logger.error(f"Error in sub-clustering: {e}")
             return f"Error sub-clustering modality: {str(e)}"
         except Exception as e:
-            logger.error(f"Unexpected error in sub-clustering: {e}")
+            # The response handler formats stats returned by the clustering service.
+            # as though the analysis itself had failed - after the analysis had
+            # already been logged as successful. exc_info makes the difference
+            # visible in the log instead of collapsing it to "Unexpected
+            # error: 'primary_column'".
+            logger.error(f"Unexpected error in sub-clustering: {e}", exc_info=True)
+            if isinstance(e, KeyError):
+                return (
+                    f"Sub-clustering computed successfully, but the result could "
+                    f"not be summarised: missing key {e}. The modality was "
+                    f"created; inspect it with check_data_status()."
+                )
             return f"Unexpected error: {str(e)}"
 
     # AQUADIF metadata
@@ -590,6 +643,7 @@ Please check:
                 },
                 description=f"Evaluated clustering quality with {len(stats['metrics'])} metrics",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build response
@@ -718,7 +772,10 @@ Please check:
             return f"Unexpected error: {str(e)}"
 
     # AQUADIF metadata
-    evaluate_clustering_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    evaluate_clustering_quality.metadata = {
+        "categories": ["QUALITY"],
+        "provenance": True,
+    }
     evaluate_clustering_quality.tags = ["QUALITY"]
 
     @tool
@@ -800,6 +857,7 @@ Please check:
                 tool_name="find_marker_genes",
                 parameters={
                     "modality_name": modality_name,
+                    "result_modality_name": marker_modality_name,
                     "groupby": groupby,
                     "method": method,
                     "n_genes": n_genes,
@@ -809,6 +867,7 @@ Please check:
                 },
                 description=f"Found marker genes for {marker_stats['n_groups']} clusters (method: {marker_stats['method']}, pre-filter: {sum(marker_stats['pre_filter_counts'].values())}, post-filter: {sum(marker_stats['post_filter_counts'].values())}, filtered: {marker_stats['total_genes_filtered']})",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format professional response with filtering statistics
@@ -949,6 +1008,7 @@ Please check:
                 },
                 description=f"Detected {stats.get('n_doublets', 0)} doublets in {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1052,6 +1112,7 @@ Please check:
                 },
                 description=f"Integrated {stats.get('n_batches', 0)} batches in {modality_name} using {method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response with quality metrics
@@ -1163,6 +1224,7 @@ Please check:
                 },
                 description=f"Computed DPT trajectory for {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1294,7 +1356,7 @@ Please check:
                         )
                         adata.layers["counts"] = adata.X.copy()
                         detected_source = "featurecounts"
-                except Exception:
+                except Exception:  # nosec B110 # Failed format detection falls through to supported CSV/TSV detection.
                     pass  # Fall through to CSV/TSV
 
             # Generic CSV/TSV
@@ -1358,6 +1420,7 @@ Please check:
                 },
                 description=f"Imported bulk counts ({detected_source}): {adata.shape[0]} samples x {adata.shape[1]} genes",
                 ir=ir,
+                agent=agent_name,
             )
 
             return (
@@ -1497,6 +1560,7 @@ Please check:
                 },
                 description=f"Merged {len(cols_added)} metadata columns into {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = (
@@ -1582,6 +1646,7 @@ Please check:
                 },
                 description=f"Assessed bulk sample quality for {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1632,7 +1697,10 @@ Please check:
             return f"Error assessing bulk sample quality: {str(e)}"
 
     # AQUADIF metadata
-    assess_bulk_sample_quality.metadata = {"categories": ["QUALITY"], "provenance": True}
+    assess_bulk_sample_quality.metadata = {
+        "categories": ["QUALITY"],
+        "provenance": True,
+    }
     assess_bulk_sample_quality.tags = ["QUALITY"]
 
     @tool
@@ -1689,6 +1757,7 @@ Please check:
                 },
                 description=f"Filtered bulk genes: {stats.get('n_genes_removed', 0)} removed",
                 ir=ir,
+                agent=agent_name,
             )
 
             genes_before = stats.get("n_genes_before", 0)
@@ -1768,6 +1837,7 @@ Please check:
                 },
                 description=f"Normalized {modality_name} using {method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = (
@@ -1856,6 +1926,7 @@ Please check:
                 },
                 description=f"Detected batch effects in {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             batch_r2 = stats.get("batch_r_squared", 0)
@@ -2073,6 +2144,7 @@ Please check:
                 },
                 description=f"Converted gene IDs: {source_type} -> {target_type}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = (
@@ -2236,6 +2308,7 @@ Please check:
                 },
                 description=f"DE readiness validation: {'READY' if all_pass else 'NOT READY'}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response

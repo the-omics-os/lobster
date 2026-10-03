@@ -129,7 +129,7 @@ def annotation_expert(
     template_service = AnnotationTemplateService()
     singlecell_service = EnhancedSingleCellService()
 
-    # Check vector search availability (inside factory, NOT module level per Hard Rule #10)
+    # Check vector search availability inside the factory, not at module level.
     vector_search_cls = component_registry.get_service("vector_search")
     if vector_search_cls is None:
         # Fallback: try direct import as lazy check (NOT at module level)
@@ -214,6 +214,7 @@ def annotation_expert(
                 },
                 description=f"Annotated {annotation_stats['n_cell_types_identified']} cell types in single-cell data {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format professional response
@@ -384,6 +385,7 @@ def annotation_expert(
                     "annotations": annotations,
                 },
                 description=f"Direct manual annotation of {len(annotations)} clusters",
+                agent=agent_name,
             )
 
             response = f"""Manual cluster annotation applied to '{modality_name}'!
@@ -495,6 +497,7 @@ def annotation_expert(
                     "cluster_key": cluster_key,
                 },
                 description=f"Collapsed {len(cluster_list)} clusters into '{cell_type_name}'",
+                agent=agent_name,
             )
 
             response = f"""Successfully collapsed clusters in '{modality_name}'!
@@ -618,6 +621,7 @@ def annotation_expert(
                     "cluster_key": cluster_key,
                 },
                 description=f"Marked {len(debris_clusters)} clusters as debris ({total_debris_cells} cells)",
+                agent=agent_name,
             )
 
             response = f"""Successfully marked debris clusters in '{modality_name}'!
@@ -905,6 +909,7 @@ def annotation_expert(
                     "expression_threshold": expression_threshold,
                 },
                 description=f"Applied {tissue_type} template: {len(cluster_suggestions)} clusters annotated",
+                agent=agent_name,
             )
 
             # Get template cell types
@@ -1049,6 +1054,7 @@ def annotation_expert(
                     "format": format,
                 },
                 description=f"Exported annotation mapping with {len(export_data['cell_type_counts'])} cell types",
+                agent=agent_name,
             )
 
             response = f"""Successfully exported annotation mapping for '{modality_name}'!
@@ -1182,6 +1188,7 @@ Use this mapping to apply consistent annotations to similar datasets."""
                     "preview_only": preview_only,
                 },
                 description=f"Imported annotation mapping from {mapping_file}",
+                agent=agent_name,
             )
 
             # Validate imported annotations
@@ -1370,7 +1377,9 @@ Use this mapping to apply consistent annotations to similar datasets."""
             )
 
             # Log with IR
-            data_manager.log_tool_usage("score_gene_set", params, stats, ir=ir)
+            data_manager.log_tool_usage(
+                "score_gene_set", params, stats, ir=ir, agent=agent_name
+            )
 
             # Format response
             response = (

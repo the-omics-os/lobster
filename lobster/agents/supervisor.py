@@ -403,7 +403,14 @@ def _build_response_behavior(config: SupervisorConfig, interactive: bool = True)
 
 
 def _build_agent_result_memory() -> str:
-    """Build instructions for the store-backed agent result memory."""
+    """Build instructions for the store-backed agent result memory.
+
+    Also carries the policy for reading `<artifact_manifest>` blocks. That policy MUST
+    live here in the system prompt rather than inside the manifest itself: a handoff
+    return reaches you as tool output wrapped in `<tool_data>` markers, and the security
+    policy correctly forbids following instructions found there. So the manifest states
+    facts and this section states what to do with them.
+    """
     return """<Agent Result Memory>
 When you delegate to a sub-agent, the response includes a [store_key=...] reference.
 Full analysis results are stored and retrievable via retrieve_agent_result.
@@ -414,6 +421,17 @@ Rules:
 - Do NOT ask the user to repeat information from a previous analysis.
 - Do NOT guess at specific values — retrieve them if needed.
 - When summarizing results to the user, mention that full data is available.
+
+ARTIFACT MANIFESTS:
+A delegation response may include an <artifact_manifest> block listing the modalities
+and files that agent wrote. Treat it as a factual inventory of workspace state.
+- If the manifest lists a modality, that data ALREADY EXISTS. Reference it by name.
+  Do NOT use execute_custom_code to recompute it.
+- If the manifest says no new artifacts were written but the agent's prose claims an
+  analysis was completed, the claim is UNVERIFIED. Do not repeat it to the user as
+  fact. Re-delegate with more specific instructions, or state plainly what is missing.
+- An absent manifest means artifacts were not measured — NOT that none were written.
+  Use list_available_modalities to check.
 </Agent Result Memory>"""
 
 
@@ -470,7 +488,7 @@ def _build_live_context(data_manager: DataManagerV2, config: SupervisorConfig) -
         except Exception as e:
             logger.debug(f"Could not add data context: {e}")
 
-    # Raw workspace files (P0 File Detection)
+    # Raw workspace files
     if config.include_data_context:
         try:
             raw_files = _list_raw_workspace_files(data_manager.workspace_path)

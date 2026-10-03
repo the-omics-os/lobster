@@ -175,6 +175,7 @@ def variant_analysis_expert(
                 },
                 description=f"Normalized variants: {stats['n_variants_before']} -> {stats['n_variants_after']}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""Variant normalization completed: '{norm_modality_name}'
@@ -265,6 +266,7 @@ def variant_analysis_expert(
                 },
                 description=f"Consequence prediction: {stats['n_variants_annotated']}/{stats['n_variants']} variants annotated",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -360,6 +362,7 @@ def variant_analysis_expert(
                 },
                 description=f"Population frequencies: {stats['n_with_frequency']}/{stats['n_variants']} with AF",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -441,6 +444,7 @@ def variant_analysis_expert(
                 parameters={"modality_name": modality_name},
                 description=f"Clinical databases: {stats['n_with_clinvar']}/{stats['n_variants']} with ClinVar",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -530,6 +534,7 @@ def variant_analysis_expert(
                 parameters={"modality_name": modality_name},
                 description=f"Variant prioritization: {stats['n_high_priority']} high priority of {stats['n_variants_scored']}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response with top 10 variants
@@ -727,6 +732,7 @@ def variant_analysis_expert(
                 },
                 description=f"Variant lookup for {notation}: {most_severe}",
                 ir=None,
+                agent=agent_name,
             )
 
             return "\n".join(lines)

@@ -399,6 +399,7 @@ def machine_learning_expert(
                 },
                 description=f"Prepared ML features: {adata_ml.shape}",
                 ir=None,
+                agent=agent_name,
             )
 
             # Calculate sparsity
@@ -573,6 +574,7 @@ def machine_learning_expert(
                 },
                 description=f"Created ML splits: train={len(train_idx)}, test={len(test_idx)}, val={len(val_idx)}",
                 ir=None,
+                agent=agent_name,
             )
 
             split_stats = {
@@ -778,6 +780,7 @@ def machine_learning_expert(
                     "output_dir": output_dir,
                 },
                 description=f"Exported {len(exported_files)} files for {format}",
+                agent=agent_name,
             )
 
             response = f"""Successfully exported '{modality_name}' for {format}!
@@ -1045,6 +1048,7 @@ After installation, restart your session and run this tool again."""
                 },
                 description=f"Trained scVI model with {n_latent} latent dimensions",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""Successfully trained scVI embedding for '{modality_name}'!

@@ -40,6 +40,7 @@ def create_shared_tools(
     opentargets_service: OpenTargetsService,
     pubchem_service: PubChemService,
     target_scoring_service: TargetScoringService,
+    agent_name: str = "drug_discovery_expert",
 ) -> List[Callable]:
     """
     Create shared drug discovery tools for the parent agent.
@@ -97,6 +98,7 @@ def create_shared_tools(
                 },
                 description=f"Searched Open Targets for target {query}",
                 ir=ir,
+                agent=agent_name,
             )
 
             if "error" in stats:
@@ -208,6 +210,7 @@ def create_shared_tools(
                 },
                 description=f"Scored target {gene_symbol} for druggability",
                 ir=ir,
+                agent=agent_name,
             )
 
             overall = result.get("overall_score", 0.0)
@@ -333,6 +336,7 @@ def create_shared_tools(
                 },
                 description=f"Ranked {len(targets_evidence)} targets by druggability",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -413,6 +417,7 @@ def create_shared_tools(
                 },
                 description=f"Searched ChEMBL for compounds matching '{query}'",
                 ir=ir,
+                agent=agent_name,
             )
 
             if "error" in stats:
@@ -495,6 +500,7 @@ def create_shared_tools(
                 },
                 description=f"Retrieved bioactivity for {chembl_id}",
                 ir=ir,
+                agent=agent_name,
             )
 
             if "error" in stats:
@@ -593,6 +599,7 @@ def create_shared_tools(
                 },
                 description=f"Found compounds for target {target_chembl_id}",
                 ir=ir,
+                agent=agent_name,
             )
 
             if "error" in stats:
@@ -682,6 +689,7 @@ def create_shared_tools(
                 },
                 description=f"Retrieved PubChem properties for {id_type}='{identifier}'",
                 ir=ir,
+                agent=agent_name,
             )
 
             if "error" in stats:
@@ -753,6 +761,7 @@ def create_shared_tools(
                 parameters={"chembl_id": chembl_id},
                 description=f"Retrieved drug indications for {chembl_id}",
                 ir=ir,
+                agent=agent_name,
             )
 
             if "error" in stats:

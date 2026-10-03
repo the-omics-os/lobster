@@ -242,7 +242,9 @@ class AgentContractTestMixin:
         params = self._get_factory_params()
         missing = self.STANDARD_PARAMS - params
 
-        assert not missing, (
+        assert (
+            not missing
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Factory '{self.factory_name}' in '{self.agent_module}' "
             f"is missing required parameters: {sorted(missing)}. "
             f"Factory must accept: {sorted(self.STANDARD_PARAMS)}"
@@ -258,7 +260,9 @@ class AgentContractTestMixin:
         params = self._get_factory_params()
         deprecated_used = self.DEPRECATED_PARAMS & params
 
-        assert not deprecated_used, (
+        assert (
+            not deprecated_used
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Factory '{self.factory_name}' in '{self.agent_module}' "
             f"uses deprecated parameters: {sorted(deprecated_used)}. "
             f"Use 'delegation_tools' instead of 'handoff_tools'."
@@ -273,7 +277,9 @@ class AgentContractTestMixin:
         """
         config = self._get_agent_config()
 
-        assert config is not None, (
+        assert (
+            config is not None
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Module '{self.agent_module}' does not have AGENT_CONFIG defined. "
             f"Add: AGENT_CONFIG = AgentRegistryConfig(...) at module top, "
             f"before heavy imports."
@@ -288,15 +294,17 @@ class AgentContractTestMixin:
         """
         config = self._get_agent_config()
 
-        assert (
+        assert (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             config is not None
         ), f"Cannot check name field: AGENT_CONFIG not found in '{self.agent_module}'"
 
-        assert hasattr(
+        assert hasattr(  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             config, "name"
         ), f"AGENT_CONFIG in '{self.agent_module}' is missing 'name' field."
 
-        assert config.name, f"AGENT_CONFIG.name in '{self.agent_module}' is empty."
+        assert (
+            config.name
+        ), f"AGENT_CONFIG.name in '{self.agent_module}' is empty."  # nosec B101 # Contract-test assertion, not runtime security enforcement.
 
     def test_agent_config_has_tier_requirement(self) -> None:
         """
@@ -307,25 +315,27 @@ class AgentContractTestMixin:
         """
         config = self._get_agent_config()
 
-        assert (
+        assert (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             config is not None
         ), f"Cannot check tier_requirement: AGENT_CONFIG not found in '{self.agent_module}'"
 
-        assert hasattr(
+        assert hasattr(  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             config, "tier_requirement"
         ), f"AGENT_CONFIG in '{self.agent_module}' is missing 'tier_requirement' field."
 
         valid_tiers = {"free", "premium", "enterprise"}
         tier = config.tier_requirement
 
-        assert tier in valid_tiers, (
+        assert (
+            tier in valid_tiers
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"AGENT_CONFIG.tier_requirement in '{self.agent_module}' has invalid value '{tier}'. "
             f"Must be one of: {sorted(valid_tiers)}"
         )
 
         # Optional: check expected tier if specified
         if self.expected_tier is not None:
-            assert (
+            assert (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
                 tier == self.expected_tier
             ), f"AGENT_CONFIG.tier_requirement is '{tier}', expected '{self.expected_tier}'"
 
@@ -350,26 +360,34 @@ class AgentContractTestMixin:
             tool_name = getattr(tool, "name", str(tool))
 
             # Check metadata dict exists
-            assert hasattr(tool, "metadata") and tool.metadata is not None, (
+            assert (
+                hasattr(tool, "metadata") and tool.metadata is not None
+            ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
                 f"Tool '{tool_name}' in '{self.agent_module}' is missing .metadata. "
                 f"Add: tool.metadata = {{'categories': [...], 'provenance': True/False}}"
             )
 
             # Check categories key exists
-            assert "categories" in tool.metadata, (
+            assert (
+                "categories" in tool.metadata
+            ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
                 f"Tool '{tool_name}' in '{self.agent_module}' has .metadata but missing 'categories' key. "
                 f"Add: 'categories': ['PRIMARY_CATEGORY']"
             )
 
             # Check categories is non-empty list
             categories = tool.metadata["categories"]
-            assert isinstance(categories, list) and len(categories) > 0, (
+            assert (
+                isinstance(categories, list) and len(categories) > 0
+            ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
                 f"Tool '{tool_name}' in '{self.agent_module}' has empty or invalid categories. "
                 f"Must be non-empty list: ['CATEGORY']"
             )
 
             # Check provenance key exists
-            assert "provenance" in tool.metadata, (
+            assert (
+                "provenance" in tool.metadata
+            ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
                 f"Tool '{tool_name}' in '{self.agent_module}' has .metadata but missing 'provenance' key. "
                 f"Add: 'provenance': True or False"
             )
@@ -401,7 +419,9 @@ class AgentContractTestMixin:
                 except ValueError:
                     invalid_categories.append((tool_name, category))
 
-        assert not invalid_categories, (
+        assert (
+            not invalid_categories
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Invalid AQUADIF categories found in '{self.agent_module}':\n"
             + "\n".join(
                 f"  - Tool '{tool}': invalid category '{cat}'"
@@ -430,7 +450,9 @@ class AgentContractTestMixin:
             if len(categories) > 3:
                 violations.append((tool_name, len(categories)))
 
-        assert not violations, (
+        assert (
+            not violations
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Tools in '{self.agent_module}' exceed 3-category limit:\n"
             + "\n".join(
                 f"  - Tool '{tool}': {count} categories (max is 3)"
@@ -480,7 +502,9 @@ class AgentContractTestMixin:
             if requires_prov and not declared_prov:
                 violations.append((tool_name, primary_category.value))
 
-        assert not violations, (
+        assert (
+            not violations
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Tools in '{self.agent_module}' have provenance-required categories but provenance=False:\n"
             + "\n".join(
                 f"  - Tool '{tool}': primary category '{cat}' requires provenance=True"
@@ -509,7 +533,9 @@ class AgentContractTestMixin:
         id_counts = Counter(metadata_ids)
         shared_ids = {id_val: count for id_val, count in id_counts.items() if count > 1}
 
-        assert not shared_ids, (
+        assert (
+            not shared_ids
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Tools in '{self.agent_module}' share metadata dict objects ({len(shared_ids)} shared dicts). "
             f"Each tool must have its own metadata dict. "
             f"Common cause: metadata dict created outside loop in factory. "
@@ -564,7 +590,9 @@ class AgentContractTestMixin:
                     ]
                     violations.append((tool_name, primary.value, buried))
 
-        assert not violations, (
+        assert (
+            not violations
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Tools in '{self.agent_module}' have provenance-required categories buried behind non-provenance primary:\n"
             + "\n".join(
                 f"  - Tool '{tool}': primary '{primary}' doesn't require provenance, "
@@ -584,11 +612,10 @@ class AgentContractTestMixin:
 
         This validates TEST-06: Minimum viable parent agent capabilities.
         """
-        import pytest
-
-        # Skip if not a parent agent
+        # Parent-only requirements do not apply to standalone agents. Return
+        # rather than skip so the aggregate contract continues its other checks.
         if not self.is_parent_agent:
-            pytest.skip("Not a parent agent")
+            return
 
         tools = self._require_tools()
 
@@ -613,7 +640,9 @@ class AgentContractTestMixin:
         if not has_analyze_or_delegate:
             missing.append("ANALYZE or DELEGATE")
 
-        assert not missing, (
+        assert (
+            not missing
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Parent agent '{self.factory_name}' missing minimum viable categories. "
             f"Has: {sorted(all_categories)}. "
             f"Missing: {', '.join(missing)}. "
@@ -666,7 +695,10 @@ class AgentContractTestMixin:
 
             # Try to get tool source code
             try:
-                source = inspect.getsource(tool.func)
+                # Async tools can expose a synthetic sync-fallback wrapper as
+                # func; inspect the actual coroutine implementation when present.
+                implementation = getattr(tool, "coroutine", None) or tool.func
+                source = inspect.getsource(implementation)
                 # Dedent in case source is indented (nested functions)
                 source = textwrap.dedent(source)
             except (OSError, TypeError) as e:
@@ -697,7 +729,9 @@ class AgentContractTestMixin:
                 reason += " but does NOT call log_tool_usage(ir=ir)"
                 violations.append((tool_name, primary_category.value, reason))
 
-        assert not violations, (
+        assert (
+            not violations
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Tools in '{self.agent_module}' have provenance metadata-runtime disconnect:\n"
             + "\n".join(
                 f"  - Tool '{tool}' (category: {cat}): {reason}"
@@ -748,7 +782,7 @@ class AgentContractTestMixin:
             try:
                 hints = typing.get_type_hints(func)
             except Exception:
-                continue
+                continue  # nosec B112 # Unavailable optional type hints do not redefine the tool schema.
 
             sig = inspect.signature(func)
 
@@ -776,7 +810,9 @@ class AgentContractTestMixin:
                     if name:
                         violations.append((tool_name, param_name, name))
 
-        assert not violations, (
+        assert (
+            not violations
+        ), (  # nosec B101 # Contract-test assertion, not runtime security enforcement.
             f"Tools in '{self.agent_module}' have bare collection type hints "
             f"(breaks Gemini API — missing 'items' in JSON schema):\n"
             + "\n".join(
@@ -812,7 +848,7 @@ class AgentContractTestMixin:
         self.test_provenance_categories_not_buried()
 
         # Phase 2: AQUADIF contract tests (advanced)
-        self.test_minimum_viable_parent()  # Skips if not parent agent
+        self.test_minimum_viable_parent()  # Applies only to parent agents
         self.test_provenance_ast_validation()
 
         # Phase 3: Schema compatibility tests

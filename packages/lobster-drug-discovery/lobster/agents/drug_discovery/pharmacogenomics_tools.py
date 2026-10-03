@@ -31,10 +31,26 @@ logger = get_logger(__name__)
 
 # Standard amino acid molecular weights (for pure Python comparison)
 _AA_MW = {
-    "A": 89.1, "R": 174.2, "N": 132.1, "D": 133.1, "C": 121.2,
-    "E": 147.1, "Q": 146.2, "G": 75.0, "H": 155.2, "I": 131.2,
-    "L": 131.2, "K": 146.2, "M": 149.2, "F": 165.2, "P": 115.1,
-    "S": 105.1, "T": 119.1, "W": 204.2, "Y": 181.2, "V": 117.2,
+    "A": 89.1,
+    "R": 174.2,
+    "N": 132.1,
+    "D": 133.1,
+    "C": 121.2,
+    "E": 147.1,
+    "Q": 146.2,
+    "G": 75.0,
+    "H": 155.2,
+    "I": 131.2,
+    "L": 131.2,
+    "K": 146.2,
+    "M": 149.2,
+    "F": 165.2,
+    "P": 115.1,
+    "S": 105.1,
+    "T": 119.1,
+    "W": 204.2,
+    "Y": 181.2,
+    "V": 117.2,
 }
 
 # Amino acid property classes
@@ -124,9 +140,7 @@ for mut in mutations:
     )
 
 
-def _create_ir_embedding(
-    sequence_len: int, model: str
-) -> AnalysisStep:
+def _create_ir_embedding(sequence_len: int, model: str) -> AnalysisStep:
     """Create IR for embedding extraction."""
     return AnalysisStep(
         operation="transformers.esm2.embedding",
@@ -140,8 +154,8 @@ def _create_ir_embedding(
 import torch
 
 model_name = "facebook/esm2_t6_8M_UR50D"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModel.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name, revision="c731040fcd8d73dceaa04b0a8e6329b345b0f5df")
+model = AutoModel.from_pretrained(model_name, revision="c731040fcd8d73dceaa04b0a8e6329b345b0f5df")
 
 inputs = tokenizer({{ sequence | tojson }}, return_tensors="pt")
 with torch.no_grad():
@@ -181,6 +195,7 @@ def create_pharmacogenomics_tools(
     data_manager: DataManagerV2,
     opentargets_service,
     chembl_service,
+    agent_name: str = "drug_discovery_expert",
 ) -> List[Callable]:
     """
     Create pharmacogenomics tools for the pharmacogenomics expert child agent.
@@ -239,9 +254,7 @@ def create_pharmacogenomics_tools(
                 device=-1,  # CPU
             )
 
-            ir = _create_ir_mutation_prediction(
-                len(sequence), mutation_list, model
-            )
+            ir = _create_ir_mutation_prediction(len(sequence), mutation_list, model)
 
             results = []
             for original, pos, mutant, mut_str in parsed_mutations:
@@ -261,20 +274,30 @@ def create_pharmacogenomics_tools(
                 log_ratio = None
                 if wt_score is not None and mt_score is not None and mt_score > 0:
                     import math
+
                     log_ratio = round(math.log(mt_score / wt_score), 4)
 
-                results.append({
-                    "mutation": mut_str,
-                    "wt_score": round(wt_score, 6) if wt_score else None,
-                    "mt_score": round(mt_score, 6) if mt_score else None,
-                    "log_ratio": log_ratio,
-                    "effect": (
-                        "neutral" if log_ratio is not None and abs(log_ratio) < 0.5
-                        else "deleterious" if log_ratio is not None and log_ratio < -0.5
-                        else "beneficial" if log_ratio is not None and log_ratio > 0.5
-                        else "unknown"
-                    ),
-                })
+                results.append(
+                    {
+                        "mutation": mut_str,
+                        "wt_score": round(wt_score, 6) if wt_score else None,
+                        "mt_score": round(mt_score, 6) if mt_score else None,
+                        "log_ratio": log_ratio,
+                        "effect": (
+                            "neutral"
+                            if log_ratio is not None and abs(log_ratio) < 0.5
+                            else (
+                                "deleterious"
+                                if log_ratio is not None and log_ratio < -0.5
+                                else (
+                                    "beneficial"
+                                    if log_ratio is not None and log_ratio > 0.5
+                                    else "unknown"
+                                )
+                            )
+                        ),
+                    }
+                )
 
             data_manager.log_tool_usage(
                 "predict_mutation_effect",
@@ -285,6 +308,7 @@ def create_pharmacogenomics_tools(
                 },
                 {"predictions": results},
                 ir=ir,
+                agent=agent_name,
             )
 
             lines = [
@@ -294,7 +318,9 @@ def create_pharmacogenomics_tools(
             for r in results:
                 wt_str = f"{r['wt_score']:.4f}" if r["wt_score"] else "N/A"
                 mt_str = f"{r['mt_score']:.4f}" if r["mt_score"] else "N/A"
-                lr_str = f"{r['log_ratio']:+.4f}" if r["log_ratio"] is not None else "N/A"
+                lr_str = (
+                    f"{r['log_ratio']:+.4f}" if r["log_ratio"] is not None else "N/A"
+                )
                 lines.append(
                     f"  {r['mutation']}: WT={wt_str}, MT={mt_str}, "
                     f"log(MT/WT)={lr_str} [{r['effect']}]"
@@ -313,9 +339,7 @@ def create_pharmacogenomics_tools(
     predict_mutation_effect.tags = ["ANALYZE"]
 
     @tool
-    def extract_protein_embedding(
-        sequence: str, model: str = "esm2"
-    ) -> str:
+    def extract_protein_embedding(sequence: str, model: str = "esm2") -> str:
         """Extract mean-pooled protein embedding vector from ESM2. Returns embedding dimensions and summary statistics. Requires [plm] extra (transformers + torch). Args: sequence - protein amino acid sequence, model - PLM model (default 'esm2')."""
         try:
             import torch
@@ -329,13 +353,19 @@ def create_pharmacogenomics_tools(
 
         try:
             if not sequence or len(sequence) < 5:
-                return "Error: Provide a valid protein sequence (at least 5 amino acids)."
+                return (
+                    "Error: Provide a valid protein sequence (at least 5 amino acids)."
+                )
 
             model_name = "facebook/esm2_t6_8M_UR50D"
             logger.info("Loading ESM2 for embedding: %s", model_name)
 
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            esm_model = AutoModel.from_pretrained(model_name)
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name, revision="c731040fcd8d73dceaa04b0a8e6329b345b0f5df"
+            )
+            esm_model = AutoModel.from_pretrained(
+                model_name, revision="c731040fcd8d73dceaa04b0a8e6329b345b0f5df"
+            )
 
             inputs = tokenizer(sequence, return_tensors="pt", truncation=True)
 
@@ -364,6 +394,7 @@ def create_pharmacogenomics_tools(
                 {"sequence_length": len(sequence), "model": model},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             return (
@@ -456,6 +487,7 @@ def create_pharmacogenomics_tools(
                 {"wt_length": len(wt_sequence), "mutations": mutation_list},
                 {"n_mutations": len(parsed)},
                 ir=ir,
+                agent=agent_name,
             )
 
             lines = [
@@ -465,18 +497,30 @@ def create_pharmacogenomics_tools(
 
             for original, pos, mutant, mut_str in parsed:
                 wt_class = (
-                    "hydrophobic" if original in _AA_HYDROPHOBIC
-                    else "polar" if original in _AA_POLAR
-                    else "charged+" if original in _AA_CHARGED_POS
-                    else "charged-" if original in _AA_CHARGED_NEG
-                    else "other"
+                    "hydrophobic"
+                    if original in _AA_HYDROPHOBIC
+                    else (
+                        "polar"
+                        if original in _AA_POLAR
+                        else (
+                            "charged+"
+                            if original in _AA_CHARGED_POS
+                            else "charged-" if original in _AA_CHARGED_NEG else "other"
+                        )
+                    )
                 )
                 mt_class = (
-                    "hydrophobic" if mutant in _AA_HYDROPHOBIC
-                    else "polar" if mutant in _AA_POLAR
-                    else "charged+" if mutant in _AA_CHARGED_POS
-                    else "charged-" if mutant in _AA_CHARGED_NEG
-                    else "other"
+                    "hydrophobic"
+                    if mutant in _AA_HYDROPHOBIC
+                    else (
+                        "polar"
+                        if mutant in _AA_POLAR
+                        else (
+                            "charged+"
+                            if mutant in _AA_CHARGED_POS
+                            else "charged-" if mutant in _AA_CHARGED_NEG else "other"
+                        )
+                    )
                 )
                 mw_diff = _AA_MW.get(mutant, 110.0) - _AA_MW.get(original, 110.0)
                 lines.append(
@@ -484,14 +528,16 @@ def create_pharmacogenomics_tools(
                     f"(MW diff: {mw_diff:+.1f} Da)"
                 )
 
-            lines.extend([
-                f"\n  Property changes:",
-                f"    MW: {wt_mw:.1f} -> {mt_mw:.1f} Da (diff: {mt_mw - wt_mw:+.1f})",
-                f"    Net charge: {wt_charge:+d} -> {mt_charge:+d} (diff: {mt_charge - wt_charge:+d})",
-                f"    Hydrophobic: {wt_comp['hydrophobic']} -> {mt_comp['hydrophobic']}",
-                f"    Polar: {wt_comp['polar']} -> {mt_comp['polar']}",
-                f"    Aromatic: {wt_comp['aromatic']} -> {mt_comp['aromatic']}",
-            ])
+            lines.extend(
+                [
+                    f"\n  Property changes:",
+                    f"    MW: {wt_mw:.1f} -> {mt_mw:.1f} Da (diff: {mt_mw - wt_mw:+.1f})",
+                    f"    Net charge: {wt_charge:+d} -> {mt_charge:+d} (diff: {mt_charge - wt_charge:+d})",
+                    f"    Hydrophobic: {wt_comp['hydrophobic']} -> {mt_comp['hydrophobic']}",
+                    f"    Polar: {wt_comp['polar']} -> {mt_comp['polar']}",
+                    f"    Aromatic: {wt_comp['aromatic']} -> {mt_comp['aromatic']}",
+                ]
+            )
 
             return "\n".join(lines)
         except Exception as e:
@@ -516,6 +562,7 @@ def create_pharmacogenomics_tools(
                 {"target_id": target_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             symbol = stats.get("approved_symbol", "")
@@ -550,15 +597,16 @@ def create_pharmacogenomics_tools(
                 )
 
             if len(pgx_relevant) > 10:
-                lines.append(
-                    f"  ... and {len(pgx_relevant) - 10} more associations"
-                )
+                lines.append(f"  ... and {len(pgx_relevant) - 10} more associations")
 
             return "\n".join(lines)
         except Exception as e:
             return f"Error getting variant-drug interactions: {e}"
 
-    get_variant_drug_interactions.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    get_variant_drug_interactions.metadata = {
+        "categories": ["ANNOTATE"],
+        "provenance": True,
+    }
     get_variant_drug_interactions.tags = ["ANNOTATE"]
 
     @tool
@@ -575,6 +623,7 @@ def create_pharmacogenomics_tools(
                 {"chembl_id": chembl_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             activities = stats.get("activities", [])
@@ -613,7 +662,10 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error getting pharmacogenomic evidence: {e}"
 
-    get_pharmacogenomic_evidence.metadata = {"categories": ["ANNOTATE"], "provenance": True}
+    get_pharmacogenomic_evidence.metadata = {
+        "categories": ["ANNOTATE"],
+        "provenance": True,
+    }
     get_pharmacogenomic_evidence.tags = ["ANNOTATE"]
 
     @tool
@@ -654,9 +706,7 @@ def create_pharmacogenomics_tools(
                 components["drug_relevance"] = 0.0
 
             # 4. Clinical actionability
-            components["clinical_actionability"] = (
-                0.9 if is_hotspot else 0.3
-            )
+            components["clinical_actionability"] = 0.9 if is_hotspot else 0.3
 
             # Composite score
             weights = {
@@ -665,9 +715,7 @@ def create_pharmacogenomics_tools(
                 "drug_relevance": 0.25,
                 "clinical_actionability": 0.2,
             }
-            composite = sum(
-                components.get(k, 0) * w for k, w in weights.items()
-            )
+            composite = sum(components.get(k, 0) * w for k, w in weights.items())
             composite = round(min(1.0, max(0.0, composite)), 4)
 
             # Classification
@@ -711,6 +759,7 @@ def create_pharmacogenomics_tools(
                     "components": components,
                 },
                 ir=ir,
+                agent=agent_name,
             )
 
             lines = [
@@ -726,9 +775,7 @@ def create_pharmacogenomics_tools(
             lines.append("  Component scores:")
             for comp, score in components.items():
                 weight = weights.get(comp, 0)
-                lines.append(
-                    f"    {comp}: {score:.2f} (weight={weight:.2f})"
-                )
+                lines.append(f"    {comp}: {score:.2f} (weight={weight:.2f})")
 
             return "\n".join(lines)
         except Exception as e:
@@ -753,6 +800,7 @@ def create_pharmacogenomics_tools(
                 {"target_id": target_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             symbol = stats.get("approved_symbol", "")
@@ -765,17 +813,17 @@ def create_pharmacogenomics_tools(
                 expression = dt_scores.get("rna_expression", 0)
                 affected_pathway = dt_scores.get("affected_pathway", 0)
                 if expression > 0 or affected_pathway > 0:
-                    expr_relevant.append({
-                        "disease": assoc.get("disease_name", "Unknown"),
-                        "overall_score": assoc.get("overall_score", 0),
-                        "expression_score": expression,
-                        "pathway_score": affected_pathway,
-                    })
+                    expr_relevant.append(
+                        {
+                            "disease": assoc.get("disease_name", "Unknown"),
+                            "overall_score": assoc.get("overall_score", 0),
+                            "expression_score": expression,
+                            "pathway_score": affected_pathway,
+                        }
+                    )
 
             # Sort by expression score
-            expr_relevant.sort(
-                key=lambda x: x["expression_score"], reverse=True
-            )
+            expr_relevant.sort(key=lambda x: x["expression_score"], reverse=True)
 
             lines = [
                 f"Expression-drug sensitivity for {symbol} ({target_id}):",
@@ -791,9 +839,7 @@ def create_pharmacogenomics_tools(
                 )
 
             if len(expr_relevant) > 10:
-                lines.append(
-                    f"  ... and {len(expr_relevant) - 10} more associations"
-                )
+                lines.append(f"  ... and {len(expr_relevant) - 10} more associations")
 
             if not expr_relevant:
                 lines.append(
@@ -805,13 +851,14 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error getting expression-drug sensitivity: {e}"
 
-    expression_drug_sensitivity.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    expression_drug_sensitivity.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     expression_drug_sensitivity.tags = ["ANALYZE"]
 
     @tool
-    def mutation_frequency_analysis(
-        mutations: str, population: str = "global"
-    ) -> str:
+    def mutation_frequency_analysis(mutations: str, population: str = "global") -> str:
         """Analyze a list of mutations for frequency patterns, property class changes, and co-occurrence. Pure Python computation. Args: mutations - comma-separated mutations in A123G format, population - population context (default 'global', informational only)."""
         try:
             mutation_list = [m.strip() for m in mutations.split(",") if m.strip()]
@@ -832,18 +879,32 @@ def create_pharmacogenomics_tools(
             transitions = Counter()
             for original, _, mutant, _ in parsed:
                 wt_class = (
-                    "hydrophobic" if original in _AA_HYDROPHOBIC
-                    else "polar" if original in _AA_POLAR
-                    else "charged+" if original in _AA_CHARGED_POS
-                    else "charged-" if original in _AA_CHARGED_NEG
-                    else "special"
+                    "hydrophobic"
+                    if original in _AA_HYDROPHOBIC
+                    else (
+                        "polar"
+                        if original in _AA_POLAR
+                        else (
+                            "charged+"
+                            if original in _AA_CHARGED_POS
+                            else (
+                                "charged-" if original in _AA_CHARGED_NEG else "special"
+                            )
+                        )
+                    )
                 )
                 mt_class = (
-                    "hydrophobic" if mutant in _AA_HYDROPHOBIC
-                    else "polar" if mutant in _AA_POLAR
-                    else "charged+" if mutant in _AA_CHARGED_POS
-                    else "charged-" if mutant in _AA_CHARGED_NEG
-                    else "special"
+                    "hydrophobic"
+                    if mutant in _AA_HYDROPHOBIC
+                    else (
+                        "polar"
+                        if mutant in _AA_POLAR
+                        else (
+                            "charged+"
+                            if mutant in _AA_CHARGED_POS
+                            else "charged-" if mutant in _AA_CHARGED_NEG else "special"
+                        )
+                    )
                 )
                 transitions[f"{wt_class}->{mt_class}"] += 1
 
@@ -886,6 +947,7 @@ def create_pharmacogenomics_tools(
                 {"mutations": mutation_list, "population": population},
                 {"n_mutations": len(mutation_list)},
                 ir=ir,
+                agent=agent_name,
             )
 
             lines = [
@@ -903,15 +965,15 @@ def create_pharmacogenomics_tools(
             if clusters:
                 lines.append(f"  Position clusters (within 5 residues):")
                 for cluster in clusters:
-                    cluster_muts = [
-                        m for _, p, _, m in parsed if p in cluster
-                    ]
+                    cluster_muts = [m for _, p, _, m in parsed if p in cluster]
                     lines.append(
                         f"    Positions {min(cluster)}-{max(cluster)}: "
                         f"{', '.join(cluster_muts)}"
                     )
             else:
-                lines.append("  No position clusters detected (mutations are dispersed)")
+                lines.append(
+                    "  No position clusters detected (mutations are dispersed)"
+                )
 
             # Most mutated WT residues
             lines.append(
@@ -927,7 +989,10 @@ def create_pharmacogenomics_tools(
         except Exception as e:
             return f"Error analyzing mutation frequency: {e}"
 
-    mutation_frequency_analysis.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    mutation_frequency_analysis.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     mutation_frequency_analysis.tags = ["ANALYZE"]
 
     return [

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 from langchain_core.tools import tool
 
+from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -140,6 +141,62 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
                             line += f": {desc}"
                         lines.append(line)
 
+                    ir = AnalysisStep(
+                        operation="lobster.services.data_access.ensembl_service.EnsemblService.get_xrefs",
+                        tool_name="map_cross_database_ids",
+                        description=f"Retrieved {len(xrefs)} cross-references for {ensembl_id}",
+                        library="lobster",
+                        code_template=(
+                            "# Queries a live external database; results may change over time.\n"
+                            "mapping_results = EnsemblService().get_xrefs(\n"
+                            "    {{ ids | repr }}[0], external_db={{ external_db | repr }}\n"
+                            ")"
+                        ),
+                        imports=[
+                            "from lobster.services.data_access.ensembl_service import EnsemblService"
+                        ],
+                        parameters={
+                            "ids": id_list,
+                            "from_db": from_db,
+                            "to_db": to_db,
+                            "external_db": db_filter,
+                        },
+                        parameter_schema={
+                            "ids": ParameterSpec(
+                                param_type="List[str]",
+                                papermill_injectable=False,
+                                default_value=id_list,
+                                required=True,
+                            ),
+                            "from_db": ParameterSpec(
+                                param_type="str",
+                                papermill_injectable=False,
+                                default_value=from_db,
+                                required=True,
+                            ),
+                            "to_db": ParameterSpec(
+                                param_type="str",
+                                papermill_injectable=False,
+                                default_value=to_db,
+                                required=True,
+                            ),
+                            "external_db": ParameterSpec(
+                                param_type="Optional[str]",
+                                papermill_injectable=False,
+                                default_value=db_filter,
+                                required=False,
+                            ),
+                        },
+                        execution_context={
+                            "backend": "ensembl_xrefs",
+                            "result_count": len(xrefs),
+                            "external_data_caveat": (
+                                "Upstream database version was not supplied by this lookup; "
+                                "repeating the request may return different cross-references."
+                            ),
+                        },
+                        requires_validation=True,
+                    )
                     data_manager.log_tool_usage(
                         tool_name="map_cross_database_ids",
                         parameters={
@@ -149,7 +206,7 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
                             "backend": "ensembl_xrefs",
                         },
                         description=f"Mapped {ensembl_id} via Ensembl xrefs → {len(xrefs)} results",
-                        ir=None,
+                        ir=ir,
                     )
                     return "\n".join(lines)
 
@@ -189,6 +246,53 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
             if failed:
                 lines.append(f"\nFailed IDs: {', '.join(failed)}")
 
+            ir = AnalysisStep(
+                operation="lobster.services.data_access.uniprot_service.UniProtService.map_ids",
+                tool_name="map_cross_database_ids",
+                description=f"Mapped {len(id_list)} IDs to {len(results_list)} UniProt results",
+                library="lobster",
+                code_template=(
+                    "# Queries a live external database; results may change over time.\n"
+                    "mapping_results = UniProtService().map_ids(\n"
+                    "    from_db={{ from_db | repr }}, to_db={{ to_db | repr }},\n"
+                    "    ids={{ ids | repr }}\n"
+                    ")"
+                ),
+                imports=[
+                    "from lobster.services.data_access.uniprot_service import UniProtService"
+                ],
+                parameters={"ids": id_list, "from_db": from_db, "to_db": to_db},
+                parameter_schema={
+                    "ids": ParameterSpec(
+                        param_type="List[str]",
+                        papermill_injectable=False,
+                        default_value=id_list,
+                        required=True,
+                    ),
+                    "from_db": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=False,
+                        default_value=from_db,
+                        required=True,
+                    ),
+                    "to_db": ParameterSpec(
+                        param_type="str",
+                        papermill_injectable=False,
+                        default_value=to_db,
+                        required=True,
+                    ),
+                },
+                execution_context={
+                    "backend": "uniprot_idmapping",
+                    "result_count": len(results_list),
+                    "failed_ids": failed,
+                    "external_data_caveat": (
+                        "Upstream database version was not supplied by this lookup; "
+                        "repeating the request may return different mappings."
+                    ),
+                },
+                requires_validation=True,
+            )
             data_manager.log_tool_usage(
                 tool_name="map_cross_database_ids",
                 parameters={
@@ -198,7 +302,7 @@ def create_cross_database_id_mapping_tool(data_manager: DataManagerV2):
                     "backend": "uniprot_idmapping",
                 },
                 description=f"Mapped {len(id_list)} IDs via UniProt → {len(results_list)} results",
-                ir=None,
+                ir=ir,
             )
             return "\n".join(lines)
 

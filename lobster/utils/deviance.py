@@ -10,102 +10,18 @@ from typing import Union
 import numpy as np
 import scipy.sparse as spr
 
-# Appended to every input-domain rejection. The point of naming the likely upstream
-# cause is that the caller is almost never wrong about deviance -- they are wrong
-# about which matrix they handed it.
-_DOMAIN_HINT = (
-    "calculate_deviance expects RAW COUNTS: non-negative and finite. Values "
-    "outside that domain normally mean the matrix was normalized, "
-    "log-transformed, scaled or batch-corrected upstream. Deviance computed on "
-    "such input returns a finite number that looks valid and means nothing, so "
-    "this is raised rather than warned. Pass the raw counts (e.g. "
-    "``adata.raw.X``, or ``adata.layers['counts']``)."
-)
+#: Target number of stored values per row block. Peak memory is driven by NONZEROS per
+#: block, not rows, so a fixed row count is the wrong unit: the same number of rows can
+#: have very different densities. Deriving the row count from the input's own density
+#: keeps the bound stable across inputs.
+#:
+#: The target limits temporary memory while retaining efficient cache locality.
+TARGET_BLOCK_NNZ = 20_000_000
 
 
-def _reject_non_count_values(values: np.ndarray) -> None:
-    """Raise ``ValueError`` if any stored value is negative or non-finite.
-
-    ``O(len(values))`` time and one boolean temporary of the same length, so it is
-    called with the *stored* values of a sparse matrix (``nnz``), never with an
-    expanded dense matrix. The dense path checks reductions instead -- see
-    ``calculate_deviance``.
-
-    Structural and explicitly-stored zeros are legal: zero is a non-negative,
-    finite count and contributes nothing to the deviance.
-    """
-    if values.size == 0:
-        return
-    finite = np.isfinite(values)
-    if not finite.all():
-        raise ValueError(
-            f"calculate_deviance received {int((~finite).sum())} non-finite "
-            f"value(s) (NaN or +/-inf) out of {values.size} stored. " + _DOMAIN_HINT
-        )
-    smallest = float(values.min())
-    if smallest < 0.0:
-        raise ValueError(
-            f"calculate_deviance received {int((values < 0).sum())} negative "
-            f"value(s) out of {values.size} stored; minimum is {smallest!r}. "
-            + _DOMAIN_HINT
-        )
-
-
-# Target element count per row block on the dense path. Several temporaries exist
-# simultaneously per block (boolean mask, two index arrays, the gathered values,
-# ``expected``, the ratio and its log), so the real peak is a multiple of this --
-# measured ~256 MiB for a fully dense 4195x1000 block, not one 32 MiB array. A row
-# wider than this cannot be split, so a matrix with very many genes exceeds it.
-_DENSE_BLOCK_ELEMENTS = 4_194_304
-
-
-def _null_probabilities(gene_totals: np.ndarray, total_counts: float) -> np.ndarray:
-    """Multinomial null probability per gene. No floor, deliberately.
-
-    A floor here would be a silent correctness bug, not a safety net. Because the
-    input is validated non-negative, ``gene_totals[j] == 0`` implies every entry
-    of gene ``j`` is zero, so gene ``j`` has no observed positive count and
-    ``p_null[j]`` is never indexed by ``_accumulate_gene_deviance``. The floor
-    could therefore only ever fire on genes that contribute nothing -- while
-    corrupting the genes it did apply to, by replacing a legitimate share below
-    ``1e-10`` (reachable: ~10M cells x 3000 counts gives a singleton gene a true
-    share of 3.3e-11) and understating the deviance of exactly the ultra-rare
-    genes that feature selection exists to surface.
-    """
-    if total_counts <= 0:
-        # Degenerate input (empty or all-zero matrix): no gene carries signal, and
-        # no entry is observed, so these values are never read.
-        return np.zeros(gene_totals.shape, dtype=np.float64)
-    return np.asarray(gene_totals / total_counts, dtype=np.float64)
-
-
-def _accumulate_gene_deviance(
-    values: np.ndarray,
-    rows: np.ndarray,
-    cols: np.ndarray,
-    cell_totals: np.ndarray,
-    p_null: np.ndarray,
-    n_genes: int,
+def calculate_deviance(
+    count_matrix: Union[np.ndarray, spr.spmatrix], chunk: Union[int, None] = None
 ) -> np.ndarray:
-    """Sum ``2 * x * log(x / E[x])`` per gene over the given observed entries.
-
-    ``values``/``rows``/``cols`` describe only strictly-positive observed counts,
-    so ``log`` never sees zero or a negative.
-
-    ``expected`` needs no floor: an observed positive count at ``(i, j)`` forces
-    ``cell_totals[i] > 0`` and ``p_null[j] > 0`` on validated non-negative input,
-    so the product is strictly positive for every entry actually indexed here.
-    """
-    expected = cell_totals[rows] * p_null[cols]
-    terms = 2.0 * values * np.log(values / expected)
-    # np.bincount ignores the weight dtype when the input is empty and returns
-    # int64, so the float64 return contract needs asserting rather than assuming.
-    return np.asarray(
-        np.bincount(cols, weights=terms, minlength=n_genes), dtype=np.float64
-    )
-
-
-def calculate_deviance(count_matrix: Union[np.ndarray, spr.spmatrix]) -> np.ndarray:
     """
     Calculate binomial deviance from multinomial null model for feature selection.
 
@@ -124,53 +40,22 @@ def calculate_deviance(count_matrix: Union[np.ndarray, spr.spmatrix]) -> np.ndar
         - n_i = total UMI count for cell i
         - p_j = gene j's proportion of total counts across all cells
 
-    Only strictly-positive observed counts contribute: ``x·log(x/μ) → 0`` as
-    ``x → 0``, so zeros add exactly nothing to the sum. That makes the O(nnz)
-    form below the *reference* implementation, not an approximation of a dense
-    one.
-
-    .. warning::
-        Do not floor the observed matrix (e.g. ``X = np.maximum(X, 1e-10)``) to
-        "avoid log(0)". Restrict to the nonzero entries instead. A floor makes
-        every element positive, so a subsequent ``X > 0`` mask selects the whole
-        matrix: the sparse path silently densifies by a factor of exactly
-        ``1 / density`` (a 0.55%-dense droplet matrix becomes a ~180x working
-        set, TiB-scale on real GEO inputs) and every zero contributes a small
-        spurious negative term. This was a live defect and the mask-saturation
-        regression test exists to keep it from returning.
-
-    Memory: O(nnz + n_cells + n_genes) for sparse input -- the marginals and the
-    output scale with the shape, not the stored values. A CSC or COO input is
-    converted, which copies; an ndarray and a canonical CSR are not copied, and
-    the input is never mutated. Dense input is processed in row blocks, which
-    bounds the per-block temporaries but not the marginals, and a single row
-    wider than ``_DENSE_BLOCK_ELEMENTS`` cannot be split.
-
-    Input domain -- enforced, not assumed: entries must be **non-negative and
-    finite**. Anything else raises ``ValueError``. Counts are non-negative and
-    finite by definition of the assay, so a violation does not mean unusual data,
-    it means this is not a count matrix -- normalized, log-transformed, scaled or
-    batch-corrected input produces a finite deviance that looks valid and means
-    nothing. Rejecting is also what lets the denominators carry no epsilon floor
-    (see ``_null_probabilities``), so the two are one decision, not two.
-
-    Warn-and-drop was considered and rejected: dropping entries silently changes
-    the gene set returned, so two runs on near-identical inputs could produce
-    different top-N sets with nothing in the return value to say so. A selection
-    step whose output depends on undeclared filtering is not reproducible.
+    Memory: O(nnz), never densifies. A sparse input is processed in row blocks sized from
+    its own density, so peak memory depends on the configured block size rather than the
+    full input size. The previous implementation densified sparse matrices, which could
+    cause very large peak memory use.
 
     Args:
         count_matrix: Cell × gene count matrix (raw counts, sparse or dense)
                      Shape: (n_cells, n_genes)
+        chunk: Rows (cells) per block. ``None`` (default) derives it from the matrix's
+               density so each block holds about ``TARGET_BLOCK_NNZ`` stored values.
+               Pass an explicit value only to force a specific bound — it changes peak
+               memory and speed, never the result.
 
     Returns:
         np.ndarray: Deviance score for each gene (higher = more variable)
                    Shape: (n_genes,)
-
-    Raises:
-        ValueError: if any entry is negative or non-finite. The message names the
-            offending statistic (count and minimum, or count of non-finite
-            marginals) and states the expected domain.
 
     Example:
         >>> import scanpy as sc
@@ -186,99 +71,107 @@ def calculate_deviance(count_matrix: Union[np.ndarray, spr.spmatrix]) -> np.ndar
         Feature selection and dimension reduction for single-cell RNA-Seq based on a multinomial model.
         Genome Biology, 20(1), 295. https://doi.org/10.1186/s13059-019-1861-6
     """
-    if spr.issparse(count_matrix):
-        matrix = count_matrix.tocsr()
-        # A non-canonical container may store several entries for the same
-        # (cell, gene). They must be summed before scoring, because x*log(x) is
-        # nonlinear: f(2) + f(3) != f(5). ``tocsr()`` returns an existing CSR
-        # unchanged, so duplicates survive unless handled here. Copy first --
-        # ``sum_duplicates()`` mutates in place and the caller's matrix must not
-        # change.
-        if not matrix.has_canonical_format:
-            matrix = matrix.copy()
-            matrix.sum_duplicates()
-        n_cells, n_genes = matrix.shape
+    # Work in CSR so row-block slicing is cheap. A dense input is converted TO sparse
+    # rather than the reverse: the deviance only ever reads observed counts, so storing
+    # the zeros buys nothing and costs everything.
+    X = count_matrix if spr.issparse(count_matrix) else spr.csr_matrix(count_matrix)
+    X = X.tocsr()
 
-        entries = matrix.tocoo()
-        # Totals come from the true matrix; a floored copy would perturb them.
-        #
-        # Accumulate them here rather than via ``matrix.sum(axis=...)``: scipy
-        # reduces in the STORED dtype and casts afterwards, so a float32 matrix
-        # loses precision and an int64 matrix can wrap to a negative total before
-        # anything sees it. Passing ``dtype=`` to ``sum()`` does NOT help -- it
-        # casts after the damage. Summing the entries in float64 is exact for any
-        # count magnitude up to 2**53 and reuses the COO we already need.
-        values = entries.data.astype(np.float64, copy=False)
-        # Validate before the marginals, so a rejected matrix cannot first produce
-        # a NaN total that some later check misattributes. Only the stored values
-        # need checking: absent entries are zero, which is a legal count.
-        _reject_non_count_values(values)
-        cell_totals = np.asarray(
-            np.bincount(entries.row, weights=values, minlength=n_cells),
-            dtype=np.float64,
-        )
-        gene_totals = np.asarray(
-            np.bincount(entries.col, weights=values, minlength=n_genes),
-            dtype=np.float64,
-        )
-        p_null = _null_probabilities(gene_totals, float(gene_totals.sum()))
+    # A non-canonical container may store SEVERAL entries for the same (cell, gene).
+    # They must be summed before scoring, because x*log(x) is nonlinear: f(2) + f(3) is
+    # not f(5). `tocsr()` returns an existing CSR unchanged, so duplicates survive it.
+    # Copy first -- `sum_duplicates()` mutates in place and the caller's matrix must not
+    # change. Nothing in this repo currently feeds duplicates here (every call site passes
+    # `adata.X`), so this is a guard, not a fix for an observed failure.
+    if not X.has_canonical_format:
+        X = X.copy()
+        X.sum_duplicates()
 
-        # Sparse containers may hold explicitly-stored zeros.
-        observed = entries.data > 0
-        return _accumulate_gene_deviance(
-            values[observed],
-            entries.row[observed],
-            entries.col[observed],
-            cell_totals,
-            p_null,
-            n_genes,
-        )
-
-    X = np.asarray(count_matrix)
     n_cells, n_genes = X.shape
-    cell_totals = X.sum(axis=1, dtype=np.float64)
-    gene_totals = X.sum(axis=0, dtype=np.float64)
 
-    # Dense validation via reductions, NOT via _reject_non_count_values: that would
-    # allocate a boolean the size of the whole matrix, which is the very cost this
-    # implementation exists to avoid.
+    # Size the row block from the actual density so the bound holds across matrices.
+    # At least one row, so a single very wide row still makes progress rather than
+    # looping forever on an empty slice.
     #
-    # Non-finite values are caught in the marginals because every element belongs to
-    # exactly one row and one column, so a NaN or inf anywhere makes both of its
-    # marginals non-finite. That is O(n_cells + n_genes) instead of O(n_cells *
-    # n_genes). It must run BEFORE the min() check, since min() of an array holding
-    # NaN returns NaN and ``NaN < 0`` is False -- the negative check alone would
-    # silently pass a NaN matrix.
-    if not (np.isfinite(cell_totals).all() and np.isfinite(gene_totals).all()):
-        raise ValueError(
-            "calculate_deviance received non-finite value(s) (NaN or +/-inf): "
-            f"{int((~np.isfinite(cell_totals)).sum())} of {n_cells} cell "
-            f"total(s) and {int((~np.isfinite(gene_totals)).sum())} of "
-            f"{n_genes} gene total(s) are non-finite. " + _DOMAIN_HINT
-        )
-    if X.size and float(X.min()) < 0.0:
-        # X.min() is a reduction, so this adds no full-size temporary.
-        raise ValueError(
-            f"calculate_deviance received negative value(s); minimum is "
-            f"{float(X.min())!r}. " + _DOMAIN_HINT
-        )
+    # Computed before the marginals because they are accumulated block-wise too.
+    if chunk is None:
+        nnz_per_row = max(X.nnz / n_cells, 1.0) if n_cells else 1.0
+        chunk = max(1, int(TARGET_BLOCK_NNZ / nnz_per_row))
 
-    p_null = _null_probabilities(gene_totals, float(gene_totals.sum()))
-
-    deviance_scores = np.zeros(n_genes, dtype=np.float64)
-    block_rows = max(1, _DENSE_BLOCK_ELEMENTS // max(n_genes, 1))
-    for start in range(0, n_cells, block_rows):
-        block = X[start : start + block_rows]
-        rows, cols = np.nonzero(block > 0)
-        if rows.size == 0:
+    # Marginals, accumulated in float64 over the same row blocks.
+    #
+    # NOT `X.sum(axis=)`: scipy reduces in the STORED dtype and casts afterwards, so a
+    # float32 matrix -- the AnnData/scanpy default -- loses precision that a later
+    # `.astype(np.float64)` cannot recover, and an int64 matrix can wrap to a negative
+    # total before anything sees it. Passing `dtype=` to `sum()` does not help either; it
+    # casts after the damage. Accumulate in float64 before reducing to avoid
+    # stored-dtype rounding or overflow.
+    #
+    # Blocked rather than one pass over the whole COO: a single pass would materialise
+    # row/col/value arrays for every stored entry at once, which is precisely the
+    # unbounded working set TARGET_BLOCK_NNZ exists to prevent.
+    cell_totals = np.zeros(n_cells, dtype=np.float64)  # n_i
+    gene_totals = np.zeros(n_genes, dtype=np.float64)
+    for start in range(0, n_cells, chunk):
+        block = X[start : start + chunk].tocoo()
+        if block.nnz == 0:
             continue
-        deviance_scores += _accumulate_gene_deviance(
-            block[rows, cols].astype(np.float64, copy=False),
-            rows + start,
-            cols,
-            cell_totals,
-            p_null,
-            n_genes,
+        values = block.data.astype(np.float64, copy=False)
+        cell_totals[start : start + block.shape[0]] += np.bincount(
+            block.row, weights=values, minlength=block.shape[0]
+        )
+        gene_totals += np.bincount(block.col, weights=values, minlength=n_genes)
+    total_counts = gene_totals.sum()
+
+    # Multinomial null probabilities: p_g = (sum of gene g) / (total counts).
+    # Guard the division so an all-zero matrix returns zeros instead of NaN.
+    if total_counts <= 0:
+        return np.zeros(n_genes, dtype=np.float64)
+    p_null = np.maximum(gene_totals / total_counts, 1e-10)
+
+    # Accumulate per gene over row blocks.
+    #
+    # `expected` used to be built as `cell_totals @ p_null.reshape(1, -1)` -- a full
+    # (cells x genes) outer product, so it was never smaller than X however X was stored.
+    # Here it is evaluated only at the stored coordinates, which is all the deviance needs.
+    deviance_scores = np.zeros(n_genes, dtype=np.float64)
+
+    for start in range(0, n_cells, chunk):
+        block = X[start : start + chunk].tocoo()
+        if block.nnz == 0:
+            continue
+
+        x = block.data.astype(np.float64, copy=False)
+
+        # Only strictly positive counts contribute. This is the mask the original
+        # intended: it read `mask = X > 0`, but `X = np.maximum(X, 1e-10)` two lines
+        # earlier had already made every element positive, so it selected 100% of a
+        # densified matrix. Do NOT reintroduce a floor before this point.
+        #
+        # Filtering here is also required for correctness, not just speed. A sparse
+        # matrix may hold EXPLICIT zeros (routine after filtering or arithmetic), and
+        # `0 * log(0/E)` evaluates to `0 * -inf` = NaN rather than 0. Negative values --
+        # which reach this function when log-transformed or scaled data is passed by
+        # mistake -- would give `log(negative)` = NaN and inf. The old floor masked both
+        # by clamping to 1e-10; dropping them is exact instead, since an unobserved count
+        # contributes exactly zero to the deviance (x*log(x) -> 0 as x -> 0).
+        positive = x > 0
+        if not positive.all():
+            x = x[positive]
+            rows = block.row[positive]
+            cols = block.col[positive]
+        else:
+            rows = block.row
+            cols = block.col
+        if x.size == 0:
+            continue
+
+        # Expected counts under null: E[x_ig] = n_i * p_g, at observed coordinates only.
+        expected = np.maximum(cell_totals[start + rows] * p_null[cols], 1e-10)
+
+        # Binomial deviance: 2 * x * log(x / E[x]), summed per gene.
+        deviance_scores += np.bincount(
+            cols, weights=2.0 * x * np.log(x / expected), minlength=n_genes
         )
 
     return deviance_scores

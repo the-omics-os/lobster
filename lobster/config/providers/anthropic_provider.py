@@ -70,8 +70,9 @@ class AnthropicProvider(ILLMProvider):
             provider="anthropic",
             context_window=200000,
             is_default=False,
-            input_cost_per_million=15.00,  # Estimated (Opus pricing)
-            output_cost_per_million=75.00,
+            # Input and output prices per million tokens are provider catalog data.
+            input_cost_per_million=5.00,
+            output_cost_per_million=25.00,
         ),
         ModelInfo(
             name="claude-3-5-sonnet-20241022",

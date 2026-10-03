@@ -29,6 +29,7 @@ def create_clinical_tools(
     synergy_service,
     chembl_service,
     target_scoring_service,
+    agent_name: str = "drug_discovery_expert",
 ) -> List[Callable]:
     """
     Create clinical development tools for the clinical_dev_expert child agent.
@@ -67,6 +68,7 @@ def create_clinical_tools(
                 },
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             symbol = stats.get("approved_symbol", "")
@@ -147,6 +149,7 @@ def create_clinical_tools(
                 },
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             classification = stats.get("classification", "unknown")
@@ -225,6 +228,7 @@ def create_clinical_tools(
                 },
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             n_syn = stats.get("n_synergistic", 0)
@@ -273,6 +277,7 @@ def create_clinical_tools(
                 {"target_id": target_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             symbol = stats.get("approved_symbol", "")
@@ -324,6 +329,7 @@ def create_clinical_tools(
                 {"target_id": target_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             symbol = stats.get("approved_symbol", "")
@@ -376,6 +382,7 @@ def create_clinical_tools(
                 {"chembl_id": chembl_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             n_activities = stats.get("n_activities", 0)
@@ -437,6 +444,7 @@ def create_clinical_tools(
                 {"chembl_id": chembl_id},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             drug_name = stats.get("drug_name", "")
@@ -513,6 +521,7 @@ def create_clinical_tools(
                     {"chembl_id": chembl_id},
                     stats,
                     ir=ir,
+                    agent=agent_name,
                 )
 
                 if "error" in stats:

@@ -20,9 +20,7 @@ try:
 except ImportError:
     SHAP_AVAILABLE = False
 
-pytestmark = pytest.mark.skipif(
-    not SHAP_AVAILABLE, reason="SHAP not installed"
-)
+pytestmark = pytest.mark.skipif(not SHAP_AVAILABLE, reason="SHAP not installed")
 
 
 @pytest.fixture
@@ -278,6 +276,47 @@ class TestBackwardCompatibility:
 
 class TestAggregationDiscovery:
     """Test per-class layer discovery in aggregation."""
+
+    @pytest.mark.parametrize("per_class", [False, True])
+    @pytest.mark.parametrize("normalize", [False, True])
+    def test_named_layer_aggregation_replay_matches_runtime(
+        self, service, per_class, normalize
+    ):
+        """Ignore the main-matrix alias and preserve named-layer runtime/replay values."""
+        from lobster.core.provenance.analysis_ir import AnalysisStep
+
+        adata = AnnData(np.full((4, 3), 99.0))
+        values = np.array([[1, -2, 0], [3, 0, -1], [-2, 4, 1], [0, -1, 2]], dtype=float)
+        adata.layers["shap_values"] = values
+        adata.layers["shap_class_invalid"] = values * 10
+        if per_class:
+            adata.layers["shap_class_0"] = values / 2
+            adata.layers["shap_class_1"] = values * 2
+        replayed = adata.copy()
+        result, stats, ir = service.aggregate_shap_to_global(adata, normalize=normalize)
+        assert isinstance(ir, AnalysisStep)
+        assert stats["normalized"] is normalize
+        expected = np.mean(np.abs(values), axis=0)
+        if normalize:
+            expected = expected / expected.sum()
+        np.testing.assert_allclose(result.var["global_importance"], expected)
+        np.testing.assert_allclose(result.var["global_importance_pct"], expected * 100)
+        namespace = {"adata": replayed, "np": np}
+        exec(
+            ir.render(), namespace
+        )  # nosec B102 # Execute repository-generated IR on synthetic data to validate replay parity.
+        for column in ("global_importance", "global_importance_pct"):
+            np.testing.assert_allclose(replayed.var[column], result.var[column])
+        if per_class:
+            for index, multiplier in ((0, 0.5), (1, 2.0)):
+                column = f"shap_class_{index}_importance"
+                np.testing.assert_allclose(
+                    result.var[column], values.mean(axis=0) * multiplier
+                )
+                np.testing.assert_allclose(replayed.var[column], result.var[column])
+        else:
+            assert not any(column.startswith("shap_class_") for column in result.var)
+        assert "shap_class_invalid_importance" not in result.var
 
     def test_aggregate_shap_discovers_per_class_layers(
         self, service, sample_adata, multiclass_model

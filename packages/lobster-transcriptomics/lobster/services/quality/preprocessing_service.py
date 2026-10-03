@@ -247,24 +247,37 @@ class PreprocessingService:
 # - Mitochondrial content: maximum {{ max_mito_percent }}%
 # - Ribosomal content: maximum {{ max_ribo_percent }}%
 
-# Annotate mitochondrial and ribosomal genes (5-pattern cascade)
+# QC metrics — same three calls, in the same order, as
+# PreprocessingService._calculate_qc_metrics
+sc.pp.calculate_qc_metrics(adata, percent_top=None, log1p=False, inplace=True)
 annotate_qc_genes(adata)
+sc.pp.calculate_qc_metrics(adata, qc_vars=['mt'], percent_top=None, log1p=False, inplace=True)
+sc.pp.calculate_qc_metrics(adata, qc_vars=['ribo'], percent_top=None, log1p=False, inplace=True)
 
-# Calculate QC metrics
-sc.pp.calculate_qc_metrics(adata, qc_vars=['mt', 'ribo'], percent_top=None, log1p=False, inplace=True)
-
-# Filter cells
-adata = adata[adata.obs['n_genes_by_counts'] >= {{ min_genes_per_cell }}, :].copy()
-adata = adata[adata.obs['n_genes_by_counts'] <= {{ max_genes_per_cell }}, :].copy()
-adata = adata[adata.obs['pct_counts_mt'] <= {{ max_mito_percent }}, :].copy()
-adata = adata[adata.obs['pct_counts_ribo'] <= {{ max_ribo_percent }}, :].copy()
-
-# Filter genes
+# Filter — THE ORDER IS LOAD-BEARING and must match
+# PreprocessingService._apply_quality_filters: genes are filtered straight after
+# the min-genes cell filter, BEFORE the mt/ribo/max-genes cell filter.
+#
+# The previous template applied all cell filters first and filtered genes last.
+# That changes which genes meet the min_cells criterion and propagates into later
+# analysis stages. Match the service's order to keep replay consistent.
+#
+# sc.pp.filter_cells also writes obs['n_genes'], which the boolean-mask form did
+# not, so this restores that column too.
+sc.pp.filter_cells(adata, min_genes={{ min_genes_per_cell }})
 sc.pp.filter_genes(adata, min_cells={{ min_cells_per_gene }})
+
+_cell_filter = (
+    (adata.obs['n_genes_by_counts'] <= {{ max_genes_per_cell }}) &
+    (adata.obs['pct_counts_mt'] <= {{ max_mito_percent }}) &
+    (adata.obs['pct_counts_ribo'] <= {{ max_ribo_percent }})
+)
+adata = adata[_cell_filter, :].copy()
 
 print(f"After filtering: {adata.n_obs} cells × {adata.n_vars} genes")
 
-# Normalize expression data
+# Normalize expression data — the service stores .raw first
+adata.raw = adata.copy()
 sc.pp.normalize_total(adata, target_sum={{ target_sum }})
 sc.pp.log1p(adata)
 
@@ -578,74 +591,76 @@ print(f"Normalization complete (target_sum={{ target_sum }}, log1p transformed)"
 import numpy as np
 import scipy.sparse as spr
 
-
-# Self-contained binomial deviance, kept INLINE deliberately. An exported notebook
-# runs under a plain `python3` kernel with no guarantee that lobster is importable
-# or that an installed lobster is new enough, so importing the engine here would
-# make the notebook either fail or silently run an older implementation. This
-# mirrors lobster.utils.deviance.calculate_deviance; change both together.
+# Helper function to calculate deviance.
 #
-# WARNING: do NOT "avoid log(0)" by flooring the matrix (np.maximum(X, 1e-10))
-# before masking with X > 0. The floor makes every element positive, so the mask
-# selects the whole matrix and a sparse input densifies by a factor of 1/density.
-# Only strictly-positive counts contribute: x*log(x/mu) -> 0 as x -> 0.
-#
-# Input domain: raw counts, non-negative and finite. Anything else raises. Deviance
-# on normalized or log-transformed input returns a finite number that looks valid
-# and means nothing, so this refuses rather than warns. Rejecting negatives is also
-# what makes the denominators safe without an epsilon floor: a positive observed
-# count guarantees its cell total and gene share are both strictly positive.
-def calculate_deviance(count_matrix):
-    n_cells, n_genes = count_matrix.shape
-    if spr.issparse(count_matrix):
-        matrix = count_matrix.tocsr()
-        if not matrix.has_canonical_format:
-            # Duplicate (cell, gene) entries must be summed: x*log(x) is nonlinear.
-            matrix = matrix.copy()
-            matrix.sum_duplicates()
-        entries = matrix.tocoo()
-        rows, cols = entries.row, entries.col
-        values = entries.data.astype(np.float64, copy=False)
-    else:
-        X = np.asarray(count_matrix)
-        rows, cols = np.nonzero(X != 0)
-        values = X[rows, cols].astype(np.float64, copy=False)
+# O(nnz) and never densifies: the deviance only reads observed counts, so storing the
+# zeros buys nothing. Densifying large matrices can exhaust memory.
+# Do not add `.toarray()`, and do not floor the matrix before the positivity mask:
+# a floor makes every entry positive and defeats the observed-only calculation.
+def calculate_deviance(count_matrix, target_block_nnz=20_000_000):
+    X = count_matrix if spr.issparse(count_matrix) else spr.csr_matrix(count_matrix)
+    X = X.tocsr()
 
-    # Every non-zero entry is materialised above, so checking `values` covers both
-    # branches. Absent entries are zero, which is a legal count.
-    if values.size:
-        if not np.isfinite(values).all():
-            raise ValueError(
-                "calculate_deviance expects raw counts, but the matrix contains "
-                "non-finite values (NaN or +/-inf). Pass the raw count matrix "
-                "(e.g. adata.raw.X or adata.layers['counts'])."
-            )
-        if values.min() < 0:
-            raise ValueError(
-                "calculate_deviance expects raw counts, but the matrix contains "
-                "negative values (minimum %r). This normally means the matrix was "
-                "normalized, log-transformed or scaled upstream; deviance on such "
-                "input is meaningless. Pass the raw count matrix "
-                "(e.g. adata.raw.X or adata.layers['counts'])." % float(values.min())
-            )
+    # Duplicates must be summed before scoring: x*log(x) is nonlinear, so f(2) + f(3)
+    # is not f(5). `tocsr()` returns an existing CSR unchanged, so they survive it.
+    # Copy first -- `sum_duplicates()` mutates the caller's matrix in place.
+    if not X.has_canonical_format:
+        X = X.copy()
+        X.sum_duplicates()
 
-    # Accumulate marginals in float64. scipy's sparse .sum() reduces in the stored
-    # dtype and casts afterwards, losing float32 precision and wrapping int64.
-    cell_totals = np.bincount(rows, weights=values, minlength=n_cells)
-    gene_totals = np.bincount(cols, weights=values, minlength=n_genes)
+    n_cells, n_genes = X.shape
+
+    # Block size follows the matrix's own density, because peak memory depends on
+    # NONZEROS per block rather than rows. Fixed row counts do not bound memory
+    # consistently across matrices with different densities.
+    nnz_per_row = max(X.nnz / n_cells, 1.0) if n_cells else 1.0
+    chunk = max(1, int(target_block_nnz / nnz_per_row))
+
+    # Marginals in float64, over the same row blocks. NOT `X.sum(axis=)`: scipy reduces
+    # in the STORED dtype and casts afterwards, so a float32 matrix (the scanpy default)
+    # loses precision no later `.astype` can recover, and an int64 matrix can wrap
+    # negative. Blocked rather than one pass over the whole COO, which would materialise
+    # row/col/value arrays for every stored entry at once and lose the memory bound.
+    cell_totals = np.zeros(n_cells, dtype=np.float64)
+    gene_totals = np.zeros(n_genes, dtype=np.float64)
+    for start in range(0, n_cells, chunk):
+        block = X[start:start + chunk].tocoo()
+        if block.nnz == 0:
+            continue
+        values = block.data.astype(np.float64, copy=False)
+        cell_totals[start:start + block.shape[0]] += np.bincount(
+            block.row, weights=values, minlength=block.shape[0]
+        )
+        gene_totals += np.bincount(block.col, weights=values, minlength=n_genes)
     total_counts = gene_totals.sum()
+
     if total_counts <= 0:
         return np.zeros(n_genes, dtype=np.float64)
-    p_null = gene_totals / total_counts
+    p_null = np.maximum(gene_totals / total_counts, 1e-10)
 
-    observed = values > 0
-    expected = cell_totals[rows[observed]] * p_null[cols[observed]]
-    terms = 2.0 * values[observed] * np.log(values[observed] / expected)
-    return np.asarray(
-        np.bincount(cols[observed], weights=terms, minlength=n_genes),
-        dtype=np.float64,
-    )
+    deviance_scores = np.zeros(n_genes, dtype=np.float64)
+    for start in range(0, n_cells, chunk):
+        block = X[start:start + chunk].tocoo()
+        if block.nnz == 0:
+            continue
 
+        x = block.data.astype(np.float64, copy=False)
+        # Strictly positive only: an explicit stored zero would give 0 * log(0) = NaN,
+        # and a negative value (log-transformed data passed by mistake) log(negative).
+        # Unobserved counts contribute exactly zero, since x*log(x) -> 0 as x -> 0.
+        positive = x > 0
+        x, rows, cols = x[positive], block.row[positive], block.col[positive]
+        if x.size == 0:
+            continue
+
+        # E[x_ig] = n_i * p_g, evaluated only at observed coordinates -- never as a
+        # full (cells x genes) outer product.
+        expected = np.maximum(cell_totals[start + rows] * p_null[cols], 1e-10)
+        deviance_scores += np.bincount(
+            cols, weights=2.0 * x * np.log(x / expected), minlength=n_genes
+        )
+
+    return deviance_scores
 
 # Calculate binomial deviance from multinomial null model
 count_data = adata.raw.X if adata.raw is not None else adata.X
@@ -674,13 +689,10 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
         ir = AnalysisStep(
             operation="deviance_feature_selection",
             tool_name="select_features_deviance",
-            description=f"Select top {n_top_genes} highly deviant genes using binomial deviance from multinomial null model",
+            description=f"Select top {n_top_genes} highly deviant genes using binomial deviance from multinomial null model",  # nosec B608 # Human-readable operation description, not a SQL query or database sink.
             library="numpy",
             code_template=code_template,
-            imports=[
-                "import numpy as np",
-                "import scipy.sparse as spr",
-            ],
+            imports=["import numpy as np", "import scipy.sparse as spr"],
             parameters={
                 "n_top_genes": n_top_genes,
             },
@@ -803,7 +815,9 @@ print(f"Top 10 genes: {adata.var_names[adata.var['highly_deviant']].tolist()[:10
 
             # Calculate statistics
             try:
-                n_selected = int(adata_processed.var["highly_variable"].astype(bool).sum())
+                n_selected = int(
+                    adata_processed.var["highly_variable"].astype(bool).sum()
+                )
             except (TypeError, ValueError):
                 n_selected = 0
             selected_genes = adata_processed.var_names[
@@ -1107,7 +1121,7 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
         initial_cells = adata.n_obs
         initial_genes = adata.n_vars
 
-        # BUG-005 FIX: Save ALL original obs columns before filtering
+        # Save all original obs columns before filtering
         # This ensures biological metadata (patient_id, tissue_region, condition, sample_id)
         # is preserved through QC operations, which is critical for pseudobulk workflows
         original_obs = adata.obs.copy()
@@ -1128,7 +1142,7 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
 
         adata._inplace_subset_obs(cell_filter)
 
-        # BUG-005 FIX: Restore original metadata columns for retained cells
+        # Restore original metadata columns for retained cells
         # Merge original obs columns back, prioritizing newly computed QC metrics
         for col in original_obs.columns:
             if col not in adata.obs.columns:
