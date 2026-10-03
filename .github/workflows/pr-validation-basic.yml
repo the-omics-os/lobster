@@ -36,7 +36,7 @@ jobs:
         echo "files_changed=$files_changed" >> $GITHUB_OUTPUT
         
         # Check for core changes
-        core_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep -E "^lobster/(core|agents|config)/" | wc -l)
+        core_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | awk '/^lobster\/(core|agents|config)\// {count++} END {print count+0}')
         has_core_changes="false"
         if [ $core_files -gt 0 ]; then
           has_core_changes="true"
@@ -58,22 +58,8 @@ jobs:
         
         cat pr_analysis.md
     
-    - name: Comment on PR
-      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-      with:
-        script: |
-          const fs = require('fs');
-          try {
-            const analysis = fs.readFileSync('pr_analysis.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: analysis
-            });
-          } catch (error) {
-            console.log('Could not create PR comment:', error);
-          }
+    - name: Write PR analysis summary
+      run: cat pr_analysis.md >> "$GITHUB_STEP_SUMMARY"
 
   # =====================================================================
   # Fast Validation (Linting + Unit Tests)
@@ -381,24 +367,45 @@ jobs:
         python-version: 3.12
         cache: 'pip'
     
-    - name: Install dependencies
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Set up Go for the local CLI fixture
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version: '1.24'
+        cache-dependency-path: lobster-tui/go.sum
+
+    - name: Install local integration dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    
+        uv venv --python 3.12 .venv
+        INSTALL_ARGS=(-e ".[dev,full]")
+        for PACKAGE_DIR in packages/*; do
+          test -f "$PACKAGE_DIR/pyproject.toml" || continue
+          INSTALL_ARGS+=(-e "$PACKAGE_DIR")
+        done
+        uv pip install "${INSTALL_ARGS[@]}"
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Build the repository-local CLI fixture
+      working-directory: lobster-tui
+      run: go build -o lobster-tui ./cmd/lobster-tui
+
     - name: Run integration tests
       # Credential-free: live API tests are excluded below.
       run: |
         if [ -d "tests/integration" ]; then
           python -m pytest tests/integration/ \
-            -m "not real_api and not slow" \
+            -m "not real_api and not slow and not prod_validation and not nexus_e2e" \
             --import-mode=importlib \
             --maxfail=3 \
             --timeout=300 \
             --junit-xml=extended-test-results.xml \
             -v
+          python scripts/check_test_results.py extended-test-results.xml
         else
-          echo "No integration tests found, skipping"
+          echo "Required integration test directory is missing"
+          exit 1
         fi
     
     - name: Upload extended test results
@@ -444,30 +451,41 @@ jobs:
           let summary = '## 🎯 PR Validation Summary\n\n';
           
           for (const [jobName, result] of Object.entries(jobs)) {
-            if (result && result !== 'skipped') {
+            if (result) {
               summary += `${getIcon(result)} **${jobName}**: ${result}\n`;
             }
           }
           
-          const coreJobs = ['${{ needs.pr-analysis.result }}', '${{ needs.fast-validation.result }}', '${{ needs.security-check.result }}'];
-          const allCoreJobsPassed = coreJobs.every(result => result === 'success');
-          
-          summary += `\n**Overall Status:** ${allCoreJobsPassed ? '✅ Ready for review' : '❌ Needs attention'}`;
-          
+          const isDraft = context.payload.pull_request.draft === true;
           const filesChanged = '${{ needs.pr-analysis.outputs.files_changed }}';
           const hasCoreChanges = '${{ needs.pr-analysis.outputs.has_core_changes }}';
+          const coreJobs = [jobs['Fast Validation'], jobs['Security Check'], jobs['Go TUI']];
+          const analysisPassed = isDraft
+            ? ['success', 'skipped'].includes(jobs['PR Analysis'])
+            : jobs['PR Analysis'] === 'success'
+              && ['true', 'false'].includes(hasCoreChanges)
+              && /^\s*\d+\s*$/.test(filesChanged);
+          const extendedExpected = !isDraft && hasCoreChanges === 'true';
+          const extendedPassed = extendedExpected
+            ? jobs['Extended Tests'] === 'success'
+            : ['success', 'skipped'].includes(jobs['Extended Tests']);
+          const allCoreJobsPassed = coreJobs.every(result => result === 'success')
+            && analysisPassed && extendedPassed;
+          const readyLabel = isDraft ? 'Draft checks complete' : 'Ready for review';
+          summary += `\n**Overall Status:** ${allCoreJobsPassed ? '✅ ' + readyLabel : '❌ Needs attention'}`;
+          if (isDraft) {
+            summary += '\nPR analysis and extended integration checks are deferred until this PR is ready for review.';
+          }
           
           summary += `\n\n**PR Details:**`;
-          summary += `\n- Files changed: ${filesChanged}`;
-          summary += `\n- Core changes: ${hasCoreChanges}`;
+          summary += `\n- Files changed: ${filesChanged || 'not analyzed'}`;
+          summary += `\n- Core changes: ${hasCoreChanges || 'not analyzed'}`;
           
           if (!allCoreJobsPassed) {
             summary += '\n\n⚠️ Please address failing checks before requesting review.';
           }
           
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: summary
-          });
+          await core.summary.addRaw(summary).write();
+          if (!allCoreJobsPassed) {
+            core.setFailed('Required PR validation checks did not complete successfully.');
+          }
