@@ -194,7 +194,37 @@ class TestPackageREADMEs:
 
     @pytest.fixture
     def packages_dir(self):
-        return Path(__file__).parent.parent.parent.parent / "packages"
+        return Path(__file__).resolve().parents[2] / "packages"
+
+    def test_readmes_cannot_come_from_another_checkout(self, tmp_path, monkeypatch):
+        """A populated sibling packages dir must not satisfy this checkout's test."""
+        checkout = tmp_path / "checkout"
+        test_file = checkout / "tests" / "integration" / Path(__file__).name
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("")
+        decoy_packages = tmp_path / "packages"
+        for name in (
+            "lobster-transcriptomics",
+            "lobster-research",
+            "lobster-visualization",
+            "lobster-genomics",
+            "lobster-proteomics",
+            "lobster-ml",
+            "lobster-metadata",
+            "lobster-structural-viz",
+        ):
+            decoy = decoy_packages / name / "README.md"
+            decoy.parent.mkdir(parents=True)
+            decoy.write_text("Wrong checkout README\n" * 10)
+        # Demonstrate that the old four-parent path would falsely accept the decoys.
+        self.test_readme_exists_for_all_packages(
+            test_file.parent.parent.parent.parent / "packages"
+        )
+        monkeypatch.setitem(globals(), "__file__", str(test_file))
+        selected = TestPackageREADMEs.packages_dir.__wrapped__(self)
+        assert selected == checkout.resolve() / "packages"
+        with pytest.raises(AssertionError, match="README.md should exist"):
+            self.test_readme_exists_for_all_packages(selected)
 
     def test_readme_exists_for_all_packages(self, packages_dir):
         """Each package should have a README.md file."""
