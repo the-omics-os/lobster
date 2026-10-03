@@ -398,7 +398,7 @@ jobs:
           python -m pytest tests/integration/ \
             -m "not real_api and not slow and not prod_validation and not nexus_e2e" \
             --import-mode=importlib \
-            --maxfail=3 \
+            --maxfail=0 \
             --timeout=300 \
             --junit-xml=extended-test-results.xml \
             -v
