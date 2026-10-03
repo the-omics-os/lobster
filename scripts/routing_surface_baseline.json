@@ -1,0 +1,58 @@
+{
+  "commit": "467624c8f8377eb50ae4aea94340406c71277cfe",
+  "total_tools": 219,
+  "total_unreachable": 15,
+  "total_mis_anchored": 13,
+  "per_agent": {
+    "data_expert_agent": {
+      "total": 20,
+      "unreachable": 1,
+      "mis_anchored": 1
+    },
+    "drug_discovery_expert": {
+      "total": 35,
+      "unreachable": 0,
+      "mis_anchored": 0
+    },
+    "genomics_expert": {
+      "total": 17,
+      "unreachable": 1,
+      "mis_anchored": 1
+    },
+    "machine_learning_expert": {
+      "total": 18,
+      "unreachable": 8,
+      "mis_anchored": 6
+    },
+    "metabolomics_expert": {
+      "total": 10,
+      "unreachable": 0,
+      "mis_anchored": 0
+    },
+    "protein_structure_visualization_expert": {
+      "total": 5,
+      "unreachable": 0,
+      "mis_anchored": 0
+    },
+    "proteomics_expert": {
+      "total": 42,
+      "unreachable": 1,
+      "mis_anchored": 1
+    },
+    "research_agent": {
+      "total": 12,
+      "unreachable": 0,
+      "mis_anchored": 0
+    },
+    "transcriptomics_expert": {
+      "total": 49,
+      "unreachable": 3,
+      "mis_anchored": 3
+    },
+    "visualization_expert_agent": {
+      "total": 11,
+      "unreachable": 1,
+      "mis_anchored": 1
+    }
+  }
+}
