@@ -132,6 +132,7 @@ def metabolomics_expert(
         analysis_service,
         annotation_service,
         force_platform_type=force_platform_type,
+        agent_name=agent_name,
     )
 
     # =========================================================================

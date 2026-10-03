@@ -53,7 +53,7 @@ class H5ADBackend(BaseBackend):
             "bucket": None,
             "region": None,
             "access_key": None,
-            "secret_key": None,
+            "secret_key": None,  # nosec B105 # Unset credential field, not an embedded secret.
         }
 
     def load(self, path: Union[str, Path], **kwargs) -> anndata.AnnData:
@@ -114,7 +114,8 @@ class H5ADBackend(BaseBackend):
         - Converts tuple → list
         - Converts numpy scalars → Python scalars
         - Replaces '/' in keys with '__' (HDF5 safe)
-        - Converts boolean columns to strings (HDF5 requirement)
+        - Leaves bool/boolean dtype columns ALONE (anndata writes them natively);
+          only object-dtype columns holding bool objects are stringified
         - Handles mixed-type columns (converts to strings)
         - Converts None/NaN to "NA" for HDF5 compatibility
         - Recursively applies to .uns, .obsm, .varm, .layers
@@ -264,17 +265,47 @@ class H5ADBackend(BaseBackend):
                     logger.debug(f"Dropping column '{col}' - all values are None/NaN")
                     continue
 
-                # Step 2: Handle boolean columns (convert to string values)
-                # Use map(str) to convert bool VALUES to string, not just dtype.
-                # .astype("object") only changes the dtype but leaves Python bool
-                # objects in cells, which HDF5 can't serialize in object columns.
-                # Do NOT use .astype(str) — pandas >=2.2 re-creates ArrowStringArray.
+                # Step 2: Boolean columns.
+                #
+                # `bool` and `boolean` (nullable) dtypes are written NATIVELY by anndata,
+                # including pd.NA — verified against anndata 0.13.2 / pandas 3.0.5. They are
+                # left ALONE, and this is load-bearing: converting them to 'True'/'False'
+                # strings here had no inverse in load(), so a column written as bool came back
+                # as a categorical of strings and every downstream boolean mask raised
+                # IndexError. `adata.var['highly_variable']` is the canonical scanpy idiom, so
+                # this silently broke HVG-style analyses — worse than a crash, because the
+                # agent's code was correct and it would retry equally-correct formulations.
+                #
+                # The `continue` is required, not decorative: without it a nullable `boolean`
+                # column with pd.NA falls through to step 3, whose `fillna("NA")` raises
+                # `TypeError: Invalid value 'NA' for dtype 'boolean'` on pandas >= 3.0.
                 if df[col].dtype == bool or df[col].dtype == "boolean":
-                    df[col] = df[col].map(lambda x: str(x) if x is not None else "NA")
-                    logger.debug(
-                        f"Sanitized column '{col}' - converted bool values to string"
-                    )
                     continue
+
+                # Step 2b: `object` dtype holding bool objects DOES still need stringifying —
+                # HDF5 raises "Can't implicitly convert non-string objects to strings". This is
+                # the narrow case the original blanket guard was really written for.
+                #
+                # Tested with `isinstance`, NOT `type(x) is bool`: `np.bool_` is not a subclass
+                # of `bool`, so an identity check silently skips numpy-bool object columns and
+                # turns this into a write crash.
+                if df[col].dtype == object:
+                    _non_null = df[col].dropna()
+                    if (
+                        len(_non_null) > 0
+                        and _non_null.map(
+                            lambda x: isinstance(x, (bool, np.bool_))
+                        ).any()
+                    ):
+                        df[col] = df[col].map(
+                            lambda x: (
+                                str(x) if x is not None and x is not pd.NA else "NA"
+                            )
+                        )
+                        logger.debug(
+                            f"Sanitized column '{col}' - object-dtype bool values converted to string"
+                        )
+                        continue
 
                 # Step 2.5: Handle categorical columns BEFORE numeric checks.
                 # np.issubdtype() crashes on CategoricalDtype (and other pandas
@@ -467,6 +498,20 @@ class H5ADBackend(BaseBackend):
             _prev_infer = _pd.options.future.infer_string
             _pd.options.future.infer_string = False
 
+            # Opt in to writing nullable-string arrays because current anndata releases
+            # reject the default nullable-string representation during serialization.
+            # write them while both this setting is None and `infer_string` is False — which
+            # is exactly the state we just created on the line above. The only place this was
+            # ever set was the sandbox subprocess preamble
+            # (`custom_code_execution_service.py:925`), never the main process, so
+            # `save_modality` raised on a fresh session until some `execute_custom_code` call
+            # happened to run first. That made the failure ORDER-DEPENDENT, which is why it
+            # went unnoticed: any test or session that exercised custom code first masked it.
+            # Reproduced in isolation: store pbmc3k, call filter_and_normalize, observe the
+            # raise and an EMPTY provenance activity list.
+            _prev_nullable = anndata.settings.allow_write_nullable_strings
+            anndata.settings.allow_write_nullable_strings = True
+
             # Extract saving parameters
             compression = kwargs.get("compression", self.compression)
             compression_opts = kwargs.get("compression_opts", self.compression_opts)
@@ -578,11 +623,17 @@ class H5ADBackend(BaseBackend):
             if resolved_path.exists():
                 try:
                     resolved_path.unlink()
-                except Exception:
+                except (
+                    Exception
+                ):  # nosec B110 # Cleanup failure must not replace the original save error.
                     pass
             raise ValueError(f"Failed to save H5AD file {resolved_path}: {e}")
         finally:
             _pd.options.future.infer_string = _prev_infer
+            # Restore rather than leave enabled, so the writer never mutates global state
+            # Keep nullable-string handling local so it does not change behavior for
+            # unrelated code.
+            anndata.settings.allow_write_nullable_strings = _prev_nullable
 
     def supports_format(self, format_name: str) -> bool:
         """

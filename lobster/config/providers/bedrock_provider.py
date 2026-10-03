@@ -81,8 +81,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=200000,
             is_default=False,
-            input_cost_per_million=15.0,
-            output_cost_per_million=75.0,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
         ),
         ModelInfo(
             name="us.anthropic.claude-sonnet-4-6",
@@ -101,8 +101,160 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=1000000,
             is_default=False,
-            input_cost_per_million=15.0,
-            output_cost_per_million=75.0,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        # Cross-region inference profiles.
+        #
+        # These are not duplicates of the entries above. Bedrock REQUIRES a 'us.'/'global.'
+        # prefixed inference-profile ID for on-demand invocation of current Claude models:
+        #
+        #   ValidationException: Invocation of model ID anthropic.claude-opus-4-8 with
+        #   on-demand throughput isn't supported. Retry your request with the ID or ARN of
+        #   an inference profile that contains this model.
+        #
+        # This catalog is also the pricing source of truth (see
+        # `get_all_models_with_pricing`), so a missing profile ID can leave real
+        # production calls without a pricing entry.
+        # 'us.' and 'global.' variants are priced identically.
+        #
+        # Keep the provider catalog's model prices aligned with current list rates.
+        # A rate that is wrong in the expensive direction is not "conservative":
+        # it silently misprices usage. Provider model catalogs are covered by a
+        # pricing consistency test.
+        ModelInfo(
+            name="us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            display_name="Claude Haiku 4.5 (Bedrock)",
+            description="Claude 4.5 Haiku - fastest, lowest cost",
+            provider="bedrock",
+            context_window=200000,
+            is_default=False,
+            input_cost_per_million=1.0,
+            output_cost_per_million=5.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-haiku-4-5-20251001-v1:0",
+            display_name="Claude Haiku 4.5 (Bedrock, global)",
+            description="Claude 4.5 Haiku - fastest, lowest cost",
+            provider="bedrock",
+            context_window=200000,
+            is_default=False,
+            input_cost_per_million=1.0,
+            output_cost_per_million=5.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+            display_name="Claude Sonnet 4.5 (Bedrock, global)",
+            description="Claude 4.5 Sonnet - highest quality Sonnet",
+            provider="bedrock",
+            context_window=200000,
+            is_default=False,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
+        ),
+        ModelInfo(
+            name="us.anthropic.claude-opus-4-6-v1",
+            display_name="Claude Opus 4.6 (Bedrock, us)",
+            description="Claude 4.6 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-opus-4-6-v1",
+            display_name="Claude Opus 4.6 (Bedrock, global)",
+            description="Claude 4.6 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="us.anthropic.claude-opus-4-8",
+            display_name="Claude Opus 4.8 (Bedrock, us)",
+            description="Claude 4.8 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-opus-4-8",
+            display_name="Claude Opus 4.8 (Bedrock, global)",
+            description="Claude 4.8 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="us.anthropic.claude-opus-5",
+            display_name="Claude Opus 5 (Bedrock, us)",
+            description="Claude 5 Opus - most capable model",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-opus-5",
+            display_name="Claude Opus 5 (Bedrock, global)",
+            description="Claude 5 Opus - most capable model",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        # Opus 4.7 completes the generation; the reference prices it identically, and
+        # omitting it would leave the same unpriced hole that Opus 4.8/5 had.
+        ModelInfo(
+            name="us.anthropic.claude-opus-4-7",
+            display_name="Claude Opus 4.7 (Bedrock, us)",
+            description="Claude 4.7 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-opus-4-7",
+            display_name="Claude Opus 4.7 (Bedrock, global)",
+            description="Claude 4.7 Opus - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        # Opus 4.5 'us.' profile: the 'global.' variant was already present above, but
+        # the 'us.' one was not -- and the reference lists both.
+        ModelInfo(
+            name="us.anthropic.claude-opus-4-5-20251101-v1:0",
+            display_name="Claude Opus 4.5 (Bedrock, us)",
+            description="Claude 4.5 Opus - most capable model",
+            provider="bedrock",
+            context_window=200000,
+            is_default=False,
+            input_cost_per_million=5.0,
+            output_cost_per_million=25.0,
+        ),
+        ModelInfo(
+            name="global.anthropic.claude-sonnet-4-6",
+            display_name="Claude Sonnet 4.6 (Bedrock, global)",
+            description="Claude 4.6 Sonnet - 1M native context",
+            provider="bedrock",
+            context_window=1000000,
+            is_default=False,
+            input_cost_per_million=3.0,
+            output_cost_per_million=15.0,
         ),
     ]
 

@@ -601,7 +601,63 @@ class TestQualityIRGeneration:
         assert "{{ max_genes }}" in ir.code_template
         assert "{{ max_mt_pct }}" in ir.code_template
         assert "{{ max_ribo_pct }}" in ir.code_template
-        assert "sc.pp.calculate_qc_metrics" in ir.code_template
+        assert "{{ min_housekeeping_score }}" in ir.code_template
+        # Replay must preserve the service's columns and all five QC criteria.
+        for column in ("mt_pct", "ribo_pct", "housekeeping_score", "qc_pass"):
+            assert f"adata.obs['{column}']" in ir.code_template
+        assert (
+            "_total_counts = np.asarray(adata.X.sum(axis=1)).ravel()"
+            in ir.code_template
+        )
+        assert (
+            "_n_genes = np.asarray((adata.X > 0).sum(axis=1)).ravel()"
+            in ir.code_template
+        )
+        qc_block = ir.code_template.split("adata.obs['qc_pass'] = (")[1].split("\n)")[0]
+        assert qc_block.count("&") == 4
+        assert "sc.pp.calculate_qc_metrics" not in ir.code_template
+        compile(ir.render(), "<quality-replay>", "exec")
+
+    @pytest.mark.parametrize("sparse", [False, True])
+    def test_quality_ir_replay_matches_service_metrics(self, sparse):
+        """Dense and sparse replay preserve metrics and the housekeeping filter."""
+        matrix = np.array(
+            [
+                [1, 1, 4, 2, 1, 0],
+                [0, 2, 0, 0, 4, 0],
+                [8, 1, 1, 0, 0, 0],
+                [0, 0, 0, 0, 0, 0],
+                [0, 1, 2, 1, 3, 1],
+            ],
+            dtype=float,
+        )
+        adata = AnnData(
+            X=sp.csr_matrix(matrix) if sparse else matrix,
+            obs=pd.DataFrame(index=[f"cell{i}" for i in range(5)]),
+            var=pd.DataFrame(
+                index=["MT-ND1", "RPL3", "ACTB", "GAPDH", "GENE1", "MALAT1"]
+            ),
+        )
+        params = dict(
+            min_genes=1,
+            max_genes=6,
+            max_mt_pct=50.0,
+            max_ribo_pct=80.0,
+            min_housekeeping_score=1.0,
+        )
+        expected, _, ir = QualityService().assess_quality(adata, **params)
+        replayed = adata.copy()
+        namespace = {"adata": replayed, "np": np}
+        for helper in ir.helper_code:
+            exec(helper, namespace)  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
+        exec(ir.render(), namespace)  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
+        for column in ("mt_pct", "ribo_pct", "housekeeping_score"):
+            np.testing.assert_allclose(replayed.obs[column], expected.obs[column])
+        np.testing.assert_array_equal(replayed.obs["qc_pass"], expected.obs["qc_pass"])
+        assert not replayed.obs.loc["cell1", "qc_pass"]
+        assert replayed.obs.loc["cell1", "housekeeping_score"] == 0
+        assert "mt" not in replayed.var and "ribo" not in replayed.var
+        np.testing.assert_array_equal(replayed.var_names, expected.var_names)
 
     def test_create_quality_ir_imports(self):
         """Test that IR includes necessary imports."""
@@ -1226,9 +1282,9 @@ class TestGeneDetectionEndToEnd:
             mt_mask = service._detect_mitochondrial_genes(adata)
             ribo_mask = service._detect_ribosomal_genes(adata)
 
-            assert mt_mask.sum() == expected_mt, (
-                f"Failed to detect {expected_mt} MT genes in {gene_names[:4]}"
-            )
-            assert ribo_mask.sum() == expected_ribo, (
-                f"Failed to detect {expected_ribo} ribo genes in {gene_names[:4]}"
-            )
+            assert (
+                mt_mask.sum() == expected_mt
+            ), f"Failed to detect {expected_mt} MT genes in {gene_names[:4]}"
+            assert (
+                ribo_mask.sum() == expected_ribo
+            ), f"Failed to detect {expected_ribo} ribo genes in {gene_names[:4]}"

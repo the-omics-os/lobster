@@ -129,6 +129,7 @@ def proteomics_expert(
         preprocessing_service,
         analysis_service,
         force_platform_type=force_platform_type,
+        agent_name=agent_name,
     )
 
     # =========================================================================
@@ -288,6 +289,7 @@ for i, j, _ in cross_reactive_pairs:
                 },
                 description="Validated antibody specificity for affinity data",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Successfully validated antibody specificity for '{modality_name}'!\n\n"
@@ -365,7 +367,7 @@ for i, j, _ in cross_reactive_pairs:
                 )
             )
 
-            # BUG-13 fix: Post-correction validation -- compare inter-plate correlation before vs after
+            # Validate after correction by comparing inter-plate correlation before and after.
             import pandas as pd
 
             validation_msg = ""
@@ -460,6 +462,7 @@ for i, j, _ in cross_reactive_pairs:
                 },
                 description="Corrected plate effects for affinity data",
                 ir=batch_ir,
+                agent=agent_name,
             )
 
             response = f"Successfully corrected plate effects in '{modality_name}'!\n\n"

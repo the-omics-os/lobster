@@ -256,6 +256,13 @@ def create_execute_custom_code_tool(
                 },
                 description=f"{description} ({'success' if stats['success'] else 'failed'})",
                 ir=ir,
+                # Executing agent as a first-class field, not buried in `parameters`.
+                # `agent_name` was already in scope and already written into
+                # `parameters["agent"]` above — but a consumer had to know this tool
+                # specifically to find it there, while the activity's own `agent` field said
+                # `"data_manager"`. Keep `parameters["agent"]` for backward
+                # compatibility with consumers already reading it.
+                agent=agent_name,
             )
 
             # Agent-specific post-processing (only on success)

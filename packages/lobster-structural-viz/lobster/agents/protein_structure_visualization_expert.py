@@ -151,6 +151,7 @@ def protein_structure_visualization_expert(
                 parameters={"pdb_id": pdb_id, "format": format},
                 description=f"Fetched protein structure {pdb_id} from RCSB PDB",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -273,6 +274,7 @@ You can now:
                 },
                 description=f"Linked {stats['genes_with_structures']} genes to protein structures",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -420,6 +422,7 @@ You can now fetch and visualize structures for specific genes:
                 parameters=log_params,
                 description=description,
                 ir=ir,
+                agent=agent_name,
             )
 
             # Check PyMOL installation status
@@ -616,6 +619,7 @@ that can be customized and re-executed as needed.
                 },
                 description=f"Analyzed {pdb_id}: {analysis_type}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response based on analysis type
@@ -750,6 +754,7 @@ Results are stored in memory and can be accessed for further processing.
                 },
                 description=f"Compared {pdb_id1} and {pdb_id2}: RMSD = {rmsd_results['rmsd']:.3f} A",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response

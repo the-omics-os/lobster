@@ -76,6 +76,121 @@ class TestMapToEnsemblExternalDb:
 class TestCrossDatabaseIdMappingTool:
     """Tests for the map_cross_database_ids tool."""
 
+    @pytest.mark.parametrize(
+        "from_db,to_db,ids,backend,external_db",
+        [
+            ("Gene_Name", "UniProtKB_AC-ID", " TP53, BRCA1 ", "uniprot", None),
+            ("Gene_Name", "DB'\"\n", " x'\"\\, y ", "uniprot", None),
+            (
+                "Ensembl",
+                "UniProtKB_AC-ID",
+                " ENSG00000141510 ",
+                "ensembl",
+                "UniProt/SWISSPROT",
+            ),
+            ("Ensembl", "Unknown'\"", " ENSG'\"\\ ", "ensembl", None),
+        ],
+    )
+    def test_mapping_ir_replays_exact_backend_arguments(
+        self, mock_data_manager, from_db, to_db, ids, backend, external_db
+    ):
+        """Successful mappings record real IR with safely rendered API inputs."""
+        from lobster.core.provenance.analysis_ir import AnalysisStep
+
+        module = f"lobster.services.data_access.{backend}_service"
+        service_name = "UniProtService" if backend == "uniprot" else "EnsemblService"
+        normalized_ids = [
+            identifier.strip() for identifier in ids.split(",") if identifier.strip()
+        ]
+        with patch(f"{module}.{service_name}") as service_class:
+            service = service_class.return_value
+            if backend == "uniprot":
+                service.map_ids.return_value = {
+                    "results": [{"from": normalized_ids[0], "to": "P04637"}],
+                    "failedIds": ["UNMAPPED"],
+                }
+                expected_args = ()
+                expected_kwargs = {
+                    "from_db": from_db,
+                    "to_db": to_db,
+                    "ids": normalized_ids,
+                }
+                backend_method = service.map_ids
+                method_name = "map_ids"
+            else:
+                service.get_xrefs.return_value = [{"primary_id": "P04637"}]
+                expected_args = (normalized_ids[0],)
+                expected_kwargs = {"external_db": external_db}
+                backend_method = service.get_xrefs
+                method_name = "get_xrefs"
+
+            output = create_cross_database_id_mapping_tool(mock_data_manager).invoke(
+                {"ids": ids, "from_db": from_db, "to_db": to_db}
+            )
+            assert "P04637" in output
+            backend_method.assert_called_once_with(*expected_args, **expected_kwargs)
+            mock_data_manager.log_tool_usage.assert_called_once()
+            ir = mock_data_manager.log_tool_usage.call_args.kwargs["ir"]
+            assert isinstance(ir, AnalysisStep)
+            assert ir.parameters["ids"] == normalized_ids
+            assert ir.parameters["from_db"] == from_db
+            assert ir.parameters["to_db"] == to_db
+            if backend == "ensembl":
+                assert ir.parameters["external_db"] == external_db
+            else:
+                assert ir.execution_context["failed_ids"] == ["UNMAPPED"]
+            assert ir.execution_context["result_count"] == 1
+            assert (
+                "version was not supplied"
+                in ir.execution_context["external_data_caveat"]
+            )
+            assert ir.requires_validation is True
+            assert ir.operation == f"{module}.{service_name}.{method_name}"
+            assert AnalysisStep.from_dict(ir.to_dict()).parameters == ir.parameters
+            code = "\n".join(ir.imports) + "\n" + ir.render()
+            compiled = compile(code, "<mapping-replay>", "exec")
+            backend_method.reset_mock()
+            namespace = {}
+            exec(
+                compiled, namespace
+            )  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
+            backend_method.assert_called_once_with(*expected_args, **expected_kwargs)
+            assert namespace["mapping_results"] == backend_method.return_value
+
+    @pytest.mark.parametrize("backend", ["uniprot", "ensembl"])
+    @pytest.mark.parametrize("outcome", ["empty", "error"])
+    def test_unsuccessful_mapping_does_not_record_success_ir(
+        self, mock_data_manager, backend, outcome
+    ):
+        """Empty responses and backend failures retain existing non-success behavior."""
+        service_name = "UniProtService" if backend == "uniprot" else "EnsemblService"
+        with patch(
+            f"lobster.services.data_access.{backend}_service.{service_name}"
+        ) as service_class:
+            service = service_class.return_value
+            backend_method = (
+                service.map_ids if backend == "uniprot" else service.get_xrefs
+            )
+            if outcome == "error":
+                backend_method.side_effect = RuntimeError("backend unavailable")
+            else:
+                backend_method.return_value = (
+                    {"results": [], "failedIds": ["TP53"]}
+                    if backend == "uniprot"
+                    else []
+                )
+            output = create_cross_database_id_mapping_tool(mock_data_manager).invoke(
+                {
+                    "ids": "TP53" if backend == "uniprot" else "ENSG00000141510",
+                    "from_db": "Gene_Name" if backend == "uniprot" else "Ensembl",
+                    "to_db": "UniProtKB_AC-ID",
+                }
+            )
+            assert output.startswith(
+                "Error mapping IDs:" if outcome == "error" else "No "
+            )
+            mock_data_manager.log_tool_usage.assert_not_called()
+
     def test_factory_returns_langchain_tool(self, mock_data_manager):
         """Factory returns a LangChain StructuredTool with invoke interface."""
         tool = create_cross_database_id_mapping_tool(mock_data_manager)

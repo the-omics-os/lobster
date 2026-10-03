@@ -128,6 +128,12 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "no_auto_config: skip automatic provider configuration for this test"
     )
+    config.addinivalue_line(
+        "markers", "prod_validation: resource-heavy local stress tests (opt-in)"
+    )
+    config.addinivalue_line(
+        "markers", "nexus_e2e: resource-heavy local end-to-end stress tests (opt-in)"
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -264,7 +270,7 @@ def isolated_environment(
     test_env = {
         "LOBSTER_WORKSPACE": str(temp_workspace),
         "AWS_BEDROCK_ACCESS_KEY": "test-aws-access-key",
-        "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-aws-secret-key",
+        "AWS_BEDROCK_SECRET_ACCESS_KEY": "test-aws-secret-key",  # nosec B105 # Fake test credential.
         "NCBI_API_KEY": "test-ncbi-key",
         "ANTHROPIC_API_KEY": "test-anthropic-key",
     }
@@ -314,7 +320,7 @@ def mock_agent_environment(
     mock_settings = mocker.patch("lobster.config.settings.get_settings")
     mock_settings_instance = Mock()
     mock_settings_instance.AWS_BEDROCK_ACCESS_KEY = "test-aws-access-key"
-    mock_settings_instance.AWS_BEDROCK_SECRET_ACCESS_KEY = "test-aws-secret-key"
+    mock_settings_instance.AWS_BEDROCK_SECRET_ACCESS_KEY = "test-aws-secret-key"  # nosec B105 # Fake credential on a mocked settings object.
     mock_settings_instance.ANTHROPIC_API_KEY = "test-anthropic-key"
     mock_settings_instance.NCBI_API_KEY = "test-ncbi-key"
     mock_settings_instance.llm_provider = "anthropic"

@@ -447,3 +447,66 @@ class TestProcessingSteps:
         lengths = [len(s) for s in SUFFIX_PATTERNS]
         # Should be sorted in descending order
         assert lengths == sorted(lengths, reverse=True)
+
+
+class TestTerminalSuffixMaskingRegression:
+    """Recognized terminal suffixes must preserve the actual processing stage.
+
+    If `_pca` is unregistered, inference can fall through to `raw` and fail to strip the
+    suffix from the base name. These tests pin the resulting stage and base-name behavior.
+    """
+
+    def test_pca_after_normalization_is_not_reported_as_raw(self):
+        from lobster.core.provenance.lineage import infer_processing_step
+
+        assert infer_processing_step("pbmc3k_filtered_normalized_pca") != "raw"
+
+    def test_deep_chain_resolves_to_its_last_operation(self):
+        """A chained processed name resolves to its final operation."""
+        from lobster.core.provenance.lineage import infer_processing_step
+
+        step = infer_processing_step("pbmc3k_filtered_normalized_hvg_selected_pca")
+        assert step == "reduced", step
+
+    def test_base_name_strips_chained_unknown_suffixes(self):
+        """`_pca` also blocked base_name stripping, breaking lineage grouping."""
+        from lobster.core.provenance.lineage import extract_base_name
+
+        assert (
+            extract_base_name("pbmc3k_filtered_normalized_hvg_selected_pca") == "pbmc3k"
+        )
+
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("pbmc3k_pca", "reduced"),
+            ("pbmc3k_hvg_selected", "feature_selected"),
+            ("pbmc3k_embedded", "embedded"),
+        ],
+    )
+    def test_newly_registered_suffixes(self, name, expected):
+        from lobster.core.provenance.lineage import infer_processing_step
+
+        assert infer_processing_step(name) == expected
+
+    def test_every_mapped_step_is_canonical(self):
+        """A suffix mapping to a non-canonical step would silently widen the vocabulary."""
+        from lobster.core.provenance.lineage import CANONICAL_STEPS, SUFFIX_TO_STEP
+
+        unknown = set(SUFFIX_TO_STEP.values()) - CANONICAL_STEPS
+        assert not unknown, f"steps not in CANONICAL_STEPS: {unknown}"
+
+    def test_every_pattern_has_a_step_mapping(self):
+        """A pattern with no mapping falls through to "custom", losing the real step."""
+        from lobster.core.provenance.lineage import SUFFIX_PATTERNS, SUFFIX_TO_STEP
+
+        missing = [s for s in SUFFIX_PATTERNS if s not in SUFFIX_TO_STEP]
+        assert not missing, f"SUFFIX_PATTERNS entries with no SUFFIX_TO_STEP: {missing}"
+
+    def test_patterns_sorted_longest_first(self):
+        """Matching relies on this order: '_filtered' would otherwise shadow
+        '_filtered_normalized' and mis-report the step."""
+        from lobster.core.provenance.lineage import SUFFIX_PATTERNS
+
+        lengths = [len(s) for s in SUFFIX_PATTERNS]
+        assert lengths == sorted(lengths, reverse=True), SUFFIX_PATTERNS

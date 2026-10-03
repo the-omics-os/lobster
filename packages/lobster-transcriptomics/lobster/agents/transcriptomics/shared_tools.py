@@ -14,12 +14,41 @@ from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import tool
 
 from lobster.agents.transcriptomics.config import detect_data_type, get_qc_defaults
+from lobster.core.provenance.stage_contract import (
+    check_input_stage,
+    prepend_stage_warning,
+)
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.quality.preprocessing_service import PreprocessingService
 from lobster.services.quality.quality_service import QualityError, QualityService
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# =============================================================================
+# DECLARED STAGE PRECONDITIONS
+# =============================================================================
+# Per-tool policy, checked by a shared domain-agnostic helper. Module-level constants let
+# contract tests inspect declarations without importing the tool factory.
+#
+# These use transcriptomics vocabulary. Other domains should define their own stages rather
+# than reuse terms that may have different meanings. See
+# `core/provenance/stage_contract.py`.
+
+#: PCA needs data that has been QC'd and normalized; raw counts are not a valid input stage.
+PCA_ACCEPTED_STAGES = frozenset(
+    {"filtered_normalized", "feature_selected", "batch_corrected"}
+)
+
+#: QC metrics (counts per cell, % mitochondrial, % ribosomal) are defined on RAW COUNTS.
+#: A per-tool declaration is necessary because some analyses require raw input while others
+#: require normalized data.
+QC_ACCEPTED_STAGES = frozenset({"raw", "filtered", "quality_assessed"})
+
+#: `cluster_cells` is deliberately NOT declared here. It runs the whole pipeline internally,
+#: including normalization, so raw is a legitimate input. Stage declarations alone cannot
+#: distinguish raw data that has passed quality assessment from raw data that has not.
 
 
 # =============================================================================
@@ -32,6 +61,7 @@ def create_shared_tools(
     quality_service: QualityService,
     preprocessing_service: PreprocessingService,
     clustering_service=None,
+    agent_name: str = "transcriptomics_expert",
 ) -> List[Callable]:
     """
     Create shared transcriptomics tools with auto-detection.
@@ -46,6 +76,12 @@ def create_shared_tools(
         preprocessing_service: PreprocessingService for filtering/normalization
         clustering_service: Optional ClusteringService for PCA/embedding tools.
             If None, PCA and embedding tools are not included.
+        agent_name: Name of the agent these tools belong to, recorded as the executing
+            agent in provenance. Defaults to ``"transcriptomics_expert"`` because
+            these tools are shared across the single-cell and bulk agents of that package;
+            other packages calling this factory MUST pass their own name. Without this,
+            provenance recorded ``agent="data_manager"`` for every activity and could not
+            say which agent ran a tool.
 
     Returns:
         List of tool functions to be added to agent tools
@@ -211,6 +247,13 @@ def create_shared_tools(
 
             # Get the modality and auto-detect type
             adata = data_manager.get_modality(modality_name)
+            # Declared stage precondition: QC statistics are
+            # defined on raw counts and are silently different on normalized input.
+            stage_warning = check_input_stage(
+                adata,
+                accepted=QC_ACCEPTED_STAGES,
+                tool_name="assess_data_quality",
+            )
             data_type = detect_data_type(adata)
             defaults = get_qc_defaults(data_type)
 
@@ -244,6 +287,7 @@ def create_shared_tools(
                 name=qc_modality_name,
                 adata=adata_qc,
                 parent_name=modality_name,
+                step="quality_assessed",
                 step_summary=f"QC assessed: {assessment_stats['cells_after_qc']:,} cells passing ({assessment_stats['cells_retained_pct']:.1f}%)",
             )
 
@@ -252,6 +296,8 @@ def create_shared_tools(
                 tool_name="assess_data_quality",
                 parameters={
                     "modality_name": modality_name,
+                    # Real stored output name, so the DAG's artifact edge resolves.
+                    "result_modality_name": qc_modality_name,
                     "data_type": data_type,
                     "min_genes": min_genes,
                     "max_genes": max_genes,
@@ -260,6 +306,7 @@ def create_shared_tools(
                 },
                 description=f"{data_type} quality assessment for {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format professional response
@@ -295,6 +342,7 @@ def create_shared_tools(
 
 Proceed with filtering and normalization for downstream analysis."""
 
+            response = prepend_stage_warning(response, stage_warning)
             analysis_results["details"]["quality_assessment"] = response
             return response
 
@@ -410,6 +458,7 @@ Proceed with filtering and normalization for downstream analysis."""
                 name=filtered_modality_name,
                 adata=adata_processed,
                 parent_name=modality_name,
+                step="filtered_normalized",
                 step_summary=f"Filtered and normalized: {processing_stats['cells_retained_pct']:.1f}% cells retained",
             )
 
@@ -423,6 +472,8 @@ Proceed with filtering and normalization for downstream analysis."""
                 tool_name="filter_and_normalize",
                 parameters={
                     "modality_name": modality_name,
+                    # Real stored output name, so the DAG's artifact edge resolves.
+                    "result_modality_name": filtered_modality_name,
                     "data_type": data_type,
                     "min_genes_per_cell": min_genes_per_cell,
                     "max_genes_per_cell": max_genes_per_cell,
@@ -433,6 +484,7 @@ Proceed with filtering and normalization for downstream analysis."""
                 },
                 description=f"{data_type} filtered and normalized {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format professional response
@@ -480,7 +532,10 @@ Proceed with filtering and normalization for downstream analysis."""
             return f"Error filtering and normalizing modality: {str(e)}"
 
     # AQUADIF metadata
-    filter_and_normalize.metadata = {"categories": ["PREPROCESS", "FILTER"], "provenance": True}
+    filter_and_normalize.metadata = {
+        "categories": ["PREPROCESS", "FILTER"],
+        "provenance": True,
+    }
     filter_and_normalize.tags = ["PREPROCESS", "FILTER"]
 
     # -------------------------
@@ -572,7 +627,7 @@ Proceed with filtering and normalization for downstream analysis."""
                                 sc_modalities.append((mod_name, adata))
                             else:
                                 bulk_modalities.append((mod_name, adata))
-                        except Exception:
+                        except Exception:  # nosec B110 # Best-effort modality inventory ignores unreadable entries.
                             pass
 
                     if sc_modalities:
@@ -717,6 +772,7 @@ Proceed with filtering and normalization for downstream analysis."""
                 name=result_name,
                 adata=adata_result,
                 parent_name=modality_name,
+                step="feature_selected",
                 step_summary=f"Feature selection ({method}): {stats['n_features_selected']} genes selected",
             )
 
@@ -724,12 +780,15 @@ Proceed with filtering and normalization for downstream analysis."""
                 tool_name="select_variable_features",
                 parameters={
                     "modality_name": modality_name,
+                    # Real stored output name, so the DAG's artifact edge resolves.
+                    "result_modality_name": result_name,
                     "method": method,
                     "n_top_genes": n_top_genes,
                     "flavor": flavor,
                 },
                 description=f"Selected {stats['n_features_selected']} features using {method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build response
@@ -805,6 +864,15 @@ Proceed with filtering and normalization for downstream analysis."""
             adata = data_manager.get_modality(modality_name)
             logger.info(f"Running PCA for '{modality_name}' (n_comps={n_comps})")
 
+            # Declared stage precondition: PCA on raw counts does not satisfy
+            # the normalization prerequisite. Warn and proceed, with the
+            # declaration held by a contract test.
+            stage_warning = check_input_stage(
+                adata,
+                accepted=PCA_ACCEPTED_STAGES,
+                tool_name="run_pca",
+            )
+
             adata_result, stats, ir = clustering_service.run_pca(
                 adata,
                 n_comps=n_comps,
@@ -817,6 +885,9 @@ Proceed with filtering and normalization for downstream analysis."""
                 name=result_name,
                 adata=adata_result,
                 parent_name=modality_name,
+                # Declared, not inferred: name-suffix inference reads only the TERMINAL
+                # suffix, so "<x>_filtered_normalized_pca" would report "raw".
+                step="reduced",
                 step_summary=f"PCA: {stats['n_comps_computed']} components, {stats['variance_explained']}% variance",
             )
 
@@ -824,12 +895,15 @@ Proceed with filtering and normalization for downstream analysis."""
                 tool_name="run_pca",
                 parameters={
                     "modality_name": modality_name,
+                    # Real stored output name, so the DAG's artifact edge resolves.
+                    "result_modality_name": result_name,
                     "n_comps": n_comps,
                     "scale_data": scale_data,
                     "use_highly_variable": use_highly_variable,
                 },
                 description=f"PCA with {stats['n_comps_computed']} components on {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""PCA complete for '{modality_name}'!
@@ -843,6 +917,7 @@ Proceed with filtering and normalization for downstream analysis."""
 
 **Next steps**: compute_neighbors_and_embed() for UMAP/tSNE visualization"""
 
+            response = prepend_stage_warning(response, stage_warning)
             analysis_results["details"]["pca"] = response
             return response
 
@@ -908,6 +983,7 @@ Proceed with filtering and normalization for downstream analysis."""
                 name=result_name,
                 adata=adata_result,
                 parent_name=modality_name,
+                step="embedded",
                 step_summary=f"{embedding_method.upper()} embedding computed",
             )
 
@@ -915,12 +991,15 @@ Proceed with filtering and normalization for downstream analysis."""
                 tool_name="compute_neighbors_and_embed",
                 parameters={
                     "modality_name": modality_name,
+                    # Real stored output name, so the DAG's artifact edge resolves.
+                    "result_modality_name": result_name,
                     "n_neighbors": n_neighbors,
                     "n_pcs": n_pcs,
                     "embedding_method": embedding_method,
                 },
                 description=f"Computed neighbors + {embedding_method} on {modality_name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""Neighbors + {embedding_method.upper()} embedding complete for '{modality_name}'!
@@ -941,7 +1020,10 @@ Proceed with filtering and normalization for downstream analysis."""
             return f"Error computing neighbors/embedding: {str(e)}"
 
     # AQUADIF metadata
-    compute_neighbors_and_embed.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    compute_neighbors_and_embed.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     compute_neighbors_and_embed.tags = ["ANALYZE"]
 
     # Return list of tools

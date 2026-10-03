@@ -185,7 +185,7 @@ def de_analysis_expert(
             adata = data_manager.get_modality(modality_name)
             adata_copy = adata.copy()
 
-            # BUG-02 FIX: Initialize min_group before conditional block
+            # Initialize min_group before the conditional block
             min_group = None
 
             # M5 FIX: Sample size warning
@@ -261,6 +261,7 @@ def de_analysis_expert(
                     f"significant proteins ({detected_platform})"
                 ),
                 ir=de_ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -463,7 +464,7 @@ def de_analysis_expert(
                 # Shape for context
                 try:
                     parts.append(f"Data shape: {_adata.shape[0]} obs x {_adata.shape[1]} vars")
-                except Exception:
+                except Exception:  # nosec B110 # Optional response-summary metadata must not replace the analysis result.
                     pass
             else:
                 parts.append("adata: not loaded (modality retrieval may have failed)")
@@ -573,6 +574,7 @@ def de_analysis_expert(
                     f"significant time-dependent proteins"
                 ),
                 ir=tc_ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -724,6 +726,7 @@ def de_analysis_expert(
                     f"significant correlations with {target_column}"
                 ),
                 ir=corr_ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -898,6 +901,7 @@ def de_analysis_expert(
                     f"significant terms from {enrich_stats.get('n_genes_input', 0)} proteins"
                 ),
                 ir=enrich_ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1177,6 +1181,7 @@ def de_analysis_expert(
                     f"Differential PTM analysis: {len(significant_sites)} significant sites"
                 ),
                 ir=ptm_ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1323,6 +1328,7 @@ def de_analysis_expert(
                     f"from {ksea_stats.get('n_kinases_tested', 0)} tested"
                 ),
                 ir=ksea_ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1447,6 +1453,7 @@ def de_analysis_expert(
                     f"interactions, {net_stats.get('n_hub_proteins', 0)} hub proteins"
                 ),
                 ir=net_ir,
+                agent=agent_name,
             )
 
             # Format response

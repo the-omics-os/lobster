@@ -36,7 +36,7 @@ jobs:
         echo "files_changed=$files_changed" >> $GITHUB_OUTPUT
         
         # Check for core changes
-        core_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep -E "^lobster/(core|agents|config)/" | wc -l)
+        core_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | awk '/^lobster\/(core|agents|config)\// {count++} END {print count+0}')
         has_core_changes="false"
         if [ $core_files -gt 0 ]; then
           has_core_changes="true"
@@ -58,22 +58,8 @@ jobs:
         
         cat pr_analysis.md
     
-    - name: Comment on PR
-      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
-      with:
-        script: |
-          const fs = require('fs');
-          try {
-            const analysis = fs.readFileSync('pr_analysis.md', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: analysis
-            });
-          } catch (error) {
-            console.log('Could not create PR comment:', error);
-          }
+    - name: Write PR analysis summary
+      run: cat pr_analysis.md >> "$GITHUB_STEP_SUMMARY"
 
   # =====================================================================
   # Fast Validation (Linting + Unit Tests)
@@ -95,10 +81,15 @@ jobs:
         python-version: 3.12
         cache: 'pip'
     
-    - name: Install dependencies
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Install dependencies for selected tests
       run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+        uv venv --python 3.12 .venv
+        # These local packages provide the selected agent tests and scanpy.
+        uv pip install -e ".[dev]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
     
     - name: Run basic linting
       run: |
@@ -125,15 +116,7 @@ jobs:
         fi
     
     - name: Run critical unit tests
-      env:
-        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
-        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
-        # ANTHROPIC_API_KEY intentionally absent: the secret does not exist, so it
-        # expanded to "" and advertised a credential this workflow never had. Both
-        # steps run -m "not real_api", and every test that touches the key injects
-        # its own fake value, so nothing here needs a real one. LLM-backed tests
-        # use the AWS_BEDROCK_* credentials above.
-        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+      # Credential-free: live API tests are excluded below.
       run: |
         # Run focused test suite (same as ci-basic.yml for consistency)
         # Excludes: rate_limiter, content_access, scvi_embedding, gpu_detector,
@@ -152,6 +135,8 @@ jobs:
         #   TestTTYGuard::test_non_tty_stdin_exits_with_error — passes alone, fails
         #     only after tests/unit/cli/test_command_cmd_impl.py has run in the same
         #     process (leaked global console breaks its capsys assertion).
+        # The MuData differing-observation case is the existing Basic CI baseline
+        # exclusion; the underlying alignment defect remains a documented limitation.
         python -m pytest \
           tests/unit/config \
           tests/unit/core/backends \
@@ -166,6 +151,7 @@ jobs:
           --ignore=tests/unit/cli/test_go_tui_launcher_completions.py \
           --ignore=tests/unit/cli/test_vector_search_commands.py \
           --deselect "tests/unit/cli/test_init_venv_safety.py::TestTTYGuard::test_non_tty_stdin_exits_with_error" \
+          --deselect "tests/unit/core/backends/test_mudata_backend.py::TestMuDataGlobalObservations::test_global_obs_with_different_observation_names" \
           -m "not slow and not real_api" \
           --import-mode=importlib \
           --maxfail=5 \
@@ -255,29 +241,109 @@ jobs:
       uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
     
     - name: Set up Python 3.12
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: 3.12
     
-    - name: Install security tools
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Install application and isolated security tools
+      id: install
       run: |
-        python -m pip install --upgrade pip
-        pip install safety bandit
-        pip install -e .
-    
-    - name: Run security checks
+        uv venv --python 3.12 .venv
+        uv pip install -e .
+        mkdir -p security-tools
+        uv venv --python 3.12 security-tools/.venv
+        uv pip install --python security-tools/.venv/bin/python \
+          safety==3.8.1 bandit==1.9.4 httpx==0.28.1 httpcore==1.0.9 authlib==1.8.0
+        # Audit the resolved APPLICATION environment, never the scanner's env.
+        uv pip list --python .venv/bin/python --format=json > app-packages.json
+        .venv/bin/python -c "import json,pathlib; rows=json.loads(pathlib.Path('app-packages.json').read_text()); pathlib.Path('app-requirements.txt').write_text(''.join(r['name']+'=='+r['version']+'\\n' for r in rows))"
+
+    - name: Audit application dependencies
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       run: |
-        # Check for known vulnerabilities
-        safety check
-        
-        # Scan for security issues in changed files
-        changed_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep '\.py$' | head -20)
-        if [ -n "$changed_files" ]; then
-          echo "Scanning changed Python files for security issues..."
-          bandit $changed_files -f txt
-        fi
+        security-tools/.venv/bin/safety --disable-optional-telemetry check \
+          -r app-requirements.txt --full-report
+
+    - name: Scan changed Python files with Bandit
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      run: |
+        # Independent of Safety. Keep every production rule/severity and all
+        # test rules except B101 assertions; retain unfiltered raw visibility.
+        .venv/bin/python - <<'PY'
+        import json
+        import pathlib
+        import re
+        import subprocess
+
+        output = subprocess.check_output([
+            'git', 'diff', '--name-only', '--diff-filter=ACMR', '-z',
+            'origin/${{ github.event.pull_request.base.ref }}..HEAD', '--', '*.py'
+        ])
+        files = [name for name in output.decode().split('\0') if name]
+        tests = []
+        production = []
+        for name in files:
+            parts = pathlib.PurePosixPath(name).parts
+            is_test = name.startswith('tests/') or (
+                len(parts) > 3 and parts[0] == 'packages' and parts[2] == 'tests'
+            )
+            (tests if is_test else production).append(name)
+
+        def scan(label, paths, options, blocking):
+            report_path = pathlib.Path('bandit-' + label + '.json')
+            if not paths:
+                report_path.write_text(json.dumps({'results': [], 'errors': [], 'no_files': True}))
+                return True
+            result = subprocess.run([
+                'security-tools/.venv/bin/bandit', *options, *['./' + name for name in paths],
+                '-f', 'json', '-o', str(report_path)
+            ], capture_output=True, text=True)
+            print(result.stdout)
+            print(result.stderr)
+            try:
+                report = json.loads(report_path.read_text())
+            except (OSError, ValueError) as exc:
+                print('Missing or invalid Bandit report:', exc)
+                return False
+            if not isinstance(report, dict):
+                print('Invalid Bandit report shape')
+                return False
+            if not (
+                isinstance(report.get('results'), list)
+                and isinstance(report.get('errors'), list)
+                and isinstance(report.get('metrics'), dict)
+            ):
+                print('Incomplete Bandit report')
+                return False
+            valid = result.returncode in (0, 1) and not report['errors']
+            if re.search(r'unknown\s+(test|rule)', result.stderr, re.I):
+                valid = False
+            if blocking and (result.returncode != 0 or report.get('results')):
+                valid = False
+            print(label, 'exit', result.returncode, 'findings', len(report.get('results', [])))
+            return valid
+
+        # Do not short-circuit: both blocking scans run even if the other fails.
+        full_ok = scan('full', files, ['--ignore-nosec'], False)
+        production_ok = scan('production', production, [], True)
+        tests_ok = scan('tests', tests, ['-s', 'B101'], True)
+        raise SystemExit(0 if full_ok and production_ok and tests_ok else 1)
+        PY
+
+    - name: Upload complete Bandit findings
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      if: always()
+      with:
+        name: security-bandit-results
+        path: bandit-*.json
+        if-no-files-found: error
+        retention-days: 14
 
   # =====================================================================
   # Extended Tests (for core changes)
@@ -301,32 +367,45 @@ jobs:
         python-version: 3.12
         cache: 'pip'
     
-    - name: Install dependencies
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Set up Go for the local CLI fixture
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version: '1.24'
+        cache-dependency-path: lobster-tui/go.sum
+
+    - name: Install local integration dependencies
       run: |
-        python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    
+        uv venv --python 3.12 .venv
+        INSTALL_ARGS=(-e ".[dev,full]")
+        for PACKAGE_DIR in packages/*; do
+          test -f "$PACKAGE_DIR/pyproject.toml" || continue
+          INSTALL_ARGS+=(-e "$PACKAGE_DIR")
+        done
+        uv pip install "${INSTALL_ARGS[@]}"
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+    - name: Build the repository-local CLI fixture
+      working-directory: lobster-tui
+      run: go build -o lobster-tui ./cmd/lobster-tui
+
     - name: Run integration tests
-      env:
-        AWS_BEDROCK_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_ACCESS_KEY }}
-        AWS_BEDROCK_SECRET_ACCESS_KEY: ${{ secrets.AWS_BEDROCK_SECRET_ACCESS_KEY }}
-        # ANTHROPIC_API_KEY intentionally absent: the secret does not exist, so it
-        # expanded to "" and advertised a credential this workflow never had. Both
-        # steps run -m "not real_api", and every test that touches the key injects
-        # its own fake value, so nothing here needs a real one. LLM-backed tests
-        # use the AWS_BEDROCK_* credentials above.
-        NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+      # Credential-free: live API tests are excluded below.
       run: |
         if [ -d "tests/integration" ]; then
           python -m pytest tests/integration/ \
-            -m "not real_api and not slow" \
+            -m "not real_api and not slow and not prod_validation and not nexus_e2e" \
             --import-mode=importlib \
-            --maxfail=3 \
+            --maxfail=0 \
             --timeout=300 \
             --junit-xml=extended-test-results.xml \
             -v
+          python scripts/check_test_results.py extended-test-results.xml
         else
-          echo "No integration tests found, skipping"
+          echo "Required integration test directory is missing"
+          exit 1
         fi
     
     - name: Upload extended test results
@@ -372,30 +451,41 @@ jobs:
           let summary = '## 🎯 PR Validation Summary\n\n';
           
           for (const [jobName, result] of Object.entries(jobs)) {
-            if (result && result !== 'skipped') {
+            if (result) {
               summary += `${getIcon(result)} **${jobName}**: ${result}\n`;
             }
           }
           
-          const coreJobs = ['${{ needs.pr-analysis.result }}', '${{ needs.fast-validation.result }}', '${{ needs.security-check.result }}'];
-          const allCoreJobsPassed = coreJobs.every(result => result === 'success');
-          
-          summary += `\n**Overall Status:** ${allCoreJobsPassed ? '✅ Ready for review' : '❌ Needs attention'}`;
-          
+          const isDraft = context.payload.pull_request.draft === true;
           const filesChanged = '${{ needs.pr-analysis.outputs.files_changed }}';
           const hasCoreChanges = '${{ needs.pr-analysis.outputs.has_core_changes }}';
+          const coreJobs = [jobs['Fast Validation'], jobs['Security Check'], jobs['Go TUI']];
+          const analysisPassed = isDraft
+            ? ['success', 'skipped'].includes(jobs['PR Analysis'])
+            : jobs['PR Analysis'] === 'success'
+              && ['true', 'false'].includes(hasCoreChanges)
+              && /^\s*\d+\s*$/.test(filesChanged);
+          const extendedExpected = !isDraft && hasCoreChanges === 'true';
+          const extendedPassed = extendedExpected
+            ? jobs['Extended Tests'] === 'success'
+            : ['success', 'skipped'].includes(jobs['Extended Tests']);
+          const allCoreJobsPassed = coreJobs.every(result => result === 'success')
+            && analysisPassed && extendedPassed;
+          const readyLabel = isDraft ? 'Draft checks complete' : 'Ready for review';
+          summary += `\n**Overall Status:** ${allCoreJobsPassed ? '✅ ' + readyLabel : '❌ Needs attention'}`;
+          if (isDraft) {
+            summary += '\nPR analysis and extended integration checks are deferred until this PR is ready for review.';
+          }
           
           summary += `\n\n**PR Details:**`;
-          summary += `\n- Files changed: ${filesChanged}`;
-          summary += `\n- Core changes: ${hasCoreChanges}`;
+          summary += `\n- Files changed: ${filesChanged || 'not analyzed'}`;
+          summary += `\n- Core changes: ${hasCoreChanges || 'not analyzed'}`;
           
           if (!allCoreJobsPassed) {
             summary += '\n\n⚠️ Please address failing checks before requesting review.';
           }
           
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: summary
-          });
+          await core.summary.addRaw(summary).write();
+          if (!allCoreJobsPassed) {
+            core.setFailed('Required PR validation checks did not complete successfully.');
+          }

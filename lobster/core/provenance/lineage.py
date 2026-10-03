@@ -42,7 +42,9 @@ CANONICAL_STEPS: set[str] = {
     "normalized",
     "filtered_normalized",
     "batch_corrected",
+    "feature_selected",
     "reduced",
+    "embedded",
     "clustered",
     "subclustered",
     "annotated",
@@ -60,6 +62,7 @@ SUFFIX_PATTERNS = [
     "_quality_evaluated",  # 18
     "_quality_assessed",  # 17
     "_batch_corrected",  # 16
+    "_hvg_selected",  # 13
     "_subclustered",  # 13
     "_concatenated",  # 13
     "_de_results",  # 11
@@ -68,10 +71,12 @@ SUFFIX_PATTERNS = [
     "_annotated",  # 10
     "_clustered",  # 10
     "_autosave",  # 9
+    "_embedded",  # 9
     "_filtered",  # 9
     "_reduced",  # 8
     "_markers",  # 8
     "_custom",  # 7
+    "_pca",  # 4
 ]
 
 # Mapping from suffix to processing step string
@@ -92,6 +97,12 @@ SUFFIX_TO_STEP: Dict[str, str] = {
     "_concatenated": "custom",
     "_autosave": "custom",
     "_custom": "custom",
+    # Dimensionality-reduction / feature-selection suffixes emitted by analysis tools.
+    # Matching uses the terminal suffix, so these entries must be recognized before
+    # the fallback to `raw` can misclassify processed modalities.
+    "_hvg_selected": "feature_selected",
+    "_pca": "reduced",
+    "_embedded": "embedded",
 }
 
 

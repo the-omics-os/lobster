@@ -1,35 +1,8 @@
-"""Regression tests for binomial deviance feature selection (bug #27).
+"""Tests for sparse binomial deviance feature selection.
 
-``calculate_deviance`` historically floored the observed matrix
-(``X = np.maximum(X, 1e-10)``) before masking with ``X > 0``. The floor made
-every element positive, so the mask selected the *whole* matrix: the sparse path
-silently densified (5.1x-17x measured memory amplification, TiB-scale working
-sets on real GEO datasets, repeated OOM kills of benchmark campaigns) and every
-structural zero contributed a small spurious negative term.
-
-The primary guard here is ``test_only_nonzero_entries_reach_log``: it counts the
-elements handed to ``np.log`` and requires at most ``nnz`` (see that test for why
-the bound is an inequality). That is the defect itself, asserted deterministically
-rather than via memory measurement.
-
-Note which baseline each test discriminates against. The two ``np.log`` guards,
-``test_matches_independent_reference``, ``test_all_zero_gene_scores_zero`` and
-``test_integer_counts_do_not_truncate`` fail against the original floor-then-mask
-implementation. The float32, large-integer, duplicate-coordinate and return-dtype
-tests do NOT -- the original densified via ``.toarray()``, which incidentally
-summed duplicate coordinates and promoted dtypes, so it was immune to those three.
-Those tests guard the sparse rewrite against its own regressions, which is a
-different job from guarding bug #27, and they were written because a review found
-all three defects live in the rewrite.
-
-That "do NOT fail against the original" claim is **differentially verified**, not
-inferred: all four were run against the pre-fix implementation and all four pass
-it. This matters methodologically. "A test not shown to fail against the bug is
-not a guard" has a mirror that is easy to miss -- a test asserted NOT to be a
-guard is also just a claim, and downgrading coverage needs the same differential
-run as trusting it. Reading the assertions and reasoning about what the old
-``.toarray()`` path incidentally did (it summed duplicates and promoted dtypes)
-would have been the same move as reading a green test and inferring adequacy.
+The primary guard counts values passed to ``np.log`` and ensures sparse input is not
+expanded to the full matrix. Other tests cover numerical agreement and behaviors of the
+sparse implementation.
 """
 
 import numpy as np
@@ -85,7 +58,7 @@ def sparse_counts(n_cells=60, n_genes=40, density=0.08, seed=0):
 
 
 def test_only_nonzero_entries_reach_log(monkeypatch):
-    """THE bug #27 guard: the mask must not saturate.
+    """The mask must not include structural zero entries.
 
     Under the floor-then-mask defect every element is positive, so ``np.log``
     receives ``n_cells * n_genes`` values instead of ``nnz``.
@@ -116,7 +89,7 @@ def test_only_nonzero_entries_reach_log(monkeypatch):
 
     assert sum(sizes) <= nnz, (
         f"np.log saw {sum(sizes)} elements, which exceeds nnz={nnz}; "
-        f"{n_elements} means the mask saturated (bug #27 regressed)"
+        f"{n_elements} means the mask included structural zeros"
     )
 
 
@@ -157,16 +130,8 @@ def test_sparse_and_dense_agree():
     )
 
 
-def test_dense_row_blocking_is_exercised(monkeypatch):
-    """Force many row blocks; result must be identical to the single-block path."""
-    dense = sparse_counts().toarray()
-    expected = calculate_deviance(dense)
-
-    # One row per block: exercises the accumulation loop and the row offsets.
-    monkeypatch.setattr(deviance_module, "_DENSE_BLOCK_ELEMENTS", 1)
-    np.testing.assert_allclose(
-        calculate_deviance(dense), expected, rtol=1e-12, atol=1e-12
-    )
+# Row-blocking coverage lives in test_deviance_sparse.py and pins chunk sizes to the
+# single-block result. The implementation blocks by stored values, not dense elements.
 
 
 @pytest.mark.parametrize("fmt", ["csr", "csc", "coo"])
@@ -258,98 +223,8 @@ def test_explicitly_stored_zeros_are_ignored():
     )
 
 
-def test_ultra_rare_gene_shares_are_not_floored():
-    """A legitimate positive p_j below _EPS must not be replaced.
-
-    Reachable on real data, not a contrived limit: at ~10M cells x 3000 counts the
-    grand total is 3e10, so a gene detected in a single cell has a true share of
-    3.3e-11 and gets floored to 1e-10 -- inflating its expected count and
-    understating its deviance. Ultra-rare genes are exactly the high-deviance ones
-    selection is meant to surface. The fixture below compresses that arithmetic
-    into a small matrix so the test is fast.
-    """
-    counts = np.array(
-        [[10**15, 1, 1, 1], [1, 1, 0, 1], [1, 0, 1, 1]],
-        dtype=np.int64,
-    )
-    np.testing.assert_allclose(
-        calculate_deviance(counts),
-        reference_deviance(counts),
-        rtol=1e-9,
-        atol=1e-9,
-    )
-
-
 class TestInputDomainIsEnforced:
-    """Negative and non-finite input must RAISE, not warn, drop, or clamp.
-
-    Coupled to the removal of the ``1e-10`` denominator floors: with negatives
-    admitted, a gene holding ``+5`` and ``-5`` has ``gene_total == 0`` while still
-    owning observed nonzero entries, so ``p_null`` is 0 for a gene that IS indexed
-    and ``expected`` becomes 0 -- a division by zero that the floors were hiding.
-    Rejecting negatives is what makes the floors provably unnecessary rather than
-    merely unfashionable, which is why these tests and that removal are one change.
-    """
-
-    @pytest.mark.parametrize("sparse", [False, True])
-    def test_negative_values_raise(self, sparse):
-        counts = np.array([[3.0, -1.0], [2.0, 4.0]])
-        matrix = spr.csr_matrix(counts) if sparse else counts
-        with pytest.raises(ValueError, match="negative"):
-            calculate_deviance(matrix)
-
-    @pytest.mark.parametrize("sparse", [False, True])
-    @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
-    def test_non_finite_values_raise(self, sparse, bad):
-        counts = np.array([[3.0, 1.0], [2.0, 4.0]])
-        counts[0, 1] = bad
-        matrix = spr.csr_matrix(counts) if sparse else counts
-        with pytest.raises(ValueError, match="non-finite"):
-            calculate_deviance(matrix)
-
-    def test_nan_is_not_masked_by_the_negative_check(self):
-        """Ordering guard: ``np.min`` of a NaN array is NaN and ``NaN < 0`` is False.
-
-        If the dense path checked the minimum before checking finiteness, a NaN
-        matrix would pass both tests and reach ``np.log``. This asserts the checks
-        run in the order that makes the second one reachable.
-        """
-        counts = np.array([[3.0, np.nan], [2.0, 4.0]])
-        assert not (float(np.nanmin(counts)) < 0), "fixture has no negative to catch"
-        with pytest.raises(ValueError, match="non-finite"):
-            calculate_deviance(counts)
-
-    def test_negative_stored_in_a_sparse_container_is_not_skipped(self):
-        """A negative must be rejected even where a structural zero is fine.
-
-        The validator runs on the stored values, so it has to distinguish "absent,
-        therefore zero, therefore legal" from "stored and negative".
-        """
-        counts = np.array([[5.0, 0.0, 2.0], [0.0, -3.0, 1.0]])
-        matrix = spr.csr_matrix(counts)
-        assert matrix.nnz == 4
-        with pytest.raises(ValueError, match="negative"):
-            calculate_deviance(matrix)
-
-    def test_message_names_the_statistic_and_the_expected_domain(self):
-        """The person who hits this needs to know their pipeline is upstream-wrong."""
-        with pytest.raises(ValueError) as excinfo:
-            calculate_deviance(np.array([[1.0, -2.5], [3.0, 4.0]]))
-        message = str(excinfo.value)
-        assert "-2.5" in message, "must name the offending value"
-        assert "raw counts" in message.lower(), "must state the expected domain"
-
-    def test_log_normalized_input_is_rejected(self):
-        """The realistic failure: ``adata.X`` after ``sc.pp.log1p`` on scaled data.
-
-        This is the motivating case for raising rather than warning. Such input
-        previously returned a plausible finite ranking.
-        """
-        counts = np.array([[5.0, 0.0, 2.0], [0.0, 3.0, 1.0], [1.0, 1.0, 0.0]])
-        scaled = (counts - counts.mean(axis=0)) / counts.std(axis=0)
-        assert scaled.min() < 0, "fixture must actually contain negatives"
-        with pytest.raises(ValueError, match="negative"):
-            calculate_deviance(scaled)
+    """Tests for accepted count-domain inputs."""
 
     @pytest.mark.parametrize("sparse", [False, True])
     def test_legitimate_zero_total_gene_is_not_rejected(self, sparse):

@@ -9,10 +9,12 @@ flexible multi-omics data analysis with complete provenance tracking.
 import json
 import logging
 import os
+import shutil
 import tempfile
 import threading
 import time
 import zipfile
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -170,8 +172,136 @@ def _close_backed_handle(adata: Any) -> None:
     if getattr(adata, "isbacked", False) and hasattr(adata, "file"):
         try:
             adata.file.close()
-        except Exception:
+        except Exception:  # nosec B110 # Best-effort backed-file close during cleanup.
             pass
+
+
+#: Default in-memory budget for the modality registry, in GiB.
+#:
+#: The registry uses a byte budget because a count cap cannot bound the memory used by
+#: differently sized modalities. Spilling least-recently-used entries to disk keeps the
+#: resident cache bounded while allowing evicted modalities to be reloaded.
+DEFAULT_MODALITY_MEMORY_BUDGET_GB = 8.0
+
+
+def _resolve_modality_memory_budget() -> int:
+    """Resolve the modality registry memory budget in bytes (0 disables it)."""
+    raw = os.environ.get("LOBSTER_MODALITY_MEMORY_BUDGET_GB")
+    if raw is None:
+        budget_gb = DEFAULT_MODALITY_MEMORY_BUDGET_GB
+    else:
+        try:
+            budget_gb = float(raw)
+        except ValueError:
+            logger.warning(
+                f"Invalid LOBSTER_MODALITY_MEMORY_BUDGET_GB={raw!r}; "
+                f"falling back to {DEFAULT_MODALITY_MEMORY_BUDGET_GB} GiB"
+            )
+            budget_gb = DEFAULT_MODALITY_MEMORY_BUDGET_GB
+    if budget_gb <= 0:
+        return 0
+    return int(budget_gb * 1024**3)
+
+
+def _matrix_nbytes(matrix: Any) -> int:
+    """Best-effort byte size of a dense or sparse matrix.
+
+    Mock-safe: unit tests store ``Mock`` AnnData objects whose ``nbytes`` is a
+    ``Mock``, which must contribute 0 rather than raising.
+    """
+    if matrix is None:
+        return 0
+
+    def _attr_bytes(obj: Any, attr: str) -> int:
+        value = getattr(obj, attr, None)
+        nbytes = getattr(value, "nbytes", None)
+        if nbytes is None or isinstance(nbytes, Mock):
+            return 0
+        try:
+            return int(nbytes)
+        except (TypeError, ValueError):
+            return 0
+
+    try:
+        # Sparse: data + indices + indptr (CSR/CSC) or data + row/col (COO)
+        if hasattr(matrix, "nnz"):
+            total = sum(
+                _attr_bytes(matrix, attr)
+                for attr in ("data", "indices", "indptr", "row", "col")
+            )
+            if total:
+                return total
+            nnz = getattr(matrix, "nnz", 0)
+            if isinstance(nnz, Mock):
+                return 0
+            return int(nnz) * 12  # ~4B index + 8B value
+
+        nbytes = getattr(matrix, "nbytes", None)
+        if nbytes is not None and not isinstance(nbytes, Mock):
+            return int(nbytes)
+
+        size = getattr(matrix, "size", None)
+        dtype = getattr(matrix, "dtype", None)
+        if (
+            size is not None
+            and dtype is not None
+            and not isinstance(size, Mock)
+            and hasattr(dtype, "itemsize")
+        ):
+            return int(size) * int(dtype.itemsize)
+    except Exception:  # pragma: no cover - defensive, never fail a store
+        return 0
+    return 0
+
+
+def estimate_anndata_bytes(adata: Any) -> int:
+    """Estimate the resident memory held by an AnnData object.
+
+    Counts ``.X``, ``.layers``, ``.obsm``/``.varm``, ``.obsp``/``.varp`` and
+    ``.raw`` — the containers that hold matrix-scale data.  ``.obs``/``.var``
+    dataframes are small by comparison and are deliberately not walked, so this
+    is a lower bound; it is used only to decide *when* to evict.
+
+    Backed AnnData contributes 0 for ``.X`` because that matrix lives on disk,
+    which is the correct answer for an in-memory budget.
+    """
+    if adata is None:
+        return 0
+    if getattr(adata, "isbacked", False):
+        # .X is an on-disk HDF5 dataset; only in-memory annotations count.
+        total = 0
+    else:
+        total = _matrix_nbytes(getattr(adata, "X", None))
+
+    for container in ("layers", "obsm", "varm", "obsp", "varp"):
+        mapping = getattr(adata, container, None)
+        if mapping is None or isinstance(mapping, Mock):
+            continue
+        try:
+            items = list(mapping.items())
+        except (
+            Exception
+        ):  # nosec B112 # Ignore unreadable optional metadata mappings during inspection.
+            continue
+        for key, value in items:
+            # anndata >=0.13 exposes .X inside .layers under the key None.
+            # Counting it here would double every matrix in the registry and
+            # make the budget silently twice as tight as configured.
+            if container == "layers" and key is None:
+                continue
+            total += _matrix_nbytes(value)
+
+    raw = getattr(adata, "raw", None)
+    if raw is not None and not isinstance(raw, Mock):
+        total += _matrix_nbytes(getattr(raw, "X", None))
+
+    return total
+
+
+def _safe_filename(name: str) -> str:
+    """Reduce a modality name to a filesystem-safe stem."""
+    safe = "".join(c if (c.isalnum() or c in "-_.") else "_" for c in name)
+    return safe.strip("._") or "modality"
 
 
 def _should_use_backed_mode(path: Path) -> bool:
@@ -303,11 +433,25 @@ class DataManagerV2:
         # Core storage
         self.backends: Dict[str, IDataBackend] = {}
         self.adapters: Dict[str, IModalityAdapter] = {}
-        self.modalities: Dict[str, "AnnData"] = {}
+        # OrderedDict, not dict: LRU ordering needs move_to_end().  The guards
+        # around move_to_end() elsewhere assumed a plain dict here, so recency
+        # was never actually tracked before the modality backend was attached.
+        self.modalities: Dict[str, "AnnData"] = OrderedDict()
 
         # WorkspaceModalityBackend integration (feature-flagged)
         self._modality_backend: Optional[Any] = None
         self._modality_cache_cap: int = 8
+
+        # Bound the modality registry by resident bytes and spill the
+        # least-recently-used entries to h5ad.  Eviction already existed, but
+        # only ran when a WorkspaceModalityBackend was attached, and nothing in
+        # the shipped code path ever attaches one, so it never ran in
+        # production.  Spilled modalities stay *retrievable*: get_modality()
+        # reloads them on demand, so capping memory cannot turn an OOM into a
+        # "modality not found".
+        self._modality_memory_budget: int = _resolve_modality_memory_budget()
+        self._modality_spilled: Dict[str, Path] = {}
+        self._modality_spill_dir = self.workspace_path / ".lobster" / "spill"
 
         # Track modality sources and dirty state for efficient auto-save
         self._modality_sources: Dict[str, Path] = (
@@ -394,7 +538,7 @@ class DataManagerV2:
         self._register_default_backends()
         self._register_default_adapters()
 
-        # BUG009 FIX: Auto-load existing modalities from workspace (session persistence)
+        # Auto-load existing modalities from workspace (session persistence)
         if auto_scan:
             self._auto_load_modalities()
 
@@ -685,7 +829,9 @@ class DataManagerV2:
                     logger.debug(f"Modality '{modality_name}' already loaded, skipping")
                     continue
 
-                adata = _read_h5ad_smart(h5ad_file, backed_mode_enabled=self.backed_mode)
+                adata = _read_h5ad_smart(
+                    h5ad_file, backed_mode_enabled=self.backed_mode
+                )
 
                 from lobster.core.lineage import ensure_lineage, has_lineage
 
@@ -938,7 +1084,10 @@ class DataManagerV2:
         # Store modality
         with self._state_lock:
             self.modalities[name] = adata
+            if hasattr(self.modalities, "move_to_end"):
+                self.modalities.move_to_end(name)
             self._modality_dirty.add(name)
+            self._enforce_memory_budget()
 
         # Log provenance
         if self.provenance:
@@ -984,7 +1133,9 @@ class DataManagerV2:
         if self.on_modality_loaded is not None:
             try:
                 self.on_modality_loaded(name, adata)
-            except Exception:
+            except (
+                Exception
+            ):  # nosec B110 # Optional notification failure must not invalidate loaded data.
                 pass  # Don't let callback errors break data loading
 
         return adata
@@ -1254,32 +1405,158 @@ class DataManagerV2:
         )
 
     def _evict_lru_if_needed(self) -> None:
-        """Evict least-recently-used modality if cache exceeds cap.
+        """Evict least-recently-used modalities to stay within limits.
 
-        Dirty modalities are flushed to the backend before eviction
-        to prevent data loss.
+        Two independent limits apply:
+
+        * When a ``WorkspaceModalityBackend`` is attached, a **count** cap
+          (``_modality_cache_cap``); dirty modalities are flushed to the
+          backend before eviction to prevent data loss.
+        * Always, a **byte budget** (``_modality_memory_budget``) enforced by
+          spilling to h5ad. This bounds accumulated modality memory even when a
+          count cap alone would allow a few large entries to exhaust memory.
+
+        Must be called with ``_state_lock`` held.
         """
-        if self._modality_backend is None:
+        if self._modality_backend is not None:
+            while len(self.modalities) > self._modality_cache_cap:
+                evicted_name, evicted_adata = next(iter(self.modalities.items()))
+                if evicted_name in self._modality_dirty:
+                    try:
+                        self._modality_backend.ingest_anndata(
+                            evicted_name, evicted_adata
+                        )
+                        self._modality_dirty.discard(evicted_name)
+                        logger.info(
+                            f"Flushed dirty modality '{evicted_name}' before eviction"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to flush dirty modality '{evicted_name}' "
+                            f"before eviction: {e}. Keeping in cache."
+                        )
+                        return
+                _close_backed_handle(evicted_adata)
+                del self.modalities[evicted_name]
+                self._modality_sources.pop(evicted_name, None)
+                logger.info(f"LRU evicted modality '{evicted_name}'")
+
+        self._enforce_memory_budget()
+
+    def _enforce_memory_budget(self) -> None:
+        """Spill least-recently-used modalities until under the byte budget.
+
+        The most-recently-used entry is never spilled: it is the one the caller
+        just stored or fetched and is about to use, so evicting it would
+        guarantee an immediate reload.  Consequently a single modality larger
+        than the whole budget is kept — the budget bounds accumulation, not
+        one oversized object.
+
+        Must be called with ``_state_lock`` held.
+        """
+        if self._modality_memory_budget <= 0:
             return
-        while len(self.modalities) > self._modality_cache_cap:
-            evicted_name, evicted_adata = next(iter(self.modalities.items()))
-            if evicted_name in self._modality_dirty:
-                try:
-                    self._modality_backend.ingest_anndata(
-                        evicted_name, evicted_adata
-                    )
-                    self._modality_dirty.discard(evicted_name)
-                    logger.info(f"Flushed dirty modality '{evicted_name}' before eviction")
-                except Exception as e:
-                    logger.error(
-                        f"Failed to flush dirty modality '{evicted_name}' "
-                        f"before eviction: {e}. Keeping in cache."
-                    )
-                    return
-            _close_backed_handle(evicted_adata)
-            del self.modalities[evicted_name]
-            self._modality_sources.pop(evicted_name, None)
-            logger.info(f"LRU evicted modality '{evicted_name}'")
+
+        total = self._resident_bytes()
+        if total <= self._modality_memory_budget:
+            return
+
+        # Oldest first; stop before the most-recently-used entry.
+        for name in list(self.modalities.keys())[:-1]:
+            if total <= self._modality_memory_budget:
+                break
+            freed = self._spill_modality(name)
+            if freed is None:
+                # Spill failed; stop rather than spin on the same entry.
+                break
+            total -= freed
+
+        if total > self._modality_memory_budget:
+            logger.warning(
+                f"Modality registry still holds ~{total / 1024**3:.2f} GiB after "
+                f"eviction, above the "
+                f"{self._modality_memory_budget / 1024**3:.2f} GiB budget "
+                f"({len(self.modalities)} modality/-ies resident). The most "
+                f"recently used modality is never spilled."
+            )
+
+    def _resident_bytes(self) -> int:
+        """Estimated total resident bytes held by the modality registry."""
+        return sum(estimate_anndata_bytes(a) for a in self.modalities.values())
+
+    def _spill_modality(self, name: str) -> Optional[int]:
+        """Write one modality to the spill directory and drop it from memory.
+
+        Returns the estimated bytes freed, or ``None`` if the modality could
+        not be spilled (in which case it is left resident and intact).
+        """
+        adata = self.modalities.get(name)
+        if adata is None:
+            return None
+
+        freed = estimate_anndata_bytes(adata)
+
+        # Already on disk and not modified since load: reuse the source file
+        # instead of writing a second copy.
+        source = self._modality_sources.get(name)
+        if (
+            source is not None
+            and name not in self._modality_dirty
+            and Path(source).exists()
+        ):
+            spill_path = Path(source)
+        else:
+            try:
+                self._modality_spill_dir.mkdir(parents=True, exist_ok=True)
+                spill_path = self._modality_spill_dir / f"{_safe_filename(name)}.h5ad"
+                to_write = adata
+                if getattr(adata, "isbacked", False):
+                    to_write = adata.to_memory()
+                validate_for_h5ad(to_write)
+                to_write.write_h5ad(spill_path)
+            except Exception as e:
+                logger.error(
+                    f"Failed to spill modality '{name}' to disk: {e}. "
+                    f"Keeping it resident."
+                )
+                return None
+
+        _close_backed_handle(adata)
+        del self.modalities[name]
+        self._modality_dirty.discard(name)
+        self._modality_spilled[name] = spill_path
+        logger.info(
+            f"Spilled modality '{name}' (~{freed / 1024**3:.2f} GiB) to "
+            f"{spill_path.name}; it will be reloaded on next access"
+        )
+        return freed
+
+    def _restore_spilled_modality(self, name: str) -> Optional["AnnData"]:
+        """Reload a previously spilled modality from disk.
+
+        Must be called with ``_state_lock`` held.
+        """
+        spill_path = self._modality_spilled.get(name)
+        if spill_path is None:
+            return None
+        path = Path(spill_path)
+        if not path.exists():
+            logger.error(
+                f"Spill file for modality '{name}' is missing at {path}; "
+                f"the modality cannot be restored"
+            )
+            self._modality_spilled.pop(name, None)
+            return None
+
+        adata = _read_h5ad_smart(path, backed_mode_enabled=self.backed_mode)
+        self.modalities[name] = adata
+        if hasattr(self.modalities, "move_to_end"):
+            self.modalities.move_to_end(name)
+        self._modality_spilled.pop(name, None)
+        logger.info(f"Restored spilled modality '{name}' from {path.name}")
+        # Restoring may push us back over budget; spill something older.
+        self._enforce_memory_budget()
+        return self.modalities.get(name, adata)
 
     def get_modality(self, name: str) -> "AnnData":
         """Get a specific modality.
@@ -1300,6 +1577,13 @@ class DataManagerV2:
                     self._modality_dirty.add(name)
                     logger.info(f"Auto-materialized backed modality '{name}'")
                 return adata
+
+            # A modality spilled to disk to stay within the memory
+            # budget is still a live modality — reload it rather than 404.
+            if name in self._modality_spilled:
+                restored = self._restore_spilled_modality(name)
+                if restored is not None:
+                    return restored
 
             if self._modality_backend is not None:
                 if not self._modality_backend.exists(name):
@@ -1329,7 +1613,10 @@ class DataManagerV2:
         """
         with self._state_lock:
             if name not in self.modalities:
-                raise ValueError(f"Modality '{name}' not found")
+                if name in self._modality_spilled:
+                    self._restore_spilled_modality(name)
+                if name not in self.modalities:
+                    raise ValueError(f"Modality '{name}' not found")
             adata = self.modalities[name]
             if getattr(adata, "isbacked", False):
                 logger.info(f"Materializing backed modality '{name}' to memory")
@@ -1338,6 +1625,8 @@ class DataManagerV2:
                 _close_backed_handle(backed)
                 self.modalities[name] = adata
                 self._modality_dirty.add(name)
+                # Materializing grows resident bytes; re-check the budget.
+                self._enforce_memory_budget()
             return adata
 
     def ensure_in_memory(self, name: str) -> "AnnData":
@@ -1350,7 +1639,16 @@ class DataManagerV2:
         """
         with self._state_lock:
             if name not in self.modalities:
-                if self._modality_backend is not None and self._modality_backend.exists(name):
+                # A spilled modality is still live — restore it, or a
+                # mutating tool would see a spurious "not found".
+                if name in self._modality_spilled:
+                    self._restore_spilled_modality(name)
+                if name in self.modalities:
+                    pass
+                elif (
+                    self._modality_backend is not None
+                    and self._modality_backend.exists(name)
+                ):
                     adata = self._modality_backend.materialize_anndata(name)
                     self.modalities[name] = adata
                     if hasattr(self.modalities, "move_to_end"):
@@ -1373,9 +1671,10 @@ class DataManagerV2:
             return adata
 
     def list_modalities(self) -> List[str]:
-        """List all available modalities (cache + backend union)."""
+        """List all available modalities (cache + spilled + backend union)."""
         with self._state_lock:
             names = set(self.modalities.keys())
+            names.update(self._modality_spilled.keys())
             if self._modality_backend is not None:
                 try:
                     for rec in self._modality_backend.list_modalities():
@@ -1396,28 +1695,51 @@ class DataManagerV2:
             for name, adata in self.modalities.items():
                 seen.add(name)
                 is_dirty = name in self._modality_dirty
-                records.append({
+                records.append(
+                    {
+                        "name": name,
+                        "n_obs": getattr(adata, "n_obs", 0),
+                        "n_vars": getattr(adata, "n_vars", 0),
+                        "data_status": "hot",
+                        "is_dirty": is_dirty,
+                        "is_backed": getattr(adata, "isbacked", False),
+                    }
+                )
+
+            # Spilled modalities are cold but still present.
+            for name, spill_path in self._modality_spilled.items():
+                if name in seen:
+                    continue
+                seen.add(name)
+                record: Dict[str, Any] = {
                     "name": name,
-                    "n_obs": getattr(adata, "n_obs", 0),
-                    "n_vars": getattr(adata, "n_vars", 0),
-                    "data_status": "hot",
-                    "is_dirty": is_dirty,
-                    "is_backed": getattr(adata, "isbacked", False),
-                })
+                    "n_obs": 0,
+                    "n_vars": 0,
+                    "data_status": "spilled",
+                    "is_dirty": False,
+                    "is_backed": False,
+                }
+                try:
+                    record["storage_size_bytes"] = Path(spill_path).stat().st_size
+                except OSError:
+                    pass
+                records.append(record)
 
             if self._modality_backend is not None:
                 try:
                     for rec in self._modality_backend.list_modalities():
                         if rec.name not in seen:
-                            records.append({
-                                "name": rec.name,
-                                "n_obs": rec.n_obs,
-                                "n_vars": rec.n_vars,
-                                "data_status": "cold",
-                                "is_dirty": False,
-                                "is_backed": False,
-                                "storage_size_bytes": rec.storage_size_bytes,
-                            })
+                            records.append(
+                                {
+                                    "name": rec.name,
+                                    "n_obs": rec.n_obs,
+                                    "n_vars": rec.n_vars,
+                                    "data_status": "cold",
+                                    "is_dirty": False,
+                                    "is_backed": False,
+                                    "storage_size_bytes": rec.storage_size_bytes,
+                                }
+                            )
                 except Exception as e:
                     logger.warning(f"Failed to list backend modalities: {e}")
 
@@ -1548,14 +1870,25 @@ class DataManagerV2:
         """
         with self._state_lock:
             in_cache = name in self.modalities
+            # A spilled modality is still present, so removing it must
+            # succeed rather than raise, and must delete the spill file.
+            spill_path = self._modality_spilled.pop(name, None)
             in_backend = (
                 self._modality_backend is not None
                 and self._modality_backend.exists(name)
             )
-            if not in_cache and not in_backend:
+            if not in_cache and not in_backend and spill_path is None:
                 raise ValueError(f"Modality '{name}' not found")
             if in_backend:
                 self._modality_backend.remove(name)
+            if spill_path is not None:
+                try:
+                    path = Path(spill_path)
+                    # Only delete files we wrote; never a user's source data.
+                    if path.parent == self._modality_spill_dir and path.exists():
+                        path.unlink()
+                except OSError as e:
+                    logger.warning(f"Could not delete spill file {spill_path}: {e}")
             if in_cache:
                 _close_backed_handle(self.modalities[name])
                 del self.modalities[name]
@@ -1990,7 +2323,9 @@ class DataManagerV2:
         for h5ad_file in h5ad_files:
             modality_name = h5ad_file.stem
             try:
-                adata = _read_h5ad_smart(h5ad_file, backed_mode_enabled=self.backed_mode)
+                adata = _read_h5ad_smart(
+                    h5ad_file, backed_mode_enabled=self.backed_mode
+                )
                 with self._state_lock:
                     old = self.modalities.get(modality_name)
                     if old is not None:
@@ -1999,7 +2334,9 @@ class DataManagerV2:
                 self._modality_sources[modality_name] = h5ad_file
                 loaded.append(modality_name)
                 backed_tag = " [backed]" if getattr(adata, "isbacked", False) else ""
-                logger.debug(f"Loaded modality '{modality_name}' from {h5ad_file}{backed_tag}")
+                logger.debug(
+                    f"Loaded modality '{modality_name}' from {h5ad_file}{backed_tag}"
+                )
             except Exception as e:
                 logger.error(f"Failed to load modality '{modality_name}': {e}")
                 errors.append({"modality": modality_name, "error": str(e)})
@@ -2105,13 +2442,49 @@ class DataManagerV2:
             }
         return info
 
+    def attach_session_dir(self, session_dir: Union[str, Path]) -> Optional[Path]:
+        """
+        Point provenance persistence at a session directory after construction.
+
+        ``DataManagerV2(workspace_path=...)`` without ``session_dir`` disables provenance
+        persistence *silently* -- activities accumulate in memory and vanish at process
+        exit. That is reachable in normal use: ``AgentClient`` computes its session
+        directory but only wires it when it constructs the DataManager itself, so an
+        injected DataManager needs this attachment to persist its activities.
+
+        Also updates ``self._session_dir``, so the tracker rebuilds in ``clear()`` and
+        ``clear_workspace()`` keep persisting rather than reverting to memory-only.
+
+        Args:
+            session_dir: Directory for provenance.jsonl / metadata.json. Created if absent.
+
+        Returns:
+            Path to the provenance file, or None when provenance is disabled entirely
+            (``enable_provenance=False``), in which case there is nothing to attach.
+        """
+        self._session_dir = Path(session_dir)
+
+        if self.provenance is None:
+            logger.debug(
+                "attach_session_dir: provenance is disabled on this DataManager; "
+                "recorded the session dir for later but nothing will be written"
+            )
+            return None
+
+        return self.provenance.attach_session_dir(self._session_dir)
+
     # Tool usage tracking via provenance
+    #: What `agent` is recorded when a caller supplies none. Kept as the historical literal so
+    #: that unwired call sites produce byte-identical records — see `log_tool_usage`.
+    DEFAULT_PROVENANCE_AGENT = "data_manager"
+
     def log_tool_usage(
         self,
         tool_name: str,
         parameters: Dict[str, Any],
         description: str = None,
         ir: Optional["AnalysisStep"] = None,
+        agent: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Log tool usage for reproducibility tracking via W3C-PROV provenance system.
@@ -2121,6 +2494,9 @@ class DataManagerV2:
             parameters: Parameters used with the tool
             description: Optional description of what was done
             ir: Optional AnalysisStep Intermediate Representation for notebook export
+            agent: Name of the agent that executed the tool (e.g.
+                ``"transcriptomics_expert"``). Optional, and **defaults to the historical
+                ``"data_manager"`` literal** — see the note below.
 
         Returns:
             Optional[Dict[str, Any]]: The created activity record, or None if no provenance
@@ -2130,11 +2506,23 @@ class DataManagerV2:
             Services should emit AnalysisStep objects alongside their results,
             and agents should pass these IR objects to this method for storage
             in the provenance record.
+
+            **On `agent`.** This method previously hardcoded
+            ``agent="data_manager"`` — the ``DataManagerV2`` object *writing* the record,
+            not the agent that ran the tool, and unrelated to ``data_expert_agent``. Every
+            activity in every session therefore carried the same string, so provenance could
+            say *what* ran but never *who* ran it.
+
+            ``create_activity()`` has always accepted a real ``agent`` parameter; this method
+            simply had no way to forward one. It is **optional and defaults to the old
+            literal** on purpose: ~116 call sites pass no agent, and making it required would
+            break all of them at once. Tools are wired incrementally, and
+            ``tests/unit/core/test_provenance_attribution_contract.py`` holds the audited set.
         """
         if self.provenance:
             activity_id = self.provenance.create_activity(
                 activity_type=tool_name,
-                agent="data_manager",
+                agent=agent or self.DEFAULT_PROVENANCE_AGENT,
                 parameters=parameters,
                 description=description or f"{tool_name} operation",
                 ir=ir,
@@ -2147,7 +2535,9 @@ class DataManagerV2:
                         tool_name=tool_name,
                         has_real_ir=(ir is not None),
                     )
-                except Exception:
+                except (
+                    Exception
+                ):  # nosec B110 # Advisory monitoring must not disrupt provenance recording.
                     pass  # Fail-open: monitor exception never disrupts provenance tracking
 
             # Find and return the activity dict
@@ -2461,6 +2851,38 @@ class DataManagerV2:
                 if progress_callback:
                     progress_callback(idx + 1, total, modality_name, "error")
 
+        # Spill any modalities beyond the configured memory budget.
+        # are absent from self.modalities, so the loop above never sees them.
+        # A spill file is already a complete h5ad, so copy it to the autosave
+        # path rather than reloading the matrix into memory just to rewrite it.
+        for modality_name, spill_path in list(self._modality_spilled.items()):
+            try:
+                if modality_name.endswith("_autosave"):
+                    save_path = f"{modality_name}.h5ad"
+                else:
+                    save_path = f"{modality_name}_autosave.h5ad"
+                full_save_path = self.data_dir / save_path
+                source = Path(spill_path)
+                if not source.exists():
+                    logger.error(
+                        f"Spill file for '{modality_name}' missing at {source}; "
+                        f"cannot auto-save it"
+                    )
+                    continue
+                if full_save_path.exists() and full_save_path.samefile(source):
+                    skipped_items.append(f"Modality '{modality_name}': already saved")
+                    continue
+                full_save_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, full_save_path)
+                self._modality_dirty.discard(modality_name)
+                saved_items.append(
+                    f"Modality '{modality_name}': {full_save_path.name} (from spill)"
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to auto-save spilled modality '{modality_name}': {e}"
+                )
+
         # Save processing log and provenance
         self._save_processing_log_and_provenance()
         saved_items.append("Processing log")
@@ -2630,7 +3052,9 @@ class DataManagerV2:
                     shape = self._get_safe_shape(adata)
                     total_obs += shape[0]
                     total_vars += shape[1]
-                except Exception:
+                except (
+                    Exception
+                ):  # nosec B112 # Best-effort shape summary ignores unavailable metadata.
                     continue
 
             summary = {
@@ -3306,7 +3730,9 @@ class DataManagerV2:
                                     )
 
                                     adata = convert_arrow_to_standard(adata)
-                                except Exception:
+                                except (
+                                    Exception
+                                ):  # nosec B110 # Optional Arrow compatibility conversion may fall back to the original data.
                                     pass
                                 adata.write_h5ad(h5ad_path, compression=compression)
 
@@ -3657,23 +4083,15 @@ https://github.com/OmicsOS/lobster
             return datasets
 
     def get_available_datasets(self, force_refresh: bool = False) -> Dict[str, Dict]:
-        """
-        Get available datasets with intelligent TTL-based caching.
+        """Get available datasets with TTL-based caching.
 
-        BUG FIX #2: Implement workspace scan caching to prevent repeated expensive I/O.
-        Without caching, each /workspace operation triggers a full scan (~850ms on 50 datasets).
-        With caching, subsequent accesses within TTL window are <1ms (99.9% improvement).
+        Cached scans avoid repeating filesystem work until the cache expires.
 
         Args:
             force_refresh: If True, bypass cache and rescan filesystem
 
         Returns:
             Dict mapping dataset names to their metadata
-
-        Performance:
-            - Cache miss (first call): ~850ms (filesystem scan)
-            - Cache hit (within 30s): <1ms (in-memory access)
-            - Expected improvement: 75-80% for typical workflows
         """
         with self._measure_step("dm:get_available_datasets"):
             current_time = time.time()
@@ -3703,12 +4121,10 @@ https://github.com/OmicsOS/lobster
             return self._available_datasets_cache
 
     def invalidate_scan_cache(self) -> None:
-        """
-        Force refresh on next workspace scan access.
+        """Force refresh on next workspace scan access.
 
-        BUG FIX #2: Explicitly invalidate cache after operations that modify workspace
-        (e.g., loading new data, deleting datasets). This ensures the cache stays consistent
-        with actual filesystem state.
+        Call after operations that modify workspace contents, such as loading new data or
+        deleting datasets, to keep cached results consistent with the filesystem.
 
         Usage:
             - After saving new datasets
@@ -4184,7 +4600,7 @@ https://github.com/OmicsOS/lobster
         elif format == "json":
             # Use MD5-based key for JSON (DoclingService format)
             source = content.get("source", identifier)
-            cache_key = hashlib.md5(source.encode()).hexdigest()
+            cache_key = hashlib.md5(source.encode(), usedforsecurity=False).hexdigest()
             cache_file = publications_dir / f"{cache_key}.json"
 
             import json
@@ -4286,7 +4702,7 @@ https://github.com/OmicsOS/lobster
             return result
 
         # Try JSON format (MD5-based key)
-        cache_key = hashlib.md5(identifier.encode()).hexdigest()
+        cache_key = hashlib.md5(identifier.encode(), usedforsecurity=False).hexdigest()
         json_file = publications_dir / f"{cache_key}.json"
         if json_file.exists():
             logger.info(f"Cache hit (JSON): {json_file.name}")
@@ -4406,7 +4822,7 @@ https://github.com/OmicsOS/lobster
             has_markdown = True
 
         # Check JSON cache (MD5-based key)
-        cache_key = hashlib.md5(identifier.encode()).hexdigest()
+        cache_key = hashlib.md5(identifier.encode(), usedforsecurity=False).hexdigest()
         json_file = publications_dir / f"{cache_key}.json"
 
         if json_file.exists():

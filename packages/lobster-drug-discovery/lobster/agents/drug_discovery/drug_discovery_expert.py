@@ -136,6 +136,7 @@ def drug_discovery_expert(
         opentargets_service,
         pubchem_service,
         target_scoring_service,
+        agent_name=agent_name,
     )
 
     # =========================================================================

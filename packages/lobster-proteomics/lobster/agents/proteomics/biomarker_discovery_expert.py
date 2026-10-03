@@ -176,6 +176,7 @@ def biomarker_discovery_expert(
                 },
                 description=f"Identified {stats['n_modules']} co-expression modules",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -273,6 +274,7 @@ def biomarker_discovery_expert(
                 },
                 description=f"Correlated {stats['n_modules']} modules with {stats['n_traits']} traits",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -388,6 +390,7 @@ def biomarker_discovery_expert(
                 },
                 description=f"Cox regression: {stats['n_significant_proteins']} significant at FDR < {fdr_threshold}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -514,6 +517,7 @@ def biomarker_discovery_expert(
                 },
                 description=f"KM biomarker screening: {stats['n_significant']} significant biomarkers",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -710,7 +714,7 @@ def biomarker_discovery_expert(
                             else lasso_boot.coef_
                         )
                         selection_counts += (np.abs(boot_coefs) > 0).astype(int)
-                    except Exception:
+                    except Exception:  # nosec B112 # Failed bootstrap iterations are excluded, not authorization failures.
                         continue  # Skip failed iterations
 
                 stability_freq = selection_counts / n_iterations
@@ -751,7 +755,7 @@ def biomarker_discovery_expert(
 
                         # Count hits: real feature beats max shadow
                         hit_counts += (real_importances > shadow_max).astype(int)
-                    except Exception:
+                    except Exception:  # nosec B112 # Failed comparison iterations are excluded, not authorization failures.
                         continue
 
                 # Features that beat shadow in >50% of rounds are selected
@@ -897,6 +901,7 @@ stability_selected = stability_freq > 0.6""",
                 },
                 description=f"Selected {len(panel_proteins)}-protein panel via {', '.join(method_list)}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1259,6 +1264,7 @@ print(f"AUC: {np.mean(aucs):.3f} +/- {np.std(aucs):.3f}")""",
                 },
                 description=f"Nested CV evaluation: AUC={mean_auc:.3f}+/-{std_auc:.3f}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1489,6 +1495,7 @@ for module in target_modules:
                 },
                 description=f"Extracted {total_hubs} hub proteins from {len(hub_results)} modules",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response

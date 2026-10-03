@@ -91,8 +91,32 @@ class TestQualityServiceIRWorkflow:
         assert len(ir.parameters) > 0
         assert ir.parameter_schema is not None
 
-        # Verify code template contains scanpy call
-        assert "sc.pp.calculate_qc_metrics" in ir.code_template
+        # Replay uses the service's custom metrics and all five QC criteria.
+        for parameter in (
+            "min_genes",
+            "max_genes",
+            "max_mt_pct",
+            "max_ribo_pct",
+            "min_housekeeping_score",
+        ):
+            assert "{{ " + parameter + " }}" in ir.code_template
+        qc_block = ir.code_template.split("adata.obs['qc_pass'] = (")[1].split("\n)")[0]
+        assert qc_block.count("&") == 4
+        assert "sc.pp.calculate_qc_metrics" not in ir.code_template
+        replayed = adata.copy()
+        namespace = {"adata": replayed, "np": np}
+        for helper in ir.helper_code:
+            exec(
+                helper, namespace
+            )  # nosec B102 # Execute repository-generated IR helper on a synthetic fixture.
+        exec(
+            ir.render(), namespace
+        )  # nosec B102 # Execute repository-generated IR on a synthetic fixture.
+        for column in ("mt_pct", "ribo_pct", "housekeeping_score"):
+            np.testing.assert_allclose(replayed.obs[column], result_adata.obs[column])
+        np.testing.assert_array_equal(
+            replayed.obs["qc_pass"], result_adata.obs["qc_pass"]
+        )
 
     def test_quality_ir_stored_in_provenance(
         self, test_adata, data_manager, provenance_tracker

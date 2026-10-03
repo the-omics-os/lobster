@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 # custom object with a hostile ``__repr__`` could inject into a generated
 # notebook cell; current callers only pass literal-shaped params. A
 # python-literal-hardening filter is tracked as separate future work.
-_JINJA_ENV = Environment(autoescape=False)
+# Generates Python source, not HTML; HTML escaping would corrupt Python literals.
+_JINJA_ENV = Environment(autoescape=False)  # nosec B701
 _JINJA_ENV.filters["repr"] = repr
 
 
@@ -147,7 +148,9 @@ class AnalysisStep:
         execution_context: Random seeds, versions, timestamps, etc.
         validates_on_export: Whether to run AST syntax validation on export
         requires_validation: Whether full execution validation is recommended
-        exportable: Whether to include in notebook export (default True)
+        exportable: Whether to include in a curated notebook export (default True)
+        replayable: Whether this step is required to reproduce the result
+            (default True)
 
     Example:
         >>> ir = AnalysisStep(
@@ -198,8 +201,17 @@ class AnalysisStep:
     validates_on_export: bool = True
     requires_validation: bool = False
 
-    # Export control
+    # Export control — curation. Answers "should this appear in a notebook a
+    # user might publish?" Services commonly derive it from a `persist` flag.
     exportable: bool = True  # Whether to include in notebook export
+
+    # Replay control — reproducibility. Answers the unrelated question "is this
+    # step required to reproduce the result?" Deliberately independent of
+    # `exportable`/`persist`: a step can be too ad-hoc to publish and still be
+    # indispensable to a faithful replay. Default True, so anything that
+    # computes or mutates state is replayable unless a service opts out, and IR
+    # rehydrated from provenance written before this field existed replays.
+    replayable: bool = True
 
     # Helper code (shared functions injected into notebook helper cell)
     helper_code: List[str] = field(default_factory=list)

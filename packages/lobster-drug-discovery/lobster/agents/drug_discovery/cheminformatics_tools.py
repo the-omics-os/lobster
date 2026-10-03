@@ -34,6 +34,7 @@ def create_cheminformatics_tools(
     admet_service,
     pubchem_service,
     compound_prep_service,
+    agent_name: str = "drug_discovery_expert",
 ) -> List[Callable]:
     """
     Create cheminformatics tools for the cheminformatics expert child agent.
@@ -65,6 +66,7 @@ def create_cheminformatics_tools(
                 {"smiles": smiles},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             return (
@@ -100,6 +102,7 @@ def create_cheminformatics_tools(
                 {"smiles": smiles},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             verdict = "PASS" if stats.get("overall_pass") else "FAIL"
@@ -150,6 +153,7 @@ def create_cheminformatics_tools(
                 },
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             # Create Plotly heatmap for cloud UI canvas visualization
@@ -222,6 +226,7 @@ def create_cheminformatics_tools(
                 {"smiles": smiles},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             predictions = stats.get("predictions", {})
@@ -303,6 +308,7 @@ def create_cheminformatics_tools(
                 {"smiles": smiles, "n_conformers": n_conformers},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             # Write .sdf file to workspace for Mol* visualization in cloud UI
@@ -311,7 +317,9 @@ def create_cheminformatics_tools(
             ws_path = getattr(data_manager, "workspace_path", None)
             if mol_block and ws_path:
                 try:
-                    smiles_hash = hashlib.md5(smiles.encode()).hexdigest()[:8]
+                    smiles_hash = hashlib.md5(
+                        smiles.encode(), usedforsecurity=False
+                    ).hexdigest()[:8]
                     safe_name = f"molecule_{smiles_hash}"
                     sdf_filename = f"{safe_name}.sdf"
                     data_dir = Path(ws_path) / "data"
@@ -357,6 +365,7 @@ def create_cheminformatics_tools(
                 {"cas_numbers": parsed},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             n_resolved = stats.get("n_resolved", 0)
@@ -364,9 +373,7 @@ def create_cheminformatics_tools(
             mapping = stats.get("cas_to_smiles", {})
             errors = stats.get("errors", {})
 
-            lines = [
-                f"CAS-to-SMILES conversion: {n_resolved}/{n_requested} resolved"
-            ]
+            lines = [f"CAS-to-SMILES conversion: {n_resolved}/{n_requested} resolved"]
             for cas, smi in mapping.items():
                 lines.append(f"  {cas} -> {smi}")
             for cas, err in errors.items():
@@ -397,6 +404,7 @@ def create_cheminformatics_tools(
                 {"smiles": smiles, "threshold": threshold, "limit": limit},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             n_results = stats.get("n_results", 0)
@@ -412,8 +420,10 @@ def create_cheminformatics_tools(
                 cid = comp.get("cid", "N/A")
                 lipinski = comp.get("lipinski", {})
                 lip_status = (
-                    "pass" if lipinski.get("compliant") else "fail"
-                ) if lipinski else "N/A"
+                    ("pass" if lipinski.get("compliant") else "fail")
+                    if lipinski
+                    else "N/A"
+                )
                 lines.append(
                     f"  {i}. CID={cid}: MW={mw}, XLogP={xlogp}, Lipinski={lip_status}"
                 )
@@ -466,6 +476,7 @@ def create_cheminformatics_tools(
                 },
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             n_residues = stats.get("n_residues", 0)
@@ -482,9 +493,9 @@ def create_cheminformatics_tools(
             ]
 
             if res_counts:
-                top_res = sorted(
-                    res_counts.items(), key=lambda x: x[1], reverse=True
-                )[:5]
+                top_res = sorted(res_counts.items(), key=lambda x: x[1], reverse=True)[
+                    :5
+                ]
                 lines.append(
                     f"  Top residue types: "
                     + ", ".join(f"{r}({c})" for r, c in top_res)
@@ -522,6 +533,7 @@ def create_cheminformatics_tools(
                 {"smiles_a": smiles_a, "smiles_b": smiles_b},
                 stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             tanimoto = stats.get("tanimoto_similarity", 0)
