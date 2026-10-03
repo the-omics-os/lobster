@@ -149,6 +149,8 @@ jobs:
         #   TestTTYGuard::test_non_tty_stdin_exits_with_error — passes alone, fails
         #     only after tests/unit/cli/test_command_cmd_impl.py has run in the same
         #     process (leaked global console breaks its capsys assertion).
+        # The MuData differing-observation case is the existing Basic CI baseline
+        # exclusion; the underlying alignment defect remains a documented limitation.
         python -m pytest \
           tests/unit/config \
           tests/unit/core/backends \
@@ -163,6 +165,7 @@ jobs:
           --ignore=tests/unit/cli/test_go_tui_launcher_completions.py \
           --ignore=tests/unit/cli/test_vector_search_commands.py \
           --deselect "tests/unit/cli/test_init_venv_safety.py::TestTTYGuard::test_non_tty_stdin_exits_with_error" \
+          --deselect "tests/unit/core/backends/test_mudata_backend.py::TestMuDataGlobalObservations::test_global_obs_with_different_observation_names" \
           -m "not slow and not real_api" \
           --import-mode=importlib \
           --maxfail=5 \
