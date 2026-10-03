@@ -102,7 +102,7 @@ jobs:
       run: |
         uv venv --python 3.12 .venv
         # These local packages provide the selected agent tests and scanpy.
-        uv pip install -e ".[dev]" -e packages/lobster-research -e packages/lobster-transcriptomics
+        uv pip install -e ".[dev]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization
         echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
     
     - name: Run basic linting

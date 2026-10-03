@@ -1234,10 +1234,21 @@ def test_harmony_compatibility_preserves_runtime_and_replay_values(service, layo
     original.obsm["X_pca"] = np.arange(120, dtype=np.float32).reshape(40, 3)
     expected = np.arange(120, dtype=np.float64).reshape(40, 3) / 10
     backend_output = expected if layout == "cells_by_pcs" else expected.T
-    with patch(
-        "lobster.services.analysis.enhanced_singlecell_service.harmonypy.run_harmony",
-        return_value=SimpleNamespace(Z_corr=backend_output),
-    ) as run_harmony:
+    from types import ModuleType
+    from unittest.mock import Mock
+
+    backend = ModuleType("harmonypy")
+    run_harmony = Mock(return_value=SimpleNamespace(Z_corr=backend_output))
+    backend.run_harmony = run_harmony
+    # Patch the bound implementation, not a compatibility facade; replay imports
+    # the same synthetic backend even when the optional dependency is absent.
+    with (
+        patch.dict("sys.modules", {"harmonypy": backend}),
+        patch.dict(
+            service.integrate_batches.__func__.__globals__,
+            {"harmonypy": backend, "HARMONY_AVAILABLE": True},
+        ),
+    ):
         result, _, ir = service.integrate_batches(
             original, "batch", n_pcs=3, max_iter=7
         )
@@ -1254,7 +1265,9 @@ def test_harmony_compatibility_preserves_runtime_and_replay_values(service, layo
         replay_adata = original.copy()
         compiled = compile(ir.render(), "<harmony-replay>", "exec")
         run_harmony.reset_mock()
-        exec(compiled, {"adata": replay_adata})  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
+        exec(
+            compiled, {"adata": replay_adata}
+        )  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
         np.testing.assert_array_equal(replay_adata.obsm["X_pca_harmony"], expected)
         assert run_harmony.call_count == 1
         args, kwargs = run_harmony.call_args
@@ -1275,9 +1288,17 @@ def test_harmony_compatibility_rejects_unexpected_runtime_and_replay_shapes(
     original = ad.AnnData(np.ones((40, 5)))
     original.obs["batch"] = ["a"] * 20 + ["b"] * 20
     original.obsm["X_pca"] = np.arange(120, dtype=np.float32).reshape(40, 3)
-    with patch(
-        "lobster.services.analysis.enhanced_singlecell_service.harmonypy.run_harmony",
-        return_value=SimpleNamespace(Z_corr=np.zeros(shape)),
+    from types import ModuleType
+    from unittest.mock import Mock
+
+    backend = ModuleType("harmonypy")
+    backend.run_harmony = Mock(return_value=SimpleNamespace(Z_corr=np.zeros(shape)))
+    with (
+        patch.dict("sys.modules", {"harmonypy": backend}),
+        patch.dict(
+            service.integrate_batches.__func__.__globals__,
+            {"harmonypy": backend, "HARMONY_AVAILABLE": True},
+        ),
     ):
         with pytest.raises(SingleCellError, match="Unexpected Harmony embedding shape"):
             service.integrate_batches(original, "batch", n_pcs=3)
