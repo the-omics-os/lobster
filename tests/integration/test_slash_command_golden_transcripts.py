@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,6 +26,189 @@ _UPDATE_GOLDENS = os.getenv("LOBSTER_UPDATE_GOLDENS", "").lower() in {
     "true",
     "yes",
 }
+
+
+def _legacy_fixture_roots(storage_root: Path):
+    """Explicit historical JSON roots only; never use these paths for fixture IO."""
+    names = {
+        "lobster_ws": "workspace",
+        "lobster_config_show_ws": "config_show_workspace",
+        "lobster_config_model_ws": "config_model_workspace",
+        "lobster_config_show_global": "global_config",
+    }
+    return {
+        f"{prefix}/{name}": storage_root / child
+        for prefix in (
+            "/tmp",  # nosec B108 # Historical JSON prefix only; no fixture IO uses this value.
+            "/private/tmp",
+        )
+        for name, child in names.items()
+    }
+
+
+def _expected_fixture_paths(value, roots):
+    """Rebase explicit legacy path segments in EXPECTED JSON, including messages."""
+    if isinstance(value, dict):
+        return {
+            key: _expected_fixture_paths(item, roots) for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_expected_fixture_paths(item, roots) for item in value]
+    if isinstance(value, str):
+        pattern = (
+            r"(?<![\w/.-])(?:"
+            + "|".join(re.escape(root) for root in sorted(roots, key=len, reverse=True))
+            + r")(?=/|$|[\s'\",;:)])"
+        )
+        return re.sub(pattern, lambda match: str(roots[match.group()]), value)
+    return value
+
+
+def _expected_resolved_workspace(value, resolved_workspace: Path):
+    """Default-root wrapper for cross-recording transcript regression controls."""
+    return _expected_fixture_paths(
+        value,
+        {
+            "/private/tmp/lobster_ws": resolved_workspace,
+            "/tmp/lobster_ws": resolved_workspace,  # nosec B108 # Historical expected JSON path only; no IO here.
+        },
+    )
+
+
+def _assert_owned_fixture_paths(storage_root: Path, *paths: Path):
+    """Fail before IO if a fixture is pointed at shared or sibling storage."""
+    for path in paths:
+        assert path.is_relative_to(
+            storage_root
+        ), "Fixture path must be owned by tmp_path"
+
+
+@pytest.mark.parametrize(
+    "root",
+    [
+        "/tmp/lobster_ws",  # nosec B108 # Pure transcript-model resolved root; this test performs no IO here.
+        "/private/tmp/lobster_ws",
+    ],
+)
+@pytest.mark.parametrize(
+    "recorded_root",
+    [
+        "/tmp/lobster_ws",  # nosec B108 # Recorded JSON path value only; no filesystem IO at this root.
+        "/private/tmp/lobster_ws",
+    ],
+)
+@pytest.mark.parametrize(
+    "golden_name,filename",
+    [
+        ("read_notes.json", "notes.txt"),
+        ("open_demo.json", "demo.txt"),
+        ("open_missing.json", "missing.txt"),
+    ],
+)
+@pytest.mark.parametrize("regression", [None, "wrong_root", "wrong_filename"])
+def test_expected_workspace_resolution_preserves_full_transcripts(
+    root, recorded_root, golden_name, filename, regression
+):
+    """Model both recording/current roots and reject wrong actual paths."""
+    raw = json.loads((_GOLDEN_DIR / golden_name).read_text(encoding="utf-8"))
+    recorded_path = str(Path(recorded_root) / filename)
+    if golden_name == "read_notes.json":
+        raw["events"][1]["payload"]["rows"][1][1] = recorded_path
+    else:
+        raw["events"][1]["payload"]["content"] = f"Path: {recorded_path}\n"
+    original = json.dumps(raw, sort_keys=True)
+    expected = _expected_resolved_workspace(raw, Path(root))
+    actual = json.loads(original)
+    path = str(Path(root) / filename)
+    if regression == "wrong_root":
+        path = str(Path("/wrong/checkout/lobster_ws") / filename)
+    elif regression == "wrong_filename":
+        path = str(Path(root) / "wrong.txt")
+    if golden_name == "read_notes.json":
+        actual["events"][1]["payload"]["rows"][1][1] = path
+    else:
+        actual["events"][1]["payload"]["content"] = f"Path: {path}\n"
+    assert json.dumps(raw, sort_keys=True) == original
+    if regression is None:
+        assert actual == expected
+        if root != recorded_root:
+            # Original literal goldens reject an exact transcript on the other platform.
+            with pytest.raises(AssertionError):
+                assert actual == raw
+    else:
+        with pytest.raises(AssertionError):
+            assert actual == expected
+
+
+def test_expected_workspace_resolution_does_not_strip_private_globally():
+    raw = {
+        "outside": "/private/tmp/other_ws/demo.txt",
+        "collision": "/private/tmp/lobster_ws_other/demo.txt",
+        "mention": "Unrelated text /private/tmp/lobster_ws_other/demo.txt",
+        "embedded": "/elsewhere/private/tmp/lobster_ws/demo.txt",
+        "extension": "/private/tmp/lobster_ws.json",
+    }
+    assert (
+        _expected_resolved_workspace(
+            raw,
+            Path(
+                "/tmp/lobster_ws"
+            ),  # nosec B108 # Pure expected-value resolver argument; no IO performed here.
+        )
+        == raw
+    )
+
+
+@pytest.mark.parametrize(
+    "recorded_prefix",
+    [
+        "/tmp",  # nosec B108 # Pure expected JSON recording prefix; no IO uses this value.
+        "/private/tmp",
+    ],
+)
+@pytest.mark.parametrize(
+    "name",
+    [
+        "lobster_ws",
+        "lobster_config_show_ws",
+        "lobster_config_model_ws",
+        "lobster_config_show_global",
+    ],
+)
+def test_explicit_fixture_root_rebasing_controls(tmp_path, recorded_prefix, name):
+    """All four roots rebase narrowly; wrong actual paths/nonpath fields still fail."""
+    roots = _legacy_fixture_roots(tmp_path)
+    legacy = f"{recorded_prefix}/{name}"
+    target = str(roots[legacy])
+    raw = {
+        "root": legacy,
+        "file": f"{legacy}/filename.json",
+        "message": f"Generated file: {legacy}/filename.json\n",
+        "error": "filename.json: missing",
+        "collision": f"{legacy}_other/filename.json",
+        "extension": f"{legacy}.json",
+        "embedded": f"/elsewhere{legacy}/filename.json",
+    }
+    before = json.dumps(raw, sort_keys=True)
+    expected = _expected_fixture_paths(raw, roots)
+    actual = dict(raw, root=target, file=f"{target}/filename.json")
+    actual["message"] = f"Generated file: {target}/filename.json\n"
+    assert actual == expected
+    assert json.dumps(raw, sort_keys=True) == before
+    for wrong in (
+        dict(actual, file="/wrong/checkout/filename.json"),
+        dict(actual, file=f"{target}/wrong.json"),
+        dict(actual, error="filename.json: silently ignored"),
+    ):
+        with pytest.raises(AssertionError):
+            assert wrong == expected
+
+
+def test_fixture_storage_guard_rejects_sibling_root(tmp_path):
+    owned = tmp_path.resolve()
+    _assert_owned_fixture_paths(owned, owned / "workspace", owned / "global_config")
+    with pytest.raises(AssertionError, match="owned by tmp_path"):
+        _assert_owned_fixture_paths(owned, owned.parent / "unowned_workspace")
 
 
 class _DummyDataManager:
@@ -494,7 +678,7 @@ class _DummyClient:
         }
 
 
-def _apply_deterministic_family_mocks(monkeypatch):
+def _apply_deterministic_family_mocks(monkeypatch, workspace_path: Path):
     class _FixedDateTime:
         @classmethod
         def fromisoformat(cls, value):
@@ -692,7 +876,7 @@ def _apply_deterministic_family_mocks(monkeypatch):
                 [
                     ("Initialization", "Configured"),
                     ("Provider", "openai"),
-                    ("Config File", "/tmp/lobster_ws/.env"),
+                    ("Config File", str(workspace_path / ".env")),
                 ],
                 title="Initialization",
             ),
@@ -961,30 +1145,37 @@ def test_slash_command_protocol_golden_transcripts(
     command: str,
     golden_name: str,
     monkeypatch,
+    tmp_path,
 ):
-    try:
-        import lobster.core.governance.license_manager as license_manager
+    storage_root = tmp_path.resolve()
+    global_config_dir = storage_root / "global_config"
+    # The real resolver allows HOME: isolate it too so ../outside remains outside
+    # the fixture's allowed workspace/home roots, regardless of pytest basetemp.
+    monkeypatch.setenv("HOME", str(storage_root / "home"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_config_dir))
+    monkeypatch.setenv("APPDATA", str(global_config_dir))
+    import lobster.core.governance.license_manager as license_manager
 
-        monkeypatch.setattr(license_manager, "get_current_tier", lambda: "free")
-    except Exception:
-        pass
-
+    monkeypatch.setattr(license_manager, "get_current_tier", lambda: "free")
     if command == "/config":
-        workspace_path = Path("/tmp/lobster_config_show_ws")
+        workspace_path = storage_root / "config_show_workspace"
+        _assert_owned_fixture_paths(storage_root, workspace_path, global_config_dir)
         _apply_config_show_mocks(
             monkeypatch,
             workspace_path=workspace_path,
-            global_config_dir=Path("/tmp/lobster_config_show_global"),
+            global_config_dir=global_config_dir,
         )
     elif command == "/config model":
-        workspace_path = Path("/tmp/lobster_config_model_ws")
+        workspace_path = storage_root / "config_model_workspace"
+        _assert_owned_fixture_paths(storage_root, workspace_path)
         _apply_config_model_mocks(
             monkeypatch,
             workspace_path=workspace_path,
         )
     else:
-        workspace_path = Path("/tmp/lobster_ws")
-        _apply_deterministic_family_mocks(monkeypatch)
+        workspace_path = storage_root / "workspace"
+        _assert_owned_fixture_paths(storage_root, workspace_path)
+        _apply_deterministic_family_mocks(monkeypatch, workspace_path)
 
     client = _DummyClient(workspace_path)
     monkeypatch.setattr(slash_commands, "current_directory", workspace_path)
@@ -1026,5 +1217,17 @@ def test_slash_command_protocol_golden_transcripts(
         )
         pytest.skip(f"updated golden file: {golden_path}")
 
-    expected = json.loads(golden_path.read_text(encoding="utf-8"))
+    expected = _expected_fixture_paths(
+        json.loads(golden_path.read_text(encoding="utf-8")),
+        _legacy_fixture_roots(storage_root),
+    )
+    if golden_name == "config_show.json":
+        # Existing CLI display contract: two path cells use middle truncation at
+        # 56 characters. Adapt only those EXPECTED cells for long owned roots.
+        for row in expected["events"][3]["payload"]["rows"]:
+            path = row[2]
+            row[2] = path if len(path) <= 56 else path[:26] + "..." + path[-27:]
     assert actual == expected
+    created = list(storage_root.rglob("*"))
+    assert created, "Fixture must create real files in owned storage"
+    _assert_owned_fixture_paths(storage_root, *(path.resolve() for path in created))

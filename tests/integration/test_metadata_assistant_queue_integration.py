@@ -24,6 +24,11 @@ from lobster.core.schemas.publication_queue import (
     PublicationQueueEntry,
     PublicationStatus,
 )
+from lobster.services.data_access.workspace_content_service import (
+    ContentType,
+    MetadataContent,
+    WorkspaceContentService,
+)
 
 # =============================================================================
 # Fixtures
@@ -47,11 +52,25 @@ def integration_data_manager(integration_workspace):
     return DataManagerV2(workspace_path=integration_workspace)
 
 
-@pytest.fixture
-def sample_sra_metadata_files(integration_workspace):
-    """Create sample SRA metadata files in workspace."""
-    metadata_dir = integration_workspace / "metadata"
+def _assert_sra_metadata_cache(service, sra_file, content):
+    """Check the real cache contract, including case-sensitive physical naming."""
+    assert sra_file.name == "sra_prjna123_samples.json", "Expected canonical filename"
+    assert sra_file.parent.resolve() == service.metadata_dir.resolve()
+    assert {path.name for path in service.metadata_dir.glob("*.json")} == {
+        "sra_prjna123_samples.json"
+    }
+    stored = json.loads(sra_file.read_text())
+    assert stored["identifier"] == content.identifier
+    assert stored["data"] == content.data
+    restored = service.read_content(content.identifier, ContentType.METADATA)
+    assert restored["identifier"] == content.identifier
+    for key, value in content.data.items():
+        assert restored[key] == value
 
+
+@pytest.fixture
+def sample_sra_metadata_files(integration_data_manager):
+    """Create metadata via the real writer, retaining uppercase biological IDs."""
     # Create sample SRA metadata file (matches SRASampleSchema)
     sra_data = {
         "identifier": "sra_PRJNA123_samples",
@@ -98,10 +117,30 @@ def sample_sra_metadata_files(integration_workspace):
         },
     }
 
-    sra_file = metadata_dir / "sra_PRJNA123_samples.json"
-    sra_file.write_text(json.dumps(sra_data, indent=2))
+    content = MetadataContent(
+        **sra_data,
+        source="integration_fixture",
+        cached_at="2026-01-01T00:00:00",
+    )
+    service = WorkspaceContentService(integration_data_manager)
+    sra_file = Path(service.write_content(content, ContentType.METADATA))
+    _assert_sra_metadata_cache(service, sra_file, content)
 
-    return ["sra_PRJNA123_samples"]
+    return [content.identifier]
+
+
+def test_metadata_cache_guard_rejects_legacy_uppercase_filename(
+    integration_data_manager, sample_sra_metadata_files
+):
+    """Reject the original manual-file bug even on case-insensitive macOS."""
+    service = WorkspaceContentService(integration_data_manager)
+    canonical = service.metadata_dir / "sra_prjna123_samples.json"
+    content = MetadataContent.model_validate(json.loads(canonical.read_text()))
+    canonical.unlink()
+    legacy = service.metadata_dir / "sra_PRJNA123_samples.json"
+    legacy.write_text(json.dumps(content.model_dump()))
+    with pytest.raises(AssertionError, match="canonical filename"):
+        _assert_sra_metadata_cache(service, legacy, content)
 
 
 @pytest.fixture
@@ -138,7 +177,9 @@ class TestMetadataAssistantQueueIntegration:
         "lobster.agents.metadata_assistant.metadata_assistant.MetadataStandardizationService"
     )
     @patch("lobster.agents.metadata_assistant.metadata_assistant.SampleMappingService")
-    @patch("lobster.agents.metadata_assistant.metadata_assistant.MetadataFilteringService")
+    @patch(
+        "lobster.agents.metadata_assistant.metadata_assistant.MetadataFilteringService"
+    )
     @patch(
         "lobster.agents.metadata_assistant.metadata_assistant.MicrobiomeFilteringService"
     )
@@ -171,12 +212,10 @@ class TestMetadataAssistantQueueIntegration:
 
         mock_metadata_filtering = Mock()
         mock_metadata_filtering.parse_criteria.return_value = {}
-        mock_metadata_filtering.apply_filters.side_effect = (
-            lambda samples, parsed: (
-                samples[:1],
-                {"retention_rate": 50.0},
-                Mock(),
-            )
+        mock_metadata_filtering.apply_filters.side_effect = lambda samples, parsed: (
+            samples[:1],
+            {"retention_rate": 50.0},
+            Mock(),
         )
         mock_metadata_filtering_class.return_value = mock_metadata_filtering
 

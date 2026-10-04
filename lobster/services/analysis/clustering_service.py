@@ -21,6 +21,7 @@ from sklearn.metrics import (
 )
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.utils.cluster_keys import resolve_cluster_key
 from lobster.utils.deviance import calculate_deviance
 from lobster.utils.logger import get_logger
 from lobster.utils.progress_wrapper import with_periodic_progress
@@ -193,29 +194,77 @@ sc.pp.log1p(adata)
 print("Normalization complete")
 
 # 3. Store raw data and subset to selected features
+#    Bind the subset to a SEPARATE name. Rebinding `adata` here left the
+#    notebook's `adata` as the subset for every later cell, which the service
+#    never does — it keeps the full object and transfers results back (step 9).
 adata.raw = adata.copy()
-adata = adata[:, adata.var['highly_deviant']]
+adata_selected = adata[:, adata.var['highly_deviant']].copy()
 
 # 4. Scale data
-sc.pp.scale(adata, max_value=10)
+sc.pp.scale(adata_selected, max_value=10)
 print("Scaling complete")
 
 # 5. PCA dimensionality reduction
-sc.tl.pca(adata, svd_solver='arpack')
+# n_comps is explicit: without it scanpy defaults to 50 while the service
+# computes n_pcs (30), so the exported notebook summed 50 components and
+# reported a different variance ratio than the session it came from.
+sc.tl.pca(adata_selected, svd_solver='arpack', n_comps={{ n_pcs }})
 print(f"PCA complete (using {{ n_pcs }} components)")
 
 # 6. Compute neighborhood graph
-sc.pp.neighbors(adata, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})
+sc.pp.neighbors(adata_selected, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})
 print("Neighborhood graph computed")
 
 # 7. {{ algorithm | capitalize }} clustering
-sc.tl.{{ algorithm }}(adata, resolution={{ resolution }}, key_added='{{ algorithm }}')
-n_clusters = len(adata.obs['{{ algorithm }}'].unique())
+# The column name matches the service's algorithm/resolution convention.
+cluster_key = '{{ algorithm }}_res{{ resolution | string | replace(".", "_") }}'
+sc.tl.{{ algorithm }}(adata_selected, resolution={{ resolution }}, key_added=cluster_key)
+adata_selected.obs['{{ algorithm }}'] = adata_selected.obs[cluster_key]
+n_clusters = len(adata_selected.obs[cluster_key].unique())
 print(f"{{ algorithm | capitalize }} clustering complete: {n_clusters} clusters (resolution={{ resolution }})")
 
 # 8. UMAP visualization
-sc.tl.umap(adata)
+sc.tl.umap(adata_selected)
 print("UMAP coordinates computed")
+
+# Transfer results back onto the full object, exactly as the service does. The
+# notebook must retain the full modality for subsequent analysis steps.
+adata.obs[cluster_key] = adata_selected.obs[cluster_key]
+adata.obs['{{ algorithm }}'] = adata_selected.obs['{{ algorithm }}']
+adata.obsm['X_umap'] = adata_selected.obsm['X_umap']
+if 'X_pca' in adata_selected.obsm:
+    adata.obsm['X_pca'] = adata_selected.obsm['X_pca'].copy()
+if 'pca' in adata_selected.uns:
+    adata.uns['pca'] = adata_selected.uns['pca'].copy()
+if 'neighbors' in adata_selected.uns:
+    adata.uns['neighbors'] = adata_selected.uns['neighbors'].copy()
+if 'distances' in adata_selected.obsp:
+    adata.obsp['distances'] = adata_selected.obsp['distances'].copy()
+if 'connectivities' in adata_selected.obsp:
+    adata.obsp['connectivities'] = adata_selected.obsp['connectivities'].copy()
+adata.uns['resolutions_tested'] = [{{ resolution }}]
+adata.uns['clustering_results'] = {
+    {{ resolution }}: {
+        'resolution': {{ resolution }},
+        'n_clusters': n_clusters,
+        'key_name': cluster_key,
+    }
+}
+adata.uns['umap_distance_warning'] = (
+    "Distances between clusters in UMAP are not biologically meaningful. "
+    "UMAP is optimized for local neighborhood preservation, not global distance relationships."
+)
+
+# 10. Marker genes — the service runs this as part of the same call
+#     (clustering_service.py:1611), so a replay without it lacked
+#     uns['rank_genes_groups'] entirely.
+try:
+    sc.tl.rank_genes_groups(adata, '{{ algorithm }}', method='wilcoxon')
+    print("Marker genes identified")
+except ValueError as e:
+    # High resolution can produce singleton clusters, for which
+    # rank_genes_groups cannot compute statistics. The service skips these too.
+    print(f"Skipping marker gene identification: {e}")
 
 print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} clusters")
 """
@@ -263,29 +312,76 @@ n_hvg = sum(adata.var.highly_variable)
 print(f"Identified {n_hvg} highly variable genes (HVG method)")
 
 # 3. Store raw data and subset to HVG
+#    Bind the subset to a SEPARATE name — see step 9. Rebinding `adata` left
+#    every later cell running on the HVG subset, which the service never does.
 adata.raw = adata.copy()
-adata = adata[:, adata.var.highly_variable]
+adata_selected = adata[:, adata.var.highly_variable].copy()
 
 # 4. Scale data
-sc.pp.scale(adata, max_value=10)
+sc.pp.scale(adata_selected, max_value=10)
 print("Scaling complete")
 
 # 5. PCA dimensionality reduction
-sc.tl.pca(adata, svd_solver='arpack')
+# n_comps is explicit: without it scanpy defaults to 50 while the service
+# computes n_pcs (30), so the exported notebook summed 50 components and
+# reported a different variance ratio than the session it came from.
+sc.tl.pca(adata_selected, svd_solver='arpack', n_comps={{ n_pcs }})
 print(f"PCA complete (using {{ n_pcs }} components)")
 
 # 6. Compute neighborhood graph
-sc.pp.neighbors(adata, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})
+sc.pp.neighbors(adata_selected, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})
 print("Neighborhood graph computed")
 
 # 7. {{ algorithm | capitalize }} clustering
-sc.tl.{{ algorithm }}(adata, resolution={{ resolution }}, key_added='{{ algorithm }}')
-n_clusters = len(adata.obs['{{ algorithm }}'].unique())
+# The column name matches the service's algorithm/resolution convention.
+cluster_key = '{{ algorithm }}_res{{ resolution | string | replace(".", "_") }}'
+sc.tl.{{ algorithm }}(adata_selected, resolution={{ resolution }}, key_added=cluster_key)
+adata_selected.obs['{{ algorithm }}'] = adata_selected.obs[cluster_key]
+n_clusters = len(adata_selected.obs[cluster_key].unique())
 print(f"{{ algorithm | capitalize }} clustering complete: {n_clusters} clusters (resolution={{ resolution }})")
 
 # 8. UMAP visualization
-sc.tl.umap(adata)
+sc.tl.umap(adata_selected)
 print("UMAP coordinates computed")
+
+# Transfer results back onto the full object, exactly as the service does. The
+# notebook must retain the full modality for subsequent analysis steps.
+adata.obs[cluster_key] = adata_selected.obs[cluster_key]
+adata.obs['{{ algorithm }}'] = adata_selected.obs['{{ algorithm }}']
+adata.obsm['X_umap'] = adata_selected.obsm['X_umap']
+if 'X_pca' in adata_selected.obsm:
+    adata.obsm['X_pca'] = adata_selected.obsm['X_pca'].copy()
+if 'pca' in adata_selected.uns:
+    adata.uns['pca'] = adata_selected.uns['pca'].copy()
+if 'neighbors' in adata_selected.uns:
+    adata.uns['neighbors'] = adata_selected.uns['neighbors'].copy()
+if 'distances' in adata_selected.obsp:
+    adata.obsp['distances'] = adata_selected.obsp['distances'].copy()
+if 'connectivities' in adata_selected.obsp:
+    adata.obsp['connectivities'] = adata_selected.obsp['connectivities'].copy()
+adata.uns['resolutions_tested'] = [{{ resolution }}]
+adata.uns['clustering_results'] = {
+    {{ resolution }}: {
+        'resolution': {{ resolution }},
+        'n_clusters': n_clusters,
+        'key_name': cluster_key,
+    }
+}
+adata.uns['umap_distance_warning'] = (
+    "Distances between clusters in UMAP are not biologically meaningful. "
+    "UMAP is optimized for local neighborhood preservation, not global distance relationships."
+)
+
+# 10. Marker genes — the service runs this as part of the same call
+#     (clustering_service.py:1611), so a replay without it lacked
+#     uns['rank_genes_groups'] entirely.
+try:
+    sc.tl.rank_genes_groups(adata, '{{ algorithm }}', method='wilcoxon')
+    print("Marker genes identified")
+except ValueError as e:
+    # High resolution can produce singleton clusters, for which
+    # rank_genes_groups cannot compute statistics. The service skips these too.
+    print(f"Skipping marker gene identification: {e}")
 
 print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} clusters")
 """
@@ -842,7 +938,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
 
             # Subsample if needed
             if subsample_size and adata_clustered.n_obs > subsample_size:
-                # BUG-005 FIX: Preserve obs columns during subsampling
+                # Preserve observation columns during subsampling
                 original_obs_cols = set(adata_clustered.obs.columns)
                 logger.debug(
                     f"Subsampling data to {subsample_size} cells (from {adata_clustered.n_obs})"
@@ -857,7 +953,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 if original_obs_cols != new_obs_cols:
                     lost_cols = original_obs_cols - new_obs_cols
                     logger.warning(
-                        f"BUG-005: Subsampling lost {len(lost_cols)} obs columns: {lost_cols}"
+                        f"Subsampling lost {len(lost_cols)} obs columns: {lost_cols}"
                     )
 
             self._update_progress("Data preparation completed")
@@ -1025,7 +1121,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
         logger.info(f"Performing batch correction using batch key: {batch_key}")
 
         try:
-            # BUG-005 FIX: Track original obs columns for verification
+            # Track original observation columns for verification
             original_obs_cols = set(adata.obs.columns)
 
             # Simple batch correction by normalizing each batch separately
@@ -1047,12 +1143,12 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 batch_list, label=batch_key, keys=unique_batches
             )
 
-            # BUG-005 FIX: Verify metadata preservation after batch correction
+            # Verify metadata preservation after batch correction
             corrected_obs_cols = set(adata_corrected.obs.columns)
             lost_cols = original_obs_cols - corrected_obs_cols
             if lost_cols:
                 logger.warning(
-                    f"BUG-005: Batch correction lost {len(lost_cols)} obs columns: {lost_cols}"
+                    f"Batch correction lost {len(lost_cols)} obs columns: {lost_cols}"
                 )
 
             logger.info(f"Batch correction completed for {len(unique_batches)} batches")
@@ -1539,15 +1635,15 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
             adata.obs[algorithm] = adata_selected.obs[algorithm]
             adata.obsm["X_umap"] = adata_selected.obsm["X_umap"]
 
-            # BUG-002 FIX: Preserve X_pca for downstream quality evaluation
+            # Preserve X_pca for downstream quality evaluation
             if "X_pca" in adata_selected.obsm:
                 adata.obsm["X_pca"] = adata_selected.obsm["X_pca"].copy()
 
-            # BUG-003 FIX: Transfer PCA variance information for elbow plots
+            # Transfer PCA variance information for elbow plots
             if "pca" in adata_selected.uns:
                 adata.uns["pca"] = adata_selected.uns["pca"].copy()
 
-            # BUG-004 FIX: Transfer neighbor graph information for trajectory analysis
+            # Transfer neighbor graph information for trajectory analysis
             if "neighbors" in adata_selected.uns:
                 adata.uns["neighbors"] = adata_selected.uns["neighbors"].copy()
             if hasattr(adata_selected, "obsp"):
@@ -1619,7 +1715,9 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
     def compute_clustering_quality(
         self,
         adata: anndata.AnnData,
-        cluster_key: str = "leiden",
+        # Resolve the cluster key from adata.obs when omitted.
+        # and for resolution-suffixed columns, not only a literal 'leiden'.
+        cluster_key: Optional[str] = None,
         use_rep: str = "X_pca",
         n_pcs: Optional[int] = None,
         metrics: Optional[List[str]] = None,
@@ -1669,18 +1767,16 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 print(f"Resolution {res}: Silhouette={stats['silhouette_score']:.3f}")
         """
         try:
-            logger.info(f"Computing clustering quality metrics for '{cluster_key}'")
-            start_time = time.time()
-
             # Step 1: Copy input
             adata = adata.copy()
 
-            # Step 2: Validation
-            if cluster_key not in adata.obs.columns:
-                raise ValueError(
-                    f"Cluster key '{cluster_key}' not found in adata.obs. "
-                    f"Available keys: {list(adata.obs.columns)}"
-                )
+            # Step 2: Resolve and validate the cluster column.
+            # resolve_cluster_key raises ClusterKeyError (a ValueError) listing
+            # the candidates, which replaces the old bespoke check.
+            cluster_key = resolve_cluster_key(adata, cluster_key)
+
+            logger.info(f"Computing clustering quality metrics for '{cluster_key}'")
+            start_time = time.time()
 
             # Validate representation exists
             if use_rep == "X_pca" and "X_pca" not in adata.obsm:
@@ -1901,7 +1997,7 @@ print(f"Neighborhood graph computed (n_neighbors={{{{ n_neighbors }}}}, n_pcs={{
                 "interpretation": "\n".join(interpretation),
                 "recommendations": recommendations,
                 "execution_time_seconds": round(execution_time, 2),
-                "metrics": metrics_to_compute,  # BUG-008 FIX: Add metrics list for agent
+                "metrics": metrics_to_compute,  # Add metrics list for agent
             }
 
             # Add metrics

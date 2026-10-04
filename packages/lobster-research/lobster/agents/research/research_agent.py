@@ -322,6 +322,7 @@ def research_agent(
                 },
                 description=f"Literature search: {query[:50]}",
                 ir=ir,  # Pass IR for provenance tracking
+                agent=agent_name,
             )
 
             logger.debug(
@@ -397,6 +398,7 @@ def research_agent(
                 tool_name="find_related_entries",
                 parameters={"identifier": identifier, "dataset_types": dataset_types},
                 description=f"Found related entries for: {identifier}",
+                agent=agent_name,
             )
             return results
 
@@ -517,6 +519,7 @@ def research_agent(
                 },
                 description=f"Dataset search: {query[:50]}",
                 ir=ir,  # Pass IR for provenance tracking
+                agent=agent_name,
             )
 
             logger.info(
@@ -712,6 +715,7 @@ def research_agent(
                         parameters={"identifier": identifier, "database": "uniprot"},
                         description=f"UniProt metadata: {identifier}",
                         ir=None,
+                        agent=agent_name,
                     )
                     return formatted
 
@@ -780,6 +784,7 @@ def research_agent(
                         parameters={"identifier": identifier, "database": "ensembl"},
                         description=f"Ensembl metadata: {identifier}",
                         ir=None,
+                        agent=agent_name,
                     )
                     return formatted
 
@@ -868,6 +873,7 @@ def research_agent(
                             parameters={"identifier": identifier, "database": "geo"},
                             description=f"GEO metadata: {identifier}",
                             ir=None,
+                            agent=agent_name,
                         )
                         return formatted
                     except Exception as e:
@@ -931,6 +937,7 @@ def research_agent(
                             parameters={"identifier": identifier, "database": "pride"},
                             description=f"PRIDE metadata: {identifier}",
                             ir=None,
+                            agent=agent_name,
                         )
                         return formatted
 
@@ -1000,6 +1007,7 @@ def research_agent(
                             },
                             description=f"MassIVE metadata: {identifier}",
                             ir=None,
+                            agent=agent_name,
                         )
                         return formatted
 
@@ -1049,6 +1057,7 @@ def research_agent(
                     parameters={"identifier": identifier, "database": "pubmed"},
                     description=f"Publication metadata: {identifier}",
                     ir=None,
+                    agent=agent_name,
                 )
                 return formatted
 
@@ -1210,6 +1219,7 @@ def research_agent(
                     parameters={"identifier": identifier, "add_to_queue": add_to_queue},
                     description=f"Metadata validation (cached): {identifier}",
                     ir=None,
+                    agent=agent_name,
                 )
                 return "\n".join(response_parts)
 
@@ -1323,6 +1333,7 @@ def research_agent(
                             },
                             description=f"Metadata validation: {identifier}",
                             ir=None,
+                            agent=agent_name,
                         )
                         return report
                     else:
@@ -1453,6 +1464,7 @@ def research_agent(
                 tool_name="prepare_dataset_download",
                 parameters={"accession": accession, "priority": priority},
                 description=f"Download prepared: {accession}",
+                agent=agent_name,
             )
             return "\n".join(report_parts)
 
@@ -1603,6 +1615,7 @@ def research_agent(
                         "batch_size": len(identifiers),
                     },
                     description=f"Batch method extraction: {len(batch_results)} papers",
+                    agent=agent_name,
                 )
                 return response
 
@@ -1662,6 +1675,7 @@ def research_agent(
                     tool_name="extract_methods",
                     parameters={"identifier": identifier, "focus": focus},
                     description=f"Method extraction: {identifier}",
+                    agent=agent_name,
                 )
                 return f"## Extracted Methods from Paper\n\n{formatted}\n\n**Source Type**: {content.get('source_type')}\n**Extraction Time**: {content.get('extraction_time', 0):.2f}s"
 
@@ -1753,6 +1767,7 @@ def research_agent(
                 tool_name="fast_abstract_search",
                 parameters={"identifier": identifier},
                 description=f"Abstract retrieval: {identifier}",
+                agent=agent_name,
             )
             return response
 
@@ -1876,6 +1891,7 @@ Could not retrieve abstract for: {identifier}
                             "prefer_webpage": prefer_webpage,
                         },
                         description=f"Publication read: {identifier} via webpage",
+                        agent=agent_name,
                     )
                     return response
 
@@ -1927,6 +1943,7 @@ Could not retrieve abstract for: {identifier}
                 tool_name="read_full_publication",
                 parameters={"identifier": identifier, "prefer_webpage": prefer_webpage},
                 description=f"Publication read: {identifier} via {tier_used}",
+                agent=agent_name,
             )
             return response
 
@@ -2219,6 +2236,7 @@ Could not extract content for: {identifier}
                     },
                     description=f"Updated publication status {entry_id}: {old_status} → {status_override.lower()}",
                     ir=None,
+                    agent=agent_name,
                 )
 
                 response = f"""## Publication Status Updated (Manual Override)
@@ -2254,6 +2272,7 @@ Could not extract content for: {identifier}
             },
             description=f"Publication processed: {resolved_entry_id}",
             ir=None,
+            agent=agent_name,
         )
         return outcome.response_markdown
 
@@ -2363,6 +2382,7 @@ Could not extract content for: {identifier}
                 parameters={"status_filter": status_filter, "max_entries": max_entries},
                 description=f"Batch processing: {len(entry_ids)} entries (parallel)",
                 ir=None,
+                agent=agent_name,
             )
             return result.to_summary_string()
         else:
@@ -2379,6 +2399,7 @@ Could not extract content for: {identifier}
                 parameters={"status_filter": status_filter, "max_entries": max_entries},
                 description=f"Batch processing: sequential (status={final_status_filter})",
                 ir=None,
+                agent=agent_name,
             )
             return result
 
@@ -2393,7 +2414,9 @@ Could not extract content for: {identifier}
     write_to_workspace = create_write_to_workspace_tool(data_manager)
     write_to_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
     write_to_workspace.tags = ["UTILITY"]
-    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
+    get_content_from_workspace = create_get_content_from_workspace_tool(
+        data_manager, agent_name="research_agent"
+    )
     get_content_from_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
     get_content_from_workspace.tags = ["UTILITY"]
 

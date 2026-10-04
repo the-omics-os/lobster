@@ -84,21 +84,23 @@ jobs:
           --durations=10 \
           -v
 
+    # verify_env's reporting contract. Stdlib-only, so it runs here even
+    # though the script's own checks need the scientific stack.
+    - name: Run env-verification contract tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      run: |
+        python -m pytest tests/unit/test_verify_env.py tests/unit/test_ci_results.py \
+          tests/unit/test_contract_callable_selection.py tests/unit/test_contract_discovery.py \
+          --import-mode=importlib \
+          --no-cov \
+          -v
+
     - name: Run unit/backend tests
       if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       run: |
-        # TestMuDataGlobalObservations::test_global_obs_with_different_observation_names:
-        #   ValueError: The length of provided annotation 20 does not match the length 40 of MuData.obs.
-        #   Pre-existing and unrelated to any change on this branch; first visible in
-        #   run 35166529628 because 2067d416 let step 10 run for the first time since 2026-07-23.
-        #   Cause is production, not the assertion: MuData 0.4.0 flipped the
-        #   pull_on_update default to False, so global obs becomes (40, 0) and .empty
-        #   is True, and mudata_backend.py:409 then assigns one modality's 20 rows to
-        #   the 40-row union index. Bisected with AnnData held constant: passes on
-        #   MuData 0.3.10, fails on 0.4.0 and 0.4.1. Reproduces through the public
-        #   create_mudata_from_dict, so this is not a test-only problem. Remove this
-        #   deselect only after an authorized production fix makes this exact test
-        #   pass with CI's resolved dependencies.
+        # This known backend test is temporarily deselected because the current
+        # dependency combination produces a shape mismatch in global observations.
+        # Re-enable after the backend behavior is corrected.
         python -m pytest tests/unit/core/backends \
           -m "not slow and not real_api" \
           --import-mode=importlib \

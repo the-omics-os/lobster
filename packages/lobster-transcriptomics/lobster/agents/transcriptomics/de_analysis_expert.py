@@ -313,6 +313,7 @@ def de_analysis_expert(
                 },
                 description=f"Created pseudobulk matrix: {pseudobulk_adata.n_obs} samples x {pseudobulk_adata.n_vars} genes",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -438,6 +439,7 @@ def de_analysis_expert(
                     "contrast": contrast,
                 },
                 description=f"Prepared DE design for {adata.n_obs} pseudobulk samples",
+                agent=agent_name,
             )
 
             # Format response with warnings
@@ -679,6 +681,7 @@ def de_analysis_expert(
                     },
                     description=f"pyDESeq2 analysis: {analysis_stats['n_significant_genes']} significant genes found",
                     ir=ir,
+                    agent=agent_name,
                 )
 
                 response = f"""## Differential Expression Analysis Complete for '{modality_name}'
@@ -751,6 +754,7 @@ def de_analysis_expert(
                     },
                     description=f"DE analysis: {de_stats['n_significant_genes']} significant genes found",
                     ir=ir,
+                    agent=agent_name,
                 )
 
                 analysis_stats = de_stats
@@ -894,6 +898,7 @@ def de_analysis_expert(
                 parameters={"modality_name": modality_name, "formula": formula},
                 description=f"Validated experimental design: {'valid' if validation_result['valid'] else 'invalid'}",
                 ir=None,
+                agent=agent_name,
             )
 
             return response
@@ -1154,6 +1159,7 @@ def de_analysis_expert(
                 },
                 description=f"Suggested and validated formula: {formula}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build response
@@ -1453,6 +1459,7 @@ def de_analysis_expert(
                 },
                 description=f"Formula-based DE analysis: {analysis_stats['n_significant_genes']} significant genes",
                 ir=None,
+                agent=agent_name,
             )
 
             return response
@@ -1654,6 +1661,7 @@ def de_analysis_expert(
                 },
                 description=f"DE iteration {current_iter}: {current_stats['n_significant_genes']} significant genes",
                 ir=None,
+                agent=agent_name,
             )
 
             return response
@@ -1873,6 +1881,7 @@ def de_analysis_expert(
                 },
                 description=f"Compared iterations: {len(overlap)} overlapping, {len(unique1)}+{len(unique2)} unique genes",
                 ir=None,
+                agent=agent_name,
             )
 
             return response
@@ -1945,6 +1954,7 @@ def de_analysis_expert(
                 },
                 description=f"{analysis_type} enrichment: {enrichment_stats['n_significant_terms']} significant terms",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -2131,6 +2141,7 @@ def de_analysis_expert(
                 },
                 description=f"Filtered DE results: {len(filtered_df)} significant genes",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Get top genes for response
@@ -2327,6 +2338,7 @@ def de_analysis_expert(
                 },
                 description=f"Exported {len(results_df)} DE results to {output_format}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""## DE Results Exported
@@ -2503,6 +2515,7 @@ def de_analysis_expert(
                 },
                 description=f"Bulk DE: {de_stats['n_significant_genes']} significant genes",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Get DEG counts at alpha threshold
@@ -2703,6 +2716,7 @@ def de_analysis_expert(
                 },
                 description=f"GSEA: {gsea_stats.get('n_significant_gene_sets', 0)} significant gene sets",
                 ir=ir_from_service,
+                agent=agent_name,
             )
 
             # Parse results for response
@@ -2977,6 +2991,7 @@ def de_analysis_expert(
                 },
                 description=f"Exported {sig_genes} DE results as publication table",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""## Publication DE Results Exported

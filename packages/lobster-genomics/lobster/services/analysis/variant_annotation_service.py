@@ -304,7 +304,8 @@ class VariantAnnotationService:
 
                 new_var_rows = []
                 new_X_rows = []
-                new_layer_rows = {k: [] for k in adata_norm.layers.keys()}
+                layer_names = [k for k in adata_norm.layers.keys() if k is not None]
+                new_layer_rows = {k: [] for k in layer_names}
 
                 # First add all non-removed rows
                 keep_mask = np.ones(adata_norm.n_vars, dtype=bool)
@@ -324,7 +325,7 @@ class VariantAnnotationService:
 
                     orig_idx = row_info["original_idx"]
                     new_X_rows.append(adata_norm.X[:, orig_idx : orig_idx + 1])
-                    for layer_name in adata_norm.layers.keys():
+                    for layer_name in layer_names:
                         new_layer_rows[layer_name].append(
                             adata_norm.layers[layer_name][:, orig_idx : orig_idx + 1]
                         )

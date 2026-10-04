@@ -424,6 +424,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                     parameters={"entry_id": entry_id, "dataset_id": entry.dataset_id},
                     description=f"Downloaded {entry.dataset_id} → {modality_name}",
                     ir=None,
+                    agent=agent_name,
                 )
                 return response
 
@@ -468,7 +469,9 @@ You can now analyze this dataset using the appropriate analysis tools.
     execute_download_from_queue.tags = ["IMPORT"]
 
     # Use shared tool from workspace_tool.py (shared with supervisor)
-    list_available_modalities = create_list_modalities_tool(data_manager)
+    list_available_modalities = create_list_modalities_tool(
+        data_manager, agent_name="data_expert_agent"
+    )
     list_available_modalities.metadata = {
         "categories": ["UTILITY"],
         "provenance": False,
@@ -493,6 +496,7 @@ You can now analyze this dataset using the appropriate analysis tools.
             data_manager.log_tool_usage(
                 tool_name="get_modality_details",
                 parameters={"modality_name": modality_name},
+                agent=agent_name,
                 description=f"Retrieved info for {modality_name}: {info['shape']['n_obs']} obs x {info['shape']['n_vars']} vars",
                 ir=ir,
             )
@@ -567,6 +571,7 @@ You can now analyze this dataset using the appropriate analysis tools.
             data_manager.log_tool_usage(
                 tool_name="remove_modality",
                 parameters={"modality_name": modality_name},
+                agent=agent_name,
                 description=f"Removed modality {stats['removed_modality']}: {stats['shape']['n_obs']} obs x {stats['shape']['n_vars']} vars",
                 ir=ir,
             )
@@ -608,6 +613,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                 parameters={"modality_names": modality_names},
                 description=f"Validated compatibility of {len(modality_names)} modalities: {'compatible' if validation['compatible'] else 'issues detected'}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -689,6 +695,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                 },
                 description=f"Loaded modality {stats['modality_name']}: {stats['shape']['n_obs']} obs x {stats['shape']['n_vars']} vars via {stats['adapter']}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -760,6 +767,7 @@ You can now analyze this dataset using the appropriate analysis tools.
                 },
                 description=f"Created MuData from {len(modality_names)} modalities → {mudata_path}",
                 ir=None,
+                agent=agent_name,
             )
             return f"""Successfully created MuData from {len(modality_names)} modalities.
 
@@ -911,6 +919,7 @@ The MuData object contains all selected modalities and is ready for cross-modal 
                 },
                 description=f"Concatenated {len(sample_modalities)} samples into modality '{output_modality_name}'",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format results for user display
@@ -1080,6 +1089,7 @@ To save, run again with save_to_file=True"""
                     "filtered_entries": len(filtered_entries),
                 },
                 description=f"Retrieved queue status: {len(filtered_entries)} entries",
+                agent=agent_name,
             )
 
             return response

@@ -1224,6 +1224,117 @@ def test_integrate_batches_harmony(service, batched_adata):
     assert isinstance(stats["median_lisi"], float)
 
 
+@pytest.mark.parametrize("layout", ["cells_by_pcs", "pcs_by_cells"])
+def test_harmony_compatibility_preserves_runtime_and_replay_values(service, layout):
+    """Both rectangular layouts preserve each cell's corrected PC values."""
+    from types import SimpleNamespace
+
+    original = ad.AnnData(np.ones((40, 5)))
+    original.obs["batch"] = ["a"] * 20 + ["b"] * 20
+    original.obsm["X_pca"] = np.arange(120, dtype=np.float32).reshape(40, 3)
+    expected = np.arange(120, dtype=np.float64).reshape(40, 3) / 10
+    backend_output = expected if layout == "cells_by_pcs" else expected.T
+    from types import ModuleType
+    from unittest.mock import Mock
+
+    backend = ModuleType("harmonypy")
+    run_harmony = Mock(return_value=SimpleNamespace(Z_corr=backend_output))
+    backend.run_harmony = run_harmony
+    # Patch the bound implementation, not a compatibility facade; replay imports
+    # the same synthetic backend even when the optional dependency is absent.
+    with (
+        patch.dict("sys.modules", {"harmonypy": backend}),
+        patch.dict(
+            service.integrate_batches.__func__.__globals__,
+            {"harmonypy": backend, "HARMONY_AVAILABLE": True},
+        ),
+    ):
+        result, _, ir = service.integrate_batches(
+            original, "batch", n_pcs=3, max_iter=7
+        )
+        np.testing.assert_array_equal(result.obsm["X_pca_harmony"], expected)
+        assert "X_pca_harmony" not in original.obsm
+        assert run_harmony.call_count == 1
+        args, kwargs = run_harmony.call_args
+        np.testing.assert_array_equal(args[0], original.obsm["X_pca"])
+        assert args[0].dtype == np.float64
+        pd.testing.assert_frame_equal(args[1], original.obs)
+        assert args[2] == "batch"
+        assert kwargs == {"max_iter_harmony": 7}
+
+        replay_adata = original.copy()
+        compiled = compile(ir.render(), "<harmony-replay>", "exec")
+        run_harmony.reset_mock()
+        exec(
+            compiled, {"adata": replay_adata}
+        )  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
+        np.testing.assert_array_equal(replay_adata.obsm["X_pca_harmony"], expected)
+        assert run_harmony.call_count == 1
+        args, kwargs = run_harmony.call_args
+        np.testing.assert_array_equal(args[0], original.obsm["X_pca"])
+        assert args[0].dtype == np.float64
+        pd.testing.assert_frame_equal(args[1], original.obs)
+        assert args[2] == "batch"
+        assert kwargs == {"max_iter_harmony": 7}
+
+
+@pytest.mark.parametrize("shape", [(40, 2), (2, 40), (40,), (40, 3, 1)])
+def test_harmony_compatibility_rejects_unexpected_runtime_and_replay_shapes(
+    service, shape
+):
+    """Reject malformed outputs rather than reshape or silently drop PCs."""
+    from types import SimpleNamespace
+
+    original = ad.AnnData(np.ones((40, 5)))
+    original.obs["batch"] = ["a"] * 20 + ["b"] * 20
+    original.obsm["X_pca"] = np.arange(120, dtype=np.float32).reshape(40, 3)
+    from types import ModuleType
+    from unittest.mock import Mock
+
+    backend = ModuleType("harmonypy")
+    backend.run_harmony = Mock(return_value=SimpleNamespace(Z_corr=np.zeros(shape)))
+    with (
+        patch.dict("sys.modules", {"harmonypy": backend}),
+        patch.dict(
+            service.integrate_batches.__func__.__globals__,
+            {"harmonypy": backend, "HARMONY_AVAILABLE": True},
+        ),
+    ):
+        with pytest.raises(SingleCellError, match="Unexpected Harmony embedding shape"):
+            service.integrate_batches(original, "batch", n_pcs=3)
+        assert "X_pca_harmony" not in original.obsm
+        ir = service._create_integrate_batches_ir("batch", "harmony", 3, 20)
+        replay_adata = original.copy()
+        with pytest.raises(ValueError, match="Unexpected Harmony embedding shape"):
+            exec(  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay.
+                compile(ir.render(), "<harmony-replay>", "exec"),
+                {"adata": replay_adata},
+            )
+        assert "X_pca_harmony" not in replay_adata.obsm
+
+
+@pytest.mark.skipif(not HARMONY_AVAILABLE, reason="harmonypy not installed")
+def test_harmony_compatibility_matches_installed_backend_values(service, batched_adata):
+    """The actual installed backend's corrected values survive orientation handling."""
+    import harmonypy
+    import scanpy as sc
+
+    prepared = batched_adata.copy()
+    sc.tl.pca(prepared, n_comps=30)
+    backend = harmonypy.run_harmony(
+        prepared.obsm["X_pca"].astype(np.float64),
+        prepared.obs,
+        "batch",
+        max_iter_harmony=20,
+    )
+    corrected = np.asarray(backend.Z_corr)
+    expected = (
+        corrected if corrected.shape == prepared.obsm["X_pca"].shape else corrected.T
+    )
+    result, _, _ = service.integrate_batches(prepared, "batch")
+    np.testing.assert_allclose(result.obsm["X_pca_harmony"], expected)
+
+
 def test_integrate_batches_combat(service, batched_adata):
     """Test ComBat batch integration returns proper 3-tuple."""
     result_adata, stats, ir = service.integrate_batches(
@@ -1315,9 +1426,7 @@ def test_compute_trajectory_root_group(service, trajectory_adata):
 
 def test_compute_trajectory_explicit_root(service, trajectory_adata):
     """Test trajectory with explicit root cell index."""
-    result_adata, stats, ir = service.compute_trajectory(
-        trajectory_adata, root_cell=5
-    )
+    result_adata, stats, ir = service.compute_trajectory(trajectory_adata, root_cell=5)
 
     assert stats["root_cell_index"] == 5
     assert "dpt_pseudotime" in result_adata.obs.columns
@@ -1326,9 +1435,7 @@ def test_compute_trajectory_explicit_root(service, trajectory_adata):
 def test_compute_trajectory_invalid_root_group(service, trajectory_adata):
     """Test trajectory fails with nonexistent root group."""
     with pytest.raises(SingleCellError, match="not found"):
-        service.compute_trajectory(
-            trajectory_adata, root_group="nonexistent_group"
-        )
+        service.compute_trajectory(trajectory_adata, root_group="nonexistent_group")
 
 
 def test_compute_trajectory_no_neighbors(service):

@@ -82,6 +82,7 @@ def peptide_expert(
     domain_tools = create_peptide_tools(
         data_manager=data_manager,
         workspace_path=workspace_path,
+        agent_name=agent_name,
     )
 
     # Add delegation tools from parent if provided

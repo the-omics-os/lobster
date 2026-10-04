@@ -365,6 +365,7 @@ def metadata_assistant(
                 },
                 description=f"Mapped {result.summary['exact_matches']} exact, {result.summary['fuzzy_matches']} fuzzy, {result.summary['unmapped']} unmapped ({result.summary['mapping_rate']:.1%} rate)",
                 ir=None,
+                agent=agent_name,
             )
 
             # Format report
@@ -523,6 +524,7 @@ def metadata_assistant(
                     "return_format": return_format,
                 },
                 description=f"Read {len(sample_df)} samples in {return_format} format",
+                agent=agent_name,
             )
 
             # Format output based on return_format
@@ -648,6 +650,7 @@ def metadata_assistant(
                 },
                 description=f"Standardized {len(result.standardized_metadata)} valid samples, {len(result.validation_errors)} errors, {len(result.warnings)} warnings",
                 ir=ir,  # Pass IR for provenance tracking
+                agent=agent_name,
             )
 
             # Format report
@@ -854,6 +857,7 @@ def metadata_assistant(
                 },
                 description=f"Validated: samples={'✓' if result.has_required_samples else '✗'}, platform={'✓' if result.platform_consistency else '✗'}, {len(result.duplicate_ids)} duplicates, {len(result.warnings)} warnings",
                 ir=ir,  # Pass IR for provenance tracking (None for metadata_store)
+                agent=agent_name,
             )
 
             # Format report
@@ -1393,6 +1397,7 @@ Which approach would you prefer?"""
                 },
                 description=f"Filtered {original_count}→{final_count} samples ({retention_rate:.1f}% retention), {len(irs)} filters applied",
                 ir=composite_ir,
+                agent=agent_name,
             )
 
             # Format report
@@ -1438,7 +1443,9 @@ Which approach would you prefer?"""
     workspace_service = WorkspaceContentService(data_manager=data_manager)
 
     # Create shared workspace tools
-    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
+    get_content_from_workspace = create_get_content_from_workspace_tool(
+        data_manager, agent_name="metadata_assistant"
+    )
     write_to_workspace = create_write_to_workspace_tool(data_manager)
 
     get_content_from_workspace.metadata = {"categories": ["UTILITY"], "provenance": False}
@@ -2839,6 +2846,7 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
             },
             description=f"Disease enrichment: {total_enriched} samples enriched, {final_coverage:.1f}% coverage",
             ir=None,
+            agent=agent_name,
         )
 
         return "\n".join(report)
@@ -3303,7 +3311,11 @@ Fix: Run without filter first to inspect data: `process_metadata_queue(status_fi
 
             # Log with mandatory IR
             data_manager.log_tool_usage(
-                "standardize_tissue_term", {"term": term, "k": k}, stats, ir=ir
+                "standardize_tissue_term",
+                {"term": term, "k": k},
+                stats,
+                ir=ir,
+                agent=agent_name,
             )
 
             if not filtered:

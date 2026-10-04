@@ -20,12 +20,13 @@ Requirements:
 """
 
 import os
-import subprocess
+import subprocess  # nosec B404 # Local CLI integration harness; no shell.
 import sys
 from pathlib import Path
 from typing import Optional
 
 import pytest
+from rich.text import Text
 
 # Skip if not in development environment
 pytestmark = pytest.mark.integration
@@ -44,16 +45,45 @@ def run_lobster_command(args: list[str], timeout: int = 30) -> tuple[int, str, s
     """
     cmd = [sys.executable, "-m", "lobster"] + args
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env={**os.environ, "PYTHONWARNINGS": "ignore"},
+        result = (
+            subprocess.run(  # nosec B603 # Trusted interpreter and test argv; no shell.
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, "PYTHONWARNINGS": "ignore"},
+            )
         )
-        return result.returncode, result.stdout, result.stderr
+        return (
+            result.returncode,
+            Text.from_ansi(result.stdout).plain,
+            Text.from_ansi(result.stderr).plain,
+        )
     except subprocess.TimeoutExpired:
         return -1, "", "Command timed out"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "contains_agents"),
+    [
+        ("-\x1b[1;36m-\x1b[0m\x1b[1;36magents\x1b[0m", "", True),
+        ("", "\x1b[1m--\x1b[0m\x1b[36magents\x1b[0m", True),
+        ("\x1b[36m--preset\x1b[0m", "agent options", False),
+    ],
+)
+def test_cli_output_preserves_visible_flags(
+    monkeypatch, stdout, stderr, contains_agents
+):
+    """Reconstruct visible SGR-split flags without inventing an absent option."""
+
+    def completed_run(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 0, stdout, stderr)
+
+    monkeypatch.setattr(subprocess, "run", completed_run)
+    code, visible_stdout, visible_stderr = run_lobster_command(["init", "--help"])
+    assert code == 0
+    assert ("--agents" in visible_stdout + visible_stderr) is contains_agents
+    assert "\x1b" not in visible_stdout + visible_stderr
 
 
 def resolve_toml_export_path() -> Path:

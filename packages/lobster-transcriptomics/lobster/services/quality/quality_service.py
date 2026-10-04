@@ -127,9 +127,13 @@ class QualityService:
                 "cells_before_qc": cells_before,
                 "cells_after_qc": cells_after,
                 "cells_removed": cells_before - cells_after,
-                "cells_retained_pct": (cells_after / cells_before) * 100 if cells_before > 0 else 0.0,
+                "cells_retained_pct": (
+                    (cells_after / cells_before) * 100 if cells_before > 0 else 0.0
+                ),
                 "quality_status": (
-                    "Pass" if cells_before > 0 and cells_after / cells_before > 0.7 else "Warning"
+                    "Pass"
+                    if cells_before > 0 and cells_after / cells_before > 0.7
+                    else "Warning"
                 ),
                 "mean_total_counts": float(qc_metrics["total_counts"].mean()),
                 "mean_genes_per_cell": float(qc_metrics["n_genes"].mean()),
@@ -1094,32 +1098,58 @@ class QualityService:
         }
 
         # Jinja2 template with parameter placeholders
+        # Keep the template aligned with _calculate_qc_metrics_from_adata().
+        # It must use the same output columns and include the housekeeping floor
+        # in qc_pass, so replayed notebooks preserve service behavior.
         code_template = """# Annotate mitochondrial and ribosomal genes (5-pattern cascade)
 annotate_qc_genes(adata)
+_mt_mask = np.asarray(adata.var['mt'].values, dtype=bool)
+_ribo_mask = np.asarray(adata.var['ribo'].values, dtype=bool)
+# The service detects these genes without persisting var['mt'] / var['ribo'] at
+# this stage, so drop them to keep the exported state faithful. The filtering
+# stage re-annotates them itself, so nothing downstream loses them.
+del adata.var['mt']
+del adata.var['ribo']
 
-# Calculate QC metrics
-sc.pp.calculate_qc_metrics(
-    adata,
-    qc_vars=['mt', 'ribo'],
-    percent_top=None,
-    log1p=False,
-    inplace=True
-)
+# QC metrics — computed exactly as QualityService._calculate_qc_metrics_from_adata
+_total_counts = np.asarray(adata.X.sum(axis=1)).ravel()
+_n_genes = np.asarray((adata.X > 0).sum(axis=1)).ravel()
 
-# Add QC pass/fail flags (with upper bound for doublet filtering)
+if _mt_mask.sum() > 0:
+    _mt_counts = np.asarray(adata[:, _mt_mask].X.sum(axis=1)).ravel()
+    adata.obs['mt_pct'] = (_mt_counts / (_total_counts + 1e-8)) * 100
+else:
+    adata.obs['mt_pct'] = np.zeros(adata.n_obs)
+
+if _ribo_mask.sum() > 0:
+    _ribo_counts = np.asarray(adata[:, _ribo_mask].X.sum(axis=1)).ravel()
+    adata.obs['ribo_pct'] = (_ribo_counts / (_total_counts + 1e-8)) * 100
+else:
+    adata.obs['ribo_pct'] = np.zeros(adata.n_obs)
+
+_hk_genes = [g for g in ['ACTB', 'GAPDH', 'MALAT1'] if g in adata.var_names]
+if _hk_genes:
+    adata.obs['housekeeping_score'] = np.asarray(
+        adata[:, _hk_genes].X.sum(axis=1)
+    ).ravel()
+else:
+    adata.obs['housekeeping_score'] = np.zeros(adata.n_obs)
+
+# QC pass/fail — all FIVE criteria, including the housekeeping floor
 adata.obs['qc_pass'] = (
-    (adata.obs['n_genes_by_counts'] >= {{ min_genes }}) &
-    (adata.obs['n_genes_by_counts'] <= {{ max_genes }}) &
-    (adata.obs['pct_counts_mt'] <= {{ max_mt_pct }}) &
-    (adata.obs['pct_counts_ribo'] <= {{ max_ribo_pct }})
+    (_n_genes >= {{ min_genes }}) &
+    (_n_genes <= {{ max_genes }}) &
+    (adata.obs['mt_pct'].values <= {{ max_mt_pct }}) &
+    (adata.obs['ribo_pct'].values <= {{ max_ribo_pct }}) &
+    (adata.obs['housekeeping_score'].values >= {{ min_housekeeping_score }})
 )
 
 # Display QC summary
 print(f"Cells before QC: {adata.n_obs}")
 print(f"Cells passing QC: {adata.obs['qc_pass'].sum()}")
 print(f"Cells removed: {(~adata.obs['qc_pass']).sum()}")
-print(f"Mean genes per cell: {adata.obs['n_genes_by_counts'].mean():.0f}")
-print(f"Mean mitochondrial %: {adata.obs['pct_counts_mt'].mean():.2f}")
+print(f"Mean genes per cell: {_n_genes.mean():.0f}")
+print(f"Mean mitochondrial %: {adata.obs['mt_pct'].mean():.2f}")
 """
 
         # Create AnalysisStep

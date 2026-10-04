@@ -49,6 +49,7 @@ def create_shared_tools(
     analysis_service: MetabolomicsAnalysisService,
     annotation_service: MetabolomicsAnnotationService,
     force_platform_type: Optional[str] = None,
+    agent_name: str = "metabolomics_expert",
 ) -> List[Callable]:
     """
     Create shared metabolomics tools with platform auto-detection.
@@ -133,6 +134,7 @@ def create_shared_tools(
                 },
                 description="Assessed metabolomics data quality",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Quality assessment complete for '{modality_name}'.\n\n"
@@ -218,6 +220,7 @@ def create_shared_tools(
                 },
                 description="Filtered metabolomics features",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Feature filtering complete for '{modality_name}'.\n\n"
@@ -293,6 +296,7 @@ def create_shared_tools(
                 },
                 description=f"Imputed missing values using {method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Missing value imputation complete for '{modality_name}'.\n\n"
@@ -375,6 +379,7 @@ def create_shared_tools(
                 },
                 description=f"Normalized metabolomics data using {actual_method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Normalization complete for '{modality_name}'.\n\n"
@@ -447,6 +452,7 @@ def create_shared_tools(
                 },
                 description=f"Corrected batch effects using {method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Batch correction complete for '{modality_name}'.\n\n"
@@ -533,6 +539,7 @@ def create_shared_tools(
                 },
                 description="Ran univariate statistics with fold change analysis",
                 ir=stats_ir,
+                agent=agent_name,
             )
 
             response = f"Statistical analysis complete for '{modality_name}'.\n\n"
@@ -639,6 +646,7 @@ def create_shared_tools(
                 },
                 description=f"Ran {method.upper()} multivariate analysis",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build method-specific response
@@ -756,6 +764,7 @@ def create_shared_tools(
                 },
                 description="Annotated metabolites by m/z matching",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Metabolite annotation complete for '{modality_name}'.\n\n"
@@ -820,6 +829,7 @@ def create_shared_tools(
                 parameters={"modality_name": modality_name},
                 description="Classified features by lipid class",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Lipid class analysis complete for '{modality_name}'.\n\n"
@@ -879,7 +889,7 @@ def create_shared_tools(
                 from lobster.core.component_registry import component_registry
 
                 pathway_service = component_registry.get_service("pathway_enrichment")
-            except Exception:
+            except Exception:  # nosec B110 # Optional pathway service discovery retains the supported fallback.
                 pass
 
             if pathway_service is None:
@@ -1005,6 +1015,7 @@ results = service.overrepresentation_analysis(
                 },
                 description="Ran pathway enrichment analysis",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def create_peptide_tools(
     data_manager: DataManagerV2,
     workspace_path: Optional[Path] = None,
+    agent_name: str = "peptide_expert",
 ) -> List[Callable]:
     """Create peptide analysis tools with service wiring.
 
@@ -153,6 +154,7 @@ def create_peptide_tools(
             parameters={"file_path": str(resolved), "format": format},
             description=f"Import {len(valid_seqs)} peptides from {resolved.name}",
             ir=None,
+            agent=agent_name,
         )
 
         result = f"STATUS: complete\npeptides_imported={len(valid_seqs)}"
@@ -202,6 +204,7 @@ def create_peptide_tools(
             parameters={"modality_name": modality_name, "properties": properties},
             description=f"Computed {len(stats['properties_computed'])} properties for {stats['n_peptides']} peptides",
             ir=ir,
+            agent=agent_name,
         )
 
         return (
@@ -251,6 +254,7 @@ def create_peptide_tools(
             parameters={"modality_name": modality_name, "activity_type": activity_type},
             description=f"{activity_type} prediction: {stats['n_positive']} positive",
             ir=ir,
+            agent=agent_name,
         )
 
         return (
@@ -314,6 +318,7 @@ def create_peptide_tools(
             parameters={"modality_name": modality_name, "enzyme": enzyme},
             description=f"{enzyme} digest: {stats['n_fragments']} fragments from {stats['n_parents']} sequences",
             ir=ir,
+            agent=agent_name,
         )
 
         return (
@@ -420,6 +425,7 @@ def create_peptide_tools(
             },
             description=f"Filter: {n_before} → {n_after}",
             ir=None,
+            agent=agent_name,
         )
 
         return (
@@ -501,6 +507,7 @@ def create_peptide_tools(
             parameters={"modality_name": modality_name, "database": database},
             description=f"Annotated {n_annotated}/{len(sequences)} peptides",
             ir=None,
+            agent=agent_name,
         )
 
         return (
@@ -612,6 +619,7 @@ def create_peptide_tools(
             parameters={"modality_name": modality_name, "variant_type": variant_type},
             description=f"{variant_type}: {len(variants)} variants",
             ir=None,
+            agent=agent_name,
         )
 
         return (
@@ -657,6 +665,7 @@ def create_peptide_tools(
                 parameters={"modality_name": modality_name, "format": "csv"},
                 description=f"Exported CSV: {csv_path}",
                 ir=None,
+                agent=agent_name,
             )
             return f"STATUS: complete\nformat=csv\nfile={csv_path}\nrows={adata.n_obs}"
 
@@ -722,6 +731,7 @@ def create_peptide_tools(
             parameters={"modality_name": modality_name, "format": "markdown"},
             description=f"Generated report for {adata.n_obs} peptides",
             ir=None,
+            agent=agent_name,
         )
 
         return report

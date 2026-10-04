@@ -24,7 +24,10 @@ __all__ = [
 ]
 
 
-def create_feature_selection_tools(data_manager: DataManagerV2) -> List:
+def create_feature_selection_tools(
+    data_manager: DataManagerV2,
+    agent_name: str = "feature_selection_expert",
+) -> List:
     """
     Create tools for the feature selection expert agent.
 
@@ -91,6 +94,7 @@ def create_feature_selection_tools(data_manager: DataManagerV2) -> List:
                 parameters={"modality_name": modality_name, "n_features": n_features},
                 description=stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -164,6 +168,7 @@ def create_feature_selection_tools(data_manager: DataManagerV2) -> List:
                 parameters={"modality_name": modality_name, "alpha": alpha},
                 description=stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""LASSO feature selection complete!
@@ -231,6 +236,7 @@ def create_feature_selection_tools(data_manager: DataManagerV2) -> List:
                 parameters={"modality_name": modality_name, "percentile": percentile},
                 description=stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             return f"""Variance filtering complete!
@@ -312,6 +318,7 @@ def create_feature_selection_tools(data_manager: DataManagerV2) -> List:
                 },
                 description=stats,
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format summary response

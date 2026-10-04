@@ -44,6 +44,7 @@ def create_shared_tools(
     preprocessing_service: ProteomicsPreprocessingService,
     analysis_service: ProteomicsAnalysisService,
     force_platform_type: Optional[str] = None,
+    agent_name: str = "proteomics_expert",
 ) -> List[Callable]:
     """
     Create shared proteomics tools with platform auto-detection.
@@ -187,6 +188,7 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                 },
                 description=f"Imported generic expression matrix from {Path(file_path).name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             X = adata.X.toarray() if hasattr(adata.X, "toarray") else adata.X
@@ -453,6 +455,7 @@ adata = ad.AnnData(df.select_dtypes(include='number').values.astype('float32'),
                 },
                 description=f"Quality assessment for {platform_config.display_name} data",
                 ir=missing_ir,  # Use the first IR as representative
+                agent=agent_name,
             )
 
             # Generate response
@@ -753,6 +756,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 },
                 description=f"Filtered {platform_config.display_name} data",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Generate summary
@@ -891,6 +895,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 },
                 description=f"Normalized {platform_config.display_name} data",
                 ir=norm_ir,
+                agent=agent_name,
             )
 
             # Generate response
@@ -1021,6 +1026,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 },
                 description=f"Pattern analysis for {platform_config.display_name} data",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Generate response
@@ -1120,6 +1126,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 },
                 description=f"Imputed missing values using {method}",
                 ir=impute_ir,
+                agent=agent_name,
             )
 
             response = f"Successfully imputed missing values in '{modality_name}'!\n\n"
@@ -1215,6 +1222,7 @@ adata_filtered = adata_filtered[:, protein_filter].copy()""",
                 },
                 description=f"Selected {stats['n_selected']} variable proteins using {method}",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Variable protein selection complete for '{modality_name}'!\n\n"
@@ -1413,6 +1421,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                 },
                 description=f"Imported proteomics data from {Path(file_path).name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build response
@@ -1505,6 +1514,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                 },
                 description=f"Imported {ptm_type} PTM site data",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"Successfully imported {ptm_type} PTM sites from '{Path(file_path).name}'!\n\n"
@@ -1602,6 +1612,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                 },
                 description=f"Corrected batch effects using {method}",
                 ir=batch_ir,
+                agent=agent_name,
             )
 
             response = f"Successfully corrected batch effects in '{modality_name}'!\n\n"
@@ -1687,6 +1698,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                 },
                 description=f"Rolled up peptides to proteins using {method}",
                 ir=rollup_ir,
+                agent=agent_name,
             )
 
             response = f"Successfully rolled up peptide data to protein level for '{modality_name}'!\n\n"
@@ -1778,6 +1790,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                 },
                 description=f"Normalized PTM sites against protein levels ({method})",
                 ir=norm_ir,
+                agent=agent_name,
             )
 
             response = f"Successfully normalized PTM sites against protein levels!\n\n"
@@ -1896,7 +1909,7 @@ adata = parser.parse({{ file_path | tojson }})""",
                                 parser = p
                                 detected_platform = pname
                                 break
-                        except Exception:
+                        except Exception:  # nosec B112 # Try the next supported workspace data source after a failed probe.
                             continue
 
                 if parser is None:
@@ -2010,6 +2023,7 @@ adata, stats = parser.parse({{{{ file_path | tojson }}}})""",
                 },
                 description=f"Imported {detected_platform} affinity data from {file_p.name}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build response
@@ -2218,6 +2232,7 @@ adata.var['lod_pass'] = below_lod_pct <= {{ max_below_lod_pct }}""",
                 },
                 description=f"LOD quality assessment: {n_passing} passing, {n_flagged} flagged",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Build response
@@ -2443,6 +2458,7 @@ adata.X = X""",
                 },
                 description=f"Bridge normalization: {len(plates)} plates, {n_bridges} bridges",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Compute correction magnitude summary
@@ -2671,6 +2687,7 @@ for protein in common_proteins:
                 },
                 description=f"Cross-platform concordance: median r={median_corr:.3f}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Sort by correlation for reporting

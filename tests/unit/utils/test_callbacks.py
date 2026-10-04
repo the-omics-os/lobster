@@ -209,14 +209,19 @@ class TestCostCalculation:
         assert cost == pytest.approx(5.25)
 
     def test_calculate_cost_unknown_model(self, token_tracker):
-        """Test cost calculation for unknown model (should return 0.0)."""
+        """An unpriced model returns None rather than a zero cost.
+
+        Treating missing pricing as zero would make an unpriced model indistinguishable from
+        a genuinely free model and could understate session totals. See
+        tests/unit/utils/test_unpriced_model_cost.py.
+        """
         model = "unknown-model"
         input_tokens = 1000
         output_tokens = 500
 
         cost = token_tracker._calculate_cost(model, input_tokens, output_tokens)
 
-        assert cost == 0.0
+        assert cost is None
 
     def test_calculate_cost_zero_tokens(self, token_tracker):
         """Test cost calculation with zero tokens."""

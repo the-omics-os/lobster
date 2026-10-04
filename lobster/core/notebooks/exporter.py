@@ -11,7 +11,7 @@ generate code without manual mapping registries, achieving 95%+ executable noteb
 import hashlib
 import json
 import logging
-import subprocess
+import subprocess  # nosec B404 # Only fixed metadata argv is executed below; no shell commands.
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -76,7 +76,16 @@ class NotebookExporter:
         Args:
             name: Notebook filename (without extension)
             description: Human-readable description for header
-            filter_strategy: Activity filter ("successful" | "all" | "manual")
+            filter_strategy: Activity filter
+                ("successful" | "all" | "manual" | "replay").
+                The first three curate — they select IR marked ``exportable``,
+                which services commonly derive from a ``persist`` flag, so the
+                result is a notebook a user could publish. ``"replay"`` instead
+                selects IR marked ``replayable``: every step required to
+                reproduce the result, including ad-hoc computations and state
+                mutations that curation drops. Use it when the notebook is
+                meant as a reproducibility artefact rather than a publishable
+                one. The default is unchanged.
             validate_syntax: Whether to validate generated Python syntax
 
         Returns:
@@ -98,10 +107,15 @@ class NotebookExporter:
         activities = self._filter_activities(filter_strategy)
         logger.debug(f"Filtered {len(activities)} activities for export")
 
-        # Extract only exportable (activity, IR) pairs
-        # This filters out orchestration activities (publication processing, etc.)
-        # that belong in provenance but not in executable notebooks
-        exportable_pairs = self._get_exportable_activity_ir_pairs(activities)
+        # Extract the (activity, IR) pairs this strategy selects.
+        # Under the default strategies this selects on `exportable`, filtering out
+        # orchestration activities (publication processing, etc.) that belong in
+        # provenance but not in a curated notebook. Under "replay" it selects on
+        # `replayable` instead, keeping every step needed to reproduce the result.
+        select_on = "replayable" if filter_strategy == "replay" else "exportable"
+        exportable_pairs = self._get_exportable_activity_ir_pairs(
+            activities, select_on=select_on
+        )
         exportable_count = len(exportable_pairs)
         filtered_count = len(activities) - exportable_count
         exportable_activity_ids = {id(activity) for activity, _ in exportable_pairs}
@@ -112,7 +126,7 @@ class NotebookExporter:
         ]
 
         logger.info(
-            f"Extracted {exportable_count} exportable IR objects "
+            f"Extracted {exportable_count} {select_on} IR objects "
             f"from {len(activities)} activities "
             f"({filtered_count} provenance-only activities filtered)"
         )
@@ -122,9 +136,10 @@ class NotebookExporter:
 
         if exportable_count == 0:
             raise ValueError(
-                f"No exportable IR objects found in provenance. "
-                f"Found {len(activities)} activities, but none have exportable=True IR. "
-                f"Services need to emit AnalysisStep objects with exportable=True."
+                f"No {select_on} IR objects found in provenance. "
+                f"Found {len(activities)} activities, but none have "
+                f"{select_on}=True IR. "
+                f"Services need to emit AnalysisStep objects with {select_on}=True."
             )
 
         # Create new notebook
@@ -175,12 +190,17 @@ class NotebookExporter:
         # Add provenance summary cell (explains what's in notebook vs provenance)
         notebook.cells.append(
             self._create_provenance_summary_cell(
-                len(activities), exportable_count, excluded_activity_types
+                len(activities),
+                exportable_count,
+                excluded_activity_types,
+                select_on=select_on,
             )
         )
 
         # Add footer cell
-        notebook.cells.append(self._create_footer_cell(excluded_activity_types))
+        notebook.cells.append(
+            self._create_footer_cell(excluded_activity_types, select_on=select_on)
+        )
 
         # Add notebook metadata
         notebook.metadata["lobster"] = self._create_metadata(
@@ -218,13 +238,15 @@ class NotebookExporter:
         Filter provenance activities based on strategy.
 
         Args:
-            strategy: Filter strategy ("successful" | "all" | "manual")
+            strategy: Filter strategy ("successful" | "all" | "manual" | "replay")
 
         Returns:
             List of filtered activity dictionaries
         """
-        if strategy == "successful":
-            # Exclude activities with error markers
+        if strategy in ("successful", "replay"):
+            # Exclude activities with error markers. "replay" shares this base
+            # set — a step that failed produced no state worth reproducing —
+            # and differs only in which IR flag selects it downstream.
             return [
                 a
                 for a in self.provenance.activities
@@ -277,22 +299,42 @@ class NotebookExporter:
         return irs
 
     def _get_exportable_activity_ir_pairs(
-        self, activities: List[Dict[str, Any]]
+        self, activities: List[Dict[str, Any]], select_on: str = "exportable"
     ) -> List[Tuple[Dict[str, Any], AnalysisStep]]:
         """
-        Extract (activity, IR) pairs where IR exists and is exportable.
+        Extract (activity, IR) pairs where IR exists and is selected for output.
 
-        Filters out orchestration activities (e.g., publication processing,
-        metadata extraction) that log provenance but don't need notebook
-        representation. This ensures notebooks contain only executable
-        analysis steps while maintaining complete audit trail in provenance.
+        Two independent selections are available, because "should this appear in
+        a notebook a user might publish?" and "is this step required to reproduce
+        the result?" are unrelated questions:
+
+        - ``select_on="exportable"`` (default, unchanged) — curation. Filters out
+          orchestration activities (e.g. publication processing, metadata
+          extraction) that log provenance but don't need notebook
+          representation, keeping a curated notebook publishable while the
+          complete audit trail stays in provenance.
+        - ``select_on="replayable"`` — reproducibility. Keeps every step needed to
+          re-execute the session faithfully, including ad-hoc computations and
+          state mutations that curation deliberately drops. Selecting on
+          ``exportable`` here would silently omit the step that produced the
+          reported result and any mutation that deleted a modality mid-session,
+          so a replay would diverge without saying so.
 
         Args:
             activities: List of activity dictionaries from provenance
+            select_on: IR flag to select on ("exportable" | "replayable")
 
         Returns:
-            List of (activity, AnalysisStep) tuples for exportable steps only
+            List of (activity, AnalysisStep) tuples for selected steps only
+
+        Raises:
+            ValueError: If select_on is not a recognized flag
         """
+        if select_on not in ("exportable", "replayable"):
+            raise ValueError(
+                f"select_on must be 'exportable' or 'replayable', got {select_on!r}"
+            )
+
         pairs = []
 
         for activity in activities:
@@ -302,11 +344,11 @@ class NotebookExporter:
                 # IR is a dict - deserialize to AnalysisStep (in-memory provenance)
                 try:
                     ir = AnalysisStep.from_dict(ir_obj)
-                    if ir.exportable:
+                    if getattr(ir, select_on):
                         pairs.append((activity, ir))
-                        logger.debug(f"Included exportable IR: {ir.operation}")
+                        logger.debug(f"Included {select_on} IR: {ir.operation}")
                     else:
-                        logger.debug(f"Filtered non-exportable IR: {ir.operation}")
+                        logger.debug(f"Filtered non-{select_on} IR: {ir.operation}")
                 except Exception as e:
                     logger.warning(
                         f"Failed to deserialize IR for activity "
@@ -314,11 +356,11 @@ class NotebookExporter:
                     )
             elif ir_obj is not None and isinstance(ir_obj, AnalysisStep):
                 # IR is already an AnalysisStep (loaded from disk)
-                if ir_obj.exportable:
+                if getattr(ir_obj, select_on):
                     pairs.append((activity, ir_obj))
-                    logger.debug(f"Included exportable IR: {ir_obj.operation}")
+                    logger.debug(f"Included {select_on} IR: {ir_obj.operation}")
                 else:
-                    logger.debug(f"Filtered non-exportable IR: {ir_obj.operation}")
+                    logger.debug(f"Filtered non-{select_on} IR: {ir_obj.operation}")
             else:
                 # Activity has no IR - provenance-only (e.g., orchestration)
                 logger.debug(
@@ -506,7 +548,7 @@ complete code generation instructions for reproducibility.
         # Try to get Git commit hash
         try:
             git_commit = (
-                subprocess.check_output(
+                subprocess.check_output(  # nosec B603, B607 # Fixed git metadata argv, no shell or user command interpolation.
                     ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
                 )
                 .decode("utf-8")
@@ -689,9 +731,42 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
 
         # Fallback to hardcoded cell if no IR found
         logger.debug("Using fallback hardcoded data saving cell")
+        # The write is guarded because a pipeline this same exporter generates can
+        # produce an object h5ad cannot serialise: sc.tl.filter_rank_genes_groups
+        # sets filtered-out genes to NaN, so uns['rank_genes_groups_filtered']
+        # holds non-string entries in a string field and h5py raises. An
+        # unconditional write aborts the replay on the very last step, after every
+        # analysis cell has already succeeded. Offending uns keys are dropped and
+        # NAMED, never silently, and the retry preserves everything else.
+        #
+        # The except is deliberately broad. It was TypeError first, matched to the
+        # one failure seen; a later template added uns entries that raise
+        # AttributeError instead and the replay aborted on the last cell again.
+        # Any serialisation failure should sanitise and retry, because reaching
+        # this cell means every analysis step already succeeded.
         code = """# Save processed data
 output_path = f"{output_prefix}_processed.h5ad"
-adata.write_h5ad(output_path)
+try:
+    adata.write_h5ad(output_path)
+except Exception as exc:
+    # Retry without the uns entries h5ad cannot represent, reporting each one.
+    import tempfile
+    from pathlib import Path as _Path
+
+    _unwritable = []
+    with tempfile.TemporaryDirectory() as _tmp:
+        for _key in list(adata.uns):
+            _probe = adata.copy()
+            _probe.uns = {_key: adata.uns[_key]}
+            try:
+                _probe.write_h5ad(_Path(_tmp) / "probe.h5ad")
+            except Exception:
+                _unwritable.append(_key)
+    for _key in _unwritable:
+        del adata.uns[_key]
+    print(f"WARNING: dropped un-serialisable uns keys before writing: {_unwritable}")
+    print(f"         original error: {type(exc).__name__}: {exc}")
+    adata.write_h5ad(output_path)
 print(f"Saved processed data to: {output_path}")
 """
         return new_code_cell(code)
@@ -855,12 +930,15 @@ print(f"Saved processed data to: {output_path}")
             logger.error(f"Failed to render code for {ir.operation}: {e}")
             raise ValueError(f"Failed to render IR for {ir.operation}: {e}") from e
 
-    def _create_footer_cell(self, excluded_activity_types: List[str]) -> NotebookNode:
+    def _create_footer_cell(
+        self, excluded_activity_types: List[str], select_on: str = "exportable"
+    ) -> NotebookNode:
         """
         Create markdown footer cell.
 
         Args:
-            excluded_activity_types: Activity types excluded from the exportable IR count
+            excluded_activity_types: Activity types excluded from the selected IR count
+            select_on: IR flag used to select activities
 
         Returns:
             Markdown cell with export instructions
@@ -870,13 +948,13 @@ print(f"Saved processed data to: {output_path}")
                 f"`{name}`" for name in dict.fromkeys(excluded_activity_types)
             )
             export_status = (
-                "The following activities are excluded from the exportable IR count: "
+                f"The following activities are excluded from the {select_on} IR count: "
                 f"{activity_names}. Review the IR coverage and provenance summary."
             )
         else:
             export_status = (
                 "Notebook export is complete. "
-                "All selected activities have exportable IR."
+                f"All selected activities have {select_on} IR."
             )
 
         footer_content = f"""---
@@ -919,6 +997,7 @@ IR coverage alone does not establish reproducibility.
         total_activities: int,
         exportable_count: int,
         excluded_activity_types: List[str],
+        select_on: str = "exportable",
     ) -> NotebookNode:
         """
         Create summary cell explaining provenance vs notebook content.
@@ -929,8 +1008,9 @@ IR coverage alone does not establish reproducibility.
 
         Args:
             total_activities: Total number of activities in provenance
-            exportable_count: Number of activities with exportable IR
-            excluded_activity_types: Activity types excluded from the exportable IR count
+            exportable_count: Number of activities with the selected IR flag
+            excluded_activity_types: Activity types excluded from the selected IR count
+            select_on: IR flag used to select activities
 
         Returns:
             Markdown cell with provenance summary
@@ -952,8 +1032,8 @@ IR coverage alone does not establish reproducibility.
 | **Total Activities** | {total_activities} |
 
 **What's Included:**
-- **{exportable_count} activities** have exportable IR.
-- **{filtered_count} activities** are excluded from the exportable IR count.
+- **{exportable_count} activities** have {select_on} IR.
+- **{filtered_count} activities** are excluded from the {select_on} IR count.
 - **Excluded activity types:** {activity_names}
 
 **Full Provenance Record:**

@@ -175,6 +175,33 @@ class AgentClient(BaseClient):
         else:
             self.data_manager = data_manager
 
+            # An INJECTED data manager was almost certainly built as
+            # `DataManagerV2(workspace_path=...)` with no `session_dir`, which disables
+            # provenance persistence silently: activities accumulate in memory and are lost
+            # at process exit, with no warning and no error. Attach the session directory so
+            # provenance records are persisted for sessions using an injected manager.
+            #
+            # The client is the only party that knows the session identity, so it is the
+            # right place to wire this. Fail-open: provenance is observability, and a
+            # failure to persist it must never prevent a session from running.
+            attach = getattr(self.data_manager, "attach_session_dir", None)
+            if callable(attach):
+                try:
+                    self._session_dir.mkdir(parents=True, exist_ok=True)
+                    attach(self._session_dir)
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "Could not enable provenance persistence on the injected data "
+                        "manager (%s); this session will not write provenance.jsonl",
+                        exc,
+                    )
+            else:
+                logger.warning(
+                    "Injected data manager has no attach_session_dir(); provenance will "
+                    "not be persisted for session %s",
+                    self.session_id,
+                )
+
         self.profile_timings_enabled = getattr(
             self.data_manager, "profile_timings_enabled", False
         )
@@ -201,6 +228,51 @@ class AgentClient(BaseClient):
         self.aquadif_monitor = AquadifMonitor(tool_metadata_map={})
         self.token_tracker.aquadif_monitor = self.aquadif_monitor
 
+        # Routing telemetry records the ordered tool sequence and splits code
+        # execution into pre- vs post-handoff, so the escalation claim can be checked on
+        # real sessions instead of assumed. Observational and fail-open, attached at the
+        # same injection point as the AQUADIF monitor. Opt-in via LOBSTER_ROUTING_TELEMETRY
+        # so it costs nothing unless requested.
+        self.routing_telemetry = None
+        if os.getenv("LOBSTER_ROUTING_TELEMETRY", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            from lobster.core.governance.routing_telemetry import (
+                RoutingTelemetryRecorder,
+            )
+
+            self.routing_telemetry = RoutingTelemetryRecorder(
+                session_dir=getattr(self.data_manager.provenance, "session_dir", None),
+                data_manager=self.data_manager,
+            )
+            self.token_tracker.routing_telemetry = self.routing_telemetry
+
+        # Unsupported-claim detection checks the supervisor's outward claim
+        # against the artifact manifest, so "successfully calculated..." with nothing
+        # written is recorded rather than passing silently. A DETECTOR, not a gate — it
+        # cannot stop the claim reaching the user; enforcement needs a graph edge the
+        # single-node graph does not have. Needs handoff manifests (on by default via
+        # LOBSTER_HANDOFF_MANIFEST); without them every check is 'undetermined' rather than 'clean'.
+        self.claim_verification = None
+        if os.getenv("LOBSTER_CLAIM_VERIFICATION", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            from lobster.core.governance.claim_verification import (
+                ClaimVerificationRecorder,
+            )
+
+            self.claim_verification = ClaimVerificationRecorder(
+                session_dir=getattr(self.data_manager.provenance, "session_dir", None),
+            )
+            # Turn on delegation-return capture: manifests live only in handoff returns.
+            self.token_tracker.handoff_returns = []
+
         if enable_langfuse and os.getenv("LANGFUSE_PUBLIC_KEY"):
             # Lazy import to avoid requiring langchain when langfuse is not used
             from langfuse.langchain import CallbackHandler as LangfuseCallback
@@ -218,7 +290,9 @@ class AgentClient(BaseClient):
         if self.workspace_path:
             try:
                 agent_config = WorkspaceAgentConfig.load(self.workspace_path)
-            except Exception:
+            except (
+                Exception
+            ):  # nosec B110 # Missing optional workspace preferences use the documented defaults.
                 pass  # No config file or invalid - will use all agents
 
         self.graph, self.graph_metadata = create_bioinformatics_graph(
@@ -278,6 +352,14 @@ class AgentClient(BaseClient):
             "recursion_limit": 1000,  # High limit to support complex multi-agent analyses
         }
 
+        # Reset per-turn delegation capture so one turn's manifests cannot be
+        # credited to the next. Without this, a turn that wrote nothing would inherit
+        # the previous turn's artifacts and its fabricated claim would look supported.
+        if self.claim_verification is not None and (
+            self.token_tracker.handoff_returns is not None
+        ):
+            self.token_tracker.handoff_returns.clear()
+
         if stream:
             return self._stream_query(
                 graph_input,
@@ -285,8 +367,60 @@ class AgentClient(BaseClient):
                 cancel_event=cancel_event,
                 pre_query_msg_count=pre_query_msg_count,
             )
-        else:
-            return self._run_query(graph_input, config)
+
+        result = self._run_query(graph_input, config)
+        self._verify_response_claims(user_input, result)
+        self._flush_routing_telemetry()
+        return result
+
+    def _flush_routing_telemetry(self) -> None:
+        """Persist routing events after each turn.
+
+        Fail-open, matching every other observability hook here: a telemetry write must never
+        affect the response the user receives.
+        """
+        if self.routing_telemetry is None:
+            return
+        try:
+            self.routing_telemetry.flush()
+        except Exception as exc:  # noqa: BLE001 - telemetry never breaks a query
+            logger.debug(f"Routing telemetry flush failed: {exc}")
+
+    def _verify_response_claims(self, user_input: str, result: Dict[str, Any]) -> None:
+        """Check this turn's response against the artifacts actually written.
+
+        Observational and fail-open: a verification error must never affect the response
+        the user receives, so the result dict is annotated at most, never altered.
+        """
+        if self.claim_verification is None:
+            return
+        if (
+            result.get("success") is not True
+            or result.get("interrupts")
+            or result.get("error")
+            or result.get("cancelled")
+        ):
+            return
+        response = result.get("response")
+        if not isinstance(response, str) or not response.strip():
+            return
+        try:
+            check = self.claim_verification.record(
+                user_request=user_input,
+                response_text=response,
+                handoff_returns=list(self.token_tracker.handoff_returns or []),
+                tool_sequence=[
+                    event.tool_name
+                    for event in getattr(self.routing_telemetry, "events", [])
+                ],
+            )
+            self.claim_verification.flush()
+            if check is not None:
+                # Surfaced for callers that want it (benchmarks, cloud UI). Advisory
+                # only — nothing downstream branches on it.
+                result["claim_check"] = check.verdict
+        except Exception as exc:  # noqa: BLE001 - detection never breaks a query
+            logger.debug(f"Claim verification skipped: {exc}")
 
     @property
     def publication_queue(self):
@@ -2813,7 +2947,9 @@ class AgentClient(BaseClient):
             if self.workspace_path:
                 try:
                     agent_config = WorkspaceAgentConfig.load(self.workspace_path)
-                except Exception:
+                except (
+                    Exception
+                ):  # nosec B110 # Missing optional workspace preferences use the documented defaults.
                     pass
 
             # Recreate graph with new provider

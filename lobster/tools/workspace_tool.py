@@ -245,7 +245,16 @@ class WorkspaceItem(TypedDict, total=False):
     details: Optional[str]
 
 
-def create_get_content_from_workspace_tool(data_manager: DataManagerV2):
+def create_get_content_from_workspace_tool(
+    data_manager: DataManagerV2,
+    # Executing agent recorded in provenance. Defaults to None, NOT to a plausible
+    # name: these factories are called by five different agents (supervisor, data_expert,
+    # research_agent, metadata_assistant, feature_selection_expert), so any default would be
+    # wrong for four of them — attribution that reads as recorded fact while being false.
+    # None falls back to DEFAULT_PROVENANCE_AGENT, which is a *visible* "unattributed"
+    # marker rather than a silent wrong value.
+    agent_name: Optional[str] = None,
+):
     """
     Factory function to create get_content_from_workspace tool with data_manager closure.
 
@@ -1647,7 +1656,7 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
 
                         # Update metadata_store with all paths + stats + provenance (Phase 6)
                         if identifier in data_manager.metadata_store:
-                            # Convert lists to tuples for hashable storage (Bug 5 fix)
+                            # Convert lists to tuples for hashable storage
                             def make_hashable(obj):
                                 """Recursively convert lists to tuples for hashable storage."""
                                 if isinstance(obj, list):
@@ -1891,7 +1900,16 @@ def create_write_to_workspace_tool(data_manager: DataManagerV2):
     return enable_sync_fallback(write_to_workspace)
 
 
-def create_list_modalities_tool(data_manager: DataManagerV2):
+def create_list_modalities_tool(
+    data_manager: DataManagerV2,
+    # Executing agent recorded in provenance. Defaults to None, NOT to a plausible
+    # name: these factories are called by five different agents (supervisor, data_expert,
+    # research_agent, metadata_assistant, feature_selection_expert), so any default would be
+    # wrong for four of them — attribution that reads as recorded fact while being false.
+    # None falls back to DEFAULT_PROVENANCE_AGENT, which is a *visible* "unattributed"
+    # marker rather than a silent wrong value.
+    agent_name: Optional[str] = None,
+):
     """
     Factory function to create list_available_modalities tool with data_manager closure.
 
@@ -1933,6 +1951,7 @@ def create_list_modalities_tool(data_manager: DataManagerV2):
                 description=f"Listed {stats['matched_modalities']}/{stats['total_modalities']} modalities"
                 + (f" (filter: {filter_pattern})" if filter_pattern else ""),
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1966,7 +1985,16 @@ def create_list_modalities_tool(data_manager: DataManagerV2):
     return list_available_modalities
 
 
-def create_delete_from_workspace_tool(data_manager: DataManagerV2):
+def create_delete_from_workspace_tool(
+    data_manager: DataManagerV2,
+    # Executing agent recorded in provenance. Defaults to None, NOT to a plausible
+    # name: these factories are called by five different agents (supervisor, data_expert,
+    # research_agent, metadata_assistant, feature_selection_expert), so any default would be
+    # wrong for four of them — attribution that reads as recorded fact while being false.
+    # None falls back to DEFAULT_PROVENANCE_AGENT, which is a *visible* "unattributed"
+    # marker rather than a silent wrong value.
+    agent_name: Optional[str] = None,
+):
     """
     Factory function to create delete_from_workspace tool with data_manager closure.
 
@@ -2189,6 +2217,7 @@ def create_delete_from_workspace_tool(data_manager: DataManagerV2):
                                     },
                                     description=f"Deleted modality: {item['identifier']}",
                                     ir=ir,
+                                    agent=agent_name,
                                 )
                                 deletion_summary["items_deleted"] += 1
                                 response += (
@@ -2241,6 +2270,7 @@ def create_delete_from_workspace_tool(data_manager: DataManagerV2):
                                         "type": "queue_entry",
                                     },
                                     description=f"Deleted queue entry: {item['identifier']}",
+                                    agent=agent_name,
                                 )
                                 deletion_summary["items_deleted"] += 1
                                 response += (
@@ -2266,6 +2296,7 @@ def create_delete_from_workspace_tool(data_manager: DataManagerV2):
                                         "path": str(file_path),
                                     },
                                     description=f"Deleted cached file: {item['identifier']}",
+                                    agent=agent_name,
                                 )
                                 deletion_summary["items_deleted"] += 1
                                 response += f"✓ Deleted file: {item['identifier']}\n"

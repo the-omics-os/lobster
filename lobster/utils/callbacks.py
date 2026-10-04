@@ -3,6 +3,7 @@ Modern Terminal Callback Handler for Multi-Agent System.
 Provides clean, informative display of agent reasoning and execution flow.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -23,6 +24,8 @@ from rich.tree import Tree
 
 from lobster.config.agent_registry import get_all_agent_names
 from lobster.utils.error_handlers import ErrorGuidance, get_error_registry
+
+logger = logging.getLogger(__name__)
 
 
 class EventType(Enum):
@@ -774,7 +777,8 @@ class TokenInvocation:
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
-    cost_usd: float = 0.0
+    #: ``None`` means the model had no pricing entry, distinct from a zero-valued cost.
+    cost_usd: Optional[float] = 0.0
 
 
 class TokenTrackingCallback(BaseCallbackHandler):
@@ -828,6 +832,12 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self.total_tokens = 0
         self.total_cost_usd = 0.0
 
+        # Invocations whose model had no pricing entry. `total_cost_usd` is a sum over the
+        # PRICED invocations only, so this count is what makes the total's completeness
+        # legible: > 0 means the reported cost is a floor, not the actual spend.
+        self.unpriced_invocations = 0
+        self._unpriced_models: set = set()
+
         # Per-agent aggregation
         self.by_agent: Dict[str, Dict[str, Any]] = {}
 
@@ -848,6 +858,21 @@ class TokenTrackingCallback(BaseCallbackHandler):
         # AQUADIF runtime monitoring (set externally by AgentClient if monitoring enabled)
         # IMPORTANT: Only this callback should call the monitor — never Terminal/Streaming handlers
         self.aquadif_monitor = None
+
+        # Routing telemetry. Set externally by AgentClient. Reuses this same
+        # injection point rather than adding a third observation seam; like the AQUADIF
+        # monitor it is observational and fail-open, and only this callback feeds it so
+        # display handlers cannot double-count.
+        self.routing_telemetry = None
+
+        # Delegation returns captured for claim verification. None disables
+        # capture; AgentClient sets it to a list when verification is enabled. Needed
+        # because artifact manifests appear ONLY in handoff returns and never in the
+        # final response, so without this there is nothing to check claims against.
+        self.handoff_returns: Optional[List[str]] = None
+
+        # Bound the buffer so a long session cannot grow it without limit.
+        self.max_handoff_returns: int = 50
 
     # =================================================================
     # AGENT NAME DETECTION (Core Logic)
@@ -1062,12 +1087,54 @@ class TokenTrackingCallback(BaseCallbackHandler):
                     tool_name=tool_name,
                     current_agent=self.current_agent or "unknown",
                 )
-            except Exception:
+            except (
+                Exception
+            ):  # nosec B110 # Advisory monitoring must not interrupt tool invocation.
                 pass  # Fail-open: monitor exception never crashes tool invocation
 
+        # Routing telemetry — same injection point, same fail-open contract.
+        # Passes current_agent WITHOUT the "unknown" fallback: the recorder needs to
+        # distinguish "no metadata signal" from a literal agent named unknown, since
+        # that distinction is how it detects a blind tracer.
+        if self.routing_telemetry is not None:
+            try:
+                self.routing_telemetry.record_tool_invocation(
+                    tool_name=tool_name,
+                    current_agent=self.current_agent,
+                    # Run identity. These already exist here — the callback
+                    # maintains `run_to_agent` and `current_run_id` — and were being dropped
+                    # before telemetry. They give nesting (which a bare index cannot express)
+                    # and the join key to `provenance.jsonl`.
+                    run_id=kwargs.get("run_id"),
+                    parent_run_id=kwargs.get("parent_run_id"),
+                )
+            except (
+                Exception
+            ):  # nosec B110 # Advisory telemetry must not interrupt tool invocation.
+                pass  # Fail-open: telemetry exception never crashes tool invocation
+
     def on_tool_end(self, output: str, **kwargs) -> None:
-        """Clear tool context when tool completes."""
+        """Clear tool context when tool completes.
+
+        Also captures delegation returns for claim verification. A handoff return
+        is the only place an artifact manifest appears — it is absent from the final
+        response the user sees — so without capturing it here there is nothing to check
+        the supervisor's claims against.
+        """
+        finished_tool = self.current_tool
         self.current_tool = None
+
+        if self.handoff_returns is not None and finished_tool:
+            try:
+                if finished_tool.startswith("handoff_to_"):
+                    text = output if isinstance(output, str) else str(output)
+                    if len(self.handoff_returns) < self.max_handoff_returns:
+                        # Only the manifest tail is needed, so keep the slice bounded.
+                        self.handoff_returns.append(text[-4000:])
+            except (
+                Exception
+            ):  # nosec B110 # Optional manifest capture must not interrupt tool completion.
+                pass  # Fail-open: capture never crashes a tool completion
 
     def on_llm_end(self, response: LLMResult, **kwargs) -> None:
         """
@@ -1108,7 +1175,14 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self.total_input_tokens += usage["input_tokens"]
         self.total_output_tokens += usage["output_tokens"]
         self.total_tokens += usage["total_tokens"]
-        self.total_cost_usd += cost
+        # An unpriced invocation contributes NOTHING to the total and is counted separately,
+        # so `total_cost_usd` stays an honest sum over the invocations it could actually
+        # price, and `cost_complete` reports whether that sum covers the whole session.
+        # Summing a zero placeholder here would make unpriced usage appear free.
+        if cost is None:
+            self.unpriced_invocations += 1
+        else:
+            self.total_cost_usd += cost
 
         # Update per-agent aggregation
         agent_name = self.current_agent or "unknown"
@@ -1118,13 +1192,17 @@ class TokenTrackingCallback(BaseCallbackHandler):
                 "output_tokens": 0,
                 "total_tokens": 0,
                 "cost_usd": 0.0,
+                "unpriced_invocations": 0,
                 "invocation_count": 0,
             }
 
         self.by_agent[agent_name]["input_tokens"] += usage["input_tokens"]
         self.by_agent[agent_name]["output_tokens"] += usage["output_tokens"]
         self.by_agent[agent_name]["total_tokens"] += usage["total_tokens"]
-        self.by_agent[agent_name]["cost_usd"] += cost
+        if cost is None:
+            self.by_agent[agent_name]["unpriced_invocations"] += 1
+        else:
+            self.by_agent[agent_name]["cost_usd"] += cost
         self.by_agent[agent_name]["invocation_count"] += 1
 
     def _extract_token_usage(self, response: LLMResult) -> Optional[Dict[str, int]]:
@@ -1241,9 +1319,27 @@ class TokenTrackingCallback(BaseCallbackHandler):
 
         return "unknown"
 
+    #: Model-name fragments that identify a genuinely-free local model. These are excluded
+    #: from ``pricing_config`` on purpose (see ``get_all_models_with_pricing``, which skips
+    #: the ollama provider), so their absence means zero cost rather than "unknown".
+    _LOCAL_MODEL_MARKERS = (
+        "ollama",
+        "llama",
+        "mistral",
+        "phi",
+        "qwen",
+        "gemma",
+        "deepseek-r1",
+    )
+
+    def _is_local_model(self, model: str) -> bool:
+        """Whether an unpriced model is unpriced *because it is free*."""
+        lowered = (model or "").lower()
+        return any(marker in lowered for marker in self._LOCAL_MODEL_MARKERS)
+
     def _calculate_cost(
         self, model: str, input_tokens: int, output_tokens: int
-    ) -> float:
+    ) -> Optional[float]:
         """
         Calculate cost based on model pricing.
 
@@ -1253,10 +1349,29 @@ class TokenTrackingCallback(BaseCallbackHandler):
             output_tokens: Number of output tokens
 
         Returns:
-            Cost in USD
+            Cost in USD, or ``None`` if the model has no pricing entry.
+
+        ``None`` is not a decorative distinction. Returning ``0.0`` for an unpriced model
+        makes "this model is free" and "we do not know what this cost" identical, and the
+        zero then sums silently into ``total_cost_usd``. A genuinely free local model still
+        returns ``0.0`` — see ``_is_local_model``. The two cases are distinguishable, which
+        is the entire point.
         """
         if model not in self.pricing_config:
-            return 0.0
+            if self._is_local_model(model):
+                return 0.0
+            if model not in self._unpriced_models:
+                self._unpriced_models.add(model)
+                logger.warning(
+                    "No pricing entry for model %r - recording cost as UNKNOWN (None), "
+                    "not $0.00. Session cost totals will be reported as incomplete. "
+                    "Add this model to the provider's ModelInfo catalog to enable cost "
+                    "accounting. Note that Bedrock requires 'us.'/'global.'-prefixed "
+                    "cross-region inference profile IDs for on-demand invocation, so a "
+                    "config keyed only on bare model IDs will miss real production calls.",
+                    model,
+                )
+            return None
 
         pricing = self.pricing_config[model]
         input_cost = (input_tokens / 1_000_000) * pricing.get("input_per_million", 0.0)
@@ -1278,12 +1393,20 @@ class TokenTrackingCallback(BaseCallbackHandler):
             "total_output_tokens": self.total_output_tokens,
             "total_tokens": self.total_tokens,
             "total_cost_usd": round(self.total_cost_usd, 4),
+            # Completeness of the figure above. `cost_complete=False` means at least one
+            # invocation could not be priced, so `total_cost_usd` is a LOWER BOUND and any
+            # derived metric (cost-per-answer, cost-per-token) must be withheld rather than
+            # computed. Consumers that ignore these keys behave exactly as before.
+            "cost_complete": self.unpriced_invocations == 0,
+            "unpriced_invocations": self.unpriced_invocations,
+            "unpriced_models": sorted(self._unpriced_models),
             "by_agent": {
                 agent: {
                     "input_tokens": stats["input_tokens"],
                     "output_tokens": stats["output_tokens"],
                     "total_tokens": stats["total_tokens"],
                     "cost_usd": round(stats["cost_usd"], 4),
+                    "unpriced_invocations": stats.get("unpriced_invocations", 0),
                     "invocation_count": stats["invocation_count"],
                 }
                 for agent, stats in self.by_agent.items()
@@ -1297,7 +1420,11 @@ class TokenTrackingCallback(BaseCallbackHandler):
                     "input_tokens": inv.input_tokens,
                     "output_tokens": inv.output_tokens,
                     "total_tokens": inv.total_tokens,
-                    "cost_usd": round(inv.cost_usd, 4),
+                    # Stays None for an unpriced invocation: round(None) would raise, and
+                    # coercing to 0.0 here would reintroduce the bug at the report boundary.
+                    "cost_usd": (
+                        None if inv.cost_usd is None else round(inv.cost_usd, 4)
+                    ),
                 }
                 for inv in self.invocations
             ],
@@ -1315,19 +1442,21 @@ class TokenTrackingCallback(BaseCallbackHandler):
             latest_cost = self.invocations[-1].cost_usd
 
         return {
-            "latest_cost_usd": round(latest_cost, 4),
+            "latest_cost_usd": None if latest_cost is None else round(latest_cost, 4),
             "session_total_usd": round(self.total_cost_usd, 4),
             "total_tokens": self.total_tokens,
+            "cost_complete": self.unpriced_invocations == 0,
+            "unpriced_invocations": self.unpriced_invocations,
         }
 
     def get_minimal_summary(self) -> str:
         """
         Get clean session cost summary for end-of-session display.
 
-        For cloud providers (cost > 0):
-            "Session cost: $0.16"
-        For local models (cost == 0):
-            "Session: 39.5k tokens (local)"
+        For cloud providers (cost is available):
+            "Session cost: <amount>"
+        For local models:
+            "Session: <tokens> tokens (local)"
         """
         if not self.invocations:
             return ""
@@ -1339,6 +1468,16 @@ class TokenTrackingCallback(BaseCallbackHandler):
             return str(count)
 
         total_str = format_tokens(self.total_tokens)
+
+        # An unpriced session is NOT a local session. Falling through to "(local)" here is
+        # how an unpriced paid session could be reported as local.
+        if self.unpriced_invocations:
+            if self.total_cost_usd > 0:
+                cost_str = f"${self.total_cost_usd:.4f}".rstrip("0").rstrip(".")
+                return (
+                    f"Session cost: >{cost_str} ({total_str} tokens, cost incomplete)"
+                )
+            return f"Session: {total_str} tokens (cost unknown - model not priced)"
 
         if self.total_cost_usd > 0:
             cost_str = f"${self.total_cost_usd:.4f}".rstrip("0").rstrip(".")
@@ -1353,10 +1492,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
         Get detailed token usage summary with per-agent breakdown.
 
         Returns tree-style breakdown:
-            "💰 39.5k tokens ($0.16)
-              Supervisor        9.1k
-              Research Agent    6.6k
-              Data Expert      21.1k"
+            "💰 <tokens> tokens (<cost>)"
         """
         if not self.invocations:
             return ""
@@ -1370,6 +1506,9 @@ class TokenTrackingCallback(BaseCallbackHandler):
         cost_str = f"${self.total_cost_usd:.4f}".rstrip("0").rstrip(".")
         if cost_str == "$0.":
             cost_str = "$0.00"
+        # ">" marks the total as a lower bound over the priced invocations only.
+        if self.unpriced_invocations:
+            cost_str = f">{cost_str}, {self.unpriced_invocations} unpriced"
 
         lines = [f"💰 {total_str} tokens ({cost_str})"]
 
@@ -1408,6 +1547,8 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self.total_output_tokens = 0
         self.total_tokens = 0
         self.total_cost_usd = 0.0
+        self.unpriced_invocations = 0
+        self._unpriced_models = set()
         self.by_agent = {}
         self.invocations = []
         self.current_agent = "supervisor"  # Supervisor is always first

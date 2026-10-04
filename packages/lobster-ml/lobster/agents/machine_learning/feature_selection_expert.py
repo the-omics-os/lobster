@@ -73,10 +73,14 @@ def feature_selection_expert(
         llm = llm.with_config(callbacks=callbacks)
 
     # Get feature selection tools
-    fs_tools = create_feature_selection_tools(data_manager)
+    fs_tools = create_feature_selection_tools(
+        data_manager, agent_name=agent_name
+    )
 
     # Use shared tool from workspace_tool.py (consistent with data_expert and supervisor)
-    list_available_modalities = create_list_modalities_tool(data_manager)
+    list_available_modalities = create_list_modalities_tool(
+        data_manager, agent_name="feature_selection_expert"
+    )
     list_available_modalities.metadata = {"categories": ["UTILITY"], "provenance": False}
     list_available_modalities.tags = ["UTILITY"]
 

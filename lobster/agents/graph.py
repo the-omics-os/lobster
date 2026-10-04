@@ -24,6 +24,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import create_react_agent
 from langgraph.store.memory import InMemoryStore
 
+from lobster.agents.artifact_manifest import (
+    append_manifest,
+    manifests_enabled,
+    take_snapshot,
+)
 from lobster.agents.state import OverallState
 from lobster.agents.supervisor import create_supervisor_prompt
 from lobster.config.agent_registry import import_agent_factory
@@ -141,18 +146,27 @@ def _get_parent_agent(agent_name: str, worker_agents: Dict) -> Optional[str]:
 
 
 async def _invoke_and_store(
-    agent, agent_name: str, task_description: str, store
+    agent, agent_name: str, task_description: str, store, data_manager=None
 ) -> str:
     """Shared invoke pipeline for all delegation tools.
 
     Constructs config for callback attribution, invokes the agent, extracts
     the final message, and optionally dual-writes the result to store.
 
+    When handoff manifests are enabled (``LOBSTER_HANDOFF_MANIFEST``) and a
+    ``data_manager`` is supplied, a compact manifest of artifacts written during the
+    handoff is appended. This is the only path by which the supervisor can learn that a
+    specialist produced a modality or file: the message content alone is prose, and the
+    store dual-write below persists that same prose. See ``artifact_manifest`` for the
+    rationale. Manifests are enabled by default; set ``LOBSTER_HANDOFF_MANIFEST=0``
+    to disable them.
+
     Args:
         agent: The compiled agent (Pregel) to invoke
         agent_name: Agent name for logging and callback attribution
         task_description: Task to send to the agent
         store: Optional InMemoryStore for dual-write result storage
+        data_manager: Optional DataManagerV2, required for artifact manifests
 
     Returns:
         Agent response content, with [store_key=...] appended if stored
@@ -164,6 +178,12 @@ async def _invoke_and_store(
         "tags": [agent_name],
         "metadata": {"agent_name": agent_name},
     }
+
+    # Snapshot before invoking so the diff covers exactly this handoff. Taken outside
+    # any lock we hold, and never held across the child's execution.
+    snapshot_before = None
+    if data_manager is not None and manifests_enabled():
+        snapshot_before = take_snapshot(data_manager)
 
     result = await agent.ainvoke(
         {"messages": [{"role": "user", "content": task_description}]}, config=config
@@ -185,11 +205,24 @@ async def _invoke_and_store(
         if store_key:
             content = f"{content}\n\n[store_key={store_key}]"
 
+    if snapshot_before is not None:
+        content = append_manifest(
+            content,
+            snapshot_before,
+            take_snapshot(data_manager),
+            agent_name=agent_name,
+        )
+
     return content
 
 
 def _create_agent_tool(
-    agent_name: str, agent, tool_name: str, description: str, store=None
+    agent_name: str,
+    agent,
+    tool_name: str,
+    description: str,
+    store=None,
+    data_manager=None,
 ):
     """Create a tool that invokes a sub-agent (Tool Calling pattern).
 
@@ -201,8 +234,10 @@ def _create_agent_tool(
         tool_name: Name for the tool (e.g., "handoff_to_research_agent")
         description: Description of when to use this tool
         store: Optional InMemoryStore for dual-write result storage
+        data_manager: Optional DataManagerV2, enables artifact manifests
     """
     _store = store
+    _data_manager = data_manager
 
     @tool(tool_name, description=description)
     async def invoke_agent(task_description: str) -> str:
@@ -216,7 +251,9 @@ def _create_agent_tool(
         logger.info(
             f"=== HANDOFF TO {agent_name} ===\n{task_description[:500]}\n=== END HANDOFF ==="
         )
-        return await _invoke_and_store(agent, agent_name, task_description, _store)
+        return await _invoke_and_store(
+            agent, agent_name, task_description, _store, _data_manager
+        )
 
     invoke_agent.metadata = {"categories": ["DELEGATE"], "provenance": False}
     invoke_agent.tags = ["DELEGATE"]
@@ -231,6 +268,7 @@ def _create_lazy_delegation_tool(
     agents_dict: Dict[str, Any],
     description: str,
     store=None,
+    data_manager=None,
 ):
     """Create delegation tool with lazy agent resolution.
 
@@ -243,6 +281,7 @@ def _create_lazy_delegation_tool(
         agents_dict: Shared dict that will contain created agents
         description: Description for the tool
         store: Optional InMemoryStore for dual-write result storage
+        data_manager: Optional DataManagerV2, enables artifact manifests
 
     Returns:
         Tool function with lazy agent resolution
@@ -251,6 +290,7 @@ def _create_lazy_delegation_tool(
     _dict = agents_dict
     _desc = description
     _store = store
+    _data_manager = data_manager
 
     @tool(f"handoff_to_{_name}", description=f"Delegate task to {_name}. {_desc}")
     async def invoke_agent_lazy(task_description: str) -> str:
@@ -293,7 +333,9 @@ def _create_lazy_delegation_tool(
         logger.info(
             f"=== CHILD DELEGATION TO {_name} ===\n{task_description[:500]}\n=== END CHILD DELEGATION ==="
         )
-        return await _invoke_and_store(agent, _name, task_description, _store)
+        return await _invoke_and_store(
+            agent, _name, task_description, _store, _data_manager
+        )
 
     invoke_agent_lazy.metadata = {"categories": ["DELEGATE"], "provenance": False}
     invoke_agent_lazy.tags = ["DELEGATE"]
@@ -457,6 +499,7 @@ def _create_agents_single_pass(
                             created_agents,  # Dict reference — resolved at invocation
                             child_config.description,
                             store=store,
+                            data_manager=data_manager,
                         )
                     )
                 else:
@@ -584,15 +627,25 @@ def _build_supervisor_tools(
                 tool_name=agent_config.handoff_tool_name,
                 description=desc,
                 store=store,
+                data_manager=data_manager,
             )
             agent_tools.append(agent_tool)
             supervisor_accessible_names.append(agent_config.name)
             logger.debug(f"Created supervisor tool: {agent_config.handoff_tool_name}")
 
-    # Shared workspace tools
-    list_available_modalities = create_list_modalities_tool(data_manager)
-    get_content_from_workspace = create_get_content_from_workspace_tool(data_manager)
-    delete_from_workspace = create_delete_from_workspace_tool(data_manager)
+    # Shared workspace tools. `agent_name="supervisor"` records the executing agent in
+    # provenance: these are attached to the supervisor's own tool list below, so
+    # without it their activities were logged as `agent="data_manager"` — the object writing
+    # the record — and the audit trail could not say who inspected or deleted what.
+    list_available_modalities = create_list_modalities_tool(
+        data_manager, agent_name="supervisor"
+    )
+    get_content_from_workspace = create_get_content_from_workspace_tool(
+        data_manager, agent_name="supervisor"
+    )
+    delete_from_workspace = create_delete_from_workspace_tool(
+        data_manager, agent_name="supervisor"
+    )
 
     # Code execution fallback
     from lobster.services.execution.custom_code_execution_service import (
@@ -970,7 +1023,9 @@ def create_bioinformatics_graph(
                     for t in tools_node.runnable.tools or []:
                         if hasattr(t, "metadata"):
                             tool_metadata_map[t.name] = t.metadata
-            except Exception:
+            except (
+                Exception
+            ):  # nosec B110 # Optional tool metadata extraction is best effort, not access control.
                 pass  # Fail-open: skip agents whose tools can't be extracted
 
         # Populate monitor's tool map (monitor already attached to callback by reference)

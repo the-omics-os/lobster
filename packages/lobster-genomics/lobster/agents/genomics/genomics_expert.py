@@ -235,6 +235,7 @@ adata = adapter.from_source(
                 },
                 description=f"Loaded VCF file: {n_samples} samples x {n_variants} variants",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Check if variants were truncated
@@ -372,6 +373,7 @@ adata = adapter.from_source(
                 },
                 description=f"Loaded PLINK file: {n_individuals} individuals x {n_snps} SNPs",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""Successfully loaded PLINK file: '{modality_name}'
@@ -477,6 +479,7 @@ adata = adapter.from_source(
                 },
                 description=f"Quality assessment: {stats['n_variants_pass_qc']}/{stats['n_variants']} variants pass QC",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -588,6 +591,7 @@ adata = adapter.from_source(
                 },
                 description=f"Sample filtering: {stats['samples_after']}/{stats['samples_before']} samples retained",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -688,6 +692,7 @@ adata = adapter.from_source(
                 },
                 description=f"Variant filtering: {stats['variants_after']}/{stats['variants_before']} variants retained",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -805,6 +810,7 @@ This dataset can now be used for downstream analysis (GWAS, annotation - coming 
                 },
                 description=f"GWAS: {stats['n_variants_significant']}/{stats['n_variants_tested']} significant variants",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -914,6 +920,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 },
                 description=f"PCA: {n_components} components, PC1 explains {stats['variance_explained_pc1']:.1%}",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1020,6 +1027,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 },
                 description=f"Annotation: {stats['n_variants_annotated']}/{stats['n_variants']} variants annotated",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format response
@@ -1122,6 +1130,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 },
                 description=f"LD pruning: {stats['n_variants_after']}/{stats['n_variants_before']} variants retained (r²>{threshold})",
                 ir=ir,
+                agent=agent_name,
             )
 
             response = f"""LD pruning completed: '{pruned_modality_name}'
@@ -1211,6 +1220,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 },
                 description=f"Kinship analysis: {stats['n_related_pairs']} related pairs (threshold={kinship_threshold})",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format related pairs info
@@ -1318,6 +1328,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 },
                 description=f"GWAS clumping: {stats['n_clumps']} loci from {stats['n_significant_variants']} significant variants",
                 ir=ir,
+                agent=agent_name,
             )
 
             # Format top clumps
