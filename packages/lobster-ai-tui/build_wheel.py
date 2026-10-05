@@ -14,9 +14,11 @@ This script:
 """
 
 import argparse
+import ast
 import os
-import shutil
-import subprocess
+
+# Build tools use explicit argv, never a shell.
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
@@ -52,9 +54,16 @@ PKG_DIR = Path(__file__).resolve().parent
 def get_version() -> str:
     """Read version from lobster/version.py."""
     version_file = REPO_ROOT / "lobster" / "version.py"
-    ns: dict = {}
-    exec(version_file.read_text(), ns)
-    return ns["__version__"]
+    tree = ast.parse(version_file.read_text())
+    values = [
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "__version__" for t in node.targets)
+    ]
+    if len(values) != 1 or not isinstance(values[0], str):
+        raise ValueError("Expected one literal __version__ assignment")
+    return values[0]
 
 
 def build_go_binary(platform: str, version: str) -> Path:
@@ -72,15 +81,19 @@ def build_go_binary(platform: str, version: str) -> Path:
     ldflags = f"-s -w -X main.Version={version}"
 
     cmd = [
-        "go", "build",
-        "-ldflags", ldflags,
+        "go",
+        "build",
+        "-ldflags",
+        ldflags,
         "-trimpath",
-        "-o", str(output),
+        "-o",
+        str(output),
         "./cmd/lobster-tui",
     ]
 
     print(f"Building lobster-tui for {platform} (v{version})...")
-    subprocess.run(cmd, cwd=GO_SOURCE, env=env, check=True)
+    # Local compiler, fixed source/output paths and allowlisted platform; no shell.
+    subprocess.run(cmd, cwd=GO_SOURCE, env=env, check=True)  # nosec B603
 
     # Make executable
     output.chmod(0o755)
@@ -97,25 +110,50 @@ def build_wheel(platform: str, version: str) -> Path:
     dist_dir = PKG_DIR / "dist"
     dist_dir.mkdir(exist_ok=True)
 
-    # Build the wheel with setuptools, then rename with correct platform tag
-    subprocess.run(
-        [sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
+    # Start with an empty output directory: never retag a stale wheel.
+    if any(dist_dir.iterdir()):
+        raise RuntimeError(f"Wheel output directory is not empty: {dist_dir}")
+
+    # Invoke the current Python's build module with fixed options; no shell.
+    subprocess.run(  # nosec B603
+        [
+            sys.executable,
+            "-m",
+            "build",
+            "--installer",
+            "uv",
+            "--wheel",
+            "--outdir",
+            str(dist_dir),
+        ],
         cwd=PKG_DIR,
         check=True,
     )
 
-    # Find the built wheel and rename it with the platform tag
-    for whl in dist_dir.glob("lobster_ai_tui-*.whl"):
-        # Replace 'any' with the platform-specific tag
-        new_name = whl.name.replace("-any.whl", f"-{plat_tag}.whl")
-        new_name = new_name.replace("none-any", f"none-{plat_tag}")
-        new_path = whl.parent / new_name
-        if new_path != whl:
-            shutil.move(str(whl), str(new_path))
-        print(f"  Wheel: {new_path.name}")
-        return new_path
-
-    raise RuntimeError("No wheel found after build")
+    wheel = dist_dir / f"lobster_ai_tui-{version}-py3-none-any.whl"
+    if not wheel.is_file():
+        raise RuntimeError(f"Expected wheel for version {version}: {wheel}")
+    # The wheel tool rewrites WHEEL tags and RECORD, not just the filename.
+    # Retag our just-built wheel through a fixed module/argv, never a shell.
+    subprocess.run(  # nosec B603
+        [
+            sys.executable,
+            "-m",
+            "wheel",
+            "tags",
+            "--remove",
+            "--platform-tag",
+            plat_tag,
+            str(wheel),
+        ],
+        check=True,
+    )
+    canonical_tag = ".".join(sorted(plat_tag.split(".")))
+    result = dist_dir / f"lobster_ai_tui-{version}-py3-none-{canonical_tag}.whl"
+    if not result.is_file():
+        raise RuntimeError(f"Retagged wheel missing: {result}")
+    print(f"  Wheel: {result.name}")
+    return result
 
 
 def main():
@@ -129,11 +167,14 @@ def main():
     parser.add_argument(
         "--version",
         default=None,
-        help="Version override (default: read from lobster/version.py)",
+        help="Version to build (must match lobster/version.py)",
     )
     args = parser.parse_args()
 
-    version = args.version or get_version()
+    source_version = get_version()
+    version = args.version or source_version
+    if version != source_version:
+        parser.error("--version must match lobster/version.py")
 
     # 1. Cross-compile Go binary
     build_go_binary(args.platform, version)

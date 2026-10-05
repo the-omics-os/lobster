@@ -6,9 +6,9 @@
 #
 # Architecture:
 # - Direct publishing from uv workspace packages
-# - 11 packages built and published to PyPI + TestPyPI
-#   - 7 stable: lobster-ai, transcriptomics, research, visualization, proteomics, genomics, metabolomics
-#   - 4 experimental: metadata, ml, structural-viz, drug-discovery
+# - 12 Python distributions plus 4 platform wheels from publish-tui.yml
+# - TestPyPI builds artifacts; production promotes the successful test run's bytes
+# - Complete release verification includes stable and experimental distributions
 # - OIDC Trusted Publishing with per-package environments (monorepo pattern)
 # - Tag-based triggers: v*.*.* for PyPI, v*.*.*-test for TestPyPI
 # - Manual dispatch for re-publishing (e.g., after adding new publishers)
@@ -43,7 +43,15 @@ on:
         options:
           - pypi
           - testpypi
-        default: pypi
+        default: testpypi
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   # ===========================================================================
@@ -51,10 +59,13 @@ jobs:
   # ===========================================================================
   validate-version:
     name: Validate Version
+    if: github.repository == 'the-omics-os/lobster'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       is_test: ${{ steps.version.outputs.is_test }}
+      test_run_id: ${{ steps.version.outputs.test_run_id }}
+      tui_test_run_id: ${{ steps.version.outputs.tui_test_run_id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -65,42 +76,43 @@ jobs:
 
       - name: Extract and validate version
         id: version
+        env:
+          REQUEST_VERSION: ${{ inputs.version }}
+          REQUEST_TARGET: ${{ inputs.target }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Determine version and target from trigger type
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ inputs.version }}"
-            if [[ "${{ inputs.target }}" == "testpypi" ]]; then
-              echo "is_test=true" >> $GITHUB_OUTPUT
-              echo "Target: TestPyPI (manual dispatch)"
-            else
-              echo "is_test=false" >> $GITHUB_OUTPUT
-              echo "Target: Production PyPI (manual dispatch)"
-            fi
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$REQUEST_VERSION"
+            [[ "$REQUEST_TARGET" == testpypi || "$REQUEST_TARGET" == pypi ]] || exit 1
+            IS_TEST=$([[ "$REQUEST_TARGET" == testpypi ]] && echo true || echo false)
           else
-            TAG="${GITHUB_REF#refs/tags/v}"
-            if [[ "$TAG" == *-test ]]; then
-              VERSION="${TAG%-test}"
-              echo "is_test=true" >> $GITHUB_OUTPUT
-              echo "Target: TestPyPI"
-            else
-              VERSION="$TAG"
-              echo "is_test=false" >> $GITHUB_OUTPUT
-              echo "Target: Production PyPI"
+            VERSION="${GITHUB_REF_NAME#v}"
+            IS_TEST=false
+            if [[ "$VERSION" == *-test ]]; then
+              VERSION="${VERSION%-test}"
+              IS_TEST=true
             fi
           fi
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
-
-          # Validate version matches source
-          SOURCE_VERSION=$(python -c "from lobster.version import __version__; print(__version__)")
-          if [ "$VERSION" != "$SOURCE_VERSION" ]; then
-            echo "ERROR: Tag version ($VERSION) does not match source version ($SOURCE_VERSION)"
-            echo "Please update lobster/version.py before tagging"
-            exit 1
+          python scripts/verify_release_artifacts.py source "$VERSION"
+          TAG="v$VERSION"
+          if [[ "$IS_TEST" == true ]]; then TAG="$TAG-test"; fi
+          [[ "$GITHUB_REF" == "refs/tags/$TAG" ]] || exit 1
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_test=$IS_TEST" >> "$GITHUB_OUTPUT"
+          if [[ "$IS_TEST" == false ]]; then
+            git fetch origin "refs/tags/v$VERSION-test:refs/tags/v$VERSION-test"
+            [[ "$(git rev-parse "v$VERSION-test^{commit}")" == "$GITHUB_SHA" ]] || exit 1
+            for workflow in publish-packages publish-tui; do
+              RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow.yml" \
+                --branch "v$VERSION-test" --commit "$GITHUB_SHA" --status success \
+                --json databaseId --jq '.[0].databaseId // empty')
+              [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]] || exit 1
+              KEY=test_run_id
+              if [[ "$workflow" == publish-tui ]]; then KEY=tui_test_run_id; fi
+              echo "$KEY=$RUN_ID" >> "$GITHUB_OUTPUT"
+            done
           fi
-
-          echo "Version validated: $VERSION"
 
   # ===========================================================================
   # Step 2: Build All Packages (PyPI + TestPyPI)
@@ -154,26 +166,43 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Build package
-        run: |
-          echo "Building ${{ matrix.package.name }}..."
-          cd ${{ matrix.package.path }}
-          uv build --out-dir dist/
-          echo "Build artifacts:"
-          ls -lh dist/
+      - name: Build TestPyPI package
+        if: needs.validate-version.outputs.is_test == 'true'
+        working-directory: ${{ matrix.package.path }}
+        run: uv build --out-dir dist/
 
-      - name: Verify package with twine
+      - name: Promote verified TestPyPI artifacts without rebuilding
+        if: needs.validate-version.outputs.is_test == 'false'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dist-${{ matrix.package.name }}
+          path: ${{ matrix.package.path }}/dist/
+          run-id: ${{ needs.validate-version.outputs.test_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify actual distribution identity and integrity
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          PACKAGE: ${{ matrix.package.name }}
+          DIST: ${{ matrix.package.path }}/dist/
         run: |
-          pip install twine
-          echo "Checking ${{ matrix.package.name }} with twine..."
-          twine check ${{ matrix.package.path }}/dist/*
+          python scripts/verify_release_artifacts.py artifacts "$VERSION" "$PACKAGE" "$DIST"
+          uvx twine check "$DIST"*
+
+      - name: Confirm promoted artifacts equal TestPyPI bytes
+        if: needs.validate-version.outputs.is_test == 'false'
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          PACKAGE: ${{ matrix.package.name }}
+          DIST: ${{ matrix.package.path }}/dist/
+        run: python scripts/verify_release_artifacts.py registry "$VERSION" "$PACKAGE" "$DIST" --index testpypi
 
       - name: Upload build artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-${{ matrix.package.name }}
           path: ${{ matrix.package.path }}/dist/
-          retention-days: 7
+          retention-days: 30
 
   # ===========================================================================
   # Step 3: Publish Each Package (Per-Package Environments for OIDC)
@@ -181,41 +210,38 @@ jobs:
   # PyPI requires unique (owner, repo, workflow, environment) for each Trusted Publisher.
   # For monorepos, we use per-package environments: pypi-{package-name}
   #
-  # Public packages: publish to PyPI or TestPyPI (based on tag)
-  # Private packages: publish to TestPyPI only (skipped on production tags)
+  # All listed distributions publish to the selected registry. Experimental
+  # status is a product label, not permission to declare a partial release complete.
 
   # --- Wait for TUI wheels (published by publish-tui.yml) ---
   wait-for-tui:
     name: Wait for lobster-ai-tui
     needs: [validate-version]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Wait for TUI wheels to be available
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Require all four TUI wheels
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          INDEX: ${{ needs.validate-version.outputs.is_test == 'true' && 'testpypi' || 'pypi' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ needs.validate-version.outputs.version }}"
-          IS_TEST="${{ needs.validate-version.outputs.is_test }}"
-
-          if [[ "$IS_TEST" == "true" ]]; then
-            INDEX_URL="https://test.pypi.org/simple/lobster-ai-tui/"
-          else
-            INDEX_URL="https://pypi.org/simple/lobster-ai-tui/"
-          fi
-
-          echo "Waiting for lobster-ai-tui==$VERSION on $([[ $IS_TEST == 'true' ]] && echo TestPyPI || echo PyPI)..."
-
-          for i in $(seq 1 30); do
-            if curl -sf "$INDEX_URL" | grep -q "lobster.ai.tui-${VERSION}" 2>/dev/null || \
-               curl -sf "$INDEX_URL" | grep -q "lobster_ai_tui-${VERSION}" 2>/dev/null; then
-              echo "lobster-ai-tui $VERSION is available!"
+          for attempt in $(seq 1 30); do
+            if python scripts/verify_release_artifacts.py tui-available "$VERSION" --index "$INDEX" &&
+               [[ $(gh run list --repo "$GITHUB_REPOSITORY" --workflow publish-tui.yml \
+                 --branch "$GITHUB_REF_NAME" --commit "$GITHUB_SHA" --status success \
+                 --json databaseId --jq 'length') -gt 0 ]]; then
               exit 0
             fi
-            echo "  Attempt $i/30 -- not yet available, waiting 30s..."
+            echo "Attempt $attempt/30: complete TUI wheel inventory unavailable"
             sleep 30
           done
-
-          echo "WARNING: lobster-ai-tui $VERSION not found after 15 minutes."
-          echo "The publish-tui.yml workflow may still be running."
-          echo "Proceeding anyway -- pip install may fail if TUI wheel is not yet indexed."
+          echo 'ERROR: missing or invalid TUI wheel inventory; refusing to publish core.'
+          exit 1
 
   # --- Core Package (public) ---
   publish-lobster-ai:
@@ -397,8 +423,8 @@ jobs:
           verbose: true
 
   # --- Experimental Agent Packages (PyPI + TestPyPI) ---
-  # These packages are published publicly but marked as experimental.
-  # Their build/publish failures never block stable packages.
+  # Experimental labeling is unchanged. A complete release requires all intended
+  # distributions to publish and pass exact-version installation verification.
 
   publish-lobster-metadata:
     name: Publish lobster-metadata (experimental)
@@ -489,7 +515,7 @@ jobs:
           verbose: true
 
   # ===========================================================================
-  # Step 4: Verify Installation (TestPyPI only)
+  # Step 4: Verify Exact Installation and Published Bytes (both registries)
   # ===========================================================================
   verify-installation:
     name: Verify Installation
@@ -503,19 +529,23 @@ jobs:
       - publish-lobster-proteomics
       - publish-lobster-genomics
       - publish-lobster-metabolomics
-    # Only run on TestPyPI. Does NOT depend on experimental publish jobs so
-    # the workflow graph is never blocked by skipped/failed experimental packages.
-    if: |
-      always() &&
-      needs.validate-version.outputs.is_test == 'true' &&
-      needs.publish-lobster-ai.result == 'success'
+      - publish-lobster-metadata
+      - publish-lobster-ml
+      - publish-lobster-structural-viz
+      - publish-lobster-drug-discovery
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Wait for packages to be available
-        run: |
-          echo "Waiting 60 seconds for TestPyPI to process packages..."
-          sleep 60
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Download the actual published artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: dist-*
+          path: artifacts/
+
+      - name: Wait for packages to be indexed
+        run: sleep 60
 
       - name: Install build dependencies
         run: |
@@ -530,90 +560,86 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
 
-      - name: Test core installation from TestPyPI
+      - name: Verify registry hashes and install exact first-party wheels
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          INDEX: ${{ needs.validate-version.outputs.is_test == 'true' && 'testpypi' || 'pypi' }}
+          PYTHON_DOTENV_DISABLED: '1'
         run: |
-          VERSION="${{ needs.validate-version.outputs.version }}"
+          set -euo pipefail
+          for directory in artifacts/dist-*; do
+            package="${directory#artifacts/dist-}"
+            python scripts/verify_release_artifacts.py registry "$VERSION" "$package" "$directory" --index "$INDEX"
+          done
+          python scripts/verify_release_artifacts.py requirements "$VERSION" --index "$INDEX" --output release-requirements.txt
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -r release-requirements.txt
+          uv pip check --python .venv/bin/python
+          ROOT="$PWD"
+          cd "$(mktemp -d)"
+          "$ROOT/.venv/bin/python" "$ROOT/scripts/verify_release_artifacts.py" installed "$VERSION"
+          "$ROOT/.venv/bin/lobster" --help
 
-          echo "Installing lobster-ai==$VERSION from TestPyPI..."
-          uv pip install --index-url https://test.pypi.org/simple/ \
-                         --extra-index-url https://pypi.org/simple \
-                         --index-strategy unsafe-best-match \
-                         --system \
-                         lobster-ai==$VERSION
-
-          python -c "from lobster.version import __version__; print(f'Version: {__version__}')"
-          lobster --help
-
-      - name: Verify Go TUI binary discovery
+      - name: Verify Go TUI binary discovery and execution
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          PYTHON_DOTENV_DISABLED: '1'
         run: |
-          echo "=== Verifying lobster-ai-tui wheel installed ==="
-          python -c "
+          ROOT="$PWD"
+          cd "$(mktemp -d)"
+          "$ROOT/.venv/bin/python" - <<'PY'
+          import os
+          import subprocess
           from lobster_ai_tui import get_binary_path
-          binary = get_binary_path()
-          print(f'TUI binary path: {binary}')
-          assert binary.is_file(), f'Binary not found at {binary}'
-          print('OK: get_binary_path() found the binary')
-          "
-
-          echo "=== Verifying find_tui_binary_fast() finds it ==="
-          python -c "
           from lobster.cli_internal.go_tui_launcher import find_tui_binary_fast
-          binary = find_tui_binary_fast()
-          assert binary is not None, 'FATAL: find_tui_binary_fast() returned None — binary discovery is broken'
-          print(f'OK: find_tui_binary_fast() -> {binary}')
-          "
+          binary = get_binary_path()
+          assert binary.is_file() and os.access(binary, os.X_OK)
+          assert find_tui_binary_fast() == str(binary)
+          output = subprocess.check_output([str(binary), 'version'], text=True)
+          print(output)
+          assert os.environ['VERSION'] in output.split(), output
+          PY
 
-          echo "=== Verifying binary is executable ==="
-          BINARY=$(python -c "from lobster_ai_tui import get_binary_path; print(get_binary_path())")
-          chmod +x "$BINARY"
-          "$BINARY" version
-
-      - name: Test public agent packages
+      - name: Verify agent discovery from installed distributions
+        env:
+          PYTHON_DOTENV_DISABLED: '1'
         run: |
-          VERSION="${{ needs.validate-version.outputs.version }}"
-
-          echo "Installing lobster-ai[full]==$VERSION from TestPyPI..."
-          uv pip install --index-url https://test.pypi.org/simple/ \
-                         --extra-index-url https://pypi.org/simple \
-                         --index-strategy unsafe-best-match \
-                         --system \
-                         "lobster-ai[full]==$VERSION"
-
-          python -c "
+          ROOT="$PWD"
+          cd "$(mktemp -d)"
+          "$ROOT/.venv/bin/python" - <<'PY'
+          from importlib.metadata import entry_points
           from lobster.core.component_registry import component_registry
-          agents = component_registry.list_agents()
-          print(f'Discovered {len(agents)} agents:')
-          for agent in sorted(agents):
-              print(f'  - {agent}')
-          assert len(agents) >= 5, f'Expected at least 5 agents with [full], found {len(agents)}'
-          print('SUCCESS: Public agent packages installed and discovered')
-          "
+          expected = {ep.name for ep in entry_points(group='lobster.agents')}
+          actual = set(component_registry.list_agents())
+          print(f'Expected agents: {sorted(expected)}')
+          print(f'Discovered agents: {sorted(actual)}')
+          assert expected and expected <= actual, expected - actual
+          PY
 
-      - name: Test experimental agent packages (best-effort)
-        continue-on-error: true
-        run: |
-          echo "Installing experimental packages from TestPyPI (best-effort)..."
-          uv pip install --index-url https://test.pypi.org/simple/ \
-                         --extra-index-url https://pypi.org/simple \
-                         --index-strategy unsafe-best-match \
-                         --system \
-                         lobster-metadata lobster-ml lobster-structural-viz lobster-drug-discovery || true
-
-          python -c "
-          from lobster.core.component_registry import component_registry
-          agents = component_registry.list_agents()
-          print(f'Total agents discovered: {len(agents)}')
-          for agent in sorted(agents):
-              print(f'  - {agent}')
-          if len(agents) >= 20:
-              print('SUCCESS: All agent packages (stable + experimental) installed')
-          else:
-              print(f'PARTIAL: {len(agents)} agents found (some experimental packages may not have published)')
-          "
+      - name: Retain exact registry installation pins
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-requirements-${{ github.run_attempt }}
+          path: release-requirements.txt
+          if-no-files-found: error
+          retention-days: 30
 
   # ===========================================================================
   # Step 5: Release Summary
   # ===========================================================================
+  github-release:
+    name: Create verified GitHub release
+    needs: [validate-version, verify-installation]
+    if: needs.validate-version.outputs.is_test == 'false'
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/public-release.yml
+    with:
+      version: ${{ needs.validate-version.outputs.version }}
+      tui-test-run-id: ${{ needs.validate-version.outputs.tui_test_run_id }}
+
   summary:
     name: Release Summary
     needs:
@@ -627,62 +653,43 @@ jobs:
       - publish-lobster-proteomics
       - publish-lobster-genomics
       - publish-lobster-metabolomics
-    # Only depend on stable packages so production PyPI runs are never
-    # blocked by failed experimental-package jobs.
+      - publish-lobster-metadata
+      - publish-lobster-ml
+      - publish-lobster-structural-viz
+      - publish-lobster-drug-discovery
+      - wait-for-tui
+      - verify-installation
+      - github-release
     if: always()
     runs-on: ubuntu-latest
 
     steps:
-      - name: Generate summary
+      - name: Generate truthful release summary
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          IS_TEST: ${{ needs.validate-version.outputs.is_test }}
         run: |
-          VERSION="${{ needs.validate-version.outputs.version }}"
-          IS_TEST="${{ needs.validate-version.outputs.is_test }}"
-          TARGET=$([[ "$IS_TEST" == "true" ]] && echo "TestPyPI" || echo "PyPI")
-
-          echo "## Package Publishing Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "**Target:** $TARGET" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### Stable Packages" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-ai | ${{ needs.publish-lobster-ai.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-transcriptomics | ${{ needs.publish-lobster-transcriptomics.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-research | ${{ needs.publish-lobster-research.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-visualization | ${{ needs.publish-lobster-visualization.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-vector | ${{ needs.publish-lobster-vector.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-proteomics | ${{ needs.publish-lobster-proteomics.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-genomics | ${{ needs.publish-lobster-genomics.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-metabolomics | ${{ needs.publish-lobster-metabolomics.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          echo "### Experimental Packages" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Package | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-metadata | check job above |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-ml | check job above |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-structural-viz | check job above |" >> $GITHUB_STEP_SUMMARY
-          echo "| lobster-drug-discovery | check job above |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "*Experimental packages publish independently — their failures never block stable packages.*" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [[ "$IS_TEST" == "true" ]]; then
-            echo "### Install from TestPyPI" >> $GITHUB_STEP_SUMMARY
-            echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo "pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple lobster-ai==$VERSION" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### Install from PyPI" >> $GITHUB_STEP_SUMMARY
-            echo '```bash' >> $GITHUB_STEP_SUMMARY
-            echo "pip install lobster-ai" >> $GITHUB_STEP_SUMMARY
-            echo "pip install lobster-ai[full]  # with all stable agents" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
+          python - <<'PY'
+          import json
+          import os
+          needs = json.loads(os.environ['NEEDS_JSON'])
+          test = os.environ['IS_TEST'] == 'true'
+          failed = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              target = 'TestPyPI' if test else 'PyPI'
+              summary.write(f"## {target} release {os.environ['VERSION']}\n\n")
+              summary.write('| Job | Result |\n|---|---|\n')
+              for job, outcome in needs.items():
+                  result = outcome['result']
+                  summary.write(f'| {job} | {result} |\n')
+                  expected = 'skipped' if test and job == 'github-release' else 'success'
+                  if result != expected:
+                      failed.append(job)
+              summary.write('\nExperimental labels remain unchanged; all intended artifacts must verify.\n')
+          if failed:
+              raise SystemExit(f'Release incomplete: {failed}')
+          PY
 
   # ===========================================================================
   # Step 6: (removed) Trigger Omics-OS Cloud Deployment
