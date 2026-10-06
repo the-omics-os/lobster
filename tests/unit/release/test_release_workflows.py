@@ -390,6 +390,14 @@ def test_release_ci_gate_rejects_weakened_selection(mutation):
         assert_release_tests_are_required(document)
 
 
+@pytest.mark.parametrize("job_name", ["fast-validation", "extended-tests"])
+def test_uv_validation_does_not_enable_an_unused_pip_cache(job_name):
+    job = workflow("pr-validation-basic")["jobs"][job_name]
+    python_setup = step(job, name="Set up Python 3.12")
+    assert "cache" not in python_setup["with"]
+    assert step(job, name="Set up uv")["uses"].startswith("astral-sh/setup-uv@")
+
+
 def test_verification_artifact_names_are_retry_safe():
     upload = step(
         SUITE["jobs"]["verify-installation"],
