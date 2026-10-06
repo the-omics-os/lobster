@@ -7,8 +7,13 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
+import shutil
 import stat
 import struct
+
+# Execute only the checked-in copy step against temporary wheel fixtures.
+import subprocess  # nosec B404
 import tarfile
 import urllib.error
 import zipfile
@@ -16,6 +21,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+import yaml
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "verify_release_artifacts.py"
 SPEC = importlib.util.spec_from_file_location("verify_release_artifacts", SCRIPT)
@@ -293,6 +299,68 @@ def mock_registry(monkeypatch, payloads, index="testpypi"):
     opener.open.side_effect = open_url
     monkeypatch.setattr(v.urllib.request, "build_opener", Mock(return_value=opener))
     return opener
+
+
+@pytest.mark.parametrize("index", ["testpypi", "pypi"])
+@pytest.mark.parametrize(
+    "mutation", ["attestations", "uploaded-wheel", "reference-sidecar"]
+)
+def test_publisher_side_effects_do_not_mutate_verification_reference(
+    suite, tmp_path, monkeypatch, index, mutation
+):
+    workflow_path = SCRIPT.parents[1] / ".github/workflows/publish-tui.yml"
+    steps = yaml.safe_load(workflow_path.read_text())["jobs"]["publish"]["steps"]
+    uploader = next(
+        s for s in steps if s.get("uses", "").startswith("pypa/gh-action-pypi-publish@")
+    )
+    assert uploader["with"].get("attestations", True) not in (False, "false")
+    reference = tmp_path / "dist"
+    hashes = make_artifacts(reference, v.TUI)
+    for step in steps:
+        if step.get("id") == "prepare-publisher-inputs":
+            # Trusted repository script, isolated cwd, no credentials or network.
+            subprocess.run(  # nosec B603
+                [shutil.which("bash"), "-e", "-o", "pipefail"],
+                input=step["run"],
+                text=True,
+                cwd=tmp_path,
+                env={"PATH": os.defpath},
+                check=True,
+                capture_output=True,
+            )
+    publisher = tmp_path / uploader["with"]["packages-dir"]
+    assert {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in publisher.glob("*.whl")
+    } == hashes
+    assert all(not p.is_symlink() for p in publisher.iterdir())
+    # Model the pinned publisher's path.resolve().with_suffix(...) side effect.
+    # These fixture sidecars test isolation, not cryptographic signature validity.
+    for wheel in publisher.glob("*.whl"):
+        wheel.resolve().with_suffix(wheel.suffix + ".publish.attestation").write_text(
+            "{}"
+        )
+    payload = registry_json(v.TUI, index, hashes)
+    if mutation == "uploaded-wheel":
+        altered = next(publisher.glob("*.whl"))
+        altered.write_bytes(altered.read_bytes() + b"changed")
+        next(e for e in payload["urls"] if e["filename"] == altered.name)["digests"][
+            "sha256"
+        ] = hashlib.sha256(altered.read_bytes()).hexdigest()
+    elif mutation == "reference-sidecar":
+        wheel = next(reference.glob("*.whl"))
+        wheel.with_suffix(wheel.suffix + ".publish.attestation").write_text("{}")
+    mock_registry(monkeypatch, {v.TUI: payload}, index)
+    if mutation == "attestations":
+        v.registry(VERSION, v.TUI, reference, index)
+        assert publisher != reference
+        assert v.artifacts(VERSION, v.TUI, reference) == hashes
+    else:
+        message = (
+            "SHA256 mismatch" if mutation == "uploaded-wheel" else "inventory mismatch"
+        )
+        with pytest.raises(v.VerificationError, match=message):
+            v.registry(VERSION, v.TUI, reference, index)
 
 
 def test_source_and_suite(suite):

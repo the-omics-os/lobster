@@ -196,11 +196,18 @@ jobs:
         env:
           VERSION: ${{ needs.validate.outputs.version }}
         run: python scripts/verify_release_artifacts.py registry "$VERSION" lobster-ai-tui dist --index testpypi
+      - name: Prepare isolated publisher inputs
+        id: prepare-publisher-inputs
+        run: |
+          # The publisher writes attestation sidecars beside its inputs.
+          # Preserve pristine reference bytes in dist/ for strict post-upload checks.
+          mkdir publisher-dist
+          cp -- dist/*.whl publisher-dist/
       - name: Publish to PyPI/TestPyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           repository-url: ${{ needs.validate.outputs.is_test == 'true' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
-          packages-dir: dist/
+          packages-dir: publisher-dist/
           skip-existing: true
           verbose: true
       - name: Verify uploaded bytes, including skipped-existing files
