@@ -348,6 +348,48 @@ def test_build_and_promotion_are_mutually_exclusive(publisher):
     assert " registry " in comparisons[0]["run"]
 
 
+def assert_release_tests_are_required(document):
+    quality = document["jobs"]["quality-and-tests"]
+    contract = step(quality, id="release-contracts")
+    assert contract.get("continue-on-error", "false") == "false"
+    assert quality.get("continue-on-error", "false") == "false"
+    assert contract["if"] == "${{ !cancelled() && steps.install.outcome == 'success' }}"
+    command = contract["run"].replace("\\\n", " ")
+    assert "python -m pytest tests/unit/release " in command
+    assert "--confcutdir=tests/unit/release" in command
+    assert "--junitxml=release-contract-results.xml" in command
+    assert (
+        "scripts/check_test_results.py --require-no-skips release-contract-results.xml"
+        in command
+    )
+    assert "quality-and-tests" in document["jobs"]["ci-summary"]["needs"]
+    upload = step(quality, name="Upload release contract results")
+    assert upload["with"]["path"] == "release-contract-results.xml"
+    assert "${{ github.run_attempt }}" in upload["with"]["name"]
+
+
+def test_basic_ci_requires_release_directory_and_nonempty_unskipped_evidence():
+    assert_release_tests_are_required(workflow("ci-basic"))
+
+
+@pytest.mark.parametrize(
+    "mutation", ["omit-directory", "allow-skips", "ignore-failure"]
+)
+def test_release_ci_gate_rejects_weakened_selection(mutation):
+    document = workflow("ci-basic")
+    contract = step(document["jobs"]["quality-and-tests"], id="release-contracts")
+    if mutation == "omit-directory":
+        contract["run"] = contract["run"].replace(
+            "tests/unit/release", "tests/unit/config"
+        )
+    elif mutation == "allow-skips":
+        contract["run"] = contract["run"].replace("--require-no-skips", "")
+    else:
+        contract["continue-on-error"] = "true"
+    with pytest.raises(AssertionError):
+        assert_release_tests_are_required(document)
+
+
 def test_verification_artifact_names_are_retry_safe():
     upload = step(
         SUITE["jobs"]["verify-installation"],
