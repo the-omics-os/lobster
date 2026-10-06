@@ -968,7 +968,9 @@ def _handle_user_query(
             # Resume the graph with the user's response.
             bridge.send("spinner", {"active": True, "label": "resuming"})
             stream_source = client.resume_from_interrupt(
-                response, stream=True, cancel_event=cancel_event
+                {interrupt_event["interrupt_id"]: response},
+                stream=True,
+                cancel_event=cancel_event,
             )
             # Continue the while loop to process the resumed stream.
 
@@ -994,7 +996,9 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
     was cancelled (quit).
     """
     data = interrupt_event.get("data", {})
-    msg_id = str(uuid.uuid4())
+    msg_id = interrupt_event.get("interrupt_id")
+    if not msg_id:
+        raise ValueError("Cannot resume a question without its interrupt ID")
 
     bridge.send("spinner", {"active": False})
     bridge.send("component_render", data, msg_id=msg_id)
@@ -1009,6 +1013,10 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
         resp_type = resp.get("type", "")
         if resp_type in _COMPONENT_RESPONSE_TYPES:
             payload = resp.get("payload", {})
+            # Go echoes the originating ID in the envelope and, for generic
+            # components, the payload. Never accept another widget's answer.
+            if resp.get("id") != msg_id or payload.get("id", msg_id) != msg_id:
+                continue
             # confirm_response → {"confirmed": bool}
             if resp_type == "confirm_response":
                 return {"confirmed": payload.get("confirm", False)}

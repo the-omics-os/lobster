@@ -662,7 +662,7 @@ def test_handle_user_query_interrupt_renders_component_and_resumes(monkeypatch):
 
         def resume_from_interrupt(self, response, stream=True, cancel_event=None):
             self._resume_called = True
-            assert response == {"confirmed": True}
+            assert response == {"intr-test": {"confirmed": True}}
             yield {"type": "content_delta", "delta": "Done!"}
             yield {"type": "complete"}
 
@@ -673,6 +673,7 @@ def test_handle_user_query_interrupt_renders_component_and_resumes(monkeypatch):
         events=[
             {
                 "type": "confirm_response",
+                "id": "intr-test",
                 "payload": {"confirm": True},
             }
         ]
@@ -683,6 +684,7 @@ def test_handle_user_query_interrupt_renders_component_and_resumes(monkeypatch):
     # Verify component_render was sent.
     render_calls = [c for c in bridge.calls if c[0] == "component_render"]
     assert len(render_calls) == 1
+    assert render_calls[0][2] == "intr-test"
     assert render_calls[0][1]["component"] == "confirm"
 
     # Verify content from both streams was forwarded.
@@ -707,7 +709,10 @@ def test_handle_interrupt_quit_returns_none():
     bridge = _FakeBridge(events=[{"type": "quit"}])
     result = go_tui_launcher._handle_interrupt(
         bridge,
-        {"data": {"component": "text_input", "fallback_prompt": "Enter:"}},
+        {
+            "interrupt_id": "intr-test",
+            "data": {"component": "text_input", "fallback_prompt": "Enter:"},
+        },
     )
     assert result is None
 
@@ -717,7 +722,10 @@ def test_handle_interrupt_timeout_returns_none():
     bridge = _FakeBridge(events=[])  # No events → recv_event returns None.
     result = go_tui_launcher._handle_interrupt(
         bridge,
-        {"data": {"component": "text_input", "fallback_prompt": "Enter:"}},
+        {
+            "interrupt_id": "intr-test",
+            "data": {"component": "text_input", "fallback_prompt": "Enter:"},
+        },
     )
     assert result is None
 
@@ -728,13 +736,14 @@ def test_handle_interrupt_select_response():
         events=[
             {
                 "type": "select_response",
+                "id": "intr-test",
                 "payload": {"value": "CPM", "index": 1},
             }
         ]
     )
     result = go_tui_launcher._handle_interrupt(
         bridge,
-        {"data": {"component": "select"}},
+        {"interrupt_id": "intr-test", "data": {"component": "select"}},
     )
     assert result == {"selected": "CPM", "index": 1}
 
@@ -745,13 +754,14 @@ def test_handle_interrupt_component_response_passthrough():
         events=[
             {
                 "type": "component_response",
+                "id": "intr-test",
                 "payload": {"data": {"answer": "T cells"}},
             }
         ]
     )
     result = go_tui_launcher._handle_interrupt(
         bridge,
-        {"data": {"component": "text_input"}},
+        {"interrupt_id": "intr-test", "data": {"component": "text_input"}},
     )
     assert result == {"answer": "T cells"}
 
