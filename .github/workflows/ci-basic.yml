@@ -95,6 +95,32 @@ jobs:
           --no-cov \
           -v
 
+    - name: Set up uv for release contract tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+
+    - name: Run release publication contract tests
+      id: release-contracts
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      run: |
+        uv venv --python 3.12 .venv
+        uv pip install --python .venv/bin/python pytest pytest-timeout pyyaml
+        uv run --no-project --python .venv/bin/python python -m pytest tests/unit/release \
+          --confcutdir=tests/unit/release \
+          --import-mode=importlib \
+          -o addopts='' \
+          --junitxml=release-contract-results.xml
+        uv run --no-project --python .venv/bin/python python scripts/check_test_results.py --require-no-skips release-contract-results.xml
+
+    - name: Upload release contract results
+      if: ${{ !cancelled() && steps.release-contracts.outcome != 'skipped' }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: release-contract-results-${{ github.run_attempt }}
+        path: release-contract-results.xml
+        if-no-files-found: error
+        retention-days: 30
+
     - name: Run unit/backend tests
       if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       run: |
