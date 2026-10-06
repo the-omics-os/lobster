@@ -46,6 +46,10 @@ published wheels. TUI no longer independently creates a GitHub Release.
 
 ## Failure and retry discipline
 
+- The TUI uploader receives copies in `publisher-dist/`; pristine build artifacts
+  remain in `dist/` for strict post-upload checksum verification. PEP 740
+  attestation sidecars are expected publisher output, not distribution artifacts.
+  Keep attestations enabled and do not relax the pristine inventory check.
 - A green build alone is not a completed release. Inspect both workflows and every
   publish/verification job; record partial publication honestly.
 - Prefer **rerun failed jobs** for transient publisher or installation failures;
