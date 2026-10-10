@@ -1,0 +1,370 @@
+{
+  "complete": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "ANSWER-ONE",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": ""
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "<status>"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ],
+  "ends_without_complete": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "PARTIAL-ANSWER",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "warning",
+        "message": "The response ended unexpectedly."
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "error"
+      },
+      "type": "done"
+    }
+  ],
+  "error_after_partial": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "PARTIAL-ANSWER",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "error",
+        "message": "backend exploded",
+        "title": "Error"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "error"
+      },
+      "type": "done"
+    }
+  ],
+  "exception_mid_stream": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "PARTIAL-ANSWER",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "error",
+        "message": "stream broke",
+        "title": "Error"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "error"
+      },
+      "type": "done"
+    }
+  ],
+  "hitl_abandoned": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "QUESTION-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": "interrupt"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "component": "confirm",
+        "data": {
+          "question": "Proceed?"
+        }
+      },
+      "type": "component_render"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "cancelled"
+      },
+      "type": "done"
+    }
+  ],
+  "hitl_resume_complete": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "QUESTION-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": "interrupt"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "component": "confirm",
+        "data": {
+          "question": "Proceed?"
+        }
+      },
+      "type": "component_render"
+    },
+    {
+      "payload": {
+        "active": true,
+        "label": "resuming"
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "RESUMED-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": ""
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "<status>"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ],
+  "hitl_resume_error": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "QUESTION-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": "interrupt"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "component": "confirm",
+        "data": {
+          "question": "Proceed?"
+        }
+      },
+      "type": "component_render"
+    },
+    {
+      "payload": {
+        "active": true,
+        "label": "resuming"
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "RESUMED-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "level": "error",
+        "message": "failed after resume",
+        "title": "Error"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "error"
+      },
+      "type": "done"
+    }
+  ],
+  "silent_cancel": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "PARTIAL-ANSWER",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": "cancelled"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "<status>"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ]
+}

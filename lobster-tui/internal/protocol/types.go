@@ -274,7 +274,15 @@ type ClearPayload struct {
 
 // DonePayload signals the end of an assistant turn.
 type DonePayload struct {
-	// Summary may contain a brief end-of-turn note.
+	// Summary names how the turn ended:
+	//
+	//	""          completed normally
+	//	"cancelled" cancelled or abandoned; unfinished output is discarded
+	//	"error"     failed; partial output is kept and marked incomplete
+	//	"interrupt" paused for a human-in-the-loop prompt (not terminal)
+	//
+	// Every turn ends with exactly one terminal summary. Unknown values are
+	// treated as a normal completion so older builds keep working.
 	Summary string `json:"summary,omitempty"`
 }
 
