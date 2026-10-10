@@ -24,6 +24,7 @@ file-descriptor pipes.  Each message is a single JSON object terminated by
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import logging
@@ -31,7 +32,9 @@ import os
 import queue
 import shutil
 import signal
-import subprocess
+
+# Used only to launch the lobster-tui binary (see launch_go_tui_chat).
+import subprocess  # nosec B404
 import sys
 import threading
 import time
@@ -47,6 +50,17 @@ from lobster.cli_internal.startup_diagnostics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _note_suppressed(site: str, error: BaseException) -> None:
+    """Record a swallowed best-effort failure.
+
+    Logs only the site and the exception type: the message or traceback could
+    carry paths, keys or user data. A logging failure must never break the
+    caller, which is often terminal teardown.
+    """
+    with contextlib.suppress(Exception):
+        logger.debug("%s failed: %s", site, type(error).__name__)
 
 
 @dataclass
@@ -76,11 +90,13 @@ class _PythonTerminalQuarantine:
 
         try:
             sys.stdout.flush()
-        except Exception:
+        # Best effort, and no logging: flushing stdio while the terminal is quarantined.
+        except Exception:  # nosec B110
             pass
         try:
             sys.stderr.flush()
-        except Exception:
+        # Best effort, and no logging: flushing stdio while the terminal is quarantined.
+        except Exception:  # nosec B110
             pass
 
         previous_disable = logging.root.manager.disable
@@ -96,7 +112,8 @@ class _PythonTerminalQuarantine:
             for fd in (stdout_dup_fd, stderr_dup_fd, devnull_fd):
                 try:
                     os.close(fd)
-                except Exception:
+                # Best effort, and no logging: closing quarantine fds while stdio is redirected.
+                except Exception:  # nosec B110
                     pass
             raise
 
@@ -118,7 +135,8 @@ class _PythonTerminalQuarantine:
             for fd in (self.stdout_dup_fd, self.stderr_dup_fd, self.devnull_fd):
                 try:
                     os.close(fd)
-                except Exception:
+                # Best effort, and no logging: closing quarantine fds while stdio is redirected.
+                except Exception:  # nosec B110
                     pass
             logging.disable(self.logging_disable_level)
 
@@ -307,8 +325,8 @@ class _LightBridge:
         # Send quit BEFORE clearing _running (send() checks the flag).
         try:
             self.send("quit", {})
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("bridge quit", swallowed)
 
         self._running = False
 
@@ -316,8 +334,8 @@ class _LightBridge:
         for stream in (self._writer, self._reader):
             try:
                 stream.close()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                _note_suppressed("bridge stream close", swallowed)
 
         # Terminate the process group.
         proc = self.process
@@ -478,8 +496,8 @@ def _resolve_active_provider_name(client: Any) -> str:
                 resolved = str(provider_name or "").strip()
                 if resolved:
                     return resolved
-            except Exception:
-                pass
+            except Exception as swallowed:
+                _note_suppressed("provider name lookup", swallowed)
 
     fallback = runtime_override or str(getattr(client, "provider", None) or "").strip()
     return fallback
@@ -698,8 +716,8 @@ def _workspace_load_suggestions(client: Any, prefix: str, limit: int = 50) -> Li
                 if pfx and not name.lower().startswith(pfx):
                     continue
                 suggestions.append(name)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        _note_suppressed("workspace suggestions", swallowed)
 
     suggestions.extend(_path_completion_suggestions(prefix, limit=limit))
     deduped = sorted(set(suggestions), key=lambda s: s.lower())
@@ -791,8 +809,8 @@ def _save_session_json_if_available(client: Any) -> None:
     if hasattr(client, "_save_session_json"):
         try:
             client._save_session_json()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("session save", swallowed)
 
 
 def _resolve_go_chat_session_target(
@@ -1237,8 +1255,8 @@ def _handle_slash_command(
                 error_summary,
                 is_error=True,
             )
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("slash command error report", swallowed)
         bridge.send("alert", {"level": "error", "message": str(exc)})
     finally:
         _emit_provider_status(bridge, client)
@@ -1323,7 +1341,8 @@ def launch_go_tui_chat(
         no_intro=no_intro,
     )
 
-    proc = subprocess.Popen(
+    # argv list without a shell; the binary comes from find_tui_binary_fast().
+    proc = subprocess.Popen(  # nosec B603
         cmd,
         pass_fds=(p2g_r, g2p_w),
         # stdout inherited — BubbleTea needs the real terminal to render.
@@ -1463,8 +1482,8 @@ def launch_go_tui_chat(
             sid = getattr(client, "session_id", None)
             if sid:
                 bridge.send("status", {"text": f"Session: {sid}"})
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("session id status", swallowed)
 
         bridge.send("ready", {})
         if not inline_mode:
@@ -1488,8 +1507,8 @@ def launch_go_tui_chat(
             )
 
             set_go_tui_active(False)
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("TUI active flag reset", swallowed)
 
         if client is not None:
             _save_session_json_if_available(client)
@@ -1499,8 +1518,8 @@ def launch_go_tui_chat(
                 from lobster.ui.console_manager import get_console_manager
 
                 get_console_manager().restore_terminal_output()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                _note_suppressed("console restore", swallowed)
 
         if terminal_quarantine is not None:
             terminal_quarantine.restore()
@@ -1533,8 +1552,8 @@ def _prepare_go_tui_chat_env(
             from lobster.version import __version__
 
             child_env["LOBSTER_TUI_APP_VERSION"] = __version__
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("app version lookup", swallowed)
     if no_intro:
         child_env["LOBSTER_TUI_NO_INTRO"] = "1"
     return child_env

@@ -247,3 +247,28 @@ def test_golden_wire_fixture_matches_the_emitter():
     assert GOLDEN.exists(), "run once with LOBSTER_UPDATE_TURN_FIXTURE=1"
     recorded = {k: _normalise(v) for k, v in json.loads(GOLDEN.read_text()).items()}
     assert produced == recorded
+
+
+# ---------------------------------------------------------------------------
+# Swallowed best-effort failures
+# ---------------------------------------------------------------------------
+
+
+def test_note_suppressed_logs_site_and_type_only(caplog):
+    secret = "AKIA-secret /Users/someone/patient_ids.csv"
+    with caplog.at_level("DEBUG", logger=go_tui_launcher.logger.name):
+        go_tui_launcher._note_suppressed("session save", RuntimeError(secret))
+
+    assert [r.getMessage() for r in caplog.records] == [
+        "session save failed: RuntimeError"
+    ]
+    assert all(r.exc_info is None for r in caplog.records)
+    assert secret not in caplog.text
+
+
+def test_note_suppressed_never_raises_when_logging_fails(monkeypatch):
+    def broken(*args, **kwargs):
+        raise OSError("log sink gone")
+
+    monkeypatch.setattr(go_tui_launcher.logger, "debug", broken)
+    go_tui_launcher._note_suppressed("console restore", ValueError("x"))
