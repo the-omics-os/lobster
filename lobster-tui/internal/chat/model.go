@@ -111,14 +111,18 @@ type tipRotate struct{}
 type welcomeTick struct{}
 
 // inlinePrintComplete forces a repaint after inline scrollback writes.
-type inlinePrintComplete struct{}
+// The id is the outbox segment it acknowledges (zero for none).
+type inlinePrintComplete struct{ id uint64 }
 
 // inlinePrintReset clears the temporary repaint spacer after one frame.
 type inlinePrintReset struct{}
 
-// inlinePrintReady carries pre-rendered scrollback text deferred by one frame
-// tick so BubbleTea can flush the cleared viewport before tea.Println runs.
-type inlinePrintReady struct{ body string }
+// inlinePrintReady releases a deferred outbox segment after one frame tick so
+// BubbleTea can flush the cleared viewport before tea.Println runs.
+type inlinePrintReady struct {
+	id    uint64
+	epoch uint64
+}
 
 // protocolErr wraps an error read from the protocol handler's Errs() channel.
 type protocolErr struct{ err error }
@@ -138,6 +142,8 @@ type ChatMessage struct {
 	// IsStreaming is true when the message is actively being streamed.
 	// Streaming messages are never cached.
 	IsStreaming bool
+	// printed counts leading blocks already handed to terminal scrollback.
+	printed int
 	// cache stores width-keyed rendered output for finalized messages.
 	cache renderCache
 }
@@ -256,6 +262,12 @@ type Model struct {
 	inlineRepaintPad    bool
 	mouseCapture        bool
 	quitting            bool
+	inlinePrintEpoch    uint64 // Bumped when the transcript is cleared; stale deferred output is dropped.
+	nextPrintID         uint64 // Monotonic outbox segment IDs, never reused.
+	printScan           int    // First message that may still hold unprinted blocks.
+	outbox              []printSegment
+	inflightPrints      map[uint64]struct{}
+	printStats          printStats
 	isCanceling         bool // Two-phase cancel: first Ctrl+C arms, second fires.
 	styles              theme.Styles
 
@@ -383,8 +395,31 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// Update handles all incoming messages (protocol events, key presses, window resize).
+// Update handles all incoming messages (protocol events, key presses, window
+// resize) and then drains the scrollback outbox. Draining here, and only here,
+// guarantees queued output is dispatched exactly once and can never be lost by
+// a handler that drops its returned command.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	nm, ok := next.(Model)
+	if !ok {
+		return next, cmd
+	}
+	if nm.quitting {
+		// Exiting: write everything still queued first (deferred output is
+		// released immediately; its tick would never run), then quit.
+		if printCmd := nm.drainOutbox(true); printCmd != nil {
+			return nm, tea.Sequence(printCmd, cmd)
+		}
+		return nm, cmd
+	}
+	if printCmd := nm.drainOutbox(false); printCmd != nil {
+		cmd = tea.Batch(cmd, printCmd)
+	}
+	return nm, cmd
+}
+
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -393,7 +428,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleProtocol(msg)
 
 	case protocolEOF:
+		// The backend is gone. Anything it already sent must reach scrollback
+		// before we exit (Update drains the outbox on the way out): settle a
+		// turn left open as incomplete.
 		m.quitting = true
+		if m.activeTurn != activeTurnNone || m.streamBuf.Len() > 0 {
+			m.queueTurnOutput(true)
+		}
 		return m, tea.Quit
 
 	case protocolErr:
@@ -414,6 +455,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case inlinePrintComplete:
+		m.commitPrint(msg.id)
 		if m.inlineFlowMode() {
 			// Keep a trailing spacer row alive long enough for at least one
 			// renderer flush after unmanaged scrollback prints. Inline user and
@@ -433,11 +475,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case inlinePrintReady:
-		if strings.TrimSpace(msg.body) == "" || m.isCanceling || m.activeTurn == activeTurnNone {
-			return m, nil
-		}
-		redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
-		return m, tea.Sequence(tea.Println(msg.body), redrawCmd)
+		// Release the deferred segment; Update dispatches it (and anything
+		// queued behind it) in order. Ticks for segments dropped by a clear
+		// are ignored, whatever turn is active now.
+		m.markPrintReady(msg.id, msg.epoch)
+		return m, nil
 
 	case spinnerTick:
 		if !m.spinnerActive || (m.quietStartup && !m.ready) {
@@ -768,12 +810,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.TextPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
-			printCmd := m.flushPendingSegment()
+			m.flushPendingSegment()
 			m.appendStreamText(p.Content, p.Markdown)
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -782,12 +824,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.MarkdownPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
-			printCmd := m.flushPendingSegment()
+			m.flushPendingSegment()
 			m.appendStreamText(p.Content, true)
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -796,13 +838,13 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.CodePayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			m.isStreaming = true
-			printCmd := m.flushPendingSegment()
+			m.flushPendingSegment()
 			m.flushStreamBuffer()
 			m.appendBlock(BlockCode{Language: p.Language, Content: p.Content})
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -818,8 +860,8 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			if task == "" {
 				task = fmt.Sprintf("handoff to %s", p.To)
 			}
-			printCmd := m.recordHandoff(task, p.To)
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			m.recordHandoff(task, p.To)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -844,10 +886,14 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		_ = protocol.DecodePayload(msg.Message, &dp)
 
 		if dp.Summary == "cancelled" {
-			// Cancel: discard partial stream, don't append to chat history.
+			// Cancel: discard the unfinished turn. Its partial stream and any
+			// block that was never handed to scrollback must neither print now
+			// nor resurface with a later turn. Output already queued or printed
+			// belongs to finished segments and is left alone.
 			m.streamBuf.Reset()
 			m.streamBufMarkdown = false
 			m.pendingHandoffs = m.pendingHandoffs[:0]
+			m.discardUnprinted()
 			m.isStreaming = false
 			m.activeTurn = activeTurnNone
 			m.isCanceling = false
@@ -860,51 +906,24 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		if dp.Summary == "interrupt" {
 			// HITL interrupt: flush streamed text + pending handoffs to
 			// scrollback so the supervisor's question is visible while the
-			// component renders. Handoffs must be flushed here to prevent
-			// duplicate printing when resumed text triggers flushPendingSegment.
-			hadLiveStream := m.inlineFlowMode() &&
-				m.shouldRenderStreamingTranscript() &&
-				m.streamBuf.Len() > 0
-			m.flushStreamBuffer()
-			toPrint := m.collectLastAssistantMessage()
-			if len(m.pendingHandoffs) > 0 {
-				m.messages = append(m.messages, m.pendingHandoffs...)
-				toPrint = append(toPrint, m.pendingHandoffs...)
-				m.pendingHandoffs = m.pendingHandoffs[:0]
-			}
+			// component renders. The turn stays open: this pauses it, and the
+			// per-message print cursor keeps the resumed text from re-printing
+			// what was just flushed.
+			m.queueTurnOutput(false)
 			m.rebuildViewportWithMode(true)
-			printCmd := m.inlinePrintCmd(toPrint, hadLiveStream)
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 
-		// Snapshot whether live streaming text was visible in viewport
-		// before flush. If so, we must defer tea.Println by one frame
-		// tick so BubbleTea flushes the cleared viewport first —
-		// otherwise the old viewport content gets pushed into scrollback
-		// as a ghost duplicate.
-		hadLiveStream := m.inlineFlowMode() &&
-			m.shouldRenderStreamingTranscript() &&
-			m.streamBuf.Len() > 0
-
-		// Flush any remaining streamed text into typed blocks, then append
-		// buffered handoff lines that belong directly beneath the response.
-		m.flushStreamBuffer()
-
-		// Collect the finalized assistant message for printing. In inline
-		// flow mode, flushStreamBuffer puts text into m.messages in-place
-		// but nothing prints it to scrollback — we must do that explicitly.
-		toPrint := m.collectLastAssistantMessage()
-		if len(m.pendingHandoffs) > 0 {
-			m.messages = append(m.messages, m.pendingHandoffs...)
-			toPrint = append(toPrint, m.pendingHandoffs...)
-			m.pendingHandoffs = m.pendingHandoffs[:0]
-		}
+		// Normal completion ("") or abnormal end ("error"). Either way the turn
+		// is over: flush what streamed, and mark it as incomplete when the
+		// backend reported a failure so a truncated answer is not shown as a
+		// finished one.
+		m.queueTurnOutput(dp.Summary == "error")
 		m.isStreaming = false
 		m.activeTurn = activeTurnNone
 		m.isCanceling = false
 		m.rebuildViewportWithMode(true)
-		printCmd := m.inlinePrintCmd(toPrint, hadLiveStream)
-		return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeStatus:
 		var p protocol.StatusPayload
@@ -937,11 +956,11 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeAlert:
 		var p protocol.AlertPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			printCmd := m.appendMessage(ChatMessage{
+			m.appendMessage(ChatMessage{
 				Role:   "alert_" + string(p.Level),
 				Blocks: []ContentBlock{BlockAlert{Level: string(p.Level), Message: p.Message}},
 			}, false)
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -1054,12 +1073,12 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			if p.Shape != "" {
 				info += fmt.Sprintf(" (%s)", p.Shape)
 			}
-			printCmd := m.appendMessage(ChatMessage{
+			m.appendMessage(ChatMessage{
 				Role:   "system",
 				Blocks: textBlocks(m.styles.ModalityLoaded.Render(info)),
 			}, false)
 			m.modalities = append(m.modalities, ModalityInfo{Name: p.Name, Shape: p.Shape})
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -1085,7 +1104,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.TablePayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil && len(p.Headers) > 0 {
 			m.isStreaming = true
-			printCmd := m.flushPendingSegment()
+			m.flushPendingSegment()
 			m.flushStreamBuffer()
 			columns := make([]BlockTableColumn, 0, len(p.Columns))
 			for _, col := range p.Columns {
@@ -1102,7 +1121,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 			if m.shouldRenderStreamingTranscript() {
 				m.rebuildViewport()
 			}
-			return m, tea.Batch(waitForProtocolMsg(m.handler), printCmd)
+			return m, waitForProtocolMsg(m.handler)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -1326,11 +1345,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.pendingConfirmID = localExitConfirmID
 				return m, nil
 			case "dashboard":
-				userCmd := m.appendMessage(ChatMessage{
+				m.appendMessage(ChatMessage{
 					Role:   "user",
 					Blocks: textBlocks(val),
 				}, false)
-				printCmd := m.appendMessage(ChatMessage{
+				m.appendMessage(ChatMessage{
 					Role: "alert_warning",
 					Blocks: []ContentBlock{BlockAlert{
 						Level:   "warning",
@@ -1340,7 +1359,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				m.input.SetValue("")
 				m.recalculateViewportHeight()
 				cmd := m.refreshSuggestions()
-				return m, tea.Batch(cmd, userCmd, printCmd)
+				return m, cmd
 			default:
 				// Forward to Python for handling.
 				m.activeTurn = activeTurnSlashCommand
@@ -1360,7 +1379,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		printCmd := m.appendMessage(ChatMessage{
+		m.appendMessage(ChatMessage{
 			Role:   "user",
 			Blocks: textBlocks(val),
 		}, false)
@@ -1369,7 +1388,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.recalculateViewportHeight()
 		cmd := m.refreshSuggestions()
 
-		return m, tea.Batch(cmd, printCmd)
+		return m, cmd
 
 	case "tab":
 		if m.applySelectedCompletionSuggestion() {
@@ -1671,21 +1690,30 @@ func (m *Model) rebuildViewport() {
 	m.rebuildViewportWithMode(false)
 }
 
-func (m *Model) appendMessage(msg ChatMessage, forceBottom bool) tea.Cmd {
-	return m.appendMessages([]ChatMessage{msg}, forceBottom)
+func (m *Model) appendMessage(msg ChatMessage, forceBottom bool) {
+	m.appendMessages([]ChatMessage{msg}, forceBottom)
 }
 
-func (m *Model) appendMessages(msgs []ChatMessage, forceBottom bool) tea.Cmd {
+// appendMessages adds whole messages to the transcript and queues them for
+// scrollback in the outbox. Delivery happens when Model.Update drains it.
+func (m *Model) appendMessages(msgs []ChatMessage, forceBottom bool) {
 	if len(msgs) == 0 {
 		if forceBottom {
 			m.rebuildViewportWithMode(true)
 		}
-		return nil
+		return
 	}
 
+	// Blocks of an unfinished turn that are still waiting for its completion
+	// (flushed code, tables) precede this message in the transcript, so they
+	// are queued first to keep scrollback in transcript order.
+	earlier := m.takeUnprinted()
+	from := len(m.messages)
 	m.messages = append(m.messages, msgs...)
+	m.markMessagesPrinted(from)
 	m.rebuildViewportWithMode(forceBottom)
-	return m.inlinePrintMessagesCmd(msgs)
+	m.enqueuePrint(earlier, false)
+	m.enqueuePrint(msgs, false)
 }
 
 // rebuildViewportWithMode reconstructs the viewport while preserving user
@@ -1731,79 +1759,12 @@ func (m *Model) rebuildViewportWithMode(forceBottom bool) {
 	}
 }
 
-// buildInlinePrintBody renders messages into a single string for scrollback
-// printing. It handles the one-time banner (header + runtime summary) on first
-// print. Returns empty string if nothing to print.
-func (m *Model) buildInlinePrintBody(msgs []ChatMessage) string {
-	if !m.inlineFlowMode() {
-		return ""
-	}
-
-	renderedParts := make([]string, 0, len(msgs))
-	renderer := m.getMarkdownRenderer()
-	for _, msg := range msgs {
-		rendered := strings.TrimRight(renderMessage(msg, m.styles, m.width, renderer, true), "\n")
-		if strings.TrimSpace(rendered) == "" {
-			continue
-		}
-		renderedParts = append(renderedParts, rendered)
-	}
-	if len(renderedParts) == 0 {
-		return ""
-	}
-
-	if !m.inlineBannerPrinted {
-		m.inlineBannerPrinted = true
-		header := strings.TrimSpace(renderHeader(*m))
-		runtimeSummary := strings.TrimSpace(renderRuntimeSummary(*m))
-		parts := make([]string, 0, 3)
-		if header != "" {
-			parts = append(parts, header)
-		}
-		if runtimeSummary != "" {
-			parts = append(parts, runtimeSummary)
-		}
-		parts = append(parts, renderedParts...)
-		return strings.Join(parts, "\n")
-	}
-
-	return strings.Join(renderedParts, "\n")
-}
-
-// inlinePrintMessagesCmd renders messages and prints them to scrollback
-// immediately. Used for user messages and other non-streaming prints.
-func (m *Model) inlinePrintMessagesCmd(msgs []ChatMessage) tea.Cmd {
-	body := m.buildInlinePrintBody(msgs)
-	if strings.TrimSpace(body) == "" {
-		return nil
-	}
-	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
-	return tea.Sequence(tea.Println(body), redrawCmd)
-}
-
-// inlinePrintCmd chooses between immediate and deferred scrollback printing.
-// When hadLiveStream is true, the viewport was showing live streaming text
-// that has now been flushed. We must defer tea.Println by one frame tick so
-// BubbleTea can flush the cleared viewport first — otherwise the old viewport
-// content gets pushed into scrollback as a ghost duplicate.
-func (m *Model) inlinePrintCmd(msgs []ChatMessage, hadLiveStream bool) tea.Cmd {
-	body := m.buildInlinePrintBody(msgs)
-	if strings.TrimSpace(body) == "" {
-		return nil
-	}
-	if hadLiveStream {
-		return tea.Tick(50*time.Millisecond, func(time.Time) tea.Msg {
-			return inlinePrintReady{body: body}
-		})
-	}
-	redrawCmd := func() tea.Msg { return inlinePrintComplete{} }
-	return tea.Sequence(tea.Println(body), redrawCmd)
-}
-
 func (m *Model) applyClearTarget(target string) {
 	switch target {
 	case "output", "all", "":
+		m.invalidatePrints()
 		m.messages = m.messages[:0]
+		m.printScan = 0
 		m.pendingHandoffs = m.pendingHandoffs[:0]
 		m.streamBuf.Reset()
 		m.streamBufMarkdown = false
@@ -2127,23 +2088,41 @@ func (m *Model) applyWorkerActivity(p protocol.AgentTransitionPayload) {
 // handoff was buffered. This prevents handoffs from accumulating across an
 // entire multi-agent pipeline and appearing only at the very end.
 // Returns nil if nothing to flush.
-func (m *Model) flushPendingSegment() tea.Cmd {
+func (m *Model) flushPendingSegment() {
 	if len(m.pendingHandoffs) == 0 {
-		return nil
+		return
 	}
+	m.queueTurnOutput(false)
+	m.rebuildViewportWithMode(true)
+}
+
+// queueTurnOutput flushes streamed text and buffered handoffs into the
+// transcript and queues every block not yet handed to scrollback. Selection is
+// by per-message print cursor, so an empty or repeated call queues nothing and
+// output already delivered is never printed again. When live streaming text was
+// visible in the viewport the segment is deferred by one frame tick so
+// BubbleTea clears the viewport first; otherwise the old viewport content
+// would be pushed into scrollback as a ghost duplicate. incomplete marks the
+// output as the unfinished remainder of a turn that ended abnormally.
+func (m *Model) queueTurnOutput(incomplete bool) {
 	hadLiveStream := m.inlineFlowMode() &&
 		m.shouldRenderStreamingTranscript() &&
 		m.streamBuf.Len() > 0
 	m.flushStreamBuffer()
-	toPrint := m.collectLastAssistantMessage()
-	m.messages = append(m.messages, m.pendingHandoffs...)
-	toPrint = append(toPrint, m.pendingHandoffs...)
-	m.pendingHandoffs = m.pendingHandoffs[:0]
-	m.rebuildViewportWithMode(true)
-	return m.inlinePrintCmd(toPrint, hadLiveStream)
+	if len(m.pendingHandoffs) > 0 {
+		m.messages = append(m.messages, m.pendingHandoffs...)
+		m.pendingHandoffs = m.pendingHandoffs[:0]
+	}
+	if incomplete && m.hasUnprintedAssistant() {
+		m.messages = append(m.messages, ChatMessage{
+			Role:   "alert_warning",
+			Blocks: []ContentBlock{BlockAlert{Level: "warning", Message: incompleteResponseNotice}},
+		})
+	}
+	m.enqueuePrint(m.takeUnprinted(), hadLiveStream)
 }
 
-func (m *Model) recordHandoff(task string, agent string) tea.Cmd {
+func (m *Model) recordHandoff(task string, agent string) {
 	msg := ChatMessage{
 		Role:   "handoff",
 		Blocks: []ContentBlock{BlockHandoff{From: "", To: agent, Reason: task}},
@@ -2155,10 +2134,10 @@ func (m *Model) recordHandoff(task string, agent string) tea.Cmd {
 		if m.shouldRenderStreamingTranscript() {
 			m.rebuildViewport()
 		}
-		return nil
+		return
 	}
 
-	return m.appendMessage(msg, false)
+	m.appendMessage(msg, false)
 }
 
 func (m Model) modelLabel() string {
@@ -2630,11 +2609,11 @@ func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 	}
-	printCmd := m.appendMessage(ChatMessage{
+	m.appendMessage(ChatMessage{
 		Role:   "system",
 		Blocks: textBlocks("Exit cancelled."),
 	}, false)
-	return m, printCmd
+	return m, nil
 }
 
 // handleComponentRender routes a generic HITL component_render to a

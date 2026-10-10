@@ -24,6 +24,7 @@ file-descriptor pipes.  Each message is a single JSON object terminated by
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import json
 import logging
@@ -31,7 +32,9 @@ import os
 import queue
 import shutil
 import signal
-import subprocess
+
+# Used only to launch the lobster-tui binary (see launch_go_tui_chat).
+import subprocess  # nosec B404
 import sys
 import threading
 import time
@@ -47,6 +50,17 @@ from lobster.cli_internal.startup_diagnostics import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _note_suppressed(site: str, error: BaseException) -> None:
+    """Record a swallowed best-effort failure.
+
+    Logs only the site and the exception type: the message or traceback could
+    carry paths, keys or user data. A logging failure must never break the
+    caller, which is often terminal teardown.
+    """
+    with contextlib.suppress(Exception):
+        logger.debug("%s failed: %s", site, type(error).__name__)
 
 
 @dataclass
@@ -76,11 +90,13 @@ class _PythonTerminalQuarantine:
 
         try:
             sys.stdout.flush()
-        except Exception:
+        # Best effort, and no logging: flushing stdio while the terminal is quarantined.
+        except Exception:  # nosec B110
             pass
         try:
             sys.stderr.flush()
-        except Exception:
+        # Best effort, and no logging: flushing stdio while the terminal is quarantined.
+        except Exception:  # nosec B110
             pass
 
         previous_disable = logging.root.manager.disable
@@ -96,7 +112,8 @@ class _PythonTerminalQuarantine:
             for fd in (stdout_dup_fd, stderr_dup_fd, devnull_fd):
                 try:
                     os.close(fd)
-                except Exception:
+                # Best effort, and no logging: closing quarantine fds while stdio is redirected.
+                except Exception:  # nosec B110
                     pass
             raise
 
@@ -118,7 +135,8 @@ class _PythonTerminalQuarantine:
             for fd in (self.stdout_dup_fd, self.stderr_dup_fd, self.devnull_fd):
                 try:
                     os.close(fd)
-                except Exception:
+                # Best effort, and no logging: closing quarantine fds while stdio is redirected.
+                except Exception:  # nosec B110
                     pass
             logging.disable(self.logging_disable_level)
 
@@ -307,8 +325,8 @@ class _LightBridge:
         # Send quit BEFORE clearing _running (send() checks the flag).
         try:
             self.send("quit", {})
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("bridge quit", swallowed)
 
         self._running = False
 
@@ -316,8 +334,8 @@ class _LightBridge:
         for stream in (self._writer, self._reader):
             try:
                 stream.close()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                _note_suppressed("bridge stream close", swallowed)
 
         # Terminate the process group.
         proc = self.process
@@ -478,8 +496,8 @@ def _resolve_active_provider_name(client: Any) -> str:
                 resolved = str(provider_name or "").strip()
                 if resolved:
                     return resolved
-            except Exception:
-                pass
+            except Exception as swallowed:
+                _note_suppressed("provider name lookup", swallowed)
 
     fallback = runtime_override or str(getattr(client, "provider", None) or "").strip()
     return fallback
@@ -698,8 +716,8 @@ def _workspace_load_suggestions(client: Any, prefix: str, limit: int = 50) -> Li
                 if pfx and not name.lower().startswith(pfx):
                     continue
                 suggestions.append(name)
-    except Exception:
-        pass
+    except Exception as swallowed:
+        _note_suppressed("workspace suggestions", swallowed)
 
     suggestions.extend(_path_completion_suggestions(prefix, limit=limit))
     deduped = sorted(set(suggestions), key=lambda s: s.lower())
@@ -791,8 +809,8 @@ def _save_session_json_if_available(client: Any) -> None:
     if hasattr(client, "_save_session_json"):
         try:
             client._save_session_json()
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("session save", swallowed)
 
 
 def _resolve_go_chat_session_target(
@@ -903,6 +921,75 @@ def _dispatch_user_query(
     _handle_user_query(bridge, client, text)
 
 
+class _TurnState:
+    """Tracks how one chat turn ends so the TUI is told exactly once.
+
+    A turn ends in exactly one of these outcomes, each sent as a terminal
+    ``done`` message:
+
+    * ``""``          – completed normally
+    * ``"cancelled"`` – cancelled by the user, or abandoned while waiting on a
+      human-in-the-loop prompt (the TUI discards the unfinished output)
+    * ``"error"``     – failed; the TUI keeps any partial text but marks it
+      incomplete
+
+    ``done`` with ``"interrupt"`` only *pauses* the turn for a prompt and is not
+    terminal. Older TUI builds treat unknown summaries as a normal completion,
+    so the outcome strings stay within the existing ``done.summary`` field.
+    """
+
+    __slots__ = ("settled", "saw_error")
+
+    def __init__(self) -> None:
+        self.settled = False
+        self.saw_error = False
+
+
+def _settle_turn(bridge: _LightBridge, turn: _TurnState, summary: str) -> bool:
+    """Send the terminal ``done`` for *turn* unless one was already sent."""
+    if turn.settled:
+        return False
+    turn.settled = True
+    bridge.send("done", {"summary": summary})
+    return True
+
+
+def _settle_cancelled(
+    bridge: _LightBridge, turn: _TurnState, query_start: float
+) -> None:
+    if _settle_turn(bridge, turn, "cancelled"):
+        duration = time.time() - query_start
+        bridge.send("status", {"text": f"Cancelled after {duration:.1f}s"})
+    bridge.send("spinner", {"active": False})
+
+
+def _settle_unfinished_stream(
+    bridge: _LightBridge,
+    turn: _TurnState,
+    cancel_event: Optional[threading.Event],
+    query_start: float,
+) -> None:
+    """Close a turn whose stream ended without a ``complete`` event.
+
+    The client ends a stream silently after a cancellation, and after a failure
+    it has already reported through an ``error`` event; neither produces
+    ``complete``. Without an explicit outcome the TUI would stay stuck in a
+    running state and fold the next answer into the unfinished one.
+    """
+    if turn.settled:
+        return
+    if cancel_event is not None and cancel_event.is_set():
+        _settle_cancelled(bridge, turn, query_start)
+        return
+    if not turn.saw_error:
+        bridge.send(
+            "alert",
+            {"level": "warning", "message": "The response ended unexpectedly."},
+        )
+    bridge.send("spinner", {"active": False})
+    _settle_turn(bridge, turn, "error")
+
+
 def _handle_user_query(
     bridge: _LightBridge,
     client: Any,
@@ -913,11 +1000,15 @@ def _handle_user_query(
 
     Implements the resume loop pattern for HITL interrupts:
     stream → detect interrupt → render component → collect response → resume → stream.
+
+    Every exit path settles the turn with one terminal ``done`` (see
+    :class:`_TurnState`); a HITL interrupt pauses the turn and is not terminal.
     """
     bridge.send("spinner", {"active": True})
     query_start = time.time()
     is_first = True
     stream_source: Any = None  # Will be set to the generator each iteration.
+    turn = _TurnState()
 
     try:
         while True:
@@ -940,17 +1031,16 @@ def _handle_user_query(
                 if etype == "interrupt":
                     interrupt_event = event
                     break  # Exit inner loop to handle interrupt.
-                _forward_stream_event(bridge, client, event, query_start)
+                _forward_stream_event(bridge, client, event, query_start, turn=turn)
 
             if cancelled:
-                bridge.send("done", {"summary": "cancelled"})
-                duration = time.time() - query_start
-                bridge.send("status", {"text": f"Cancelled after {duration:.1f}s"})
-                bridge.send("spinner", {"active": False})
+                _settle_cancelled(bridge, turn, query_start)
                 return
 
             if interrupt_event is None:
-                # Stream completed normally (no interrupt).
+                # The stream ended: normally via a complete event, otherwise
+                # (silent cancel, reported failure) it must be settled here.
+                _settle_unfinished_stream(bridge, turn, cancel_event, query_start)
                 return
 
             # --- HITL interrupt: render component and await user response ---
@@ -958,11 +1048,15 @@ def _handle_user_query(
             # component so the supervisor's question is visible while the
             # user interacts with the HITL widget.
             bridge.send("done", {"summary": "interrupt"})
+            turn.saw_error = False  # the resumed stream is judged on its own
 
             response = _handle_interrupt(bridge, interrupt_event)
             if response is None:
-                # Interrupt was cancelled or timed out.
+                # Interrupt was cancelled or timed out: the paused turn will
+                # never resume, so end it. The TUI discards nothing it already
+                # printed (the question was flushed above).
                 bridge.send("spinner", {"active": False})
+                _settle_turn(bridge, turn, "cancelled")
                 return
 
             # Resume the graph with the user's response.
@@ -975,10 +1069,12 @@ def _handle_user_query(
     except KeyboardInterrupt:
         bridge.send("alert", {"level": "warning", "message": "Query interrupted"})
         bridge.send("spinner", {"active": False})
+        _settle_turn(bridge, turn, "cancelled")
     except Exception as exc:
         title, friendly = _friendly_error(str(exc))
         bridge.send("alert", {"level": "error", "title": title, "message": friendly})
         bridge.send("spinner", {"active": False})
+        _settle_turn(bridge, turn, "error")
 
 
 # Response types the bridge accepts as HITL answers from the Go TUI.
@@ -1037,9 +1133,18 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
 
 
 def _forward_stream_event(
-    bridge: _LightBridge, client: Any, event: dict, query_start: float
+    bridge: _LightBridge,
+    client: Any,
+    event: dict,
+    query_start: float,
+    turn: Optional[_TurnState] = None,
 ) -> None:
-    """Forward a single stream event to the Go TUI."""
+    """Forward a single stream event to the Go TUI.
+
+    When *turn* is given, ``complete`` settles it through the exactly-once
+    guard and ``error`` is remembered so a stream that ends without ``complete``
+    is reported as failed rather than silently finished.
+    """
     etype = event["type"]
     if etype == "content_delta":
         bridge.send("text", {"content": event["delta"], "markdown": True})
@@ -1054,7 +1159,10 @@ def _forward_stream_event(
             },
         )
     elif etype == "complete":
-        bridge.send("done", {"summary": ""})
+        if turn is None:
+            bridge.send("done", {"summary": ""})
+        else:
+            _settle_turn(bridge, turn, "")
         duration = time.time() - query_start
         status_parts = [_format_usage(client)]
         status_parts.append(f"Duration: {duration:.1f}s")
@@ -1069,6 +1177,8 @@ def _forward_stream_event(
             },
         )
     elif etype == "error":
+        if turn is not None:
+            turn.saw_error = True
         error_msg = str(event.get("error", "Unknown error"))
         title, friendly = _friendly_error(error_msg)
         if event.get("is_rate_limit") or "rate limit" in error_msg.lower():
@@ -1145,8 +1255,8 @@ def _handle_slash_command(
                 error_summary,
                 is_error=True,
             )
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("slash command error report", swallowed)
         bridge.send("alert", {"level": "error", "message": str(exc)})
     finally:
         _emit_provider_status(bridge, client)
@@ -1231,7 +1341,8 @@ def launch_go_tui_chat(
         no_intro=no_intro,
     )
 
-    proc = subprocess.Popen(
+    # argv list without a shell; the binary comes from find_tui_binary_fast().
+    proc = subprocess.Popen(  # nosec B603
         cmd,
         pass_fds=(p2g_r, g2p_w),
         # stdout inherited — BubbleTea needs the real terminal to render.
@@ -1371,8 +1482,8 @@ def launch_go_tui_chat(
             sid = getattr(client, "session_id", None)
             if sid:
                 bridge.send("status", {"text": f"Session: {sid}"})
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("session id status", swallowed)
 
         bridge.send("ready", {})
         if not inline_mode:
@@ -1396,8 +1507,8 @@ def launch_go_tui_chat(
             )
 
             set_go_tui_active(False)
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("TUI active flag reset", swallowed)
 
         if client is not None:
             _save_session_json_if_available(client)
@@ -1407,8 +1518,8 @@ def launch_go_tui_chat(
                 from lobster.ui.console_manager import get_console_manager
 
                 get_console_manager().restore_terminal_output()
-            except Exception:
-                pass
+            except Exception as swallowed:
+                _note_suppressed("console restore", swallowed)
 
         if terminal_quarantine is not None:
             terminal_quarantine.restore()
@@ -1441,8 +1552,8 @@ def _prepare_go_tui_chat_env(
             from lobster.version import __version__
 
             child_env["LOBSTER_TUI_APP_VERSION"] = __version__
-        except Exception:
-            pass
+        except Exception as swallowed:
+            _note_suppressed("app version lookup", swallowed)
     if no_intro:
         child_env["LOBSTER_TUI_NO_INTRO"] = "1"
     return child_env
