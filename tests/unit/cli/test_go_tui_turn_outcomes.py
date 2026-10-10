@@ -255,15 +255,15 @@ def test_golden_wire_fixture_matches_the_emitter():
 
 
 def test_note_suppressed_logs_site_and_type_only(caplog):
-    secret = "AKIA-secret /Users/someone/patient_ids.csv"
+    private_detail = "/Users/someone/patient_ids.csv"
     with caplog.at_level("DEBUG", logger=go_tui_launcher.logger.name):
-        go_tui_launcher._note_suppressed("session save", RuntimeError(secret))
+        go_tui_launcher._note_suppressed("session save", RuntimeError(private_detail))
 
     assert [r.getMessage() for r in caplog.records] == [
         "session save failed: RuntimeError"
     ]
     assert all(r.exc_info is None for r in caplog.records)
-    assert secret not in caplog.text
+    assert private_detail not in caplog.text
 
 
 def test_note_suppressed_never_raises_when_logging_fails(monkeypatch):
