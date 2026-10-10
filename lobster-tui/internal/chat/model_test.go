@@ -536,7 +536,8 @@ func TestInlinePrintMessagesCmdUsesTerminalPrintln(t *testing.T) {
 	m.inline = true
 	m.inlineFlow = true
 
-	cmd := m.inlinePrintMessagesCmd([]ChatMessage{{Role: "user", Blocks: textBlocks("hello")}})
+	m.enqueuePrint([]ChatMessage{{Role: "user", Blocks: textBlocks("hello")}}, false)
+	cmd := m.drainOutbox(false)
 	if cmd == nil {
 		t.Fatal("expected inline print command")
 	}
@@ -588,7 +589,8 @@ func TestInlineFlowFirstPrintedMessageDetachesHeader(t *testing.T) {
 	m.computeTarget = "MPS"
 	m.freeStorageGB = 41
 
-	cmd := m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("hello")}, false)
+	m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("hello")}, false)
+	cmd := m.drainOutbox(false)
 	if cmd == nil {
 		t.Fatal("expected first printed message command")
 	}
@@ -616,7 +618,8 @@ func TestInlineFlowViewKeepsPromptAfterHeaderDetaches(t *testing.T) {
 	m.showIntro = false
 	m.provider = "omics-os"
 
-	cmd := m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("/help")}, false)
+	m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("/help")}, false)
+	cmd := m.drainOutbox(false)
 	if cmd == nil {
 		t.Fatal("expected inline transcript print command")
 	}
@@ -640,7 +643,8 @@ func TestInlineFlowViewKeepsPromptWhileCommandRuns(t *testing.T) {
 	m.spinnerActive = true
 	m.spinnerLabel = "running command"
 
-	cmd := m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("/help")}, false)
+	m.appendMessage(ChatMessage{Role: "user", Blocks: textBlocks("/help")}, false)
+	cmd := m.drainOutbox(false)
 	if cmd == nil {
 		t.Fatal("expected inline transcript print command")
 	}
@@ -870,10 +874,11 @@ func TestInlinePrintMessagesCmdSchedulesRedraw(t *testing.T) {
 	m.inline = true
 	m.inlineFlow = true
 
-	cmd := m.inlinePrintMessagesCmd([]ChatMessage{{
+	m.enqueuePrint([]ChatMessage{{
 		Role:   "assistant",
 		Blocks: textBlocks("hello"),
-	}})
+	}}, false)
+	cmd := m.drainOutbox(false)
 	if cmd == nil {
 		t.Fatal("expected inline print command")
 	}
