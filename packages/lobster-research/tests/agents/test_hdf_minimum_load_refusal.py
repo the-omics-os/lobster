@@ -2,9 +2,11 @@
 
 import hashlib
 import pickle
+from importlib.util import find_spec
 from unittest.mock import Mock
 
 import anndata as ad
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,14 +23,17 @@ MODULE = "lobster.agents.data_expert.data_expert"
 
 
 @pytest.mark.parametrize("boundary", ["service", "tool"])
-def test_real_excluded_pickle_file_terminal_at_actual_caller(
+def test_real_unsupported_hdf_file_terminal_at_actual_caller(
     monkeypatch, tmp_path, caplog, record_property, boundary
 ):
-    path = tmp_path / "benign_pickle.h5"
-    with pytest.warns(pd.errors.PerformanceWarning):
-        pd.DataFrame({"expression": [{"benign": 1}, {"benign": 2}]}).to_hdf(
-            path, key="expression_data", mode="w", format="fixed"
-        )
+    # The fixture must also be writable in the isolated package CI environment
+    # without optional PyTables. This benign plain HDF is not an AnnData file;
+    # the actual native reader must still be attempted before the fixed refusal.
+    path = tmp_path / "benign_unsupported.h5"
+    with h5py.File(path, "w") as handle:
+        handle.create_dataset("fixture_values", data=np.array([1, 2], dtype=np.int32))
+    record_property("tables_available", find_spec("tables") is not None)
+    record_property("fixture_kind", "plain_hdf_not_anndata")
     record_property("fixture_sha256", hashlib.sha256(path.read_bytes()).hexdigest())
     record_property("fixture_bytes", path.stat().st_size)
     dm = DataManagerV2(workspace_path=tmp_path, auto_scan=False)
@@ -55,6 +60,8 @@ def test_real_excluded_pickle_file_terminal_at_actual_caller(
     monkeypatch.setattr(pd, "read_hdf", forbidden)
     monkeypatch.setattr(pd, "HDFStore", forbidden)
     monkeypatch.setattr(pickle, "loads", forbidden)
+    native_read = Mock(wraps=ad.read_h5ad)
+    monkeypatch.setattr(ad, "read_h5ad", native_read)
     caplog.clear()
     with pytest.raises(HdfReadRefusal) as caught:
         if boundary == "tool":
@@ -68,6 +75,8 @@ def test_real_excluded_pickle_file_terminal_at_actual_caller(
             )
         else:
             service.load_modality("denied", str(path), "transcriptomics_bulk")
+    native_read.assert_called_once()
+    assert str(native_read.call_args.args[0]) == str(path)
     assert candidate_calls == []
     assert caught.value.reason == "pandas_hdf_not_admitted"
     assert caught.value.__context__ is None
