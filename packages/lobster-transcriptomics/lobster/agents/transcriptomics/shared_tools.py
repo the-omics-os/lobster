@@ -838,7 +838,13 @@ Proceed with filtering and normalization for downstream analysis."""
                     "result_modality_name": result_name,
                     "method": method,
                     "n_top_genes": n_top_genes,
-                    "flavor": flavor,
+                    "flavor": stats.get("flavor") if method == "hvg" else None,
+                    "n_features_selected": stats["n_features_selected"],
+                    "requested_parameters": {
+                        "method": method,
+                        "n_top_genes": n_top_genes,
+                        "flavor": flavor,
+                    },
                 },
                 description=f"Selected {stats['n_features_selected']} features using {method}",
                 ir=ir,
@@ -856,6 +862,25 @@ Proceed with filtering and normalization for downstream analysis."""
                 response += f"\n\n**Warning**: {stats['warning']}"
 
             response += f"\n\n**New modality created**: '{result_name}'"
+            payload = {
+                "input_modality_name": modality_name,
+                "result_modality_name": result_name,
+                "requested_parameters": {
+                    "method": method,
+                    "n_top_genes": n_top_genes,
+                    "flavor": flavor,
+                },
+                "applied_parameters": {
+                    "method": stats["method"],
+                    "n_features_selected": int(stats["n_features_selected"]),
+                    "flavor": stats.get("flavor") if method == "hvg" else None,
+                },
+            }
+            response += (
+                "\n\n**Applied parameters (JSON):**\n```json\n"
+                + json.dumps(payload, allow_nan=False)
+                + "\n```"
+            )
 
             # Next-step guidance based on method
             if method == "deviance":
@@ -880,7 +905,7 @@ Proceed with filtering and normalization for downstream analysis."""
     @tool
     def run_pca(
         modality_name: str,
-        n_comps: int = 30,
+        n_comps: Optional[int] = None,
         scale_data: bool = True,
         use_highly_variable: bool = True,
     ) -> str:
@@ -951,9 +976,13 @@ Proceed with filtering and normalization for downstream analysis."""
                     "modality_name": modality_name,
                     # Real stored output name, so the DAG's artifact edge resolves.
                     "result_modality_name": result_name,
-                    "n_comps": n_comps,
-                    "scale_data": scale_data,
+                    "n_comps": stats["n_comps_computed"],
+                    "n_features_used": stats["n_features_used"],
+                    "scale_data": stats["scaled"],
                     "use_highly_variable": use_highly_variable,
+                    "requested_parameters": stats["requested_parameters"],
+                    "applied_parameters": stats["applied_parameters"],
+                    "parameter_adjustments": stats["parameter_adjustments"],
                 },
                 description=f"PCA with {stats['n_comps_computed']} components on {modality_name}",
                 ir=ir,
@@ -971,6 +1000,18 @@ Proceed with filtering and normalization for downstream analysis."""
 
 **Next steps**: compute_neighbors_and_embed() for UMAP/tSNE visualization"""
 
+            payload = {
+                "input_modality_name": modality_name,
+                "result_modality_name": result_name,
+                "requested_parameters": stats["requested_parameters"],
+                "applied_parameters": stats["applied_parameters"],
+                "parameter_adjustments": stats["parameter_adjustments"],
+            }
+            response += (
+                "\n\n**Applied parameters (JSON):**\n```json\n"
+                + json.dumps(payload, allow_nan=False)
+                + "\n```"
+            )
             response = prepend_stage_warning(response, stage_warning)
             analysis_results["details"]["pca"] = response
             return response
@@ -989,9 +1030,10 @@ Proceed with filtering and normalization for downstream analysis."""
     @tool
     def compute_neighbors_and_embed(
         modality_name: str,
-        n_neighbors: int = 15,
-        n_pcs: int = 30,
+        n_neighbors: Optional[int] = None,
+        n_pcs: Optional[int] = None,
         embedding_method: str = "umap",
+        use_rep: Optional[str] = None,
     ) -> str:
         """
         Compute neighborhood graph and embedding (UMAP or tSNE) as a standalone step.
@@ -1000,9 +1042,10 @@ Proceed with filtering and normalization for downstream analysis."""
 
         Args:
             modality_name: Name of the modality to process
-            n_neighbors: Number of neighbors for KNN graph (default: 15)
-            n_pcs: Number of PCs for neighbor computation (default: 30)
+            n_neighbors: Unset resolves 15 with disclosed adjustment; explicit requests are strict
+            n_pcs: Unset resolves 30 with disclosed adjustment; explicit requests are strict
             embedding_method: Embedding method ('umap' or 'tsne', default: 'umap')
+            use_rep: Prepared representation key. Unset resolves X_pca; no suffix inference.
 
         Returns:
             Formatted embedding report with next-step guidance
@@ -1030,6 +1073,7 @@ Proceed with filtering and normalization for downstream analysis."""
                 n_neighbors=n_neighbors,
                 n_pcs=n_pcs,
                 embedding_method=embedding_method,
+                use_rep=use_rep,
             )
 
             result_name = f"{modality_name}_embedded"
@@ -1047,9 +1091,13 @@ Proceed with filtering and normalization for downstream analysis."""
                     "modality_name": modality_name,
                     # Real stored output name, so the DAG's artifact edge resolves.
                     "result_modality_name": result_name,
-                    "n_neighbors": n_neighbors,
-                    "n_pcs": n_pcs,
-                    "embedding_method": embedding_method,
+                    "n_neighbors": stats["n_neighbors_used"],
+                    "n_pcs": stats["n_pcs_used"],
+                    "use_rep": stats["use_rep"],
+                    "embedding_method": stats["embedding_method"],
+                    "requested_parameters": stats["requested_parameters"],
+                    "applied_parameters": stats["applied_parameters"],
+                    "parameter_adjustments": stats["parameter_adjustments"],
                 },
                 description=f"Computed neighbors + {embedding_method} on {modality_name}",
                 ir=ir,
@@ -1066,6 +1114,18 @@ Proceed with filtering and normalization for downstream analysis."""
 
 **Next steps**: Use cluster_cells() for Leiden clustering, or visualize directly"""
 
+            payload = {
+                "input_modality_name": modality_name,
+                "result_modality_name": result_name,
+                "requested_parameters": stats["requested_parameters"],
+                "applied_parameters": stats["applied_parameters"],
+                "parameter_adjustments": stats["parameter_adjustments"],
+            }
+            response += (
+                "\n\n**Applied parameters (JSON):**\n```json\n"
+                + json.dumps(payload, allow_nan=False)
+                + "\n```"
+            )
             analysis_results["details"]["embedding"] = response
             return response
 

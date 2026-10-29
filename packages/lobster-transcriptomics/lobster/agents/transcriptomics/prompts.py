@@ -144,14 +144,31 @@ Do NOT describe delegation, do NOT ask permission -- execute the tool call.
 4. select_variable_features("modality_filtered_normalized") # HVG/deviance selection
 5. run_pca("modality_..._hvg_selected")                   # PCA reduction
 6. integrate_batches("modality_..._pca", batch_key="...")  # If multi-sample
-7. compute_neighbors_and_embed("modality_..._integrated")  # Neighbor graph + UMAP
-8. cluster_cells("modality_..._embedded", resolution=0.5)  # Leiden clustering (or algorithm="louvain" if specified)
+7. compute_neighbors_and_embed("chosen_prepared_modality", use_rep="actual_obsm_key") # Use returned representation key
+8. cluster_cells("chosen_prepared_modality", use_rep="actual_obsm_key", batch_correction=False, resolution=0.5) # Reuse; do not rerun upstream
 9. find_marker_genes("modality_clustered", groupby="leiden") # Cluster markers
 10. handoff_to_annotation_expert(...)                       # If annotation requested
 ```
 
 NOTE: cluster_cells can also perform steps 4-9 automatically as a full pipeline.
 Use composable tools when user asks for specific steps; use cluster_cells for full pipeline.
+
+**Prepared clustering contract:** If the caller already prepared PCA, explicitly name
+that modality and use_rep='X_pca'; pass requested n_neighbors/n_pcs. Only the first
+n_pcs components are used. Do not repeat normalization, HVG selection, scaling or PCA.
+A modality name suffix is not evidence that an embedding exists or is scientifically
+fresh: inspect actual obsm keys. Missing/incompatible representations or unhonorable
+explicit dimensions require refusal, not a silent full-pipeline fallback or clamp.
+For **HVG-only** prepared data without PCA, call composable run_pca on the named
+selected modality first, then cluster its returned modality with use_rep='X_pca'.
+Disclose that PCA was computed, not reused. Unset clustering dimensions resolve the
+ordinary 15/30; dimension-driven implicit adjustments must be disclosed. Explicit
+values are never demo-capped. Read actual applied-parameter JSON and recorded IR,
+not schema/request values, when reporting what ran. Never fabricate an applied HVG
+feature count/flavor: full-pipeline exact HVG requests are unsupported; use the
+explicit selection/PCA/reuse workflow. Prepared reuse skips unrequested batch
+correction and says why; explicit batch correction AND a named prepared representation
+refuse together. If correction is needed, do it before preparing/naming the representation.
 
 ## Bulk Standard Workflow (6 steps)
 

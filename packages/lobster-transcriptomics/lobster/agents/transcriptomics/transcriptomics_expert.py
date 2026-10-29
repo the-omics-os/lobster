@@ -37,6 +37,7 @@ AGENT_CONFIG = AgentRegistryConfig(
 )
 
 # === Heavy imports below ===
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -273,13 +274,16 @@ def transcriptomics_expert(
         resolution: float = None,
         resolutions: Optional[List[float]] = None,
         use_rep: Optional[str] = None,
-        batch_correction: bool = True,
+        batch_correction: Optional[bool] = None,
         batch_key: str = None,
         demo_mode: bool = False,
         save_result: bool = True,
         feature_selection_method: str = "deviance",
-        n_features: int = 4000,
+        n_features: Optional[int] = None,
         algorithm: str = "leiden",
+        n_neighbors: Optional[int] = None,
+        n_pcs: Optional[int] = None,
+        flavor: Optional[str] = None,
     ) -> str:
         """
         Perform single-cell clustering and UMAP visualization.
@@ -292,15 +296,29 @@ def transcriptomics_expert(
             resolution: Single resolution (0.1-2.0). Default 1.0 if neither resolution nor resolutions set.
             resolutions: List for multi-resolution testing (e.g., [0.25, 0.5, 1.0]). Overrides resolution.
             use_rep: Embedding to use (e.g., 'X_scvi'). None = standard PCA workflow.
-            batch_correction: Whether to correct for batch in multi-sample data
+            batch_correction: Unset keeps standard default True, but skips correction
+                when a prepared representation is named. Explicit True with use_rep refuses.
             batch_key: Batch column (auto-detected if None)
-            demo_mode: Faster processing for >50k cells
+            demo_mode: Faster processing for >50k cells; explicit dimensions are never capped
             save_result: Whether to save the clustered modality
             feature_selection_method: 'deviance' (default, raw counts) or 'hvg' (normalized data)
-            n_features: Number of features to select (default: 4000)
+            n_features: Unset keeps deviance limit 4000. Exact full-pipeline HVG counts
+                are unsupported; select features, run_pca, then name use_rep='X_pca'.
             algorithm: 'leiden' (default) or 'louvain'
+            n_neighbors: Unset defaults to 15 with disclosed size adjustment; explicit is strict
+            n_pcs: Unset defaults to 30 with disclosed size adjustment; explicit is strict
+            flavor: Exact full-pipeline HVG flavor requests are unsupported. Prepare
+                features separately and name the representation to reuse them.
         """
         try:
+            ClusteringService._validate_feature_request(
+                use_rep, feature_selection_method, n_features, flavor, resolutions
+            )
+            if use_rep is not None and batch_correction is True:
+                return "Error: Prepared representation and explicit batch correction cannot be combined."
+            effective_batch_request = (
+                use_rep is None if batch_correction is None else batch_correction
+            )
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
                 raise ModalityNotFoundError(
@@ -325,14 +343,23 @@ def transcriptomics_expert(
                     resolution=resolution,
                     resolutions=resolutions,
                     use_rep=use_rep,
-                    batch_correction=batch_correction,
+                    batch_correction=effective_batch_request,
                     batch_key=batch_key,
                     demo_mode=demo_mode,
                     feature_selection_method=feature_selection_method,
                     n_features=n_features,
                     algorithm=algorithm_lower,
+                    n_neighbors=n_neighbors,
+                    n_pcs=n_pcs,
+                    flavor=flavor,
                 )
             )
+            # The tool's omitted batch request is distinct from its resolved
+            # SDK argument; applied values still come from actual service output.
+            clustering_stats["requested_parameters"][
+                "batch_correction"
+            ] = batch_correction
+            applied = clustering_stats["applied_parameters"]
 
             # Save as new modality
             clustered_modality_name = f"{modality_name}_clustered"
@@ -354,15 +381,29 @@ def transcriptomics_expert(
                 parameters={
                     "modality_name": modality_name,
                     "result_modality_name": clustered_modality_name,
-                    "resolution": resolution,
-                    "resolutions": resolutions,
-                    "batch_correction": batch_correction,
-                    "demo_mode": demo_mode,
-                    "feature_selection_method": feature_selection_method,
-                    "n_features": n_features,
+                    "resolution": applied["resolution"],
+                    "resolutions": applied["resolutions"],
+                    "batch_correction": applied["batch_correction"],
+                    "demo_mode": clustering_stats["demo_mode"],
+                    "feature_selection_method": applied["feature_selection_method"],
+                    "n_features": applied["n_features_selected"],
+                    "n_neighbors": applied["n_neighbors"],
+                    "n_pcs": applied["n_pcs"],
+                    "use_rep": applied["use_rep"],
+                    "flavor": applied["flavor"],
+                    "requested_parameters": clustering_stats["requested_parameters"],
+                    "applied_parameters": applied,
+                    "parameter_adjustments": clustering_stats["parameter_adjustments"],
+                    "skipped_steps": clustering_stats["skipped_steps"],
+                    "features_marked": clustering_stats["features_marked"],
+                    "features_used": clustering_stats["features_used"],
+                    "batch_correction_status": clustering_stats[
+                        "batch_correction_status"
+                    ],
+                    "subsample_status": clustering_stats["subsample_status"],
                     "algorithm": algorithm_lower,
                 },
-                description=f"Single-cell clustered {modality_name} into {clustering_stats['n_clusters']} clusters using {algorithm_lower} with {feature_selection_method} feature selection",
+                description=f"Single-cell clustered {modality_name} into {clustering_stats['n_clusters']} clusters using {algorithm_lower}; representation {applied['use_rep']}",
                 ir=ir,
                 agent=agent_name,
             )
@@ -403,8 +444,12 @@ def transcriptomics_expert(
 **Processing Details:**
 - Original shape: {clustering_stats["original_shape"][0]} x {clustering_stats["original_shape"][1]}
 - Final shape: {clustering_stats["final_shape"][0]} x {clustering_stats["final_shape"][1]}
-- Feature selection: {feature_selection_method} ({n_features} features)
-- Batch correction: {"Yes" if clustering_stats["batch_correction"] else "No"}
+- Feature selection: {applied['feature_selection_method'] or 'skipped (using prepared representation)'}
+- Features marked / actually used for PCA: {clustering_stats['features_marked'] if clustering_stats['features_marked'] is not None else 'NOT COMPUTED'} / {clustering_stats['features_used'] if clustering_stats['features_used'] is not None else 'NOT COMPUTED (using prepared representation)'}
+- Neighbors / PCs used: {applied['n_neighbors']} / {applied['n_pcs']}
+- Representation: {applied['use_rep']}
+- Batch correction: {"Yes" if clustering_stats["batch_correction"] else "No"} ({clustering_stats['batch_correction_status']['reason']})
+- Subsampling performed: {clustering_stats['subsample_status']['performed']} (target {clustering_stats['subsample_status']['target']}; configured seed {clustering_stats['subsample_status']['seed']})
 - Demo mode: {"Yes" if clustering_stats["demo_mode"] else "No"}
 
 **Cluster Distribution:**"""
@@ -434,6 +479,27 @@ def transcriptomics_expert(
                 response += "\n- Higher resolutions (1.0-2.0) reveal finer cell states"
                 response += "\n- Choose resolution based on biological expectations and marker gene validation"
 
+            if clustering_stats.get("batch_correction_reason"):
+                response += f"\n\n{clustering_stats['batch_correction_reason']}"
+            payload = {
+                "input_modality_name": modality_name,
+                "result_modality_name": clustered_modality_name,
+                "requested_parameters": clustering_stats["requested_parameters"],
+                "applied_parameters": applied,
+                "parameter_adjustments": clustering_stats["parameter_adjustments"],
+                "skipped_steps": clustering_stats["skipped_steps"],
+                "features_marked": clustering_stats["features_marked"],
+                "features_used": clustering_stats["features_used"],
+                "batch_correction_status": clustering_stats["batch_correction_status"],
+                "subsample_status": clustering_stats["subsample_status"],
+                "input_shape": list(clustering_stats["original_shape"]),
+                "result_shape": list(clustering_stats["final_shape"]),
+            }
+            response += (
+                "\n\n**Applied parameters (JSON):**\n```json\n"
+                + json.dumps(payload, allow_nan=False)
+                + "\n```"
+            )
             response += "\n\n**Next steps**: find_marker_genes(), then INVOKE handoff_to_annotation_expert if annotation requested."
 
             analysis_results["details"]["clustering"] = response

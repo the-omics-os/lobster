@@ -13,6 +13,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import scanpy as sc
+from scipy import sparse
 from sklearn.metrics import (
     calinski_harabasz_score,
     davies_bouldin_score,
@@ -102,6 +103,87 @@ class ClusteringService:
 
         return progress_callback_wrapper
 
+    @staticmethod
+    def _resolve_dimension(requested, default, maximum, name, minimum=1):
+        """Resolve an omitted dimension; never silently change an explicit one."""
+        if maximum < minimum:
+            raise ClusteringError(f"Insufficient data for {name}: maximum {maximum}")
+        if requested is not None:
+            if isinstance(requested, (bool, np.bool_)) or not isinstance(
+                requested, (int, np.integer)
+            ):
+                raise ClusteringError(f"{name} must be an integer")
+            if not minimum <= requested <= maximum:
+                raise ClusteringError(
+                    f"Explicit {name}={requested} cannot be honored; "
+                    f"supported range is {minimum}..{maximum}"
+                )
+            return int(requested), []
+        effective = min(default, maximum)
+        adjustments = []
+        if effective != default:
+            adjustments.append(
+                {
+                    "parameter": name,
+                    "requested": None,
+                    "default": default,
+                    "effective": effective,
+                    "reason": "available data dimensions",
+                }
+            )
+        return effective, adjustments
+
+    @staticmethod
+    def _validate_representation(adata, use_rep):
+        """Mechanical compatibility only, not scientific freshness certification."""
+        if not isinstance(use_rep, str) or not use_rep or use_rep not in adata.obsm:
+            raise ClusteringError(
+                f"Representation {use_rep!r} not found; prepare and name it explicitly"
+            )
+        values = adata.obsm[use_rep]
+        if (
+            len(values.shape) != 2
+            or values.shape[0] != adata.n_obs
+            or values.shape[1] < 1
+        ):
+            raise ClusteringError(
+                "Representation must be aligned, nonempty and two-dimensional"
+            )
+        data = values.data if sparse.issparse(values) else np.asarray(values)
+        if not np.issubdtype(data.dtype, np.number) or np.iscomplexobj(data):
+            raise ClusteringError("Representation must contain real numeric values")
+        if not np.isfinite(data).all():
+            raise ClusteringError("Representation must contain finite values")
+        return int(values.shape[1])
+
+    @staticmethod
+    def _validate_feature_request(
+        use_rep, method, n_features, flavor, resolutions=None
+    ):
+        if use_rep is not None and resolutions is not None:
+            raise ClusteringError(
+                "Prepared representations do not support resolutions lists; request one resolution"
+            )
+        if use_rep is None and (
+            flavor is not None or (method == "hvg" and n_features is not None)
+        ):
+            raise ClusteringError(
+                "Exact n_features/flavor requests are not supported by the full HVG pipeline. "
+                "Select features explicitly, run_pca, then use_rep='X_pca'."
+            )
+
+    @staticmethod
+    def _clustering_ir_prelude():
+        """Replay the same ordered sampling and existing correction routine."""
+        return """{% if subsample_size %}
+if adata.n_obs > {{ subsample_size }}:
+    sc.pp.subsample(adata, n_obs={{ subsample_size }}, random_state={{ subsample_seed }})
+{% endif %}
+{% if batch_correction_attempted %}
+adata = ClusteringService()._perform_batch_correction(adata, {{ batch_key | repr }})
+{% endif %}
+"""
+
     def _create_clustering_ir(
         self,
         resolution: float,
@@ -114,6 +196,11 @@ class ClusteringService:
         min_disp: float = 0.5,
         resolutions: Optional[list] = None,
         algorithm: str = "leiden",
+        find_markers: bool = True,
+        demo_mode: bool = False,
+        subsample_size: Optional[int] = None,
+        batch_correction_attempted: bool = False,
+        batch_key: Optional[str] = None,
     ) -> AnalysisStep:
         """
         Create Intermediate Representation for full clustering pipeline.
@@ -410,6 +497,107 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "algorithm": algorithm,
             }
 
+        # Both legacy branch templates share these operations. Bind the graph
+        # explicitly to computed PCs even when Scanpy would otherwise select X
+        # for <=50 selected genes, and replay the actual marker-skip branch.
+        code_template = code_template.replace(
+            "sc.pp.neighbors(adata_selected, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }})",
+            "sc.pp.neighbors(adata_selected, n_neighbors={{ n_neighbors }}, n_pcs={{ n_pcs }}, use_rep='X_pca')",
+        )
+        marker_start = code_template.index("# 10. Marker genes")
+        marker_end = code_template.index('print(f"Clustering pipeline complete:')
+        code_template = (
+            code_template[:marker_start]
+            + "{% if find_markers %}\n"
+            + code_template[marker_start:marker_end]
+            + "{% endif %}\n"
+            + code_template[marker_end:]
+        )
+        code_template = (
+            code_template.replace(
+                "adata_selected = adata[:, adata.var['highly_deviant']].copy()",
+                """{% if demo_mode %}
+if int(adata.var['highly_deviant'].sum()) > 1000:
+    selected_genes = adata.var.sort_values('deviance_score', ascending=False).head(1000).index
+    adata_selected = adata[:, selected_genes].copy()
+else:
+    adata_selected = adata[:, adata.var['highly_deviant']].copy()
+{% else %}
+adata_selected = adata[:, adata.var['highly_deviant']].copy()
+{% endif %}""",
+            )
+            .replace(
+                "adata_selected = adata[:, adata.var.highly_variable].copy()",
+                """{% if demo_mode %}
+if int(adata.var.highly_variable.sum()) > 1000:
+    selected_genes = adata.var.sort_values('dispersions_norm', ascending=False).head(1000).index
+    adata_selected = adata[:, selected_genes].copy()
+else:
+    adata_selected = adata[:, adata.var.highly_variable].copy()
+{% else %}
+adata_selected = adata[:, adata.var.highly_variable].copy()
+{% endif %}""",
+            )
+            .replace(
+                "sc.tl.umap(adata_selected)",
+                """{% if demo_mode %}
+sc.tl.umap(adata_selected, min_dist=0.5, spread=1.5)
+{% else %}
+sc.tl.umap(adata_selected)
+{% endif %}""",
+            )
+        )
+        # Replay every resolution on the same graph, retaining actual primary
+        # and all resolution-suffixed columns on the full object.
+        loop_start = code_template.index("cluster_key = ")
+        loop_end = code_template.index("# 8. UMAP visualization")
+        code_template = (
+            code_template[:loop_start]
+            + """resolutions_to_test = {{ resolutions | repr }}
+clustering_results = {}
+for res in resolutions_to_test:
+    cluster_key = f"{ {{ algorithm | repr }} }_res{res}".replace('.', '_')
+    sc.tl.{{ algorithm | lower }}(adata_selected, resolution=res, key_added=cluster_key)
+    clustering_results[res] = {'resolution': res, 'n_clusters': adata_selected.obs[cluster_key].nunique(), 'key_name': cluster_key}
+primary_key = f"{ {{ algorithm | repr }} }_res{resolutions_to_test[0]}".replace('.', '_')
+adata_selected.obs[{{ algorithm | repr }}] = adata_selected.obs[primary_key]
+n_clusters = adata_selected.obs[primary_key].nunique()
+
+"""
+            + code_template[loop_end:]
+        )
+        code_template = code_template.replace(
+            "adata.obs[cluster_key] = adata_selected.obs[cluster_key]",
+            """for res in resolutions_to_test:
+    key = f"{ {{ algorithm | repr }} }_res{res}".replace('.', '_')
+    adata.obs[key] = adata_selected.obs[key]""",
+        )
+        summary_start = code_template.index("adata.uns['resolutions_tested'] = ")
+        summary_end = code_template.index("adata.uns['umap_distance_warning'] = ")
+        code_template = (
+            code_template[:summary_start]
+            + "adata.uns['resolutions_tested'] = resolutions_to_test\nadata.uns['clustering_results'] = clustering_results\n"
+            + code_template[summary_end:]
+        )
+        parameters.update(
+            {
+                "find_markers": find_markers,
+                "use_rep": "X_pca",
+                "demo_mode": demo_mode,
+                "resolutions": (
+                    list(resolutions) if resolutions is not None else [resolution]
+                ),
+                "subsample_size": subsample_size,
+                "subsample_seed": 42,
+                "batch_correction_attempted": batch_correction_attempted,
+                "batch_key": batch_key,
+            }
+        )
+        code_template = self._clustering_ir_prelude() + code_template
+        if batch_correction_attempted:
+            imports.append(
+                "from lobster.services.analysis.clustering_service import ClusteringService"
+            )
         return AnalysisStep(
             operation=f"scanpy.tl.{algorithm}",
             tool_name="cluster_and_visualize",
@@ -439,7 +627,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
     def run_pca(
         self,
         adata: anndata.AnnData,
-        n_comps: int = 30,
+        n_comps: Optional[int] = None,
         scale_data: bool = True,
         use_highly_variable: bool = True,
         svd_solver: str = "arpack",
@@ -474,6 +662,17 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 f"use_highly_variable={use_highly_variable})"
             )
 
+            # Determine dimensional capacity before copying/scaling. Preserve
+            # feature choice, but never silently clamp an explicit component request.
+            count = adata.n_vars
+            if use_highly_variable:
+                for column in ("highly_variable", "highly_deviant"):
+                    if column in adata.var:
+                        count = int(adata.var[column].astype(bool).sum())
+                        break
+            actual_n_comps, adjustments = self._resolve_dimension(
+                n_comps, 30, min(adata.n_obs - 1, count - 1), "n_comps"
+            )
             adata_processed = adata.copy()
 
             # Determine which features to use
@@ -518,23 +717,8 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 logger.info("Scaling data (max_value=10)")
                 sc.pp.scale(adata_selected, max_value=10)
 
-            # Validate n_comps against data dimensions
-            n_features = adata_selected.n_vars
-            n_cells = adata_selected.n_obs
-            max_pcs = min(n_cells - 1, n_features - 1)
-
-            actual_n_comps = n_comps
-            if n_comps > max_pcs:
-                actual_n_comps = max(1, max_pcs)
-                if actual_n_comps < 1:
-                    raise ClusteringError(
-                        f"Insufficient data for PCA: {n_cells} cells and {n_features} features. "
-                        "Need at least 2 of each."
-                    )
-                logger.warning(
-                    f"Reduced n_comps from {n_comps} to {actual_n_comps} "
-                    f"(data has {n_cells} cells, {n_features} features)"
-                )
+            # Component count has already been resolved against this feature
+            # mask before any scaling. Explicit requests are not adjusted.
 
             # Run PCA
             logger.info(f"Computing PCA with {actual_n_comps} components")
@@ -562,6 +746,14 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
                 "scaled": scale_data,
                 "feature_column": feature_col,
                 "svd_solver": svd_solver,
+                "requested_parameters": {"n_comps": n_comps},
+                "applied_parameters": {
+                    "n_comps": actual_n_comps,
+                    "n_features_used": int(adata_selected.n_vars),
+                    "scale_data": scale_data,
+                    "feature_column": feature_col,
+                },
+                "parameter_adjustments": adjustments,
             }
 
             logger.info(
@@ -591,6 +783,9 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
         algorithm: str,
         demo_mode: bool,
         find_markers: bool,
+        n_neighbors: int = 15,
+        n_pcs: int = 30,
+        subsample_size: Optional[int] = None,
     ) -> AnalysisStep:
         """IR for clustering on an existing embedding (``use_rep``).
 
@@ -603,9 +798,7 @@ print(f"Clustering pipeline complete: {adata.n_obs} cells in {n_clusters} cluste
         code_template = """# Clustering on the existing embedding (no normalization or PCA)
 adata.raw = adata.copy()
 n_neighbors = {{ n_neighbors }}
-if adata.n_obs <= n_neighbors:
-    n_neighbors = max(2, adata.n_obs - 1)
-sc.pp.neighbors(adata, use_rep={{ use_rep | repr }}, n_neighbors=n_neighbors)
+sc.pp.neighbors(adata, use_rep={{ use_rep | repr }}, n_neighbors=n_neighbors, n_pcs={{ n_pcs }})
 sc.tl.{{ algorithm }}(adata, resolution={{ resolution }}, key_added={{ algorithm | repr }})
 {% if demo_mode %}
 sc.tl.umap(adata, min_dist=0.5, spread=1.5)
@@ -623,12 +816,18 @@ print(f"Clustering complete: {adata.obs[{{ algorithm | repr }}].nunique()} clust
         parameters = {
             "use_rep": use_rep,
             "resolution": resolution,
-            "n_neighbors": 10 if demo_mode else 15,
+            "n_neighbors": n_neighbors,
+            "n_pcs": n_pcs,
             "algorithm": algorithm,
             "demo_mode": demo_mode,
             "find_markers": find_markers,
             "marker_method": "t-test" if demo_mode else "wilcoxon",
+            "subsample_size": subsample_size,
+            "subsample_seed": 42,
+            "batch_correction_attempted": False,
+            "batch_key": None,
         }
+        code_template = self._clustering_ir_prelude() + code_template
         return AnalysisStep(
             operation=f"scanpy.tl.{algorithm}",
             tool_name="cluster_and_visualize",
@@ -735,8 +934,8 @@ print(f"PCA complete: { {{ n_comps | repr }} } components, {variance_explained:.
     def compute_neighbors_and_embed(
         self,
         adata: anndata.AnnData,
-        n_neighbors: int = 15,
-        n_pcs: int = 30,
+        n_neighbors: Optional[int] = None,
+        n_pcs: Optional[int] = None,
         embedding_method: str = "umap",
         use_rep: Optional[str] = None,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
@@ -765,34 +964,21 @@ print(f"PCA complete: { {{ n_comps | repr }} } components, {variance_explained:.
                 f"(n_neighbors={n_neighbors}, n_pcs={n_pcs})"
             )
 
+            rep_key = "X_pca" if use_rep is None else use_rep
+            available_pcs = self._validate_representation(adata, rep_key)
+            neighbor_max = (
+                adata.n_obs if n_neighbors is not None else max(2, adata.n_obs - 1)
+            )
+            actual_n_neighbors, neighbor_adjustments = self._resolve_dimension(
+                n_neighbors, 15, neighbor_max, "n_neighbors", minimum=2
+            )
+            actual_n_pcs, pc_adjustments = self._resolve_dimension(
+                n_pcs, 30, available_pcs, "n_pcs"
+            )
+            embedding_method_lower = embedding_method.lower()
+            if embedding_method_lower not in ("umap", "tsne"):
+                raise ClusteringError("Embedding method must be 'umap' or 'tsne'")
             adata_processed = adata.copy()
-
-            # Validate that PCA or use_rep exists
-            rep_key = use_rep or "X_pca"
-            if rep_key not in adata_processed.obsm:
-                raise ClusteringError(
-                    f"Representation '{rep_key}' not found in adata.obsm. "
-                    f"Available keys: {list(adata_processed.obsm.keys())}. "
-                    "Run run_pca() first to compute PCA coordinates."
-                )
-
-            # Auto-adjust n_neighbors for small datasets
-            actual_n_neighbors = n_neighbors
-            if adata_processed.n_obs <= n_neighbors:
-                actual_n_neighbors = max(2, adata_processed.n_obs - 1)
-                logger.warning(
-                    f"Adjusted n_neighbors from {n_neighbors} to {actual_n_neighbors} "
-                    f"(dataset has {adata_processed.n_obs} observations)"
-                )
-
-            # Auto-adjust n_pcs if exceeds available PCs
-            available_pcs = adata_processed.obsm[rep_key].shape[1]
-            actual_n_pcs = min(n_pcs, available_pcs)
-            if actual_n_pcs < n_pcs:
-                logger.warning(
-                    f"Adjusted n_pcs from {n_pcs} to {actual_n_pcs} "
-                    f"(only {available_pcs} components available)"
-                )
 
             # Compute neighborhood graph
             logger.info("Computing neighborhood graph")
@@ -830,6 +1016,18 @@ print(f"PCA complete: { {{ n_comps | repr }} } components, {variance_explained:.
                 "embedding_key": embedding_key,
                 "embedding_shape": list(embedding_shape),
                 "use_rep": rep_key,
+                "requested_parameters": {
+                    "n_neighbors": n_neighbors,
+                    "n_pcs": n_pcs,
+                    "use_rep": use_rep,
+                },
+                "applied_parameters": {
+                    "n_neighbors": actual_n_neighbors,
+                    "n_pcs": actual_n_pcs,
+                    "use_rep": rep_key,
+                    "embedding_method": embedding_method_lower,
+                },
+                "parameter_adjustments": neighbor_adjustments + pc_adjustments,
             }
 
             logger.info(
@@ -932,8 +1130,11 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
         subsample_size: Optional[int] = None,
         skip_steps: Optional[list] = None,
         feature_selection_method: str = "deviance",
-        n_features: int = 4000,
+        n_features: Optional[int] = None,
         algorithm: str = "leiden",
+        n_neighbors: Optional[int] = None,
+        n_pcs: Optional[int] = None,
+        flavor: Optional[str] = None,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
         """
         Perform clustering and UMAP visualization on single-cell RNA-seq data.
@@ -968,19 +1169,53 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
         if not isinstance(adata, anndata.AnnData):
             raise TypeError(f"Expected AnnData object, got {type(adata).__name__}")
 
-        # Validate resolution parameter
-        if resolution is None:
+        # The first requested resolution is the actual primary result.
+        requested_resolution = resolution
+        if resolutions is not None:
+            if not resolutions:
+                raise ValueError("resolutions must not be empty")
+            resolution = resolutions[0]
+        elif resolution is None:
             resolution = self.default_cluster_resolution
 
         if resolution is not None and resolution <= 0:
             raise ValueError(f"Resolution must be positive, got {resolution}")
+        if use_rep is not None:
+            self._validate_representation(adata, use_rep)
+            if batch_correction:
+                raise ClusteringError(
+                    "Prepared representation and explicit batch correction cannot "
+                    "be combined; correct batches before preparing the representation"
+                )
+        self._validate_feature_request(
+            use_rep, feature_selection_method, n_features, flavor, resolutions
+        )
+        execution_details = {
+            "requested_parameters": {
+                "n_neighbors": n_neighbors,
+                "n_pcs": n_pcs,
+                "resolution": requested_resolution,
+                "resolutions": resolutions,
+                "use_rep": use_rep,
+                "n_features": n_features,
+                "flavor": flavor,
+                "batch_correction": batch_correction,
+                "subsample_size": subsample_size,
+                "demo_mode": demo_mode,
+            },
+            "applied_parameters": {},
+            "parameter_adjustments": [],
+            "skipped_steps": [],
+            "features_marked": None,
+            "features_used": None,
+        }
 
         try:
             logger.debug("Starting clustering and visualization pipeline")
 
             # Initialize progress tracking
             self.current_progress = 0
-            skip_steps = skip_steps or []
+            skip_steps = list(skip_steps or [])
             # Calculate total steps based on what will be performed
             self.total_steps = 7  # Base steps: subsample, batch check, normalize, hvg, scale, pca, neighbors, leiden, umap
             if batch_correction:
@@ -1008,6 +1243,13 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                         1000, original_shape[0]
                     )  # Default to 1000 cells in demo mode
 
+            subsample_status = {
+                "target": subsample_size,
+                "seed": 42,
+                "performed": False,
+                "input_n_obs": int(original_shape[0]),
+                "result_n_obs": int(original_shape[0]),
+            }
             # Subsample if needed
             if subsample_size and adata_clustered.n_obs > subsample_size:
                 # Preserve observation columns during subsampling
@@ -1016,6 +1258,8 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     f"Subsampling data to {subsample_size} cells (from {adata_clustered.n_obs})"
                 )
                 sc.pp.subsample(adata_clustered, n_obs=subsample_size, random_state=42)
+                subsample_status["performed"] = True
+                subsample_status["result_n_obs"] = int(adata_clustered.n_obs)
                 logger.debug(
                     f"Data subsampled: {adata_clustered.n_obs} cells remaining"
                 )
@@ -1030,6 +1274,13 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
 
             self._update_progress("Data preparation completed")
 
+            batch_status = {
+                "attempted": False,
+                "applied": False,
+                "failed": False,
+                "effective_key": None,
+                "reason": "not requested",
+            }
             # Check for batch information if batch correction requested
             if batch_correction:
                 if batch_key is None:
@@ -1046,19 +1297,39 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                         logger.info(
                             f"Found {len(unique_batches)} batches for correction: {list(unique_batches)}"
                         )
+                        before_correction = adata_clustered
+                        batch_status.update(
+                            {"attempted": True, "effective_key": batch_key}
+                        )
                         adata_clustered = self._perform_batch_correction(
                             adata_clustered, batch_key
+                        )
+                        # This is the existing helper's execution branch, NOT a
+                        # claim of biological efficacy/freshness of the correction.
+                        batch_correction = adata_clustered is not before_correction
+                        batch_status.update(
+                            {
+                                "applied": batch_correction,
+                                "failed": not batch_correction,
+                                "reason": (
+                                    "helper returned corrected object"
+                                    if batch_correction
+                                    else "helper returned unchanged object"
+                                ),
+                            }
                         )
                     else:
                         logger.info(
                             "Only one batch found - proceeding without batch correction"
                         )
                         batch_correction = False
+                        batch_status["reason"] = "only one batch"
                 else:
                     logger.warning(
                         "Batch correction requested but no valid batch key found"
                     )
                     batch_correction = False
+                    batch_status["reason"] = "no valid batch key"
 
             self._update_progress(
                 "Batch correction completed"
@@ -1077,6 +1348,9 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 n_features,
                 resolutions,
                 algorithm,
+                n_neighbors=n_neighbors,
+                n_pcs=n_pcs,
+                execution_details=execution_details,
             )
 
             # Compile clustering statistics
@@ -1093,6 +1367,8 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 "batch_key": batch_key if batch_correction else None,
                 "demo_mode": demo_mode,
                 "subsample_size": subsample_size if subsample_size else None,
+                "subsample_status": subsample_status,
+                "batch_correction_status": batch_status,
                 "original_shape": original_shape,
                 "final_shape": adata_clustered.shape,
                 "cluster_counts": cluster_counts,
@@ -1103,7 +1379,31 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 "has_umap": "X_umap" in adata_clustered.obsm,
                 "has_marker_genes": "names"
                 in adata_clustered.uns.get("rank_genes_groups", {}),
+                **execution_details,
+                "batch_correction_reason": (
+                    f"using your prepared {use_rep}; batch correction not applied"
+                    if use_rep is not None
+                    else None
+                ),
             }
+            clustering_stats["applied_parameters"].update(
+                {
+                    "batch_correction": bool(batch_correction),
+                    "algorithm": algorithm,
+                    "resolution": resolution,
+                    "flavor": (
+                        "seurat"
+                        if use_rep is None and feature_selection_method == "hvg"
+                        else None
+                    ),
+                    "resolutions": (
+                        list(resolutions) if resolutions is not None else [resolution]
+                    ),
+                    "demo_mode": demo_mode,
+                    "subsample_size": subsample_size,
+                    "batch_key": batch_status["effective_key"],
+                }
+            )
 
             # Add multi-resolution info if available
             if "clustering_results" in adata_clustered.uns:
@@ -1159,15 +1459,26 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
             logger.info(f"Clustering completed: {n_clusters} clusters identified")
 
             # Create IR for notebook export
-            if use_rep and use_rep in adata.obsm:
-                # _perform_clustering used the existing embedding and skipped
-                # normalization, feature selection and PCA; export the same.
+            if use_rep is not None:
+                # Explicit, mechanically validated embedding; never a suffix inference.
                 ir = self._create_embedding_clustering_ir(
                     use_rep=use_rep,
                     resolution=resolution,
                     algorithm=algorithm,
                     demo_mode=demo_mode,
                     find_markers="marker_genes" not in skip_steps,
+                    n_neighbors=execution_details["applied_parameters"]["n_neighbors"],
+                    n_pcs=execution_details["applied_parameters"]["n_pcs"],
+                    subsample_size=subsample_size,
+                )
+                ir.parameters.update(
+                    {
+                        "features_marked": execution_details["features_marked"],
+                        "features_used": execution_details["features_used"],
+                        "skipped_steps": list(execution_details["skipped_steps"]),
+                        "batch_correction_status": batch_status,
+                        "subsample_status": subsample_status,
+                    }
                 )
                 return adata_clustered, clustering_stats, ir
 
@@ -1175,12 +1486,26 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 resolution=(
                     resolution if resolution else self.default_cluster_resolution
                 ),
-                n_neighbors=15,  # Default from _perform_clustering
-                n_pcs=30,  # Updated default (was 20)
+                n_neighbors=execution_details["applied_parameters"]["n_neighbors"],
+                n_pcs=execution_details["applied_parameters"]["n_pcs"],
                 feature_selection_method=feature_selection_method,
-                n_features=n_features,
+                n_features=4000 if n_features is None else n_features,
                 resolutions=resolutions,
                 algorithm=algorithm,
+                find_markers="marker_genes" not in skip_steps,
+                demo_mode=demo_mode,
+                subsample_size=subsample_size,
+                batch_correction_attempted=batch_status["attempted"],
+                batch_key=batch_status["effective_key"],
+            )
+            ir.parameters.update(
+                {
+                    "features_marked": execution_details["features_marked"],
+                    "features_used": execution_details["features_used"],
+                    "skipped_steps": list(execution_details["skipped_steps"]),
+                    "batch_correction_status": batch_status,
+                    "subsample_status": subsample_status,
+                }
             )
 
             return adata_clustered, clustering_stats, ir
@@ -1291,9 +1616,12 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
         demo_mode: bool = False,
         skip_steps: Optional[list] = None,
         feature_selection_method: str = "deviance",
-        n_features: int = 4000,
+        n_features: Optional[int] = None,
         resolutions: Optional[list] = None,
         algorithm: str = "leiden",
+        n_neighbors: Optional[int] = None,
+        n_pcs: Optional[int] = None,
+        execution_details: Optional[dict] = None,
     ) -> sc.AnnData:
         """
         Perform clustering on the AnnData object with configurable feature selection.
@@ -1320,9 +1648,37 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
         logger.info("Performing clustering pipeline based on publication workflow")
         skip_steps = skip_steps or []
         start_time = time.time()
+        details = (
+            execution_details
+            if execution_details is not None
+            else {
+                "applied_parameters": {},
+                "parameter_adjustments": [],
+                "skipped_steps": [],
+            }
+        )
+        requested_pcs = n_pcs
+        if "marker_genes" in skip_steps:
+            details["skipped_steps"].append("marker_genes")
+        neighbor_max = (
+            adata.n_obs if n_neighbors is not None else max(2, adata.n_obs - 1)
+        )
+        n_neighbors, neighbor_adjustments = self._resolve_dimension(
+            n_neighbors, 15, neighbor_max, "n_neighbors", minimum=2
+        )
+        details["parameter_adjustments"].extend(neighbor_adjustments)
+        if use_rep is not None:
+            width = self._validate_representation(adata, use_rep)
+            n_pcs, pc_adjustments = self._resolve_dimension(n_pcs, 30, width, "n_pcs")
+            details["parameter_adjustments"].extend(pc_adjustments)
+        elif feature_selection_method == "hvg" and n_features is not None:
+            raise ClusteringError(
+                "Exact n_features is not supported by the full HVG pipeline"
+            )
+        n_features = 4000 if n_features is None else n_features
 
-        # Check if using custom embeddings (e.g., scVI)
-        if use_rep and use_rep in adata.obsm:
+        # Check if using caller-selected embeddings (e.g., scVI)
+        if use_rep is not None:
             logger.info(f"Using custom embedding '{use_rep}' for clustering")
 
             # Validate custom embedding
@@ -1339,15 +1695,18 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
 
             # Compute neighborhood graph using custom embedding
             logger.info("Computing neighborhood graph from custom embedding")
-            n_neighbors = 10 if demo_mode else 15
-
-            # Adjust n_neighbors if we have too few cells
-            if adata.n_obs <= n_neighbors:
-                old_n_neighbors = n_neighbors
-                n_neighbors = max(2, adata.n_obs - 1)
-                logger.warning(
-                    f"Adjusted n_neighbors from {old_n_neighbors} to {n_neighbors} due to small dataset ({adata.n_obs} cells)"
-                )
+            details["skipped_steps"].extend(
+                ["normalize", "feature_selection", "scale", "pca"]
+            )
+            details["applied_parameters"].update(
+                {
+                    "n_neighbors": n_neighbors,
+                    "n_pcs": n_pcs,
+                    "use_rep": use_rep,
+                    "feature_selection_method": None,
+                    "n_features_selected": None,
+                }
+            )
 
             with with_periodic_progress(
                 "Computing neighborhood graph from custom embedding",
@@ -1355,7 +1714,9 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                 update_interval=10,
                 show_elapsed=True,
             ):
-                sc.pp.neighbors(adata, use_rep=use_rep, n_neighbors=n_neighbors)
+                sc.pp.neighbors(
+                    adata, use_rep=use_rep, n_neighbors=n_neighbors, n_pcs=n_pcs
+                )
 
             self._update_progress("Neighborhood graph computed from custom embedding")
 
@@ -1570,36 +1931,36 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
                     f"Must be 'deviance' or 'hvg'."
                 )
 
-            # Scale data (with max value cap to avoid influence of outliers)
+            # Distinguish the marked mask from the actual demo PCA subset.
+            marked_column = (
+                "highly_deviant"
+                if feature_selection_method == "deviance"
+                else "highly_variable"
+            )
+            details["features_marked"] = int(adata.var[marked_column].sum())
+            details["features_used"] = int(adata_selected.n_vars)
+            # Validate against the selected data BEFORE scaling/PCA. An omitted
+            # ordinary30 can adjust; an explicit request is never demo-capped.
+            n_pcs, pc_adjustments = self._resolve_dimension(
+                requested_pcs,
+                30,
+                min(adata_selected.n_obs - 1, adata_selected.n_vars - 1),
+                "n_pcs",
+            )
+            details["parameter_adjustments"].extend(pc_adjustments)
+            details["applied_parameters"].update(
+                {
+                    "n_neighbors": n_neighbors,
+                    "n_pcs": n_pcs,
+                    "use_rep": "X_pca",
+                    "feature_selection_method": feature_selection_method,
+                    "n_features_selected": int(adata_selected.n_vars),
+                }
+            )
+            # Preserve the existing numerical algorithm and scaling policy.
             logger.info("Scaling data")
             sc.pp.scale(adata_selected, max_value=10)
             self._update_progress("Data scaling completed")
-
-            # Determine optimal number of PCs (best practice: 30 PCs capture more variance)
-            # In demo mode, use fewer PCs for faster processing
-            n_pcs = (
-                15 if demo_mode else 30
-            )  # Best practice: 30 PCs capture more variance
-
-            # ISSUE #7 FIX: Validate n_pcs against available features AND cells
-            n_features = adata_selected.n_vars
-            n_cells = adata_selected.n_obs
-
-            # PCA can compute at most min(n_cells, n_features) components
-            max_pcs = min(n_cells - 1, n_features - 1)
-
-            if n_pcs > max_pcs:
-                old_n_pcs = n_pcs
-                n_pcs = max(1, max_pcs)
-                if n_pcs < 1:
-                    raise ClusteringError(
-                        f"Insufficient data for PCA: {n_cells} cells and {n_features} features, "
-                        f"but need at least 2 of each for PCA. Check data quality."
-                    )
-                logger.warning(
-                    f"Reduced n_pcs from {old_n_pcs} to {n_pcs} due to limited data ({n_cells} cells, {n_features} features)"
-                )
-
             logger.info(f"Using {n_pcs} principal components for neighborhood graph")
 
             # PCA (using 'arpack' SVD solver for better performance with sparse matrices)
@@ -1609,25 +1970,18 @@ print(f"Neighborhood graph computed (n_neighbors={{ {{{{ n_neighbors | repr }}}}
 
             # Compute neighborhood graph
             logger.info("Computing neighborhood graph")
-            n_neighbors = (
-                10 if demo_mode else 15
-            )  # Use fewer neighbors in demo mode for speed
-
-            # Adjust n_neighbors if we have too few cells
-            if adata_selected.n_obs <= n_neighbors:
-                old_n_neighbors = n_neighbors
-                n_neighbors = max(2, adata_selected.n_obs - 1)
-                logger.warning(
-                    f"Adjusted n_neighbors from {old_n_neighbors} to {n_neighbors} due to small dataset ({adata_selected.n_obs} cells)"
-                )
-
             with with_periodic_progress(
                 "Computing neighborhood graph",
                 self._create_progress_callback(),
                 update_interval=10,
                 show_elapsed=True,
             ):
-                sc.pp.neighbors(adata_selected, n_neighbors=n_neighbors, n_pcs=n_pcs)
+                sc.pp.neighbors(
+                    adata_selected,
+                    n_neighbors=n_neighbors,
+                    n_pcs=n_pcs,
+                    use_rep="X_pca",
+                )
 
             self._update_progress("Neighborhood graph computed")
 
