@@ -1619,6 +1619,8 @@ class DataManagerV2:
                     self._modality_dirty.discard(name)
                 except Exception as e:
                     logger.error(f"Backend save failed for '{name}': {e}")
+                    # Do not export stale backend state after a failed ingest.
+                    raise
 
                 # Still write h5ad file at requested path for caller
                 resolved_path = Path(path)
@@ -3198,9 +3200,17 @@ class DataManagerV2:
 
         return files_by_category
 
-    def _save_processing_log_and_provenance(self) -> None:
-        """Persist processing log and provenance summary to exports dir."""
-        if self.processing_log or (self.provenance and self.provenance.activities):
+    def _save_processing_log_and_provenance(self) -> Optional[bool]:
+        """Return True if written, False if failed, None if nothing to persist."""
+        if (
+            self.processing_log
+            or (self.provenance and self.provenance.activities)
+            or self.modalities
+            or self._modality_spilled
+        ):
+            # A data-bearing session may have empty history after a native spill.
+            # Persist that real empty snapshot rather than claiming a nonexistent
+            # processing log was saved.
             try:
                 log_path = self.exports_dir / "processing_log.json"
                 log_data = {
@@ -3224,8 +3234,11 @@ class DataManagerV2:
                 }
                 with open(log_path, "w") as f:
                     json.dump(log_data, f, indent=2, default=str)
+                return True
             except Exception as e:
                 logger.error(f"Failed to save processing log: {e}")
+                return False
+        return None
 
     def auto_save_state(
         self,
@@ -3263,8 +3276,17 @@ class DataManagerV2:
                         saved_items.append(f"Modality '{name}': backend")
                     except Exception as e:
                         logger.error(f"Backend auto-save failed for '{name}': {e}")
+                        saved_items.append(
+                            f"{AUTOSAVE_NOT_SAVED_PREFIX}Modality '{name}': backend write failed"
+                        )
             # Still save processing log/provenance below, but skip h5ad file writes
-            self._save_processing_log_and_provenance()
+            log_outcome = self._save_processing_log_and_provenance()
+            if log_outcome is True:
+                saved_items.append("Processing log")
+            elif log_outcome is False:
+                saved_items.append(
+                    f"{AUTOSAVE_NOT_SAVED_PREFIX}Processing log: write failed"
+                )
             return saved_items
 
         # Before the first write: targets inside the managed figure folder are not
@@ -3361,9 +3383,6 @@ class DataManagerV2:
                 # Clear dirty flag after successful save
                 self._modality_dirty.discard(modality_name)
 
-                if progress_callback:
-                    progress_callback(idx + 1, total, modality_name, "done")
-
             except ManagedPathError:  # the target became managed after the plan
                 logger.warning(_AUTOSAVE_REFUSED_LOG)
                 refused_count += 1
@@ -3371,8 +3390,16 @@ class DataManagerV2:
                     progress_callback(idx + 1, total, modality_name, "error")
             except Exception as e:
                 logger.error(f"Failed to auto-save modality {modality_name}: {e}")
+                saved_items.append(
+                    f"{AUTOSAVE_NOT_SAVED_PREFIX}Modality '{modality_name}': write failed"
+                )
                 if progress_callback:
                     progress_callback(idx + 1, total, modality_name, "error")
+            else:
+                # A notification failure is not a write failure. Keep it out of
+                # the save catch so completed writes cannot also be Not saved.
+                if progress_callback:
+                    progress_callback(idx + 1, total, modality_name, "done")
 
         # Spill any modalities beyond the configured memory budget.
         # are absent from self.modalities, so the loop above never sees them.
@@ -3390,6 +3417,9 @@ class DataManagerV2:
                     logger.error(
                         f"Spill file for '{modality_name}' missing at {source}; "
                         f"cannot auto-save it"
+                    )
+                    saved_items.append(
+                        f"{AUTOSAVE_NOT_SAVED_PREFIX}Modality '{modality_name}': spill file missing"
                     )
                     continue
                 if full_save_path.exists() and full_save_path.samefile(source):
@@ -3414,13 +3444,29 @@ class DataManagerV2:
                 logger.error(
                     f"Failed to auto-save spilled modality '{modality_name}': {e}"
                 )
+                saved_items.append(
+                    f"{AUTOSAVE_NOT_SAVED_PREFIX}Modality '{modality_name}': spill copy failed"
+                )
 
-        # Save processing log and provenance
-        self._save_processing_log_and_provenance()
-        saved_items.append("Processing log")
+        # Save processing log and provenance; never certify a swallowed failure.
+        log_outcome = self._save_processing_log_and_provenance()
+        if log_outcome is True:
+            saved_items.append("Processing log")
+        elif log_outcome is False:
+            saved_items.append(
+                f"{AUTOSAVE_NOT_SAVED_PREFIX}Processing log: write failed"
+            )
 
-        if saved_items:
-            logger.info(f"Auto-saved: {', '.join(saved_items)}")
+        successes = [
+            item
+            for item in saved_items
+            if not item.startswith(AUTOSAVE_NOT_SAVED_PREFIX)
+        ]
+        if successes:
+            logger.info(f"Auto-saved: {', '.join(successes)}")
+        failures = len(saved_items) - len(successes)
+        if failures:
+            logger.warning(f"Autosave incomplete: {failures} save operations failed")
         if skipped_items:
             logger.info(
                 f"Skipped (already up-to-date): {len(skipped_items)} modalities"

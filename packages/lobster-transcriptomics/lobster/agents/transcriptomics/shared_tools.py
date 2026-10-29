@@ -9,6 +9,7 @@ conventions. The auto-detection heuristics are designed to be robust across comm
 dataset characteristics.
 """
 
+import json
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.tools import tool
@@ -19,7 +20,10 @@ from lobster.core.provenance.stage_contract import (
     prepend_stage_warning,
 )
 from lobster.core.runtime.data_manager import DataManagerV2
-from lobster.services.quality.preprocessing_service import PreprocessingService
+from lobster.services.quality.preprocessing_service import (
+    PreprocessingService,
+    _validate_normalization_method,
+)
 from lobster.services.quality.quality_service import QualityError, QualityService
 from lobster.utils.logger import get_logger
 
@@ -292,18 +296,19 @@ def create_shared_tools(
             )
 
             # Log the operation
+            applied_parameters = {
+                "modality_name": modality_name,
+                "result_modality_name": qc_modality_name,
+                "data_type": data_type,
+                "min_genes": min_genes,
+                "max_genes": effective_max_genes,
+                "max_mt_pct": max_mt_pct,
+                "max_ribo_pct": max_ribo_pct,
+                "min_housekeeping_score": 0.0,
+            }
             data_manager.log_tool_usage(
                 tool_name="assess_data_quality",
-                parameters={
-                    "modality_name": modality_name,
-                    # Real stored output name, so the DAG's artifact edge resolves.
-                    "result_modality_name": qc_modality_name,
-                    "data_type": data_type,
-                    "min_genes": min_genes,
-                    "max_genes": max_genes,
-                    "max_mt_pct": max_mt_pct,
-                    "max_ribo_pct": max_ribo_pct,
-                },
+                parameters=applied_parameters,
                 description=f"{data_type} quality assessment for {modality_name}",
                 ir=ir,
                 agent=agent_name,
@@ -331,7 +336,7 @@ def create_shared_tools(
 
 **QC Parameters Applied:**
 - Min genes: {min_genes}
-- Max genes: {max_genes if max_genes is not None else "None (no upper limit)"}
+- Max genes: {effective_max_genes}
 - Max MT%: {max_mt_pct}%
 - Max Ribo%: {max_ribo_pct}%
 
@@ -342,6 +347,21 @@ def create_shared_tools(
 
 Proceed with filtering and normalization for downstream analysis."""
 
+            computed = {
+                key: assessment_stats[key]
+                for key in ("qc_cohort", "qc_distributions", "threshold_exceedances")
+            }
+            response += (
+                "\n\n**Applied parameters (actual):**\n```json\n"
+                + json.dumps(applied_parameters, indent=2)
+                + "\n```"
+            )
+            response += (
+                "\n\n**Computed pre-filter QC statistics:**\n```json\n"
+                + json.dumps(computed, indent=2, allow_nan=False)
+                + "\n```"
+            )
+            response += "\nThreshold exceedances are independent of the combined QC-pass flag. Overlapping counts do not sum to total failures. Null distribution statistics are NOT COMPUTED."
             response = prepend_stage_warning(response, stage_warning)
             analysis_results["details"]["quality_assessment"] = response
             return response
@@ -370,6 +390,7 @@ Proceed with filtering and normalization for downstream analysis."""
         normalization_method: Optional[str] = None,
         target_sum: Optional[int] = None,
         save_result: bool = True,
+        max_ribo_percent: Optional[float] = None,
     ) -> str:
         """
         Filter and normalize transcriptomics data. Auto-detects SC vs bulk defaults.
@@ -382,11 +403,18 @@ Proceed with filtering and normalization for downstream analysis."""
             min_cells_per_gene: Min cells per gene. Default: 3 (SC), 2 (bulk).
             max_mito_percent: Max mito %. Default: 20 (SC), 30 (bulk).
                 Tissue warning: use 30-50% for cardiac/muscle/neurons/hepatocytes.
-            normalization_method: 'log1p' (default), 'cpm', or 'tpm'
+            normalization_method: 'log1p' (default) or 'sctransform_like'. Other methods refuse.
             target_sum: Normalization target. Default: 10000 (SC), 1000000 (bulk).
             save_result: Whether to save
+            max_ribo_percent: Optional ribosomal percentage ceiling. None (default) disables it.
+                Raw counts are preserved in adata.raw, not a counts layer.
         """
         try:
+            # Reject an explicit unsupported request before retrieval can
+            # materialize a backed object or restore/spill a modality.
+            if normalization_method is not None:
+                _validate_normalization_method(normalization_method)
+
             # Validate modality exists
             if modality_name not in data_manager.list_modalities():
                 return (
@@ -447,6 +475,7 @@ Proceed with filtering and normalization for downstream analysis."""
                     max_genes_per_cell=effective_max_genes,
                     min_cells_per_gene=min_cells_per_gene,
                     max_mito_percent=max_mito_percent,
+                    max_ribo_percent=max_ribo_percent,
                     normalization_method=normalization_method,
                     target_sum=target_sum,
                 )
@@ -468,20 +497,21 @@ Proceed with filtering and normalization for downstream analysis."""
                 data_manager.save_modality(filtered_modality_name, save_path)
 
             # Log the operation
+            applied_parameters = {
+                "modality_name": modality_name,
+                "result_modality_name": filtered_modality_name,
+                "data_type": data_type,
+                "min_genes_per_cell": min_genes_per_cell,
+                "max_genes_per_cell": effective_max_genes,
+                "min_cells_per_gene": min_cells_per_gene,
+                "max_mito_percent": max_mito_percent,
+                "max_ribo_percent": max_ribo_percent,
+                "normalization_method": normalization_method,
+                "target_sum": target_sum,
+            }
             data_manager.log_tool_usage(
                 tool_name="filter_and_normalize",
-                parameters={
-                    "modality_name": modality_name,
-                    # Real stored output name, so the DAG's artifact edge resolves.
-                    "result_modality_name": filtered_modality_name,
-                    "data_type": data_type,
-                    "min_genes_per_cell": min_genes_per_cell,
-                    "max_genes_per_cell": max_genes_per_cell,
-                    "min_cells_per_gene": min_cells_per_gene,
-                    "max_mito_percent": max_mito_percent,
-                    "normalization_method": normalization_method,
-                    "target_sum": target_sum,
-                },
+                parameters=applied_parameters,
                 description=f"{data_type} filtered and normalized {modality_name}",
                 ir=ir,
                 agent=agent_name,
@@ -508,12 +538,34 @@ Proceed with filtering and normalization for downstream analysis."""
 
 **Processing Parameters:**
 - Min genes/{obs_label[:-1]}: {min_genes_per_cell}
-- Max genes/{obs_label[:-1]}: {max_genes_per_cell if max_genes_per_cell is not None else "None"}
+- Max genes/{obs_label[:-1]}: {effective_max_genes}
 - Min {obs_label}/gene: {min_cells_per_gene}
 - Max mitochondrial %: {max_mito_percent}%
+- Max ribosomal %: {str(max_ribo_percent) + '%' if max_ribo_percent is not None else 'disabled'}
 - Normalization: {normalization_method} (target_sum={target_sum:,})
+- Raw counts location: adata.raw
 
 **New modality created**: '{filtered_modality_name}'"""
+
+            response += (
+                "\n\n**Applied parameters (actual):**\n```json\n"
+                + json.dumps(applied_parameters, indent=2)
+                + "\n```"
+            )
+            failures = {
+                "filter_failure_cohort": processing_stats["filter_failure_cohort"],
+                "filter_failures_independent": processing_stats[
+                    "filter_failures_independent"
+                ],
+                "combined_cells_removed": processing_stats["cells_removed"],
+                "combined_genes_removed": processing_stats["genes_removed"],
+            }
+            response += (
+                "\n\n**Independent criterion failures on the original pre-filter cohort:**\n```json\n"
+                + json.dumps(failures, indent=2)
+                + "\n```"
+            )
+            response += "\nThe min_cells_per_gene criterion counts genes; other criteria count observations. Counts overlap: do not sum them. Combined totals reflect the actual ordered filters. Null ribosomal failures mean the filter was disabled."
 
             if save_result:
                 response += f"\n**Saved to**: {save_path}"
@@ -627,7 +679,9 @@ Proceed with filtering and normalization for downstream analysis."""
                                 sc_modalities.append((mod_name, adata))
                             else:
                                 bulk_modalities.append((mod_name, adata))
-                        except Exception:  # nosec B110 # Best-effort modality inventory ignores unreadable entries.
+                        except (
+                            Exception
+                        ):  # nosec B110 # Best-effort modality inventory ignores unreadable entries.
                             pass
 
                     if sc_modalities:

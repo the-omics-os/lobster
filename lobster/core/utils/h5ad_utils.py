@@ -22,6 +22,46 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def repair_marker_names(adata: Any) -> Any:
+    """Repair missing text slots in the two standard Scanpy ranking results.
+
+    Call on a working/serialization copy. Only object-typed name fields are
+    inspected; None or floating NaN becomes empty text in a copied array.
+    Literal labels (including "nan"), field order/shape and numeric scientific
+    arrays are untouched. This is not a generic uns/object-array repair.
+    """
+    for key in ("rank_genes_groups", "rank_genes_groups_filtered"):
+        result = adata.uns.get(key)
+        if not isinstance(result, dict):
+            continue
+        names = result.get("names")
+        if not isinstance(names, np.ndarray) or names.dtype.names is None:
+            continue
+        repaired = None
+        for group in names.dtype.names:
+            values = names[group]
+            if values.dtype.kind != "O":
+                continue
+            missing = np.fromiter(
+                (
+                    value is None
+                    or (isinstance(value, (float, np.floating)) and np.isnan(value))
+                    for value in values.flat
+                ),
+                dtype=bool,
+                count=values.size,
+            ).reshape(values.shape)
+            if missing.any():
+                if repaired is None:
+                    repaired = names.copy()
+                repaired[group][missing] = ""
+        if repaired is not None:
+            updated = dict(result)
+            updated["names"] = repaired
+            adata.uns[key] = updated
+    return adata
+
+
 def sanitize_key(key: Any, slash_replacement: str = "__") -> str:
     """
     Sanitize dictionary keys for HDF5 compatibility.

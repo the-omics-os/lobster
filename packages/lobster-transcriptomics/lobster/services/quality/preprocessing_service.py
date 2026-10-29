@@ -5,7 +5,7 @@ This service implements professional-grade preprocessing methods including ambie
 correction, cell filtering, normalization, and batch correction/integration.
 """
 
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import anndata
 import numpy as np
@@ -54,6 +54,14 @@ class PreprocessingError(Exception):
     """Base exception for preprocessing operations."""
 
     pass
+
+
+def _validate_normalization_method(method: str) -> None:
+    """Refuse unsupported methods before any working copy or analysis mutation."""
+    if method not in ("log1p", "sctransform_like"):
+        raise PreprocessingError(
+            "Unsupported normalization method. Implemented methods: log1p, sctransform_like."
+        )
 
 
 class PreprocessingService:
@@ -168,7 +176,7 @@ class PreprocessingService:
         max_genes_per_cell: int,
         min_cells_per_gene: int,
         max_mito_percent: float,
-        max_ribo_percent: float,
+        max_ribo_percent: Optional[float],
         normalization_method: str,
         target_sum: int,
     ) -> AnalysisStep:
@@ -226,8 +234,8 @@ class PreprocessingService:
                 papermill_injectable=True,
                 default_value=max_ribo_percent,
                 required=False,
-                validation_rule="0 <= max_ribo_percent <= 100",
-                description="Maximum percentage of ribosomal genes",
+                validation_rule="max_ribo_percent is None or 0 <= max_ribo_percent <= 100",
+                description="Maximum ribosomal percentage; None disables this filter",
             ),
             "target_sum": ParameterSpec(
                 param_type="int",
@@ -245,7 +253,7 @@ class PreprocessingService:
 # - Genes per cell: {{ min_genes_per_cell }} to {{ max_genes_per_cell }}
 # - Cells per gene: minimum {{ min_cells_per_gene }}
 # - Mitochondrial content: maximum {{ max_mito_percent }}%
-# - Ribosomal content: maximum {{ max_ribo_percent }}%
+# - Ribosomal content: {% if max_ribo_percent is none %}disabled{% else %}maximum {{ max_ribo_percent }}%{% endif %}
 
 # QC metrics — same three calls, in the same order, as
 # PreprocessingService._calculate_qc_metrics
@@ -269,8 +277,10 @@ sc.pp.filter_genes(adata, min_cells={{ min_cells_per_gene }})
 
 _cell_filter = (
     (adata.obs['n_genes_by_counts'] <= {{ max_genes_per_cell }}) &
-    (adata.obs['pct_counts_mt'] <= {{ max_mito_percent }}) &
-    (adata.obs['pct_counts_ribo'] <= {{ max_ribo_percent }})
+    (adata.obs['pct_counts_mt'] <= {{ max_mito_percent }})
+{% if max_ribo_percent is not none %}
+    & (adata.obs['pct_counts_ribo'] <= {{ max_ribo_percent }})
+{% endif %}
 )
 adata = adata[_cell_filter, :].copy()
 
@@ -327,7 +337,7 @@ print(f"Normalization complete (target_sum={ {{ target_sum | repr }} }, log1p tr
         max_genes_per_cell: int = 5000,
         min_cells_per_gene: int = 3,
         max_mito_percent: float = 20.0,
-        max_ribo_percent: float = 50.0,
+        max_ribo_percent: Optional[float] = 50.0,
         normalization_method: str = "log1p",
         target_sum: int = 10000,
     ) -> Tuple[anndata.AnnData, Dict[str, Any], AnalysisStep]:
@@ -340,7 +350,8 @@ print(f"Normalization complete (target_sum={ {{ target_sum | repr }} }, log1p tr
             max_genes_per_cell: Maximum number of genes expressed per cell
             min_cells_per_gene: Minimum number of cells expressing each gene
             max_mito_percent: Maximum mitochondrial gene percentage
-            max_ribo_percent: Maximum ribosomal gene percentage
+            max_ribo_percent: Maximum ribosomal percentage; None disables the filter.
+                Direct SDK callers retain the legacy default of 50.0.
             normalization_method: Normalization method ('log1p', 'sctransform_like')
             target_sum: Target sum for normalization (e.g., 10,000)
 
@@ -352,6 +363,7 @@ print(f"Normalization complete (target_sum={ {{ target_sum | repr }} }, log1p tr
         """
         try:
             logger.debug("Starting cell filtering and normalization")
+            _validate_normalization_method(normalization_method)
 
             # Create working copy
             adata_processed = adata.copy()
@@ -1143,16 +1155,37 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
             f"Preserving {len(original_obs.columns)} obs columns before filtering"
         )
 
+        # Independent failures describe the ORIGINAL input cohort. They overlap
+        # and must never be presented as adding up to combined removals below.
+        detected_cells = np.asarray((adata.X > 0).sum(axis=0)).ravel()
+        independent_failures = {
+            "min_genes_per_cell": int(
+                (adata.obs["n_genes_by_counts"] < min_genes_per_cell).sum()
+            ),
+            "max_genes_per_cell": int(
+                (adata.obs["n_genes_by_counts"] > max_genes_per_cell).sum()
+            ),
+            "min_cells_per_gene": int((detected_cells < min_cells_per_gene).sum()),
+            "max_mito_percent": int(
+                (adata.obs["pct_counts_mt"] > max_mito_percent).sum()
+            ),
+            "max_ribo_percent": (
+                int((adata.obs["pct_counts_ribo"] > max_ribo_percent).sum())
+                if max_ribo_percent is not None
+                else None
+            ),
+        }
+
         # Filter cells
         sc.pp.filter_cells(adata, min_genes=min_genes_per_cell)
         sc.pp.filter_genes(adata, min_cells=min_cells_per_gene)
 
         # Additional cell filtering based on QC metrics
-        cell_filter = (
-            (adata.obs["n_genes_by_counts"] <= max_genes_per_cell)
-            & (adata.obs["pct_counts_mt"] <= max_mito_percent)
-            & (adata.obs["pct_counts_ribo"] <= max_ribo_percent)
+        cell_filter = (adata.obs["n_genes_by_counts"] <= max_genes_per_cell) & (
+            adata.obs["pct_counts_mt"] <= max_mito_percent
         )
+        if max_ribo_percent is not None:
+            cell_filter &= adata.obs["pct_counts_ribo"] <= max_ribo_percent
 
         adata._inplace_subset_obs(cell_filter)
 
@@ -1170,6 +1203,12 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
         final_genes = adata.n_vars
 
         filtering_stats = {
+            "filter_failure_cohort": {
+                "n_observations": initial_cells,
+                "n_genes": initial_genes,
+                "stage": "pre_filter",
+            },
+            "filter_failures_independent": independent_failures,
             "initial_cells": initial_cells,
             "final_cells": final_cells,
             "cells_removed": initial_cells - final_cells,
@@ -1190,6 +1229,7 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
     ) -> Dict[str, Any]:
         """Normalize expression data."""
         logger.debug(f"Normalizing expression data using method: {method}")
+        _validate_normalization_method(method)
 
         # Store raw data
         adata.raw = adata.copy()
@@ -1205,10 +1245,7 @@ print(f"Top 10 HVGs: {adata.var_names[adata.var['highly_variable']].tolist()[:10
             sc.pp.log1p(adata)
             sc.pp.scale(adata, max_value=10)  # Clip values for stability
 
-        else:
-            logger.warning(f"Unknown normalization method {method}, using log1p")
-            sc.pp.normalize_total(adata, target_sum=target_sum)
-            sc.pp.log1p(adata)
+        # Unsupported methods were refused before the raw-copy mutation.
 
         # Calculate normalization statistics
         final_median_counts = np.median(np.sum(adata.X, axis=1))

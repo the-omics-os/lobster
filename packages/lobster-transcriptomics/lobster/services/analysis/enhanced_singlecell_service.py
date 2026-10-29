@@ -18,6 +18,7 @@ from scipy.stats import pearsonr
 
 from lobster.core.provenance.analysis_ir import AnalysisStep
 from lobster.core.utils.cluster_keys import ClusterKeyError, resolve_cluster_key
+from lobster.core.utils.h5ad_utils import repair_marker_names
 
 # Pathway enrichment is a PREMIUM feature - lazy import to avoid breaking FREE tier
 # The service is imported inside run_pathway_enrichment() method
@@ -1592,6 +1593,11 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 f"Marker gene analysis completed for {n_groups} groups using {method} method"
             )
 
+            # Representation only, after existing count/extraction decisions.
+            # Missing filtered-name slots must be native-write-safe; ranking
+            # selection, thresholds, numeric results and source state stay as is.
+            repair_marker_names(adata_markers)
+
             # Create IR for provenance tracking
             ir = self._create_marker_genes_ir(
                 groupby=groupby,
@@ -1648,13 +1654,16 @@ sc.tl.filter_rank_genes_groups(
     max_out_group_fraction={{ max_out_pct }},  # Out-group expression
 )
 
+# Step 3: Write-safe missing-name representation (numeric NaNs unchanged)
+repair_marker_names(adata)
+
 # Results stored in adata.uns['rank_genes_groups']:
 # - 'names': Filtered gene names per group
 # - 'scores': Test statistics
 # - 'pvals': P-values
 # - 'pvals_adj': Adjusted p-values
 # - 'logfoldchanges': Log2 fold-changes
-# Note: Filtered-out genes are set to NaN
+# Note: Missing name slots are represented as empty text for H5AD writing
 """
 
         return AnalysisStep(
@@ -1663,7 +1672,10 @@ sc.tl.filter_rank_genes_groups(
             description=f"Differential expression analysis with post-hoc filtering (method: {method})",
             library="scanpy",
             code_template=code_template,
-            imports=["import scanpy as sc"],
+            imports=[
+                "import scanpy as sc",
+                "from lobster.core.utils.h5ad_utils import repair_marker_names",
+            ],
             parameters={
                 "groupby": groupby,
                 "groups": list(groups) if groups is not None else None,

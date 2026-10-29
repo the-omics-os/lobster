@@ -16,6 +16,7 @@ import pandas as pd
 
 from lobster.core.backends.base import BaseBackend
 from lobster.core.utils.h5ad_utils import repair_log1p_base as _repair_log1p_base
+from lobster.core.utils.h5ad_utils import repair_marker_names
 from lobster.core.utils.h5ad_utils import sanitize_key as util_sanitize_key
 from lobster.core.utils.h5ad_utils import sanitize_value as util_sanitize_value
 
@@ -169,6 +170,10 @@ class H5ADBackend(BaseBackend):
                 if orig not in candidates:
                     return False
             return True
+
+        # Preserve structured ranking fields; repair only missing text names
+        # on the serialization copy, never numeric statistical NaNs.
+        repair_marker_names(adata)
 
         # Sanitize uns (unstructured metadata) using centralized utility
         adata.uns = {

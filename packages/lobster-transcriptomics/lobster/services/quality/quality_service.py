@@ -141,9 +141,51 @@ class QualityService:
             # Generate summary
             summary = self._generate_qc_summary(qc_metrics)
 
+            # Distribution statistics describe every input observation, not only
+            # QC-pass rows. Quantile interpolation is part of the report contract.
+            def distribution(values, unit):
+                valid = len(values) > 0 and np.isfinite(values.to_numpy()).all()
+                return {
+                    "unit": unit,
+                    "median": float(values.median()) if valid else None,
+                    "p95": (
+                        float(values.quantile(0.95, interpolation="linear"))
+                        if valid
+                        else None
+                    ),
+                }
+
+            genes_above = qc_metrics["n_genes"] > max_genes
+            mito_above = qc_metrics["mt_pct"] > max_mt_pct
+
             # Compile assessment statistics
             assessment_stats = {
                 "analysis_type": "quality_assessment",
+                "qc_cohort": {
+                    "n_observations": cells_before,
+                    "stage": "pre_filter",
+                    "quantile_method": "linear",
+                },
+                "qc_distributions": {
+                    "n_genes": distribution(qc_metrics["n_genes"], "genes/observation"),
+                    "total_counts": distribution(
+                        qc_metrics["total_counts"], "counts/observation"
+                    ),
+                    "mt_pct": distribution(qc_metrics["mt_pct"], "percent"),
+                },
+                "threshold_exceedances": {
+                    "n_genes": {
+                        "threshold": max_genes,
+                        "operator": ">",
+                        "count": int(genes_above.sum()),
+                    },
+                    "mt_pct": {
+                        "threshold": max_mt_pct,
+                        "operator": ">",
+                        "count": int(mito_above.sum()),
+                    },
+                    "either_genes_or_mt": int((genes_above | mito_above).sum()),
+                },
                 "min_genes": min_genes,
                 "max_genes": max_genes,
                 "max_mt_pct": max_mt_pct,
