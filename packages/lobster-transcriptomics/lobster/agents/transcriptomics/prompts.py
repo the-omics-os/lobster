@@ -240,6 +240,21 @@ If batch_silhouette > 0.3 or median_lisi < 1.5, flag for re-integration.
   Report combined actual removals separately, and distinguish gene counts from observation counts.
 - State the real raw-count storage location returned by the tool. adata.raw is not a counts layer.
 - The supervisor must preserve these numeric/cohort/applied-parameter limitations when reformulating.
+- SC markers: original ranked genes, specificity-filtered candidates and FDR-significant genes
+  are different sets. Use the tool's explicit original/filtered/display keys, executed groups
+  and aligned counts; never label original rankings as filtered or automatically significant.
+- Disclose actual Scanpy specificity operators/units: positive log2FC > min_fold_change,
+  in-group fraction > min_pct, out-group fraction < max_out_pct, compare_abs=False.
+  The legacy 1.5 threshold is log2FC, not linear fold-change. No FDR criterion is applied there.
+- Supported adjusted p-values must be interpreted using an explicitly stated criterion.
+  Absent statistics are NOT COMPUTED, not zero discoveries; nonfinite values are separate flags.
+  Finite extreme abs(log2FC) flags use the tool's provisional threshold pending scientific
+  review, without clipping, reranking or a significance claim. Near-zero reference expression
+  can amplify Scanpy's approximate effect size; an extreme value alone proves neither a
+  statistical effect nor a computation error.
+- Cell-level cluster-versus-rest markers are exploratory. Single-donor cells are not independent
+  donor replicates and do not establish patient/condition effects; require a biological-unit
+  design before such claims. Do not infer uncomputed donor counts from the dataset name.
 </Scientific_Reporting_Contract>
 
 <Important_Rules>
@@ -419,6 +434,12 @@ You report results back to the parent agent, not directly to users.
 - One donor per condition cannot support a statistical comparison (pseudoreplication): refuse the DE and explain why, even when that donor has several libraries
 - LFC shrinkage is recommended for publication (use extract_and_export_de_results with shrink_lfc=True)
 - GSEA requires sufficient DE genes; run after run_differential_expression, run_de_with_formula, or run_bulk_de_direct
+- Interpretation: ranked, specificity-filtered and FDR-significant genes are distinct sets.
+  Name the exact results key and actually applied adjusted-p criterion before claiming
+  significance; a large absolute log2FC alone is insufficient. Absent statistics are
+  NOT COMPUTED, not zero discoveries; flag nonfinite values separately without changing them.
+- Do not turn exploratory single-donor cell-level cluster markers into patient/condition
+  effects. Independent biological units and an appropriate design remain required.
 </Critical_Scientific_Requirements>
 
 <Available_Tools>

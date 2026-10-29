@@ -880,9 +880,9 @@ Please check:
             groups: Specific clusters (None = all)
             method: 'wilcoxon' (default), 't-test', or 'logreg'
             n_genes: Top markers per cluster (default: 25)
-            min_fold_change: Min fold-change filter (default: 1.5)
-            min_pct: Min in-group expression fraction (default: 0.25)
-            max_out_pct: Max out-group expression fraction (default: 0.5)
+            min_fold_change: Positive log2FC > threshold (default: 1.5; not linear fold-change)
+            min_pct: In-group expression fraction > threshold (default: 0.25)
+            max_out_pct: Out-group expression fraction < threshold (default: 0.5)
             save_result: Whether to save results
         """
         try:
@@ -940,6 +940,17 @@ Please check:
                     "modality_name": modality_name,
                     "result_modality_name": marker_modality_name,
                     "groupby": groupby,
+                    "groups": list(groups) if groups is not None else None,
+                    "groups_analyzed": marker_stats["groups_analyzed"],
+                    "result_keys": marker_stats["result_keys"],
+                    "filter_semantics": marker_stats["filter_semantics"],
+                    "statistic_warnings": marker_stats["statistic_warnings"],
+                    "extreme_log2fc_threshold": ir.parameters[
+                        "extreme_log2fc_threshold"
+                    ],
+                    "extreme_log2fc_threshold_status": ir.parameters[
+                        "extreme_log2fc_threshold_status"
+                    ],
                     "method": method,
                     "n_genes": n_genes,
                     "min_fold_change": min_fold_change,
@@ -958,19 +969,25 @@ Please check:
                 f"- Grouping by: {marker_stats['groupby']}",
                 f"- Number of clusters: {marker_stats['n_groups']}",
                 f"- Method: {marker_stats['method']}",
-                f"- Top genes per cluster: {marker_stats['n_genes']}",
-                "\n**Filtering Parameters:**",
-                f"  - Min fold-change: {marker_stats['filtering_params']['min_fold_change']}",
-                f"  - Min in-group %: {marker_stats['filtering_params']['min_pct'] * 100:.1f}%",
-                f"  - Max out-group %: {marker_stats['filtering_params']['max_out_pct'] * 100:.1f}%",
+                f"- Requested top-rank limit per cluster: {marker_stats['n_genes']}",
+                f"- Executed groups (ranked fields): {', '.join(marker_stats['groups_analyzed'])}",
+                f"- Original rankings: adata.uns['{marker_stats['result_keys']['original']}']",
+                f"- Specificity-filtered/display selection: adata.uns['{marker_stats['result_keys']['displayed']}']",
+                "\n**Actual Scanpy Specificity Criteria (strict comparisons):**",
+                f"  - Positive log2FC > {marker_stats['filtering_params']['min_fold_change']} (compare_abs=False; not linear fold-change)",
+                f"  - In-group expression fraction > {marker_stats['filtering_params']['min_pct']}",
+                f"  - Out-group expression fraction < {marker_stats['filtering_params']['max_out_pct']}",
+                "  - No adjusted-p/FDR criterion was applied by this specificity filter.",
             ]
 
             # Add filtering summary
             if "filtered_counts" in marker_stats:
                 response_parts.append(
-                    f"\n**Filtering Summary:** {marker_stats['total_genes_filtered']} genes removed"
+                    f"\n**Specificity Summary:** {marker_stats['total_genes_filtered']} returned ranking slots removed (not the full tested gene universe)"
                 )
-                response_parts.append("\n**Genes per Cluster (after filtering):**")
+                response_parts.append(
+                    "\n**Ranked vs specificity-filtered candidates per executed group:**"
+                )
                 for group in marker_stats["groups_analyzed"][:10]:
                     if group in marker_stats["post_filter_counts"]:
                         post = marker_stats["post_filter_counts"][group]
@@ -984,7 +1001,9 @@ Please check:
                     remaining = len(marker_stats["groups_analyzed"]) - 10
                     response_parts.append(f"  ... and {remaining} more clusters")
 
-            response_parts.append("\n**Top Marker Genes by Cluster:**")
+            response_parts.append(
+                "\n**Top Specificity-filtered Candidates by Cluster (not automatically FDR-significant):**"
+            )
 
             # Show top marker genes for each cluster (first 5 clusters)
             if "top_markers_per_group" in marker_stats:
@@ -1008,8 +1027,28 @@ Please check:
             if save_result:
                 response_parts.append(f"**Saved to**: {save_path}")
 
+            warnings = marker_stats["statistic_warnings"]
             response_parts.append(
-                "**Access detailed results**: adata.uns['rank_genes_groups']"
+                f"\n**Statistic Diagnostics:** finite abs(log2FC) >= {warnings['extreme_log2fc_threshold']} is a provisional extreme-effect flag pending scientific review; flag only, no clipping/reranking."
+            )
+            for group in marker_stats["groups_analyzed"][:10]:
+                original = warnings["original"][group]
+                selected = warnings["filtered"][group]
+                response_parts.append(
+                    f"  - Cluster {group}: extreme log2FC original={original['extreme_log2fc']}, specificity-filtered={selected['extreme_log2fc']}; nonfinite original={original['non_finite']}, specificity-filtered={selected['non_finite']}"
+                )
+                if selected["absent_statistics"]:
+                    response_parts.append(
+                        f"    NOT COMPUTED: {', '.join(selected['absent_statistics'])}; unavailable statistics are not zero discoveries."
+                    )
+            response_parts.append(
+                "Ranked, specificity-filtered and FDR-significant are different sets. Inspect supported adjusted p-values with an explicitly stated criterion before claiming significance; an extreme log2FC is not proof of significance or an error. Near-zero reference expression can amplify Scanpy's approximate log2FC."
+            )
+            response_parts.append(
+                "These are cell-level cluster-versus-rest exploratory rankings, not independent donor inference. Do not infer patient/condition effects from single-donor cells; require independent biological replicates and an appropriate design."
+            )
+            response_parts.append(
+                f"**Access displayed candidates**: adata.uns['{marker_stats['result_keys']['displayed']}']; supported scores/pvals/pvals_adj/logfoldchanges retain the same rank positions, and missing filtered names mean not selected."
             )
             response_parts.append(
                 "\n**CRITICAL**: If annotation requested, INVOKE handoff_to_annotation_expert immediately (do NOT just suggest it)."

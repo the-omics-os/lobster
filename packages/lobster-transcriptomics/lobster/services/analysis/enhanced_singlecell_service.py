@@ -63,6 +63,10 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Provisional diagnostic threshold pending scientific review by Alejandro.
+# Flag finite effects only; never clip, remove, rerank or infer significance.
+EXTREME_LOG2FC_THRESHOLD = 10
+
 
 class SingleCellError(Exception):
     """Base exception for single-cell analysis operations."""
@@ -1399,18 +1403,15 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             groups: Specific groups to analyze (None for all)
             method: Statistical method ('wilcoxon', 't-test', 'logreg')
             n_genes: Number of top marker genes per group
-            min_fold_change: Minimum fold-change threshold for filtering (default: 1.5).
-                Genes with fold-change < this value will be filtered out.
-            min_pct: Minimum percentage of cells expressing the gene in the group (default: 0.25).
-                Genes expressed in < 25% of in-group cells will be filtered out.
-            max_out_pct: Maximum percentage of cells expressing the gene in other groups (default: 0.5).
-                Genes expressed in > 50% of out-group cells will be filtered out (less specific).
+            min_fold_change: Minimum positive log2 fold-change (strict >; default: 1.5).
+            min_pct: Minimum in-group expression fraction (strict >; default: 0.25).
+            max_out_pct: Maximum out-group expression fraction (strict <; default: 0.5).
 
         Returns:
             Tuple containing:
-            - AnnData: Object with .uns['rank_genes_groups'] containing filtered marker genes
-            - Dict: Statistics including filtering summary and genes per group
-            - AnalysisStep: Provenance IR for reproducibility
+            - AnnData: Original rankings and separately specificity-filtered names
+            - Dict: Aligned counts, supported statistics and diagnostic flags
+            - AnalysisStep: Analysis metadata and executable template (not verified)
 
         Raises:
             SingleCellError: If marker gene detection fails
@@ -1486,11 +1487,17 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
             # Note: Only pass 'groups' parameter if explicitly set (not None)
             # Scanpy distinguishes between "parameter not provided" vs "parameter=None"
             # When groups=None is explicitly passed, scanpy's legacy_api_wrap fails
+            result_keys = {
+                "original": "rank_genes_groups",
+                "filtered": "rank_genes_groups_filtered",
+                "displayed": "rank_genes_groups_filtered",
+            }
             scanpy_kwargs = {
                 "groupby": groupby,
                 "method": method,
                 "n_genes": n_genes,
                 "use_raw": use_raw,
+                "key_added": result_keys["original"],
             }
 
             if groups is not None:
@@ -1504,90 +1511,85 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 f"min_pct={min_pct}, max_out_pct={max_out_pct}"
             )
 
-            # Store pre-filter counts
-            pre_filter_counts = {}
-            if "names" in adata_markers.uns["rank_genes_groups"]:
-                for group in adata_markers.uns["rank_genes_groups"][
-                    "names"
-                ].dtype.names:
-                    pre_filter_counts[group] = len(
-                        adata_markers.uns["rank_genes_groups"]["names"][group]
-                    )
+            # Count only usable returned ranking slots, not the tested gene universe.
+            original_report = self._marker_result_report(
+                adata_markers, result_keys["original"]
+            )
+            pre_filter_counts = original_report["counts"]
 
-            # Apply scanpy's built-in filtering
+            # Bind the already-established native keys; scientific defaults unchanged.
             sc.tl.filter_rank_genes_groups(
                 adata_markers,
+                key=result_keys["original"],
+                key_added=result_keys["filtered"],
                 min_fold_change=min_fold_change,
                 min_in_group_fraction=min_pct,
                 max_out_group_fraction=max_out_pct,
             )
 
-            # Store post-filter counts
-            post_filter_counts = {}
-            filtered_counts = {}
-            if "names" in adata_markers.uns["rank_genes_groups"]:
-                for group in adata_markers.uns["rank_genes_groups"][
-                    "names"
-                ].dtype.names:
-                    # Count non-NaN entries (filtered genes are set to NaN)
-                    valid_genes = ~pd.isna(
-                        adata_markers.uns["rank_genes_groups"]["names"][group]
-                    )
-                    post_filter_counts[group] = int(np.sum(valid_genes))
-                    filtered_counts[group] = (
-                        pre_filter_counts[group] - post_filter_counts[group]
-                    )
-
+            filtered_report = self._marker_result_report(
+                adata_markers, result_keys["filtered"]
+            )
+            if filtered_report["groups"] != original_report["groups"]:
+                raise SingleCellError(
+                    "Original and filtered marker groups do not align"
+                )
+            post_filter_counts = filtered_report["counts"]
+            filtered_counts = {
+                group: pre_filter_counts[group] - post_filter_counts[group]
+                for group in original_report["groups"]
+            }
             logger.info(
                 f"Filtering complete: "
-                f"{sum(filtered_counts.values())} genes removed across all groups"
+                f"{sum(filtered_counts.values())} ranked slots removed across executed groups"
             )
 
-            # Extract marker genes into structured format
+            # Scientific missing-name masks are used BEFORE write-safe name repair.
             marker_genes_df = self._extract_marker_genes(adata_markers, groupby)
-
-            # Calculate marker gene statistics
-            unique_groups = adata_markers.obs[groupby].unique()
-            n_groups = len(unique_groups)
-
+            executed_groups = original_report["groups"]
+            n_groups = len(executed_groups)
+            filter_semantics = {
+                "log2fc": {"operator": ">", "threshold": min_fold_change},
+                "in_group_fraction": {"operator": ">", "threshold": min_pct},
+                "out_group_fraction": {"operator": "<", "threshold": max_out_pct},
+                "compare_abs": False,
+                "fdr_filter_applied": False,
+            }
             marker_stats = {
                 "analysis_type": "marker_gene_analysis",
                 "groupby": groupby,
                 "method": method,
                 "n_genes": n_genes,
+                "result_keys": result_keys,
+                "groups_requested": list(groups) if groups is not None else None,
                 "filtering_params": {
                     "min_fold_change": min_fold_change,
                     "min_pct": min_pct,
                     "max_out_pct": max_out_pct,
+                },
+                "filter_semantics": filter_semantics,
+                "statistic_warnings": {
+                    "extreme_log2fc_threshold": EXTREME_LOG2FC_THRESHOLD,
+                    "extreme_log2fc_operator": ">=",
+                    "threshold_status": "provisional_pending_scientific_review",
+                    "original": original_report["diagnostics"],
+                    "filtered": filtered_report["diagnostics"],
                 },
                 "pre_filter_counts": pre_filter_counts,
                 "post_filter_counts": post_filter_counts,
                 "filtered_counts": filtered_counts,
                 "total_genes_filtered": sum(filtered_counts.values()),
                 "n_groups": n_groups,
-                "groups_analyzed": [str(g) for g in unique_groups],
-                "has_marker_results": "rank_genes_groups" in adata_markers.uns,
-                "marker_genes_df_shape": (
-                    marker_genes_df.shape if not marker_genes_df.empty else (0, 0)
-                ),
+                "groups_analyzed": executed_groups,
+                "has_marker_results": result_keys["displayed"] in adata_markers.uns,
+                "marker_genes_df_shape": marker_genes_df.shape,
+                "top_markers_per_group": {
+                    group: marker_genes_df.loc[marker_genes_df["group"] == group]
+                    .drop(columns="group")
+                    .to_dict("records")
+                    for group in executed_groups
+                },
             }
-
-            # Store top marker genes per group
-            if not marker_genes_df.empty:
-                top_markers_per_group = {}
-                for group in marker_genes_df["group"].unique():
-                    group_genes = marker_genes_df[
-                        marker_genes_df["group"] == group
-                    ].head(10)
-                    top_markers_per_group[str(group)] = [
-                        {
-                            "gene": row["gene"],
-                            "score": float(row["score"]),
-                            "pval": float(row["pval"]),
-                        }
-                        for _, row in group_genes.iterrows()
-                    ]
-                marker_stats["top_markers_per_group"] = top_markers_per_group
 
             logger.info(
                 f"Marker gene analysis completed for {n_groups} groups using {method} method"
@@ -1607,6 +1609,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 min_fold_change=min_fold_change,
                 min_pct=min_pct,
                 max_out_pct=max_out_pct,
+                groups_analyzed=executed_groups,
             )
 
             return adata_markers, marker_stats, ir
@@ -1624,6 +1627,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
         min_pct: float,
         max_out_pct: float,
         groups: Optional[List[str]] = None,
+        groups_analyzed: Optional[List[str]] = None,
     ) -> AnalysisStep:
         """Create AnalysisStep IR for marker gene detection with filtering.
 
@@ -1641,6 +1645,7 @@ sc.tl.rank_genes_groups(
     groupby={{ groupby | string | repr }},
     method={{ method | string | repr }},
     n_genes={{ n_genes }},
+    key_added={{ result_keys.original | repr }},
 {%- if groups is not none %}
     groups={{ groups | repr }},
 {%- endif %}
@@ -1649,21 +1654,25 @@ sc.tl.rank_genes_groups(
 # Step 2: Filter for marker specificity
 sc.tl.filter_rank_genes_groups(
     adata,
-    min_fold_change={{ min_fold_change }},     # Upregulation threshold
-    min_in_group_fraction={{ min_pct }},       # In-group expression
-    max_out_group_fraction={{ max_out_pct }},  # Out-group expression
+    key={{ result_keys.original | repr }},
+    key_added={{ result_keys.filtered | repr }},
+    min_fold_change={{ min_fold_change }},     # Strict positive log2FC > threshold
+    min_in_group_fraction={{ min_pct }},       # Strict in-group fraction > threshold
+    max_out_group_fraction={{ max_out_pct }},  # Strict out-group fraction < threshold
 )
 
 # Step 3: Write-safe missing-name representation (numeric NaNs unchanged)
 repair_marker_names(adata)
 
-# Results stored in adata.uns['rank_genes_groups']:
-# - 'names': Filtered gene names per group
-# - 'scores': Test statistics
-# - 'pvals': P-values
-# - 'pvals_adj': Adjusted p-values
-# - 'logfoldchanges': Log2 fold-changes
-# Note: Missing name slots are represented as empty text for H5AD writing
+# Original rankings: adata.uns['rank_genes_groups']
+# Specificity-filtered names/display selection: adata.uns['rank_genes_groups_filtered']
+# Select nonempty names first; scores/pvals/pvals_adj/logfoldchanges retain rank positions.
+# Absent statistics are NOT COMPUTED, not zero discoveries (e.g. logreg p-values).
+# Specificity filtering applies no FDR criterion; these are not automatically significant.
+# Finite abs(log2FC) >= {{ extreme_log2fc_threshold }} is a PROVISIONAL diagnostic only,
+# pending scientific review. Nonfinite statistics are separate; no clipping or reranking.
+# Cell-level rankings do not establish patient/condition effects from single-donor cells.
+# Missing name slots are empty text for H5AD writing; numeric NaNs remain unchanged.
 """
 
         return AnalysisStep(
@@ -1679,6 +1688,17 @@ repair_marker_names(adata)
             parameters={
                 "groupby": groupby,
                 "groups": list(groups) if groups is not None else None,
+                "groups_analyzed": (
+                    list(groups_analyzed) if groups_analyzed is not None else None
+                ),
+                "result_keys": {
+                    "original": "rank_genes_groups",
+                    "filtered": "rank_genes_groups_filtered",
+                    "displayed": "rank_genes_groups_filtered",
+                },
+                "extreme_log2fc_threshold": EXTREME_LOG2FC_THRESHOLD,
+                "extreme_log2fc_operator": ">=",
+                "extreme_log2fc_threshold_status": "provisional_pending_scientific_review",
                 "method": method,
                 "n_genes": n_genes,
                 "min_fold_change": min_fold_change,
@@ -1704,7 +1724,7 @@ repair_marker_names(adata)
                 },
                 "min_fold_change": {
                     "type": "number",
-                    "description": "Minimum fold-change threshold",
+                    "description": "Minimum positive log2 fold-change (strict >; not linear fold-change)",
                     "default": 1.5,
                 },
                 "min_pct": {
@@ -1860,31 +1880,85 @@ repair_marker_names(adata)
 
         return fig
 
+    def _marker_result_report(self, adata, results_key: str) -> Dict[str, Any]:
+        """Describe existing result slots only; never mutate or recompute statistics."""
+        result = adata.uns.get(results_key)
+        if not isinstance(result, dict) or "names" not in result:
+            raise SingleCellError(f"Marker result '{results_key}' is unavailable")
+        names = result["names"]
+        groups = list(names.dtype.names or ())
+        if not groups:
+            raise SingleCellError(f"Marker result '{results_key}' has no group fields")
+        fields = {
+            "score": "scores",
+            "pval": "pvals",
+            "padj": "pvals_adj",
+            "log2fc": "logfoldchanges",
+        }
+        counts, diagnostics, rows = {}, {}, []
+        for group in groups:
+            values = {}
+            for label, field in fields.items():
+                array = result.get(field)
+                if array is None or group not in (array.dtype.names or ()):
+                    values[label] = None
+                else:
+                    if len(array[group]) != len(names[group]):
+                        raise SingleCellError(
+                            "Marker name and statistic slots do not align"
+                        )
+                    values[label] = array[group]
+            diagnostic = {
+                "extreme_log2fc": 0,
+                "non_finite": {label: 0 for label in fields},
+                "absent_statistics": [
+                    label for label in fields if values[label] is None
+                ],
+            }
+            counts[group] = 0
+            for position, name in enumerate(names[group]):
+                if pd.isna(name) or name == "":
+                    continue
+                counts[group] += 1
+                row = {"gene": name, "group": group, "flags": []}
+                for label, array in values.items():
+                    if array is None:
+                        row[label] = None
+                        row["flags"].append(f"{label}_absent")
+                        continue
+                    value = float(array[position])
+                    row[label] = value
+                    if not np.isfinite(value):
+                        diagnostic["non_finite"][label] += 1
+                        row["flags"].append(f"{label}_non_finite")
+                    elif label == "log2fc" and abs(value) >= EXTREME_LOG2FC_THRESHOLD:
+                        diagnostic["extreme_log2fc"] += 1
+                        row["flags"].append("extreme_log2fc")
+                rows.append(row)
+            diagnostics[group] = diagnostic
+        return {
+            "groups": groups,
+            "counts": counts,
+            "diagnostics": diagnostics,
+            "rows": rows,
+        }
+
     def _extract_marker_genes(self, adata, group_name: str) -> pd.DataFrame:
-        """Extract marker genes from scanpy results."""
-        try:
-            marker_genes = pd.DataFrame(adata.uns["rank_genes_groups"]["names"])
-            marker_scores = pd.DataFrame(adata.uns["rank_genes_groups"]["scores"])
-            marker_pvals = pd.DataFrame(adata.uns["rank_genes_groups"]["pvals"])
-
-            # Combine into single dataframe
-            combined_df = pd.DataFrame()
-            for col in marker_genes.columns:
-                temp_df = pd.DataFrame(
-                    {
-                        "gene": marker_genes[col][:10],  # Top 10 genes
-                        "score": marker_scores[col][:10],
-                        "pval": marker_pvals[col][:10],
-                        "group": col,
-                    }
-                )
-                combined_df = pd.concat([combined_df, temp_df])
-
-            return combined_df.reset_index(drop=True)
-
-        except Exception as e:
-            logger.warning(f"Could not extract marker genes: {e}")
-            return pd.DataFrame()
+        """Mask filtered names first, then display top10 aligned rows per group."""
+        report = self._marker_result_report(adata, "rank_genes_groups_filtered")
+        records = []
+        for group in report["groups"]:
+            records.extend(
+                [row for row in report["rows"] if row["group"] == group][:10]
+            )
+        columns = ["gene", "score", "pval", "group", "padj", "log2fc", "flags"]
+        frame = pd.DataFrame(records, columns=columns)
+        # Keep genuinely absent statistics None; do not convert them into numeric NaN.
+        # Nonfinite supported values remain nonfinite in the derived table and source.
+        for label in ("score", "pval", "padj", "log2fc"):
+            if any(row[label] is None for row in records):
+                frame[label] = pd.Series([row[label] for row in records], dtype=object)
+        return frame
 
     def _create_marker_gene_plot(self, marker_genes_df: pd.DataFrame) -> go.Figure:
         """Create marker gene expression plot."""
