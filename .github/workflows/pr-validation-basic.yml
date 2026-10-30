@@ -98,7 +98,7 @@ jobs:
     - name: Run basic linting
       run: |
         # Get list of changed Python files
-        changed_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep '\.py$' | head -20)
+        changed_files=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }}..HEAD -- '*.py' | head -20)
         
         if [ -n "$changed_files" ]; then
           echo "Linting changed Python files: $changed_files"
