@@ -27,7 +27,11 @@ import pandas as pd
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.adapters.factory import create_default_adapters
 from lobster.core.exceptions import HdfReadRefusal
-from lobster.core.export_scope import assert_inside_workspace, check_modality_name
+from lobster.core.export_scope import (
+    assert_inside_workspace,
+    check_modality_name,
+    outside_workspace,
+)
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.plot_manager import PlotManager
 from lobster.core.provenance.analysis_ir import (
@@ -3487,6 +3491,13 @@ class DataManagerV2:
         refused_resident, refused_spilled, backup_stamp = self._autosave_plan()
         save_kwargs = {} if backup_stamp is None else {"backup_stamp": backup_stamp}
         refused_count = 0
+        # Targets outside the workspace are refused in the plan too, counted apart.
+        outside = {
+            name
+            for name in (*refused_resident, *refused_spilled)
+            if self._autosave_leads_out(name)
+        }
+        outside_count = 0
 
         modality_names = list(self.modalities.keys())
         total = len(modality_names)
@@ -3559,7 +3570,10 @@ class DataManagerV2:
                     continue
 
                 if modality_name in refused_resident:  # stays dirty: not saved
-                    refused_count += 1
+                    if modality_name in outside:
+                        outside_count += 1
+                    else:
+                        refused_count += 1
                     if progress_callback:
                         progress_callback(idx + 1, total, modality_name, "error")
                     continue
@@ -3619,7 +3633,10 @@ class DataManagerV2:
                     skipped_items.append(f"Modality '{modality_name}': already saved")
                     continue
                 if modality_name in refused_spilled:  # stays spilled and dirty
-                    refused_count += 1
+                    if modality_name in outside:
+                        outside_count += 1
+                    else:
+                        refused_count += 1
                     continue
                 self._assert_spilled_autosave_allowed(full_save_path)
                 full_save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3675,6 +3692,11 @@ class DataManagerV2:
                 f"{AUTOSAVE_NOT_SAVED_PREFIX}{refused_count} modalities refused "
                 "(managed figure folder)"
             )
+        if outside_count:
+            all_results.append(
+                f"{AUTOSAVE_NOT_SAVED_PREFIX}{outside_count} modalities refused "
+                "(outside the workspace)"
+            )
 
         return all_results
 
@@ -3684,6 +3706,13 @@ class DataManagerV2:
         _assert_dirs_allowed(self.workspace_path, full_save_path.parent)
         self._assert_save_allowed(full_save_path)
         _assert_not_a_folder(full_save_path)
+
+    def _autosave_leads_out(self, name: str) -> bool:
+        """True when the auto-save target of ``name`` is outside the workspace (a
+        name registered directly, with '..' or an absolute spelling)."""
+        return outside_workspace(
+            self.workspace_path, self.data_dir / _autosave_file_name(name)
+        )
 
     def _autosave_plan(self) -> tuple:
         """Classify every auto-save target before the first write (no effect).
@@ -3700,6 +3729,9 @@ class DataManagerV2:
         refused_resident, refused_spilled = set(), set()
         for name in self.modalities:
             save_path = _autosave_file_name(name)
+            if self._autosave_leads_out(name):
+                refused_resident.add(name)  # the name leads out of the workspace
+                continue
             try:
                 self._assert_save_allowed(save_path)
                 if backend is None:
@@ -3720,6 +3752,9 @@ class DataManagerV2:
             except ManagedPathError:
                 refused_resident.add(name)
         for name in self._modality_spilled:
+            if self._autosave_leads_out(name):
+                refused_spilled.add(name)  # the name leads out of the workspace
+                continue
             try:
                 self._assert_spilled_autosave_allowed(
                     self.data_dir / _autosave_file_name(name)

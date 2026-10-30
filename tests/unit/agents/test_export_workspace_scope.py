@@ -37,6 +37,8 @@ ML_MODULE = "lobster.agents.machine_learning.machine_learning_expert"
 RESULTS_KEY = "de_results_condition_sample_b_vs_sample_a"
 #: A modality name that leads out of the workspace (data/../../outside/evil).
 ESCAPING_NAME = "../../outside/evil"
+#: The auto-save summary line for one refused target outside the workspace.
+NOT_SAVED_OUTSIDE = "Not saved: 1 modalities refused (outside the workspace)"
 
 
 def _modality():
@@ -436,3 +438,47 @@ def test_scvi_service_refuses_a_save_path_outside_the_workspace(s):
             workspace_path=s.dm.workspace_path,
         )
     s.nothing_outside()
+
+
+# ------------------------------------------------------------- auto-save of a name leading out
+
+
+@pytest.mark.parametrize("which", ["dotdot", "absolute"])
+def test_autosave_skips_a_name_leading_out_and_saves_the_rest(s, which):
+    """A name that arrived by direct registration is not auto-saved outside; the
+    other modalities are still saved (one refusal does not stop the run)."""
+    name = ESCAPING_NAME if which == "dotdot" else str(s.outside / "abs")
+    s.dm.modalities[name] = s.adata.copy()  # direct registration
+    s.dm.mark_modality_dirty(name)
+    s.dm.store_modality("plain", s.adata.copy())
+    result = s.dm.auto_save_state()
+    assert (s.dm.data_dir / "plain_autosave.h5ad").is_file()
+    assert result.count(NOT_SAVED_OUTSIDE) == 1
+    assert name in s.dm._modality_dirty  # not saved: stays modified
+    s.nothing_outside()
+
+
+def test_autosave_skips_a_spilled_modality_whose_name_leads_out(tmp_path, monkeypatch):
+    from tests.unit.core.test_dm_save_guard import (
+        SPILL_SHAPE,
+        _adata,
+        _session,
+    )
+
+    monkeypatch.setattr(  # admit the name, as a direct registration would
+        "lobster.core.runtime.data_manager.check_modality_name", lambda name: None
+    )
+    sp = _session(tmp_path, monkeypatch, budget_of=1.5)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sp.dm.store_modality(name=ESCAPING_NAME, adata=_adata(0, *SPILL_SHAPE))
+    sp.dm.store_modality(name="other", adata=_adata(1, *SPILL_SHAPE))
+    assert ESCAPING_NAME in sp.dm._modality_spilled
+    dirty, spilled = set(sp.dm._modality_dirty), dict(sp.dm._modality_spilled)
+    result = sp.dm.auto_save_state()
+    assert list(outside.iterdir()) == []
+    assert (sp.dm.data_dir / "other_autosave.h5ad").is_file()
+    assert result.count(NOT_SAVED_OUTSIDE) == 1
+    # The refused one stays spilled and as it was; only "other" was saved.
+    assert set(sp.dm._modality_dirty) == dirty - {"other"}
+    assert dict(sp.dm._modality_spilled) == spilled
