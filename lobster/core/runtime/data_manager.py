@@ -1625,7 +1625,7 @@ class DataManagerV2:
                             selected,
                             selected_path,
                             backup_stamp,
-                            materializes=getattr(adata, "isbacked", False),
+                            loading=name if getattr(adata, "isbacked", False) else None,
                         )
 
             # Backed-mode AnnData must be materialized before save
@@ -2364,48 +2364,89 @@ class DataManagerV2:
         backend_path: Union[str, Path],
         stamp: str,
         *,
-        materializes: bool,
+        loading: Optional[str],
     ) -> None:
-        """Raise ManagedPathError when the backup the MuData ``backend`` would make
-        for ``backend_path`` under ``stamp`` is refused (no effect).
+        """Raise ManagedPathError when the backup the MuData ``backend`` may make for
+        ``backend_path`` under ``stamp`` is refused (no effect). ``loading`` names the
+        backed modality the save loads first (None when nothing is loaded).
 
-        The writer makes a backup only when, at write time, both the destination and
-        the file it copies (``backup_source``) exist. Each is taken to exist when it
-        exists now or, if the save first loads backed data (``materializes``), when
-        that load can create it: the load may spill modalities, which writes their
-        spill files and creates the spill folder. Otherwise no backup is made and
-        nothing is checked. What cannot be evaluated here is left to the writer,
-        which checks the backup again before copying.
+        The backup name is computed exactly as the writer computes it; when that
+        fails, the writer logs a failed backup and saves, so nothing is checked here.
+        Otherwise the backup is checked unless the writer certainly makes none (see
+        :meth:`_backup_may_be_made`). The writer checks it again before copying.
         """
         is_s3 = getattr(backend, "_is_s3_path", None)
         if is_s3 is not None and is_s3(backend_path):
             return  # handed to the remote writer before any local write
         try:
-            created = self._paths_a_load_can_create() if materializes else frozenset()
-
-            def will_exist(path: Path) -> bool:
-                return path.exists() or (bool(created) and path.resolve() in created)
-
             destination = Path(backend._resolve_path(backend_path))
             source = backend.backup_source(destination)
-            if not (will_exist(destination) and will_exist(source)):
-                return  # no backup is made
             backup = backend.backup_sibling(source, stamp)
         except Exception:
-            return  # the writer handles it, as before (a failed backup is logged)
-        backend._assert_backup_allowed(backup)
+            return  # the writer makes no backup it cannot name (logged, as before)
+        if self._backup_may_be_made(destination, source, loading):
+            backend._assert_backup_allowed(backup)
 
-    def _paths_a_load_can_create(self) -> frozenset:
-        """Every path that loading backed data can create (resolved, no effect): the
-        memory budget may spill any resident modality, writing its spill file and
-        creating the spill folder with its parents."""
+    def _backup_may_be_made(
+        self, destination: Path, source: Path, loading: Optional[str]
+    ) -> bool:
+        """False only when the writer certainly makes no backup (no effect).
+
+        The writer makes one when, at write time, both the destination and the file
+        the backup copies exist. A path that does not exist now may exist then when
+        its spelling only lacks a missing folder (the writer, or the spill, creates
+        folders) or, for a save that loads backed data, when that load can create it
+        (:meth:`_paths_a_load_can_create`). Anything that cannot be evaluated counts
+        as a backup that may be made.
+        """
+        try:
+            created = None
+
+            def may_exist(path: Path) -> bool:
+                nonlocal created
+                if path.exists() or path.resolve().exists():
+                    return True
+                if loading is None:
+                    return False
+                if created is None:
+                    created = self._paths_a_load_can_create(loading)
+                return path.resolve() in created
+
+            return may_exist(destination) and may_exist(source)
+        except Exception:
+            return True
+
+    def _paths_a_load_can_create(self, loading: str) -> frozenset:
+        """The paths loading the backed modality ``loading`` can create (resolved,
+        no effect).
+
+        The memory budget can spill resident modalities, writing a spill file and
+        creating the spill folder and its missing parents. The most recently used
+        entry is never spilled, and a modality unchanged since it was read from a
+        file that still exists reuses that file (nothing is written). The modality
+        being loaded is marked modified first, so it never reuses its file.
+        """
+        if self._modality_memory_budget <= 0:
+            return frozenset()
+        writes = []
+        for name in list(self.modalities.keys())[:-1]:
+            source = self._modality_sources.get(name)
+            reuses = (
+                name != loading
+                and source is not None
+                and name not in self._modality_dirty
+                and Path(source).exists()
+            )
+            if not reuses:
+                writes.append(name)
+        if not writes:
+            return frozenset()
         folder = Path(self._modality_spill_dir)
         if not folder.is_absolute():
             folder = Path.cwd() / folder
-        created = {folder.resolve(), *folder.resolve().parents}
+        created = {prefix.resolve() for prefix in (folder, *folder.parents)}
         created.update(
-            (folder / f"{_safe_filename(name)}.h5ad").resolve()
-            for name in self.modalities
+            (folder / f"{_safe_filename(name)}.h5ad").resolve() for name in writes
         )
         return frozenset(created)
 
@@ -3589,7 +3630,11 @@ class DataManagerV2:
                         backend,
                         backend_path,
                         backup_stamp,
-                        materializes=getattr(self.modalities[name], "isbacked", False),
+                        loading=(
+                            name
+                            if getattr(self.modalities[name], "isbacked", False)
+                            else None
+                        ),
                     )
             except ManagedPathError:
                 refused_resident.add(name)
