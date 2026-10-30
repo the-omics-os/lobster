@@ -178,7 +178,15 @@ def test_t7_namespace_prefixes_and_tracker_namespace_unchanged(tmp_path):
     assert activity.startswith("study-ns:activity:")
     entity = dm.provenance.create_entity("dataset", uri=None)
     assert entity.startswith("study-ns:entity:")
+    agent = dm.provenance.create_agent("transcriptomics_expert")
+    assert agent.startswith("study-ns:agent:")
     assert dm.provenance.namespace == "study-ns"
+    import anndata
+    import numpy as np
+
+    adata = dm.provenance.add_to_anndata(anndata.AnnData(np.zeros((2, 2))))
+    assert adata.uns["provenance"]["tracker_namespace"] == "study-ns"
+    _assert_identity(dm.notebook_exporter.export("nb"), dm, SID_A)
 
 
 # ---------------------------------------------------------------- T4, T5 (bind table, allowlist)
