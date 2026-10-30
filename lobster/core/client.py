@@ -18,6 +18,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from lobster.agents.graph import create_bioinformatics_graph
+from lobster.core.session_identity import bind_client_session
 
 # ---------------------------------------------------------------------------
 # Stream speaker tracking
@@ -221,6 +222,10 @@ class AgentClient(BaseClient):
                     "not be persisted for session %s",
                     self.session_id,
                 )
+
+        # This client owns the session identity that notebook exports show; a data
+        # manager already bound to another session shows it as unknown.
+        bind_client_session(self.data_manager, self.session_id)
 
         self.profile_timings_enabled = getattr(
             self.data_manager, "profile_timings_enabled", False
@@ -3363,6 +3368,8 @@ class AgentClient(BaseClient):
         loaded_session_id = session_data.get("session_id")
         if loaded_session_id:
             self.session_id = loaded_session_id
+            # Restoring is the one sanctioned identity change for exports.
+            bind_client_session(self.data_manager, self.session_id, replace=True)
 
         # Update metadata with load info
         loaded_metadata = session_data.get("metadata", {})

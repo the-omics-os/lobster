@@ -60,6 +60,9 @@ from lobster.core.interfaces.validator import ValidationResult
 from lobster.core.provenance.provenance import ProvenanceTracker
 from lobster.core.queues.queue_storage import atomic_write_json, queue_file_lock
 from lobster.core.runtime.workspace import resolve_workspace
+from lobster.core.session_identity import (
+    is_display_client_session_id as _is_display_client_session_id,
+)
 from lobster.core.utils.h5ad_utils import validate_for_h5ad
 from lobster.core.utils.layer_keys import layer_names
 
@@ -791,6 +794,12 @@ class DataManagerV2:
         # (e.g. execute_custom_code via asyncio.to_thread)
         self._state_lock = threading.Lock()
 
+        # Client session identity shown in notebook exports. Only the owning client
+        # binds it (bind_client_session); the timestamp session_id above is not it.
+        self._client_session_lock = threading.Lock()
+        self._client_session_id: Optional[str] = None
+        self._client_session_unknown = False
+
         # Optional callback for modality loaded events: fn(name, adata)
         self.on_modality_loaded = None
 
@@ -948,6 +957,52 @@ class DataManagerV2:
         if instance_id:
             return InputEdge(modality_name, str(instance_id), "store_event", True)
         return None
+
+    @property
+    def client_session_id(self) -> Optional[str]:
+        """Client session id bound by the owning client, or None when unknown."""
+        with self._client_session_lock:
+            return self._client_session_id
+
+    def bind_client_session(
+        self, session_id: Any, *, replace: bool = False
+    ) -> Optional[str]:
+        """Bind the owning client's session id for notebook export; never raises.
+
+        The first valid id binds. The same id again is a no-op. A different id,
+        or an id outside the display allowlist, makes the identity unknown, and
+        it stays unknown until a valid ``replace=True`` bind (session restore).
+        Returns the resulting identity (None when unknown).
+        """
+        reason = None
+        try:
+            valid = _is_display_client_session_id(session_id)
+            with self._client_session_lock:
+                if not valid:
+                    reason = "invalid_format"
+                    if not isinstance(session_id, str):
+                        reason = "invalid_type"
+                    self._client_session_id = None
+                    self._client_session_unknown = True
+                elif replace:
+                    self._client_session_id = session_id
+                    self._client_session_unknown = False
+                elif self._client_session_unknown:
+                    pass
+                elif self._client_session_id is None:
+                    self._client_session_id = session_id
+                elif self._client_session_id != session_id:
+                    reason = "conflict"
+                    self._client_session_id = None
+                    self._client_session_unknown = True
+                result = self._client_session_id
+        except Exception:
+            reason, result = "internal", None
+        if reason:
+            logger.warning(
+                "Notebook export: client session identity is unknown (%s)", reason
+            )
+        return result
 
     @property
     def notebook_exporter(self):

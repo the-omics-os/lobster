@@ -511,7 +511,7 @@ class TestProvenanceExportMetadata:
         assert "n_irs_extracted" in lobster_meta["ir_statistics"]
 
     def test_notebook_contains_session_id(self, mock_data_manager, simple_provenance):
-        """Notebook references original session ID."""
+        """No bound client session: the session ID is unknown, not the namespace."""
         exporter = NotebookExporter(simple_provenance, mock_data_manager)
         output_path = exporter.export(name="test_session")
 
@@ -519,7 +519,8 @@ class TestProvenanceExportMetadata:
             notebook = nbformat.read(f, as_version=4)
 
         lobster_meta = notebook.metadata.get("lobster", {})
-        assert lobster_meta["source_session_id"] == "simple_test"
+        assert lobster_meta["source_session_id"] is None
+        assert lobster_meta["provenance_namespace"] == "simple_test"
 
 
 class TestProvenanceExportEdgeCases:

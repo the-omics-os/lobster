@@ -503,6 +503,11 @@ class CommandClient:
             workspace_path=workspace_path,
             session_dir=session_dir,
         )
+        if session_dir is not None:
+            from lobster.core.session_identity import bind_client_session
+
+            # The concrete session this command reads is the export identity.
+            bind_client_session(self.data_manager, session_id)
         self.messages: list = []
         self.graph = None
         self.token_tracker = None

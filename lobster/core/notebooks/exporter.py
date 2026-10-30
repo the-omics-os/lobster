@@ -29,8 +29,12 @@ from lobster.core.provenance.analysis_ir import (
     extract_unique_imports,
 )
 from lobster.core.provenance.provenance import ProvenanceTracker
+from lobster.core.session_identity import is_display_client_session_id
 
 logger = logging.getLogger(__name__)
+
+# Default for helpers called outside export(): take their own identity reading.
+_OBSERVE: Any = object()
 
 
 def _guarded_save_code(path_line: str, compression: Optional[str] = None) -> str:
@@ -142,6 +146,10 @@ class NotebookExporter:
         if not self.provenance.activities:
             raise ValueError("No activities recorded - nothing to export")
 
+        # One reading of the client session identity for the whole notebook, so the
+        # export record, its hash, the summary and the metadata always agree.
+        session_identity = self._client_session_identity()
+
         logger.info(f"Exporting notebook with IR: {name}")
 
         # A failed step may have changed data before it failed. A replay
@@ -229,7 +237,7 @@ class NotebookExporter:
         )
 
         # Add the export record (hashes taken at export time; not verified at run time)
-        notebook.cells.append(self._create_integrity_manifest_cell())
+        notebook.cells.append(self._create_integrity_manifest_cell(session_identity))
 
         # Collect and add imports from all exportable IRs
         imports_cell = self._create_imports_cell(irs)
@@ -286,6 +294,7 @@ class NotebookExporter:
                 exportable_count,
                 excluded_activity_types,
                 select_on=select_on,
+                session_identity=session_identity,
             )
         )
 
@@ -300,7 +309,7 @@ class NotebookExporter:
 
         # Add notebook metadata
         notebook.metadata["lobster"] = self._create_metadata(
-            exportable_count, len(activities)
+            exportable_count, len(activities), session_identity=session_identity
         )
         notebook.metadata["kernelspec"] = {
             "display_name": "Python 3",
@@ -627,14 +636,33 @@ code recorded for it.
 """
         return new_markdown_cell(header_content)
 
-    def _create_integrity_manifest_cell(self) -> NotebookNode:
+    def _client_session_identity(self) -> Optional[str]:
+        """The client session id bound on the data manager, or None when unknown.
+
+        Never the provenance namespace, the data manager's timestamp or a
+        directory name. Any failure to read it is reported as unknown.
+        """
+        try:
+            value = getattr(self.data_manager, "client_session_id", None)
+            if is_display_client_session_id(value):
+                return value
+        except Exception:
+            logger.warning(
+                "Notebook export: client session identity is unknown (lookup_failed)"
+            )
+        return None
+
+    def _create_integrity_manifest_cell(
+        self, session_identity: Optional[str] = _OBSERVE
+    ) -> NotebookNode:
         """
         Create the export-record cell: hashes and versions taken at export time.
 
         The record is informational. Nothing in the notebook checks it when the
-        notebook runs, the provenance hash covers only the session ID and the
-        activity/entity counts, and the record is not tamper evidence or proof
-        of regulatory compliance. The wording must say so.
+        notebook runs, the provenance hash covers only the session ID, the
+        provenance namespace and the activity/entity counts, and the record is
+        not tamper evidence or proof of regulatory compliance. The wording must
+        say so.
 
         Returns:
             Markdown cell with the export record
@@ -642,7 +670,7 @@ code recorded for it.
         record = {
             "data_integrity_manifest": {
                 "generated_at": datetime.now().isoformat(),
-                "provenance": self._get_provenance_hash(),
+                "provenance": self._get_provenance_hash(session_identity),
                 "input_files": self._get_input_file_hashes(),
                 "system": self._get_system_info(),
             }
@@ -658,7 +686,7 @@ Recorded when this notebook was exported, for your own checks.
 
 **What is recorded**
 - `input_files`: SHA-256 of each modality's `.h5ad` file in the workspace at export time (`file_not_found` if the file was missing).
-- `provenance.sha256`: SHA-256 of the session ID and the activity and entity counts only. It does not cover the content of the provenance record.
+- `provenance.sha256`: SHA-256 of the session ID (`null` when the client session identity was unavailable or ambiguous at export time), the provenance namespace and the activity and entity counts only. It does not cover the content of the provenance record.
 - `system`: Lobster and Python versions, the platform, and the short Git commit of the directory the export ran in (if any), as plain text.
 
 **Limits**
@@ -670,12 +698,17 @@ Recorded when this notebook was exported, for your own checks.
 """
         return new_markdown_cell(content)
 
-    def _get_provenance_hash(self) -> Dict[str, str]:
-        """Calculate SHA-256 hash of provenance JSON."""
+    def _get_provenance_hash(
+        self, session_identity: Optional[str] = _OBSERVE
+    ) -> Dict[str, Any]:
+        """SHA-256 of the session ID, the provenance namespace and the counts."""
+        if session_identity is _OBSERVE:
+            session_identity = self._client_session_identity()
+        namespace = self.provenance.namespace
         try:
-            # Serialize provenance to consistent JSON
             prov_data = {
-                "namespace": self.provenance.namespace,
+                "session_id": session_identity,
+                "namespace": namespace,
                 "activities_count": len(self.provenance.activities),
                 "entities_count": len(self.provenance.entities),
             }
@@ -683,14 +716,19 @@ Recorded when this notebook was exported, for your own checks.
             prov_hash = hashlib.sha256(prov_json).hexdigest()
 
             return {
-                "session_id": self.provenance.namespace,
+                "session_id": session_identity,
+                "namespace": namespace,
                 "sha256": prov_hash,
                 "activities": len(self.provenance.activities),
                 "entities": len(self.provenance.entities),
             }
         except Exception as e:
             logger.warning(f"Failed to hash provenance: {e}")
-            return {"session_id": self.provenance.namespace, "sha256": "unavailable"}
+            return {
+                "session_id": session_identity,
+                "namespace": namespace,
+                "sha256": "unavailable",
+            }
 
     def _get_input_file_hashes(self) -> Dict[str, str]:
         """Calculate SHA-256 hashes of input data files."""
@@ -1164,6 +1202,7 @@ IR coverage alone does not show that running it gives the same results.
         exportable_count: int,
         excluded_activity_types: List[str],
         select_on: str = "exportable",
+        session_identity: Optional[str] = _OBSERVE,
     ) -> NotebookNode:
         """
         Create summary cell explaining provenance vs notebook content.
@@ -1181,6 +1220,14 @@ IR coverage alone does not show that running it gives the same results.
         Returns:
             Markdown cell with provenance summary
         """
+        if session_identity is _OBSERVE:
+            session_identity = self._client_session_identity()
+        session_line = (
+            f"Session ID: `{session_identity}`"
+            if session_identity is not None
+            else "Session ID: unknown (the client session identity was unavailable "
+            "or ambiguous at export time)"
+        )
         filtered_count = total_activities - exportable_count
         activity_names = (
             ", ".join(f"`{name}`" for name in dict.fromkeys(excluded_activity_types))
@@ -1203,14 +1250,19 @@ IR coverage alone does not show that running it gives the same results.
 - **Excluded activity types:** {activity_names}
 
 **Full Provenance Record:**
-- Session ID: `{self.provenance.namespace}`
-- Complete audit trail available in provenance JSON for regulatory compliance
+- {session_line}
+- Activity records are tracked separately from the notebook; disk persistence is optional.
 
 ---
 """
         return new_markdown_cell(content)
 
-    def _create_metadata(self, n_irs: int, n_activities: int) -> Dict[str, Any]:
+    def _create_metadata(
+        self,
+        n_irs: int,
+        n_activities: int,
+        session_identity: Optional[str] = _OBSERVE,
+    ) -> Dict[str, Any]:
         """
         Create notebook metadata with provenance link and IR stats.
 
@@ -1223,8 +1275,11 @@ IR coverage alone does not show that running it gives the same results.
         """
         import os
 
+        if session_identity is _OBSERVE:
+            session_identity = self._client_session_identity()
         return {
-            "source_session_id": self.provenance.namespace,
+            "source_session_id": session_identity,
+            "provenance_namespace": self.provenance.namespace,
             "created_by": os.getenv("USER", "unknown"),
             "created_at": datetime.now().isoformat(),
             "lobster_version": self._get_lobster_version(),
