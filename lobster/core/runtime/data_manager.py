@@ -567,6 +567,15 @@ def _autosave_file_name(modality_name: str) -> str:
     return f"{modality_name}_autosave.h5ad"
 
 
+def _is_mudata_backend(backend: Any) -> bool:
+    """True for the native MuData backend, the one writer that makes a backup."""
+    return (
+        MUDATA_BACKEND_AVAILABLE
+        and isinstance(MuDataBackend, type)  # replaced in some tests
+        and isinstance(backend, MuDataBackend)
+    )
+
+
 def _package_payload_names(name: str) -> tuple:
     return (f"{name}.h5ad", f"{name}_metadata.json")
 
@@ -1584,8 +1593,9 @@ class DataManagerV2:
             ManagedPathError: The destination (as spelled, or where the backend
                 writes it) or its backup is inside the managed figure folder
         """
-        # The backup name planned by auto-save reaches the backend only (it is not a
-        # save parameter, so it is not recorded with the save).
+        # The backup name planned by auto-save (or, for a MuData save without one,
+        # read below before anything changes) reaches the backend only: it is not a
+        # save parameter, so it is not recorded with the save.
         backup_stamp = kwargs.pop("backup_stamp", None)
         with self._measure_step("dm:save_modality"):
             if name not in self.modalities:
@@ -1604,9 +1614,19 @@ class DataManagerV2:
                     requested = Path(path)
                     if not requested.is_absolute():
                         requested = self.data_dir / path
-                    self._assert_backend_destination_allowed(
-                        selected, self._backend_path(requested)
-                    )
+                    selected_path = self._backend_path(requested)
+                    self._assert_backend_destination_allowed(selected, selected_path)
+                    if _is_mudata_backend(selected):
+                        # One backup name per save, fixed before anything changes:
+                        # the backup made below uses the name checked here.
+                        if backup_stamp is None:
+                            backup_stamp = selected.backup_stamp()
+                        self._assert_planned_backup_allowed(
+                            selected,
+                            selected_path,
+                            backup_stamp,
+                            materializes=getattr(adata, "isbacked", False),
+                        )
 
             # Backed-mode AnnData must be materialized before save
             if getattr(adata, "isbacked", False):
@@ -2337,6 +2357,33 @@ class DataManagerV2:
             destination = Path.cwd() / destination
         self._assert_save_allowed(destination)
         _assert_dirs_allowed(self.workspace_path, destination.parent)
+
+    @staticmethod
+    def _assert_planned_backup_allowed(
+        backend: Any,
+        backend_path: Union[str, Path],
+        stamp: str,
+        *,
+        materializes: bool,
+    ) -> None:
+        """Raise ManagedPathError when the backup the MuData ``backend`` would make
+        for ``backend_path`` under ``stamp`` is refused (no effect).
+
+        The backup is made only when the destination exists at write time. It is
+        checked when the destination exists now, and also when it does not but the
+        save first loads backed data (``materializes``): that load can spill another
+        modality to the file the destination links to, creating it before the
+        backup is made. The writer checks the backup again before copying.
+        """
+        is_s3 = getattr(backend, "_is_s3_path", None)
+        if is_s3 is not None and is_s3(backend_path):
+            return  # handed to the remote writer before any local write
+        destination = Path(backend._resolve_path(backend_path))
+        if not (materializes or destination.exists()):
+            return  # no backup is made
+        backend._assert_backup_allowed(
+            backend.backup_sibling(backend.backup_source(destination), stamp)
+        )
 
     def save_mudata(
         self, path: Union[str, Path], modalities: Optional[List[str]] = None, **kwargs
@@ -3502,11 +3549,7 @@ class DataManagerV2:
         """
         backend = self.backends.get(self.default_backend)
         backup_stamp = None
-        if (
-            MUDATA_BACKEND_AVAILABLE
-            and isinstance(MuDataBackend, type)  # replaced in some tests
-            and isinstance(backend, MuDataBackend)
-        ):
+        if _is_mudata_backend(backend):
             backup_stamp = backend.backup_stamp()
         refused_resident, refused_spilled = set(), set()
         for name in self.modalities:
@@ -3518,13 +3561,12 @@ class DataManagerV2:
                 backend_path = self._backend_path(self.data_dir / save_path)
                 self._assert_backend_destination_allowed(backend, backend_path)
                 if backup_stamp is not None:
-                    destination = Path(backend._resolve_path(backend_path))
-                    if destination.exists():  # the backup is made only then
-                        backend._assert_backup_allowed(
-                            backend.backup_sibling(
-                                backend.backup_source(destination), backup_stamp
-                            )
-                        )
+                    self._assert_planned_backup_allowed(
+                        backend,
+                        backend_path,
+                        backup_stamp,
+                        materializes=getattr(self.modalities[name], "isbacked", False),
+                    )
             except ManagedPathError:
                 refused_resident.add(name)
         for name in self._modality_spilled:
