@@ -25,6 +25,7 @@ from lobster.core.export_scope import (
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.testing.provenance_replay import factory_tools
 from tests.unit.services.test_scvi_export_guard import fake_scvi  # noqa: F401
+from tests.unit.services.test_native_export_sink_guard import indra  # noqa: F401
 
 HAS_TX = find_spec("lobster.agents.transcriptomics") is not None
 HAS_ML = find_spec("lobster.agents.machine_learning") is not None
@@ -358,6 +359,23 @@ def test_pathway_csv_refuses_a_modality_name_leading_out(tmp_path, monkeypatch):
         service._store_results(adata, df, "../outside/evil", "sel", stats)
     assert list(outside.iterdir()) == []
     assert "pathway_enrichment" not in adata.uns
+
+
+@needs_ml
+def test_pathway_tool_refuses_a_name_leading_out_before_the_request(s, request):
+    from tests.unit.services.test_native_export_sink_guard import (
+        _pathway_tool,
+        _selected_adata,
+    )
+
+    requests_sent = request.getfixturevalue("indra")  # records any request
+    adata = _selected_adata()
+    s.dm.modalities[ESCAPING_NAME] = adata  # direct registration
+    response = _pathway_tool(s.dm).invoke({"modality_name": ESCAPING_NAME})
+    assert response == WORKSPACE_EXPORT_MESSAGE
+    assert requests_sent == []  # refused before the request
+    assert "pathway_enrichment" not in adata.uns
+    s.nothing_outside()
 
 
 # ------------------------------------------------------------- DM names and N6 saves
