@@ -9,8 +9,12 @@ checked before the load, for direct saves (with or without a given backup name)
 and in the auto-save plan, including a target that only comes to exist because
 the load spills another modality to the file it links to.
 
+Saves that make no backup are not refused over a backup name that is never
+written, whether or not they load backed data.
+
 Real ``DataManagerV2``, real backends, real backed AnnData files and a real memory
-budget. The only seam is the clock the backup name reads.
+budget. The seams are the clock the backup name reads and, in one test, a relative
+base folder set on the data manager's own MuData backend.
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ NOT_SAVED = "Not saved: 1 modalities refused (managed figure folder)"
 LATE_LOG = "Auto-save skipped: the target is inside the managed figure folder."
 T0 = _real_datetime(2026, 10, 30, 9, 0, 0)
 STAMP0 = T0.strftime("%Y%m%d_%H%M%S")
+T1 = _real_datetime(2026, 10, 30, 9, 0, 1)
+STAMP1 = T1.strftime("%Y%m%d_%H%M%S")
 GIVEN = "20261030_120000"
 
 
@@ -234,9 +240,12 @@ def test_autosave_target_created_by_the_load_is_excluded_in_the_plan(mu, clock, 
     alias(_sibling(_spill_file(s), STAMP0), _rev_file(s))
     target = alias(s.dm.data_dir / f"{NAME}_autosave.h5ad", _spill_file(s))
     assert not target.exists()
+    ids, dirty, spilled, sources = _state(s)
     calls = []
     with caplog.at_level(logging.INFO):
         result = s.dm.auto_save_state(progress_callback=_progress(calls))
+    # Only the permitted save of m0 changed anything: its modified mark.
+    assert _state(s) == (ids, dirty - {"m0"}, spilled, sources)
     assert result.count(NOT_SAVED) == 1 and "Modality 'm0': m0_autosave.h5ad" in result
     assert calls == [("m0", "saving"), ("m0", "done"), (NAME, "error")]
     assert s.dm.modalities["m0"] is held and "m0" not in s.dm._modality_spilled
@@ -264,3 +273,91 @@ def test_autosave_new_target_of_an_in_memory_modality_is_saved(mu, clock):
     assert "Modality 'm0': m0_autosave.h5ad" in result
     assert not any(i.startswith("Not saved") for i in result)
     assert target.is_file() and s.rev.unchanged()
+
+
+# ------------------------------------------- saves that make no backup (R2)
+
+
+@pytest.mark.parametrize("bound", [False, True], ids=["unbound", "given_name"])
+@pytest.mark.parametrize("older", [False, True], ids=["alone", "with_spill"])
+def test_backed_save_to_a_new_file_ignores_an_unused_backup_name(
+    s, clock, bound, older
+):
+    """The load creates nothing at this ordinary new destination (with an older
+    modality it spills that one elsewhere), so no backup is made and the backup
+    name linking into a revision does not refuse the save (as before)."""
+    if older:
+        _resident(s)
+    _backed(s)
+    destination = s.dm.data_dir / "new.h5mu"
+    unused = alias(_sibling(destination, GIVEN if bound else STAMP0), _rev_file(s))
+    extra = {"backup_stamp": GIVEN} if bound else {}
+    s.dm.save_modality(NAME, "new.h5mu", backend="mudata", **extra)
+    assert destination.is_file() and not s.dm.modalities[NAME].isbacked
+    assert ("m0" in s.dm._modality_spilled) is older
+    assert unused.is_symlink() and s.rev.unchanged()
+
+
+def test_autosave_new_target_of_a_backed_modality_is_saved(mu, clock):
+    """Auto-save of a backed modality to an ordinary new target makes no backup: the
+    unused backup name is not a reason to refuse it (as before)."""
+    s = mu
+    _backed(s)
+    target = s.dm.data_dir / f"{NAME}_autosave.h5ad"
+    unused = alias(_sibling(target, STAMP0), _rev_file(s))
+    result = s.dm.auto_save_state()
+    assert f"Modality '{NAME}': {NAME}_autosave.h5ad" in result
+    assert not any(i.startswith("Not saved") for i in result)
+    assert target.is_file() and unused.is_symlink() and s.rev.unchanged()
+
+
+def test_backup_source_that_does_not_exist_is_not_checked(s, clock):
+    """With a relative base folder the backup copies a second resolution of the
+    destination. When that file does not exist, the writer makes no backup, so its
+    backup name is not checked either (as before)."""
+    _resident(s)
+    backend = s.dm.backends["mudata"]
+    backend.base_path = Path("b")  # relative to the working folder
+    (Path("b")).mkdir()
+    Path("b/x.h5mu").write_bytes(b"previous")
+    second = Path("b/b/x.h5mu").resolve()
+    assert not second.exists()
+    alias(_sibling(second, STAMP0), _rev_file(s))
+    s.dm.save_modality("m0", s.dm.data_dir / "x.h5mu", backend="mudata")
+    written = Path(backend._resolve_path(s.dm._backend_path(s.dm.data_dir / "x.h5mu")))
+    assert written.is_file() and written.stat().st_size > len(b"previous")
+    assert s.rev.unchanged()
+
+
+def test_malformed_given_backup_name_is_left_to_the_writer(s, caplog):
+    """A given backup name that cannot form a file name: the writer logs the failed
+    backup and saves, as before; the early check does not turn it into an error."""
+    _resident(s)
+    destination = s.dm.data_dir / "x.h5mu"
+    destination.write_bytes(b"previous")
+    with caplog.at_level(logging.INFO):
+        s.dm.save_modality("m0", "x.h5mu", backend="mudata", backup_stamp="bad/name")
+    assert destination.stat().st_size > len(b"previous")
+    assert sorted(p.name for p in s.dm.data_dir.iterdir()) == ["x.h5mu"]
+
+
+def test_backup_name_is_read_before_the_backed_data_is_loaded(s, monkeypatch):
+    """The clock reads T0 while the backed file is still open and T1 once the load
+    has closed it: the backup is named at T0, the name that was checked."""
+    import datetime as datetime_module
+
+    _resident(s)
+    backed = _backed(s)
+
+    class _Clocked(_real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return T0 if backed.file.is_open else T1
+
+    monkeypatch.setattr(datetime_module, "datetime", _Clocked)
+    destination = s.dm.data_dir / "x.h5mu"
+    destination.write_bytes(b"previous")
+    s.dm.save_modality(NAME, "x.h5mu", backend="mudata")
+    assert not backed.file.is_open and "m0" in s.dm._modality_spilled
+    assert _sibling(destination, STAMP0).read_bytes() == b"previous"
+    assert not _sibling(destination, STAMP1).exists()

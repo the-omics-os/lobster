@@ -2358,8 +2358,8 @@ class DataManagerV2:
         self._assert_save_allowed(destination)
         _assert_dirs_allowed(self.workspace_path, destination.parent)
 
-    @staticmethod
     def _assert_planned_backup_allowed(
+        self,
         backend: Any,
         backend_path: Union[str, Path],
         stamp: str,
@@ -2369,21 +2369,45 @@ class DataManagerV2:
         """Raise ManagedPathError when the backup the MuData ``backend`` would make
         for ``backend_path`` under ``stamp`` is refused (no effect).
 
-        The backup is made only when the destination exists at write time. It is
-        checked when the destination exists now, and also when it does not but the
-        save first loads backed data (``materializes``): that load can spill another
-        modality to the file the destination links to, creating it before the
-        backup is made. The writer checks the backup again before copying.
+        The writer makes a backup only when, at write time, both the destination and
+        the file it copies (``backup_source``) exist. Each is taken to exist when it
+        exists now or, if the save first loads backed data (``materializes``), when
+        that load can create it: the load may spill modalities, which writes their
+        spill files and creates the spill folder. Otherwise no backup is made and
+        nothing is checked. What cannot be evaluated here is left to the writer,
+        which checks the backup again before copying.
         """
         is_s3 = getattr(backend, "_is_s3_path", None)
         if is_s3 is not None and is_s3(backend_path):
             return  # handed to the remote writer before any local write
-        destination = Path(backend._resolve_path(backend_path))
-        if not (materializes or destination.exists()):
-            return  # no backup is made
-        backend._assert_backup_allowed(
-            backend.backup_sibling(backend.backup_source(destination), stamp)
+        try:
+            created = self._paths_a_load_can_create() if materializes else frozenset()
+
+            def will_exist(path: Path) -> bool:
+                return path.exists() or (bool(created) and path.resolve() in created)
+
+            destination = Path(backend._resolve_path(backend_path))
+            source = backend.backup_source(destination)
+            if not (will_exist(destination) and will_exist(source)):
+                return  # no backup is made
+            backup = backend.backup_sibling(source, stamp)
+        except Exception:
+            return  # the writer handles it, as before (a failed backup is logged)
+        backend._assert_backup_allowed(backup)
+
+    def _paths_a_load_can_create(self) -> frozenset:
+        """Every path that loading backed data can create (resolved, no effect): the
+        memory budget may spill any resident modality, writing its spill file and
+        creating the spill folder with its parents."""
+        folder = Path(self._modality_spill_dir)
+        if not folder.is_absolute():
+            folder = Path.cwd() / folder
+        created = {folder.resolve(), *folder.resolve().parents}
+        created.update(
+            (folder / f"{_safe_filename(name)}.h5ad").resolve()
+            for name in self.modalities
         )
+        return frozenset(created)
 
     def save_mudata(
         self, path: Union[str, Path], modalities: Optional[List[str]] = None, **kwargs
