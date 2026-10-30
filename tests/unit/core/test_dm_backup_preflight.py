@@ -13,7 +13,9 @@ Saves that make no backup are not refused over a backup name that is never
 written, whether or not they load backed data. What cannot be told for certain counts
 as a backup that may be made (checked early). Named residual: a destination that
 resolves to the spill file of a modality the budget would not actually spill can be
-refused over an unused backup name that links into a revision.
+refused over an unused backup name that links into a revision. Likewise, a spelling
+through a missing folder that nothing creates, or a spill name that cannot be resolved,
+counts as uncertain and is checked (a false refusal, never a late one).
 
 Real ``DataManagerV2``, real backends, real backed AnnData files and a real memory
 budget. The seams are the clock the backup name reads and, in one test, a relative
@@ -409,8 +411,10 @@ def test_unrelated_spill_name_loop_does_not_skip_the_check(
 
 def test_destination_spelled_through_a_missing_folder_is_checked(s, clock):
     """``traverse/../existing.h5mu``: ``traverse`` does not exist yet, so the spelled
-    path does not either, but the writer creates that folder and then backs up the
-    existing file. Its refused backup is checked before the load."""
+    path does not either, but the spill folder lies under it: loading the backed data
+    spills m0, which creates ``traverse``, and the writer then backs up the existing
+    file. Its refused backup is checked before the load."""
+    s.dm._modality_spill_dir = s.dm.data_dir / "traverse" / "spill"
     held = _resident(s)
     backed = _backed(s)
     existing = s.dm.data_dir / "existing.h5mu"
