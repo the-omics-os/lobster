@@ -53,6 +53,12 @@ from lobster.core import (
     InsufficientCellsError,
     PseudobulkError,
 )
+from lobster.core.export_scope import (
+    WORKSPACE_EXPORT_MESSAGE,
+    WorkspaceExportError,
+    assert_inside_workspace,
+    outside_workspace,
+)
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.figures.export_dirs import assert_dirs_allowed
 from lobster.core.figures.export_guard import (
@@ -1178,10 +1184,11 @@ def de_analysis_expert(
             # data changes or any analysis runs.
             if save_result:
                 if _is_pseudobulk(adata) and method == "deseq2":
-                    assert_export_allowed(
-                        data_manager.workspace_path,
-                        data_manager.exports_dir / f"{modality_name}_de_results.csv",
+                    results_csv = (
+                        data_manager.exports_dir / f"{modality_name}_de_results.csv"
                     )
+                    assert_inside_workspace(data_manager.workspace_path, results_csv)
+                    assert_export_allowed(data_manager.workspace_path, results_csv)
                     data_manager._assert_save_allowed(
                         f"{modality_name}_with_de_results.h5ad"
                     )
@@ -1471,6 +1478,9 @@ def de_analysis_expert(
             analysis_results["details"]["differential_expression"] = response
             return response
 
+        except WorkspaceExportError:
+            # A save target is outside the workspace: nothing was saved.
+            return WORKSPACE_EXPORT_MESSAGE
         except ManagedPathError:
             # A save target is inside the managed figure folder: nothing was saved.
             return MANAGED_EXPORT_MESSAGE
@@ -1989,11 +1999,12 @@ def de_analysis_expert(
 
             # Both save targets are checked before any analysis or store.
             if save_results:
-                assert_export_allowed(
-                    data_manager.workspace_path,
+                formula_csv = (
                     data_manager.exports_dir
-                    / f"{pseudobulk_modality}_formula_de_results.csv",
+                    / f"{pseudobulk_modality}_formula_de_results.csv"
                 )
+                assert_inside_workspace(data_manager.workspace_path, formula_csv)
+                assert_export_allowed(data_manager.workspace_path, formula_csv)
                 data_manager._assert_save_allowed(
                     f"{pseudobulk_modality}_with_formula_results.h5ad"
                 )
@@ -2192,6 +2203,9 @@ def de_analysis_expert(
 
             return response
 
+        except WorkspaceExportError:
+            # A save target is outside the workspace: nothing was saved.
+            return WORKSPACE_EXPORT_MESSAGE
         except ManagedPathError:
             # A save target is inside the managed figure folder: nothing was saved.
             return MANAGED_EXPORT_MESSAGE
@@ -3034,6 +3048,9 @@ def de_analysis_expert(
             output_path_obj = Path(output_path)
             if not output_path_obj.is_absolute():
                 output_path_obj = data_manager.exports_dir / output_path_obj
+            # The destination stays inside the workspace (or a listed export root).
+            if outside_workspace(data_manager.workspace_path, output_path_obj):
+                return WORKSPACE_EXPORT_MESSAGE
             # Figures are saved only through the trusted save step: check the
             # caller's (unresolved) destination, and every folder its recursive
             # creation can make, before anything is created.
@@ -3045,6 +3062,8 @@ def de_analysis_expert(
                 return MANAGED_EXPORT_MESSAGE
             output_path_obj.parent.mkdir(parents=True, exist_ok=True)
             output_path = str(output_path_obj.resolve())
+            if outside_workspace(data_manager.workspace_path, output_path):
+                return WORKSPACE_EXPORT_MESSAGE
             if export_refused(
                 data_manager.workspace_path, output_path_obj, output_path
             ):
@@ -3688,12 +3707,19 @@ def de_analysis_expert(
             targets = [output_path_obj]
             if output_format == "xlsx":
                 targets.append(Path(str(output_path_obj).replace(".xlsx", ".csv")))
+            # Every target stays inside the workspace (or a listed export root).
+            if outside_workspace(data_manager.workspace_path, *targets):
+                return WORKSPACE_EXPORT_MESSAGE
             if export_refused(data_manager.workspace_path, *targets):
                 return MANAGED_EXPORT_MESSAGE
             if output_format == "xlsx":
                 # ...and the name exactly as the late fallback derives it; a path
                 # that cannot be resolved is refused with the same fixed message.
                 fallback = _resolved_csv_fallback(output_path_obj)
+                if fallback is not None and outside_workspace(
+                    data_manager.workspace_path, fallback
+                ):
+                    return WORKSPACE_EXPORT_MESSAGE
                 if fallback is None or export_refused(
                     data_manager.workspace_path, fallback
                 ):
@@ -3705,6 +3731,8 @@ def de_analysis_expert(
                 return MANAGED_EXPORT_MESSAGE
             output_path_obj.parent.mkdir(parents=True, exist_ok=True)
             output_path = str(output_path_obj.resolve())
+            if outside_workspace(data_manager.workspace_path, output_path):
+                return WORKSPACE_EXPORT_MESSAGE
             if export_refused(data_manager.workspace_path, *targets, output_path):
                 return MANAGED_EXPORT_MESSAGE
 
@@ -3714,6 +3742,8 @@ def de_analysis_expert(
                 except ImportError:
                     output_format = "csv"
                     output_path = output_path.replace(".xlsx", ".csv")
+                    if outside_workspace(data_manager.workspace_path, output_path):
+                        return WORKSPACE_EXPORT_MESSAGE
                     if export_refused(data_manager.workspace_path, output_path):
                         return MANAGED_EXPORT_MESSAGE
                     results_df.to_csv(output_path, index=True)

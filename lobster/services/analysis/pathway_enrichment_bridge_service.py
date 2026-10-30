@@ -21,6 +21,7 @@ import requests
 from anndata import AnnData
 
 from lobster.core.figures.errors import ManagedPathError
+from lobster.core.export_scope import assert_inside_workspace
 from lobster.core.figures.export_guard import assert_export_allowed
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.workspace import resolve_workspace
@@ -126,7 +127,9 @@ class PathwayEnrichmentBridgeService:
                 if workspace_path is not None
                 else resolve_workspace()
             )
-            assert_export_allowed(workspace, self._csv_target(workspace, modality_name))
+            csv_target = self._csv_target(workspace, modality_name)
+            assert_inside_workspace(workspace, csv_target)
+            assert_export_allowed(workspace, csv_target)
 
             # 1. Detect selection method
             selection_column = self._detect_selection_method(adata, selection_method)
@@ -415,6 +418,7 @@ class PathwayEnrichmentBridgeService:
             workspace_path = resolve_workspace()
         workspace_path = Path(workspace_path)
         csv_path = self._csv_target(workspace_path, modality_name)
+        assert_inside_workspace(workspace_path, csv_path)
         assert_export_allowed(workspace_path, csv_path)
 
         # 1. Summary in uns (portable with data)
@@ -441,6 +445,7 @@ class PathwayEnrichmentBridgeService:
         enrichment_df["timestamp"] = stats["timestamp"]
 
         # Write CSV (checked again right before the write)
+        assert_inside_workspace(workspace_path, csv_path)
         assert_export_allowed(workspace_path, csv_path)
         enrichment_df.to_csv(csv_path, index=False)
         logger.info(f"Wrote enrichment results to {csv_path}")

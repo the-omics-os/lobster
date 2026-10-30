@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from lobster.core.export_scope import WORKSPACE_EXPORT_MESSAGE
 from lobster.core.figures.export_guard import MANAGED_EXPORT_MESSAGE
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.testing.provenance_replay import factory_tools
@@ -193,8 +194,17 @@ def test_save_mudata_refuses_a_managed_path(session):
     assert _snapshot(dm) == before
 
 
+@pytest.fixture
+def any_name(monkeypatch):
+    """Admit a name the modality-name check (1.2.1) refuses, as a name arriving by
+    another route would: the downstream guard under test must still hold."""
+    monkeypatch.setattr(
+        "lobster.core.runtime.data_manager.check_modality_name", lambda name: None
+    )
+
+
 @needs_tx
-def test_a_modality_named_into_plots_is_not_saved_there(session, monkeypatch):
+def test_a_modality_named_into_plots_is_not_saved_there(session, monkeypatch, any_name):
     """A modality NAME is used as a file name by the DE save path."""
     from unittest.mock import Mock
 
@@ -1092,13 +1102,16 @@ def test_b2_xlsx_unresolvable_destination_gets_the_fixed_refusal(de, case, caplo
                 "output_path": spelled,
             }
         )
-    assert response == MANAGED_EXPORT_MESSAGE
+    # The workspace-scope check (1.2.1) runs first and fails closed on a spelling
+    # it cannot resolve: its fixed message; otherwise the figure-folder message.
+    expected = WORKSPACE_EXPORT_MESSAGE if case == "nul" else MANAGED_EXPORT_MESSAGE
+    assert response == expected
     assert caplog.records == []
     assert _tree(s) == before and s.rev.unchanged() and s.logged == []
 
 
 @needs_tx
-def test_b2_de_refusal_logs_no_modality_name(lane_b, monkeypatch, caplog):
+def test_b2_de_refusal_logs_no_modality_name(lane_b, monkeypatch, caplog, any_name):
     import logging
 
     s = lane_b

@@ -78,6 +78,15 @@ def s(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def any_name(monkeypatch):
+    """Admit a name the modality-name check (1.2.1) refuses, as a name arriving by
+    another route would: the downstream guard under test must still hold."""
+    monkeypatch.setattr(
+        "lobster.core.runtime.data_manager.check_modality_name", lambda name: None
+    )
+
+
+@pytest.fixture
 def mu(tmp_path, monkeypatch):
     """A data manager whose default backend is MuData (its backup is active)."""
     return _session(tmp_path, monkeypatch, default_backend="mudata")
@@ -602,6 +611,7 @@ def test_a3_resident_target_refused_late_is_accounted(s, caplog):
     assert _named(_diagnostics(caplog), NAME, str(s.ws)) == []
 
 
+@pytest.mark.usefixtures("any_name")
 def test_a3_resident_recursive_folder_through_a_figure_folder_is_excluded(s):
     name = f"x/../../plots/{s.rev.directory.parent.name}/new/../../../data/{NAME}"
     _store(s, name)
@@ -678,6 +688,7 @@ def test_a3_spilled_target_linking_to_a_folder_is_not_saved(spill):
     assert s.rev.unchanged()
 
 
+@pytest.mark.usefixtures("any_name")
 def test_a3_spilled_recursive_folder_through_a_figure_folder_is_not_saved(spill):
     s = spill
     name = f"x/../../plots/{s.rev.directory.parent.name}/new/../../../data/{NAME}"
@@ -811,6 +822,7 @@ def _aliased_target(s, where):
 
 
 @pytest.mark.parametrize("where", ["file", "parent"])
+@pytest.mark.usefixtures("any_name")
 def test_a3_backup_of_a_linked_target_lands_next_to_the_file_it_copies(
     mu, monkeypatch, where
 ):
@@ -829,6 +841,7 @@ def test_a3_backup_of_a_linked_target_lands_next_to_the_file_it_copies(
 
 
 @pytest.mark.parametrize("where", ["file", "parent"])
+@pytest.mark.usefixtures("any_name")
 def test_a3_backup_alias_next_to_the_linked_file_is_excluded(mu, monkeypatch, where):
     """That actual backup name links into a revision: refused in the plan, before
     the save starts (no "saving" call) and before any payload is written."""
@@ -956,6 +969,7 @@ def _hostile(s):
 
 
 @pytest.mark.parametrize("order", ["safe_first", "hostile_first"])
+@pytest.mark.usefixtures("any_name")
 def test_a4_payload_name_escaping_into_a_revision_refuses_the_whole_package(
     s, systmp, order
 ):

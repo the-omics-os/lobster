@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from lobster.core.export_scope import WorkspaceExportError, assert_inside_workspace
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.figures.export_dirs import assert_dirs_allowed
 from lobster.core.figures.export_guard import assert_export_allowed
@@ -425,6 +426,8 @@ print(f"  - Embedding shape: {embeddings.shape}")
             # The model folder, its recursive creation and every file the native save
             # writes in it are refused inside the managed figure folder (typed error).
             if workspace_path is not None and save_path:
+                # ...and it stays inside the workspace (or a listed export root).
+                assert_inside_workspace(workspace_path, save_path)
                 assert_export_allowed(workspace_path, save_path)
                 assert_dirs_allowed(workspace_path, save_path)
                 for name in SCVI_SAVED_FILES:
@@ -519,7 +522,7 @@ print(f"  - Embedding shape: {embeddings.shape}")
                     training_info["model_saved"] = True
                     training_info["model_path"] = save_path
                     logger.info(f"Model saved to: {save_path}")
-                except ManagedPathError:
+                except (ManagedPathError, WorkspaceExportError):
                     raise
                 except Exception as save_error:
                     logger.warning(f"Failed to save model: {save_error}")
@@ -538,7 +541,7 @@ print(f"  - Embedding shape: {embeddings.shape}")
             )
 
             return adata, training_info, ir
-        except ManagedPathError:
+        except (ManagedPathError, WorkspaceExportError):
             raise
         except RuntimeError as e:
             error_msg = str(e).lower()
@@ -588,7 +591,7 @@ print(f"  - Embedding shape: {embeddings.shape}")
                                 model.save(save_path, overwrite=True)
                                 training_info["model_saved"] = True
                                 training_info["model_path"] = save_path
-                            except ManagedPathError:
+                            except (ManagedPathError, WorkspaceExportError):
                                 raise
                             except Exception as save_error:
                                 logger.warning(f"Failed to save model: {save_error}")
@@ -608,7 +611,7 @@ print(f"  - Embedding shape: {embeddings.shape}")
 
                         return adata, training_info, ir
 
-                    except ManagedPathError:
+                    except (ManagedPathError, WorkspaceExportError):
                         raise
                     except Exception as cpu_error:
                         error_info = {

@@ -844,7 +844,17 @@ def test_a_preflight_failure_leaves_no_attempt_directory(env):
     assert _no_attempt_dirs(dm)
 
 
+@pytest.fixture
+def any_name(monkeypatch):
+    """Admit a name the modality-name check (1.2.1) refuses, as a name arriving by
+    another route would: the downstream guard under test must still hold."""
+    monkeypatch.setattr(
+        "lobster.core.runtime.data_manager.check_modality_name", lambda name: None
+    )
+
+
 @pytest.mark.parametrize("names", [("x..y", "x_y"), ("a/m", "m")])
+@pytest.mark.usefixtures("any_name")
 def test_input_names_sharing_one_file_name_fail_closed_before_the_child(env, names):
     import anndata
     import numpy as np

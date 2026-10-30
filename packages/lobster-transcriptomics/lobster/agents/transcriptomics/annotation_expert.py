@@ -54,6 +54,7 @@ from lobster.config.inference_context import (
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
 from lobster.core.component_registry import component_registry
+from lobster.core.export_scope import WORKSPACE_EXPORT_MESSAGE, outside_workspace
 from lobster.core.figures.export_guard import MANAGED_EXPORT_MESSAGE, export_refused
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.analysis.enhanced_singlecell_service import (
@@ -1067,12 +1068,17 @@ def annotation_expert(
             output_path = Path(output_filename)
             if not output_path.is_absolute():
                 output_path = data_manager.exports_dir / output_path
+            # The destination stays inside the workspace (or a listed export root).
+            if outside_workspace(data_manager.workspace_path, output_path):
+                return WORKSPACE_EXPORT_MESSAGE
             # Figures are saved only through the trusted save step: check the
             # caller's (unresolved) destination before anything is created.
             if export_refused(data_manager.workspace_path, output_path):
                 return MANAGED_EXPORT_MESSAGE
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_filename = str(output_path.resolve())
+            if outside_workspace(data_manager.workspace_path, output_filename):
+                return WORKSPACE_EXPORT_MESSAGE
             if export_refused(
                 data_manager.workspace_path, output_path, output_filename
             ):

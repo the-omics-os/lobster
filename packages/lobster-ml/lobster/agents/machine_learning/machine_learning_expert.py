@@ -32,6 +32,12 @@ from lobster.config.inference_context import (
 )
 from lobster.config.llm_factory import create_llm
 from lobster.config.settings import get_settings
+from lobster.core.export_scope import (
+    WORKSPACE_EXPORT_MESSAGE,
+    WorkspaceExportError,
+    assert_inside_workspace,
+    outside_workspace,
+)
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.figures.export_dirs import assert_dirs_allowed
 from lobster.core.figures.export_guard import (
@@ -727,6 +733,14 @@ def machine_learning_expert(
                     "tf_data.npz",
                 )
             ]
+            # The folder and every file stay inside the workspace (or a listed
+            # export root): an absolute or '..' folder, or a modality name leading out.
+            if outside_workspace(
+                data_manager.workspace_path,
+                export_path,
+                *(export_path / name for name in _ml_names),
+            ):
+                return WORKSPACE_EXPORT_MESSAGE
             if export_refused(
                 data_manager.workspace_path,
                 export_path,
@@ -736,6 +750,7 @@ def machine_learning_expert(
 
             def _ml_target(name):
                 target = export_path / name
+                assert_inside_workspace(data_manager.workspace_path, target)
                 assert_export_allowed(data_manager.workspace_path, target)
                 return target
 
@@ -866,7 +881,7 @@ def machine_learning_expert(
                     )
                     exported_files.append(f"{modality_name}_tf_data.npz")
 
-                except ManagedPathError:
+                except (ManagedPathError, WorkspaceExportError):
                     raise  # the fixed refusal below, not the TensorFlow error text
                 except Exception as e:
                     return f"Error exporting for TensorFlow: {str(e)}"
@@ -906,6 +921,9 @@ def machine_learning_expert(
             ml_results["details"]["ml_export"] = response
             return response
 
+        except WorkspaceExportError:
+            # A late write-time refusal outside the workspace: the fixed message.
+            return WORKSPACE_EXPORT_MESSAGE
         except ManagedPathError:
             # A late write-time refusal: the fixed message, no error log.
             return MANAGED_EXPORT_MESSAGE
@@ -1114,6 +1132,8 @@ After installation, restart your session and run this tool again."""
                     # The model folder carries the modality name: refuse a managed
                     # figure target (the folder, its creation and the files the native
                     # save writes in it) before anything is created or trained.
+                    assert_inside_workspace(workspace, models_dir)
+                    assert_inside_workspace(workspace, model_dir)
                     assert_export_allowed(workspace, models_dir)
                     assert_export_allowed(workspace, model_dir)
                     assert_dirs_allowed(workspace, model_dir)
@@ -1201,6 +1221,9 @@ The scVI embeddings are now available in modality.obsm['X_scvi'] and can be used
             ml_results["details"]["scvi_training"] = response
             return response
 
+        except WorkspaceExportError:
+            # The model folder is outside the workspace: nothing was saved.
+            return WORKSPACE_EXPORT_MESSAGE
         except ManagedPathError:
             # The model folder is inside the managed figure folder: nothing was saved.
             return MANAGED_EXPORT_MESSAGE

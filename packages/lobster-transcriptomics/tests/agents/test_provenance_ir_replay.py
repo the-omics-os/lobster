@@ -559,7 +559,7 @@ class TestDEExplicitResultKeys:
         before = adata.copy()
         dm.calls.clear()
         args = {"modality_name": "pb", "de_results_key": key}
-        output_path = tmp_path / "explicit.csv"
+        output_path = dm.workspace_path / "explicit.csv"  # inside the workspace
         if tool_name == "export_de_results":
             args["output_path"] = str(output_path)
         response = tools[tool_name].invoke(args)
@@ -983,7 +983,7 @@ class TestDECurrentResultsAndPersistence:
                 PathwayEnrichmentService, "gene_set_enrichment_analysis", capture_gsea
             )
         elif tool_name in ("export_de_results", "extract_and_export_de_results"):
-            args["output_path"] = str(tmp_path / "selected.csv")
+            args["output_path"] = str(dm.workspace_path / "selected.csv")
             if tool_name == "extract_and_export_de_results":
                 args["shrink_lfc"] = False
         else:

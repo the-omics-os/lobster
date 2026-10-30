@@ -27,6 +27,7 @@ import pandas as pd
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.adapters.factory import create_default_adapters
 from lobster.core.exceptions import HdfReadRefusal
+from lobster.core.export_scope import assert_inside_workspace, check_modality_name
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.plot_manager import PlotManager
 from lobster.core.provenance.analysis_ir import (
@@ -1443,6 +1444,8 @@ class DataManagerV2:
         Raises:
             ValueError: If adapter is not registered or validation fails
         """
+        # The name becomes part of file names: it must be one plain name.
+        check_modality_name(name)
         if adapter not in self.adapters:
             raise ValueError(f"Adapter '{adapter}' not registered")
 
@@ -1583,6 +1586,8 @@ class DataManagerV2:
             ...     step_summary=f"Clustered into {stats['n_clusters']} clusters"
             ... )
         """
+        # The name becomes part of file names: it must be one plain name.
+        check_modality_name(name)
         from lobster.core.lineage import (
             attach_lineage,
             create_lineage_metadata,
@@ -2393,6 +2398,9 @@ class DataManagerV2:
         target = Path(path)
         if not target.is_absolute():
             target = self.data_dir / path
+            # A relative save stays inside the workspace (a '..' or a link leading
+            # out raises WorkspaceExportError); an absolute path is the caller's own.
+            assert_inside_workspace(self.workspace_path, target)
         assert_export_allowed(self.workspace_path, target)
 
     def _backend_path(self, resolved_path: Path) -> Union[str, Path]:
