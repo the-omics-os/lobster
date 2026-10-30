@@ -61,7 +61,7 @@ from lobster.core.provenance.provenance import ProvenanceTracker
 from lobster.core.queues.queue_storage import atomic_write_json, queue_file_lock
 from lobster.core.runtime.workspace import resolve_workspace
 from lobster.core.session_identity import (
-    is_display_client_session_id as _is_display_client_session_id,
+    display_client_session_id as _display_client_session_id,
 )
 from lobster.core.utils.h5ad_utils import validate_for_h5ad
 from lobster.core.utils.layer_keys import layer_names
@@ -972,32 +972,50 @@ class DataManagerV2:
         The first valid id binds. The same id again is a no-op. A different id,
         or an id outside the display allowlist, makes the identity unknown, and
         it stays unknown until a valid ``replace=True`` bind (session restore).
-        Returns the resulting identity (None when unknown).
+        Returns the resulting identity (None when unknown). Any failure while
+        handling the value also leaves the identity unknown, never the old one.
         """
         reason = None
-        try:
-            valid = _is_display_client_session_id(session_id)
-            with self._client_session_lock:
-                if not valid:
+        result = None
+        # A plain str copy of the checked text, or None; never raises.
+        identity = _display_client_session_id(session_id)
+        if identity is None:
+            reason = "invalid_type"
+            try:
+                if isinstance(session_id, str):
                     reason = "invalid_format"
-                    if not isinstance(session_id, str):
-                        reason = "invalid_type"
-                    self._client_session_id = None
-                    self._client_session_unknown = True
-                elif replace:
-                    self._client_session_id = session_id
-                    self._client_session_unknown = False
-                elif self._client_session_unknown:
-                    pass
-                elif self._client_session_id is None:
-                    self._client_session_id = session_id
-                elif self._client_session_id != session_id:
-                    reason = "conflict"
+            except Exception:
+                pass
+        try:
+            with self._client_session_lock:
+                try:
+                    if identity is None:
+                        self._client_session_id = None
+                        self._client_session_unknown = True
+                    elif replace:
+                        self._client_session_id = identity
+                        self._client_session_unknown = False
+                    elif self._client_session_unknown:
+                        pass
+                    elif self._client_session_id is None:
+                        self._client_session_id = identity
+                    elif self._client_session_id != identity:
+                        reason = "conflict"
+                        self._client_session_id = None
+                        self._client_session_unknown = True
+                except Exception:
+                    reason = "internal"
                     self._client_session_id = None
                     self._client_session_unknown = True
                 result = self._client_session_id
         except Exception:
+            # The identity lock itself failed; leave no old identity behind.
             reason, result = "internal", None
+            try:
+                self._client_session_unknown = True
+                self._client_session_id = None
+            except Exception:
+                pass
         if reason:
             logger.warning(
                 "Notebook export: client session identity is unknown (%s)", reason

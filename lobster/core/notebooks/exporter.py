@@ -29,7 +29,7 @@ from lobster.core.provenance.analysis_ir import (
     extract_unique_imports,
 )
 from lobster.core.provenance.provenance import ProvenanceTracker
-from lobster.core.session_identity import is_display_client_session_id
+from lobster.core.session_identity import display_client_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -640,17 +640,25 @@ code recorded for it.
         """The client session id bound on the data manager, or None when unknown.
 
         Never the provenance namespace, the data manager's timestamp or a
-        directory name. Any failure to read it is reported as unknown.
+        directory name. Any failure to read it is reported as unknown. The
+        result is a plain ``str`` copy of the checked text, so rendering it
+        cannot run code from a ``str`` subclass.
         """
         try:
             value = getattr(self.data_manager, "client_session_id", None)
-            if is_display_client_session_id(value):
-                return value
         except Exception:
             logger.warning(
                 "Notebook export: client session identity is unknown (lookup_failed)"
             )
-        return None
+            return None
+        if value is None:
+            return None  # unbound: the ordinary case, not worth a warning
+        identity = display_client_session_id(value)
+        if identity is None:
+            logger.warning(
+                "Notebook export: client session identity is unknown (invalid_value)"
+            )
+        return identity
 
     def _create_integrity_manifest_cell(
         self, session_identity: Optional[str] = _OBSERVE

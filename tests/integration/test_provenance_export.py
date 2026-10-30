@@ -510,7 +510,9 @@ class TestProvenanceExportMetadata:
         assert "ir_statistics" in lobster_meta
         assert "n_irs_extracted" in lobster_meta["ir_statistics"]
 
-    def test_notebook_contains_session_id(self, mock_data_manager, simple_provenance):
+    def test_unknown_client_identity_keeps_namespace(
+        self, mock_data_manager, simple_provenance
+    ):
         """No bound client session: the session ID is unknown, not the namespace."""
         exporter = NotebookExporter(simple_provenance, mock_data_manager)
         output_path = exporter.export(name="test_session")

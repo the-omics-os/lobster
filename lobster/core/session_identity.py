@@ -8,19 +8,36 @@ sessions are created or selected: an id outside it is shown as unknown.
 
 import logging
 import re
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 _DISPLAY_CLIENT_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 
 
+def display_client_session_id(value: Any) -> Optional[str]:
+    """The exact text of ``value`` when a notebook export can show it, else None.
+
+    The result is always a plain ``str`` holding the characters that were
+    checked, so a ``str`` subclass cannot change how it is compared or
+    rendered later. Never raises.
+    """
+    try:
+        if not isinstance(value, str):
+            return None
+        text = str.__str__(value)
+        if type(text) is not str:
+            return None
+        if _DISPLAY_CLIENT_SESSION_ID.fullmatch(text) is None:
+            return None
+        return text
+    except Exception:
+        return None
+
+
 def is_display_client_session_id(value: Any) -> bool:
-    """True for a ``str`` a notebook export can show as the client session id."""
-    return (
-        isinstance(value, str)
-        and _DISPLAY_CLIENT_SESSION_ID.fullmatch(value) is not None
-    )
+    """True when a notebook export can show ``value`` as the client session id."""
+    return display_client_session_id(value) is not None
 
 
 def bind_client_session(
