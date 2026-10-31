@@ -14,7 +14,7 @@ import math
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterable, List
 
 import numpy as np
 import pandas as pd
@@ -80,6 +80,14 @@ def sanitize_key(key: Any, slash_replacement: str = "__") -> str:
     return str(key) if not isinstance(key, str) else key
 
 
+def sanitize_keys(keys: Iterable[Any], slash_replacement: str = "__") -> List[str]:
+    """Normalize keys only when each output name identifies one input item."""
+    normalized = [sanitize_key(key, slash_replacement) for key in keys]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("H5AD key collision after key sanitization")
+    return normalized
+
+
 def sanitize_value(
     obj: Any,
     slash_replacement: str = "__",
@@ -142,8 +150,8 @@ def sanitize_value(
     # OrderedDict → dict (with recursive sanitization + value stringification)
     if isinstance(obj, collections.OrderedDict):
         result = {}
-        for k, v in obj.items():
-            sanitized_key = sanitize_key(k, slash_replacement)
+        normalized_keys = sanitize_keys(obj, slash_replacement)
+        for sanitized_key, v in zip(normalized_keys, obj.values()):
             # Stringify int/float dict values for HDF5 compatibility
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 result[sanitized_key] = str(v)
@@ -244,8 +252,8 @@ def sanitize_value(
     # (HDF5 groups cannot store scalar numeric values)
     if isinstance(obj, dict):
         result = {}
-        for k, v in obj.items():
-            sanitized_key = sanitize_key(k, slash_replacement)
+        normalized_keys = sanitize_keys(obj, slash_replacement)
+        for sanitized_key, v in zip(normalized_keys, obj.values()):
             # Handle NaN values in dicts specially
             if isinstance(v, float) and math.isnan(v):
                 result[sanitized_key] = ""
@@ -352,11 +360,10 @@ def sanitize_dict(
         >>> sanitize_dict({"file/path": Path("/tmp/data.csv"), "count": (1, 2, 3)})
         {'file__path': '/tmp/data.csv', 'count': array([1, 2, 3])}
     """
+    normalized_keys = sanitize_keys(data, slash_replacement)
     return {
-        sanitize_key(k, slash_replacement): sanitize_value(
-            v, slash_replacement, strict, preserve_numeric_tuples
-        )
-        for k, v in data.items()
+        key: sanitize_value(v, slash_replacement, strict, preserve_numeric_tuples)
+        for key, v in zip(normalized_keys, data.values())
     }
 
 

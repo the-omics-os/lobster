@@ -7,6 +7,9 @@ S3 integration without API changes.
 """
 
 import logging
+import os
+import stat
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -18,6 +21,7 @@ from lobster.core.backends.base import BaseBackend
 from lobster.core.utils.h5ad_utils import repair_log1p_base as _repair_log1p_base
 from lobster.core.utils.h5ad_utils import repair_marker_names
 from lobster.core.utils.h5ad_utils import sanitize_key as util_sanitize_key
+from lobster.core.utils.h5ad_utils import sanitize_keys as util_sanitize_keys
 from lobster.core.utils.h5ad_utils import sanitize_value as util_sanitize_value
 
 logger = logging.getLogger(__name__)
@@ -175,24 +179,18 @@ class H5ADBackend(BaseBackend):
         # on the serialization copy, never numeric statistical NaNs.
         repair_marker_names(adata)
 
-        # Sanitize uns (unstructured metadata) using centralized utility
+        # Normalize only injective key mappings; never choose a surviving payload.
+        uns_keys = util_sanitize_keys(adata.uns, slash_replacement)
         adata.uns = {
-            util_sanitize_key(k, slash_replacement): util_sanitize_value(
-                v, slash_replacement
-            )
-            for k, v in adata.uns.items()
+            key: util_sanitize_value(value, slash_replacement)
+            for key, value in zip(uns_keys, adata.uns.values())
         }
 
-        # Sanitize obsm, varm, layers (keys must be safe)
-        adata.obsm = {
-            util_sanitize_key(k, slash_replacement): v for k, v in adata.obsm.items()
-        }
-        adata.varm = {
-            util_sanitize_key(k, slash_replacement): v for k, v in adata.varm.items()
-        }
-        adata.layers = {
-            util_sanitize_key(k, slash_replacement): v for k, v in adata.layers.items()
-        }
+        # Apply the same refusal contract to each other rewritten AnnData slot.
+        for slot in ("obsm", "varm", "layers"):
+            values = getattr(adata, slot)
+            keys = util_sanitize_keys(values, slash_replacement)
+            setattr(adata, slot, dict(zip(keys, values.values())))
 
         # CRITICAL FIX: Remove columns with None names BEFORE sanitization
         # (Prevents TypeError: PurePosixPath() argument must be str, not 'NoneType')
@@ -252,14 +250,15 @@ class H5ADBackend(BaseBackend):
                 return "unnamed_column"
             return sanitized
 
-        adata.obs.columns = [
-            safe_sanitize_column_name(col, slash_replacement)
-            for col in adata.obs.columns
-        ]
-        adata.var.columns = [
-            safe_sanitize_column_name(col, slash_replacement)
-            for col in adata.var.columns
-        ]
+        for frame in (adata.obs, adata.var):
+            columns = [
+                safe_sanitize_column_name(column, slash_replacement)
+                for column in frame.columns
+            ]
+            # Include fallback names without applying slash replacement twice.
+            if len(set(columns)) != len(columns):
+                raise ValueError("H5AD key collision after column sanitization")
+            frame.columns = columns
 
         # Sanitize DataFrame VALUES in obs and var (COMPREHENSIVE)
         # This prevents serialization errors when writing to H5AD
@@ -488,21 +487,31 @@ class H5ADBackend(BaseBackend):
         if self._is_s3_path(path):
             return self._save_to_s3(adata, path, **kwargs)
 
-        # Ensure parent directory exists
+        # Resolve relative symlinks too: replacement must preserve the link itself.
+        resolved_path = resolved_path.resolve()
         self._ensure_directory(resolved_path)
 
-        # Create backup if file exists
-        # if resolved_path.exists():
-        #     backup_path = self.create_backup(resolved_path)
-        #     if backup_path:
-        #         self.logger.info(f"Created backup: {backup_path}")
+        # Until replacement succeeds, cleanup owns only the staging file.
+        temporary_path = None
+        mode_probe = None
+        committed = False
+        settings_restored = False
+        failure = None
+        _prev_infer = pd.options.future.infer_string
+        _prev_nullable = anndata.settings.allow_write_nullable_strings
 
         try:
+            # Refuse read-only existing files before preparing or creating anything.
+            target_mode = None
+            if resolved_path.exists():
+                target_mode = stat.S_IMODE(resolved_path.stat().st_mode)
+                if not target_mode & 0o222 or not os.access(resolved_path, os.W_OK):
+                    raise PermissionError("Existing H5AD target is read-only")
+
             # Disable Arrow string inference for the entire save path — pandas 3.0+
             # re-creates ArrowStringArray on copy()/sanitize() even after conversion.
             import pandas as _pd
 
-            _prev_infer = _pd.options.future.infer_string
             _pd.options.future.infer_string = False
 
             # Opt in to writing nullable-string arrays because current anndata releases
@@ -516,7 +525,6 @@ class H5ADBackend(BaseBackend):
             # went unnoticed: any test or session that exercised custom code first masked it.
             # Reproduced in isolation: store pbmc3k, call filter_and_normalize, observe the
             # raise and an EMPTY provenance activity list.
-            _prev_nullable = anndata.settings.allow_write_nullable_strings
             anndata.settings.allow_write_nullable_strings = True
 
             # Extract saving parameters
@@ -610,38 +618,84 @@ class H5ADBackend(BaseBackend):
                     logger.error(f"🚨 Dropping None columns from var: {final_none_var}")
                     adata_to_save.var = adata_to_save.var.drop(columns=final_none_var)
 
-            # Save to H5AD format
+            # Observe the ordinary fresh-file mode without changing the umask.
+            # This exclusively owned probe stays empty and is removed before writing.
+            if target_mode is None:
+                probe = resolved_path.parent / f".lobster-h5ad-{uuid.uuid4().hex}.mode"
+                descriptor = os.open(probe, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666)
+                mode_probe = probe
+                try:
+                    target_mode = stat.S_IMODE(os.fstat(descriptor).st_mode)
+                finally:
+                    os.close(descriptor)
+                mode_probe.unlink()
+                mode_probe = None
+
+            # Actual data staging is private from creation. An owner-restrictive
+            # umask may remove write permission, so restore owner-RW on the open FD.
+            staging = resolved_path.parent / f".lobster-h5ad-{uuid.uuid4().hex}.h5ad"
+            descriptor = os.open(staging, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+            temporary_path = staging
+            try:
+                if hasattr(os, "fchmod"):
+                    os.fchmod(descriptor, 0o600)
+                else:
+                    temporary_path.chmod(0o600)
+            finally:
+                os.close(descriptor)
             adata_to_save.write_h5ad(
-                resolved_path,
+                temporary_path,
                 compression=compression,
                 compression_opts=compression_opts,
             )
 
-            self._log_operation(
-                "save",
-                resolved_path,
+            # Every fallible preparation/check happens before the atomic commit.
+            temporary_path.chmod(target_mode)
+            size_mb = temporary_path.stat().st_size / 1024**2
+            details = dict(
                 compression=compression,
                 compression_opts=compression_opts,
                 shape=adata.shape,
-                size_mb=resolved_path.stat().st_size / 1024**2,
+                size_mb=size_mb,
             )
+            self._log_operation("save_prepared", resolved_path, **details)
+            _pd.options.future.infer_string = _prev_infer
+            anndata.settings.allow_write_nullable_strings = _prev_nullable
+            settings_restored = True
+
+            os.replace(temporary_path, resolved_path)
+            committed = True
+            temporary_path = None
+            # Post-commit diagnostics cannot roll back or delete the saved data.
+            self._log_operation("save", resolved_path, **details)
 
         except Exception as e:
-            # Remove failed file if it was created
-            if resolved_path.exists():
-                try:
-                    resolved_path.unlink()
-                except (
-                    Exception
-                ):  # nosec B110 # Cleanup failure must not replace the original save error.
-                    pass
-            raise ValueError(f"Failed to save H5AD file {resolved_path}: {e}")
+            failure = e
+            for owned_path in (temporary_path, mode_probe):
+                if owned_path is not None:
+                    try:
+                        owned_path.unlink(missing_ok=True)
+                    except (
+                        Exception
+                    ):  # nosec B110 # Cleanup failure must not replace the original save error.
+                        pass
         finally:
-            _pd.options.future.infer_string = _prev_infer
-            # Restore rather than leave enabled, so the writer never mutates global state
-            # Keep nullable-string handling local so it does not change behavior for
-            # unrelated code.
-            anndata.settings.allow_write_nullable_strings = _prev_nullable
+            if not settings_restored:
+                try:
+                    pd.options.future.infer_string = _prev_infer
+                    anndata.settings.allow_write_nullable_strings = _prev_nullable
+                except Exception as restore_error:
+                    if failure is None:
+                        failure = restore_error
+
+        if failure is not None:
+            if committed:
+                raise ValueError(
+                    f"Data was saved at {resolved_path}; bookkeeping failed: {failure}"
+                ) from failure
+            raise ValueError(
+                f"Failed to save H5AD file {resolved_path}: {failure}"
+            ) from failure
 
     def supports_format(self, format_name: str) -> bool:
         """
