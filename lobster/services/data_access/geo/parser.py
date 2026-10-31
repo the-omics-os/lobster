@@ -45,6 +45,18 @@ class GEOFormatError(Exception):
     pass
 
 
+class SingleCellTextMatrixRefusal(GEOFormatError):
+    """Terminal, content-free refusal for the qualified single-cell text route."""
+
+    def __init__(self, reason: str = "content"):
+        messages = {
+            "content": "Single-cell text matrix refused: content, completeness or orientation could not be established.",
+            "integral_range": "Single-cell text matrix refused: integral values exceed the exact float32 range (2^24).",
+            "float32_range": "Single-cell text matrix refused: values cannot be stored as finite float32.",
+        }
+        super().__init__(messages[reason])
+
+
 class LoadingTimeout(Exception):
     """Raised when dataset loading exceeds timeout."""
 
@@ -55,6 +67,67 @@ class InsufficientMemoryError(Exception):
     """Raised when system has insufficient memory for dataset."""
 
     pass
+
+
+def resolve_text_matrix_format(file_path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve only plain or gzip CSV/TSV/TXT suffixes, without reading a file."""
+    suffixes = tuple(suffix.casefold() for suffix in Path(file_path).suffixes)
+    text_suffixes = {".csv", ".tsv", ".txt"}
+    if len(suffixes) >= 2 and suffixes[-1] == ".gz":
+        if suffixes[-2] in text_suffixes:
+            return suffixes[-2][1:], "gzip"
+        return None, None
+    if suffixes and suffixes[-1] in text_suffixes:
+        return suffixes[-1][1:], None
+    return None, None
+
+
+def single_cell_text_numeric_storage_policy(
+    matrix: pd.DataFrame,
+    *,
+    source_tokens_integral: Optional[bool] = None,
+    declared_counts: bool = False,
+) -> Dict[str, Any]:
+    """Check retained float32 storage without changing values or claiming raw counts."""
+    import numpy as np
+    from pandas.api.types import is_bool_dtype, is_numeric_dtype
+
+    if matrix.empty or any(
+        not is_numeric_dtype(dtype) or is_bool_dtype(dtype) for dtype in matrix.dtypes
+    ):
+        raise SingleCellTextMatrixRefusal()
+    try:
+        values = matrix.to_numpy(dtype=np.float64)
+    except (TypeError, ValueError):
+        raise SingleCellTextMatrixRefusal() from None
+    if not np.isfinite(values).all() or (values < 0).any():
+        raise SingleCellTextMatrixRefusal()
+    observed_integral = bool((values == np.floor(values)).all())
+    # The strict reader's full source-token diagnostic preserves fractional
+    # classification even when float64 parsing makes a large fraction look whole.
+    integral = (
+        observed_integral if source_tokens_integral is None else source_tokens_integral
+    )
+    if type(integral) is not bool or (integral and not observed_integral):
+        raise SingleCellTextMatrixRefusal()
+    if declared_counts and not integral:
+        raise SingleCellTextMatrixRefusal()
+    if integral and (values > 16777216).any():
+        raise SingleCellTextMatrixRefusal("integral_range")
+    if (values > np.finfo(np.float32).max).any():
+        raise SingleCellTextMatrixRefusal("float32_range")
+    with np.errstate(over="ignore", invalid="ignore", under="ignore"):
+        stored = values.astype(np.float32)
+    if not np.isfinite(stored).all():
+        raise SingleCellTextMatrixRefusal("float32_range")
+    return {
+        "dtype": "float32",
+        "preservation": (
+            "exact_integral_within_2pow24" if integral else "float32_precision"
+        ),
+        "limit": 16777216 if integral else None,
+        "raw_count_provenance": "not_verified",
+    }
 
 
 def infer_single_cell_orientation(matrix: pd.DataFrame) -> Dict[str, Any]:
@@ -604,7 +677,9 @@ class GEOParser:
             )
             return 10000  # Default chunk size
 
-    def _required_text_shape(self, file_path: Path, delimiter: str) -> Tuple:
+    def _required_text_shape(
+        self, file_path: Path, delimiter: str, *, compression: Optional[str] = "infer"
+    ) -> Tuple:
         """Validate every logical CSV record before loading a required matrix.
 
         Match pandas C skip_blank_lines=True: only empty or ASCII space/tab
@@ -613,7 +688,16 @@ class GEOParser:
         """
         from pandas._libs.parsers import STR_NA_VALUES
 
-        opener = gzip.open if file_path.name.endswith(".gz") else open
+        if compression == "infer":
+            text_format, normalized_compression = resolve_text_matrix_format(file_path)
+            if text_format is not None:
+                compression = normalized_compression
+        opener = (
+            gzip.open
+            if compression == "gzip"
+            or (compression == "infer" and file_path.name.endswith(".gz"))
+            else open
+        )
         header_width = width = rows = 0
         header = []
         tokens_valid = True
@@ -672,9 +756,20 @@ class GEOParser:
         )
         return rows, width - 1, tokens_valid, columns
 
-    def _required_delimiter(self, file_path: Path) -> str:
+    def _required_delimiter(
+        self, file_path: Path, *, compression: Optional[str] = "infer"
+    ) -> str:
         """Never infer an identifier character as a separator for R row names."""
-        opener = gzip.open if file_path.name.endswith(".gz") else open
+        if compression == "infer":
+            text_format, normalized_compression = resolve_text_matrix_format(file_path)
+            if text_format is not None:
+                compression = normalized_compression
+        opener = (
+            gzip.open
+            if compression == "gzip"
+            or (compression == "infer" and file_path.name.endswith(".gz"))
+            else open
+        )
         with opener(file_path, "rt", encoding="utf-8-sig") as stream:
             sample = stream.read(8192)
         choices = "\t,;| "
@@ -683,15 +778,23 @@ class GEOParser:
         except csv.Error:
             return max(choices, key=sample.count)
 
-    def parse_required_expression_file(self, file_path: Path) -> ParseResult:
+    def parse_required_expression_file(
+        self, file_path: Path, *, compression: Optional[str] = "infer"
+    ) -> ParseResult:
         """Strict, active-only text import; ordinary/tolerant readers are unchanged."""
         total_rows = 0
         try:
             from pandas._libs.parsers import STR_NA_VALUES
 
-            delimiter = self._required_delimiter(file_path)
+            if compression == "infer":
+                text_format, normalized_compression = resolve_text_matrix_format(
+                    file_path
+                )
+                if text_format is not None:
+                    compression = normalized_compression
+            delimiter = self._required_delimiter(file_path, compression=compression)
             rows, columns, tokens_valid, names = self._required_text_shape(
-                file_path, delimiter
+                file_path, delimiter, compression=compression
             )
             if rows == 0 or columns < 1:
                 return ParseResult()
@@ -701,7 +804,7 @@ class GEOParser:
             options = dict(
                 sep=delimiter,
                 index_col=0,
-                compression="infer",
+                compression=compression,
                 encoding="utf-8-sig",
                 engine="c",
                 low_memory=False,
@@ -781,6 +884,76 @@ class GEOParser:
                 type(error).__name__,
             )
             return ParseResult()
+
+    def parse_single_cell_text_matrix(
+        self,
+        file_path: Path,
+        *,
+        sep: Optional[str] = None,
+        transpose: Optional[bool] = None,
+        declared_counts: bool = False,
+    ) -> ParseResult:
+        """Qualify complete text, full axes and storage; no acquisition or store."""
+        file_path = Path(file_path)
+        text_format, compression = resolve_text_matrix_format(file_path)
+        if text_format is None or type(declared_counts) is not bool:
+            raise SingleCellTextMatrixRefusal()
+        try:
+            delimiter = self._required_delimiter(file_path, compression=compression)
+            if delimiter not in ("\t", ",") or (sep is not None and sep != delimiter):
+                raise SingleCellTextMatrixRefusal()
+            result = self.parse_required_expression_file(
+                file_path, compression=compression
+            )
+            if (
+                not result.is_complete
+                or result.is_partial
+                or result.truncation_reason is not None
+            ):
+                raise SingleCellTextMatrixRefusal()
+            matrix = result.data
+            if (
+                result.rows_read != len(matrix)
+                or not matrix.index.is_unique
+                or not matrix.columns.is_unique
+            ):
+                raise SingleCellTextMatrixRefusal()
+            if any(
+                not isinstance(value, str) or not value.strip()
+                for value in matrix.index
+            ):
+                raise SingleCellTextMatrixRefusal()
+            if any(
+                not isinstance(value, str) or not value.strip()
+                for value in matrix.columns
+            ):
+                raise SingleCellTextMatrixRefusal()
+            orientation = infer_single_cell_orientation(matrix)
+            if transpose is not None and (
+                type(transpose) is not bool
+                or transpose != orientation["transpose_applied"]
+            ):
+                raise SingleCellTextMatrixRefusal()
+            policy = single_cell_text_numeric_storage_policy(
+                matrix,
+                source_tokens_integral=result.original_tokens_valid,
+                declared_counts=declared_counts,
+            )
+            matrix.attrs["transpose_info"] = orientation
+            matrix.attrs["numeric_storage_policy"] = policy
+            return result
+        except SingleCellTextMatrixRefusal:
+            raise
+        except (
+            OSError,
+            EOFError,
+            UnicodeError,
+            zlib.error,
+            csv.Error,
+            ValueError,
+            TypeError,
+        ):
+            raise SingleCellTextMatrixRefusal() from None
 
     def parse_expression_file(self, file_path: Path) -> ParseResult:
         """

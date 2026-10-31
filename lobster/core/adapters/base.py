@@ -90,6 +90,18 @@ class BaseAdapter(IModalityAdapter):
             return self._schema_override
         return self.get_schema()
 
+    def detect_format(self, source: Union[str, Path]) -> Optional[str]:
+        """Recognize gzip text matrices; preserve other inherited format routes."""
+        if isinstance(source, (str, Path)) and Path(source).suffix.casefold() == ".gz":
+            from lobster.services.data_access.geo.parser import (
+                resolve_text_matrix_format,
+            )
+
+            format_type, compression = resolve_text_matrix_format(Path(source))
+            if compression == "gzip":
+                return format_type
+        return super().detect_format(source)
+
     def _load_csv_data(
         self, path: Union[str, Path], sep: str = None, index_col: int = 0, **kwargs
     ) -> pd.DataFrame:
@@ -109,8 +121,21 @@ class BaseAdapter(IModalityAdapter):
 
         # Auto-detect separator if not provided
         if sep is None:
+            opener = open
+            text_mode = "r"
+            if path.suffix.casefold() == ".gz":
+                from lobster.services.data_access.geo.parser import (
+                    resolve_text_matrix_format,
+                )
+
+                _, compression = resolve_text_matrix_format(path)
+                if compression == "gzip":
+                    import gzip
+
+                    opener = gzip.open
+                    text_mode = "rt"
             try:
-                with open(path, "r") as f:
+                with opener(path, text_mode) as f:
                     first_line = f.readline()
                     if "\t" in first_line:
                         sep = "\t"

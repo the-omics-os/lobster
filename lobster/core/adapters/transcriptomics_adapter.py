@@ -106,6 +106,19 @@ class TranscriptomicsAdapter(BaseAdapter):
             FileNotFoundError: If source file doesn't exist
         """
         self._log_operation("loading", source=str(source), data_type=self.data_type)
+        compressed_text = (
+            self.data_type == "single_cell"
+            and isinstance(source, (str, Path))
+            and Path(source).suffix.casefold() == ".gz"
+            and self.detect_format(source) in ("csv", "tsv", "txt")
+        )
+        text_refusals = ()
+        if compressed_text:
+            from lobster.services.data_access.geo.parser import (
+                SingleCellTextMatrixRefusal,
+            )
+
+            text_refusals = (SingleCellTextMatrixRefusal,)
 
         try:
             # Extract metadata fields that should be stored in uns
@@ -150,6 +163,12 @@ class TranscriptomicsAdapter(BaseAdapter):
             else:
                 raise TypeError(f"Unsupported source type: {type(source)}")
 
+            text_policy = (
+                dict(adata.uns["numeric_storage_policy"]) if compressed_text else None
+            )
+            text_orientation = (
+                dict(adata.uns["transpose_info"]) if compressed_text else None
+            )
             # Store metadata fields in uns (sanitized for H5AD compatibility)
             if metadata_fields:
                 for key, value in metadata_fields.items():
@@ -169,12 +188,22 @@ class TranscriptomicsAdapter(BaseAdapter):
             #     processing_params=kwargs
             # )
 
+            if text_policy is not None:
+                from scipy import sparse
+
+                stored = adata.X.data if sparse.issparse(adata.X) else adata.X
+                if not np.isfinite(stored).all():
+                    raise SingleCellTextMatrixRefusal("float32_range")
+                adata.uns["numeric_storage_policy"] = text_policy
+                adata.uns["transpose_info"] = text_orientation
             self.logger.info(
                 f"Loaded transcriptomics data: {adata.n_obs} obs × {adata.n_vars} vars"
             )
             return adata
 
         except (HdfReadRefusal, InferenceRefused, ManagedPathError):
+            raise
+        except text_refusals:
             raise
         except Exception as e:
             self.logger.error(f"Failed to load transcriptomics data from {source}: {e}")
@@ -270,6 +299,17 @@ class TranscriptomicsAdapter(BaseAdapter):
             raise FileNotFoundError(f"File not found: {path}")
 
         format_type = self.detect_format(path)
+        text_refusals = ()
+        if (
+            self.data_type == "single_cell"
+            and path.suffix.casefold() == ".gz"
+            and format_type in ("csv", "tsv", "txt")
+        ):
+            from lobster.services.data_access.geo.parser import (
+                SingleCellTextMatrixRefusal,
+            )
+
+            text_refusals = (SingleCellTextMatrixRefusal,)
 
         try:
             if format_type == "h5ad":
@@ -288,6 +328,8 @@ class TranscriptomicsAdapter(BaseAdapter):
                 raise ValueError(f"Unsupported file format: {format_type}")
         except (HdfReadRefusal, InferenceRefused, ManagedPathError):
             raise
+        except text_refusals:
+            raise
         except Exception as e:
             logger.error(
                 f"Transcriptomics adapter failed to load from file with path {path}: {e}"
@@ -298,6 +340,40 @@ class TranscriptomicsAdapter(BaseAdapter):
         self, path: Union[str, Path], **kwargs
     ) -> anndata.AnnData:
         """Load transcriptomics data from CSV/TSV with proper handling."""
+        if self.data_type == "single_cell" and Path(path).suffix.casefold() == ".gz":
+            from lobster.services.data_access.geo.parser import (
+                GEOParser,
+                SingleCellTextMatrixRefusal,
+                resolve_text_matrix_format,
+            )
+
+            text_format, compression = resolve_text_matrix_format(Path(path))
+            if text_format is not None and compression == "gzip":
+                if (
+                    kwargs.get("first_column_names", True) is not True
+                    or kwargs.get("gene_symbols_col") is not None
+                ):
+                    raise SingleCellTextMatrixRefusal()
+                if "transpose" in kwargs and type(kwargs["transpose"]) is not bool:
+                    raise SingleCellTextMatrixRefusal()
+                if kwargs.get("compression", "gzip") not in ("gzip", "infer"):
+                    raise SingleCellTextMatrixRefusal()
+                result = GEOParser().parse_single_cell_text_matrix(
+                    Path(path),
+                    sep=kwargs.get("sep"),
+                    transpose=kwargs.get("transpose"),
+                    declared_counts=kwargs.get("declared_counts", False),
+                )
+                info = result.data.attrs["transpose_info"]
+                adata = self._create_anndata_from_dataframe(
+                    result.data,
+                    transpose=info["transpose_applied"],
+                )
+                adata.uns["transpose_info"] = dict(info)
+                adata.uns["numeric_storage_policy"] = dict(
+                    result.data.attrs["numeric_storage_policy"]
+                )
+                return adata
         # Extract parameters
         transpose = kwargs.get("transpose", True)  # Genes as rows by default
         first_column_names = kwargs.get("first_column_names", True)
