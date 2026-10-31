@@ -193,11 +193,11 @@ azure = [
 # =============================================================================
 # What `lobster init` typically installs for a researcher
 recommended = ["lobster-ai[anthropic,transcriptomics,classic-tui,extended-data]"]
-# Everything available via public lobster-ai extras.
-# Excludes metadata_assistant/vector backend until lobster-metadata is published.
+# Everything available via public lobster-ai extras and the metadata assistant.
 full = [
     "lobster-ai[transcriptomics,genomics,proteomics]",
     "lobster-ai[all-providers,classic-tui,extended-data,hdf5,docling]",
+    "lobster-metadata~=1.2",
 ]
 
 # =============================================================================
