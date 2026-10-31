@@ -1029,7 +1029,7 @@ Please check:
 
             warnings = marker_stats["statistic_warnings"]
             response_parts.append(
-                f"\n**Statistic Diagnostics:** finite abs(log2FC) >= {warnings['extreme_log2fc_threshold']} is a provisional extreme-effect flag pending scientific review; flag only, no clipping/reranking."
+                f"\n**Statistic Diagnostics:** finite abs(log2FC) >= {warnings['extreme_log2fc_threshold']} is flagged as an extreme effect (diagnostic only; no clipping or reranking)."
             )
             for group in marker_stats["groups_analyzed"][:10]:
                 original = warnings["original"][group]

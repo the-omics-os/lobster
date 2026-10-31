@@ -248,8 +248,8 @@ If batch_silhouette > 0.3 or median_lisi < 1.5, flag for re-integration.
   The legacy 1.5 threshold is log2FC, not linear fold-change. No FDR criterion is applied there.
 - Supported adjusted p-values must be interpreted using an explicitly stated criterion.
   Absent statistics are NOT COMPUTED, not zero discoveries; nonfinite values are separate flags.
-  Finite extreme abs(log2FC) flags use the tool's provisional threshold pending scientific
-  review, without clipping, reranking or a significance claim. Near-zero reference expression
+  Finite extreme abs(log2FC) flags use the tool's diagnostic threshold, without clipping,
+  reranking or a significance claim. Near-zero reference expression
   can amplify Scanpy's approximate effect size; an extreme value alone proves neither a
   statistical effect nor a computation error.
 - Cell-level cluster-versus-rest markers are exploratory. Single-donor cells are not independent

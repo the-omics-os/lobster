@@ -63,7 +63,7 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Provisional diagnostic threshold pending scientific review by Alejandro.
+# Diagnostic threshold for flagging extreme effects (flag only).
 # Flag finite effects only; never clip, remove, rerank or infer significance.
 EXTREME_LOG2FC_THRESHOLD = 10
 
@@ -1669,8 +1669,8 @@ repair_marker_names(adata)
 # Select nonempty names first; scores/pvals/pvals_adj/logfoldchanges retain rank positions.
 # Absent statistics are NOT COMPUTED, not zero discoveries (e.g. logreg p-values).
 # Specificity filtering applies no FDR criterion; these are not automatically significant.
-# Finite abs(log2FC) >= {{ extreme_log2fc_threshold }} is a PROVISIONAL diagnostic only,
-# pending scientific review. Nonfinite statistics are separate; no clipping or reranking.
+# Finite abs(log2FC) >= {{ extreme_log2fc_threshold }} is flagged as a diagnostic only.
+# Nonfinite statistics are flagged separately; no clipping or reranking.
 # Cell-level rankings do not establish patient/condition effects from single-donor cells.
 # Missing name slots are empty text for H5AD writing; numeric NaNs remain unchanged.
 """
