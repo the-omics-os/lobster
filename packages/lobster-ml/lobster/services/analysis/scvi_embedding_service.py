@@ -431,6 +431,7 @@ print(f"  - Embedding shape: {embeddings.shape}")
                 assert_export_allowed(workspace_path, save_path)
                 assert_dirs_allowed(workspace_path, save_path)
                 for name in SCVI_SAVED_FILES:
+                    assert_inside_workspace(workspace_path, Path(save_path) / name)
                     assert_export_allowed(workspace_path, Path(save_path) / name)
 
         check_save_path()  # before any device, data or model work

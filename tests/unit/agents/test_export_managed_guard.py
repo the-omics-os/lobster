@@ -911,19 +911,45 @@ def test_lane_b_pseudobulk_de_refuses_every_save_target_before_analysis(de, whic
 
 
 @needs_tx
-def test_lane_b_direct_bulk_de_refuses_a_name_reaching_a_revision(lane_b, monkeypatch):
+def test_lane_b_direct_bulk_de_never_saves_into_a_revision_by_a_group_label(
+    lane_b, monkeypatch
+):
+    """A group label is data: since 1.2.1 it is encoded into one plain result name
+    (Sol WP-IMPL-03), so a label spelled into a revision cannot reach it. The run
+    completes and its file stays a plain name in data/."""
+    import types
+
+    from lobster.core.export_scope import plain_name_part
+
     s = lane_b
     group1 = "x/../../" + _rev_spelling(s, "y")
     adata, results = _de_modality(pseudobulk=False, group1=group1)
     s.dm.store_modality("bulk", adata)
     science = _de_science(monkeypatch, results)
-    modalities, before = list(s.dm.list_modalities()), _tree(s)
-    response = _de_tools(s)["run_differential_expression"].invoke(
-        {**DE_ARGS, "modality_name": "bulk", "group1": group1}
+    stats = {
+        "method": "t_test",
+        "n_genes_tested": 2,
+        "n_significant_genes": 1,
+        "n_upregulated": 1,
+        "n_downregulated": 0,
+        "top_upregulated": ["gene_a"],
+        "top_downregulated": [],
+        "de_results_key": "de_results_bulk",
+    }
+    science.run_differential_expression_analysis.return_value = (
+        adata.copy(),
+        stats,
+        types.SimpleNamespace(code_template="", parameters={}),
     )
-    science.run_differential_expression_analysis.assert_not_called()
-    assert list(s.dm.list_modalities()) == modalities  # nothing stored
-    _assert_de_refused(s, before, response, name="bulk")
+    monkeypatch.setattr(s.dm, "log_tool_usage", lambda *a, **k: None)
+    response = _de_tools(s)["run_differential_expression"].invoke(
+        {**DE_ARGS, "modality_name": "bulk", "group1": group1, "method": "t_test"}
+    )
+    name = f"bulk_de_{plain_name_part(group1)}_vs_sample_b"
+    assert name in s.dm.list_modalities(), response
+    assert (s.dm.data_dir / f"{name}.h5ad").is_file()
+    assert s.rev.unchanged()
+    assert list(s.cwd.iterdir()) == []
 
 
 @needs_tx
@@ -1103,9 +1129,8 @@ def test_b2_xlsx_unresolvable_destination_gets_the_fixed_refusal(de, case, caplo
             }
         )
     # The workspace-scope check (1.2.1) runs first and fails closed on a spelling
-    # it cannot resolve: its fixed message; otherwise the figure-folder message.
-    expected = WORKSPACE_EXPORT_MESSAGE if case == "nul" else MANAGED_EXPORT_MESSAGE
-    assert response == expected
+    # it cannot resolve (a NUL byte, a link loop): its fixed message.
+    assert response == WORKSPACE_EXPORT_MESSAGE
     assert caplog.records == []
     assert _tree(s) == before and s.rev.unchanged() and s.logged == []
 

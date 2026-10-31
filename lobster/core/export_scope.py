@@ -9,10 +9,13 @@ it, and the functions here take no roots argument.
 
 A target is checked where the operating system would write it: the joined
 spelling, with each symlink and ``..`` resolved in the order the OS follows them,
-must be under the resolved workspace or a resolved root. A link inside the
-workspace that leads out is refused; a spelling through an alias of the workspace
-(for example ``/tmp`` for ``/private/tmp``) is accepted. Any error while
-classifying a target refuses the write (fail closed).
+must be under the resolved workspace or a resolved root. So must every missing
+folder of the spelling, because a recursive creator makes each one where its own
+resolved spelling points (a spelling may leave the workspace, create a folder, and
+come back in). A link inside the workspace that leads out is refused; a spelling
+through an alias of the workspace (for example ``/tmp`` for ``/private/tmp``) is
+accepted. A link loop, a dangling link before the last part, or any other error
+while classifying a target refuses the write (fail closed).
 
 A refusal carries one fixed reason. It names the setting, never the path, and is
 raised without a displayed chain. Limits: a check-then-write race with another
@@ -126,13 +129,44 @@ def _bases(workspace: PathLike) -> List[str]:
     ]
 
 
+def _prefixes(joined: str) -> List[Tuple[str, str]]:
+    """Each lexical prefix of ``joined`` with its last part, from the root down."""
+    found = []
+    path = joined
+    while True:
+        head, tail = os.path.split(path)
+        if tail:
+            found.append((path, tail))
+        if head == path or not head:
+            break
+        path = head
+    return found[::-1]
+
+
 def _inside(bases: List[str], workspace: str, target: PathLike) -> bool:
     spelled = os.fspath(target)
     if not isinstance(spelled, str):
         raise TypeError("target must be a text path")
     joined = os.path.join(workspace, spelled)  # an absolute target replaces the base
     resolved = os.path.realpath(joined)  # each link, then '..', as the OS follows them
-    return any(_under(resolved, base) for base in bases)
+    if not any(_under(resolved, base) for base in bases):
+        return False
+    prefixes = _prefixes(joined)
+    for index, (prefix, part) in enumerate(prefixes):
+        if part in (".", ".."):
+            continue  # never created
+        if os.path.lexists(prefix):
+            try:
+                os.stat(prefix)  # a loop or an unreadable link raises
+            except FileNotFoundError:
+                if index != len(prefixes) - 1:
+                    raise  # a dangling link before the last part
+            continue
+        # A missing folder (or the file) is created where its spelling resolves.
+        created = os.path.realpath(prefix)
+        if not any(_under(created, base) for base in bases):
+            return False
+    return True
 
 
 def outside_workspace(workspace: PathLike, *targets: PathLike) -> bool:
@@ -155,6 +189,17 @@ def assert_inside_workspace(workspace: PathLike, target: PathLike) -> None:
     """Raise :class:`WorkspaceExportError` unless ``target`` may be written."""
     if outside_workspace(workspace, target):
         raise WorkspaceExportError(WORKSPACE_EXPORT_REASON) from None
+
+
+def plain_name_part(label: str) -> str:
+    """``label`` (a data value such as a group label) as part of a plain modality
+    name: ``%``, ``/``, ``\\`` and control characters are percent-encoded, so two
+    different labels never give the same part. Everything else is kept."""
+    text = str(label)
+    return "".join(
+        f"%{ord(ch):02X}" if ch in "%/\\" or ord(ch) < 0x20 or ord(ch) == 0x7F else ch
+        for ch in text
+    )
 
 
 def check_modality_name(name: str) -> str:

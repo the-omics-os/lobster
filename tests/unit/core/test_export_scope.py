@@ -315,3 +315,56 @@ class TestModalityName:
         with pytest.raises(InvalidModalityNameError) as info:
             check_modality_name(name)
         _refusal(info.value, NAME_REASON)
+
+
+class TestFoldersACreatorWouldMake:
+    """Sol WP-IMPL-01: a recursive creator makes every missing folder of the
+    spelling, where that folder's resolved spelling points. Each must be inside."""
+
+    def test_missing_folder_outside_then_back_through_a_link(self, tmp_path, ws):
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        os.symlink(ws / "exports", outside / "back")
+        target = ws / "exports" / "../../outside/CREATED/../back/sub/x.csv"
+        assert os.path.realpath(target).startswith(os.path.realpath(ws))
+        assert outside_workspace(ws, target) is True
+
+    def test_missing_folder_outside_then_back_by_dotdot(self, tmp_path, ws):
+        (tmp_path / "outside").mkdir()
+        target = ws / "exports" / "../../outside/CREATED/../../ws/exports/sub/x.json"
+        assert outside_workspace(ws, target) is True
+
+    def test_missing_folders_inside_are_allowed(self, ws):
+        assert outside_workspace(ws, ws / "exports/new/deeper/x.csv") is False
+        assert outside_workspace(ws, ws / "exports/new/../other/x.csv") is False
+
+    def test_existing_folders_outside_on_the_way_in_are_not_created(self, tmp_path, ws):
+        """Existing ancestors (/, the tmp folder) are passed, never created."""
+        assert outside_workspace(ws, ws / "exports" / "x.csv") is False
+        os.symlink(ws / "exports", tmp_path / "in")  # an existing link leading in
+        assert outside_workspace(ws, tmp_path / "in" / "new" / "x.csv") is False
+
+
+class TestResolutionErrors:
+    """Sol WP-IMPL-04: a real resolution failure refuses (fixed reason), it is not
+    taken as 'inside' because a non-strict resolver returned a partial path."""
+
+    def test_a_link_loop_refuses(self, ws):
+        os.symlink("loop", ws / "exports" / "loop")
+        assert outside_workspace(ws, ws / "exports/loop/x.json") is True
+
+    def test_a_two_link_loop_refuses(self, ws):
+        os.symlink("b", ws / "exports" / "a")
+        os.symlink("a", ws / "exports" / "b")
+        assert outside_workspace(ws, ws / "exports/a/x.json") is True
+
+    def test_a_dangling_link_in_the_middle_refuses(self, ws):
+        os.symlink(ws / "missing", ws / "exports" / "gone")
+        assert outside_workspace(ws, ws / "exports/gone/x.csv") is True
+
+    def test_a_dangling_final_link_inside_is_allowed(self, ws):
+        os.symlink(ws / "exports" / "real.csv", ws / "exports" / "x.csv")
+        assert outside_workspace(ws, ws / "exports" / "x.csv") is False
+
+    def test_a_missing_ordinary_destination_is_allowed(self, ws):
+        assert outside_workspace(ws, ws / "exports/new/x.csv") is False

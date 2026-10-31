@@ -1138,6 +1138,7 @@ After installation, restart your session and run this tool again."""
                     assert_export_allowed(workspace, model_dir)
                     assert_dirs_allowed(workspace, model_dir)
                     for name in SCVI_SAVED_FILES:
+                        assert_inside_workspace(workspace, model_dir / name)
                         assert_export_allowed(workspace, model_dir / name)
                     models_dir.mkdir(exist_ok=True)
                     model_save_path = str(model_dir)

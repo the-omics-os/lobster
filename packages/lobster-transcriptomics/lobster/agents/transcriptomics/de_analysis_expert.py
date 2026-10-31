@@ -55,9 +55,12 @@ from lobster.core import (
 )
 from lobster.core.export_scope import (
     WORKSPACE_EXPORT_MESSAGE,
+    InvalidModalityNameError,
     WorkspaceExportError,
     assert_inside_workspace,
+    check_modality_name,
     outside_workspace,
+    plain_name_part,
 )
 from lobster.core.figures.errors import ManagedPathError
 from lobster.core.figures.export_dirs import assert_dirs_allowed
@@ -93,6 +96,15 @@ _BULK_SERVICE_SETUP = (
     "\n"
     "bulk_service = BulkRNASeqService(results_dir='bulk_results')\n"
 )
+
+
+def _de_result_name(modality_name: str, group1, group2) -> str:
+    """The DE result modality name: group labels are data values, so each is encoded
+    as part of one plain name (two labels never collide); refused (fixed reason)
+    before any analysis if the name is still not plain, for example too long."""
+    return check_modality_name(
+        f"{modality_name}_de_{plain_name_part(group1)}_vs_{plain_name_part(group2)}"
+    )
 
 
 def _is_pseudobulk(adata) -> bool:
@@ -1180,6 +1192,12 @@ def de_analysis_expert(
             # Get the modality
             adata = data_manager.get_modality(modality_name)
 
+            # The result name carries the group labels (data values, which may hold
+            # '/'): encoded into one plain name, checked before any analysis.
+            de_modality_name = None
+            if not (_is_pseudobulk(adata) and method == "deseq2"):
+                de_modality_name = _de_result_name(modality_name, group1, group2)
+
             # Every save target of the branch that will run is checked before the
             # data changes or any analysis runs.
             if save_result:
@@ -1193,9 +1211,7 @@ def de_analysis_expert(
                         f"{modality_name}_with_de_results.h5ad"
                     )
                 else:
-                    data_manager._assert_save_allowed(
-                        f"{modality_name}_de_{group1}_vs_{group2}.h5ad"
-                    )
+                    data_manager._assert_save_allowed(f"{de_modality_name}.h5ad")
 
             logger.info(
                 f"Running DE analysis on '{modality_name}': "
@@ -1411,8 +1427,7 @@ def de_analysis_expert(
                     de_stats["de_results_key"],
                     "adata_de" if internal_method == "deseq2_like" else "adata",
                 )
-                # Save as new modality
-                de_modality_name = f"{modality_name}_de_{group1}_vs_{group2}"
+                # Save as new modality (name derived and checked before the analysis)
                 data_manager.store_modality(
                     name=de_modality_name,
                     adata=adata_de,
@@ -1421,7 +1436,7 @@ def de_analysis_expert(
                 )
 
                 if save_result:
-                    save_path = f"{modality_name}_de_{group1}_vs_{group2}.h5ad"
+                    save_path = f"{de_modality_name}.h5ad"
                     data_manager.save_modality(de_modality_name, save_path)
 
                 data_manager.log_tool_usage(
@@ -1481,6 +1496,9 @@ def de_analysis_expert(
         except WorkspaceExportError:
             # A save target is outside the workspace: nothing was saved.
             return WORKSPACE_EXPORT_MESSAGE
+        except InvalidModalityNameError as e:
+            # The derived result name is not one plain name (fixed reason).
+            return f"Error: {e}"
         except ManagedPathError:
             # A save target is inside the managed figure folder: nothing was saved.
             return MANAGED_EXPORT_MESSAGE
@@ -3208,6 +3226,9 @@ def de_analysis_expert(
             if group2 not in available_groups_str:
                 return f"Group '{group2}' not found in '{group_key}'. Available: {available_groups}"
 
+            # The result name carries the group labels: encoded and checked first.
+            de_modality_name = _de_result_name(modality_name, group1, group2)
+
             # Ensure string type matching
             if group1 not in available_groups:
                 adata.obs[group_key] = adata.obs[group_key].astype(str)
@@ -3242,8 +3263,7 @@ def de_analysis_expert(
             if refusal:
                 return refusal
             adata_de.uns["de_current_results_key"] = de_stats["de_results_key"]
-            # Store result modality
-            de_modality_name = f"{modality_name}_de_{group1}_vs_{group2}"
+            # Store result modality (name derived and checked before the analysis)
             data_manager.store_modality(
                 name=de_modality_name,
                 adata=adata_de,
@@ -3339,6 +3359,9 @@ def de_analysis_expert(
 
             return response
 
+        except InvalidModalityNameError as e:
+            # The derived result name is not one plain name (fixed reason).
+            return f"Error: {e}"
         except (BulkRNASeqError, ModalityNotFoundError) as e:
             logger.error(f"Error in bulk DE direct: {e}")
             return f"Error in bulk DE analysis: {str(e)}"
