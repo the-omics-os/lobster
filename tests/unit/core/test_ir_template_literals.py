@@ -40,6 +40,7 @@ NUMERIC_IN_COMMENTS = {
     "n_top_genes",
     "min_confidence",
     "n_factors",
+    "extreme_log2fc_threshold",
     "modality_names|length",
     "OUTPUT_DIR",  # Python f-string example text, not a Jinja placeholder
 }

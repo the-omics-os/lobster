@@ -171,37 +171,127 @@ def test_annotation_resolves_suffixed_key_written_by_clustering():
     assert "leiden_res0_5" in str(ir.parameters) or "leiden_res0_5" in str(ir.code)
 
 
-def test_clustering_ir_template_names_the_same_column_the_service_writes():
-    """The exported notebook must produce the service's column names.
+def test_clustering_ir_template_names_the_same_column_the_service_writes(
+    tmp_path, monkeypatch
+):
+    """Execute complete notebooks: runtime-generated keys must match the service."""
+    from types import SimpleNamespace
 
-    The template emitted only `key_added='leiden'` while
-    cluster_and_visualize() writes 'leiden_res<res>' plus an alias, so a
-    replayed notebook lacked the resolution-suffixed column entirely.
-    The notebook should use the same cluster-key resolution as the service.
-    """
+    import nbformat
+
+    from lobster.core.notebooks.exporter import NotebookExporter
+    from lobster.core.provenance.provenance import ProvenanceTracker
     from lobster.services.analysis.clustering_service import ClusteringService
 
     for method in ("deviance", "hvg"):
-        ir = ClusteringService()._create_clustering_ir(
-            resolution=0.5, feature_selection_method=method, algorithm="leiden"
+        source = ad.AnnData(
+            np.random.default_rng(42)
+            .negative_binomial(2, 0.5, (48, 600))
+            .astype(np.float32),
+            obs=pd.DataFrame(index=[f"cell_{i}" for i in range(48)]),
+            var=pd.DataFrame(index=[f"gene_{i}" for i in range(600)]),
         )
-        code = ir.render()
+        result, _, ir = ClusteringService().cluster_and_visualize(
+            source,
+            resolution=0.5,
+            feature_selection_method=method,
+            algorithm="leiden",
+            n_neighbors=5,
+            n_pcs=5,
+        )
+        workspace = tmp_path / method
+        workspace.mkdir()
+        source.write_h5ad(workspace / "dataset.h5ad")
+        tracker = ProvenanceTracker()
+        tracker.create_activity(activity_type="cluster_cells", agent="test", ir=ir)
+        context = SimpleNamespace(
+            workspace_path=workspace,
+            workspace_dir=workspace,
+            modalities={"fixture": source},
+        )
+        path = NotebookExporter(tracker, context).export(f"cluster_keys_{method}")
+        notebook = nbformat.read(path, as_version=4)
+        monkeypatch.chdir(workspace)
+        namespace = {}
+        for index, cell in enumerate(notebook.cells):
+            if cell.cell_type == "code":
+                exec(
+                    compile(cell.source, f"cluster_keys_cell_{index}", "exec"),
+                    namespace,
+                )  # nosec B102
+        replay = namespace["adata"]
+        assert replay.shape == result.shape == source.shape
         assert (
-            "leiden_res0_5" in code
-        ), f"{method} template does not name the suffixed column: {code}"
-        # And the unsuffixed alias, so either name works downstream.
-        assert "adata.obs['leiden']" in code
+            list(replay.obs_names) == list(result.obs_names) == list(source.obs_names)
+        )
+        assert (
+            list(replay.var_names) == list(result.var_names) == list(source.var_names)
+        )
+        service_keys = {key for key in result.obs if key.startswith("leiden")}
+        replay_keys = {key for key in replay.obs if key.startswith("leiden")}
+        assert {"leiden", "leiden_res0_5"} <= service_keys
+        assert replay_keys == service_keys
+        for key in service_keys:
+            assert replay.obs[key].notna().all()
+            pd.testing.assert_series_equal(replay.obs[key], result.obs[key])
+        np.testing.assert_allclose(replay.obsm["X_umap"], result.obsm["X_umap"])
 
 
 def test_clustering_ir_template_respects_louvain():
+    """Check key construction structurally, without executing optional Louvain."""
+    import ast
+    import inspect
+    import textwrap
+
     from lobster.services.analysis.clustering_service import ClusteringService
 
-    ir = ClusteringService()._create_clustering_ir(
-        resolution=1.0, feature_selection_method="deviance", algorithm="louvain"
+    service = ClusteringService()
+    service_tree = ast.parse(
+        textwrap.dedent(inspect.getsource(service._perform_clustering))
     )
-    code = ir.render()
-    assert "louvain_res1_0" in code
-    assert "sc.tl.louvain(" in code
+    service_keys = [
+        node.value
+        for node in ast.walk(service_tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "key_name"
+            for target in node.targets
+        )
+    ]
+    assert service_keys, "service key construction must be checked, not guessed"
+    for resolution in (1.0, 0.5):
+        ir = service._create_clustering_ir(
+            resolution=resolution,
+            feature_selection_method="deviance",
+            algorithm="louvain",
+        )
+        code = ir.render()
+        assert "sc.tl.louvain(" in code
+        template_tree = ast.parse(code)
+        template_keys = [
+            node.value
+            for node in ast.walk(template_tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name)
+                and target.id in {"cluster_key", "key", "primary_key"}
+                for target in node.targets
+            )
+        ]
+        assert len(template_keys) == 3, "check clustering, transfer and primary keys"
+        namespace = {
+            "algorithm": "louvain",
+            "res": resolution,
+            "resolutions_to_test": [resolution],
+        }
+        expected = f"louvain_res{resolution}".replace(".", "_")
+        for expression in service_keys + template_keys:
+            actual = eval(
+                compile(ast.Expression(expression), "cluster_key_expression", "eval"),
+                {"__builtins__": {}},
+                namespace,
+            )  # nosec B307: only owned key expressions, not the clustering algorithm
+            assert actual == expected
 
 
 def test_annotation_still_raises_when_no_clustering_was_run():

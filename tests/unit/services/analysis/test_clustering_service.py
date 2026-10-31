@@ -348,15 +348,21 @@ def test_neighbors_with_custom_use_rep(clustering_service, small_adata):
 
 
 def test_neighbors_invalid_use_rep(clustering_service, small_adata):
-    """Test neighbors with non-existent use_rep key."""
-    # Should fall back to standard PCA workflow with warning
-    result = clustering_service.cluster_and_visualize(
-        small_adata, resolution=0.5, use_rep="X_nonexistent"
-    )
-    adata_result, stats, ir = result
-
-    # Should complete using standard workflow
-    assert "leiden" in adata_result.obs.columns
+    """A missing explicitly named representation must not silently fall back."""
+    original_x = small_adata.X.copy()
+    original_obs = small_adata.obs.copy(deep=True)
+    original_var = small_adata.var.copy(deep=True)
+    with pytest.raises(
+        ClusteringError,
+        match="Representation 'X_nonexistent' not found; prepare and name it explicitly",
+    ):
+        clustering_service.cluster_and_visualize(
+            small_adata, resolution=0.5, use_rep="X_nonexistent"
+        )
+    np.testing.assert_array_equal(small_adata.X, original_x)
+    assert small_adata.obs.equals(original_obs)
+    assert small_adata.var.equals(original_var)
+    assert not small_adata.obsm and not small_adata.uns
 
 
 # ============================================

@@ -11,7 +11,10 @@ import numpy as np
 import pytest
 import scanpy as sc
 
-from lobster.services.analysis.clustering_service import ClusteringService
+from lobster.services.analysis.clustering_service import (
+    ClusteringError,
+    ClusteringService,
+)
 
 pytest.importorskip("leidenalg")
 
@@ -51,7 +54,39 @@ def test_without_existing_embedding_the_full_pipeline_is_exported():
     adata = _adata()
     del adata.obsm["X_pca"]
     service = ClusteringService()
-    _, _, ir = service.cluster_and_visualize(
-        adata, resolution=0.5, use_rep="X_pca", demo_mode=True
+    result, _, ir = service.cluster_and_visualize(
+        adata, resolution=0.5, use_rep=None, demo_mode=True
     )
     assert "sc.pp.pca" in ir.render() or "sc.tl.pca" in ir.render()
+    assert result.shape == adata.shape
+    assert {"leiden", "leiden_res0_5"} <= set(result.obs)
+    assert "X_umap" in result.obsm
+    assert "X_pca" not in adata.obsm
+
+
+def test_explicit_missing_embedding_refuses_without_mutation():
+    adata = _adata()
+    del adata.obsm["X_pca"]
+    original_x = adata.X.copy()
+    original_obs = adata.obs.copy(deep=True)
+    original_var = adata.var.copy(deep=True)
+    original_uns = dict(adata.uns)
+    original_varm = {key: value.copy() for key, value in adata.varm.items()}
+    original_raw = adata.raw
+    with pytest.raises(
+        ClusteringError,
+        match="Representation 'X_pca' not found; prepare and name it explicitly",
+    ):
+        ClusteringService().cluster_and_visualize(
+            adata, resolution=0.5, use_rep="X_pca", demo_mode=True
+        )
+    np.testing.assert_array_equal(adata.X, original_x)
+    assert adata.obs.equals(original_obs)
+    assert adata.var.equals(original_var)
+    assert set(adata.uns) == set(original_uns)
+    assert all(adata.uns[key] is value for key, value in original_uns.items())
+    assert set(adata.varm) == set(original_varm)
+    for key, value in original_varm.items():
+        np.testing.assert_array_equal(adata.varm[key], value)
+    assert not adata.obsm and not adata.obsp and not adata.layers
+    assert adata.raw is original_raw
