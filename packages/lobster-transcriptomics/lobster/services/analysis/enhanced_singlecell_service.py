@@ -1571,7 +1571,7 @@ print(f"Annotated {adata.obs['cell_type'].nunique()} cell types "
                 "statistic_warnings": {
                     "extreme_log2fc_threshold": EXTREME_LOG2FC_THRESHOLD,
                     "extreme_log2fc_operator": ">=",
-                    "threshold_status": "provisional_pending_scientific_review",
+                    "threshold_status": "provisional_threshold",
                     "original": original_report["diagnostics"],
                     "filtered": filtered_report["diagnostics"],
                 },
@@ -1698,7 +1698,7 @@ repair_marker_names(adata)
                 },
                 "extreme_log2fc_threshold": EXTREME_LOG2FC_THRESHOLD,
                 "extreme_log2fc_operator": ">=",
-                "extreme_log2fc_threshold_status": "provisional_pending_scientific_review",
+                "extreme_log2fc_threshold_status": "provisional_threshold",
                 "method": method,
                 "n_genes": n_genes,
                 "min_fold_change": min_fold_change,

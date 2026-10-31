@@ -144,7 +144,7 @@ def test_actual_service_filtered_counts_rows_and_numerics(csr):
         )[:10]
     warnings = stats["statistic_warnings"]
     assert warnings["extreme_log2fc_threshold"] == 10
-    assert warnings["threshold_status"] == "provisional_pending_scientific_review"
+    assert warnings["threshold_status"] == "provisional_threshold"
     for group in ("A", "B", "C"):
         effects = expected.uns[KEYS["original"]]["logfoldchanges"][group]
         extreme = np.isfinite(effects) & (np.abs(effects) >= 10)
