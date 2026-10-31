@@ -29,7 +29,11 @@ pytestmark = pytest.mark.ux
 # Path constants
 LOBSTER_ROOT = Path(__file__).parent.parent.parent
 SKILLS_DIR = LOBSTER_ROOT / "skills"
-INSTALLER_SCRIPT = Path("/Users/tyo/omics-os/landing_lobster/public/skill")
+# The skill installer script is maintained outside this repository. Point
+# LOBSTER_SKILL_INSTALLER at a local copy to run the installer checks.
+INSTALLER_SCRIPT = Path(
+    os.environ.get("LOBSTER_SKILL_INSTALLER", "/nonexistent/lobster-skill-installer")
+)
 PYPROJECT_PATH = LOBSTER_ROOT / "pyproject.toml"
 
 
@@ -99,6 +103,8 @@ def test_skill_installer_manifest_files_match_actual_files():
 
 def test_skill_installer_handles_missing_directories():
     """Verify installer creates directories gracefully."""
+    if not INSTALLER_SCRIPT.exists():
+        pytest.skip(f"Installer script not found: {INSTALLER_SCRIPT}")
     content = INSTALLER_SCRIPT.read_text()
 
     # Should have mkdir -p for references subdirectory

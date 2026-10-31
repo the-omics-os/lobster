@@ -104,6 +104,7 @@ celerybeat.pid
 .lobster/
 .lobster_workspace*/
 .lobster_workspace/
+/provider_config.json
 .geo_cache/
 .geo_cache/*
 geo_cache/
@@ -193,7 +194,7 @@ STRESS_TEST_*.md
 *_TEST_REPORT.md
 kevin_notes/*
 kevin_notes_completed/*
-#kevin notes
+# personal notes
 open_deep_research/*
 #open deep research
 wiki/

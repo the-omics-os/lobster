@@ -61,7 +61,7 @@ var usdCostRe = regexp.MustCompile(`\$(\d+(?:\.\d+)?)`)
 // tipInterval controls how often loading tips rotate.
 const tipInterval = 5 * time.Second
 
-// welcome animation timing aligned with .planning/charm-tui/animated_logo.md.
+// Welcome animation timing.
 const welcomeAnimInterval = 50 * time.Millisecond
 const welcomeInitialScrambleFrames = 24
 const welcomeFadeStepDuration = 200 * time.Millisecond

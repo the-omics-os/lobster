@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-"""
-Test script to verify Kevin's reported bugs are fixed in Lobster v2.4+
-Author: Bug Verification Team
-Date: 2025-11-25
-"""
+"""Regression tests for previously reported issues: local 10x MTX loading,
+metadata integration, the quality service signature and data persistence."""
 
 import logging
-import sys
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -285,66 +281,3 @@ def test_bug_6_data_persistence():
         print(f"❌ Unexpected error: {e}")
         traceback.print_exc()
         return False
-
-
-def main():
-    """Run all bug tests and generate summary report."""
-    print("=" * 60)
-    print("KEVIN'S BUG VERIFICATION TEST SUITE")
-    print("Lobster v2.4+ Bug Status Check")
-    print("=" * 60)
-
-    results = {}
-
-    # Run tests for bugs we can verify without external data
-    tests = [
-        ("Bug #1: Local 10x MTX Loading", test_bug_1_local_mtx_loading),
-        ("Bug #4: Metadata Integration", test_bug_4_metadata_integration),
-        ("Bug #5: Quality Service Signature", test_bug_5_quality_service_signature),
-        ("Bug #6: Data Persistence", test_bug_6_data_persistence),
-    ]
-
-    for bug_name, test_func in tests:
-        try:
-            results[bug_name] = test_func()
-        except Exception as e:
-            print(f"\n❌ Test failed with exception: {e}")
-            results[bug_name] = False
-
-    # Summary Report
-    print("\n" + "=" * 60)
-    print("TEST SUMMARY REPORT")
-    print("=" * 60)
-
-    fixed_count = sum(1 for v in results.values() if v)
-    total_tested = len(results)
-
-    for bug_name, passed in results.items():
-        status = "✅ FIXED" if passed else "❌ NEEDS ATTENTION"
-        print(f"{bug_name}: {status}")
-
-    print(f"\nResults: {fixed_count}/{total_tested} bugs verified as fixed")
-
-    # Bugs that need external data to test
-    print("\n" + "=" * 60)
-    print("BUGS REQUIRING EXTERNAL DATA FOR TESTING:")
-    print("=" * 60)
-    print("• Bug #2: GEO Single-Cell Downloads - Need GSE182227, GSE190729")
-    print("• Bug #3: Bulk RNA-seq Orientation - Need GSE130036, GSE130970")
-    print("• Bug #7: FTP Reliability - Need network access to GEO")
-    print("• Bug #8: Service Signatures - Comprehensive but likely fixed")
-
-    print("\n" + "=" * 60)
-    print("RECOMMENDATIONS:")
-    print("=" * 60)
-    print("1. Download Kevin's test datasets for comprehensive testing")
-    print("2. Run integration tests with actual GEO downloads")
-    print("3. Test bulk RNA-seq orientation with Kallisto/Salmon files")
-    print("4. Create regression test suite to prevent future issues")
-
-    return all(results.values())
-
-
-if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)

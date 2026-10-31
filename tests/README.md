@@ -95,7 +95,6 @@ tests/
 ├── 📁 mock_data/              # Synthetic data generation
 ├── 🔧 conftest.py             # Pytest configuration & fixtures
 ├── 🔧 test_config.yaml        # Test environment settings
-├── 🔧 data_registry.json      # Test dataset registry
 └── 🚀 run_integration_tests.py # Enhanced test runner
 ```
 

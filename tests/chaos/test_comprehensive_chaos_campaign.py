@@ -514,11 +514,9 @@ def test_generate_comprehensive_chaos_report(comprehensive_metrics):
 
     # Save report to file
     report_path = (
-        Path(__file__).parent.parent.parent
-        / "kevin_notes"
+        Path(tempfile.mkdtemp(prefix="lobster-chaos-report-"))
         / "CHAOS_ENGINEERING_REPORT.json"
     )
-    report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nDetailed report saved to: {report_path}")

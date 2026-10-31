@@ -28,7 +28,6 @@ from lobster.core.schemas.validation import FlexibleValidator
 #
 # NOTE: Future enhancement will migrate to ontology-based standardization
 # (NCBI Taxonomy, UBERON) via embedding service.
-# See: kevin_notes/sragent_embedding_ontology_plan.md
 # =============================================================================
 
 

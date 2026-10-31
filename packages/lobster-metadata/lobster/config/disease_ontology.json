@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "schema_version": "1.0",
   "backend": "json",
-  "description": "Lobster disease ontology for IBD/CRC studies. Phase 1: Keyword matching. Phase 2: Embedding-based (see kevin_notes/sragent_embedding_ontology_plan.md). Keywords merged from disease_standardization_service.py and metadata_assistant.py.",
+  "description": "Lobster disease ontology for IBD/CRC studies (keyword matching).",
   "diseases": [
     {
       "id": "crc",

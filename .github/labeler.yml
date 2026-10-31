@@ -82,7 +82,6 @@ documentation:
       - '*.rst'
       - 'CHANGELOG.md'
       - 'README.md'
-      - 'CLAUDE.md'
 
 # Docker and containerization
 docker:

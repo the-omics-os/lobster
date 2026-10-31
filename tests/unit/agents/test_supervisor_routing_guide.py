@@ -1,10 +1,9 @@
-"""Regression smoke set for supervisor task routing (TICKET_TRIAGE Phase 1D).
+"""Regression smoke set for supervisor task routing.
 
 Context
 -------
 The supervisor was over-routing to ``execute_custom_code`` (90%+ across all
-models) instead of delegating to specialized agents. Root causes (verified by
-Codex #10 + research/D_alejandro_engine_bugs.md):
+models) instead of delegating to specialized agents. Root causes:
 
   * No task->agent routing guide in the supervisor prompt.
   * Category D framed ``execute_custom_code`` as a delegation peer, not a

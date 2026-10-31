@@ -9,7 +9,6 @@ Architecture:
     - create_supervisor_pre_model_hook() returns a hook for create_react_agent
     - The hook uses trim_messages + llm_input_messages bypass (non-destructive)
 
-See: kevin_notes/CONTEXT_ENGINEERING_REPORT.md
 """
 
 from __future__ import annotations

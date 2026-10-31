@@ -96,12 +96,6 @@ def resolve_toml_export_path() -> Path:
         / "components"
         / "agent-composer"
         / "toml-export.tsx",
-        Path(
-            "/Users/tyo/Omics-OS/lobster-cloud/app/src/components/agent-composer/toml-export.tsx"
-        ),
-        Path(
-            "/Users/tyo/omics-os/lobster-cloud/app/src/components/agent-composer/toml-export.tsx"
-        ),
     ]
     for candidate in candidates:
         if candidate.exists():

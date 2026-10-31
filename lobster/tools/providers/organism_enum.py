@@ -35,7 +35,6 @@ class OrganismEnum(Enum):
     Adding new organisms:
         1. Add entry to enum: COMMON_NAME = "Scientific Name"
         2. Run tests to verify
-        3. Update CLAUDE.md documentation
     """
 
     # Mammals - Model Organisms

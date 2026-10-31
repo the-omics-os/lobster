@@ -22,7 +22,6 @@ Usage:
 See Also:
     - workspace_tool.py: Established factory pattern for shared tools
     - CustomCodeExecutionService: Underlying execution service
-    - CLAUDE.md section 4.5: Patterns & Abstractions
 """
 
 from __future__ import annotations
