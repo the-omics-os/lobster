@@ -1,4 +1,4 @@
-# CLI Reference — Local Lobster AI 1.2
+# CLI Reference — Local Lobster AI
 
 Examples here target the Python engine unless marked **npm Cloud**. If npm
 `lobster` is also installed, local commands can be addressed explicitly with
@@ -80,6 +80,10 @@ lobster chat --no-intro
 Default `--ui auto` tries Go, then classic. `--ui ink` is not valid for local chat.
 Trace options can select the classic path instead of the Go fast path.
 
+Chat is the human/interactive option. See the
+[save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save);
+coding agents should use the [non-interactive recipe](agent-patterns.md#count-safe-bulk-rna-workflow).
+
 | Flag | Meaning |
 |---|---|
 | `--workspace`, `-w` | Workspace root; otherwise default or LOBSTER_WORKSPACE |
@@ -95,15 +99,18 @@ Trace options can select the classic path instead of the Go fast path.
 
 ```bash
 lobster query -w ./analysis --session-id study --json "Describe the loaded data"
-lobster query -w ./analysis --session-id latest --json "Continue the analysis"
+lobster query -w ./analysis --session-id latest --json "Inspect saved inputs before continuing"
 lobster query -w ./analysis --session-id study --output answer.md "Summarize results"
 ```
 
-Use the same workspace **and** session throughout a multi-step workflow.
+Use the same workspace **and** session throughout a multi-step workflow. For
+input loading and explicit tool saves, follow the
+[save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save)
+and [agent-drivable recipe](agent-patterns.md#count-safe-bulk-rna-workflow).
 
 | Flag | Meaning |
 |---|---|
-| `--session-id`, `-s` | Session continuity |
+| `--session-id`, `-s` | Conversation/session continuity; not an implicit data save |
 | `--workspace`, `-w` | Actual workspace root, not parent of an added hidden directory |
 | `--json`, `-j` | Structured output on stdout |
 | `--output`, `-o` | Final answer file path, **not** output format |
@@ -130,8 +137,9 @@ lobster command "pipeline export" -w ./analysis --session-id study --json
 `command` takes one quoted command string, optional workspace/session and `--json`.
 Leading `/` is stripped, but **only the supported dispatcher commands work**.
 Do not assume every interactive slash command has a programmatic counterpart.
-For example `/tokens`, `/plot`, `/read` and `/open` are interactive controls,
-not `lobster command` branches.
+For example `/tokens`, `/plot` and `/open` are interactive controls, not
+`lobster command` branches. `lobster command "read <file>"` is supported; inspect
+any read refusal rather than retrying through custom code.
 
 Normal command JSON carries `success`, `command` and `data`. Inspect structured
 `data.blocks` (including table/kv blocks) and text in `data.messages` when present;
@@ -271,8 +279,15 @@ callback-only coverage does not establish a complete provider bill.
 
 The workspace's `exports/` directory receives default/relative analysis outputs,
 including DE/annotation tables. Returned paths are authoritative; do not assume
-the shell's current directory or a root-level notebook glob. An explicit output
-path can have different behavior, so do not claim workspace confinement.
+the shell's current directory or a root-level notebook glob. Native
+analysis export tools refuse destinations outside the workspace unless the user
+listed an existing absolute folder in `LOBSTER_EXPORT_ROOTS` before startup
+(`:`-separated, `;` on Windows). Relative, missing and non-folder entries are
+ignored; restart after changing the setting. Absolute dataset-save paths and
+custom code are not restricted by this export setting: it is not confinement.
+
+After resuming a saved session, `/pipeline export` can repeat steps;
+inspect for duplicated filtering/normalization before execution.
 
 Data-package figure export is a **view package**, not a complete reloadable figure
 store. It copies saved revision/figure/config bytes and views, but not the source,
@@ -287,17 +302,24 @@ all logs or every exception are free of sensitive content.
 
 ## npm Cloud — Separate Supported Client
 
+These examples use npm CLI 0.4.2 and its `lobster-cli` alias:
+
 ```bash
-npm install -g @omicsos/lobster  # permission required
-lobster cloud login
-lobster cloud login --device    # device-code flow when preferred
-lobster cloud status
-lobster cloud chat
-lobster cloud query --json --session-id latest "Continue the session"
-lobster cloud logout
+npm install -g @omicsos/lobster@0.4.2  # permission required
+lobster-cli cloud login --device     # human browser authorization, not a Python login
+lobster-cli cloud status
+lobster-cli cloud chat
+lobster-cli cloud query --json --session-id latest "Continue the session"
+lobster-cli cloud logout
 ```
 
-Use the npm binary for these commands. API-key auth accepts `OMICSOS_API_KEY` from
+Python `lobster cloud login` is rejected by current Cloud sign-in. Use
+npm to sign in; the local Python `omics-os` gateway provider can reuse the saved
+platform credential under `~/.config/omics-os/`. Do not read or print it to inspect
+configuration, and get permission before writes to that location. See the
+[1.2.1 sign-in limitation](https://github.com/the-omics-os/lobster/releases/tag/v1.2.1#known-limitations).
+
+API-key auth accepts `OMICSOS_API_KEY` from
 the environment; `--api-key <key>` also exists but can expose the key in process
 arguments. Cloud query supports `--session-id/-s`, `--project-id/-p`, `--json/-j`
 and `--stream`. Store returned session UUIDs for continuity. Do not infer Cloud

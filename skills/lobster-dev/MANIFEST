@@ -1,11 +1,13 @@
 SKILL.md
 references/architecture.md
 references/code-layout.md
+references/cli.md
 references/creating-agents.md
 references/creating-services.md
 references/testing.md
 references/scaffold.md
 references/aquadif-contract.md
+references/aquadif-migration.md
 references/planning-workflow.md
 references/plugin-architecture.md
 references/bioskills-bridge.md

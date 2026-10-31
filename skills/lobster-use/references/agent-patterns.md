@@ -1,4 +1,4 @@
-# Orchestration Patterns — Lobster AI 1.2
+# Orchestration Patterns — Lobster AI
 
 Use the local Python engine to offload biological workflows, not to hide a failed
 analysis behind plausible prose. Cloud workflows use the supported npm client;
@@ -27,6 +27,9 @@ lobster command "workspace list" -w "$WORKSPACE" --session-id "$SESSION" --json
 ```
 
 `$WORKSPACE` is the actual root, not the parent of a nested hidden workspace.
+For input loading and explicit saves, follow the
+[save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save);
+conversation continuity is not a substitute for those steps.
 
 ## Capture Both Failure Signals
 
@@ -83,19 +86,52 @@ before scheduling an analysis.
 6. Inspect returned tables, count-source report and paths. Numeric whole-number
    values alone are not proof that an upstream pipeline produced raw counts.
 
-Example requests, after choosing appropriate data and receiving approval:
+For a **pre-approved simple two-group bulk comparison**, coding agents can load
+a reviewed saved input, run dependent steps and request a supported save within
+**one** non-interactive query. Set the file path relative to `$WORKSPACE` (or use
+an absolute path) and supply the approved design; do not guess these values:
 
 ```bash
+WORKSPACE="./analysis"
+SESSION="study"
+: "${COUNTS_FILE:?Set the reviewed saved raw-count file path}"
+: "${GROUP_KEY:?Set the approved obs group column}"
+: "${REFERENCE:?Set the approved reference group}"
+: "${CASE:?Set the approved comparison group}"
+
 lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
-  "Download the selected GEO series with data_requirement='gene_counts'; report any refusal"
-lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
-  "Assess sample QC and raw-count availability; show replicate and condition metadata"
-lobster query -w "$WORKSPACE" --session-id "$SESSION" --json \
-  "Run the agreed DESeq2 contrast using raw counts, then export the result table"
+  "Verify '$COUNTS_FILE' exists and choose its registered adapter; explicitly load it
+   with load_modality in this query. Inspect raw-count origin evidence, replicate
+   metadata and the approved contrast: formula='~$GROUP_KEY',
+   contrast=['$GROUP_KEY', '$CASE', '$REFERENCE'] (case versus reference).
+   Stop if raw-count origin is unestablished or metadata is missing; do not invent
+   a design or substitute normalized data. Report any design, count, HDF-read or
+   export-path refusal verbatim and stop; do not retry it through custom code.
+   Run assess_data_quality and pass its resulting QC-assessed modality as
+   pseudobulk_modality to run_de_with_formula with the approved formula/contrast
+   and save_results=True. Report input/output modality names, the H5AD and CSV
+   paths, save errors and any memory-only intermediates; do not ignore failed saves."
+
+lobster command files -w "$WORKSPACE" --session-id "$SESSION" --json
+lobster command modalities -w "$WORKSPACE" --session-id "$SESSION" --json
 ```
 
-A natural-language request does not itself establish that the expected tool ran.
-Check the response and resulting data/files before proceeding.
+The `modalities` check is a **new-process** view of saved H5ADs by file stem.
+Use the failure checks above and inspect the actual saved/loaded outputs, not just
+request text or a reassuring response. The final DE modality/table save does not
+promise that every QC intermediate was saved. Before a later query, explicitly
+load the needed saved file in that query and inspect its metadata/representation.
+The formula tool's argument is named `pseudobulk_modality`; supplying a registered
+bulk-count modality does not itself aggregate cells or create biological replicates.
+`run_bulk_de_direct` still applies marker-style out-group filtering by
+default; prefer `run_de_with_formula` for bulk designs. A `DE refused: no genes
+remain after filtering.` reply is not a zero-DE biological result. Keep approved
+comparison labels free of `/` to avoid the saved-result pointer limitation.
+More complex or multi-factor designs require a separately agreed workflow; follow
+the [design-question rule](../SKILL.md#scientific-workflow-rules), not this shortcut.
+
+For a human who can operate an interactive terminal, `lobster chat` with `/save`
+is the alternative; see the [save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save).
 
 ## Figure Workflow — Local Engine
 
@@ -167,14 +203,15 @@ provider refusals are not a guarantee that every log is safe to share.
 
 ## npm Cloud Orchestration
 
-Use npm `@omicsos/lobster`, not Python/Go Cloud compatibility:
+Use npm CLI 0.4.2 `@omicsos/lobster` for sign-in and Cloud sessions, not Python/Go
+Cloud compatibility. `lobster-cli` below is the npm alias:
 
 ```bash
-lobster cloud login
-lobster cloud status
-lobster cloud query --json "Describe the available session data"
-lobster cloud query --json --session-id latest "Continue the approved workflow"
-lobster cloud chat
+lobster-cli cloud login --device  # human approves the displayed URL/code
+lobster-cli cloud status
+lobster-cli cloud query --json "Describe the available session data"
+lobster-cli cloud query --json --session-id latest "Continue the approved workflow"
+lobster-cli cloud chat
 ```
 
 For headless API-key access, supply `OMICSOS_API_KEY` from an approved secret

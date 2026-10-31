@@ -14,7 +14,7 @@ source:
 always: false
 ---
 
-# Lobster AI Usage Guide — 1.2
+# Lobster AI Usage Guide
 
 Describe the biological task in natural language. Lobster routes it to installed
 specialist agents; do not assume every domain package is installed.
@@ -24,11 +24,15 @@ specialist agents; do not assume every domain package is installed.
 | Need | Client | Entry point |
 |---|---|---|
 | Local analysis | Python `lobster-ai` | `lobster query`, `lobster chat` |
-| Managed Omics-OS Cloud session | npm `@omicsos/lobster` | `lobster cloud login`, `lobster cloud chat`, `lobster cloud query` |
+| Managed Omics-OS Cloud session | npm `@omicsos/lobster` | `lobster-cli cloud login --device`, `lobster-cli cloud chat`, `lobster-cli cloud query` |
 
-The npm client owns Cloud authentication and Cloud commands. Python/Go Cloud
-compatibility is not a supported client contract. Local chat uses Go TUI with a
-classic terminal fallback; Cloud chat uses the npm Ink TUI.
+The npm client owns Cloud authentication and Cloud session commands. In the Python
+engine, `lobster cloud login` does not work with current Cloud sign-in. Sign in with
+npm `lobster cloud login --device`; `lobster-cli cloud login --device` is the npm
+alias that avoids a Python/npm binary collision. The local Python `omics-os`
+provider can reuse the saved platform sign-in; this is not a supported Python/Go
+Cloud-session client contract. Local chat uses Go TUI with a classic terminal
+fallback; Cloud chat uses the npm Ink TUI.
 
 When both clients are installed, check `which lobster`. npm `lobster init` is a
 Cloud onboarding wizard, not local provider setup. In a Python development
@@ -66,35 +70,108 @@ uv tool install 'lobster-ai[full]~=1.2'
 lobster init --non-interactive --anthropic-key "$ANTHROPIC_API_KEY" --profile production
 lobster config-test --json
 
-# Use the SAME workspace and session on every step
-lobster query -w ./analysis --session-id study --json \
-  "Find a suitable public RNA-seq dataset and explain its available data representations"
-lobster command "workspace list" -w ./analysis --session-id study --json
-lobster chat -w ./analysis --session-id study
+# Teaching dataset; download and inference also require permission
+WORKSPACE="./pbmc3k"
+mkdir -p "$WORKSPACE/data"
+curl -fL -o "$WORKSPACE/data/pbmc3k.tar.gz" \
+  https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz
+tar -xzf "$WORKSPACE/data/pbmc3k.tar.gz" -C "$WORKSPACE/data"
+WORKSPACE="$(cd "$WORKSPACE" && pwd)"
+
+# Load and assess in ONE query; do not assume a later query retains QC state
+lobster query -w "$WORKSPACE" --session-id pbmc3k --json \
+  "Load the 10x matrix in $WORKSPACE/data/filtered_gene_bc_matrices/hg19
+   (matrix.mtx, genes.tsv, barcodes.tsv; human PBMCs, hg19) as pbmc3k.
+   Use gene symbols as var names. Report the loaded shape, then assess quality:
+   per-cell genes, total counts and percent mitochondrial (MT- genes), with
+   medians and 95th percentiles from tools. Do not filter or run DE."
+lobster command "workspace list" -w "$WORKSPACE" --session-id pbmc3k --json
 ```
 
-`-w ./analysis` is the workspace root itself: do not append another
-`.lobster_workspace` when inspecting outputs. Without an override, the local
-workspace defaults to `./.lobster_workspace` (or `LOBSTER_WORKSPACE`).
+PBMC 3k's local 1.2.1 load was checked at **2,700 cells × 32,738 genes**. This
+one-query load/QC request is an illustrative agent-drivable combination, not an
+additional executed acceptance run. The checked 1.2.1 workflow used separate
+requests in one human chat, explicit `/save` and a restart check;
+that evidence is not query-to-query memory persistence or population-level DE.
+
+`-w` names the workspace root itself: do not append another `.lobster_workspace`
+when inspecting outputs. Without an override, the local workspace defaults to
+`./.lobster_workspace` (or `LOBSTER_WORKSPACE`).
+
+### Local Session History Is Not a Data Save
+
+Each `lobster query` invocation starts a new client. Reusing the workspace and
+`--session-id` can restore conversation history, but session JSON does not carry
+the previous process's in-memory modalities into the next command. A completed
+query, a session JSON file or an answer written with `--output` is not proof that
+analysis data was saved.
+
+**Saved inputs:** local startup scans `<workspace>/data/` for supported files;
+size/read guards can prevent loading. A later query can load saved `*_raw.h5ad`
+or DE-result H5ADs under their **file-stem names**, not unsaved QC-assessed state.
+Inspect current files and modalities. When an input is absent, ask the Data Expert
+to verify its file path/adapter and call `load_modality` **within the query that
+uses it**. A separate inspection/load command does not keep a live client for
+the next query.
+
+**Query-mode saves:** some tools write files during a query. GEO imports can write
+`*_raw.h5ad` and call autosave at import time; that is not a universal save of
+changes made later in the query. `assess_data_quality` creates a QC-assessed
+modality in memory without saving it. `run_de_with_formula(..., save_results=True)`
+can write its result table and H5AD modality. `run_bulk_de_direct(..., save_result=True)`
+also has a native save option, but its default marker-style out-group filter can
+remove most or all bulk genes; prefer the formula tool for an approved bulk design.
+`export_de_results` separately writes a table. These saves do not promise every
+intermediate or every analysis tool's output was written.
+
+**Local H5AD save outcomes:** a failure before the new file replaces an existing
+file keeps the previous file. If replacement completed but save bookkeeping fails,
+the error says the data was saved and bookkeeping failed; inspect the reported
+file before retrying. This does not save other memory-only outputs.
+
+**Coding-agent path:** use one non-interactive query for dependent steps with
+explicit supported tool-save options, or load saved inputs within each new query.
+See the [agent-drivable bulk example](references/agent-patterns.md#count-safe-bulk-rna-workflow).
+Inspect save errors, returned paths, files and loaded data before another step;
+report any memory-only outputs. A partial save is not complete durability.
+
+**Human/interactive option:** keep dependent steps in one `lobster chat` session
+and run `/save` before ending it. Inspect the save results and output files; after
+a restart, check startup-loaded modalities or explicitly load the saved file
+before continuing. Do not use a TUI as a required coding-agent interface.
+
+For other datasets, inspect identity, files and supported representation before
+approving a download or QC. Some text-only GEO series, including GSE109564,
+are not selected by GEO download and their compressed text can be refused by the
+single-cell loader. Do not claim they load or silently switch studies. See the
+[1.2.1 known limitations](https://github.com/the-omics-os/lobster/releases/tag/v1.2.1#known-limitations).
 
 ## Cloud Quick Start — npm Client Only
 
+These examples use npm CLI 0.4.2 and its `lobster-cli` alias, not Python's binary:
+
 ```bash
-npm install -g @omicsos/lobster  # only with permission
-lobster cloud login            # user completes browser authentication
-lobster cloud status
-lobster cloud chat
-lobster cloud query --json "Describe the data available in this session"
+npm install -g @omicsos/lobster@0.4.2  # only with permission
+lobster-cli cloud login --device     # user authorizes the displayed URL/code
+lobster-cli cloud status
+lobster-cli cloud chat
+lobster-cli cloud query --json "Describe the data available in this session"
 ```
 
-For headless use, provide `OMICSOS_API_KEY` through the environment. A stored
-credential file is not proof that authentication still works; check the supported
-client's result. Never copy credentials into a prompt or a report.
+Device login still needs a human browser approval; do not automate passwords or
+copy credentials into prompts. Sign-in writes shared credentials under
+`~/.config/omics-os/`; obtain permission for that location. When using the local
+Python engine through the Cloud gateway, select its `omics-os` provider after npm
+sign-in. For headless automation, provide `OMICSOS_API_KEY` through the environment.
+A stored credential file is not proof that authentication still works; inspect
+status from the supported client.
 
 ## Scientific Workflow Rules
 
 1. Check loaded modalities and sample metadata before analysis. Use
-   `lobster command` for supported local inspection commands without an LLM call.
+   `lobster command` for supported local inspection without an LLM call; follow
+   the [save/reload requirements](#local-session-history-is-not-a-data-save)
+   before continuing in another process.
 2. Assess quality before selecting filters or an analysis model. Ask about
    biological replicates, conditions and confounders; do not invent a design.
 3. Keep raw counts separate from normalized representations. DESeq2 is not a
@@ -111,6 +188,11 @@ client's result. Never copy credentials into a prompt or a report.
    counts layer is refused, not bypassed using `X`. The matrix must be finite,
    nonnegative and whole-number. Passing that numeric check does not establish
    the biological origin of the counts: inspect the source and aggregation method.
+7. Use approved comparison labels without `/`: a non-colliding slash-containing
+   DE key can still become unavailable through its saved result pointer after
+   H5AD save/reload. Names that would normalize to the same key now stop the H5AD
+   save with a collision message instead of keeping one payload. Renaming an
+   output file does not repair existing results; agree on labels before analysis.
 
 ## Figures: Save, Then Edit the Saved Revision
 
@@ -192,7 +274,9 @@ directory. Notebook export is a selected subset of recorded steps, not evidence
 of execution. Custom code using attempt-only figure helpers is excluded from
 executable export; inspect the omission summary. Replay mode selects steps marked
 replayable and can refuse failed or unreplayable data-changing steps. Inspect and
-run the notebook separately before making any statement about its results.
+run the notebook separately before making any statement about its results. After
+resuming a saved session, `/pipeline export` can contain steps twice; inspect for
+repeated filtering/normalization before executing it.
 
 ## Documentation Discovery
 
