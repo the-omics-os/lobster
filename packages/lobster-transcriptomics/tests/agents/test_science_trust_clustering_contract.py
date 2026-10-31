@@ -18,8 +18,8 @@ import scanpy as sc
 from scipy import sparse
 
 from lobster.agents.transcriptomics.prompts import create_transcriptomics_expert_prompt
-from lobster.core.data_manager_v2 import DataManagerV2
 from lobster.core.provenance.analysis_ir import AnalysisStep
+from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.core.utils.h5ad_utils import sanitize_value
 from lobster.services.analysis import clustering_service as service_module
 from lobster.services.analysis.clustering_service import (

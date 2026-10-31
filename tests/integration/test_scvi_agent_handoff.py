@@ -184,7 +184,9 @@ class TestScviHandoffWorkflow:
     @pytest.mark.skipif(not SCVI_AVAILABLE, reason="scVI dependencies not installed")
     def test_ml_expert_scvi_availability_check(self, mock_data_manager):
         """Test ML Expert scVI availability checking."""
-        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import (
+            machine_learning_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -210,7 +212,9 @@ class TestScviHandoffWorkflow:
     )
     def test_ml_expert_scvi_unavailable_message(self, mock_data_manager):
         """Test ML Expert provides installation guidance when scVI unavailable."""
-        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import (
+            machine_learning_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -292,7 +296,9 @@ class TestEndToEndWorkflow:
 
     def test_complete_workflow_without_scvi(self, mock_data_manager):
         """Test complete workflow when scVI is not available."""
-        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import (
+            machine_learning_expert,
+        )
         from lobster.agents.transcriptomics.transcriptomics_expert import (
             transcriptomics_expert,
         )
@@ -339,7 +345,9 @@ class TestEndToEndWorkflow:
     @pytest.mark.skipif(not SCVI_AVAILABLE, reason="Requires scVI installation")
     def test_ml_expert_train_scvi_tool_structure(self, mock_data_manager):
         """Test ML Expert scVI training tool exists and has correct structure."""
-        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import (
+            machine_learning_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -449,7 +457,9 @@ class TestAgentToolIntegration:
 
     def test_ml_expert_has_scvi_tools(self, mock_data_manager):
         """Test ML Expert includes scVI tools."""
-        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import (
+            machine_learning_expert,
+        )
 
         data_manager, mock_adata = mock_data_manager
 
@@ -499,7 +509,7 @@ class TestAgentToolIntegration:
                 mock_adata,
                 {
                     "n_clusters": 3,
-                    "resolution": 0.5,
+                    "resolution": 0.7,
                     "has_umap": True,
                     "has_marker_genes": False,
                     "original_shape": (1000, 2000),
@@ -507,6 +517,37 @@ class TestAgentToolIntegration:
                     "batch_correction": False,
                     "demo_mode": False,
                     "cluster_sizes": {"0": 300, "1": 400, "2": 300},
+                    # S3 successful service output records requested and actually
+                    # applied parameters, including the prepared representation.
+                    "requested_parameters": {"use_rep": "X_scvi", "resolution": 0.7},
+                    "applied_parameters": {
+                        "resolution": 0.7,
+                        "resolutions": [0.7],
+                        "use_rep": "X_scvi",
+                        "batch_correction": False,
+                        "feature_selection_method": None,
+                        "n_features_selected": None,
+                        "n_neighbors": 15,
+                        "n_pcs": 10,
+                        "flavor": None,
+                    },
+                    "parameter_adjustments": [],
+                    "skipped_steps": [
+                        "feature_selection",
+                        "normalization",
+                        "scaling",
+                        "pca",
+                    ],
+                    "features_marked": None,
+                    "features_used": None,
+                    "batch_correction_status": {"reason": "not_requested"},
+                    "subsample_status": {
+                        "performed": False,
+                        "target": None,
+                        "seed": 42,
+                        "input_n_obs": 1000,
+                        "result_n_obs": 1000,
+                    },
                 },
                 mock_ir,
             )
@@ -541,6 +582,8 @@ class TestAgentToolIntegration:
 
             # Verify success message
             assert "Successfully clustered" in result
+            assert '"use_rep": "X_scvi"' in result
+            assert '"n_pcs": 10' in result
 
 
 class TestWorkflowValidation:
@@ -624,7 +667,9 @@ class TestDocumentationExamples:
 
     def test_typical_scvi_workflow_structure(self, mock_data_manager):
         """Test the structure of a typical scVI workflow."""
-        from lobster.agents.machine_learning.machine_learning_expert import machine_learning_expert
+        from lobster.agents.machine_learning.machine_learning_expert import (
+            machine_learning_expert,
+        )
         from lobster.agents.transcriptomics.transcriptomics_expert import (
             transcriptomics_expert,
         )

@@ -158,25 +158,73 @@ def test_filter_template_stores_raw_before_normalizing(filter_code):
 
 
 @pytest.mark.parametrize("method", ["deviance", "hvg"])
-def test_clustering_template_does_not_leave_adata_as_the_subset(method):
+def test_clustering_template_does_not_leave_adata_as_the_subset(
+    method, tmp_path, monkeypatch
+):
     """The structural drift: the template rebound `adata` to the gene subset.
 
     Every later cell — annotation, DE — must use the full expression object,
     not the feature subset used to fit the clustering representation.
     """
-    code = (
-        ClusteringService()
-        ._create_clustering_ir(
-            resolution=1.0, feature_selection_method=method, algorithm="leiden"
-        )
-        .render()
-    )
+    from types import SimpleNamespace
 
+    import anndata
+    import nbformat
+    import numpy as np
+    import pandas as pd
+
+    from lobster.core.notebooks.exporter import NotebookExporter
+    from lobster.core.provenance.provenance import ProvenanceTracker
+
+    ir = ClusteringService()._create_clustering_ir(
+        resolution=1.0,
+        feature_selection_method=method,
+        algorithm="leiden",
+        n_features=12,
+        n_pcs=5,
+        n_neighbors=5,
+    )
+    code = ir.render()
     assert "adata_selected =" in code, "subset must bind to a separate name"
     assert "\nadata = adata[:," not in code, "template must not rebind adata"
-    # And it must transfer results back onto the full object.
-    assert "adata.obs[cluster_key] = adata_selected.obs[cluster_key]" in code
-    assert "adata.obsm['X_umap'] = adata_selected.obsm['X_umap']" in code
+
+    # S3 transfers every requested resolution under its actual key; the property
+    # is preserved even though the former literal `cluster_key` assignment moved.
+    source = anndata.AnnData(
+        np.random.default_rng(42)
+        .negative_binomial(2, 0.5, (48, 600))
+        .astype(np.float32),
+        obs=pd.DataFrame(index=[f"cell_{i}" for i in range(48)]),
+        var=pd.DataFrame(index=[f"gene_{i}" for i in range(600)]),
+    )
+    source.write_h5ad(tmp_path / "dataset.h5ad")
+    tracker = ProvenanceTracker()
+    tracker.create_activity(activity_type="cluster_cells", agent="test", ir=ir)
+    context = SimpleNamespace(
+        workspace_path=tmp_path, workspace_dir=tmp_path, modalities={"fixture": source}
+    )
+    path = NotebookExporter(tracker, context).export(f"clustering_{method}")
+    notebook = nbformat.read(path, as_version=4)
+    monkeypatch.chdir(tmp_path)
+    namespace = {}
+    for index, cell in enumerate(notebook.cells):
+        if cell.cell_type == "code":
+            exec(
+                compile(cell.source, f"clustering_notebook_cell_{index}", "exec"),
+                namespace,
+            )  # nosec B102
+    replay = namespace["adata"]
+    selected = namespace["adata_selected"]
+    assert (
+        selected.n_vars < source.n_vars
+    ), "fixture must exercise a real feature subset"
+    assert replay.shape == source.shape
+    assert list(replay.obs_names) == list(source.obs_names)
+    assert list(replay.var_names) == list(source.var_names)
+    for key in ("leiden", "leiden_res1_0"):
+        pd.testing.assert_series_equal(replay.obs[key], selected.obs[key])
+        assert replay.obs[key].notna().all()
+    np.testing.assert_array_equal(replay.obsm["X_umap"], selected.obsm["X_umap"])
 
 
 @pytest.mark.parametrize("method", ["deviance", "hvg"])

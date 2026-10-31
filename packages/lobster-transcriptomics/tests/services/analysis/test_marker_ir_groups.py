@@ -29,13 +29,47 @@ def _adata():
 
 
 @pytest.mark.parametrize("groups", [None, ["c", "a"]])
-def test_exported_marker_cell_matches_the_session(groups):
+def test_exported_marker_cell_matches_the_session(groups, tmp_path, monkeypatch):
     adata = _adata()
     result, _, ir = EnhancedSingleCellService().find_marker_genes(
         adata.copy(), groupby="grp", groups=groups, n_genes=10
     )
-    replay = adata.copy()
-    exec(compile(ir.render(), "marker_cell", "exec"), {"adata": replay})  # nosec B102
+    # Execute the actual complete exported notebook, including its deduplicated
+    # imports/helper cells. A bare code block omits the S6 marker-name repair.
+    from types import SimpleNamespace
+
+    import nbformat
+
+    from lobster.core.notebooks.exporter import NotebookExporter
+    from lobster.core.provenance.provenance import ProvenanceTracker
+
+    adata.write_h5ad(tmp_path / "dataset.h5ad")
+    tracker = ProvenanceTracker()
+    tracker.create_activity(activity_type="find_marker_genes", agent="test", ir=ir)
+    context = SimpleNamespace(
+        workspace_path=tmp_path, workspace_dir=tmp_path, modalities={"fixture": adata}
+    )
+    path = NotebookExporter(tracker, context).export("marker_replay")
+    notebook = nbformat.read(path, as_version=4)
+    import_cells = [
+        c.source
+        for c in notebook.cells
+        if c.cell_type == "code" and c.source.startswith("# Required imports")
+    ]
+    assert len(import_cells) == 1
+    assert (
+        "from lobster.core.utils.h5ad_utils import repair_marker_names"
+        in import_cells[0]
+    )
+    monkeypatch.chdir(tmp_path)
+    namespace = {}
+    for index, cell in enumerate(notebook.cells):
+        if cell.cell_type == "code":
+            exec(
+                compile(cell.source, f"marker_notebook_cell_{index}", "exec"), namespace
+            )  # nosec B102
+    replay = namespace["adata"]
+    assert replay.shape == adata.shape
 
     session = result.uns["rank_genes_groups"]
     exported = replay.uns["rank_genes_groups"]

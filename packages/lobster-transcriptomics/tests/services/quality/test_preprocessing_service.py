@@ -606,14 +606,19 @@ class TestHelperMethods:
     def test_normalize_expression_data_unknown_method(
         self, preprocessing_service, small_adata
     ):
-        """Test normalization with unknown method falls back to log1p."""
-        stats = preprocessing_service._normalize_expression_data(
-            small_adata, method="unknown_method", target_sum=10000
-        )
-
-        # Should fall back to log1p
-        assert stats["normalization_method"] == "unknown_method"
-        assert small_adata.raw is not None
+        """S2: unsupported normalization must refuse before mutation."""
+        before = small_adata.copy()
+        with pytest.raises(
+            PreprocessingError, match="Unsupported normalization method"
+        ):
+            preprocessing_service._normalize_expression_data(
+                small_adata, method="unknown_method", target_sum=10000
+            )
+        assert small_adata.raw is None
+        if spr.issparse(small_adata.X):
+            assert (small_adata.X != before.X).nnz == 0
+        else:
+            np.testing.assert_array_equal(small_adata.X, before.X)
 
 
 # ===============================================================================
@@ -1178,7 +1183,10 @@ class TestSelectFeaturesHVG:
 
         # Should have warning about raw counts
         assert "warning" in stats
-        assert "raw counts" in stats["warning"].lower() or "log-normalized" in stats["warning"].lower()
+        assert (
+            "raw counts" in stats["warning"].lower()
+            or "log-normalized" in stats["warning"].lower()
+        )
 
     def test_hvg_ir_structure(self, preprocessing_service, normalized_adata):
         """Test IR structure for HVG selection."""
@@ -1295,7 +1303,6 @@ class TestSelectFeaturesDevianceTemplate:
     #     with pytest.raises(ValueError, match="raw counts"):
     #         exec(self._render(ir, n_top_genes=5), namespace)  # noqa: S102
 
-
     def test_rendered_template_matches_library(
         self, preprocessing_service, raw_count_adata
     ):
@@ -1312,7 +1319,9 @@ class TestSelectFeaturesDevianceTemplate:
 
         adata = raw_count_adata.copy()
         namespace = {"adata": adata}
-        exec(self._render(ir, n_top_genes=5), namespace)  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay. noqa: S102
+        exec(
+            self._render(ir, n_top_genes=5), namespace
+        )  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay. noqa: S102
 
         counts = adata.raw.X if adata.raw is not None else adata.X
         np.testing.assert_allclose(
@@ -1359,7 +1368,9 @@ class TestSelectFeaturesDevianceTemplate:
         namespace = {"adata": adata}
         np.log = spy
         try:
-            exec(self._render(ir, n_top_genes=5), namespace)  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay. noqa: S102
+            exec(
+                self._render(ir, n_top_genes=5), namespace
+            )  # nosec B102 # Execute repository-generated code on synthetic fixtures to validate replay. noqa: S102
         finally:
             np.log = real_log
 

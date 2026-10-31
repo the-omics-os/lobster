@@ -904,9 +904,10 @@ def test_extract_marker_genes(service, clustered_adata):
 
 
 def test_extract_marker_genes_empty_results(service, simple_adata):
-    """Test marker extraction with no results."""
-    marker_df = service._extract_marker_genes(simple_adata, "leiden")
-    assert marker_df.empty
+    """S5: missing marker statistics are unavailable, not zero discoveries."""
+    with pytest.raises(SingleCellError, match=r"Marker result .* is unavailable"):
+        service._extract_marker_genes(simple_adata, "leiden")
+    assert "rank_genes_groups_filtered" not in simple_adata.uns
 
 
 # ===============================================================================

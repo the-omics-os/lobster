@@ -16,7 +16,6 @@ from lobster.services.analysis.clustering_service import (
     ClusteringService,
 )
 
-
 # ===============================================================================
 # Fixtures
 # ===============================================================================
@@ -129,14 +128,14 @@ class TestRunPCA:
         assert result.raw.shape == normalized_hvg_adata.shape
 
     def test_pca_auto_reduces_n_comps(self, clustering_service, small_adata):
-        """Test that n_comps is auto-reduced for small datasets."""
-        # Request more components than data allows
-        result, stats, _ = clustering_service.run_pca(small_adata, n_comps=100)
-
-        # Should auto-reduce
-        assert stats["n_comps_computed"] < 100
-        assert stats["n_comps_requested"] == 100
-        assert "X_pca" in result.obsm
+        """S3: an explicit unsupported component count must not be clipped."""
+        before = small_adata.copy()
+        with pytest.raises(
+            ClusteringError, match=r"Explicit n_comps=100 cannot be honored"
+        ):
+            clustering_service.run_pca(small_adata, n_comps=100)
+        assert "X_pca" not in small_adata.obsm
+        np.testing.assert_array_equal(small_adata.X, before.X)
 
     def test_pca_no_scaling(self, clustering_service, normalized_hvg_adata):
         """Test PCA without scaling."""
@@ -223,23 +222,22 @@ class TestComputeNeighborsAndEmbed:
     def test_missing_pca_raises_error(self, clustering_service, normalized_hvg_adata):
         """Test that missing PCA raises ClusteringError."""
         # normalized_hvg_adata has no PCA computed
-        with pytest.raises(ClusteringError, match="not found in adata.obsm"):
+        with pytest.raises(
+            ClusteringError,
+            match=r"Representation 'X_pca' not found; prepare and name it explicitly",
+        ):
             clustering_service.compute_neighbors_and_embed(normalized_hvg_adata)
 
     def test_small_dataset_auto_adjusts(self, clustering_service, small_adata):
-        """Test n_neighbors auto-adjustment for small datasets."""
-        # First compute PCA
+        """S3: refuse explicit unsupported neighbors instead of substituting."""
         pca_result, _, _ = clustering_service.run_pca(small_adata, n_comps=10)
-
-        # Request more neighbors than cells
-        result, stats, _ = clustering_service.compute_neighbors_and_embed(
-            pca_result, n_neighbors=50
-        )
-
-        # Should auto-reduce n_neighbors
-        assert stats["n_neighbors_used"] < 50
-        assert stats["n_neighbors_used"] <= pca_result.n_obs - 1
-        assert "X_umap" in result.obsm
+        before = pca_result.copy()
+        with pytest.raises(
+            ClusteringError, match=r"Explicit n_neighbors=50 cannot be honored"
+        ):
+            clustering_service.compute_neighbors_and_embed(pca_result, n_neighbors=50)
+        assert "X_umap" not in pca_result.obsm
+        np.testing.assert_array_equal(pca_result.obsm["X_pca"], before.obsm["X_pca"])
 
     def test_embed_ir_structure(self, clustering_service, pca_adata):
         """Test IR structure for neighbors + embedding."""
@@ -255,20 +253,20 @@ class TestComputeNeighborsAndEmbed:
 
     def test_unknown_embedding_method_raises(self, clustering_service, pca_adata):
         """Test unknown embedding method raises error."""
-        with pytest.raises(ClusteringError, match="Unknown embedding method"):
+        with pytest.raises(
+            ClusteringError, match="Embedding method must be 'umap' or 'tsne'"
+        ):
             clustering_service.compute_neighbors_and_embed(
                 pca_adata, embedding_method="unknown"
             )
 
     def test_n_pcs_auto_adjustment(self, clustering_service, small_adata):
-        """Test n_pcs auto-adjustment when exceeding available PCs."""
+        """S3: refuse an explicit PC count beyond the prepared representation."""
         pca_result, _, _ = clustering_service.run_pca(small_adata, n_comps=10)
-
-        # Request more PCs than available
-        result, stats, _ = clustering_service.compute_neighbors_and_embed(
-            pca_result, n_pcs=50
-        )
-
-        # Should auto-reduce
-        assert stats["n_pcs_used"] <= 10
-        assert "X_umap" in result.obsm
+        before = pca_result.copy()
+        with pytest.raises(
+            ClusteringError, match=r"Explicit n_pcs=50 cannot be honored"
+        ):
+            clustering_service.compute_neighbors_and_embed(pca_result, n_pcs=50)
+        assert "X_umap" not in pca_result.obsm
+        np.testing.assert_array_equal(pca_result.obsm["X_pca"], before.obsm["X_pca"])
