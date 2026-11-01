@@ -466,11 +466,11 @@ func (m confirmModel) View(th *lobsterTheme.Theme) string {
 
 // WizardModel is a BubbleTea model that implements the 5-step init wizard.
 type WizardModel struct {
-	step    wizardStep
-	theme   *lobsterTheme.Theme
-	result  WizardResult
-	done    bool
-	err     error
+	step       wizardStep
+	theme      *lobsterTheme.Theme
+	result     WizardResult
+	done       bool
+	err        error
 	resultPath string
 
 	// Step 1: Agent packages
@@ -480,18 +480,18 @@ type WizardModel struct {
 	providerSelect singleSelectModel
 
 	// Step 3: API key(s)
-	apiKeyInputs    []textinput.Model
-	apiKeyLabels    []string
-	apiKeyFocusIdx  int
+	apiKeyInputs   []textinput.Model
+	apiKeyLabels   []string
+	apiKeyFocusIdx int
 	// Ollama model selection
-	ollamaSelect    singleSelectModel
-	ollamaCustom    textinput.Model
-	ollamaIsCustom  bool
+	ollamaSelect   singleSelectModel
+	ollamaCustom   textinput.Model
+	ollamaIsCustom bool
 
 	// Cloud provider model selection (shown after API key for non-Ollama)
-	modelSelect    singleSelectModel
-	modelCustom    textinput.Model
-	modelIsCustom  bool
+	modelSelect   singleSelectModel
+	modelCustom   textinput.Model
+	modelIsCustom bool
 
 	// Step 4: Profile
 	profileSelect singleSelectModel
@@ -503,11 +503,11 @@ type WizardModel struct {
 	oauthLastError string // last failure reason for display
 
 	// Step 5: Optional keys
-	optionalSub    optionalKeySubStep
-	ncbiConfirm    confirmModel
-	ncbiInput      textinput.Model
-	cloudConfirm   confirmModel
-	cloudInput     textinput.Model
+	optionalSub     optionalKeySubStep
+	ncbiConfirm     confirmModel
+	ncbiInput       textinput.Model
+	cloudConfirm    confirmModel
+	cloudInput      textinput.Model
 	smartStdConfirm confirmModel
 	smartStdInput   textinput.Model
 }
@@ -561,7 +561,7 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 		title:       "LLM Provider",
 		description: "Select the provider for Lobster AI.",
 		items: []singleSelectItem{
-			{label: "Omics-OS Cloud      -- Managed Bedrock, login via browser", value: providerOmicsOS},
+			{label: "Omics-OS Cloud      -- Managed Bedrock gateway, API key", value: providerOmicsOS},
 			{label: "Anthropic (Claude)  -- Quick testing, development", value: providerAnthropic},
 			{label: "AWS Bedrock         -- Production, enterprise use", value: providerBedrock},
 			{label: "Ollama (Local)      -- Privacy, zero cost, offline", value: providerOllama},
@@ -763,11 +763,11 @@ func (m *WizardModel) initAPIKeyStep() {
 
 	case providerOmicsOS:
 		ti := textinput.New()
-		ti.Placeholder = "omk_... (optional — press Enter to login via browser instead)"
+		ti.Placeholder = "Paste your API key from app.omics-os.com/settings/api-keys"
 		ti.EchoMode = textinput.EchoPassword
 		ti.Focus()
 		m.apiKeyInputs = []textinput.Model{ti}
-		m.apiKeyLabels = []string{"Omics-OS API Key (or press Enter for browser login)"}
+		m.apiKeyLabels = []string{"Omics-OS API Key"}
 
 	default:
 		ti := textinput.New()
@@ -838,26 +838,13 @@ func (m WizardModel) updateAPIKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Submit all inputs.
 			m.collectAPIKeys()
 
-			// Omics-OS with empty key → start browser OAuth.
-			// Skip if already authenticated (back-navigation guard).
+			// The local Python gateway uses an API key. Empty input must not
+			// start the separate npm client's device-login workflow.
 			if m.result.Provider == providerOmicsOS && strings.TrimSpace(m.result.APIKey) == "" {
-				if m.result.OAuthAuthenticated {
-					m.advanceFromAPIKey()
-					return m, textinput.Blink
-				}
-				// Pre-bind port and generate state in main goroutine so the
-				// auth URL is available for display immediately.
-				params, reason := prepareOAuthFlow()
-				if params == nil {
-					m.oauthLastError = reason
-					return m, textinput.Blink
-				}
-				m.oauthCancel = make(chan struct{})
-				m.oauthWaiting = true
-				m.oauthLastError = ""
-				m.oauthAuthURL = params.AuthURL
-				return m, startOAuthFlow(params, m.oauthCancel)
+				m.oauthLastError = "Omics-OS Cloud API key is required"
+				return m, textinput.Blink
 			}
+			m.oauthLastError = ""
 
 			m.advanceFromAPIKey()
 			return m, textinput.Blink
@@ -1104,10 +1091,15 @@ func (m WizardModel) viewAPIKey() string {
 	var sb strings.Builder
 	sb.WriteString(titleStyle.Render("API Keys") + "\n")
 
-	// Show OAuth failure hint when returning from failed browser login.
-	if m.oauthLastError != "" && m.result.Provider == providerOmicsOS {
-		warnStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Warning)
-		sb.WriteString(warnStyle.Render("Browser login failed: "+m.oauthLastError+". Paste a key instead.") + "\n")
+	if m.result.Provider == providerOmicsOS {
+		sb.WriteString(descStyle.Render("Create an API key at https://app.omics-os.com/settings/api-keys") + "\n")
+		sb.WriteString(descStyle.Render("Alternative npm Cloud client: npm i -g @omicsos/lobster && lobster cloud login --device") + "\n")
+		sb.WriteString(descStyle.Render("With both CLIs installed: lobster-cli cloud login --device (npm client)") + "\n")
+		sb.WriteString(descStyle.Render("Python uses OMICS_OS_API_KEY; configure it separately. The key is saved, not checked.") + "\n")
+		if m.oauthLastError != "" {
+			warnStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Warning)
+			sb.WriteString(warnStyle.Render(m.oauthLastError) + "\n")
+		}
 	}
 	sb.WriteString("\n")
 

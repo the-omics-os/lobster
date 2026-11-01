@@ -2021,7 +2021,11 @@ def _execute_command(
         try:
             _render_structured_output(
                 output,
-                build_status_blocks(compact=_is_protocol_output(output)),
+                build_status_blocks(
+                    compact=_is_protocol_output(output),
+                    workspace_path=getattr(client, "workspace_path", None),
+                    provider_override=getattr(client, "provider_override", None),
+                ),
             )
         except Exception as e:
             output.print(f"Status info error: {e}", style="error")
@@ -2172,7 +2176,14 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                     ),
                 ],
             )
-            _render_structured_output(output, build_status_blocks(compact=True))
+            _render_structured_output(
+                output,
+                build_status_blocks(
+                    compact=True,
+                    workspace_path=getattr(client, "workspace_path", None),
+                    provider_override=getattr(client, "provider_override", None),
+                ),
+            )
             return None
 
         # Show comprehensive system health dashboard (Rich panels)

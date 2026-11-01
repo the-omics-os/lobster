@@ -1,21 +1,39 @@
 # Orchestration Patterns — Lobster AI
 
 Use the local Python engine to offload biological workflows, not to hide a failed
-analysis behind plausible prose. Cloud workflows use the supported npm client;
-the two clients have different setup and authentication contracts.
+analysis behind plausible prose. **Local Python using an Omics-OS Cloud account**
+is still a Python install/setup task; do not replace it with npm. Only managed
+Cloud-session workflows use the npm client. Choose the execution location before
+installation; see [client selection](../SKILL.md#choose-the-correct-client-before-installing).
 
 ## Local Setup and Session Continuity
 
-Assume `lobster` resolves to the Python engine, or replace it with
-`uv run python -m lobster` in an environment containing the engine.
+First complete the [local Python Cloud-account setup](../SKILL.md#local-python-setup-with-an-omics-os-cloud-account)
+when that is the task: Python 1.2.2+ engine, default `[full]` analysis bundle,
+then supported non-interactive init or environment-only provider selection.
+Do not install npm instead, pin an older engine or call internal credential APIs
+to work around missing public init flags. A configuration save is not verified
+account access, and an empty agent inventory is not analysis-ready.
+
+Assume `lobster` resolves to Python, or use the installed environment's explicit
+interpreter, such as `.venv/bin/python -m lobster` in the fresh-project recipe.
 
 ```bash
-lobster config-test --json
+lobster --version
+lobster status
 lobster agents list
 ```
 
+For the Cloud-account route, Python `status` should display provider `omics-os`
+with its configuration source. `Account Access: Not checked (configuration only)`
+is deliberate: provider selection is not authenticated account access.
+
 Do not install packages or write provider credentials automatically when these
-checks fail. Ask the user to approve setup; see [CLI reference](cli-reference.md).
+checks fail. Obtain approval for the appropriate setup; see [CLI reference](cli-reference.md).
+`lobster config-test --json` is **optional paid live verification**, not a passive
+setup check: it invokes an LLM, may contact NCBI and probes workspace writes.
+Only run after permission, checking exit status, JSON `valid` and the intended
+provider. Stop on setup/inventory failures rather than proceeding to analysis.
 Keep the same workspace and session on every query and inspection command:
 
 ```bash
@@ -201,10 +219,11 @@ providers or authority. Auth/policy/budget/context/accounting failures need an
 authorized resolution. Preserve diagnostic logs privately; fixed-category
 provider refusals are not a guarantee that every log is safe to share.
 
-## npm Cloud Orchestration
+## npm Managed Cloud Session Orchestration
 
-Use npm CLI 0.4.2 `@omicsos/lobster` for sign-in and Cloud sessions, not Python/Go
-Cloud compatibility. `lobster-cli` below is the npm alias:
+Use npm CLI 0.4.2 `@omicsos/lobster` only for managed Cloud sessions, not as a
+replacement for local Python using a Cloud account. `lobster-cli` is the npm alias;
+its sign-in/status results do not establish a configured Python engine:
 
 ```bash
 lobster-cli cloud login --device  # human approves the displayed URL/code

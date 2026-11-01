@@ -279,6 +279,10 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
             creds_path = save_global_credentials(credentials)
             logger.info("Wrote global credentials: %s", creds_path)
         except Exception as exc:
+            if config_dict.get("provider") == "omics-os":
+                from lobster.config.cloud_setup import fail_cloud_setup_write
+
+                fail_cloud_setup_write(exc)
             logger.warning("Failed to write global credentials: %s", exc)
 
 

@@ -90,7 +90,9 @@ def resolve_auth(token_override: Optional[str] = None) -> dict:
 
     token = token or get_api_key()
     if not token:
-        raise CloudQueryError("Not authenticated. Run 'lobster cloud login' first.")
+        raise CloudQueryError(
+            "Not authenticated. Get an API key at app.omics-os.com/settings/api-keys and run 'lobster cloud login --api-key <key>'."
+        )
 
     if token.startswith("omk_"):
         return {"X-API-Key": token}
@@ -156,7 +158,9 @@ def create_cloud_session(
         raise CloudQueryError(f"Cannot reach cloud: {e}") from e
 
     if resp.status_code == 401:
-        raise CloudQueryError("Authentication failed (401). Run 'lobster cloud login'.")
+        raise CloudQueryError(
+            "Omics-OS Cloud API key rejected or expired: create a new one at app.omics-os.com, then run 'lobster cloud login --api-key <key>'."
+        )
     if resp.status_code == 402:
         raise CloudQueryError(
             "Monthly budget exhausted. Check usage: lobster cloud status"
@@ -338,7 +342,7 @@ def stream_cloud_query(
             ) as resp:
                 if resp.status_code == 401:
                     result.set_error(
-                        "Authentication failed (401). Run 'lobster cloud login'."
+                        "Omics-OS Cloud API key rejected or expired: create a new one at app.omics-os.com, then run 'lobster cloud login --api-key <key>'."
                     )
                     return result
                 if resp.status_code == 402:

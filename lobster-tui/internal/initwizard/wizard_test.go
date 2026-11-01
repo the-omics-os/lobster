@@ -382,7 +382,7 @@ func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
 	}
 }
 
-func TestOAuthStartedWithEmptyKey(t *testing.T) {
+func TestCloudEmptyKeyStaysAtCredentialStep(t *testing.T) {
 	m := NewWizardModel("", "")
 
 	// Select Omics-OS Cloud (index 0).
@@ -396,15 +396,18 @@ func TestOAuthStartedWithEmptyKey(t *testing.T) {
 		t.Fatalf("expected omics-os, got %s", m.result.Provider)
 	}
 
-	// Press Enter with empty input → should start OAuth (oauthWaiting = true).
-	result, cmd := m.Update(makeKeyPress("enter"))
+	// Empty input must not start OAuth or advance to a configured result.
+	result, _ = m.Update(makeKeyPress("enter"))
 	m = result.(WizardModel)
 
-	if !m.oauthWaiting {
-		t.Fatal("expected oauthWaiting=true after empty Enter on omics-os")
+	if m.oauthWaiting || m.oauthCancel != nil || m.oauthAuthURL != "" {
+		t.Fatal("empty Cloud key started unsupported OAuth")
 	}
-	if cmd == nil {
-		t.Fatal("expected non-nil tea.Cmd for OAuth flow")
+	if m.step != stepAPIKey {
+		t.Fatal("empty Cloud key advanced beyond the credential step")
+	}
+	if m.oauthLastError == "" {
+		t.Fatal("empty Cloud key needs actionable guidance")
 	}
 }
 

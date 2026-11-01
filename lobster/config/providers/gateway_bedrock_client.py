@@ -114,7 +114,7 @@ class GatewayBedrockClient:
         error_map = {
             401: (
                 "UnauthorizedAccess",
-                "Omics-OS authentication failed. Run 'lobster cloud login'.",
+                "Omics-OS Cloud API key rejected or expired: create a new one at app.omics-os.com.",
             ),
             402: (
                 "BudgetExceeded",
@@ -135,12 +135,30 @@ class GatewayBedrockClient:
             # Try to extract detail from JSON body
             try:
                 data = json.loads(body)
-                if "error" in data:
-                    msg = data["error"].get("message", msg)
-                elif "detail" in data:
-                    msg = data["detail"]
+                detail = None
+                if isinstance(data, dict):
+                    error = data.get("error")
+                    if isinstance(error, dict):
+                        detail = error.get("message")
+                    elif "error" not in data:
+                        detail = data.get("detail")
+                if isinstance(detail, str) and detail.strip():
+                    msg = detail
+                elif status_code == 403:
+                    msg = "Request denied (HTTP 403)."
             except (json.JSONDecodeError, KeyError):
                 pass
+
+            if status_code == 401:
+                msg = (
+                    "Omics-OS Cloud API key rejected or expired: create a new one "
+                    "at app.omics-os.com. Alternatively, use the npm "
+                    "@omicsos/lobster client: lobster-cli cloud login --device."
+                )
+            else:
+                # Preserve the gateway's tier/policy refusal and its detail;
+                # a 403 is not evidence that replacing credentials will help.
+                msg = f"Omics-OS Cloud: {msg}"
 
             raise ClientError(
                 error_response={"Error": {"Code": code, "Message": msg}},

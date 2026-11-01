@@ -112,22 +112,16 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
         # Step 2 — Credentials (from provider_def.credentials)               #
         # ================================================================== #
         if provider == "omics-os":
-            try:
-                from lobster.cli_internal.commands.light.cloud_commands import (
-                    attempt_login_for_init,
-                )
+            from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
 
-                success = attempt_login_for_init()
-            except Exception:
-                success = False
-
-            if not success:
-                key = questionary.password(
-                    "Enter your Omics-OS API key (from app.omics-os.com/settings/api-keys):"
-                ).ask()
-                if key is None:
-                    return _cancelled(result)
-                result["api_key"] = key.strip()
+            print(OMICS_OS_AUTH_GUIDANCE)
+            key = questionary.password("Enter your Omics-OS API key:").ask()
+            if key is None:
+                return _cancelled(result)
+            if not key.strip():
+                print("Omics-OS Cloud API key is required. " + OMICS_OS_AUTH_GUIDANCE)
+                return _cancelled(result)
+            result["api_key"] = key.strip()
 
         elif provider == "ollama":
             # Ollama has no credentials — handled via model selection below

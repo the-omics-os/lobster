@@ -249,12 +249,32 @@ class GoTUIBridge:
                 logger.debug("lobster-tui: %s", decoded)
 
 
-def run_init_wizard(binary_path: str, *, theme: str = "", timeout: int = 300) -> dict:
+def run_init_wizard(
+    binary_path: str, *, theme: str = "", timeout: Optional[int] = None
+) -> dict:
     """Run one-shot Go init wizard and parse its JSON result file.
 
-    The Go wizard needs the real terminal for interactive rendering, so the
-    result is written to a temporary file instead of stdout capture.
+    Interactive setup has no deadline by default: obtaining a key can take
+    longer than five minutes. POSIX terminal attributes are restored before
+    returning control to Python, including timeout and interrupt exits.
     """
+    import sys
+
+    try:
+        import termios
+    except ImportError:
+        termios = None  # Windows does not expose the POSIX terminal API.
+
+    terminal_state = None
+    if termios is not None and sys.stdin.isatty():
+        try:
+            terminal_fd = sys.stdin.fileno()
+            terminal_state = (terminal_fd, termios.tcgetattr(terminal_fd))
+        except (AttributeError, OSError, termios.error) as error:
+            raise BridgeError(
+                "Cannot preserve terminal state; use lobster init --ui classic."
+            ) from error
+
     with tempfile.NamedTemporaryFile(
         mode="w", encoding="utf-8", suffix=".json", prefix="lobster-init-", delete=False
     ) as result_file:
@@ -284,9 +304,14 @@ def run_init_wizard(binary_path: str, *, theme: str = "", timeout: int = 300) ->
             payload = None
     finally:
         try:
-            Path(result_path).unlink()
-        except FileNotFoundError:
-            pass
+            if terminal_state is not None:
+                terminal_fd, attributes = terminal_state
+                termios.tcsetattr(terminal_fd, termios.TCSANOW, attributes)
+        finally:
+            try:
+                Path(result_path).unlink()
+            except FileNotFoundError:
+                pass
 
     if payload is None:
         if proc.returncode != 0:

@@ -1,26 +1,157 @@
 # CLI Reference — Local Lobster AI
 
-Examples here target the Python engine unless marked **npm Cloud**. If npm
-`lobster` is also installed, local commands can be addressed explicitly with
-`uv run python -m lobster <command>` from an environment containing the engine.
-In particular, npm `lobster init` is a different onboarding command.
+Examples here target the Python engine unless marked **npm Cloud sessions**.
+An Omics-OS Cloud account can supply inference for **local Python**: install
+`lobster-ai` for that task, not npm alone. npm is for managed Cloud sessions.
+If npm `lobster` is also installed, use `uv run python -m lobster <command>` in
+an environment containing the Python engine to avoid selecting the npm binary.
+In particular, npm `lobster init` is not local Python provider configuration.
 
 ## Installation and Local Configuration
 
-Install or upgrade only with the user's permission:
+Install or upgrade only with the user's permission. The Cloud init flags in this
+reference require Python engine **1.2.2+**. Use `[full]` by default for local
+analysis; provider-only extras can leave **no specialist agents**. `[full]` does
+not include every optional domain: inspect installed/enabled task agents.
 
 ```bash
-uv tool install 'lobster-ai[full]~=1.2'
+# Fresh approved POSIX project/environment; do not replace an existing .venv
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python 'lobster-ai[full]~=1.2.2'
+.venv/bin/python -m lobster --version
+.venv/bin/python -m lobster agents list
+
+# Alternative user-wide tool install (not a project .venv):
+uv tool install --python 3.12 'lobster-ai[full]~=1.2.2'
+# For an existing tool install, upgrade with permission:
 uv tool upgrade lobster-ai
-# In an activated .venv instead:
-uv pip install 'lobster-ai[transcriptomics]~=1.2'
 ```
 
-Domain extras include their supporting packages; inspect the installed agent
-inventory with `lobster agents list` rather than assuming a fixed set.
+In an existing approved `.venv`, use its Python with `uv pip install --python`
+instead of recreating it. On Windows its interpreter is `.venv/Scripts/python.exe`.
+If `uv` is missing, obtain permission to install it; do not fall back to npm or
+bare pip. Do not pin an older public version that lacks these init flags or mix
+package versions intentionally to bypass a setup failure.
 
-Interactive `lobster init` requires user input. Automated setup uses
-`--non-interactive` and a selected provider:
+### Local Python with an Omics-OS Cloud Account
+
+Create a key at `https://app.omics-os.com/settings/api-keys` through the human
+account owner. Prefer `OMICS_OS_API_KEY` securely injected into the Python process.
+If the user authorizes a key file, Bash can read it without printing the value:
+
+```bash
+# Set OMICS_OS_KEY_FILE to the user-authorized path; do not enable set -x
+export OMICS_OS_API_KEY="$(<"$OMICS_OS_KEY_FILE")"
+```
+
+Never source a key file as executable code. Use the Python interpreter installed
+above, not an npm binary. For a fresh workspace config in the current directory:
+
+```bash
+(
+  set -e
+  umask 077
+  : "${OMICS_OS_API_KEY:?Supply an authorized Omics-OS Cloud API key securely}"
+  .venv/bin/python -m lobster init --non-interactive --use-omics-os \
+    --skip-extras --skip-ssl-test </dev/null
+  .venv/bin/python -m lobster status
+  .venv/bin/python -m lobster agents list
+)
+```
+
+- `--use-omics-os`: select the gateway; resolve a nonblank `OMICS_OS_API_KEY`, then
+  the active saved platform profile. A saved OAuth token may refresh; this is not
+  a universal offline/no-network operation.
+- `--omics-os-key <key>`: explicit Cloud key, used before lookup even with
+  `--use-omics-os`. Blank explicit input fails rather than falling back. This
+  flag can expose the key in process arguments; the environment route is preferred.
+- Don't pass another provider's flags with either Cloud selector: the other
+  explicit provider takes priority. No third-party provider key is required for
+  Omics-only setup. `--cloud-key`/`LOBSTER_CLOUD_KEY` is a legacy supplement and
+  does not select the `omics-os` gateway.
+- Init's success message means **saved, not checked**. It does not verify account
+  access, format, validity or inference, even if a nonempty key was accepted.
+  Do not report authentication verified from init alone.
+- Capture exit status and output. Missing/blank keys fail nonzero without a
+  hidden prompt. Stop on failures; do not use private/internal credential APIs
+  as a workaround. If `init --help` lacks the flags, upgrade with permission.
+
+**Environment-only alternative (no init credential write):**
+
+```bash
+export LOBSTER_LLM_PROVIDER=omics-os
+: "${OMICS_OS_API_KEY:?Supply an authorized Omics-OS Cloud API key securely}"
+.venv/bin/python -m lobster status
+```
+
+Python `status` shows `Initialization`, `Provider` and `Configuration Source`.
+For this route, expect provider `omics-os`; `Account Access` remains
+`Not checked (configuration only)`. These fields display provider configuration,
+not valid keys, authenticated identity or inference success. Stop if the displayed
+provider is wrong; do not silently replace configuration.
+
+The provider variable applies when no higher-priority provider configuration
+exists. Selection priority is query/chat `--provider` > workspace provider JSON >
+global provider JSON > `LOBSTER_LLM_PROVIDER`. For a later authorized query/chat,
+`--provider omics-os` explicitly selects Cloud without rewriting configuration.
+A subsequent analysis can still write data and use paid inference.
+
+**Human route:** Python `lobster init` accepts a key in a masked Cloud prompt.
+Bare Python `lobster cloud login` does not start a supported browser flow; it
+returns guidance. Python `lobster cloud login --api-key <key>` is a separate
+manual-key login that can validate/store a platform credential, but the flag
+exposes the key in argv and login does not select the local provider. npm device
+login requires human approval and is not a non-interactive setup shortcut;
+configure Python separately rather than assuming shared credentials work.
+
+### Cloud Init Writes and Overwrite
+
+Workspace non-interactive init writes **CWD** `.env` (includes the key) and
+`.lobster_workspace/provider_config.json`. The restrictive umask above protects
+new files; it does not repair permissions on existing files or old backups.
+Keep credential files/backups private and out of commits/shared logs.
+
+Adding `--global` instead writes `providers.json` and `credentials.env` under
+`$XDG_CONFIG_HOME/lobster` or `~/.config/lobster` on Unix, `%APPDATA%\\lobster` on
+Windows. The global credential writer requests mode `0600`; inspect permission
+warnings rather than assuming enforcement on every platform. No CWD `.env` is
+written in global mode, but non-interactive init still creates CWD
+`.lobster_workspace`; agent-selection flags can write agent configuration there.
+Obtain permission for both global paths and any CWD side effects.
+
+With non-interactive Cloud selected and without `--force`:
+- Existing different-provider configuration fails nonzero and asks for `--force`.
+  A JSON-only workspace still counts as existing configuration even with no CWD
+  `.env`, including when that provider JSON cannot be loaded.
+- Existing Cloud configuration with a usable key can return "already configured"
+  and exit 0 **without rewriting**. A supplied replacement key is not thereby
+  persisted; this is not key rotation or account verification.
+- Missing required credentials fail before replacement/backup. Do not interpret
+  any other init mode's existing-config exit 0 as a completed reconfiguration.
+
+Use `--force` only after approval to replace provider/credential configuration.
+Non-interactive Cloud setup backs up each existing workspace artifact before
+replacing either: `.env.backup.YYYYMMDD_HHMMSS` in CWD and
+`.lobster_workspace/provider_config.json.backup.YYYYMMDD_HHMMSS`. A failed backup
+stops setup before replacement. Global mode retains
+`providers.json.backup.YYYYMMDD_HHMMSS`, not a complete backup of all secrets:
+global `credentials.env` can be overwritten, and the provider backup is not a
+credentials rollback. Read output and inspect nonsecret status, not file values.
+
+Required Cloud provider/credential write failures exit nonzero, without a saved
+success claim or restarting another wizard. The diagnostic says **partial
+configuration may remain; setup is not complete**. Stop and inspect the reported
+failure privately before an approved repair; do not assume transactional rollback
+or a complete setup because one file was written.
+
+Keep init key lookup separate from dotenv/runtime loading: global credentials
+fill unset environment values; an applicable workspace/fallback `.env` can load
+with overwrite enabled. An exported key does not universally defeat an old
+`.env`. Do not read or print credential files merely to inspect configuration.
+
+### Other Local Providers and Live Verification
+
+These are alternatives to Omics-OS, not extra requirements for a Cloud account:
 
 ```bash
 lobster init --non-interactive --anthropic-key "$ANTHROPIC_API_KEY" --profile production
@@ -33,35 +164,35 @@ lobster init --non-interactive --bedrock-access-key "$AWS_BEDROCK_ACCESS_KEY" \
 lobster init --non-interactive --azure-endpoint "$AZURE_AI_ENDPOINT" \
   --azure-credential "$AZURE_AI_CREDENTIAL"
 lobster init --non-interactive --use-ollama --ollama-model "llama3:8b-instruct"
-lobster config-test --json
 ```
 
-Environment expansion keeps literal keys out of examples, but a key passed as a
-flag can still be visible in process arguments. Do not echo it or capture it in
-shared logs. Interactive masked setup is preferable when the user is present.
+A key expanded into a flag can still be visible in process arguments. Do not echo
+it or capture it in shared logs. Masked interactive setup is a human option,
+not a machine requirement.
+
+`lobster config-test --json` **invokes a paid LLM test**, may contact NCBI and
+writes/deletes a workspace probe. Run only after explicit permission for those
+operations, not as an automatic setup-only check. Require exit 0 and JSON
+`valid: true`; for a Cloud setup also require
+`checks.llm_provider.provider: "omics-os"`. Preserve refusals/failures privately
+and stop; do not switch provider/credentials or claim a successful analysis from
+this small connectivity test.
 
 | Init flag | Meaning |
 |---|---|
+| `--non-interactive` | Machine mode, no wizard; select a provider explicitly |
+| `--use-omics-os` / `--omics-os-key` | Non-interactive Cloud gateway selection/key as above |
 | `--model`, `-m` | Selected provider's model ID |
 | `--profile` | Anthropic/Bedrock profile: development, production, performance, max |
 | `--ncbi-key` | Optional NCBI key |
 | `--agents` | Comma-separated enabled agent identifiers |
 | `--preset` | Agent selection preset, e.g. scrna-basic |
-| `--skip-extras` | Skip optional package installation |
+| `--skip-extras` | Skip optional installs; wizard-selected agents can still be recorded |
+| `--skip-ssl-test` | Skip init SSL/connectivity test, not all network activity |
 | `--skip-docling` / `--install-docling` | PDF intelligence installation choice |
-| `--global`, `-g` | Write user-wide settings; requires permission for those paths |
-| `--force`, `-f` | Overwrite configuration; ask before replacing it |
+| `--global`, `-g` | Global provider/credential writes plus possible CWD side effects |
+| `--force`, `-f` | Approved overwrite, with the limited backup described above |
 | `--ui` | Interactive init surface: auto, go, classic |
-
-The non-interactive workspace setup above writes provider selection to the CWD's
-`.lobster_workspace/provider_config.json` and credentials separately to the CWD's
-`.env`. Interactive/Go setup can use a resolved workspace instead. Global provider
-settings use `~/.config/lobster/providers.json`; the credential loader can also
-read `~/.config/lobster/credentials.env` when present. Global credentials fill
-unset environment values; the applicable workspace/fallback `.env` then loads
-with overwrite enabled. An exported key does not necessarily win over `.env`.
-Keep credential loading separate from provider/model selection, and do not read
-or print credential files simply to inspect configuration.
 
 Local Bedrock names are `AWS_BEDROCK_ACCESS_KEY` and
 `AWS_BEDROCK_SECRET_ACCESS_KEY`; Azure's canonical pair is `AZURE_AI_ENDPOINT`
@@ -300,8 +431,10 @@ auth, policy, budget, provider and accounting failures. Do not suppress them or
 switch credentials to make an analysis continue. This is not a guarantee that
 all logs or every exception are free of sensitive content.
 
-## npm Cloud — Separate Supported Client
+## npm Cloud Sessions — Not Local Python Setup
 
+Use this section only for a managed Cloud session. It does not install Python
+`lobster-ai` or configure its local `omics-os` provider.
 These examples use npm CLI 0.4.2 and its `lobster-cli` alias:
 
 ```bash
@@ -313,11 +446,11 @@ lobster-cli cloud query --json --session-id latest "Continue the session"
 lobster-cli cloud logout
 ```
 
-Python `lobster cloud login` is rejected by current Cloud sign-in. Use
-npm to sign in; the local Python `omics-os` gateway provider can reuse the saved
-platform credential under `~/.config/omics-os/`. Do not read or print it to inspect
-configuration, and get permission before writes to that location. See the
-[1.2.1 sign-in limitation](https://github.com/the-omics-os/lobster/releases/tag/v1.2.1#known-limitations).
+Device login requires human browser approval and can write credentials under
+`~/.config/omics-os/`; get permission before those writes. Do not read or print
+credential files to inspect configuration. Do not treat successful npm sign-in
+as proof of a Python installation, local provider selection or working local
+inference; use the local Python setup route for that task.
 
 API-key auth accepts `OMICSOS_API_KEY` from
 the environment; `--api-key <key>` also exists but can expose the key in process

@@ -373,6 +373,14 @@ def _heartbeat_loop(bridge: _LightBridge, stop_event: threading.Event) -> None:
 def _friendly_error(raw: str) -> tuple:
     """Map raw error messages to user-friendly (title, message) tuples."""
     msg = raw.strip()
+    # The gateway uses Bedrock-compatible errors, so its operation names do
+    # not establish that the user configured their own AWS/IAM credentials.
+    cloud_auth = "Omics-OS Cloud API key rejected or expired"
+    if cloud_auth in msg:
+        return ("Omics-OS Cloud", msg[msg.index(cloud_auth) :])
+    cloud_refusal = "Omics-OS Cloud:"
+    if cloud_refusal in msg:
+        return ("Omics-OS Cloud", msg[msg.index(cloud_refusal) :])
     if "security token" in msg or "UnrecognizedClientException" in msg:
         return (
             "Provider Error",

@@ -12,7 +12,6 @@ Commands:
 
 import logging
 import sys
-import time
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -159,339 +158,19 @@ def _api_key_login(api_key: Optional[str]) -> None:
 
 
 def _browser_login() -> None:
-    """Authenticate via browser OAuth flow with localhost callback."""
-    import json as _json
-    import random
-    import secrets
-    import threading
-    import webbrowser
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    """Redirect legacy no-key callers without browser, listener, or hidden prompt."""
+    from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
 
-    from lobster.config.credentials import (
-        _save_active_profile,
-        get_endpoint,
-        get_platform_endpoint,
-    )
-
-    endpoint = get_endpoint()
-    # Broker/OAuth flow is ALWAYS the platform host — never the active profile's
-    # (possibly tenant/poisoned) data endpoint. This constant can't be poisoned
-    # via the credential file or OMICS_OS_ENDPOINT, so the browser OAuth flow +
-    # its CORS origin stay trustworthy. (D5 / Codex P1)
-    broker_endpoint = get_platform_endpoint()
-    if not _is_secure_endpoint(endpoint):
-        console.print(
-            f"[red]Refusing to authenticate over insecure connection: {endpoint}[/red]\n"
-            "[dim]The endpoint must use HTTPS (or localhost for development).[/dim]"
-        )
-        raise typer.Exit(1)
-
-    port = random.randint(18765, 18800)
-    state = secrets.token_urlsafe(32)
-    received_tokens: dict = {}
-    server_error: list = []
-
-    class CallbackHandler(BaseHTTPRequestHandler):
-        def _send_cors_headers(self):
-            # Must match the broker page origin (platform) or the callback POST
-            # is CORS-blocked.
-            self.send_header("Access-Control-Allow-Origin", broker_endpoint)
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.send_header("Access-Control-Allow-Private-Network", "true")
-
-        def do_POST(self):
-            if self.path != "/callback":
-                self.send_response(404)
-                self._send_cors_headers()
-                self.end_headers()
-                return
-
-            # Validate Content-Type
-            content_type = self.headers.get("Content-Type", "")
-            if "application/json" not in content_type:
-                self.send_response(415)
-                self._send_cors_headers()
-                self.end_headers()
-                return
-
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                tokens = _json.loads(body)
-
-                # Verify state parameter (CSRF protection)
-                if tokens.get("state") != state:
-                    self.send_response(403)
-                    self._send_cors_headers()
-                    self.end_headers()
-                    return
-
-                received_tokens.update(tokens)
-                self.send_response(200)
-                self._send_cors_headers()
-                self.send_header("Content-Type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h2>Authentication successful!</h2>"
-                    b"<p>You can close this tab and return to the terminal.</p></body></html>"
-                )
-            except (ValueError, _json.JSONDecodeError) as e:
-                server_error.append(str(e))
-                self.send_response(400)
-                self._send_cors_headers()
-                self.end_headers()
-
-        def do_OPTIONS(self):
-            self.send_response(204)
-            self._send_cors_headers()
-            self.end_headers()
-
-        def log_message(self, format, *args):
-            pass  # Suppress server logs
-
-    try:
-        server = HTTPServer(("127.0.0.1", port), CallbackHandler)
-    except OSError:
-        console.print(
-            "[yellow]Could not start local server. Falling back to API key login.[/yellow]"
-        )
-        _api_key_login(None)
-        return
-
-    server.timeout = 120
-
-    auth_url = f"{broker_endpoint}/auth/cli?port={port}&state={state}"
-    console.print("[dim]Opening browser for authentication...[/dim]")
-    console.print(f"[dim]If the browser doesn't open, visit:[/dim] {auth_url}")
-
-    try:
-        webbrowser.open(auth_url)
-    except Exception:
-        console.print("[yellow]Could not open browser automatically.[/yellow]")
-
-    # Serve until we receive tokens or timeout.
-    # Browser sends OPTIONS preflight + POST — need to handle multiple requests.
-    done_event = threading.Event()
-
-    def serve_until_done():
-        while not done_event.is_set():
-            server.handle_request()
-
-    server_thread = threading.Thread(target=serve_until_done, daemon=True)
-    server_thread.start()
-
-    console.print("[dim]Waiting for browser authentication (timeout: 120s)...[/dim]")
-
-    # Poll for tokens with overall timeout
-    deadline = time.monotonic() + 120
-    while not received_tokens and time.monotonic() < deadline:
-        time.sleep(0.2)
-
-    done_event.set()
-    server.server_close()
-
-    if not received_tokens or "access_token" not in received_tokens:
-        if time.monotonic() >= deadline:
-            console.print("[yellow]Browser login timed out.[/yellow]")
-        else:
-            console.print("[yellow]Did not receive valid tokens from browser.[/yellow]")
-        console.print("[dim]Falling back to API key login...[/dim]")
-        _api_key_login(None)
-        return
-
-    access_token = received_tokens["access_token"]
-
-    # Validate the token
-    data = _validate_credentials(endpoint, access_token)
-    if data is None:
-        console.print(
-            "[yellow]Token validation failed. Falling back to API key login.[/yellow]"
-        )
-        _api_key_login(None)
-        return
-
-    # Calculate token expiry (Cognito tokens last 1 hour by default)
-    from datetime import datetime, timedelta, timezone
-
-    token_expiry = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-
-    creds = {
-        "auth_mode": "oauth",
-        "access_token": access_token,
-        "refresh_token": received_tokens.get("refresh_token", ""),
-        "id_token": received_tokens.get("id_token", ""),
-        "client_id": received_tokens.get("client_id", "7lgldp8e72p2lmpmi3gjbnn9uk"),
-        "token_expiry": token_expiry,
-        "endpoint": endpoint,
-        "user_id": data.get("user_id", ""),
-        "email": data.get("email", ""),
-        "tier": data.get("tier", "free"),
-    }
-
-    # V2-safe write: merge into the active profile (preserves siblings). Clear
-    # stale omics_cli fields so a Cognito login over an omics_cli profile
-    # doesn't leave refresh mis-branching to the omc_ path (Codex P1).
-    _save_active_profile(
-        creds, remove=("cli_token", "credential_id", "credential_type", "api_key")
-    )
-    _print_login_success(data)
+    console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
+    raise typer.Exit(1)
 
 
 def attempt_login_for_init() -> bool:
-    """Attempt Omics-OS Cloud browser login for the init wizard.
+    """Compatibility helper: describe supported paths, without authentication I/O."""
+    from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
 
-    Runs the same browser OAuth flow as ``lobster cloud login`` but returns
-    a boolean instead of raising ``typer.Exit``.  On success the credentials
-    are persisted to ``~/.config/omics-os/credentials.json``.
-
-    Returns:
-        True if login succeeded and credentials were saved.
-    """
-    import json as _json
-    import random
-    import secrets
-    import threading
-    import webbrowser
-    from http.server import BaseHTTPRequestHandler, HTTPServer
-
-    from lobster.config.credentials import (
-        _save_active_profile,
-        get_endpoint,
-        get_platform_endpoint,
-    )
-
-    endpoint = get_endpoint()
-    # Broker/OAuth flow is ALWAYS the platform host (un-poisonable). (D5 / Codex P1)
-    broker_endpoint = get_platform_endpoint()
-    if not _is_secure_endpoint(endpoint):
-        console.print(
-            f"[red]Refusing to authenticate over insecure connection: {endpoint}[/red]"
-        )
-        return False
-
-    port = random.randint(18765, 18800)
-    state = secrets.token_urlsafe(32)
-    received_tokens: dict = {}
-
-    class _CallbackHandler(BaseHTTPRequestHandler):
-        def _send_cors_headers(self):
-            # Must match the broker page origin (platform) or the callback is blocked.
-            self.send_header("Access-Control-Allow-Origin", broker_endpoint)
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.send_header("Access-Control-Allow-Private-Network", "true")
-
-        def do_POST(self):
-            if self.path != "/callback":
-                self.send_response(404)
-                self._send_cors_headers()
-                self.end_headers()
-                return
-            content_type = self.headers.get("Content-Type", "")
-            if "application/json" not in content_type:
-                self.send_response(415)
-                self._send_cors_headers()
-                self.end_headers()
-                return
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-            try:
-                tokens = _json.loads(body)
-                if tokens.get("state") != state:
-                    self.send_response(403)
-                    self._send_cors_headers()
-                    self.end_headers()
-                    return
-                received_tokens.update(tokens)
-                self.send_response(200)
-                self._send_cors_headers()
-                self.send_header("Content-Type", "text/html")
-                self.end_headers()
-                self.wfile.write(
-                    b"<html><body><h2>Authentication successful!</h2>"
-                    b"<p>You can close this tab and return to the terminal.</p></body></html>"
-                )
-            except (ValueError, _json.JSONDecodeError):
-                self.send_response(400)
-                self._send_cors_headers()
-                self.end_headers()
-
-        def do_OPTIONS(self):
-            self.send_response(204)
-            self._send_cors_headers()
-            self.end_headers()
-
-        def log_message(self, format, *args):
-            pass
-
-    try:
-        server = HTTPServer(("127.0.0.1", port), _CallbackHandler)
-    except OSError:
-        return False
-
-    server.timeout = 120
-
-    auth_url = f"{broker_endpoint}/auth/cli?port={port}&state={state}"
-    console.print("[dim]Opening browser for Omics-OS Cloud login...[/dim]")
-    console.print(f"[dim]If browser doesn't open: {auth_url}[/dim]")
-
-    try:
-        webbrowser.open(auth_url)
-    except Exception:
-        console.print("[yellow]Could not open browser automatically.[/yellow]")
-
-    done_event = threading.Event()
-
-    def _serve_until_done():
-        while not done_event.is_set():
-            server.handle_request()
-
-    server_thread = threading.Thread(target=_serve_until_done, daemon=True)
-    server_thread.start()
-
-    console.print("[dim]Waiting for browser authentication (timeout: 120s)...[/dim]")
-
-    deadline = time.monotonic() + 120
-    while not received_tokens and time.monotonic() < deadline:
-        time.sleep(0.2)
-
-    done_event.set()
-    server.server_close()
-
-    if not received_tokens or "access_token" not in received_tokens:
-        if time.monotonic() >= deadline:
-            console.print("[yellow]Browser login timed out.[/yellow]")
-        return False
-
-    access_token = received_tokens["access_token"]
-    data = _validate_credentials(endpoint, access_token, token_type="token")
-    if data is None:
-        return False
-
-    from datetime import datetime, timedelta, timezone
-
-    creds = {
-        "auth_mode": "oauth",
-        "access_token": access_token,
-        "refresh_token": received_tokens.get("refresh_token", ""),
-        "id_token": received_tokens.get("id_token", ""),
-        "client_id": received_tokens.get("client_id", "7lgldp8e72p2lmpmi3gjbnn9uk"),
-        "token_expiry": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
-        "endpoint": endpoint,
-        "user_id": data.get("user_id", ""),
-        "email": data.get("email", ""),
-        "tier": data.get("tier", "free"),
-    }
-    # V2-safe write (preserves siblings); clear stale omics_cli fields (Codex P1).
-    _save_active_profile(
-        creds, remove=("cli_token", "credential_id", "credential_type", "api_key")
-    )
-
-    tier = data.get("tier", "free")
-    email = data.get("email", "")
-    console.print(f"[green]Authenticated as {email} (tier: {tier})[/green]")
-    return True
+    console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
+    return False
 
 
 @cloud_app.command()
@@ -508,7 +187,7 @@ def account() -> None:
     if not api_key or not creds:
         console.print(
             "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
-            "Run: [bold]lobster cloud login[/bold]"
+            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
         )
         raise typer.Exit(0)
 
@@ -589,16 +268,19 @@ def login(
     api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
-        help="API key (omk_...). If provided, skips browser login.",
+        help="Omics-OS API key from app.omics-os.com/settings/api-keys",
     ),
 ) -> None:
-    """Authenticate with Omics-OS Cloud.
+    """Authenticate the Python local gateway provider with --api-key <key>.
 
-    Without --api-key, opens a browser for OAuth login.
-    Falls back to interactive API key paste if the browser flow fails.
+    Create a key at app.omics-os.com/settings/api-keys. Without --api-key,
+    this Python command prints setup guidance and exits nonzero; it does not
+    launch a browser or prompt for a key.
 
-    All LLM calls route through the Omics-OS gateway for managed Bedrock access
-    with billing, usage tracking, and model access control.
+    Alternative managed Cloud client (npm): npm i -g @omicsos/lobster &&
+    lobster cloud login --device. Use lobster-cli cloud login --device to select
+    the npm client when both are installed. Configure Python separately using
+    OMICS_OS_API_KEY; do not assume npm credential sharing.
     """
     if api_key:
         _api_key_login(api_key)
@@ -618,7 +300,7 @@ def status() -> None:
     if not api_key:
         console.print(
             "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
-            "Run: [bold]lobster cloud login[/bold]"
+            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
         )
         raise typer.Exit(0)
 
@@ -644,7 +326,7 @@ def status() -> None:
     if resp.status_code == 401:
         console.print(
             "[red]Credentials expired or invalid.[/red]\n"
-            "Run: [bold]lobster cloud login[/bold]"
+            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
         )
         raise typer.Exit(1)
 
