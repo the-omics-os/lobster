@@ -88,7 +88,7 @@ def test_json_only_workspace_requires_force_and_keeps_provider_backup(
 def test_cloud_force_backs_up_both_artifacts_before_provider_write(
     backup_fails, monkeypatch, tmp_path
 ):
-    import shutil
+    from lobster.cli_internal.commands.heavy import init_commands
 
     workspace = tmp_path / ".lobster_workspace"
     workspace.mkdir()
@@ -96,7 +96,7 @@ def test_cloud_force_backs_up_both_artifacts_before_provider_write(
     config.write_text('{"global_provider":"anthropic"}')
     env = tmp_path / ".env"
     env.write_text("LOBSTER_LLM_PROVIDER=anthropic\n")
-    original_copy = shutil.copy2
+    original_copy = init_commands._backup_init_file
     original_save = WorkspaceProviderConfig.save
     events = []
 
@@ -111,7 +111,7 @@ def test_cloud_force_backs_up_both_artifacts_before_provider_write(
         assert env.read_text().find("omics-os") >= 0
         return original_save(self, path)
 
-    monkeypatch.setattr(shutil, "copy2", backup)
+    monkeypatch.setattr(init_commands, "_backup_init_file", backup)
     monkeypatch.setattr(WorkspaceProviderConfig, "save", save)
     result = init("--omics-os-key", KEY, "--force")
     if backup_fails:
@@ -158,7 +158,7 @@ def test_required_cloud_provider_json_failure_exits_nonzero_without_saved_claim(
 def test_noninteractive_cloud_credential_write_failure_has_partial_diagnostic(
     global_mode, monkeypatch, tmp_path
 ):
-    import builtins
+    from lobster.config import global_config
 
     if global_mode:
 
@@ -169,14 +169,14 @@ def test_noninteractive_cloud_credential_write_failure_has_partial_diagnostic(
             "lobster.config.global_config.save_global_credentials", fail
         )
     else:
-        original = builtins.open
+        original = global_config._open_private_file
 
-        def guarded(path, mode="r", *args, **kwargs):
-            if str(path) == str(tmp_path / ".env") and "w" in mode:
+        def guarded(path, *args, **kwargs):
+            if str(path) == str(tmp_path / ".env"):
                 raise OSError("synthetic credential write failure")
-            return original(path, mode, *args, **kwargs)
+            return original(path, *args, **kwargs)
 
-        monkeypatch.setattr(builtins, "open", guarded)
+        monkeypatch.setattr(global_config, "_open_private_file", guarded)
     result = init("--omics-os-key", KEY, *(["--global"] if global_mode else []))
     assert result.exit_code != 0
     assert "partial" in result.output.lower()

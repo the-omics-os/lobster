@@ -839,6 +839,55 @@ def _install_smart_standardization_dependencies() -> None:
         )
 
 
+def _repair_skipped_secret_permissions(path: Path) -> None:
+    """Tighten an owned, regular legacy secret during init, without rewriting it."""
+    import os
+    import shlex
+    import stat
+
+    if not hasattr(os, "getuid"):
+        return  # POSIX ownership/mode checks do not certify Windows ACLs.
+    fd = None
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            return
+        if not stat.S_IMODE(info.st_mode) & 0o077:
+            return
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_uid != os.getuid():
+            return
+        os.fchmod(fd, 0o600)
+        console.print(
+            f"tightened permissions on {path} to 0600", markup=False, soft_wrap=True
+        )
+    except FileNotFoundError:
+        return  # No existing secret to repair; no misleading chmod command.
+    except OSError:
+        command = shlex.join(["chmod", "600", str(path)])
+        console.print(
+            f"Warning: could not tighten secret file permissions; run {command}",
+            markup=False,
+            soft_wrap=True,
+        )
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _backup_init_file(source: Path, destination: Path) -> None:
+    """Back up a workspace secret privately; retain non-secret JSON metadata."""
+    if source.name == ".env":
+        from lobster.config.global_config import _open_private_file
+
+        with source.open("rb") as original:
+            with _open_private_file(destination, binary=True, exclusive=True) as backup:
+                shutil.copyfileobj(original, backup)
+    else:
+        shutil.copy2(source, destination)
+
+
 def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """
     Create workspace-scoped provider configuration from structured config dict.
@@ -1811,6 +1860,11 @@ def init_impl(
     if cloud_selected and not global_config:
         config_exists = config_exists or workspace_provider_path.exists()
     if config_exists and not force:
+        from lobster.config.global_config import get_global_credentials_path
+
+        _repair_skipped_secret_permissions(
+            get_global_credentials_path() if global_config else env_path
+        )
         if cloud_selected:
             from dotenv import dotenv_values
 
@@ -1907,7 +1961,7 @@ def init_impl(
                         "[yellow]⚠️  Existing config will be backed up to:[/yellow]"
                     )
                     console.print(f"[yellow]   {destination}[/yellow]")
-                shutil.copy2(backup_source, destination)
+                _backup_init_file(backup_source, destination)
                 if backup_path is None:
                     backup_path = destination
         except Exception as e:
@@ -2312,7 +2366,9 @@ def init_impl(
         else:
             # Workspace mode: write both .env and workspace config
             try:
-                with open(env_path, "w") as f:
+                from lobster.config.global_config import _open_private_file
+
+                with _open_private_file(env_path) as f:
                     f.write("\n".join(env_lines))
                     f.write("\n")
             except Exception as e:
@@ -2980,7 +3036,9 @@ def init_impl(
                 raise typer.Exit(1)
         else:
             try:
-                with open(env_path, "w") as f:
+                from lobster.config.global_config import _open_private_file
+
+                with _open_private_file(env_path) as f:
                     f.write("\n".join(env_lines))
                     f.write("\n")
             except Exception as error:

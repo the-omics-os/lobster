@@ -6,6 +6,7 @@ access, installed-wheel compatibility, or an interactive terminal acceptance run
 
 import inspect
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -618,8 +619,9 @@ def test_python_cloud_login_help_describes_supported_paths_not_automatic_oauth()
 
     result = CliRunner().invoke(app, ["cloud", "login", "--help"])
     assert result.exit_code == 0
-    assert_supported_guidance(result.output)
-    assert "opens a browser for OAuth" not in result.output
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", result.output)
+    assert_supported_guidance(output)
+    assert "opens a browser for OAuth" not in output
 
 
 def test_real_bedrock_iam_diagnosis_is_preserved():

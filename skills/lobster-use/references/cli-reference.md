@@ -117,14 +117,15 @@ receipt extras and existing `--with` packages, add requested packages and includ
 ### Cloud Init Writes and Overwrite
 
 Workspace non-interactive init writes **CWD** `.env` (includes the key) and
-`.lobster_workspace/provider_config.json`. The restrictive umask above protects
-new files; it does not repair permissions on existing files or old backups.
-Keep credential files/backups private and out of commits/shared logs.
+`.lobster_workspace/provider_config.json`. Init's secret `.env` and global
+`credentials.env` writers create files at `0600` and tighten existing rewrites to
+`0600` **before truncating or writing data**. The umask above remains defense in
+depth, not the only protection. Nonsecret provider JSON has a separate, unchanged
+mode policy. Keep credential files/backups private and out of commits/shared logs.
 
 Adding `--global` instead writes `providers.json` and `credentials.env` under
 `$XDG_CONFIG_HOME/lobster` or `~/.config/lobster` on Unix, `%APPDATA%\\lobster` on
-Windows. The global credential writer requests mode `0600`; inspect permission
-warnings rather than assuming enforcement on every platform. No CWD `.env` is
+Windows. POSIX mode protection is not a Windows ACL guarantee. No CWD `.env` is
 written in global mode, but non-interactive init still creates CWD
 `.lobster_workspace`; agent-selection flags can write agent configuration there.
 Obtain permission for both global paths and any CWD side effects.
@@ -139,16 +140,29 @@ With non-interactive Cloud selected and without `--force`:
 - Missing required credentials fail before replacement/backup. Do not interpret
   any other init mode's existing-config exit 0 as a completed reconfiguration.
 
+A no-force init finding existing configuration may also tighten an **owned regular
+POSIX** secret file (`.env`, or global `credentials.env`) to `0600` without changing
+credential bytes or rotating the key. This is init-only metadata repair after any
+required Cloud key validation. If it fails, init warns with a manual `chmod 600`
+command; the original skip/refusal exit status is unchanged. Inspect the warning
+and repair only with permission. Runtime credential loading does **not** repair
+legacy modes, nor does this fix arbitrary missing, foreign-owned, symlinked or
+nonregular files or old backups. Exit 0 alone is not proof of private permissions.
+
 Use `--force` only after approval to replace provider/credential configuration.
 Non-interactive Cloud setup backs up each existing workspace artifact before
 replacing either: `.env.backup.YYYYMMDD_HHMMSS` in CWD and
-`.lobster_workspace/provider_config.json.backup.YYYYMMDD_HHMMSS`. A failed backup
-stops setup before replacement. Global mode retains
+`.lobster_workspace/provider_config.json.backup.YYYYMMDD_HHMMSS`. The secret `.env`
+backup is created exclusively at `0600` before its first byte, keeps the original
+bytes and refuses to overwrite an earlier secret backup. Nonsecret JSON backups
+retain their existing mode policy. A failed backup stops setup before replacement.
+Global mode retains
 `providers.json.backup.YYYYMMDD_HHMMSS`, not a complete backup of all secrets:
 global `credentials.env` can be overwritten, and the provider backup is not a
 credentials rollback. Read output and inspect nonsecret status, not file values.
 
-Required Cloud provider/credential write failures exit nonzero, without a saved
+Required Cloud provider/credential write failures, including secret-file creation
+or permission-setting failures, exit nonzero rather than merely warning, without a saved
 success claim or restarting another wizard. The diagnostic says **partial
 configuration may remain; setup is not complete**. Stop and inspect the reported
 failure privately before an approved repair; do not assume transactional rollback
