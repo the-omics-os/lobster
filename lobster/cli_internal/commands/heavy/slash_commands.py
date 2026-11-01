@@ -3181,10 +3181,15 @@ def _dispatch_command(cmd_str: str, client, output):
                     "Usage: lobster command 'pipeline run <notebook>' --session-id <id>",
                     style="info",
                 )
-                return None
+                raise _CommandFailed(
+                    "Pipeline run requires a session with analysis history."
+                )
 
-            # Provenance loaded - delegate to existing function
-            return pipeline_run(client, output)
+            # Shared interactive helpers report failures as summary strings.
+            result = pipeline_run(client, output)
+            if not (result or "").startswith("Notebook executed successfully"):
+                raise _CommandFailed(result or "Notebook execution failed")
+            return result
 
         elif sub == "info":
             return pipeline_info(client, output)
@@ -3482,6 +3487,8 @@ def command_cmd_impl(
             if result is not _UNKNOWN_COMMAND and result is not None:
                 envelope["summary"] = result
             print(json.dumps(envelope))
+        if not success:
+            raise typer.Exit(1)
 
     except typer.Exit:
         raise

@@ -189,8 +189,21 @@ class H5ADBackend(BaseBackend):
         # Apply the same refusal contract to each other rewritten AnnData slot.
         for slot in ("obsm", "varm", "layers"):
             values = getattr(adata, slot)
+            is_x_alias = slot == "layers" and None in values and values[None] is adata.X
+            if is_x_alias:
+                # anndata >=0.13 exposes X through layers[None]. Confirm the
+                # identity alias, not equal values or mere None membership:
+                # older non-alias mappings may contain genuine None-key data.
+                values = {
+                    key: value for key, value in values.items() if key is not None
+                }
             keys = util_sanitize_keys(values, slash_replacement)
-            setattr(adata, slot, dict(zip(keys, values.values())))
+            sanitized = dict(zip(keys, values.values()))
+            if is_x_alias:
+                # Explicitly preserve X when assigning the new layer mapping;
+                # do not rely on anndata's deprecated implicit-X preservation.
+                sanitized[None] = adata.X
+            setattr(adata, slot, sanitized)
 
         # CRITICAL FIX: Remove columns with None names BEFORE sanitization
         # (Prevents TypeError: PurePosixPath() argument must be str, not 'NoneType')

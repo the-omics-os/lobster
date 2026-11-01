@@ -763,7 +763,7 @@ func (m *WizardModel) initAPIKeyStep() {
 
 	case providerOmicsOS:
 		ti := textinput.New()
-		ti.Placeholder = "Paste your API key from app.omics-os.com/settings/api-keys"
+		ti.Placeholder = "Paste your API key from app.omics-os.com/account"
 		ti.EchoMode = textinput.EchoPassword
 		ti.Focus()
 		m.apiKeyInputs = []textinput.Model{ti}
@@ -1092,7 +1092,7 @@ func (m WizardModel) viewAPIKey() string {
 	sb.WriteString(titleStyle.Render("API Keys") + "\n")
 
 	if m.result.Provider == providerOmicsOS {
-		sb.WriteString(descStyle.Render("Create an API key at https://app.omics-os.com/settings/api-keys") + "\n")
+		sb.WriteString(descStyle.Render("Create an API key at https://app.omics-os.com/account") + "\n")
 		sb.WriteString(descStyle.Render("Alternative npm Cloud client: npm i -g @omicsos/lobster && lobster cloud login --device") + "\n")
 		sb.WriteString(descStyle.Render("With both CLIs installed: lobster-cli cloud login --device (npm client)") + "\n")
 		sb.WriteString(descStyle.Render("Python uses OMICS_OS_API_KEY; configure it separately. The key is saved, not checked.") + "\n")

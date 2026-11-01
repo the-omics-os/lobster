@@ -45,6 +45,18 @@ func TestCloudSetupEmptyKeyDoesNotStartOAuthOrAdvance(t *testing.T) {
 	}
 }
 
+func TestCloudSetupVerifiedAccountKeyRoute(t *testing.T) {
+	m := NewWizardModel("", "")
+	model, _ := m.Update(makeKeyPress("enter"))
+	m = model.(WizardModel)
+	if !strings.Contains(m.viewAPIKey(), "https://app.omics-os.com/account") {
+		t.Error("Cloud key guidance must use the verified account route")
+	}
+	if !strings.Contains(m.apiKeyInputs[0].Placeholder, "app.omics-os.com/account") {
+		t.Error("Cloud key placeholder must use the verified account route")
+	}
+}
+
 func TestCloudSetupManualKeyRemainsSupportedAndIsNotRendered(t *testing.T) {
 	m := NewWizardModel("", "")
 	model, _ := m.Update(makeKeyPress("enter"))

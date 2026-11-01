@@ -91,7 +91,7 @@ def resolve_auth(token_override: Optional[str] = None) -> dict:
     token = token or get_api_key()
     if not token:
         raise CloudQueryError(
-            "Not authenticated. Get an API key at app.omics-os.com/settings/api-keys and run 'lobster cloud login --api-key <key>'."
+            "Not authenticated. Get an API key at app.omics-os.com/account and run 'lobster cloud login --api-key <key>'."
         )
 
     if token.startswith("omk_"):

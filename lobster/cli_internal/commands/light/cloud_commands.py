@@ -109,7 +109,7 @@ def _api_key_login(api_key: Optional[str]) -> None:
 
     if not api_key:
         api_key = typer.prompt(
-            "Paste your Omics-OS API key (from app.omics-os.com/settings/api-keys)",
+            "Paste your Omics-OS API key (from app.omics-os.com/account)",
             hide_input=True,
         )
 
@@ -237,7 +237,7 @@ def account() -> None:
 
     console.print(table)
     console.print(
-        "\n[dim]Manage API keys:   https://app.omics-os.com/settings/api-keys[/dim]\n"
+        "\n[dim]Manage API keys:   https://app.omics-os.com/account[/dim]\n"
         "[dim]Account settings:  https://app.omics-os.com/account[/dim]"
     )
 
@@ -257,7 +257,7 @@ def keys_callback(ctx: typer.Context) -> None:
     if ctx.invoked_subcommand is None:
         console.print(
             "API key management is available at:\n\n"
-            "  [bold cyan]https://app.omics-os.com/settings/api-keys[/bold cyan]\n\n"
+            "  [bold cyan]https://app.omics-os.com/account[/bold cyan]\n\n"
             "[dim]For security, API keys are managed through the web interface only.\n"
             "Terminal sessions can expose key material in scrollback and shell history.[/dim]"
         )
@@ -268,12 +268,12 @@ def login(
     api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
-        help="Omics-OS API key from app.omics-os.com/settings/api-keys",
+        help="Omics-OS API key from app.omics-os.com/account",
     ),
 ) -> None:
     """Authenticate the Python local gateway provider with --api-key <key>.
 
-    Create a key at app.omics-os.com/settings/api-keys. Without --api-key,
+    Create a key at app.omics-os.com/account. Without --api-key,
     this Python command prints setup guidance and exits nonzero; it does not
     launch a browser or prompt for a key.
 

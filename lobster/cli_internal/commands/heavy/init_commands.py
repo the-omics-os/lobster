@@ -1014,6 +1014,10 @@ def _uv_tool_env_handoff(
 
     If the user declines, this function returns normally.
     """
+    if skip_extras:
+        return  # No prompt, command construction, or package handoff under --skip-extras.
+
+    import shlex
     import subprocess as _sp
 
     from rich.prompt import Confirm
@@ -1029,11 +1033,13 @@ def _uv_tool_env_handoff(
         selected_agents,
         include_vector_search=include_vector_search,
     )
-    cmd_str = " ".join(cmd)
+    cmd.insert(3, "--reinstall")
+    cmd_str = shlex.join(cmd)
 
     # Skip if the computed command wouldn't add anything new.
-    existing_cmd = " ".join(_build_uv_tool_init_command(None, None))
-    if cmd_str == existing_cmd:
+    existing_cmd = _build_uv_tool_init_command(None, None)
+    existing_cmd.insert(3, "--reinstall")
+    if cmd == existing_cmd:
         return
 
     console.print()
@@ -1042,7 +1048,7 @@ def _uv_tool_env_handoff(
         "  Your Lobster is installed via [cyan]uv tool[/cyan], so packages must\n"
         "  be added through [cyan]uv tool install[/cyan] rather than pip.\n"
     )
-    console.print(f"  [bold]{cmd_str}[/bold]\n")
+    console.print(f"  {cmd_str}\n", markup=False)
 
     if Confirm.ask("  Run this now?", default=True):
         console.print("[dim]  Running uv tool install...[/dim]")
@@ -1087,7 +1093,7 @@ def _uv_tool_env_handoff(
             sys.stdout.flush()
             _os._exit(result.returncode)
     else:
-        console.print(f"  [dim]Run manually when ready:[/dim]\n  {cmd_str}\n")
+        console.print(f"  Run manually when ready:\n  {cmd_str}\n", markup=False)
 
 
 def _ensure_provider_installed(provider_name: str) -> bool:
@@ -1776,6 +1782,19 @@ def init_impl(
         from lobster.config.credentials import get_api_key
 
         cloud_api_key = omics_os_key if omics_os_key is not None else get_api_key()
+        if omics_os_key is None and (not cloud_api_key or not cloud_api_key.strip()):
+            from dotenv import dotenv_values
+
+            from lobster.config.global_config import get_global_credentials_path
+
+            saved_paths = [] if global_config else [env_path]
+            saved_paths.append(get_global_credentials_path())
+            for saved_path in saved_paths:
+                if saved_path and saved_path.is_file():
+                    saved_key = dotenv_values(saved_path).get("OMICS_OS_API_KEY")
+                    if saved_key and saved_key.strip():
+                        cloud_api_key = saved_key
+                        break
         if not cloud_api_key or not cloud_api_key.strip():
             console.print(
                 "[red]Omics-OS Cloud API key is required: supply --omics-os-key or OMICS_OS_API_KEY.[/red]"
@@ -2401,7 +2420,7 @@ def init_impl(
                         )
                         from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
-                        if _is_uv():
+                        if _is_uv() and not skip_extras:
                             _uv_tool_env_handoff(
                                 provider_name=(_tui_result.get("provider") or "")
                                 .strip()
@@ -2463,7 +2482,7 @@ def init_impl(
                 )
                 from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
-                if _is_uv():
+                if _is_uv() and not skip_extras:
                     _uv_tool_env_handoff(
                         provider_name=(_q_result.get("provider") or "").strip().lower()
                         or None,
@@ -2990,7 +3009,7 @@ def init_impl(
         console.print()
 
         # In uv tool env, offer to run `uv tool install` for new packages
-        if _in_uv_tool:
+        if _in_uv_tool and not skip_extras:
             _want_vector_search = False
             if not skip_extras and _is_vector_search_backend_available():
                 try:

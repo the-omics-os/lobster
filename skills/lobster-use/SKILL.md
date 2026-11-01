@@ -86,7 +86,7 @@ Python environment, reuse its interpreter instead. These explicit Python command
 avoid a Python/npm binary collision. A `uv tool` install is another option in the
 [CLI reference](references/cli-reference.md#installation-and-local-configuration).
 
-Get an authorized key from `https://app.omics-os.com/settings/api-keys` through the
+Get an authorized key from `https://app.omics-os.com/account` through the
 human account owner. For machine setup, prefer a securely injected
 `OMICS_OS_API_KEY`. If the user instead supplies a key file, set `OMICS_OS_KEY_FILE`
 to **that authorized path** and use `export OMICS_OS_API_KEY="$(<"$OMICS_OS_KEY_FILE")"`
@@ -106,9 +106,12 @@ in Bash; do not print it, source the file as code, or enable shell tracing.
 
 This selects the **local** gateway provider without requiring an Anthropic,
 OpenAI or personal AWS key. No npm install/login is needed. `--use-omics-os`
-looks up the nonblank Python environment key, then the active saved platform
-profile; `--omics-os-key <key>` selects Cloud with an explicit key and takes
-precedence, but can expose that key in process arguments. Do not combine Cloud
+looks up the nonblank Python environment key, then the active saved Python
+platform profile. If neither supplies a usable credential, workspace-mode init
+tries CWD `.env`, then global Python `credentials.env`; `--global` skips the CWD
+file. See the [lookup details](references/cli-reference.md#local-python-with-an-omics-os-cloud-account).
+`--omics-os-key <key>` takes precedence, including explicit blank input failing
+without fallback, but can expose the key in process arguments. Do not combine Cloud
 setup with another provider's flags: the other explicit provider takes priority.
 `--cloud-key` is a different legacy supplement, not gateway selection.
 

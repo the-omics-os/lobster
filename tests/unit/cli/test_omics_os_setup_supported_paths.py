@@ -21,7 +21,7 @@ from lobster.config.providers.omics_os_provider import OmicsOSProvider
 
 pytestmark = pytest.mark.no_auto_config
 KEY = "omk_local_setup_test"
-API_KEYS_URL = "https://app.omics-os.com/settings/api-keys"
+API_KEYS_URL = "https://app.omics-os.com/account"
 NPM_PACKAGE = "@omicsos/lobster"
 
 

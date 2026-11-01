@@ -35,7 +35,7 @@ package versions intentionally to bypass a setup failure.
 
 ### Local Python with an Omics-OS Cloud Account
 
-Create a key at `https://app.omics-os.com/settings/api-keys` through the human
+Create a key at `https://app.omics-os.com/account` through the human
 account owner. Prefer `OMICS_OS_API_KEY` securely injected into the Python process.
 If the user authorizes a key file, Bash can read it without printing the value:
 
@@ -60,8 +60,12 @@ above, not an npm binary. For a fresh workspace config in the current directory:
 ```
 
 - `--use-omics-os`: select the gateway; resolve a nonblank `OMICS_OS_API_KEY`, then
-  the active saved platform profile. A saved OAuth token may refresh; this is not
-  a universal offline/no-network operation.
+  the active saved Python platform profile. If that lookup is missing/blank,
+  workspace-mode init tries CWD `.env`, then global Python `credentials.env`
+  (global paths below). `--global` skips CWD `.env` and uses only the global file
+  for this fallback. Saved files are parsed without exporting their values.
+  An approved saved credential can supply init without the fresh-key ENV guard
+  in the example. A saved OAuth token may refresh; this is not universally offline.
 - `--omics-os-key <key>`: explicit Cloud key, used before lookup even with
   `--use-omics-os`. Blank explicit input fails rather than falling back. This
   flag can expose the key in process arguments; the environment route is preferred.
@@ -103,6 +107,12 @@ manual-key login that can validate/store a platform credential, but the flag
 exposes the key in argv and login does not select the local provider. npm device
 login requires human approval and is not a non-interactive setup shortcut;
 configure Python separately rather than assuming shared credentials work.
+
+`--skip-extras` also suppresses the entire end-of-wizard `uv tool` installation
+prompt/handoff, not just provider extras. Agent choices can still be recorded and
+an optional manual install command printed. Without it, tool-install offers retain
+receipt extras and existing `--with` packages, add requested packages and include
+`--reinstall`; displayed commands are shell-quoted. Run them only with permission.
 
 ### Cloud Init Writes and Overwrite
 
@@ -187,7 +197,7 @@ this small connectivity test.
 | `--ncbi-key` | Optional NCBI key |
 | `--agents` | Comma-separated enabled agent identifiers |
 | `--preset` | Agent selection preset, e.g. scrna-basic |
-| `--skip-extras` | Skip optional installs; wizard-selected agents can still be recorded |
+| `--skip-extras` | Skip optional installs and the end-of-wizard tool handoff; agent choices can still be recorded |
 | `--skip-ssl-test` | Skip init SSL/connectivity test, not all network activity |
 | `--skip-docling` / `--install-docling` | PDF intelligence installation choice |
 | `--global`, `-g` | Global provider/credential writes plus possible CWD side effects |
@@ -271,6 +281,11 @@ Do not assume every interactive slash command has a programmatic counterpart.
 For example `/tokens`, `/plot` and `/open` are interactive controls, not
 `lobster command` branches. `lobster command "read <file>"` is supported; inspect
 any read refusal rather than retrying through custom code.
+
+Unknown dispatcher commands exit 1; with `--json`, `success` is false. Machine
+`pipeline run` likewise exits nonzero for missing provenance, prompt EOF or a
+failure summary from its shared execution helper. Check both exit status and JSON;
+a success summary is not biological validation or proof of notebook reproducibility.
 
 Normal command JSON carries `success`, `command` and `data`. Inspect structured
 `data.blocks` (including table/kv blocks) and text in `data.messages` when present;

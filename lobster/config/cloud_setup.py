@@ -1,7 +1,7 @@
 """Supported local-gateway and npm-client setup guidance (no authentication I/O)."""
 
 OMICS_OS_AUTH_GUIDANCE = (
-    "Create an API key at https://app.omics-os.com/settings/api-keys.\n"
+    "Create an API key at https://app.omics-os.com/account.\n"
     "Python local gateway: set OMICS_OS_API_KEY or use "
     "lobster cloud login --api-key <key>.\n"
     "Non-interactive local setup: lobster init --non-interactive --use-omics-os "
