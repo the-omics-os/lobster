@@ -611,9 +611,7 @@ class CustomCodeExecutionService:
                 finally:
                     try:
                         modified_path.unlink(missing_ok=True)
-                    except (
-                        Exception
-                    ):  # nosec B110 # Best-effort removal of the temporary write-back file; failure must not mask the result.
+                    except Exception:  # nosec B110 # Best-effort removal of the temporary write-back file; failure must not mask the result.
                         pass
 
         # Step 4b: read explicitly submitted figures (successful attempts only; the caller
@@ -644,9 +642,7 @@ class CustomCodeExecutionService:
             import shutil
 
             shutil.rmtree(exec_cache, ignore_errors=True)
-        except (
-            Exception
-        ):  # nosec B110 # Best-effort cleanup of the per-execution cache once all reads are done.
+        except Exception:  # nosec B110 # Best-effort cleanup of the per-execution cache once all reads are done.
             pass
 
         # Step 4b: Save large outputs to files (DeepAgents pattern)
@@ -703,6 +699,25 @@ class CustomCodeExecutionService:
             "workspace_keys": workspace_keys,
             "selective_loading": workspace_keys is not None,
             "persisted": persist,
+            "notebook_export_requested": persist,
+            "modality_saved": (
+                (
+                    None
+                    if getattr(self.data_manager, "_modality_backend", None) is not None
+                    else False
+                )
+                if new_modality_name
+                else None
+            ),
+            "modality_storage": (
+                (
+                    "in memory (disk persistence not confirmed)"
+                    if getattr(self.data_manager, "_modality_backend", None) is not None
+                    else "in memory (not saved to disk)"
+                )
+                if new_modality_name
+                else None
+            ),
             "error": str(exec_error) if exec_error else None,
             "new_modality_name": new_modality_name,
             "write_back_error": write_back_error,

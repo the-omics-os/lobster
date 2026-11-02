@@ -299,8 +299,13 @@ def status() -> None:
     api_key = get_api_key()
     if not api_key:
         console.print(
-            "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
-            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            "[yellow]No Omics-OS Cloud API key found.[/yellow]\n"
+            "Credentials are read from the active Python profile or the "
+            "[bold]OMICS_OS_API_KEY[/bold] environment variable; these are "
+            "separate sources and neither is set in the current active profile.\n"
+            "Set [bold]OMICS_OS_API_KEY[/bold], run [bold]lobster init[/bold] "
+            "to configure a profile, or run: "
+            "[bold]lobster cloud login --api-key <key>[/bold]"
         )
         raise typer.Exit(0)
 
@@ -748,7 +753,9 @@ def projects(
     project_list = (
         data.get("projects", data)
         if isinstance(data, dict)
-        else data if isinstance(data, list) else []
+        else data
+        if isinstance(data, list)
+        else []
     )
 
     if json_output:

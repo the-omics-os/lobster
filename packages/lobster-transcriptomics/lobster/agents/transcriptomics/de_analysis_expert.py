@@ -1109,7 +1109,9 @@ def de_analysis_expert(
                 status = (
                     "OK"
                     if count >= 4
-                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                    else "LOW POWER"
+                    if count >= 3
+                    else "INSUFFICIENT"
                 )
                 response += f"\n- {group}: {count} replicates ({status})"
             response += _replicate_summary_text(replicate_validation)
@@ -1459,13 +1461,13 @@ def de_analysis_expert(
 
 **Analysis Results:**
 - Comparison: {group1} ({group1_count} samples) vs {group2} ({group2_count} samples)
-- Method: {de_stats['method']}
-- Genes tested: {de_stats['n_genes_tested']:,}
-- Significant genes (padj < {alpha}): {de_stats['n_significant_genes']:,}
+- Method: {de_stats["method"]}
+- Genes tested: {de_stats["n_genes_tested"]:,}
+- Significant genes (padj < {alpha}): {de_stats["n_significant_genes"]:,}
 
 **Differential Expression Summary:**
-- Upregulated in {group2}: {de_stats['n_upregulated']} genes
-- Downregulated in {group2}: {de_stats['n_downregulated']} genes
+- Upregulated in {group2}: {de_stats["n_upregulated"]} genes
+- Downregulated in {group2}: {de_stats["n_downregulated"]} genes
 
 **Top Upregulated Genes:**
 {chr(10).join([f"- {gene}" for gene in de_stats["top_upregulated"][:5]])}
@@ -1925,7 +1927,9 @@ def de_analysis_expert(
                 status = (
                     "OK"
                     if count >= 4
-                    else "LOW POWER" if count >= 3 else "INSUFFICIENT"
+                    else "LOW POWER"
+                    if count >= 3
+                    else "INSUFFICIENT"
                 )
                 response += f"- {group}: {count} replicates ({status})\n"
             response += _replicate_summary_text(replicate_validation)
@@ -3117,7 +3121,7 @@ def de_analysis_expert(
                     "results_df = results_df.sort_values({{ sort_by | string | repr }})\n"
                     "results_df.to_{{ output_format }}({{ output_path | string | repr }}, index=True)"
                 ),
-                imports=["pandas"],
+                imports=["import pandas as pd"],
             )
 
             data_manager.log_tool_usage(
@@ -3144,8 +3148,8 @@ def de_analysis_expert(
 - Sorted by: {sort_by}
 - Output: {output_path}
 
-**Columns:** {', '.join(results_df.columns.tolist()[:8])}{'...' if len(results_df.columns) > 8 else ''}
-**Filtered only:** {'Yes' if filtered_only else 'No'}"""
+**Columns:** {", ".join(results_df.columns.tolist()[:8])}{"..." if len(results_df.columns) > 8 else ""}
+**Filtered only:** {"Yes" if filtered_only else "No"}"""
 
             return response
 
@@ -3331,7 +3335,7 @@ def de_analysis_expert(
 **Method:** DESeq2-like bulk differential expression
 
 **Results:**
-- Genes tested: {de_stats.get('n_genes_tested', 'N/A'):,}
+- Genes tested: {de_stats.get("n_genes_tested", "N/A"):,}
 - Significant genes (padj < {alpha}): {n_sig:,}
 - Upregulated in {group2}: {n_up:,}
 - Downregulated in {group2}: {n_down:,}
@@ -3540,7 +3544,7 @@ def de_analysis_expert(
 - DE results: {de_results_key}
 - Ranking metric: {ranking_metric}
 - Genes ranked: {len(ranked_df):,}
-- Databases: {', '.join(db_list)}
+- Databases: {", ".join(db_list)}
 - Organism: {organism}
 
 **Results:**
@@ -3801,7 +3805,7 @@ def de_analysis_expert(
                     "results_df = results_df.sort_values('padj')\n"
                     "results_df.to_{{ output_format }}({{ output_path | string | repr }}, index=True)"
                 ),
-                imports=["pandas"],
+                imports=["import pandas as pd"],
             )
 
             data_manager.log_tool_usage(
@@ -3833,10 +3837,10 @@ def de_analysis_expert(
 - Format: {output_format.upper()}
 - Output: {output_path}
 
-**LFC Shrinkage:** {'Applied' if shrinkage_applied else 'Not applied'}
-{f'- Note: {shrinkage_note}' if shrinkage_note else ''}
+**LFC Shrinkage:** {"Applied" if shrinkage_applied else "Not applied"}
+{f"- Note: {shrinkage_note}" if shrinkage_note else ""}
 
-**Publication Columns:** {', '.join(pub_cols)}
+**Publication Columns:** {", ".join(pub_cols)}
 
 **File ready for publication supplementary tables.**"""
 

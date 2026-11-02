@@ -326,7 +326,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
 
         enable_smart_std = questionary.confirm(
             smart_std_prompt,
-            default=bool(beneficiaries),
+            default=False,
         ).ask()
 
         if enable_smart_std is None:

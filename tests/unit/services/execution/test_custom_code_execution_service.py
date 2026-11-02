@@ -2,8 +2,7 @@
 Unit tests for CustomCodeExecutionService.
 """
 
-from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -143,7 +142,9 @@ result = 42
         mock_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = mock_adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = [
+            "test_modality"
+        ]
 
         code = "result = adata.n_obs"
         result, stats, ir = service.execute(
@@ -419,7 +420,9 @@ result = add(5, 3)
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = [
+            "test_modality"
+        ]
 
         # Code that modifies adata (adds a new obs column)
         code = "adata.obs['new_col'] = [1, 2]"
@@ -444,6 +447,64 @@ result = add(5, 3)
         # IR should have the new modality as output entity
         assert ir.output_entities == ["test_modality_custom"]
 
+    @pytest.mark.parametrize("persist", [False, True])
+    @pytest.mark.parametrize("attached_backend", [False, True])
+    def test_writeback_reports_memory_and_separate_notebook_intent(
+        self, service, mock_data_manager, persist, attached_backend
+    ):
+        """Backend presence is NOT a durable-save ACK; legacy intent remains."""
+        import anndata
+        import numpy as np
+
+        backend = Mock(spec=["ingest_anndata"]) if attached_backend else None
+        # Native anndata/scverse uses find_dotenv(usecwd=True), independently
+        # of PYTHON_DOTENV_DISABLED. Keep its discovery inside this test's owned
+        # workspace: an empty synthetic fixture, not a real workspace/HOME read.
+        import os
+
+        fd = os.open(
+            mock_data_manager.workspace_path / ".env",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        os.close(fd)
+        mock_data_manager._modality_backend = backend
+        mock_data_manager.get_modality.return_value = anndata.AnnData(
+            X=np.array([[1, 2], [3, 4]])
+        )
+        mock_data_manager.list_modalities.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = [
+            "test_modality"
+        ]
+
+        _, stats, ir = service.execute(
+            code="adata.obs['new_col'] = [1, 2]",
+            modality_name="test_modality",
+            persist=persist,
+            description="RAM writeback truthfulness control",
+        )
+
+        assert stats["success"] is True
+        assert stats["new_modality_name"] == "test_modality_custom"
+        assert stats["write_back_error"] is None
+        assert stats["persisted"] is persist  # existing reader/schema preserved
+        assert ir.execution_context["persist"] is persist
+        assert stats["notebook_export_requested"] is persist
+        assert stats["modality_saved"] is (None if attached_backend else False)
+        assert stats["modality_storage"] == (
+            "in memory (disk persistence not confirmed)"
+            if attached_backend
+            else "in memory (not saved to disk)"
+        )
+        mock_data_manager.store_modality.assert_called_once()
+        assert "auto_save" not in mock_data_manager.store_modality.call_args.kwargs
+        assert mock_data_manager.store_modality.call_args.kwargs["name"] == (
+            "test_modality_custom"
+        )
+        # This mock-DM boundary checks conditional messaging, not backend I/O.
+        if backend is not None:
+            backend.ingest_anndata.assert_not_called()
+
     def test_adata_no_writeback_when_unmodified(self, service, mock_data_manager):
         """Test that read-only code does NOT trigger write-back."""
         import anndata
@@ -452,7 +513,9 @@ result = add(5, 3)
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = [
+            "test_modality"
+        ]
 
         # Code that only reads adata (no modification)
         code = "result = int(adata.n_obs)"
@@ -476,7 +539,9 @@ result = add(5, 3)
         adata = anndata.AnnData(X=np.array([[1, 2], [3, 4]]))
         mock_data_manager.get_modality.return_value = adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = [
+            "test_modality"
+        ]
         mock_data_manager.store_modality.side_effect = RuntimeError("disk full")
 
         # Code that modifies adata
@@ -509,7 +574,9 @@ result = add(5, 3)
         new_adata = anndata.AnnData(X=np.array([[1, 2], [3, 4], [5, 6]]))
         mock_data_manager.get_modality.return_value = new_adata
         mock_data_manager.list_modalities.return_value = ["test_modality"]
-        mock_data_manager.locality_provider.list_available.return_value = ["test_modality"]
+        mock_data_manager.locality_provider.list_available.return_value = [
+            "test_modality"
+        ]
 
         # Code that reads n_obs — should see the in-memory version (3 obs), not stale disk (1 obs)
         code = "result = int(adata.n_obs)"

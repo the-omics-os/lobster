@@ -1179,7 +1179,7 @@ func (m *WizardModel) initOptionalKeys() {
 	m.smartStdConfirm = confirmModel{
 		title:       "Smart Standardization",
 		description: desc,
-		value:       len(beneficiaries) > 0,
+		value:       false,
 	}
 	ti3 := textinput.New()
 	ti3.Placeholder = "sk-..."

@@ -7,9 +7,9 @@ pre_download_soft_file (cached, download, failure modes).
 Also tests helpers.py exports for shared utilities.
 """
 
+import gzip
 import ssl
-from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -72,6 +72,13 @@ class TestBuildSoftUrl:
         )
 
 
+def _soft_fixture(geo_id="GSE194247"):
+    return gzip.compress(
+        (f"^SERIES = {geo_id}\n!Series_geo_accession = {geo_id}\n").encode(),
+        mtime=0,
+    )
+
+
 class TestPreDownloadSoftFile:
     """Test pre_download_soft_file caching and download behavior."""
 
@@ -82,7 +89,7 @@ class TestPreDownloadSoftFile:
         )
 
         cached = tmp_path / "GSE194247_family.soft.gz"
-        cached.write_bytes(b"cached content")
+        cached.write_bytes(_soft_fixture())
 
         result = pre_download_soft_file("GSE194247", tmp_path)
         assert result == cached
@@ -97,7 +104,7 @@ class TestPreDownloadSoftFile:
 
         # Set up mock response
         mock_response = MagicMock()
-        mock_response.read.return_value = b"soft file content"
+        mock_response.read.return_value = _soft_fixture()
         mock_response.__enter__ = MagicMock(return_value=mock_response)
         mock_response.__exit__ = MagicMock(return_value=False)
         mock_urlopen.return_value = mock_response
@@ -109,8 +116,12 @@ class TestPreDownloadSoftFile:
 
         assert result == expected
         assert expected.exists()
-        assert expected.read_bytes() == b"soft file content"
-        mock_urlopen.assert_called_once()
+        assert expected.read_bytes() == _soft_fixture()
+        mock_urlopen.assert_called_once_with(
+            "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE194nnn/GSE194247/soft/GSE194247_family.soft.gz",
+            context=mock_ssl.return_value,
+        )
+        mock_ssl.assert_called_once()
 
     @patch("lobster.services.data_access.geo.soft_download.urllib.request.urlopen")
     @patch("lobster.services.data_access.geo.soft_download.create_ssl_context")

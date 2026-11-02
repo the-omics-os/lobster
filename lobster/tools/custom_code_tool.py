@@ -570,7 +570,10 @@ def _format_response(
         "stderr_full_path": stats.get("stderr_full_path"),
         "warnings": stats.get("warnings", []),
         "persisted": persist,
+        "notebook_export_requested": stats.get("notebook_export_requested", persist),
         "new_modality_name": stats.get("new_modality_name"),
+        "modality_saved": stats.get("modality_saved"),
+        "modality_storage": stats.get("modality_storage"),
         "write_back_error": stats.get("write_back_error"),
         "replay_excluded": stats.get("replay_excluded"),
         "post_processor_message": post_processor_msg,
@@ -818,9 +821,13 @@ def metadata_store_post_processor(
             data_manager.metadata_store[workspace_key]["samples"] = result["samples"]
             count = len(result["samples"])
             logger.debug(
-                f"Persisted {count} samples to metadata_store['{workspace_key}']"
+                f"Updated {count} samples in metadata_store['{workspace_key}'] "
+                f"(in memory, not saved to disk)"
             )
-            return f"Persisted {count} samples to metadata_store['{workspace_key}']"
+            return (
+                f"Updated {count} samples in metadata_store['{workspace_key}'] "
+                f"(in memory (not saved to disk))"
+            )
 
     # Pattern 2: Create new key with output_key
     elif "samples" in result and "output_key" in result:
@@ -831,9 +838,12 @@ def metadata_store_post_processor(
             "stats": result.get("stats", {}),
         }
         count = len(result["samples"])
-        logger.debug(f"Created metadata_store['{output_key}'] with {count} samples")
+        logger.debug(
+            f"Created metadata_store['{output_key}'] with {count} samples (in memory, not saved to disk)"
+        )
         return (
-            f"Created metadata_store['{output_key}'] with {count} samples\n"
+            f"Created metadata_store['{output_key}'] with {count} samples "
+            f"(in memory (not saved to disk))\n"
             f"Export with: write_to_workspace(identifier='{output_key}', "
             f"workspace='metadata', output_format='csv')"
         )
