@@ -292,7 +292,7 @@ class TestMetadataStorePostProcessor:
             == result["samples"]
         )
         assert msg is not None
-        assert "Persisted 2 samples" in msg
+        assert "Updated 2 samples" in msg
         assert "existing_key" in msg
 
     def test_new_key_creation(self, mock_data_manager):
