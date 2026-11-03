@@ -39,7 +39,10 @@ func TestPythonFixtureRoundTrip(t *testing.T) {
 	press(t, c, "2", "enter") // S08 -> the 2nd choice, "treated"
 	press(t, c, "enter")      // mito: default 0.2
 	press(t, c, "o", "k", "enter")
-	r := press(t, c, "ctrl+s")
+	if r := press(t, c, "ctrl+s"); r != nil || !c.reviewing { // opens the review screen
+		t.Fatalf("ctrl+s should open the review screen, got %+v (message %q)", r, c.message)
+	}
+	r := press(t, c, "enter") // confirms what the review shows
 	if r == nil || r.Action != "submit" {
 		t.Fatalf("expected submit, got %+v (message %q)", r, c.message)
 	}
