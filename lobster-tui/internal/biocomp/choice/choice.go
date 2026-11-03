@@ -230,41 +230,62 @@ var (
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 )
 
+// hang renders text wrapped to the width, after a prefix; continuation lines
+// are indented under the text, never cut.
+func hang(prefix, text string, width int, style lipgloss.Style) string {
+	w := max(width-lipgloss.Width(prefix), 1)
+	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, style.Width(w).Render(text))
+}
+
 func (c *Component) View(width, height int) string {
-	top := []string{lipgloss.NewStyle().Bold(true).Width(width).Render(c.question)}
+	top := []string{hang("", c.question, width, lipgloss.NewStyle().Bold(true))}
 	if c.details != "" {
-		top = append(top, dimStyle.Width(width).Render(c.details))
+		top = append(top, hang("", c.details, width, dimStyle))
 	}
 	top = append(top, "")
 
 	bottom := []string{"", dimStyle.Render(c.status())}
 	if c.problem != "" {
-		bottom = append(bottom, warnStyle.Width(width).Render(c.problem))
+		bottom = append(bottom, hang("", c.problem, width, warnStyle))
 	}
 
-	rows := height - lipgloss.Height(strings.Join(top, "\n")) - len(bottom)
-	if rows < 3 {
-		rows = 3
+	rows := make([]string, len(c.options))
+	heights := make([]int, len(c.options))
+	for i := range c.options {
+		rows[i] = c.row(i, width)
+		heights[i] = lipgloss.Height(rows[i])
 	}
-	c.scrollTo(rows)
-	end := min(c.offset+rows, len(c.options))
+	avail := height - lipgloss.Height(strings.Join(top, "\n")) - lipgloss.Height(strings.Join(bottom, "\n"))
+	start, end := c.window(heights, max(avail, 3))
 
 	lines := append([]string{}, top...)
-	for i := c.offset; i < end; i++ {
-		lines = append(lines, c.row(i, width))
-	}
+	lines = append(lines, rows[start:end]...)
 	lines = append(lines, bottom...)
 	return strings.Join(lines, "\n")
 }
 
-// scrollTo keeps the cursor inside the visible window of the given height.
-func (c *Component) scrollTo(rows int) {
+// window picks the rows to show so the cursor row is fully visible (rows can
+// be several lines tall once wrapped), keeping the scroll position while it is.
+func (c *Component) window(heights []int, avail int) (int, int) {
 	if c.cursor < c.offset {
 		c.offset = c.cursor
 	}
-	if c.cursor >= c.offset+rows {
-		c.offset = c.cursor - rows + 1
+	used := func(from, to int) int {
+		n := 0
+		for i := from; i <= to; i++ {
+			n += heights[i]
+		}
+		return n
 	}
+	for c.offset < c.cursor && used(c.offset, c.cursor) > avail {
+		c.offset++
+	}
+	end, lines := c.offset, 0
+	for end < len(heights) && (end == c.offset || lines+heights[end] <= avail) {
+		lines += heights[end]
+		end++
+	}
+	return c.offset, end
 }
 
 func (c *Component) row(i, width int) string {
@@ -298,11 +319,11 @@ func (c *Component) row(i, width int) string {
 		style = dimStyle
 		extra = append(extra, "unavailable: "+it.Unavailable)
 	}
-	line := style.Render(pointer + mark + " " + it.Label)
+	text := style.Render(it.Label)
 	if len(extra) > 0 {
-		line += dimStyle.Render("  " + strings.Join(extra, " · "))
+		text += dimStyle.Render("  " + strings.Join(extra, " · "))
 	}
-	return lipgloss.NewStyle().MaxWidth(width).Render(line)
+	return hang(pointer+mark+" ", text, width, normalStyle)
 }
 
 // status describes position and how many picks are allowed.
@@ -348,3 +369,13 @@ func (c *Component) KeyBindings() []key.Binding {
 }
 
 func (c *Component) ChangeEvent() map[string]any { return nil }
+
+// Draft returns what is on screen in the reply's shape (the highlighted
+// option of a radio list, the ticked ones of a checklist), so a dashboard can
+// tell whether it differs from the answer it recorded.
+func (c *Component) Draft() map[string]any {
+	if c.single() {
+		return c.submit([]int{c.cursor}).Data
+	}
+	return c.submit(c.pickedIndexes()).Data
+}

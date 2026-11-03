@@ -2,11 +2,13 @@ package choice
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
@@ -175,5 +177,68 @@ func TestEscCancels(t *testing.T) {
 	c := newChoice(t, data(1, 1, sources, nil))
 	if r := press(c, "esc"); r == nil || r.Action != "cancel" {
 		t.Fatalf("got %+v", r)
+	}
+}
+
+func TestLongTextWrapsAndNothingIsLost(t *testing.T) {
+	long := "this sentence is deliberately much longer than forty columns so it must wrap"
+	opts := []map[string]any{
+		{"id": "a", "label": "first label " + long, "details": "detail words " + long},
+		{"id": "b", "label": "second", "unavailable": "reason words " + long},
+	}
+	c := newChoice(t, data(1, 1, opts, map[string]any{
+		"question": "question text " + long, "details": "question details " + long,
+	}))
+	view := ansi.Strip(c.View(40, 100))
+	for _, line := range strings.Split(view, "\n") {
+		if w := ansi.StringWidth(line); w > 40 {
+			t.Fatalf("line wider than 40 (%d): %q", w, line)
+		}
+	}
+	words := strings.Fields(view)
+	for _, text := range []string{c.question, c.details, opts[0]["label"].(string),
+		opts[0]["details"].(string), opts[1]["unavailable"].(string)} {
+		for _, w := range strings.Fields(text) {
+			found := false
+			for _, x := range words {
+				found = found || strings.Contains(x, w)
+			}
+			if !found {
+				t.Fatalf("word %q missing from the view:\n%s", w, view)
+			}
+		}
+	}
+}
+
+func TestScrollKeepsAWrappedCursorRowVisible(t *testing.T) {
+	var opts []map[string]any
+	for i := 1; i <= 72; i++ {
+		opts = append(opts, map[string]any{"id": fmt.Sprintf("S%02d", i),
+			"label": "Donor with a fairly long name that wraps"})
+	}
+	c := newChoice(t, data(0, 72, opts, nil))
+	const width, height = 30, 16
+	for step := 0; step < 75; step++ {
+		view := ansi.Strip(c.View(width, height))
+		if n := len(strings.Split(view, "\n")); n > height {
+			t.Fatalf("step %d: %d lines for height %d", step, n, height)
+		}
+		if id := c.options[c.cursor].ID; !strings.Contains(view, id) {
+			t.Fatalf("step %d: cursor row %s not visible:\n%s", step, id, view)
+		}
+		press(c, "down")
+	}
+}
+
+func TestDraftFollowsTheScreen(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	press(c, "down")
+	if got := c.Draft(); !reflect.DeepEqual(got, map[string]any{"selected": []map[string]any{{"id": "SRC-B"}}}) {
+		t.Fatalf("radio draft = %v", got)
+	}
+	c = newChoice(t, data(0, 3, donors, nil))
+	press(c, "down", "space")
+	if got := c.Draft(); !reflect.DeepEqual(got, map[string]any{"selected": []map[string]any{{"id": "S02"}}}) {
+		t.Fatalf("checklist draft = %v", got)
 	}
 }
