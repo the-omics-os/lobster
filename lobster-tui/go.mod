@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/muesli/reflow v0.3.0
+	github.com/the-omics-os/crust v0.1.0
 	golang.org/x/term v0.47.0
 )
 
