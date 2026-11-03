@@ -43,7 +43,15 @@ class _Bridge:
         self.calls.append((msg_type, payload or {}, msg_id))
 
     def recv_event(self, timeout=None):
-        return self.events.pop(0) if self.events else None
+        if not self.events:
+            return None
+        event = self.events.pop(0)
+        if isinstance(event, tuple):  # (action, data): answer the latest render
+            action, data = event
+            msg_id = [c for c in self.calls if c[0] == "component_render"][-1][2]
+            payload = {"id": msg_id, "data": {**data, "action": action}}
+            return {"type": "component_response", "id": msg_id, "payload": payload}
+        return event
 
     def wire(self):
         return [{"type": t, "payload": p} for t, p, _ in self.calls]
@@ -78,6 +86,29 @@ _INTERRUPT = {
 _CONFIRM = {"type": "confirm_response", "payload": {"confirm": True}}
 
 
+def _proceed_request():
+    """A fixed ask_user DecisionRequest (no random ids, so the wire is stable)."""
+    from lobster.services.interaction.component_schemas import (
+        AskUserContext,
+        DecisionRequest,
+    )
+
+    fields = AskUserContext.model_validate(
+        {"fields": [{"key": "answer", "type": "choice", "options": ["yes", "no"]}]}
+    ).fields
+    return DecisionRequest(
+        decision_id="dec-i-2", question="Proceed?", fields=fields
+    ).to_wire()
+
+
+_DECISION_INTERRUPT = {
+    "type": "interrupt",
+    "data": _proceed_request(),
+    "interrupt_id": "i-2",
+}
+_DECISION_ANSWER = ("submit", {"selected": [{"id": "yes"}]})
+
+
 def _complete_stream(cancel):
     yield _delta("ANSWER-ONE")
     yield {"type": "complete"}
@@ -105,6 +136,11 @@ def _ends_without_complete(cancel):
 def _interrupt_stream(cancel):
     yield _delta("QUESTION-PART")
     yield _INTERRUPT
+
+
+def _decision_stream(cancel):
+    yield _delta("QUESTION-PART")
+    yield _DECISION_INTERRUPT
 
 
 def _resumed_complete(cancel):
@@ -135,6 +171,11 @@ SCENARIOS = {
         "error",
     ),
     "hitl_abandoned": (lambda: _Client(_interrupt_stream), [], "cancelled"),
+    "hitl_decision_resume": (
+        lambda: _Client(_decision_stream, _resumed_complete),
+        [_DECISION_ANSWER],
+        "",
+    ),
 }
 
 

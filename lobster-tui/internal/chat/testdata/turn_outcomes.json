@@ -190,6 +190,87 @@
       "type": "done"
     }
   ],
+  "hitl_decision_resume": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "QUESTION-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": "interrupt"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "component": "choice",
+        "data": {
+          "max": 1,
+          "min": 1,
+          "options": [
+            {
+              "id": "yes",
+              "label": "yes"
+            },
+            {
+              "id": "no",
+              "label": "no"
+            }
+          ],
+          "question": "Proceed?"
+        },
+        "fallback_prompt": "Proceed?"
+      },
+      "type": "component_render"
+    },
+    {
+      "payload": {
+        "active": true,
+        "label": "resuming"
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "RESUMED-PART",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": ""
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "<status>"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ],
   "hitl_resume_complete": [
     {
       "payload": {

@@ -63,6 +63,7 @@ func TestRecordedPythonTurnOutcomesRenderCorrectly(t *testing.T) {
 		"hitl_resume_complete":  {once: []string{"QUESTION-PART", "RESUMED-PART"}},
 		"hitl_resume_error":     {once: []string{"QUESTION-PART", "RESUMED-PART", incomplete}, marked: true},
 		"hitl_abandoned":        {once: []string{"QUESTION-PART"}},
+		"hitl_decision_resume":  {once: []string{"QUESTION-PART", "RESUMED-PART"}},
 	}
 
 	traffic := loadTurnOutcomes(t)
