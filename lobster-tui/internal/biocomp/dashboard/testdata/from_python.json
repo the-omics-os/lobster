@@ -1,0 +1,140 @@
+{
+  "question": "Review",
+  "sections": [
+    {
+      "key": "source",
+      "title": "Which count source?",
+      "depends_on": [],
+      "component": "choice",
+      "data": {
+        "question": "Which count source?",
+        "options": [
+          {
+            "id": "SRC-A",
+            "label": "Author matrix",
+            "details": "Raw counts · Build-A"
+          },
+          {
+            "id": "SRC-B",
+            "label": "Repository matrix",
+            "details": "Raw counts · Build-A"
+          },
+          {
+            "id": "SRC-C",
+            "label": "Author summary",
+            "unavailable": "Normalized; reference build unknown"
+          }
+        ],
+        "min": 1,
+        "max": 1
+      }
+    },
+    {
+      "key": "groups",
+      "title": "Group of each sample?",
+      "depends_on": [
+        "source"
+      ],
+      "component": "plate_map",
+      "data": {
+        "question": "Group of each sample?",
+        "title": "Group of each sample?",
+        "format": 96,
+        "choices": [
+          "control",
+          "treated"
+        ],
+        "wells": [
+          {
+            "row": 0,
+            "col": 0,
+            "sample_id": "S01",
+            "label": "Donor A",
+            "condition": "control"
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "sample_id": "S02",
+            "label": "Donor B",
+            "condition": "control",
+            "details": {
+              "note": "Low library size"
+            }
+          },
+          {
+            "row": 0,
+            "col": 2,
+            "sample_id": "S03",
+            "label": "Donor C",
+            "condition": "control"
+          },
+          {
+            "row": 0,
+            "col": 3,
+            "sample_id": "S04",
+            "label": "Donor D",
+            "condition": "control"
+          },
+          {
+            "row": 0,
+            "col": 4,
+            "sample_id": "S05",
+            "label": "Donor A",
+            "condition": "treated"
+          },
+          {
+            "row": 0,
+            "col": 5,
+            "sample_id": "S06",
+            "label": "Donor F",
+            "condition": "treated",
+            "details": {
+              "note": "High mitochondrial fraction"
+            }
+          },
+          {
+            "row": 0,
+            "col": 6,
+            "sample_id": "S07",
+            "label": "Donor G",
+            "condition": "treated"
+          },
+          {
+            "row": 0,
+            "col": 7,
+            "sample_id": "S08",
+            "label": "Donor H",
+            "condition": "",
+            "details": {
+              "note": "Condition label unresolved"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "key": "mito",
+      "title": "Mito fraction cutoff (synthetic)?",
+      "depends_on": [
+        "groups"
+      ],
+      "component": "threshold_slider",
+      "data": {
+        "label": "Mito fraction cutoff (synthetic)?",
+        "min": 0.0,
+        "max": 0.5,
+        "default": 0.2
+      }
+    },
+    {
+      "key": "notes",
+      "title": "Anything to note?",
+      "depends_on": [],
+      "component": "text_input",
+      "data": {
+        "question": "Anything to note?"
+      }
+    }
+  ]
+}

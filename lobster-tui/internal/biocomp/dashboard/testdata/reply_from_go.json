@@ -1,0 +1,37 @@
+{
+  "answers": {
+    "groups": {
+      "assignments": {
+        "S01": "control",
+        "S02": "control",
+        "S03": "control",
+        "S04": "control",
+        "S05": "treated",
+        "S06": "treated",
+        "S07": "treated",
+        "S08": "treated"
+      },
+      "changes": [
+        {
+          "assigned": "treated",
+          "sample_id": "S08",
+          "supplied": ""
+        }
+      ],
+      "reviewed_flags": []
+    },
+    "mito": {
+      "value": 0.2
+    },
+    "notes": {
+      "answer": "ok"
+    },
+    "source": {
+      "selected": [
+        {
+          "id": "SRC-A"
+        }
+      ]
+    }
+  }
+}

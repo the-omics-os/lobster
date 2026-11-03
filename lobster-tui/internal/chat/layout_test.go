@@ -152,15 +152,17 @@ type layoutMockComponent struct {
 	mode string
 }
 
-func (c *layoutMockComponent) Init(_ json.RawMessage) error                          { return nil }
-func (c *layoutMockComponent) InitCmd() tea.Cmd                                      { return nil }
-func (c *layoutMockComponent) HandleMsg(_ tea.Msg) (*biocomp.ComponentResult, tea.Cmd) { return nil, nil }
-func (c *layoutMockComponent) View(w, h int) string                                  { return "mock content" }
-func (c *layoutMockComponent) SetData(_ json.RawMessage) error                       { return nil }
-func (c *layoutMockComponent) Name() string                                          { return c.name }
-func (c *layoutMockComponent) Mode() string                                          { return c.mode }
-func (c *layoutMockComponent) KeyBindings() []key.Binding                            { return nil }
-func (c *layoutMockComponent) ChangeEvent() map[string]any                           { return nil }
+func (c *layoutMockComponent) Init(_ json.RawMessage) error { return nil }
+func (c *layoutMockComponent) InitCmd() tea.Cmd             { return nil }
+func (c *layoutMockComponent) HandleMsg(_ tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
+	return nil, nil
+}
+func (c *layoutMockComponent) View(w, h int) string            { return "mock content" }
+func (c *layoutMockComponent) SetData(_ json.RawMessage) error { return nil }
+func (c *layoutMockComponent) Name() string                    { return c.name }
+func (c *layoutMockComponent) Mode() string                    { return c.mode }
+func (c *layoutMockComponent) KeyBindings() []key.Binding      { return nil }
+func (c *layoutMockComponent) ChangeEvent() map[string]any     { return nil }
 
 func TestFooterComponentExpand(t *testing.T) {
 	m := testModel(40, 80)
@@ -338,5 +340,22 @@ func TestGeometryFirstHeader(t *testing.T) {
 		if layout.HeaderHeight != 2 {
 			t.Errorf("width=%d: HeaderHeight=%d, want 2 (geometry-first)", width, layout.HeaderHeight)
 		}
+	}
+}
+
+func TestTallComponentsUseMostOfTheScreen(t *testing.T) {
+	for _, name := range []string{"plate_map", "dashboard"} {
+		m := Model{height: 50, activeComponent: &ActiveComponent{
+			Component: &layoutMockComponent{name: name, mode: "overlay"},
+		}}
+		if got := m.componentFooterHeight(); got != 44 {
+			t.Errorf("%s: footer height = %d, want 44 (terminal 50 - 6)", name, got)
+		}
+	}
+	m := Model{height: 50, activeComponent: &ActiveComponent{
+		Component: &layoutMockComponent{name: "choice", mode: "overlay"},
+	}}
+	if got := m.componentFooterHeight(); got != 13 {
+		t.Errorf("choice: footer height = %d, want 13 (unchanged)", got)
 	}
 }

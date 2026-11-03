@@ -353,3 +353,112 @@ def test_unsupported_names_what_the_terminal_cannot_draw():
         "qc.x.notes: a list of text values (count)"
     ]
 
+
+# --- Cross-language fixtures: Python adapter <-> Go dashboard ---
+#
+# Python writes the dashboard data it sends; a Go test
+# (lobster-tui/internal/biocomp/dashboard/fixture_test.go) loads it, plays a
+# scientist's keys, and writes the dashboard's reply; the test below checks
+# that reply against the request. Regenerate both files with:
+#   LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 pytest tests/unit/cli/test_go_tui_components.py
+#   cd lobster-tui && LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 go test ./internal/biocomp/dashboard/
+#   pytest tests/unit/cli/test_go_tui_components.py
+
+import json  # noqa: E402
+import os  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from lobster.cli_internal.go_tui_components import dashboard_data  # noqa: E402
+
+GO_FIXTURES = (
+    Path(__file__).resolve().parents[3]
+    / "lobster-tui"
+    / "internal"
+    / "biocomp"
+    / "dashboard"
+    / "testdata"
+)
+
+# A synthetic example (all values fictional).
+_SAMPLES = [
+    ("S01", "Donor A", "control", None),
+    ("S02", "Donor B", "control", "Low library size"),
+    ("S03", "Donor C", "control", None),
+    ("S04", "Donor D", "control", None),
+    ("S05", "Donor A", "treated", None),
+    ("S06", "Donor F", "treated", "High mitochondrial fraction"),
+    ("S07", "Donor G", "treated", None),
+    ("S08", "Donor H", "unknown", "Condition label unresolved"),
+]
+EXAMPLE_DASHBOARD = [
+    {
+        "key": "source",
+        "type": "choice",
+        "question": "Which count source?",
+        "options": [
+            {
+                "id": "SRC-A",
+                "label": "Author matrix",
+                "details": "Raw counts · Build-A",
+            },
+            {
+                "id": "SRC-B",
+                "label": "Repository matrix",
+                "details": "Raw counts · Build-A",
+            },
+            {
+                "id": "SRC-C",
+                "label": "Author summary",
+                "unavailable": "Normalized; reference build unknown",
+            },
+        ],
+    },
+    {
+        "key": "groups",
+        "type": "choice",
+        "question": "Group of each sample?",
+        "view": "plate_map",
+        "depends_on": ["source"],
+        "for_each": [
+            {"id": i, "label": label, **({"details": warn} if warn else {})}
+            for i, label, _, warn in _SAMPLES
+        ],
+        "options": ["control", "treated"],
+        "default": {i: {"id": c} for i, _, c, _ in _SAMPLES if c != "unknown"},
+    },
+    {
+        "key": "mito",
+        "type": "number",
+        "question": "Mito fraction cutoff (synthetic)?",
+        "view": "slider",
+        "min": 0,
+        "max": 0.5,
+        "default": 0.2,
+        "depends_on": ["groups"],
+    },
+    {"key": "notes", "type": "text", "question": "Anything to note?"},
+]
+
+
+def _example_request():
+    return _request(*EXAMPLE_DASHBOARD, view="dashboard", decision_id="dec-fixture")
+
+
+def test_dashboard_data_matches_the_go_fixture():
+    produced = dashboard_data(DecisionRequest.model_validate(_example_request()))
+    path = GO_FIXTURES / "from_python.json"
+    if os.environ.get("LOBSTER_UPDATE_DASHBOARD_FIXTURE") == "1":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(produced, indent=2, ensure_ascii=False) + "\n")
+    assert json.loads(path.read_text()) == produced
+
+
+def test_go_dashboard_reply_becomes_a_valid_answer():
+    reply = json.loads((GO_FIXTURES / "reply_from_go.json").read_text())
+    _, result = _ask(_example_request(), ("submit", reply))
+    groups = result["answer"]["groups"]
+    assert result["answer"]["source"] == {"id": "SRC-A"}
+    assert groups["S08"] == {"id": "treated"}  # resolved by the scientist
+    assert groups["S01"] == {"id": "control"}
+    assert result["answer"]["mito"] == 0.2
+    assert result["answer"]["notes"] == "ok"
