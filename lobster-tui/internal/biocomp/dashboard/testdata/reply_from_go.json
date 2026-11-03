@@ -1,5 +1,12 @@
 {
   "answers": {
+    "direction": {
+      "selected": [
+        {
+          "id": "treated_vs_control"
+        }
+      ]
+    },
     "groups": {
       "assignments": {
         "S01": "control",
@@ -20,11 +27,18 @@
       ],
       "reviewed_flags": []
     },
-    "mito": {
-      "value": 0.2
-    },
-    "notes": {
-      "answer": "ok"
+    "qc": {
+      "answers": {
+        "S02": {
+          "id": "retain"
+        },
+        "S06": {
+          "fields": {
+            "reason": "high mito fraction"
+          },
+          "id": "exclude"
+        }
+      }
     },
     "source": {
       "selected": [

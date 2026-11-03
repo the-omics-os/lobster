@@ -42,7 +42,8 @@
         "format": 96,
         "choices": [
           "control",
-          "treated"
+          "treated",
+          "leave_out"
         ],
         "wells": [
           {
@@ -114,26 +115,67 @@
       }
     },
     {
-      "key": "mito",
-      "title": "Mito fraction cutoff (synthetic)?",
+      "key": "direction",
+      "title": "Compare which with which?",
       "depends_on": [
         "groups"
       ],
-      "component": "threshold_slider",
+      "component": "choice",
       "data": {
-        "label": "Mito fraction cutoff (synthetic)?",
-        "min": 0.0,
-        "max": 0.5,
-        "default": 0.2
+        "question": "Compare which with which?",
+        "options": [
+          {
+            "id": "treated_vs_control",
+            "label": "treated compared with control"
+          },
+          {
+            "id": "control_vs_treated",
+            "label": "control compared with treated"
+          }
+        ],
+        "min": 1,
+        "max": 1
       }
     },
     {
-      "key": "notes",
-      "title": "Anything to note?",
-      "depends_on": [],
-      "component": "text_input",
+      "key": "qc",
+      "title": "Keep each flagged sample?",
+      "depends_on": [
+        "groups"
+      ],
+      "component": "choice_list",
       "data": {
-        "question": "Anything to note?"
+        "question": "Keep each flagged sample?",
+        "items": [
+          {
+            "id": "S02",
+            "label": "Donor B",
+            "details": "Low library size"
+          },
+          {
+            "id": "S06",
+            "label": "Donor F",
+            "details": "High mitochondrial fraction"
+          }
+        ],
+        "options": [
+          {
+            "id": "retain",
+            "label": "retain"
+          },
+          {
+            "id": "exclude",
+            "label": "exclude",
+            "reason": {
+              "key": "reason",
+              "question": "Why?"
+            }
+          },
+          {
+            "id": "defer",
+            "label": "defer"
+          }
+        ]
       }
     }
   ]

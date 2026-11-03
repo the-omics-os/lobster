@@ -234,7 +234,7 @@
           ],
           "question": "Proceed?"
         },
-        "fallback_prompt": "Proceed?"
+        "fallback_prompt": "Proceed?\n\nPick one:\n- yes\n- no\n\nWrite your answer in your own words."
       },
       "type": "component_render"
     },

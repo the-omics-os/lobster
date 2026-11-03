@@ -1193,34 +1193,46 @@ def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
     """Show one ask_user DecisionRequest; return its DecisionAnswer as a dict."""
     from lobster.cli_internal.go_tui_components import (
         build_answer,
+        cannot_show,
         collect,
+        fallback_prompt,
         unsupported,
     )
-
-    def render(component: str, component_data: dict) -> Tuple[str, dict]:
-        return _render_component(bridge, component, component_data)
 
     problems = unsupported(data)
     if problems:
         # Tell the user and the supervisor; never show a broken screen.
         message = "This terminal can't show: " + "; ".join(problems)
         bridge.send("alert", {"level": "warning", "message": message})
-        return build_answer(data, "cancel", comment=f"Not answered. {message}")
+        return build_answer(data, "cancel", comment=cannot_show(problems))
+    # Every render carries the whole question in words, for an older TUI that
+    # can only show it in a text box.
+    prompt = fallback_prompt(data)
+
+    def render(component: str, component_data: dict) -> Tuple[str, dict]:
+        return _render_component(bridge, component, component_data, prompt)
+
     action, answer = collect(data, render)
     return build_answer(data, action, answer)
 
 
 def _render_component(
-    bridge: _LightBridge, component: str, data: dict
+    bridge: _LightBridge,
+    component: str,
+    data: dict,
+    fallback: Optional[str] = None,
 ) -> Tuple[str, dict]:
     """Render one Go component and wait for its reply: (action, reply data).
 
-    Only a reply carrying this render's id is accepted: a late answer to an
-    earlier question is ignored instead of being taken as this one's answer.
-    Raises _QuitTurn when the user quits or cancels the turn, or on timeout.
+    ``fallback`` is the text an older TUI shows when it can't draw the
+    component. Only a reply carrying this render's id is accepted: a late
+    answer to an earlier question is ignored instead of being taken as this
+    one's answer. Raises _QuitTurn when the user quits or cancels the turn,
+    or on timeout.
     """
     msg_id = str(uuid.uuid4())
-    fallback = data.get("question") or data.get("label") or "Please respond:"
+    if not fallback:
+        fallback = data.get("question") or data.get("label") or "Please respond:"
     bridge.send(
         "component_render",
         {"component": component, "data": data, "fallback_prompt": fallback},
