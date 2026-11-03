@@ -145,14 +145,17 @@ def _text_only(question: str) -> AskUserContext:
 
 
 def _to_items(options: list) -> list:
-    """Hint options as items. Dicts keep their id; plain values are their own id."""
+    """Hint options as items. Dicts keep their id, details and unavailable
+    reason (an ineligible option must stay unpickable); plain values are their
+    own id."""
     items = []
     for opt in options:
         if isinstance(opt, dict):
             label = str(opt.get("label", opt.get("name", opt.get("id", ""))))
             item = {"id": str(opt.get("id", label)), "label": label}
-            if opt.get("details"):
-                item["details"] = str(opt["details"])
+            for key in ("details", "unavailable"):
+                if opt.get(key):
+                    item[key] = str(opt[key])
             items.append(item)
         else:
             items.append(str(opt))

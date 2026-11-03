@@ -144,6 +144,25 @@ def test_dict_options_keep_their_ids():
     ]
 
 
+def test_hint_options_keep_unavailable_and_details():
+    """An ineligible hint option stays unavailable; it must not become pickable."""
+    field = _only_field(
+        map_question(
+            "Which count source?",
+            context={
+                "options": [
+                    {"id": "SRC-A", "details": "raw counts"},
+                    {"id": "SRC-C", "unavailable": "normalized; build unknown"},
+                ]
+            },
+        )
+    )
+    assert [(o.id, o.details, o.unavailable) for o in field.options] == [
+        ("SRC-A", "raw counts", None),
+        ("SRC-C", None, "normalized; build unknown"),
+    ]
+
+
 def test_threshold_default_out_of_range_is_dropped():
     field = _only_field(map_question("Set cutoff", context={"min": 0, "max": 0.1}))
     assert field.default is None
