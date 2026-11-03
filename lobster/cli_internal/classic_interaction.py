@@ -6,7 +6,7 @@ simple terminal prompts using Python's built-in input().
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
@@ -14,9 +14,9 @@ def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
 
     Args:
         interrupt_data: The interrupt payload. An ask_user DecisionRequest is
-                        shown and cancelled (only the Go TUI answers those so
-                        far); other payloads use the legacy component
-                        renderers below.
+                        asked as plain-text prompts (``_ask_decision``);
+                        other payloads use the legacy component renderers
+                        below.
 
     Returns:
         The value to resume the interrupt with.
@@ -28,7 +28,7 @@ def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
     from lobster.services.interaction.component_schemas import SCHEMA_VERSION
 
     if interrupt_data.get("schema") == SCHEMA_VERSION:
-        return _decline_decision_request(interrupt_data)
+        return _ask_decision(interrupt_data)
 
     component = interrupt_data.get("component", "text_input")
     fallback = interrupt_data.get("fallback_prompt", "Please provide input:")
@@ -140,22 +140,295 @@ def _handle_text_input(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
     return {"answer": answer}
 
 
-def _decline_decision_request(request: Dict[str, Any]) -> Dict[str, Any]:
-    """Show an ask_user question and answer it with "cancel".
+# ---------------------------------------------------------------------------
+# ask_user DecisionRequests: structured plain-text prompts
+# ---------------------------------------------------------------------------
+#
+# The Go adapter (go_tui_components) turns a request into component data and
+# each component's reply into the contract's answer. The classic UI reuses it
+# with a render that asks each component's data as text prompts and replies
+# in that component's own shape, so both interfaces build the same answer and
+# the contract's checks and re-asks apply unchanged.
 
-    The classic UI can't draw decision fields yet. Cancelling (instead of
-    guessing an answer) resumes the supervisor with a clear reason.
-    """
-    from lobster.services.interaction.component_schemas import DecisionAnswer
+_STOP_KEYS = {"d": "defer", "q": "cancel"}
 
-    print(f"\n{request.get('question', '')}")
-    print("This question needs the Go TUI: run `lobster chat` to answer it.")
-    answer = DecisionAnswer(
-        responds_to={
-            "decision_id": request.get("decision_id", ""),
-            "request_version": request.get("request_version", 1),
-        },
-        action="cancel",
-        comment="Not answered: the classic terminal UI can't show this question.",
+
+class _Stop(Exception):
+    """The user typed d (decide later) or q (cancel) at a prompt."""
+
+    def __init__(self, action: str):
+        self.action = action
+        super().__init__(action)
+
+
+def _ask_decision(request: Dict[str, Any]) -> Dict[str, Any]:
+    """Ask an ask_user DecisionRequest; return its DecisionAnswer as a dict."""
+    from lobster.cli_internal.go_tui_components import (
+        build_answer,
+        cannot_show,
+        collect,
+        unsupported,
     )
-    return answer.model_dump(by_alias=True, exclude_none=True)
+
+    problems = unsupported(request)
+    if problems:
+        print(f"\n{request.get('question', '')}")
+        print("This terminal can't show: " + "; ".join(problems))
+        return build_answer(request, "cancel", comment=cannot_show(problems))
+    print("\n(At any prompt: d = decide later, q = cancel.)")
+    action, answer = collect(request, _render)
+    return build_answer(request, action, answer)
+
+
+def _render(component: str, data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """Ask one component's data as text prompts: (action, the component's reply)."""
+    try:
+        return "submit", _DRAW[component](data)
+    except _Stop as stop:
+        return stop.action, {}
+
+
+def _read(prompt: str) -> str:
+    """One line from the user; d or q alone stops the question."""
+    text = input(prompt).strip()
+    if text.lower() in _STOP_KEYS:
+        raise _Stop(_STOP_KEYS[text.lower()])
+    return text
+
+
+def _show(text: str, details: Optional[str] = None) -> None:
+    print(f"\n{text}")
+    for line in (details or "").splitlines():
+        print(f"  {line}")
+
+
+def _name(item: Dict[str, Any]) -> str:
+    """ "label (id)", or the id when the label is the same or missing."""
+    label = item.get("label") or ""
+    return item["id"] if label in ("", item["id"]) else f"{label} ({item['id']})"
+
+
+def _list_options(options: List[Dict[str, Any]]) -> None:
+    for number, option in enumerate(options, 1):
+        line = f"  {number}. {_name(option)}"
+        if option.get("details"):
+            line += f" — {option['details']}"
+        if option.get("reason"):
+            line += " (asks for a reason)"
+        if option.get("unavailable"):
+            line += f" (unavailable: {option['unavailable']})"
+        print(line)
+
+
+def _pick(
+    options: List[Dict[str, Any]],
+    ask: str,
+    default: List[int],
+    low: int = 1,
+    high: int = 1,
+) -> List[int]:
+    """Indexes of the options picked by number; asks until the input is valid.
+
+    Empty input keeps ``default``. Unavailable options are refused.
+    """
+    keep = f" [Enter = {', '.join(str(i + 1) for i in default)}]" if default else ""
+    while True:
+        text = _read(f"{ask}{keep}: ")
+        if not text:
+            if default or low == 0:
+                return default
+            print("An answer is needed.")
+            continue
+        try:
+            picks = [int(part) - 1 for part in text.replace(",", " ").split()]
+        except ValueError:
+            print("Enter the number of an option.")
+            continue
+        problem = _pick_problem(options, picks, low, high)
+        if problem is None:
+            return picks
+        print(problem)
+
+
+def _pick_problem(
+    options: List[Dict[str, Any]], picks: List[int], low: int, high: int
+) -> Optional[str]:
+    for index in picks:
+        if not 0 <= index < len(options):
+            return f"{index + 1} is not an option (1 to {len(options)})."
+        if options[index].get("unavailable"):
+            option = options[index]
+            return f"{option['id']} can't be picked: {option['unavailable']}."
+    if len(set(picks)) != len(picks):
+        return "Each option can be picked once."
+    if not low <= len(picks) <= high:
+        if low == high:
+            return f"Pick {low}."
+        return f"Pick between {low} and {high}."
+    return None
+
+
+def _draw_choice(data: Dict[str, Any]) -> Dict[str, Any]:
+    _show(data["question"], data.get("details"))
+    options = data["options"]
+    _list_options(options)
+    low, high = data.get("min", 1), data.get("max", 1)
+    picked = data.get("default") or []
+    default = [i for i, option in enumerate(options) if option["id"] in picked]
+    ask = "Number" if high == 1 else f"Numbers, comma-separated ({low} to {high})"
+    picks = _pick(options, ask, default, low, high)
+    return {"selected": [{"id": options[i]["id"]} for i in picks]}
+
+
+def _draw_choice_list(data: Dict[str, Any]) -> Dict[str, Any]:
+    """One prompt per available item; an option that needs one asks a reason."""
+    _show(data["question"], data.get("details"))
+    options = data["options"]
+    _list_options(options)
+    ids = [option["id"] for option in options]
+    defaults = data.get("default") or {}
+    answers: Dict[str, Any] = {}
+    for item in data["items"]:
+        name = _name(item) + (f" ({item['details']})" if item.get("details") else "")
+        if item.get("unavailable"):
+            print(f"  {name}: not answered here ({item['unavailable']})")
+            continue
+        before = defaults.get(item["id"]) or {}
+        default = [ids.index(before["id"])] if before.get("id") in ids else []
+        option = options[_pick(options, name, default)[0]]
+        row: Dict[str, Any] = {"id": option["id"]}
+        reason = option.get("reason")
+        if reason:
+            kept = None
+            if before.get("id") == option["id"]:
+                kept = (before.get("fields") or {}).get(reason["key"])
+            text = _read_text(reason.get("question") or "Reason", kept)
+            row["fields"] = {reason["key"]: text}
+        answers[item["id"]] = row
+    return {"answers": answers}
+
+
+def _read_text(label: str, kept: Optional[str]) -> str:
+    """Non-empty text; empty input keeps ``kept`` when there is one."""
+    keep = f" [Enter = keep: {kept}]" if kept else ""
+    while True:
+        text = _read(f"  {label.rstrip(':?')}{keep}: ")
+        if text or kept:
+            return text or kept
+        print("  An answer is needed.")
+
+
+def _draw_plate(data: Dict[str, Any]) -> Dict[str, Any]:
+    """One prompt per sample; unavailable samples are listed, never asked."""
+    _show(data["question"])
+    for sample in data.get("unavailable") or []:
+        name = " ".join(filter(None, [sample["sample_id"], sample.get("label")]))
+        print(f"  Not assignable: {name} — {sample.get('reason', '')}")
+    choices = data["choices"]
+    options = [{"id": choice} for choice in choices]
+    _list_options(options)
+    assignments = {}
+    for well in data["wells"]:
+        name = " ".join(filter(None, [well["sample_id"], well.get("label")]))
+        note = (well.get("details") or {}).get("note")
+        if note:
+            name += f" ({note})"
+        condition = well.get("condition")
+        default = [choices.index(condition)] if condition in choices else []
+        assignments[well["sample_id"]] = choices[_pick(options, name, default)[0]]
+    return {"assignments": assignments}
+
+
+def _draw_slider(data: Dict[str, Any]) -> Dict[str, Any]:
+    """A number within the slider's bounds; asks again until it is valid."""
+    low, high, default = data["min"], data["max"], data.get("default")
+    whole = data.get("step") == 1
+    unit = f" {data['unit']}" if data.get("unit") else ""
+    _show(data.get("label") or "")
+    kind = "A whole number" if whole else "A number"
+    print(f"  {kind} from {low:g} to {high:g}{unit}")
+    keep = f" [Enter = {default:g}]" if default is not None else ""
+    while True:
+        text = _read(f"Value{keep}: ")
+        if not text and default is not None:
+            return {"value": default}
+        try:
+            value = float(text)
+        except ValueError:
+            print("Enter a number.")
+            continue
+        if whole and not value.is_integer():
+            print("Enter a whole number.")
+        elif not low <= value <= high:
+            print(f"Enter a value from {low:g} to {high:g}.")
+        else:
+            return {"value": int(value) if whole else value}
+
+
+def _draw_text(data: Dict[str, Any]) -> Dict[str, Any]:
+    """A line of text; empty input keeps the default when there is one."""
+    _show(data.get("question") or "")
+    keep = data.get("placeholder")
+    while True:
+        text = _read(f"[{keep}]: " if keep else "> ")
+        if text or keep:
+            return {"answer": text}
+        print("An answer is needed.")
+
+
+def _draw_dashboard(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Every section in order, then a summary to confirm (no = decide later)."""
+    print(f"\n{data['question']}")
+    for problem in data.get("problems") or []:
+        print(f"⚠ {problem}")
+    sections = data["sections"]
+    replies: Dict[str, Any] = {}
+    for number, section in enumerate(sections, 1):
+        print(f"\n— Part {number} of {len(sections)} —")
+        for problem in section.get("problems") or []:
+            print(f"⚠ {problem}")
+        action, reply = _render(section["component"], section["data"])
+        if action != "submit":
+            raise _Stop(action)
+        replies[section["key"]] = reply
+    print("\nYour answers:")
+    for section in sections:
+        reply = replies[section["key"]]
+        summary = _summary(section["component"], section["data"], reply)
+        print(f"  {section['title']}: {summary}")
+    if _read("Confirm all? [y/N]: ").lower() not in ("y", "yes"):
+        raise _Stop("defer")
+    return {"answers": replies}
+
+
+def _summary(component: str, data: Dict[str, Any], reply: Dict[str, Any]) -> str:
+    """One line for a section's reply, for the confirmation summary."""
+    if component == "choice":
+        names = {option["id"]: _name(option) for option in data["options"]}
+        return ", ".join(names[pick["id"]] for pick in reply["selected"]) or "none"
+    if component == "choice_list":
+        rows = []
+        for item_id, row in reply["answers"].items():
+            fields = "".join(f" ({k}: {v})" for k, v in row.get("fields", {}).items())
+            rows.append(f"{item_id} {row['id']}{fields}")
+        return "; ".join(rows)
+    if component == "plate_map":
+        groups = []
+        for choice in data["choices"]:
+            ids = [i for i, picked in reply["assignments"].items() if picked == choice]
+            if ids:
+                groups.append(f"{choice}: {', '.join(ids)}")
+        return "; ".join(groups)
+    if component == "threshold_slider":
+        return f"{reply['value']:g}"
+    return reply.get("answer") or "(kept)"
+
+
+_DRAW: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
+    "choice": _draw_choice,
+    "choice_list": _draw_choice_list,
+    "plate_map": _draw_plate,
+    "threshold_slider": _draw_slider,
+    "text_input": _draw_text,
+    "dashboard": _draw_dashboard,
+}
