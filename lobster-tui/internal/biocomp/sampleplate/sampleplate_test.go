@@ -1,10 +1,13 @@
 package sampleplate
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Look-alike samples for a synthetic example.
@@ -147,5 +150,138 @@ func TestInitNeedsOneToNineChoices(t *testing.T) {
 		if err := (&SamplePlateComponent{}).Init([]byte(raw)); err == nil {
 			t.Errorf("choices %s: expected an error", choices)
 		}
+	}
+}
+
+func TestUnavailableSamplesAreListedUnderThePlateAndNotAnswered(t *testing.T) {
+	raw := strings.Replace(lookAlike, `"wells": [`,
+		`"unavailable": [{"sample_id": "X09", "label": "Line 9", "reason": "No counts in this source"}],
+  "wells": [`, 1)
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	view := ansi.Strip(c.View(90, 30))
+	if !strings.Contains(view, "✕ X09 Line 9 — No counts in this source") {
+		t.Fatalf("unavailable sample not listed:\n%s", view)
+	}
+	if plate := strings.Index(view, "96-Well Plate"); plate < 0 || strings.Index(view, "X09") < plate {
+		t.Fatalf("unavailable list should be under the plate:\n%s", view)
+	}
+	c.HandleMsg(press("right"))
+	c.HandleMsg(press("right"))
+	c.HandleMsg(press("1"))
+	res, _ := c.HandleMsg(press("enter"))
+	if res == nil || res.Action != "submit" {
+		t.Fatalf("expected submit, got %+v (%q)", res, c.message)
+	}
+	if _, ok := res.Data["assignments"].(map[string]any)["X09"]; ok {
+		t.Fatal("an unavailable sample is in the reply")
+	}
+}
+
+func TestInitRejectsBadUnavailableSamples(t *testing.T) {
+	for name, list := range map[string]string{
+		"no id":     `[{"label": "x", "reason": "r"}]`,
+		"duplicate": `[{"sample_id": "X09", "reason": "r"}, {"sample_id": "X09", "reason": "r"}]`,
+		"on plate":  `[{"sample_id": "X01", "reason": "r"}]`,
+	} {
+		raw := strings.Replace(lookAlike, `"wells": [`, `"unavailable": `+list+`, "wells": [`, 1)
+		if err := (&SamplePlateComponent{}).Init([]byte(raw)); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func seventyTwo(t *testing.T) *SamplePlateComponent {
+	t.Helper()
+	var wells []string
+	for i := 0; i < 72; i++ {
+		cond := "control"
+		if i%2 == 1 {
+			cond = "treated"
+		}
+		if i == 71 {
+			cond = ""
+		}
+		wells = append(wells, fmt.Sprintf(`{"row": %d, "col": %d, "sample_id": "S%02d", "label": "Donor %d", "condition": %q}`,
+			i/12, i%12, i+1, i+1, cond))
+	}
+	raw := `{"question": "Group of each sample?", "format": 96, "choices": ["control", "treated", "leave_out"],
+	  "unavailable": [{"sample_id": "S73", "label": "Donor 73", "reason": "failed library"}],
+	  "wells": [` + strings.Join(wells, ",") + `]}`
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestSeventyTwoSamplesOnA96Plate(t *testing.T) {
+	c := seventyTwo(t)
+	view := ansi.Strip(c.View(100, 40))
+	for _, want := range []string{"96-Well Plate", "control 36", "treated 35", "unresolved 1", "✕ S73 Donor 73 — failed library"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+	if res, _ := c.HandleMsg(press("enter")); res != nil || !strings.Contains(c.message, "S72") {
+		t.Fatalf("enter should name S72 as unresolved: %+v %q", res, c.message)
+	}
+	for i := 0; i < 5; i++ {
+		c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
+	}
+	for i := 0; i < 11; i++ {
+		c.HandleMsg(press("right"))
+	}
+	c.HandleMsg(press("3")) // S72 (F12) -> leave_out
+	res, _ := c.HandleMsg(press("enter"))
+	if res == nil || res.Action != "submit" {
+		t.Fatalf("expected submit, got %+v (%q)", res, c.message)
+	}
+	if got := len(res.Data["assignments"].(map[string]any)); got != 72 {
+		t.Fatalf("%d assignments, want 72", got)
+	}
+}
+
+func TestLongQuestionWraps(t *testing.T) {
+	long := "Assign each of these samples to the group it belongs to so that the comparison is right"
+	raw := strings.Replace(lookAlike, "Assign each sample to control or treated, or leave it out.", long, 1)
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	view := ansi.Strip(c.View(40, 40))
+	words := strings.Fields(view)
+	for _, w := range strings.Fields(long) {
+		found := false
+		for _, x := range words {
+			found = found || x == w
+		}
+		if !found {
+			t.Fatalf("word %q missing:\n%s", w, view)
+		}
+	}
+}
+
+func TestDraftAndPrefill(t *testing.T) {
+	c := newComp(t)
+	c.HandleMsg(press("2")) // X01 -> treated
+	if got := c.Draft()["assignments"].(map[string]any); got["X01"] != "treated" || got["X03"] != unknown {
+		t.Fatalf("draft = %v", got)
+	}
+
+	// Pre-filling from a previous reply restores the assignments, and the
+	// supplied conditions stay as they were, so "changes" is unchanged.
+	first := newComp(t)
+	first.HandleMsg(press("right"))
+	first.HandleMsg(press("right"))
+	first.HandleMsg(press("2"))
+	res, _ := first.HandleMsg(press("enter"))
+	again := newComp(t)
+	again.Prefill(res.Data)
+	res2, _ := again.HandleMsg(press("enter"))
+	if res2 == nil || !reflect.DeepEqual(res.Data, res2.Data) {
+		t.Fatalf("prefill changed the reply:\n%v\n%v", res.Data, res2)
 	}
 }

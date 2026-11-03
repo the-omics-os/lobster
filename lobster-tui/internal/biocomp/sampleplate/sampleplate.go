@@ -6,6 +6,9 @@
 // submit rule and the reply shape live here, so Crust stays unchanged.
 // Number keys 1-9 assign the 1st-9th choice; 0 marks a sample unresolved.
 //
+// Samples listed under "unavailable" are not on the plate: they are shown
+// under it with their reason and are never part of the reply.
+//
 // Reply: {"assignments": {sample_id: choice}, "changes": [...]}.
 package sampleplate
 
@@ -50,12 +53,20 @@ type sampleWell struct {
 	Suggestion string            `json:"suggestion"`
 }
 
+// unavailableSample is a sample that can't be assigned, with the reason.
+type unavailableSample struct {
+	SampleID string `json:"sample_id"`
+	Label    string `json:"label"`
+	Reason   string `json:"reason"`
+}
+
 type sampleplateData struct {
-	Question string       `json:"question"`
-	Title    string       `json:"title"`
-	Format   int          `json:"format"`
-	Choices  []string     `json:"choices"`
-	Wells    []sampleWell `json:"wells"`
+	Question    string              `json:"question"`
+	Title       string              `json:"title"`
+	Format      int                 `json:"format"`
+	Choices     []string            `json:"choices"`
+	Wells       []sampleWell        `json:"wells"`
+	Unavailable []unavailableSample `json:"unavailable,omitempty"`
 }
 
 // SamplePlateComponent wraps a Crust platemap.Model.
@@ -65,7 +76,8 @@ type SamplePlateComponent struct {
 	title       string
 	format      platemap.PlateFormat
 	choices     []string
-	samples     []sampleWell      // in the order supplied
+	samples     []sampleWell // in the order supplied
+	unavailable []unavailableSample
 	assignments map[string]string // sample_id -> choice or "unknown"
 	reviewed    map[string]bool   // flagged samples the user has assigned
 	message     string            // feedback line, e.g. why enter was refused
@@ -114,6 +126,18 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 		seenWells[[2]int{w.Row, w.Col}] = true
 		assignments[w.SampleID] = startingAssignment(w.Condition, choices)
 	}
+	seenUnavailable := map[string]bool{}
+	for _, u := range d.Unavailable {
+		switch {
+		case u.SampleID == "":
+			return fmt.Errorf("plate_map: every unavailable sample needs a sample_id")
+		case seenIDs[u.SampleID]:
+			return fmt.Errorf("plate_map: sample %q is both on the plate and unavailable", u.SampleID)
+		case seenUnavailable[u.SampleID]:
+			return fmt.Errorf("plate_map: duplicate unavailable sample %q", u.SampleID)
+		}
+		seenUnavailable[u.SampleID] = true
+	}
 
 	c.question = d.Question
 	c.title = d.Title
@@ -123,6 +147,7 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	c.format = format
 	c.choices = choices
 	c.samples = append([]sampleWell(nil), d.Wells...)
+	c.unavailable = append([]unavailableSample(nil), d.Unavailable...)
 	c.assignments = assignments
 	c.reviewed = map[string]bool{}
 	c.message = ""
@@ -322,17 +347,23 @@ func (c *SamplePlateComponent) submitResult() *biocomp.ComponentResult {
 	}
 }
 
+// hang renders text wrapped to the width, after a prefix; continuation lines
+// are indented under the text, never cut.
+func hang(prefix, text string, width int, style lipgloss.Style) string {
+	w := max(width-lipgloss.Width(prefix), 1)
+	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, style.Width(w).Render(text))
+}
+
 func (c *SamplePlateComponent) View(width, height int) string {
-	questionStyle := lipgloss.NewStyle().Bold(true).Width(width)
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	focusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
 	messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 
 	var top []string
 	if c.question != "" {
-		top = append(top, questionStyle.Render(c.question))
+		top = append(top, hang("", c.question, width, lipgloss.NewStyle().Bold(true)))
 	}
-	top = append(top, dimStyle.Render(c.legend()+" · enter submit all"))
+	top = append(top, hang("", c.legend()+" · enter submit all", width, dimStyle))
 
 	if s, ok := c.sampleAtCursor(); ok {
 		supplied := s.Condition
@@ -353,23 +384,42 @@ func (c *SamplePlateComponent) View(width, height int) string {
 		if s.Suggestion != "" {
 			line += " · AI suggests: " + s.Suggestion
 		}
-		top = append(top, focusStyle.Render(line))
+		top = append(top, hang("", line, width, focusStyle))
 	} else {
 		top = append(top, dimStyle.Render(c.plate.Coordinate()+"  (empty well)"))
 	}
 
-	top = append(top, dimStyle.Render(c.countsLine()))
+	top = append(top, hang("", c.countsLine(), width, dimStyle))
 	if c.message != "" {
-		top = append(top, messageStyle.Render(c.message))
+		top = append(top, hang("", c.message, width, messageStyle))
 	}
 
-	plateHeight := height - len(top)
+	var below []string
+	if len(c.unavailable) > 0 {
+		below = append(below, dimStyle.Render("Not on the plate (can't be assigned):"))
+		for _, u := range c.unavailable {
+			text := u.SampleID
+			if u.Label != "" {
+				text += " " + u.Label
+			}
+			if u.Reason != "" {
+				text += " — " + u.Reason
+			}
+			below = append(below, hang("✕ ", text, width, dimStyle))
+		}
+	}
+
+	plateHeight := height - lipgloss.Height(strings.Join(top, "\n"))
+	if len(below) > 0 {
+		plateHeight -= lipgloss.Height(strings.Join(below, "\n"))
+	}
 	if plateHeight < 6 {
 		plateHeight = 6
 	}
 	c.plate.SetWidth(width)
 	c.plate.SetHeight(plateHeight)
-	return lipgloss.JoinVertical(lipgloss.Left, append(top, c.plate.Render())...)
+	parts := append(top, c.plate.Render())
+	return lipgloss.JoinVertical(lipgloss.Left, append(parts, below...)...)
 }
 
 func (c *SamplePlateComponent) countsLine() string {
@@ -407,3 +457,43 @@ func (c *SamplePlateComponent) KeyBindings() []key.Binding {
 }
 
 func (c *SamplePlateComponent) ChangeEvent() map[string]any { return nil }
+
+// Draft returns the assignments on screen in the reply's shape, so a
+// dashboard can tell whether they differ from the answer it recorded.
+func (c *SamplePlateComponent) Draft() map[string]any {
+	assignments := make(map[string]any, len(c.samples))
+	for _, s := range c.samples {
+		assignments[s.SampleID] = c.assignments[s.SampleID]
+	}
+	return map[string]any{"assignments": assignments}
+}
+
+// Prefill restores the assignments of an earlier reply (a dashboard section
+// that was already answered). The supplied conditions are kept, so the reply's
+// "changes" still compare against the data. Unknown samples and values that
+// are not one of the choices are ignored; flagged samples listed in the
+// reply's "reviewed_flags" count as reviewed.
+func (c *SamplePlateComponent) Prefill(reply map[string]any) {
+	assignments, _ := reply["assignments"].(map[string]any)
+	reviewed := map[string]bool{}
+	if flags, ok := reply["reviewed_flags"].([]any); ok {
+		for _, f := range flags {
+			if m, ok := f.(map[string]any); ok {
+				reviewed[fmt.Sprint(m["sample_id"])] = true
+			}
+		}
+	}
+	for _, s := range c.samples {
+		v, ok := assignments[s.SampleID].(string)
+		if !ok {
+			continue
+		}
+		for _, choice := range c.choices {
+			if v == choice {
+				c.assignments[s.SampleID] = v
+				c.reviewed[s.SampleID] = reviewed[s.SampleID]
+				c.plate.UpsertWell(c.toCrustWell(s))
+			}
+		}
+	}
+}
