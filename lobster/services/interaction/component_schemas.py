@@ -430,7 +430,14 @@ def _sha256(path: Path) -> str:
 
 
 class DecisionRequest(BaseModel):
-    """The envelope ask_user sends to a surface. Built by code, never by the LLM."""
+    """The envelope ask_user sends to a surface. Built by code, never by the LLM.
+
+    ``prefilled_from_answer`` says where the defaults came from: True when a
+    re-ask filled them from the user's submitted answer, False when they are
+    still the supervisor's proposals (a first ask, or a re-ask after a
+    misrouted or malformed reply to one). A surface may show defaults as the
+    user's answer only when it is True.
+    """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -447,6 +454,10 @@ class DecisionRequest(BaseModel):
     )
     snapshot: Optional[FileSnapshot] = Field(
         default=None, description="The data files' fingerprints, taken by ask_user"
+    )
+    prefilled_from_answer: bool = Field(
+        default=False,
+        description="True when the defaults are the user's submitted answer",
     )
 
     @model_validator(mode="after")
@@ -823,18 +834,23 @@ def reask(
     Each field's default becomes the submitted value where that value is a
     valid default; for a for_each field every valid row is kept and only bad
     rows are dropped. Anything unusable keeps the previous default.
-    ``submitted = None`` (an answer that was not for this question) changes no
-    default. ``snapshot``, a fresh reading of the data files, replaces the old
-    fingerprints, except for a file that is gone, which keeps its old one so
-    the answer stays stale until the file is back.
+    ``submitted = None`` (an answer that was not for this question, or not
+    an answer at all) changes no default, so ``prefilled_from_answer`` stays
+    as it was; with a submitted answer it becomes True. ``snapshot``, a fresh
+    reading of the data files, replaces the old fingerprints, except for a
+    file that is gone, which keeps its old one so the answer stays stale
+    until the file is back.
     """
     fields = request.fields
+    prefilled = request.prefilled_from_answer
     if isinstance(submitted, dict):
         fields = [_refill(field, submitted) for field in request.fields]
+        prefilled = True
     update: Dict[str, Any] = {
         "request_version": request.request_version + 1,
         "problems": list(problems),
         "fields": fields,
+        "prefilled_from_answer": prefilled,
     }
     if snapshot is not None and request.snapshot is not None:
         fresh = {entry.path: entry.sha256 for entry in snapshot.files}

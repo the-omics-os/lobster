@@ -853,6 +853,32 @@ def test_reask_without_a_submitted_answer_keeps_every_default():
     assert again.request_version == 2
 
 
+def test_reask_says_whether_the_defaults_came_from_the_user():
+    request = _request({**SOURCE, "default": {"id": "SRC-A"}}, GROUPS_8)
+    assert request.prefilled_from_answer is False
+    assert request.to_wire()["prefilled_from_answer"] is False
+    problem = [Problem(path="groups", message="no answer")]
+    from_user = reask(request, problem, {"source": {"id": "SRC-B"}})
+    assert from_user.prefilled_from_answer is True
+    assert from_user.to_wire()["prefilled_from_answer"] is True
+    assert DecisionRequest.model_validate(from_user.to_wire()) == from_user
+    # Misrouted or malformed: the defaults are still the supervisor's.
+    misrouted = reask(request, problem, None)
+    assert misrouted.prefilled_from_answer is False
+    assert misrouted.to_wire()["prefilled_from_answer"] is False
+
+
+def test_reask_without_an_answer_keeps_where_the_defaults_came_from():
+    """Defaults that are unchanged keep their origin: after the user's answer
+    was refused, a misrouted reply still leaves the user's answers in place."""
+    request = _request({**SOURCE, "default": {"id": "SRC-A"}}, GROUPS_8)
+    problem = [Problem(path="groups", message="no answer")]
+    refused = reask(request, problem, {"source": {"id": "SRC-B"}})
+    misrouted = reask(refused, problem, None)
+    assert misrouted.fields[0].default == {"id": "SRC-B"}
+    assert misrouted.prefilled_from_answer is True
+
+
 # --- free_text ---
 
 

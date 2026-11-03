@@ -14,7 +14,8 @@ reply, so this module can be tested without a Go process. The classic UI
 supplies a text-prompt ``render`` and reuses the same translation.
 
 A re-asked request (one with ``problems``) shows the problems and starts from
-the user's previous answers (the fields' defaults). An older Go TUI that
+the fields' defaults; they count as the user's previous answers only when
+``prefilled_from_answer`` is true. An older Go TUI that
 can't draw a component shows its text box with ``fallback_prompt`` instead;
 its ``{"answer": text}`` reply becomes the ``free_text`` answer action.
 """
@@ -367,8 +368,10 @@ def dashboard_data(request: DecisionRequest) -> Dict[str, Any]:
     """One section per field, each with the component that draws it.
 
     On a re-ask (the request has problems), each problem goes to the section
-    its path starts with (others above the sections), and every section with
-    a previous answer gets it as ``answer``, in that component's reply shape.
+    its path starts with (others above the sections). Only when the defaults
+    are the user's submitted answer (``prefilled_from_answer``) does every
+    section with one get it as ``answer``, in that component's reply shape,
+    so Go starts it answered; the supervisor's proposals only pre-fill.
     """
     notes = _problems_by_field(request)
     sections = []
@@ -383,7 +386,7 @@ def dashboard_data(request: DecisionRequest) -> Dict[str, Any]:
         }
         if notes.get(field.key):
             section["problems"] = notes[field.key]
-        if request.problems and field.default is not None:
+        if request.prefilled_from_answer and field.default is not None:
             section["answer"] = _as_reply(field, component, field.default)
         sections.append(section)
     out: Dict[str, Any] = {"question": request.question}

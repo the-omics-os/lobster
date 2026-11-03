@@ -595,6 +595,54 @@ def test_reasked_dashboard_section_without_a_previous_answer_gets_none():
     }  # the supervisor's defaults, which the user saw as pre-filled
 
 
+def _proposed_dashboard():
+    """A dashboard where the supervisor proposes a value for every section."""
+    return _request(
+        {**SOURCE, "question": "Count source?", "default": {"id": "SRC-A"}},
+        {**PLATE, "depends_on": ["source"]},
+        {**DIRECTION, "default": {"id": "t_vs_c"}},
+        view="dashboard",
+    )
+
+
+def test_misrouted_reask_shows_problems_but_no_section_is_answered():
+    """The supervisor's proposals must never look like the user's answer."""
+    from lobster.services.interaction.component_schemas import Problem, reask
+
+    request = DecisionRequest.model_validate(_proposed_dashboard())
+    message = "this answer is for another question"
+    again = reask(request, [Problem(path="responds_to", message=message)], None)
+    assert again.prefilled_from_answer is False
+    data = dashboard_data(again)
+    assert data["problems"] == [message]
+    for section in data["sections"]:
+        assert "answer" not in section
+    by_key = {s["key"]: s for s in data["sections"]}
+    # The proposals still pre-fill the controls, as on the first ask.
+    assert by_key["source"]["data"]["default"] == ["SRC-A"]
+    assert by_key["groups"]["data"]["wells"][0]["condition"] == "control"
+
+
+def test_rejected_reask_marks_the_submitted_sections_answered():
+    from lobster.services.interaction.component_schemas import Problem, reask
+
+    request = DecisionRequest.model_validate(_proposed_dashboard())
+    submitted = {
+        "source": {"id": "SRC-B"},
+        "groups": {"S01": {"id": "control"}, "S05": {"id": "treated"}},
+        "direction": {"id": "c_vs_t"},
+    }
+    problem = Problem(path="groups.S08", message="no answer")
+    data = dashboard_data(reask(request, [problem], submitted))
+    by_key = {s["key"]: s for s in data["sections"]}
+    assert by_key["groups"]["problems"] == ["S08: no answer"]
+    assert by_key["source"]["answer"] == {"selected": [{"id": "SRC-B"}]}
+    assert by_key["direction"]["answer"] == {"selected": [{"id": "c_vs_t"}]}
+    assert by_key["groups"]["answer"] == {
+        "assignments": {"S01": "control", "S05": "treated"}
+    }
+
+
 # --- older TUI: the whole question in words, free-text answer ---
 
 
@@ -999,9 +1047,10 @@ def _one_question_graph(question, context):
     return builder.compile(checkpointer=InMemorySaver())
 
 
-def _run_with_tui(graph, render):
+def _run_with_tui(graph, render, tamper=None):
     """Answer every pause through the adapter, as the launcher does; return
-    the tool result and the requests shown."""
+    the tool result and the requests shown. ``tamper(envelope, n)`` may
+    change the n-th answer (from 1) before it is sent."""
     from langgraph.types import Command
 
     config = {"configurable": {"thread_id": "full-path"}}
@@ -1016,6 +1065,8 @@ def _run_with_tui(graph, render):
         request = interrupt.value
         shown.append(request)
         envelope = build_answer(request, *collect(request, render))
+        if tamper is not None:
+            envelope = tamper(envelope, len(shown))
         graph_input = Command(resume={interrupt.id: envelope})
     messages = graph.get_state(config).values["messages"]
     (message,) = [m for m in messages if m.type == "tool"]
@@ -1104,6 +1155,51 @@ def test_full_path_every_control_excluded_is_reasked_then_accepted():
     assert (result["action"], result["attempts"]) == ("submit", 2)
     assert result["answer"]["qc"]["S02"] == {"id": "retain"}
     assert result["answer"]["qc"]["S01"]["fields"] == {"reason": "too few reads"}
+
+
+def test_full_path_misrouted_answer_reasks_without_ticking_proposals():
+    """A reply for another question is re-asked: the problem is shown, the
+    supervisor's proposals stay proposals (no section starts answered), and
+    the next valid answer is accepted."""
+    seen = []
+    valid = {
+        "groups": {
+            "assignments": {
+                "S01": "control",
+                "S02": "control",
+                "S03": "treated",
+                "S04": "treated",
+            }
+        },
+        "qc": {"answers": {"S01": {"id": "retain"}, "S02": {"id": "retain"}}},
+    }
+
+    def tui(component, data):
+        assert component == "dashboard"
+        seen.append(data)
+        return "submit", {"answers": valid}
+
+    def misroute_first(envelope, n):
+        if n == 1:
+            envelope["responds_to"]["decision_id"] = "dec-someone-else"
+        return envelope
+
+    result, shown = _run_with_tui(
+        _one_question_graph("Review groups and QC", _CONTROLS_DASHBOARD),
+        tui,
+        tamper=misroute_first,
+    )
+
+    first, second = seen
+    assert [r["request_version"] for r in shown] == [1, 2]
+    assert [r["prefilled_from_answer"] for r in shown] == [False, False]
+    assert second["problems"]  # the misroute is shown
+    for section in second["sections"]:
+        assert "answer" not in section  # proposals are not the user's answer
+    groups = {s["key"]: s for s in second["sections"]}["groups"]
+    assert groups["data"] == {s["key"]: s for s in first["sections"]}["groups"]["data"]
+    assert (result["action"], result["attempts"]) == ("submit", 2)
+    assert result["answer"]["groups"]["S03"] == {"id": "treated"}
 
 
 def test_full_path_older_tui_text_answer_is_unchecked_free_text():
