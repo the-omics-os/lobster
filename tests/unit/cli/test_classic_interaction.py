@@ -159,3 +159,31 @@ def test_malformed_payload_falls_back_to_text(payload):
     with patch("builtins.input", return_value="answer") as prompt:
         assert handle_interrupt_classic(payload) == {"answer": "answer"}
     prompt.assert_called_once()
+
+
+# --- ask_user decision requests ---
+
+
+def test_decision_request_is_shown_and_cancelled(capsys):
+    """The classic UI can't draw fields: it shows the question and cancels."""
+    from lobster.services.interaction.component_schemas import (
+        AskUserContext,
+        DecisionAnswer,
+        DecisionRequest,
+        check_answer,
+    )
+
+    fields = AskUserContext.model_validate(
+        {"fields": [{"key": "source", "type": "choice", "options": ["SRC-A", "SRC-B"]}]}
+    ).fields
+    request = DecisionRequest(question="Which count source?", fields=fields)
+
+    with patch("builtins.input") as typed:
+        reply = handle_interrupt_classic(request.to_wire())
+
+    typed.assert_not_called()  # never asks for (and never guesses) an answer
+    shown = capsys.readouterr().out
+    assert "Which count source?" in shown and "Go TUI" in shown
+    result = check_answer(request, DecisionAnswer.model_validate(reply))
+    assert result["action"] == "cancel"
+    assert "classic terminal UI" in result["comment"]

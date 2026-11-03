@@ -13,15 +13,22 @@ def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
     """Render an interrupt as a terminal prompt and collect the response.
 
     Args:
-        interrupt_data: The interrupt payload from ComponentMapper output
-                        (ComponentSelection.model_dump()).
+        interrupt_data: The interrupt payload. An ask_user DecisionRequest is
+                        shown and cancelled (only the Go TUI answers those so
+                        far); other payloads use the legacy component
+                        renderers below.
 
     Returns:
-        User's response as a dict matching the component's output_schema.
+        The value to resume the interrupt with.
     """
     if not isinstance(interrupt_data, dict):
         question = interrupt_data if isinstance(interrupt_data, str) else ""
         return _handle_text_input(question or "Please provide input", {})
+
+    from lobster.services.interaction.component_schemas import SCHEMA_VERSION
+
+    if interrupt_data.get("schema") == SCHEMA_VERSION:
+        return _decline_decision_request(interrupt_data)
 
     component = interrupt_data.get("component", "text_input")
     fallback = interrupt_data.get("fallback_prompt", "Please provide input:")
@@ -131,3 +138,24 @@ def _handle_text_input(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
     question = data.get("question", fallback)
     answer = input(f"\n{question}: ").strip()
     return {"answer": answer}
+
+
+def _decline_decision_request(request: Dict[str, Any]) -> Dict[str, Any]:
+    """Show an ask_user question and answer it with "cancel".
+
+    The classic UI can't draw decision fields yet. Cancelling (instead of
+    guessing an answer) resumes the supervisor with a clear reason.
+    """
+    from lobster.services.interaction.component_schemas import DecisionAnswer
+
+    print(f"\n{request.get('question', '')}")
+    print("This question needs the Go TUI: run `lobster chat` to answer it.")
+    answer = DecisionAnswer(
+        responds_to={
+            "decision_id": request.get("decision_id", ""),
+            "request_version": request.get("request_version", 1),
+        },
+        action="cancel",
+        comment="Not answered: the classic terminal UI can't show this question.",
+    )
+    return answer.model_dump(by_alias=True, exclude_none=True)
