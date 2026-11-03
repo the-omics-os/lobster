@@ -343,10 +343,10 @@ class TestStructuredOutputToolChoice:
         monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "placeholder")
         from langchain_aws import ChatBedrockConverse
 
-        from lobster.services.interaction.component_mapper import ComponentSelection
+        from lobster.services.interaction.component_mapper import AskUserContext
 
         llm = ChatBedrockConverse(model_id=model, region_name="us-east-1")
-        runnable = llm.with_structured_output(ComponentSelection)
+        runnable = llm.with_structured_output(AskUserContext)
         assert self._bound_tool_choice(runnable) is None
 
     @pytest.mark.parametrize("model", ["claude-sonnet-5-5", "claude-opus-5-5"])
@@ -354,9 +354,9 @@ class TestStructuredOutputToolChoice:
         pytest.importorskip("langchain_anthropic")
         from langchain_anthropic import ChatAnthropic
 
-        from lobster.services.interaction.component_mapper import ComponentSelection
+        from lobster.services.interaction.component_mapper import AskUserContext
 
         runnable = ChatAnthropic(model=model, api_key="test").with_structured_output(
-            ComponentSelection
+            AskUserContext
         )
         assert self._bound_tool_choice(runnable) is None

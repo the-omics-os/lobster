@@ -309,7 +309,9 @@ def test_invalid_metadata_fallback_error_never_chains_model_response(caplog):
 
 def _component_error():
     with pytest.raises(ValidationError) as caught:
-        component_mapper.ComponentSelection(component=MARKER)
+        component_mapper.AskUserContext.model_validate(
+            {"fields": [{"key": "answer", "type": MARKER}]}
+        )
     return caught.value
 
 
@@ -323,11 +325,9 @@ def test_component_structured_schema_failure_logs_type_only_and_keeps_fallback(c
     caplog.set_level(logging.DEBUG, logger=component_mapper.__name__)
     model = _component_model(_component_error())
     result = component_mapper.map_question("Interpret this output", llm=model)
-    assert (
-        result.component == "text_input"
-        and result.fallback_prompt == "Interpret this output"
-    )
-    assert result.data == {"question": "Interpret this output"}
+    assert [field.model_dump(exclude_defaults=True) for field in result.fields] == [
+        {"key": "answer", "type": "text", "question": "Interpret this output"}
+    ]
     records = [
         record for record in caplog.records if record.name == component_mapper.__name__
     ]
@@ -346,7 +346,7 @@ def test_component_fallback_failure_never_chains_model_response(monkeypatch, cap
     def failed_fallback(**_):
         raise ValueError("Synthetic caller-only fallback failure")
 
-    monkeypatch.setattr(component_mapper, "ComponentSelection", failed_fallback)
+    monkeypatch.setattr(component_mapper, "AskUserContext", failed_fallback)
     error = None
     try:
         component_mapper.map_question("Interpret this output", llm=model)

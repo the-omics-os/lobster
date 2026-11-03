@@ -724,13 +724,18 @@ def _build_supervisor_tools(
         *code_tools,
     ]
 
-    # Only include ask_user in interactive mode (chat).
-    # In non-interactive mode (query), the supervisor must use best-judgment.
+    # Only include ask_user (and its dashboard instructions) in interactive
+    # mode (chat). In non-interactive mode (query), the supervisor must use
+    # best-judgment.
     if interactive:
-        from lobster.tools.user_interaction import create_ask_user_tool
+        from lobster.tools.user_interaction import (
+            create_ask_user_tool,
+            create_dashboard_schema_tool,
+        )
 
         ask_user = create_ask_user_tool(llm=llm)
         utility_tools.append(ask_user)
+        utility_tools.append(create_dashboard_schema_tool())
 
     all_supervisor_tools = agent_tools + utility_tools
 
