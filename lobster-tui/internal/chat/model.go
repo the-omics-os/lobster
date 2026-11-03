@@ -32,6 +32,7 @@ import (
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/celltype"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/choice"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/choicelist"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/confirm"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/dashboard"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/qcdash"

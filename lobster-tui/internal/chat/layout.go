@@ -48,8 +48,8 @@ func (m Model) footerHeight() int {
 
 // componentFooterHeight returns the footer height for an active BioCharm component.
 // Height is based on component name, plus 3 for borders + help bar,
-// clamped to min(m.height/2, 20) max and 5 min. A plate map or a dashboard
-// may use all but 6 rows of the terminal instead.
+// clamped to min(m.height/2, 20) max and 5 min. A plate map, a choice list or
+// a dashboard may use all but 6 rows of the terminal instead.
 func (m Model) componentFooterHeight() int {
 	if m.activeComponent == nil || m.activeComponent.Component == nil {
 		return 1
@@ -63,7 +63,7 @@ func (m Model) componentFooterHeight() int {
 		base = 15
 	case "threshold_slider":
 		base = 8
-	case "plate_map", "dashboard":
+	case "plate_map", "choice_list", "dashboard":
 		tall = true
 	default:
 		base = 10
@@ -72,8 +72,8 @@ func (m Model) componentFooterHeight() int {
 	// Add 3 for top border + bottom border + help bar line.
 	h := base + 3
 
-	// Clamp to max half-terminal or 20, whichever is smaller. Plates and
-	// dashboards need the rows: they take all but 6 lines of the terminal.
+	// Clamp to max half-terminal or 20, whichever is smaller. Plates, choice
+	// lists and dashboards need the rows: they take all but 6 lines.
 	maxH := m.height / 2
 	if maxH > 20 {
 		maxH = 20

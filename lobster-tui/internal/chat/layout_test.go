@@ -344,7 +344,7 @@ func TestGeometryFirstHeader(t *testing.T) {
 }
 
 func TestTallComponentsUseMostOfTheScreen(t *testing.T) {
-	for _, name := range []string{"plate_map", "dashboard"} {
+	for _, name := range []string{"plate_map", "choice_list", "dashboard"} {
 		m := Model{height: 50, activeComponent: &ActiveComponent{
 			Component: &layoutMockComponent{name: name, mode: "overlay"},
 		}}
