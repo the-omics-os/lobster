@@ -401,6 +401,76 @@ def test_for_each_default_may_prefill_only_some_rows():
         check_answer(request, _answer(request, {"cond": {"S01": {"id": "control"}}}))
 
 
+# --- U-17: a choice default may name an option by its bare id ---
+
+
+def _default(field):
+    return AskUserContext.model_validate({"fields": [field]}).fields[0].default
+
+
+def test_bare_id_default_is_read_as_the_option():
+    assert _default({**SOURCE, "default": "SRC-A"}) == {"id": "SRC-A"}
+
+
+def test_bare_id_default_per_item_may_mix_forms():
+    field = {**QC, "default": {"S02": "retain", "S06": {"id": "defer"}}}
+    assert _default(field) == {"S02": {"id": "retain"}, "S06": {"id": "defer"}}
+
+
+def test_bare_id_default_with_count_is_a_list_of_ids():
+    assert _default({**GROUPS, "default": ["S05", "S07"]}) == [
+        {"id": "S05"},
+        {"id": "S07"},
+    ]
+    per_item = {
+        "key": "marks",
+        "type": "choice",
+        "for_each": ["S01", "S02"],
+        "count": {"min": 0},
+        "options": ["a", "b", "c"],
+        "default": {"S01": ["a", {"id": "c"}], "S02": []},
+    }
+    assert _default(per_item) == {"S01": [{"id": "a"}, {"id": "c"}], "S02": []}
+
+
+@pytest.mark.parametrize(
+    "field, message",
+    [
+        ({**SOURCE, "default": "SRC-Z"}, 'source.default: expected {"id": ...}'),
+        ({**GROUPS, "default": ["S05", "S99"]}, r"treated.default\[1\]: expected"),
+        ({**QC, "default": {"S02": "keep"}}, 'qc.default.S02: expected {"id": ...}'),
+        ({**SOURCE, "default": "SRC-C"}, "option 'SRC-C' is unavailable"),
+        ({**QC, "default": {"S02": "exclude"}}, "option 'exclude' needs its fields"),
+    ],
+)
+def test_bare_id_default_still_fails_for_unknown_or_unusable_options(field, message):
+    with pytest.raises(ValidationError, match=message):
+        AskUserContext.model_validate({"fields": [field]})
+
+
+def test_bare_id_is_only_for_defaults_never_for_answers():
+    request = _request(SOURCE)
+    with pytest.raises(AnswerRejected, match='source: expected {"id": ...}'):
+        check_answer(request, _answer(request, {"source": "SRC-A"}))
+    qc = _request(QC)
+    with pytest.raises(AnswerRejected, match='qc.S02: expected {"id": ...}'):
+        check_answer(qc, _answer(qc, {"qc": {"S02": "retain", "S06": "retain"}}))
+
+
+def test_bare_id_default_goes_on_the_wire_in_full():
+    request = _request(
+        {**SOURCE, "default": "SRC-A"}, {**QC, "default": {"S02": "defer"}}
+    )
+    defaults = [field["default"] for field in request.to_wire()["fields"]]
+    assert defaults == [{"id": "SRC-A"}, {"S02": {"id": "defer"}}]
+
+
+def test_bare_id_does_not_change_the_callers_context():
+    field = {**SOURCE, "default": "SRC-A"}
+    AskUserContext.model_validate({"fields": [field]})
+    assert field["default"] == "SRC-A"
+
+
 # --- Removed from the MVP: revise, Workspace, Snapshot ---
 
 
@@ -724,6 +794,25 @@ def test_no_default_for_without_items_or_options_means_no_default():
     with_default = {**SOURCE, "default": {"id": "SRC-A"}}
     assert check_request(_context(with_default, checks=[spec]))
     assert check_request(_context(SOURCE, checks=[spec])) == []
+
+
+def test_no_default_for_sees_a_bare_id_default():
+    """U-17: the check runs on the normalised default."""
+    items = {"check": "no_default_for", "field": "groups", "items": ["S08"]}
+    (problem,) = check_request(
+        _context({**GROUPS_8, "default": {"S08": "treated"}}, checks=[items])
+    )
+    assert "pre-fills S08" in problem.message
+    options = {"check": "no_default_for", "field": "groups", "options": ["leave_out"]}
+    (problem,) = check_request(
+        _context({**GROUPS_8, "default": {"S03": "leave_out"}}, checks=[options])
+    )
+    assert "pre-fills S03 with 'Leave out'" in problem.message
+    single = {"check": "no_default_for", "field": "source", "options": ["SRC-A"]}
+    (problem,) = check_request(
+        _context({**SOURCE, "default": "SRC-A"}, checks=[single])
+    )
+    assert "pre-selects 'Author matrix' (SRC-A)" in problem.message
 
 
 def test_request_checks_never_run_inside_model_validators():

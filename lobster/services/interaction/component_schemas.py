@@ -258,6 +258,42 @@ class ChoiceField(_FieldBase):
     type: Literal["choice"]
     options: List[Option] = Field(min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_id_default(cls, data: Any) -> Any:
+        """Read a default naming a known option by its bare id as {"id": ...}.
+
+        Deliberate, pinned leniency (U-17), for the supervisor's input only:
+        "SRC-A", {"S02": "retain"} and ["S05", "S07"] become the full form,
+        like an Item written as a plain string. Answers get no shorthand.
+        Before-mode, so the default's own check and the request-time checks
+        see the full form, and so does the wire.
+        """
+        if not isinstance(data, dict) or data.get("default") is None:
+            return data
+        known = set()
+        for option in data.get("options") or []:
+            if isinstance(option, dict):
+                option = option.get("id")
+            option = getattr(option, "id", option)
+            if isinstance(option, str):
+                known.add(option)
+
+        def full(value: Any) -> Any:
+            if data.get("count") is not None and isinstance(value, list):
+                return [full_one(entry) for entry in value]
+            return full_one(value)
+
+        def full_one(value: Any) -> Any:
+            return {"id": value} if isinstance(value, str) and value in known else value
+
+        default = data["default"]
+        if data.get("for_each") and isinstance(default, dict):
+            default = {item: full(value) for item, value in default.items()}
+        else:
+            default = full(default)
+        return {**data, "default": default}
+
     @model_validator(mode="after")
     def _check_options(self) -> "ChoiceField":
         _check_unique_ids(self.options, "options")
