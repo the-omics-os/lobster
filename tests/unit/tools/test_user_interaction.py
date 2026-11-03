@@ -692,6 +692,22 @@ def test_reask_prefilled_with_the_users_own_answer_does_not_trip_no_default_for(
     assert _tool_results(graph)["call_1"]["action"] == "submit"
 
 
+def test_bare_id_default_pauses_instead_of_invalid_context():
+    """U-17: the supervisor's shorthand default ("SRC-A", {"S01": "retain"})
+    is read as the option; the paused request carries the full form."""
+    source = {**SOURCE["fields"][0], "question": "Source?", "default": "SRC-A"}
+    qc = {**QC, "default": {"S01": "retain"}}
+    graph, pending = _ask({"fields": [source, qc]}, "Source and QC?")
+    defaults = [field["default"] for field in pending.value["fields"]]
+    assert defaults == [{"id": "SRC-A"}, {"S01": {"id": "retain"}}]
+    answer = {
+        "source": {"id": "SRC-A"},
+        "qc": {"S01": {"id": "retain"}, "S03": {"id": "defer"}},
+    }
+    assert _answer_pending(graph, pending, answer) is None
+    assert _tool_results(graph)["call_1"]["action"] == "submit"
+
+
 # --- Request cache ---
 
 
@@ -890,6 +906,13 @@ def test_docstring_lists_every_check_from_the_registry():
         assert entry["use_when"] in description
     for phrase in ('"unavailable"', "data_files", "nothing was decided", "same shape"):
         assert phrase in description
+
+
+def test_docstring_asks_for_the_direction_of_a_group_comparison():
+    """U-19: a question that sets up groups to compare also asks the direction."""
+    description = create_ask_user_tool().description
+    assert "which group is compared with which" in description
+    assert "B relative to A" in description
 
 
 def test_dashboard_schema_covers_lists_checks_direction_and_review():

@@ -164,6 +164,9 @@ def create_ask_user_tool(
         data_files: workspace-relative paths of the files the decision is
                  about; if one changes before the user answers, they are
                  asked again.
+        When items are split into groups to compare, also ask, as its own
+        choice field, which group is compared with which ("B relative to A"
+        or "A relative to B").
 
         Example: keep or exclude each flagged sample, with a reason to exclude:
           {"fields": [{"key": "qc", "type": "choice",
