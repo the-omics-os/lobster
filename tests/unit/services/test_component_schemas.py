@@ -3,14 +3,22 @@
 import pytest
 from pydantic import ValidationError
 
+from lobster.services.interaction import component_schemas
 from lobster.services.interaction.component_schemas import (
+    CHECKS,
     SCHEMA_VERSION,
+    AnswerMisrouted,
     AnswerRejected,
     AnswerStale,
     AskUserContext,
     DecisionAnswer,
     DecisionRequest,
+    FileSnapshot,
+    Problem,
     check_answer,
+    check_request,
+    fingerprint,
+    reask,
 )
 
 SOURCE = {
@@ -206,8 +214,8 @@ def test_dashboard_view_applies_to_the_whole_question():
 
 
 def test_dashboard_refuses_sections_it_cannot_draw():
-    with pytest.raises(ValidationError, match="dashboard section .qc."):
-        AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, QC]})
+    with pytest.raises(ValidationError, match="dashboard section .mito."):
+        AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, MITO]})
 
 
 def test_envelope_wire_format():
@@ -260,13 +268,20 @@ def test_every_problem_is_reported_with_its_path():
     with pytest.raises(AnswerRejected) as caught:
         check_answer(request, _answer(request, answer))
     assert caught.value.problems == [
-        "extra: not a field in this question",
-        "source: option 'SRC-C' is unavailable (Normalized; reference build unknown)",
-        "qc.S06: no answer",
-        "qc.S02.fields: option 'exclude' needs its fields",
-        "mito: from (0.5) is larger than to (0.2)",
-        "treated: the same option was picked twice",
+        Problem(path="extra", message="not a field in this question"),
+        Problem(
+            path="source",
+            message="option 'SRC-C' is unavailable "
+            "(Normalized; reference build unknown)",
+        ),
+        Problem(path="qc.S06", message="no answer"),
+        Problem(path="qc.S02.fields", message="option 'exclude' needs its fields"),
+        Problem(path="mito", message="from (0.5) is larger than to (0.2)"),
+        Problem(path="treated", message="the same option was picked twice"),
     ]
+    assert str(caught.value).startswith(
+        "extra: not a field in this question; source: option 'SRC-C'"
+    )
 
 
 @pytest.mark.parametrize(
@@ -348,10 +363,12 @@ def test_action_must_be_allowed():
         check_answer(request, _answer(request, action="defer"))
 
 
-def test_answer_for_another_decision_is_rejected():
+def test_answer_for_another_decision_is_misrouted():
     request, other = _request(SOURCE), _request(SOURCE)
-    with pytest.raises(AnswerRejected, match="answer is for"):
+    with pytest.raises(AnswerMisrouted, match="answer is for decision") as caught:
         check_answer(request, _answer(other, {"source": {"id": "SRC-A"}}))
+    assert isinstance(caught.value, AnswerRejected)
+    assert caught.value.problems[0].path == "responds_to.decision_id"
 
 
 def test_answer_to_an_old_question_version_is_stale():
@@ -361,8 +378,9 @@ def test_answer_to_an_old_question_version_is_stale():
         action="submit",
         answer={"source": {"id": "SRC-A"}},
     )
-    with pytest.raises(AnswerStale, match="question version 1"):
+    with pytest.raises(AnswerStale, match="version 1 of the question") as caught:
         check_answer(request, old)
+    assert caught.value.problems[0].path == "responds_to.request_version"
 
 
 def test_for_each_default_may_prefill_only_some_rows():
@@ -381,3 +399,596 @@ def test_for_each_default_may_prefill_only_some_rows():
     request = _request(field)
     with pytest.raises(AnswerRejected, match="cond.S08: no answer"):
         check_answer(request, _answer(request, {"cond": {"S01": {"id": "control"}}}))
+
+
+# --- Removed from the MVP: revise, Workspace, Snapshot ---
+
+
+def test_revise_is_not_an_action():
+    request = _request(SOURCE)
+    with pytest.raises(ValidationError, match="action"):
+        DecisionAnswer.model_validate(
+            {
+                "responds_to": {
+                    "decision_id": request.decision_id,
+                    "request_version": 1,
+                },
+                "action": "revise",
+            }
+        )
+    with pytest.raises(ValidationError):
+        _request(SOURCE, actions=["submit", "revise"])
+
+
+def test_workspace_and_mvp_snapshot_are_gone():
+    assert not hasattr(component_schemas, "Workspace")
+    assert not hasattr(component_schemas, "Snapshot")
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        _request(SOURCE, workspace={"id": "w", "type": "rnaseq", "stage": "qc"})
+    with pytest.raises(ValidationError, match="Extra inputs"):
+        DecisionAnswer.model_validate(
+            {
+                "responds_to": {"decision_id": "dec-x", "request_version": 1},
+                "action": "submit",
+                "reviewed_snapshot": "snap-1",
+            }
+        )
+
+
+# --- Problems ---
+
+
+def test_problem_is_a_path_and_a_message():
+    problem = Problem(path="qc.S02", message="no answer")
+    assert problem.model_dump() == {"path": "qc.S02", "message": "no answer"}
+    assert str(problem) == "qc.S02: no answer"
+    error = AnswerRejected([problem, Problem(path="groups", message="empty")])
+    assert str(error) == "qc.S02: no answer; groups: empty"
+
+
+def test_invalid_default_names_the_path_of_each_problem():
+    field = {"key": "a", "type": "choice", "options": ["x"], "default": {"id": "y"}}
+    with pytest.raises(ValidationError, match="a.default: unknown option 'y'"):
+        AskUserContext.model_validate({"fields": [field]})
+
+
+def test_request_carries_checks_problems_and_snapshot_on_the_wire():
+    request = _request(SOURCE)
+    wire = request.to_wire()
+    assert wire["checks"] == [] and wire["problems"] == []
+    assert "snapshot" not in wire
+    again = reask(request, [Problem(path="source", message="pick one")], None)
+    assert again.to_wire()["problems"] == [{"path": "source", "message": "pick one"}]
+    assert DecisionRequest.model_validate(again.to_wire()) == again
+
+
+# --- CHECKS: registry and spec validation ---
+
+GROUPS_8 = {
+    "key": "groups",
+    "type": "choice",
+    "question": "Group of each sample?",
+    "for_each": [f"S0{i}" for i in range(1, 9)],
+    "options": ["control", "treated", {"id": "leave_out", "label": "Leave out"}],
+}
+QC_REVIEW = {
+    "key": "qc",
+    "type": "choice",
+    "question": "Review flagged samples",
+    "for_each": ["S01", "S02", "S06"],
+    "options": [
+        "retain",
+        {"id": "exclude", "fields": [{"key": "reason", "type": "text"}]},
+        "defer",
+    ],
+}
+KEPT = {
+    "check": "each_option_kept",
+    "field": "groups",
+    "options": ["control", "treated"],
+    "minus": {"field": "qc", "options": ["exclude", "defer"]},
+}
+
+
+def _context(*fields, checks=(), **extra):
+    return AskUserContext.model_validate(
+        {"fields": list(fields), "checks": list(checks), **extra}
+    )
+
+
+def _checked_request(*fields, checks=()):
+    context = _context(*fields, checks=checks)
+    return DecisionRequest(
+        question="Review", fields=context.fields, checks=context.checks
+    )
+
+
+def test_checks_registry_holds_exactly_the_v1_checks():
+    assert sorted(CHECKS) == ["each_option_kept", "no_default_for", "reason_required"]
+    assert {name: entry["on"] for name, entry in CHECKS.items()} == {
+        "each_option_kept": "answer",
+        "reason_required": "request",
+        "no_default_for": "request",
+    }
+    for entry in CHECKS.values():
+        assert entry["use_when"] and "\n" not in entry["use_when"]
+        assert callable(entry["validate"]) and callable(entry["run"])
+
+
+@pytest.mark.parametrize(
+    "spec, message",
+    [
+        ({"field": "groups"}, 'needs a "check"'),
+        ({"check": "every_group_balanced", "field": "groups"}, "unknown check"),
+        ({**KEPT, "field": "nope"}, "no field 'nope'"),
+        ({**KEPT, "options": ["control", "placebo"]}, "unknown option 'placebo'"),
+        ({**KEPT, "options": []}, "at least one option"),
+        ({**KEPT, "colour": "red"}, "unknown parameter"),
+        ({**KEPT, "minus": {"field": "qc"}}, "minus needs"),
+        (
+            {**KEPT, "minus": {"field": "qc", "options": ["drop"]}},
+            "unknown option 'drop'",
+        ),
+        ({**KEPT, "minus": {**KEPT["minus"], "extra": 1}}, "unknown parameter"),
+        ({**KEPT, "minus": {"field": "groups", "options": ["leave_out"]}}, "another"),
+        ({**KEPT, "field": "note"}, "per-item choice"),
+        ({**KEPT, "field": "source"}, "per-item choice"),
+        ({"check": "reason_required", "field": "qc", "options": ["skip"]}, "'skip'"),
+        ({"check": "reason_required", "field": "note", "options": ["x"]}, "choice"),
+        ({"check": "reason_required", "field": "qc"}, "needs options"),
+        ({"check": "no_default_for", "field": "qc", "items": ["S99"]}, "'S99'"),
+        ({"check": "no_default_for", "field": "source", "items": ["S01"]}, "for_each"),
+        ({"check": "no_default_for", "field": "note", "options": ["x"]}, "choice"),
+        ({"check": "no_default_for", "field": "qc", "items": "S01"}, "list"),
+    ],
+)
+def test_invalid_check_specs_are_refused(spec, message):
+    note = {"key": "note", "type": "text", "question": "Note"}
+    with pytest.raises(ValidationError, match=message):
+        _context(GROUPS_8, QC_REVIEW, {**SOURCE}, note, checks=[spec])
+
+
+def test_check_specs_are_validated_on_the_request_too():
+    context = _context(GROUPS_8, QC_REVIEW)
+    with pytest.raises(ValidationError, match="no field 'nope'"):
+        DecisionRequest(
+            question="Review",
+            fields=context.fields,
+            checks=[{**KEPT, "field": "nope"}],
+        )
+
+
+# --- each_option_kept ---
+
+
+def _groups(control, treated, leave_out=()):
+    answer = {s: {"id": "control"} for s in control}
+    answer.update({s: {"id": "treated"} for s in treated})
+    answer.update({s: {"id": "leave_out"} for s in leave_out})
+    return answer
+
+
+def test_each_option_kept_rejects_an_empty_group():
+    request = _checked_request(GROUPS_8, checks=[{**KEPT, "minus": None}])
+    answer = {"groups": _groups([], [f"S0{i}" for i in range(1, 9)])}
+    with pytest.raises(AnswerRejected) as caught:
+        check_answer(request, _answer(request, answer))
+    assert [(p.path, p.message) for p in caught.value.problems] == [
+        ("groups", "'control' has no items; give it at least one")
+    ]
+
+
+def test_each_option_kept_rejects_a_group_emptied_by_qc_with_one_problem_per_field():
+    request = _checked_request(GROUPS_8, QC_REVIEW, checks=[KEPT])
+    answer = {
+        "groups": _groups(["S01", "S02"], ["S03", "S04", "S05", "S06", "S07", "S08"]),
+        "qc": {
+            "S01": {"id": "exclude", "fields": {"reason": "low library size"}},
+            "S02": {"id": "exclude", "fields": {"reason": "degraded"}},
+            "S06": {"id": "retain"},
+        },
+    }
+    with pytest.raises(AnswerRejected) as caught:
+        check_answer(request, _answer(request, answer))
+    message = "'control' has no items left after removing S01, S02 (qc: exclude)"
+    assert [(p.path, p.message) for p in caught.value.problems] == [
+        ("groups", message),
+        ("qc", message),
+    ]
+
+
+def test_each_option_kept_passes_when_every_group_keeps_an_item():
+    request = _checked_request(GROUPS_8, QC_REVIEW, checks=[KEPT])
+    answer = {
+        "groups": _groups(["S01", "S02", "S03"], ["S04", "S05", "S06", "S07", "S08"]),
+        "qc": {
+            "S01": {"id": "exclude", "fields": {"reason": "low library size"}},
+            "S02": {"id": "retain"},
+            "S06": {"id": "retain"},
+        },
+    }
+    assert check_answer(request, _answer(request, answer))["action"] == "submit"
+
+
+def test_items_picked_with_options_outside_the_check_do_not_count():
+    """A left-out sample keeps no group alive."""
+    request = _checked_request(GROUPS_8, checks=[{**KEPT, "minus": None}])
+    answer = {
+        "groups": _groups(
+            [], ["S02", "S03"], leave_out=["S01", *"S04 S05 S06 S07 S08".split()]
+        )
+    }
+    with pytest.raises(AnswerRejected, match="'control' has no items"):
+        check_answer(request, _answer(request, answer))
+
+
+def test_deferring_the_last_control_is_refused():
+    """U-13: a deferred sample does not count toward its group."""
+    request = _checked_request(GROUPS_8, QC_REVIEW, checks=[KEPT])
+    answer = {
+        "groups": _groups(["S01", "S02"], ["S03", "S04", "S05", "S06", "S07", "S08"]),
+        "qc": {
+            "S01": {"id": "exclude", "fields": {"reason": "low library size"}},
+            "S02": {"id": "defer"},
+            "S06": {"id": "retain"},
+        },
+    }
+    with pytest.raises(AnswerRejected) as caught:
+        check_answer(request, _answer(request, answer))
+    assert caught.value.problems[0].message == (
+        "'control' has no items left after removing S01, S02 (qc: exclude, defer)"
+    )
+
+
+def test_answer_checks_run_alongside_shape_problems():
+    request = _checked_request(GROUPS_8, QC_REVIEW, checks=[{**KEPT, "minus": None}])
+    answer = {
+        "groups": _groups([], [f"S0{i}" for i in range(1, 9)]),
+        "qc": {
+            "S01": {"id": "exclude"},
+            "S02": {"id": "retain"},
+            "S06": {"id": "retain"},
+        },
+    }
+    with pytest.raises(AnswerRejected) as caught:
+        check_answer(request, _answer(request, answer))
+    assert [p.path for p in caught.value.problems] == ["qc.S01.fields", "groups"]
+
+
+def test_answer_checks_skip_a_field_whose_shape_failed():
+    request = _checked_request(GROUPS_8, checks=[{**KEPT, "minus": None}])
+    with pytest.raises(AnswerRejected) as caught:
+        check_answer(request, _answer(request, {"groups": "everything in control"}))
+    assert [p.path for p in caught.value.problems] == ["groups"]
+    assert "has no items" not in str(caught.value)
+
+
+# --- Request-time checks: reason_required, no_default_for ---
+
+
+def test_reason_required_needs_a_required_text_field_on_each_option():
+    spec = {"check": "reason_required", "field": "qc", "options": ["exclude"]}
+    assert check_request(_context(QC_REVIEW, checks=[spec])) == []
+    no_reason = {**QC_REVIEW, "options": ["retain", "exclude", "defer"]}
+    optional = {
+        **QC_REVIEW,
+        "options": [
+            "retain",
+            {
+                "id": "exclude",
+                "fields": [{"key": "reason", "type": "text", "count": {"min": 0}}],
+            },
+        ],
+    }
+    for qc in (no_reason, optional):
+        (problem,) = check_request(_context(qc, checks=[spec]))
+        assert problem.path == "qc"
+        assert "'exclude' needs a required text field" in problem.message
+
+
+def test_no_default_for_refuses_prefilled_items():
+    field = {
+        **GROUPS_8,
+        "default": {"S01": {"id": "control"}, "S08": {"id": "treated"}},
+    }
+    spec = {"check": "no_default_for", "field": "groups", "items": ["S08"]}
+    (problem,) = check_request(_context(field, checks=[spec]))
+    assert problem.path == "groups"
+    assert "pre-fills S08" in problem.message
+    allowed = {**GROUPS_8, "default": {"S01": {"id": "control"}}}
+    assert check_request(_context(allowed, checks=[spec])) == []
+
+
+def test_no_default_for_refuses_a_listed_option_for_listed_items():
+    """U-13: a warned sample may not be pre-filled as exclude."""
+    spec = {
+        "check": "no_default_for",
+        "field": "qc",
+        "items": ["S02"],
+        "options": ["exclude"],
+    }
+    excluded = {
+        **QC_REVIEW,
+        "default": {"S02": {"id": "exclude", "fields": {"reason": "low counts"}}},
+    }
+    (problem,) = check_request(_context(excluded, checks=[spec]))
+    assert "pre-fills S02 with 'exclude'" in problem.message
+    retained = {**QC_REVIEW, "default": {"S02": {"id": "retain"}}}
+    assert check_request(_context(retained, checks=[spec])) == []
+    any_item = {"check": "no_default_for", "field": "qc", "options": ["exclude"]}
+    assert check_request(_context(excluded, checks=[any_item]))
+
+
+def test_no_default_for_without_items_or_options_means_no_default():
+    spec = {"check": "no_default_for", "field": "source"}
+    with_default = {**SOURCE, "default": {"id": "SRC-A"}}
+    assert check_request(_context(with_default, checks=[spec]))
+    assert check_request(_context(SOURCE, checks=[spec])) == []
+
+
+def test_request_checks_never_run_inside_model_validators():
+    """A14: building the context or the request does not run request-time checks."""
+    field = {**GROUPS_8, "default": {"S08": {"id": "treated"}}}
+    spec = {"check": "no_default_for", "field": "groups", "items": ["S08"]}
+    context = _context(field, checks=[spec])  # no ValidationError
+    request = DecisionRequest(
+        question="Groups", fields=context.fields, checks=context.checks
+    )
+    assert DecisionRequest.model_validate(request.to_wire()).checks == [spec]
+    assert check_request(context)
+
+
+# --- Dashboard: per-item list sections ---
+
+
+def test_dashboard_allows_a_per_item_list_with_reason_fields():
+    context = AskUserContext.model_validate(
+        {"view": "dashboard", "fields": [SOURCE, QC_REVIEW]}
+    )
+    assert context.fields[1].view == "default"
+
+
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        (
+            [
+                "retain",
+                {
+                    "id": "exclude",
+                    "fields": [
+                        {"key": "reason", "type": "text"},
+                        {"key": "note", "type": "text"},
+                    ],
+                },
+            ],
+            "one required text field",
+        ),
+        (
+            ["retain", {"id": "exclude", "fields": [{"key": "n", "type": "number"}]}],
+            "one required text field",
+        ),
+        (
+            [
+                "retain",
+                {
+                    "id": "exclude",
+                    "fields": [{"key": "reason", "type": "text", "count": {"min": 0}}],
+                },
+            ],
+            "one required text field",
+        ),
+    ],
+)
+def test_dashboard_list_section_refuses_other_option_fields(options, message):
+    qc = {**QC_REVIEW, "options": options}
+    with pytest.raises(ValidationError, match=message):
+        AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, qc]})
+
+
+def test_dashboard_still_refuses_counts_and_reasons_it_cannot_draw():
+    counted = {**QC_REVIEW, "options": ["retain", "defer"], "count": {"min": 1}}
+    with pytest.raises(ValidationError, match="one option per item"):
+        AskUserContext.model_validate(
+            {"view": "dashboard", "fields": [SOURCE, counted]}
+        )
+    on_plate = {**QC_REVIEW, "view": "plate_map"}
+    with pytest.raises(ValidationError, match="options with fields"):
+        AskUserContext.model_validate(
+            {"view": "dashboard", "fields": [SOURCE, on_plate]}
+        )
+    texts = {"key": "names", "type": "text", "question": "Names?", "for_each": ["a"]}
+    with pytest.raises(ValidationError, match="for_each"):
+        AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, texts]})
+    number = {"key": "n", "type": "number", "question": "N?", "count": {"min": 1}}
+    with pytest.raises(ValidationError, match="count is only supported on a choice"):
+        AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, number]})
+
+
+# --- reask ---
+
+
+def test_reask_bumps_the_version_and_keeps_the_submitted_answer():
+    request = _request(SOURCE, GROUPS_8, decision_id="dec-1")
+    submitted = {
+        "source": {"id": "SRC-B"},
+        "groups": {
+            "S01": {"id": "control"},
+            "S02": {"id": "placebo"},  # bad row: dropped
+            "S03": {"id": "treated"},
+            "S99": {"id": "control"},  # not an item: dropped
+        },
+    }
+    problems = [Problem(path="groups.S02", message="unknown option 'placebo'")]
+    again = reask(request, problems, submitted)
+    assert (again.decision_id, again.request_version) == ("dec-1", 2)
+    assert again.problems == problems
+    assert again.fields[0].default == {"id": "SRC-B"}
+    assert again.fields[1].default == {
+        "S01": {"id": "control"},
+        "S03": {"id": "treated"},
+    }
+    assert request.fields[1].default is None and request.problems == []
+
+
+def test_reask_keeps_the_previous_default_where_the_answer_is_unusable():
+    groups = {
+        **GROUPS_8,
+        "default": {"S01": {"id": "control"}, "S02": {"id": "control"}},
+    }
+    request = _request({**SOURCE, "default": {"id": "SRC-A"}}, groups)
+    submitted = {"source": {"id": "SRC-C"}, "groups": {"S02": {"id": "treated"}}}
+    again = reask(request, [], submitted)
+    assert again.fields[0].default == {"id": "SRC-A"}  # SRC-C is unavailable
+    assert again.fields[1].default == {
+        "S01": {"id": "control"},
+        "S02": {"id": "treated"},
+    }
+
+
+def test_reask_without_a_submitted_answer_keeps_every_default():
+    request = _request({**SOURCE, "default": {"id": "SRC-A"}}, GROUPS_8)
+    again = reask(request, [Problem(path="responds_to.decision_id", message="x")], None)
+    assert [f.default for f in again.fields] == [{"id": "SRC-A"}, None]
+    assert again.request_version == 2
+
+
+# --- free_text ---
+
+
+def test_free_text_needs_text_and_only_free_text_has_text():
+    responds_to = {"decision_id": "dec-x", "request_version": 1}
+    with pytest.raises(ValidationError, match="non-empty text"):
+        DecisionAnswer.model_validate(
+            {"responds_to": responds_to, "action": "free_text", "text": "  "}
+        )
+    with pytest.raises(ValidationError, match="only for the free_text action"):
+        DecisionAnswer.model_validate(
+            {"responds_to": responds_to, "action": "submit", "text": "hello"}
+        )
+
+
+def test_free_text_is_returned_without_shape_or_answer_checks():
+    request = _checked_request(GROUPS_8, QC_REVIEW, checks=[KEPT])
+    answer = _answer(request, action="free_text", text=" S01 and S02 control ")
+    result = check_answer(request, answer)
+    assert result == {
+        "decision_id": request.decision_id,
+        "answer_id": answer.answer_id,
+        "action": "free_text",
+        "text": "S01 and S02 control",
+    }
+    assert "free_text" not in request.actions
+
+
+# --- data_files fingerprints ---
+
+
+def _workspace(tmp_path, **files):
+    for name, content in files.items():
+        path = tmp_path / "data" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    return tmp_path
+
+
+def test_fingerprint_hashes_each_workspace_file(tmp_path):
+    import hashlib
+
+    workspace = _workspace(tmp_path, **{"counts.csv": "gene,S01\nG1,5\n"})
+    snapshot = fingerprint(["data/counts.csv"], workspace)
+    assert snapshot.model_dump() == {
+        "files": [
+            {
+                "path": "data/counts.csv",
+                "sha256": hashlib.sha256(b"gene,S01\nG1,5\n").hexdigest(),
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize(
+    "path, message",
+    [
+        ("../outside.csv", "inside the workspace"),
+        ("data/../../outside.csv", "inside the workspace"),
+        ("/etc/hostname", "inside the workspace"),
+        ("data/missing.csv", "can't read"),
+        ("data", "can't read"),
+    ],
+)
+def test_fingerprint_refuses_paths_it_cannot_trust(tmp_path, path, message):
+    workspace = _workspace(tmp_path / "ws", **{"counts.csv": "x"})
+    (tmp_path / "outside.csv").write_text("secret")
+    with pytest.raises(ValueError, match=message):
+        fingerprint([path], workspace)
+
+
+def test_fingerprint_refuses_a_link_out_of_the_workspace(tmp_path):
+    workspace = _workspace(tmp_path / "ws", **{"counts.csv": "x"})
+    (tmp_path / "outside.csv").write_text("secret")
+    (workspace / "data" / "link.csv").symlink_to(tmp_path / "outside.csv")
+    with pytest.raises(ValueError, match="outside the workspace"):
+        fingerprint(["data/link.csv"], workspace)
+
+
+def test_fingerprint_may_report_a_missing_file_instead_of_refusing(tmp_path):
+    workspace = _workspace(tmp_path, **{"counts.csv": "x"})
+    snapshot = fingerprint(
+        ["data/counts.csv", "data/gone.csv"], workspace, missing_ok=True
+    )
+    assert [f.sha256 is None for f in snapshot.files] == [False, True]
+
+
+def test_data_files_are_workspace_relative_strings():
+    with pytest.raises(ValidationError, match="duplicate"):
+        _context(SOURCE, data_files=["data/a.csv", "data/a.csv"])
+    with pytest.raises(ValidationError):
+        _context(SOURCE, data_files=[""])
+    assert _context(SOURCE, data_files=["data/a.csv"]).data_files == ["data/a.csv"]
+
+
+def _snapshot_request(workspace):
+    context = _context(SOURCE)
+    return DecisionRequest(
+        question="Which count source?",
+        fields=context.fields,
+        snapshot=fingerprint(["data/a.csv", "data/b.csv"], workspace),
+    )
+
+
+def test_changed_data_makes_a_submitted_answer_stale(tmp_path):
+    workspace = _workspace(tmp_path, **{"a.csv": "1", "b.csv": "2"})
+    request = _snapshot_request(workspace)
+    (workspace / "data" / "a.csv").write_text("changed")
+    (workspace / "data" / "b.csv").unlink()
+    now = fingerprint(["data/a.csv", "data/b.csv"], workspace, missing_ok=True)
+    with pytest.raises(AnswerStale) as caught:
+        check_answer(request, _answer(request, {"source": {"id": "SRC-A"}}), now)
+    assert [(p.path, p.message) for p in caught.value.problems] == [
+        ("data_files", "the data changed while you were reviewing it: data/a.csv"),
+        ("data_files", "the data changed while you were reviewing it: data/b.csv"),
+    ]
+    assert caught.value.snapshot == now
+
+
+def test_unchanged_data_is_accepted(tmp_path):
+    workspace = _workspace(tmp_path, **{"a.csv": "1", "b.csv": "2"})
+    request = _snapshot_request(workspace)
+    now = fingerprint(["data/a.csv", "data/b.csv"], workspace, missing_ok=True)
+    result = check_answer(request, _answer(request, {"source": {"id": "SRC-A"}}), now)
+    assert result["answer"] == {"source": {"id": "SRC-A"}}
+
+
+def test_reask_takes_fresh_fingerprints_but_keeps_a_gone_file_stale(tmp_path):
+    workspace = _workspace(tmp_path, **{"a.csv": "1", "b.csv": "2"})
+    request = _snapshot_request(workspace)
+    (workspace / "data" / "a.csv").write_text("changed")
+    (workspace / "data" / "b.csv").unlink()
+    now = fingerprint(["data/a.csv", "data/b.csv"], workspace, missing_ok=True)
+    again = reask(request, [], {"source": {"id": "SRC-A"}}, snapshot=now)
+    assert again.snapshot.files[0].sha256 == now.files[0].sha256
+    assert again.snapshot.files[1].sha256 == request.snapshot.files[1].sha256
+    with pytest.raises(AnswerStale, match="data/b.csv"):
+        check_answer(again, _answer(again, {"source": {"id": "SRC-A"}}), now)
+    assert isinstance(again.snapshot, FileSnapshot)

@@ -733,7 +733,9 @@ def _build_supervisor_tools(
             create_dashboard_schema_tool,
         )
 
-        ask_user = create_ask_user_tool(llm=llm)
+        ask_user = create_ask_user_tool(
+            llm=llm, workspace_path=data_manager.workspace_path
+        )
         utility_tools.append(ask_user)
         utility_tools.append(create_dashboard_schema_tool())
 
