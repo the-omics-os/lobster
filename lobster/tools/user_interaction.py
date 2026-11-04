@@ -159,12 +159,17 @@ def create_ask_user_tool(
         record:  fields: [field, ...] answered together
         item:    {"id", "label", "details", "unavailable"} or a plain string.
                  id is a stable identity (sample ID, accession), never a row
-                 number; label is display only. Show an ineligible option or
-                 item with "unavailable": "<reason>"; never leave it out.
+                 number; label is display only. An option or item that exists
+                 but can't be used (ruled out by a rule or by the data) stays
+                 in the list with "unavailable": "<reason>", so the user sees
+                 why; never drop it or mention it only in "details".
         data_files: workspace-relative paths of the files the decision is
                  about; if one changes before the user answers, they are
                  asked again.
-        When items are split into groups to compare, also ask, as its own
+        To put items into groups, ask ONE choice field with for_each over
+        every item (view "plate_map" for samples), with the known groups as
+        its default and none for an unresolved item; never one field per
+        item: checks only see groups asked as one field. Also ask, as its own
         choice field, which group is compared with which ("B relative to A"
         or "A relative to B").
 

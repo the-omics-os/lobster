@@ -946,6 +946,21 @@ def test_docstring_asks_for_the_direction_of_a_group_comparison():
     assert "B relative to A" in description
 
 
+def test_docstring_keeps_ruled_out_options_in_the_list():
+    """Live T1/T3: a ruled-out source was dropped instead of shown unavailable."""
+    description = " ".join(create_ask_user_tool().description.split())
+    assert 'stays in the list with "unavailable": "<reason>"' in description
+    assert 'never drop it or mention it only in "details"' in description
+
+
+def test_docstring_asks_a_grouping_as_one_field_over_every_item():
+    """Live T4: groups asked one field per sample, so no check could see them."""
+    description = " ".join(create_ask_user_tool().description.split())
+    assert "ask ONE choice field with for_each over every item" in description
+    assert "never one field per item" in description
+    assert "checks only see groups asked as one field" in description
+
+
 def test_dashboard_schema_covers_lists_checks_direction_and_review():
     text = create_dashboard_schema_tool().invoke({})
     for phrase in (
