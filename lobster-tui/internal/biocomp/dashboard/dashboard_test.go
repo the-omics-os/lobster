@@ -701,3 +701,20 @@ func TestSameAnswerComparesTheEarlierAnswersKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestPlainNumberNeverUsesExponentForm(t *testing.T) {
+	cases := map[any]string{
+		2e6:       "2,000,000",
+		2000519.0: "2,000,519",
+		0.31:      "0.31",
+		-1500.0:   "-1,500",
+		7:         "7",
+		0.0001:    "0.0001",
+		"n/a":     "n/a",
+	}
+	for in, want := range cases {
+		if got := plainNumber(in); got != want {
+			t.Errorf("plainNumber(%v) = %q, want %q", in, got, want)
+		}
+	}
+}

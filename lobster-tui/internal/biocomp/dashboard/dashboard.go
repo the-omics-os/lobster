@@ -27,8 +27,10 @@ package dashboard
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -744,7 +746,32 @@ func sliderText(data json.RawMessage, answer map[string]any) string {
 		Unit string `json:"unit"`
 	}
 	_ = json.Unmarshal(data, &d)
-	return strings.TrimSpace(fmt.Sprintf("%v %s", answer["value"], d.Unit))
+	return strings.TrimSpace(plainNumber(answer["value"]) + " " + d.Unit)
+}
+
+// plainNumber writes a number as a person reads it: 2,000,000 or 0.31, never
+// 2e+06. Anything that isn't a number is printed as it is.
+func plainNumber(v any) string {
+	f, ok := v.(float64)
+	if !ok {
+		if i, isInt := v.(int); isInt {
+			f, ok = float64(i), true
+		}
+	}
+	if !ok || math.IsInf(f, 0) || math.IsNaN(f) {
+		return fmt.Sprint(v)
+	}
+	if f == math.Trunc(f) && math.Abs(f) < 1e15 {
+		digits := strconv.FormatInt(int64(math.Abs(f)), 10)
+		for i := len(digits) - 3; i > 0; i -= 3 {
+			digits = digits[:i] + "," + digits[i:]
+		}
+		if f < 0 {
+			digits = "-" + digits
+		}
+		return digits
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
 func asMaps(v any) []map[string]any {
