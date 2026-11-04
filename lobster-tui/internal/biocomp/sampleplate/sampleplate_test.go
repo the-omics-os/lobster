@@ -3,10 +3,12 @@ package sampleplate
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -284,4 +286,90 @@ func TestDraftAndPrefill(t *testing.T) {
 	if res2 == nil || !reflect.DeepEqual(res.Data, res2.Data) {
 		t.Fatalf("prefill changed the reply:\n%v\n%v", res.Data, res2)
 	}
+}
+
+// The selected sample's details (from a data reference) wrap on the plate's
+// own focus lines; Crust's footer line is cut at the width, so they are not
+// put there. E2E_REPORT #2.
+const longNote = "Condition label unresolved; a second manifest suggests treated (suggestion only)"
+
+func withNote(t *testing.T) *SamplePlateComponent {
+	t.Helper()
+	raw := strings.Replace(lookAlike, `"warning": ""}`,
+		`"warning": "", "details": {"note": "`+longNote+`"}}`, 1)
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func TestLongDetailsWrapUnderTheFocusLine(t *testing.T) {
+	c := withNote(t) // cursor on X01, the sample with the note
+	for _, width := range []int{40, 60} {
+		lines := strings.Split(ansi.Strip(c.View(width, 40)), "\n")
+		plate := -1
+		for i, l := range lines {
+			if strings.Contains(l, "96-Well Plate") {
+				plate = i
+				break
+			}
+		}
+		if plate < 0 {
+			t.Fatalf("width %d: no plate:\n%s", width, strings.Join(lines, "\n"))
+		}
+		own := strings.Join(lines[:plate], "\n") // Crust's lines follow its own width rules
+		for _, l := range lines[:plate] {
+			if w := ansi.StringWidth(strings.TrimRight(l, " ")); w > width {
+				t.Errorf("width %d: line is %d wide: %q", width, w, l)
+			}
+		}
+		words := strings.Fields(own)
+		for _, w := range strings.Fields("note: " + longNote) {
+			if !slices.Contains(words, w) {
+				t.Errorf("width %d: word %q missing:\n%s", width, w, own)
+			}
+		}
+		if footer := lines[len(lines)-1]; strings.Contains(footer, "note") {
+			t.Errorf("width %d: the note is also in Crust's cut-off line: %q", width, footer)
+		}
+	}
+}
+
+func TestLongDetailsNeverPushThePlateOffScreen(t *testing.T) {
+	c := withNote(t)
+	full := ansi.Strip(c.View(40, 40)) // the note takes 3 lines at width 40
+	plateLines := lipgloss.Height(full[strings.Index(full, "Sample conditions (synthetic) |"):])
+	// The plate gives up its spare rows first; 2 lines fewer than that and the
+	// note must be clipped rather than push the plate down.
+	height := lipgloss.Height(full) - (plateLines - plateMinHeight) - 2
+	view := ansi.Strip(c.View(40, height))
+	if got := lipgloss.Height(view); got > height {
+		t.Fatalf("view is %d lines, given %d:\n%s", got, height, view)
+	}
+	for _, want := range []string{"96-Well Plate", "[A1] Sample", "note: Condition", "…"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+// A title that only repeats the question is not given to Crust, so its
+// header (cut at the width) keeps "Cursor: A1" on a 60-column screen.
+func TestTitleRepeatingTheQuestionLeavesCrustsHeaderShort(t *testing.T) {
+	raw := strings.Replace(lookAlike, `"Sample conditions (synthetic)"`,
+		`"Assign each sample to control or treated, or leave it out."`, 1)
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range strings.Split(ansi.Strip(c.View(60, 40)), "\n") {
+		if strings.Contains(l, "96-Well Plate") {
+			if !strings.HasPrefix(l, "96-Well Plate |") || !strings.Contains(l[:60], "Cursor: A1") {
+				t.Fatalf("header = %q", l)
+			}
+			return
+		}
+	}
+	t.Fatal("no plate header")
 }

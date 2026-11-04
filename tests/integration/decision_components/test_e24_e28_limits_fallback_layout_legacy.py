@@ -214,7 +214,6 @@ def test_e27_narrow_60_column_pty_cuts_no_words(start_tui, review8):
 
 
 @pytest.mark.parametrize("cols", [120, 60])
-@pytest.mark.xfail(strict=True, reason="E2E_REPORT #2")
 def test_e27_plate_sample_details_are_not_cut_off(start_tui, review8, cols):
     """E27: the plate shows the sample under the cursor with its details (the
     warning and the suggestion note); none of it may be cut off."""

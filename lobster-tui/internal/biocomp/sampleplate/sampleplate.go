@@ -15,12 +15,14 @@ package sampleplate
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/the-omics-os/crust"
 	"github.com/the-omics-os/crust/platemap"
@@ -29,6 +31,10 @@ import (
 )
 
 const unknown = "unknown"
+
+// plateMinHeight is the fewest lines Crust's platemap draws (its own minimum
+// render height), whatever height it is given.
+const plateMinHeight = 9
 
 func init() {
 	biocomp.Register("plate_map", func() biocomp.BioComponent {
@@ -156,8 +162,14 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	for _, s := range c.samples {
 		wells = append(wells, c.toCrustWell(s))
 	}
+	// Crust's header line is cut at the width; a title that only repeats the
+	// question (shown in full above the plate) would push "Cursor: A1" off it.
+	crustTitle := c.title
+	if strings.TrimSpace(crustTitle) == strings.TrimSpace(c.question) {
+		crustTitle = ""
+	}
 	c.plate = platemap.New(
-		platemap.WithPlate(platemap.PlateData{Format: format, Title: c.title, Wells: wells}),
+		platemap.WithPlate(platemap.PlateData{Format: format, Title: crustTitle, Wells: wells}),
 		platemap.WithViewMode(platemap.ViewHitClass),
 		platemap.WithCursor(c.samples[0].Row, c.samples[0].Col),
 	)
@@ -177,9 +189,10 @@ func startingAssignment(condition string, choices []string) string {
 }
 
 // toCrustWell maps a sample onto Crust's fixed Well fields. Crust has no field
-// for an arbitrary condition, so the current assignment and the row's stored
-// columns are shown in Reagent (visible in the plate's footer), and samples
-// that still need attention are marked as hits.
+// for an arbitrary condition, so the current assignment is shown in Reagent
+// (in the plate's footer), and samples that still need attention are marked
+// as hits. Crust cuts that footer line at the width, so the warning and the
+// row's stored details go only on the plate's own wrapped focus line (View).
 func (c *SamplePlateComponent) toCrustWell(s sampleWell) platemap.Well {
 	parts := []string{}
 	if s.Label != "" {
@@ -189,19 +202,6 @@ func (c *SamplePlateComponent) toCrustWell(s sampleWell) platemap.Well {
 		parts = append(parts, s.Batch)
 	}
 	parts = append(parts, "now: "+c.assignments[s.SampleID])
-	if s.Warning != "" {
-		parts = append(parts, "warning: "+s.Warning)
-	}
-	keys := make([]string, 0, len(s.Details))
-	for k := range s.Details {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		if v := s.Details[k]; v != "" {
-			parts = append(parts, k+"="+v)
-		}
-	}
 	return platemap.Well{
 		Row:      s.Row,
 		Col:      s.Col,
@@ -210,6 +210,22 @@ func (c *SamplePlateComponent) toCrustWell(s sampleWell) platemap.Well {
 		Reagent:  strings.Join(parts, " · "),
 		Hit:      c.needsAttention(s),
 	}
+}
+
+// detailsText is the row's stored columns as "key: value", sorted by key.
+func detailsText(details map[string]string) string {
+	keys := make([]string, 0, len(details))
+	for k, v := range details {
+		if v != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+": "+details[k])
+	}
+	return strings.Join(parts, " · ")
 }
 
 // needsAttention: the value is unresolved, or the model flagged the sample
@@ -354,12 +370,26 @@ func hang(prefix, text string, width int, style lipgloss.Style) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, style.Width(w).Render(text))
 }
 
+// clipLines keeps at most n lines of block; when lines are dropped, the last
+// one kept ends in "…" so it is clear there is more.
+func clipLines(block string, n, width int) string {
+	lines := strings.Split(block, "\n")
+	if len(lines) <= n {
+		return block
+	}
+	lines = lines[:n]
+	lines[n-1] = ansi.Truncate(lines[n-1], max(width-1, 1), "") + "…"
+	return strings.Join(lines, "\n")
+}
+
 func (c *SamplePlateComponent) View(width, height int) string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	focusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Bold(true)
 	messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
 	var top []string
+	details, focusAt := "", 0 // the focused sample's stored details go under its line
 	if c.question != "" {
 		top = append(top, hang("", c.question, width, lipgloss.NewStyle().Bold(true)))
 	}
@@ -374,6 +404,9 @@ func (c *SamplePlateComponent) View(width, height int) string {
 		if s.Label != "" {
 			line += " · " + s.Label
 		}
+		if s.Batch != "" {
+			line += " · batch: " + s.Batch
+		}
 		line += fmt.Sprintf(" · data: %s · now: %s", supplied, c.assignments[s.SampleID])
 		if s.Warning != "" {
 			line += " · warning: " + s.Warning
@@ -385,6 +418,10 @@ func (c *SamplePlateComponent) View(width, height int) string {
 			line += " · AI suggests: " + s.Suggestion
 		}
 		top = append(top, hang("", line, width, focusStyle))
+		focusAt = len(top) - 1
+		if d := detailsText(s.Details); d != "" {
+			details = hang("  ", d, width, detailStyle)
+		}
 	} else {
 		top = append(top, dimStyle.Render(c.plate.Coordinate()+"  (empty well)"))
 	}
@@ -409,15 +446,19 @@ func (c *SamplePlateComponent) View(width, height int) string {
 		}
 	}
 
-	plateHeight := height - lipgloss.Height(strings.Join(top, "\n"))
+	rest := lipgloss.Height(strings.Join(top, "\n"))
 	if len(below) > 0 {
-		plateHeight -= lipgloss.Height(strings.Join(below, "\n"))
+		rest += lipgloss.Height(strings.Join(below, "\n"))
 	}
-	if plateHeight < 6 {
-		plateHeight = 6
+	if details != "" {
+		// The details take room from the plate first; once the plate is at
+		// its minimum they are clipped, so they never push it off screen.
+		details = clipLines(details, max(height-rest-plateMinHeight, 1), width)
+		top = slices.Insert(top, focusAt+1, details)
+		rest += lipgloss.Height(details)
 	}
 	c.plate.SetWidth(width)
-	c.plate.SetHeight(plateHeight)
+	c.plate.SetHeight(max(height-rest, plateMinHeight))
 	parts := append(top, c.plate.Render())
 	return lipgloss.JoinVertical(lipgloss.Left, append(parts, below...)...)
 }
