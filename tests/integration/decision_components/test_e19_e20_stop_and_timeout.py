@@ -71,7 +71,8 @@ def _journey(ds):
 
 @pytest.mark.parametrize("stage", ["source", "groups", "direction", "qc"])
 def test_e19_esc_cancels_a_single_question_at_each_stage(start_tui, review8, stage):
-    """E19: esc on any single screen cancels that whole ask_user request."""
+    """E19: esc on any single screen cancels that whole ask_user request. The
+    plate (groups) and the choice_list (qc) ask first: one esc only warns."""
     ds = review8
     ids, steps = _journey(ds)
     tui = start_tui(steps)
@@ -80,6 +81,13 @@ def test_e19_esc_cancels_a_single_question_at_each_stage(start_tui, review8, sta
     for number, screen in enumerate(order, 1):
         tui.wait_render(number)
         if screen == stage:
+            if stage in ("groups", "qc"):
+                sent = len(tui.responses())
+                tui.key("esc")
+                tui.wait_screen(
+                    "press esc again to cancel this question; nothing will be sent"
+                )
+                assert len(tui.responses()) == sent  # a single esc sent nothing
             tui.key("esc")
             break
         if screen == "source":

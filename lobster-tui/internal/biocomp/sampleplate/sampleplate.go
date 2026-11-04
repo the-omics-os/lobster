@@ -5,6 +5,7 @@
 // Crust's platemap draws the plate and handles navigation; assignment, the
 // submit rule and the reply shape live here, so Crust stays unchanged.
 // Number keys 1-9 assign the 1st-9th choice; 0 marks a sample unresolved.
+// esc asks first: a second esc in a row cancels the question.
 //
 // Samples listed under "unavailable" are not on the plate: they are shown
 // under it with their reason and are never part of the reply.
@@ -30,7 +31,17 @@ import (
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 )
 
-const unknown = "unknown"
+// unresolved is the assignment of a sample the user has not resolved yet. It
+// is "", which can never be a choice (Init refuses an empty one), so an
+// option literally called "unknown" can be assigned and sent like any other.
+// A reply never contains it: enter is refused while any sample has it.
+const unresolved = ""
+
+// unresolvedText is how an unresolved assignment is shown on screen.
+const unresolvedText = "unknown"
+
+// escPrompt is shown after a first esc; only a second esc in a row cancels.
+const escPrompt = "press esc again to cancel this question; nothing will be sent"
 
 // plateMinHeight is the fewest lines Crust's platemap draws (its own minimum
 // render height), whatever height it is given.
@@ -84,9 +95,10 @@ type SamplePlateComponent struct {
 	choices     []string
 	samples     []sampleWell // in the order supplied
 	unavailable []unavailableSample
-	assignments map[string]string // sample_id -> choice or "unknown"
+	assignments map[string]string // sample_id -> choice, or unresolved ("")
 	reviewed    map[string]bool   // flagged samples the user has assigned
 	message     string            // feedback line, e.g. why enter was refused
+	escArmed    bool              // the last key was an esc that would cancel
 }
 
 func (c *SamplePlateComponent) Init(data json.RawMessage) error {
@@ -109,6 +121,11 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	choices := d.Choices
 	if len(choices) == 0 || len(choices) > 9 {
 		return fmt.Errorf("plate_map: need 1 to 9 choices (one number key each), got %d", len(choices))
+	}
+	for i, choice := range choices {
+		if choice == unresolved {
+			return fmt.Errorf("plate_map: choice %d is empty", i+1)
+		}
 	}
 
 	seenIDs := map[string]bool{}
@@ -157,6 +174,7 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	c.assignments = assignments
 	c.reviewed = map[string]bool{}
 	c.message = ""
+	c.escArmed = false
 
 	wells := make([]platemap.Well, 0, len(c.samples))
 	for _, s := range c.samples {
@@ -176,16 +194,25 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	return nil
 }
 
-// startingAssignment keeps a supplied condition only if it is one of the
-// choices; anything else (including "unknown") must be resolved by the user.
+// startingAssignment keeps a supplied condition only if it is exactly one of
+// the choices (after trimming spaces; case matters, as in Prefill, because
+// the choices are option ids); anything else must be resolved by the user.
 func startingAssignment(condition string, choices []string) string {
-	cond := strings.ToLower(strings.TrimSpace(condition))
+	cond := strings.TrimSpace(condition)
 	for _, choice := range choices {
 		if cond == choice {
 			return choice
 		}
 	}
-	return unknown
+	return unresolved
+}
+
+// shown is an assignment as displayed: unresolved reads "unknown".
+func shown(assignment string) string {
+	if assignment == unresolved {
+		return unresolvedText
+	}
+	return assignment
 }
 
 // toCrustWell maps a sample onto Crust's fixed Well fields. Crust has no field
@@ -201,7 +228,7 @@ func (c *SamplePlateComponent) toCrustWell(s sampleWell) platemap.Well {
 	if s.Batch != "" {
 		parts = append(parts, s.Batch)
 	}
-	parts = append(parts, "now: "+c.assignments[s.SampleID])
+	parts = append(parts, "now: "+shown(c.assignments[s.SampleID]))
 	return platemap.Well{
 		Row:      s.Row,
 		Col:      s.Col,
@@ -231,7 +258,7 @@ func detailsText(details map[string]string) string {
 // needsAttention: the value is unresolved, or the model flagged the sample
 // and the user has not yet assigned it.
 func (c *SamplePlateComponent) needsAttention(s sampleWell) bool {
-	return c.assignments[s.SampleID] == unknown || (s.Flag != "" && !c.reviewed[s.SampleID])
+	return c.assignments[s.SampleID] == unresolved || (s.Flag != "" && !c.reviewed[s.SampleID])
 }
 
 func (c *SamplePlateComponent) sampleAtCursor() (sampleWell, bool) {
@@ -251,7 +278,7 @@ func (c *SamplePlateComponent) keyChoice(k string) (string, bool) {
 		return "", false
 	}
 	if k == "0" {
-		return unknown, true
+		return unresolved, true
 	}
 	i := int(k[0] - '1')
 	if i >= len(c.choices) {
@@ -269,10 +296,10 @@ func (c *SamplePlateComponent) legend() string {
 	return strings.Join(append(parts, "0 unresolved"), " · ")
 }
 
-func (c *SamplePlateComponent) unresolved() []string {
+func (c *SamplePlateComponent) unresolvedSamples() []string {
 	var ids []string
 	for _, s := range c.samples {
-		if c.assignments[s.SampleID] == unknown {
+		if c.assignments[s.SampleID] == unresolved {
 			ids = append(ids, s.SampleID)
 		}
 	}
@@ -290,8 +317,13 @@ func (c *SamplePlateComponent) unreviewed() []string {
 }
 
 func (c *SamplePlateComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
-	if km, ok := msg.(tea.KeyPressMsg); ok {
+	km, isKey := msg.(tea.KeyPressMsg)
+	isEsc := isKey && km.String() == "esc"
+	if isKey {
 		k := km.String()
+		if !isEsc && c.escArmed {
+			c.disarm() // any other key: the next esc asks again
+		}
 		if choice, ok := c.keyChoice(k); ok {
 			s, found := c.sampleAtCursor()
 			if !found {
@@ -299,14 +331,14 @@ func (c *SamplePlateComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult,
 				return nil, nil
 			}
 			c.assignments[s.SampleID] = choice
-			c.reviewed[s.SampleID] = choice != unknown
+			c.reviewed[s.SampleID] = choice != unresolved
 			c.plate.UpsertWell(c.toCrustWell(s))
-			c.message = fmt.Sprintf("%s set to %s.", s.SampleID, choice)
+			c.message = fmt.Sprintf("%s set to %s.", s.SampleID, shown(choice))
 			return nil, nil
 		}
 		if k == "enter" {
 			// Crust would submit the focused well; we submit all assignments.
-			if ids := c.unresolved(); len(ids) > 0 {
+			if ids := c.unresolvedSamples(); len(ids) > 0 {
 				c.message = "Resolve before submitting: " + strings.Join(ids, ", ")
 				return nil, nil
 			}
@@ -318,19 +350,37 @@ func (c *SamplePlateComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult,
 		}
 	}
 
+	// esc still goes to Crust first: it closes Crust's help or a row/column
+	// selection. Only when Crust would cancel is the cancel held back here,
+	// so one esc never throws the whole plate away.
 	next, cmd := c.plate.Update(msg)
 	c.plate = next.(platemap.Model)
-	if cmd == nil {
-		return nil, nil
+	var cancel crust.CancelMsg
+	isCancel := false
+	if cmd != nil {
+		// Safe to run immediately: platemap's commands only return a message.
+		cancel, isCancel = cmd().(crust.CancelMsg)
 	}
-	// Safe to run immediately: platemap's commands only return a message.
-	if cancel, ok := cmd().(crust.CancelMsg); ok {
+	switch {
+	case isCancel && c.escArmed:
 		return &biocomp.ComponentResult{
 			Action: "cancel",
 			Data:   map[string]any{"reason": cancel.Reason},
 		}, nil
+	case isCancel:
+		c.escArmed, c.message = true, escPrompt
+	case isEsc && c.escArmed:
+		c.disarm() // Crust used this esc to go back, not to cancel
 	}
 	return nil, nil
+}
+
+// disarm forgets a first esc and clears its prompt.
+func (c *SamplePlateComponent) disarm() {
+	c.escArmed = false
+	if c.message == escPrompt {
+		c.message = ""
+	}
 }
 
 // submitResult returns every assignment plus the samples whose supplied
@@ -342,7 +392,7 @@ func (c *SamplePlateComponent) submitResult() *biocomp.ComponentResult {
 	for _, s := range c.samples {
 		now := c.assignments[s.SampleID]
 		assignments[s.SampleID] = now
-		if supplied := strings.ToLower(strings.TrimSpace(s.Condition)); supplied != now {
+		if supplied := strings.TrimSpace(s.Condition); supplied != now {
 			changes = append(changes, map[string]any{
 				"sample_id": s.SampleID,
 				"supplied":  s.Condition,
@@ -407,7 +457,7 @@ func (c *SamplePlateComponent) View(width, height int) string {
 		if s.Batch != "" {
 			line += " · batch: " + s.Batch
 		}
-		line += fmt.Sprintf(" · data: %s · now: %s", supplied, c.assignments[s.SampleID])
+		line += fmt.Sprintf(" · data: %s · now: %s", supplied, shown(c.assignments[s.SampleID]))
 		if s.Warning != "" {
 			line += " · warning: " + s.Warning
 		}
@@ -474,7 +524,7 @@ func (c *SamplePlateComponent) countsLine() string {
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s %d", k, counts[k]))
 	}
-	parts = append(parts, fmt.Sprintf("unresolved %d", counts[unknown]))
+	parts = append(parts, fmt.Sprintf("unresolved %d", counts[unresolved]))
 	parts = append(parts, fmt.Sprintf("flagged to review %d", len(c.unreviewed())))
 	return strings.Join(parts, " · ")
 }
@@ -493,7 +543,8 @@ func (c *SamplePlateComponent) KeyBindings() []key.Binding {
 		key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"), key.WithHelp("1-9/0", "assign")),
 		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "view")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit all")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back/cancel")),
+		// Help key stays "esc" so a dashboard can leave it out (it has its own).
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "twice: cancel")),
 	}
 }
 

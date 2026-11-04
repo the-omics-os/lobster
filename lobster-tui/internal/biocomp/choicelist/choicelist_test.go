@@ -220,9 +220,56 @@ func TestEscInTheBoxDiscardsTheChange(t *testing.T) {
 	if c.IsCapturingText() || c.optionOf(0) != "retain" {
 		t.Fatalf("esc should restore retain, got %q (box open %v)", c.optionOf(0), c.IsCapturingText())
 	}
-	if r := press(c, "esc"); r == nil || r.Action != "cancel" {
-		t.Fatalf("esc outside the box should cancel, got %+v", r)
+	// Closing the box is not the first of two escs: two more are needed.
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("one esc after closing the box cancelled: %+v", r)
 	}
+	if r := press(c, "esc"); r == nil || r.Action != "cancel" {
+		t.Fatalf("esc esc outside the box should cancel, got %+v", r)
+	}
+}
+
+// One esc only warns; a second esc in a row cancels; any other key in
+// between starts over. The typed reasons and picks survive a single esc.
+func TestEscAsksOnceBeforeCancelling(t *testing.T) {
+	c := newList(t, listData(qcItems, qcOptions, nil))
+	press(c, "2")
+	typeText(c, "low depth")
+	press(c, "enter", "down", "1") // S01 exclude + reason, S02 retain
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("a single esc cancelled: %+v", r)
+	}
+	if c.message != "press esc again to cancel this question; nothing will be sent" {
+		t.Fatalf("message = %q", c.message)
+	}
+	if !strings.Contains(ansi.Strip(c.View(100, 30)), "press esc again to cancel this question") {
+		t.Fatal("the prompt is not on screen")
+	}
+	if r := press(c, "down"); r != nil || c.message != "" {
+		t.Fatalf("another key should disarm and clear the prompt: %+v %q", r, c.message)
+	}
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("esc after another key cancelled at once: %+v", r)
+	}
+	if r := press(c, "esc"); r == nil || r.Action != "cancel" {
+		t.Fatalf("second esc in a row should cancel, got %+v", r)
+	}
+	if c.optionOf(0) != "exclude" || c.reasons[0] != "low depth" || c.optionOf(1) != "retain" {
+		t.Fatalf("answers changed: %q %q %q", c.optionOf(0), c.reasons[0], c.optionOf(1))
+	}
+}
+
+func TestEscHelpSaysTwice(t *testing.T) {
+	c := newList(t, listData(qcItems, qcOptions, nil))
+	for _, b := range c.KeyBindings() {
+		if b.Help().Key == "esc" {
+			if b.Help().Desc != "twice: cancel" {
+				t.Fatalf("esc help = %q", b.Help().Desc)
+			}
+			return
+		}
+	}
+	t.Fatal("no esc help")
 }
 
 func TestUnavailableItemIsSkippedAndNotAnswered(t *testing.T) {

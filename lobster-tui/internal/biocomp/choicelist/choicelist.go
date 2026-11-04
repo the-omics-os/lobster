@@ -3,8 +3,9 @@
 // exclude or defer for every flagged sample).
 //
 // Keys: ↑/↓ move between rows (unavailable rows are skipped), ←/→ or 1-9 pick
-// an option for the row, enter submits once every row is answered, esc
-// cancels. Picking an option that needs a reason opens a small text box under
+// an option for the row, enter submits once every row is answered, and esc
+// asks first: a second esc in a row cancels (any other key in between starts
+// over). Picking an option that needs a reason opens a small text box under
 // the row; while it is open it takes every printable key, enter saves the
 // reason (an empty one is refused), esc discards the change and ←/→ still
 // change the option.
@@ -88,7 +89,11 @@ type Component struct {
 	offset   int      // first visible row
 	box      reasonBox
 	message  string
+	escArmed bool // the last key was a first esc; the next esc cancels
 }
+
+// escPrompt is shown after a first esc; only a second esc in a row cancels.
+const escPrompt = "press esc again to cancel this question; nothing will be sent"
 
 func (c *Component) Init(data json.RawMessage) error {
 	d, err := parse(data)
@@ -102,7 +107,7 @@ func (c *Component) Init(data json.RawMessage) error {
 	for i := range c.picked {
 		c.picked[i] = -1
 	}
-	c.box, c.message, c.offset = reasonBox{}, "", 0
+	c.box, c.message, c.offset, c.escArmed = reasonBox{}, "", 0, false
 	c.cursor = c.nextItem(-1, 1)
 
 	optIndex := map[string]int{}
@@ -238,12 +243,14 @@ func (c *Component) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	if !ok {
 		return nil, nil
 	}
+	k := km.String()
+	armed := c.escArmed && k == "esc"
+	c.escArmed = false // any key but a second esc starts over
 	if c.box.open {
 		c.handleBox(km)
 		return nil, nil
 	}
 	c.message = ""
-	k := km.String()
 	switch k {
 	case "up", "k":
 		c.cursor = c.nextItem(c.cursor, -1)
@@ -260,7 +267,10 @@ func (c *Component) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 		}
 		return &biocomp.ComponentResult{Action: "submit", Data: c.reply()}, nil
 	case "esc":
-		return &biocomp.ComponentResult{Action: "cancel", Data: map[string]any{}}, nil
+		if armed {
+			return &biocomp.ComponentResult{Action: "cancel", Data: map[string]any{}}, nil
+		}
+		c.escArmed, c.message = true, escPrompt
 	default:
 		if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
 			if j := int(k[0] - '1'); j < len(c.options) {
@@ -662,6 +672,7 @@ func (c *Component) KeyBindings() []key.Binding {
 		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "row")),
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→/1-9", "option")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		// Help key stays "esc" so a dashboard can leave it out (it has its own).
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "twice: cancel")),
 	}
 }

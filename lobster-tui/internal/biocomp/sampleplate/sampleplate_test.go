@@ -69,7 +69,7 @@ func TestSnakeCaseFieldsArePopulated(t *testing.T) {
 	if s.SampleID != "X03" || s.Label != "Line 3" || s.Batch != "B2" || s.Warning != "Condition missing" {
 		t.Fatalf("fields not populated: %+v", s)
 	}
-	if c.assignments["X03"] != unknown {
+	if c.assignments["X03"] != unresolved {
 		t.Fatalf("unknown condition should start unresolved, got %q", c.assignments["X03"])
 	}
 }
@@ -110,11 +110,147 @@ func TestAssignAndSubmit(t *testing.T) {
 	}
 }
 
-func TestEscCancels(t *testing.T) {
+const wantEscPrompt = "press esc again to cancel this question; nothing will be sent"
+
+// One esc only warns (Crust's own esc would cancel at once); the second esc
+// in a row cancels, with Crust's reason, as before.
+func TestEscAsksOnceThenCancels(t *testing.T) {
 	c := newComp(t)
+	c.HandleMsg(press("2")) // some work that one esc must not throw away
+	if res, _ := c.HandleMsg(press("esc")); res != nil {
+		t.Fatalf("a single esc cancelled: %+v", res)
+	}
+	if c.message != wantEscPrompt || !strings.Contains(ansi.Strip(c.View(90, 30)), wantEscPrompt) {
+		t.Fatalf("prompt not shown: %q", c.message)
+	}
 	res, _ := c.HandleMsg(press("esc"))
-	if res == nil || res.Action != "cancel" {
-		t.Fatalf("expected cancel, got %+v", res)
+	if res == nil || res.Action != "cancel" || res.Data["reason"] != "user cancelled" {
+		t.Fatalf("esc esc: expected cancel, got %+v", res)
+	}
+}
+
+func TestAnotherKeyBetweenEscsStartsOver(t *testing.T) {
+	c := newComp(t)
+	c.HandleMsg(press("esc"))
+	if res, _ := c.HandleMsg(press("right")); res != nil || c.message != "" {
+		t.Fatalf("another key should disarm and clear the prompt: %+v %q", res, c.message)
+	}
+	if res, _ := c.HandleMsg(press("esc")); res != nil {
+		t.Fatalf("esc, right, esc cancelled: %+v", res)
+	}
+	if res, _ := c.HandleMsg(press("esc")); res == nil || res.Action != "cancel" {
+		t.Fatalf("then esc esc should cancel, got %+v", res)
+	}
+}
+
+// Crust uses esc to close its help first; that esc neither cancels nor arms.
+func TestEscThatClosesCrustsHelpDoesNotArm(t *testing.T) {
+	c := newComp(t)
+	c.HandleMsg(press("?"))
+	if res, _ := c.HandleMsg(press("esc")); res != nil || c.escArmed {
+		t.Fatalf("esc closing the help: %+v, armed %v", res, c.escArmed)
+	}
+	if res, _ := c.HandleMsg(press("esc")); res != nil || !c.escArmed {
+		t.Fatalf("first esc after the help should only arm: %+v", res)
+	}
+	if res, _ := c.HandleMsg(press("esc")); res == nil || res.Action != "cancel" {
+		t.Fatalf("second esc should cancel, got %+v", res)
+	}
+}
+
+func TestEscHelpSaysTwice(t *testing.T) {
+	for _, b := range newComp(t).KeyBindings() {
+		if b.Help().Key == "esc" {
+			if b.Help().Desc != "twice: cancel" {
+				t.Fatalf("esc help = %q", b.Help().Desc)
+			}
+			return
+		}
+	}
+	t.Fatal("no esc help")
+}
+
+// Option ids are compared exactly (as Prefill does): capitalised ids keep
+// their defaults, and nothing unchanged is listed under "changes". Review
+// finding 1.
+func TestCapitalisedChoicesKeepTheirDefaults(t *testing.T) {
+	raw := `{"question": "Group?", "choices": ["Control", "KO", "leave_out"], "wells": [
+	  {"row": 0, "col": 0, "sample_id": "X01", "condition": "Control"},
+	  {"row": 0, "col": 1, "sample_id": "X02", "condition": " KO "},
+	  {"row": 0, "col": 2, "sample_id": "X03", "condition": "leave_out"}]}`
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"X01": "Control", "X02": "KO", "X03": "leave_out"}
+	if got := c.Draft()["assignments"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("starting assignments = %v, want %v", got, want)
+	}
+	res, _ := c.HandleMsg(press("enter"))
+	if res == nil || res.Action != "submit" {
+		t.Fatalf("expected submit, got %+v (%q)", res, c.message)
+	}
+	if got := res.Data["assignments"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("assignments = %v", got)
+	}
+	if changes := res.Data["changes"].([]any); len(changes) != 0 {
+		t.Fatalf("nothing changed, but changes = %v", changes)
+	}
+	// A case-only mismatch is not one of the choices: it is not guessed.
+	c2 := &SamplePlateComponent{}
+	if err := c2.Init([]byte(strings.Replace(raw, `"condition": "Control"`, `"condition": "control"`, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if c2.assignments["X01"] != unresolved {
+		t.Fatalf("X01 = %q, want unresolved", c2.assignments["X01"])
+	}
+}
+
+// An option literally called "unknown" is an ordinary choice: it can be the
+// supplied condition, be assigned and be sent. Unresolved is a separate
+// value that never reaches the reply. Review finding 5.
+func TestAnOptionCalledUnknownCanBeSent(t *testing.T) {
+	raw := `{"question": "Group?", "choices": ["control", "unknown"], "wells": [
+	  {"row": 0, "col": 0, "sample_id": "X01", "condition": "unknown"},
+	  {"row": 0, "col": 1, "sample_id": "X02", "condition": "missing"}]}`
+	c := &SamplePlateComponent{}
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if c.assignments["X01"] != "unknown" || c.assignments["X02"] != unresolved {
+		t.Fatalf("assignments = %q", c.assignments)
+	}
+	if view := ansi.Strip(c.View(90, 30)); !strings.Contains(view, "unknown 1 · unresolved 1") {
+		t.Fatalf("counts should tell the option from unresolved:\n%s", view)
+	}
+	if res, _ := c.HandleMsg(press("enter")); res != nil || !strings.Contains(c.message, "X02") {
+		t.Fatalf("enter with X02 unresolved: %+v %q", res, c.message)
+	}
+	c.HandleMsg(press("0")) // X01 back to unresolved: not sendable either
+	if res, _ := c.HandleMsg(press("enter")); res != nil {
+		t.Fatalf("enter with X01 unresolved sent %+v", res)
+	}
+	c.HandleMsg(press("2")) // X01 -> the option "unknown"
+	c.HandleMsg(press("right"))
+	c.HandleMsg(press("2")) // X02 -> the option "unknown"
+	res, _ := c.HandleMsg(press("enter"))
+	if res == nil || res.Action != "submit" {
+		t.Fatalf("expected submit, got %+v (%q)", res, c.message)
+	}
+	want := map[string]any{"X01": "unknown", "X02": "unknown"}
+	if got := res.Data["assignments"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("assignments = %v, want %v", got, want)
+	}
+	changes := res.Data["changes"].([]any)
+	if len(changes) != 1 || changes[0].(map[string]any)["sample_id"] != "X02" {
+		t.Fatalf("changes should list only X02, got %v", changes)
+	}
+}
+
+func TestInitRefusesAnEmptyChoice(t *testing.T) {
+	raw := strings.Replace(lookAlike, `["control", "treated", "leave_out"]`, `["control", ""]`, 1)
+	if err := (&SamplePlateComponent{}).Init([]byte(raw)); err == nil {
+		t.Fatal("an empty choice would be the unresolved value; expected an error")
 	}
 }
 
@@ -130,7 +266,7 @@ func TestViewShowsFocusAndPlate(t *testing.T) {
 
 func TestNumberKeysFollowTheChoices(t *testing.T) {
 	c := newComp(t) // choices: control, treated, leave_out; cursor on X01
-	for key, want := range map[string]string{"3": "leave_out", "1": "control", "0": unknown} {
+	for key, want := range map[string]string{"3": "leave_out", "1": "control", "0": unresolved} {
 		c.HandleMsg(press(key))
 		if c.assignments["X01"] != want {
 			t.Fatalf("key %s: X01 = %q, want %q", key, c.assignments["X01"], want)
@@ -269,7 +405,7 @@ func TestLongQuestionWraps(t *testing.T) {
 func TestDraftAndPrefill(t *testing.T) {
 	c := newComp(t)
 	c.HandleMsg(press("2")) // X01 -> treated
-	if got := c.Draft()["assignments"].(map[string]any); got["X01"] != "treated" || got["X03"] != unknown {
+	if got := c.Draft()["assignments"].(map[string]any); got["X01"] != "treated" || got["X03"] != unresolved {
 		t.Fatalf("draft = %v", got)
 	}
 
