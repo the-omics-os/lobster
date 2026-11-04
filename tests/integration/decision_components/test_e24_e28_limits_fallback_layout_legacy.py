@@ -150,7 +150,6 @@ def test_e27_72_rows_on_a_40_row_pty_keep_the_cursor_row_visible(start_tui, revi
     assert groups["S01"] == {"id": "control"} and groups["S72"] == {"id": "treated"}
 
 
-@pytest.mark.xfail(strict=True, reason="E2E_REPORT #4")
 def test_e27_72_rows_on_a_40_row_pty_keep_the_question_on_screen(start_tui, review72):
     """E27: the question and every option line of a 72-row list stay on a
     40-row screen (only the rows scroll), and the screen is not repainted

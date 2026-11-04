@@ -57,14 +57,12 @@ func (m Model) componentFooterHeight() int {
 
 	// Base content height by component name.
 	var base int
-	tall := false
+	tall := fillsTerminal(m.activeComponent.Component.Name())
 	switch m.activeComponent.Component.Name() {
 	case "cell_type_selector", "ontology_browser":
 		base = 15
 	case "threshold_slider":
 		base = 8
-	case "plate_map", "choice_list", "dashboard":
-		tall = true
 	default:
 		base = 10
 	}
@@ -91,6 +89,30 @@ func (m Model) componentFooterHeight() int {
 	}
 
 	return h
+}
+
+// fillsTerminal reports whether a component fills whatever height it is given
+// (plate map, choice list, dashboard), so it needs a height budget that leaves
+// rows for the rest of the screen.
+func fillsTerminal(name string) bool {
+	switch name {
+	case "plate_map", "choice_list", "dashboard":
+		return true
+	}
+	return false
+}
+
+// inlineComponentHeight returns the height an active component is drawn at in
+// inline mode, where it sits above the composer and status line instead of in
+// the footer. A component that fills its height gets the same budget as in the
+// footer layout (componentFooterHeight), so the whole inline frame fits on the
+// screen; any other component keeps the full terminal height.
+func (m Model) inlineComponentHeight() int {
+	if m.activeComponent != nil && m.activeComponent.Component != nil &&
+		fillsTerminal(m.activeComponent.Component.Name()) {
+		return m.componentFooterHeight()
+	}
+	return m.height
 }
 
 // computeLayout calculates the vertical region heights for the 4-layer layout.

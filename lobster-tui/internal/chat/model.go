@@ -749,7 +749,7 @@ func (m Model) viewInline() tea.View {
 	// declared mode — there is no overlay layer to composite onto.
 	if m.activeComponent != nil {
 		comp := m.activeComponent.Component
-		inlineView, panicked := safeView(comp, m.width, m.height)
+		inlineView, panicked := safeView(comp, m.width, m.inlineComponentHeight())
 		if panicked {
 			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
 			m.activeComponent = nil
@@ -2200,7 +2200,7 @@ func (m Model) layoutReservedRowsLegacy() int {
 	if m.activeComponent != nil {
 		if m.inline {
 			// In inline mode, all components render as inline blocks.
-			inlineView := m.activeComponent.Component.View(m.width, m.height)
+			inlineView := m.activeComponent.Component.View(m.width, m.inlineComponentHeight())
 			if inlineView != "" {
 				rows += lineCount(inlineView)
 			}
