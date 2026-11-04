@@ -621,3 +621,83 @@ func TestProblemSectionRecordedChangedMakesDependantsStale(t *testing.T) {
 		t.Fatalf("mito stale reason = %q, want %q", c.sections[2].staleWhy, why)
 	}
 }
+
+// pythonPlateAnswer is the plate answer as the Python adapter sends it
+// (_as_reply): "assignments" only, without the "changes" and
+// "reviewed_flags" the plate adds to its own reply (E2E_REPORT #1).
+func pythonPlateAnswer(s01, s05 string) map[string]any {
+	return map[string]any{"assignments": map[string]any{"S01": s01, "S05": s05}}
+}
+
+func TestReconfirmingAPlateWithAnAssignmentsOnlyBaselineMakesNothingStale(t *testing.T) {
+	c := withSections(t, func(d map[string]any, s []map[string]any) {
+		s[0]["answer"] = map[string]any{"selected": []any{map[string]any{"id": "SRC-A"}}}
+		s[1]["answer"] = pythonPlateAnswer("control", "treated")
+		s[1]["problems"] = []any{"'control' has too few items"}
+		s[2]["answer"] = map[string]any{"value": 0.2}
+		s[3]["answer"] = map[string]any{"answer": "ok"}
+	})
+	if got := statuses(c); got != "done,todo,done,done" || c.active != 1 {
+		t.Fatalf("statuses = %s, active = %d", got, c.active)
+	}
+	press(t, c, "enter") // groups: the pre-filled answer, unchanged
+	if got := statuses(c); got != "done,done,done,done" {
+		t.Fatalf("re-confirming the unchanged plate made something stale: %s (%q)",
+			got, c.sections[2].staleWhy)
+	}
+	// The recorded answer is the plate's full reply, as sent to Python.
+	if _, ok := c.sections[1].answer["changes"]; !ok {
+		t.Fatalf("recorded answer lacks the plate's changes: %v", c.sections[1].answer)
+	}
+}
+
+func TestChangingAPlateWithAnAssignmentsOnlyBaselineMakesDependantsStale(t *testing.T) {
+	c := withSections(t, func(d map[string]any, s []map[string]any) {
+		s[0]["answer"] = map[string]any{"selected": []any{map[string]any{"id": "SRC-A"}}}
+		s[1]["answer"] = pythonPlateAnswer("control", "treated")
+		s[1]["problems"] = []any{"'control' has too few items"}
+		s[2]["answer"] = map[string]any{"value": 0.2}
+	})
+	press(t, c, "2", "enter") // groups: S01 (cursor) -> treated
+	if got := statuses(c); got != "done,done,stale,todo" {
+		t.Fatalf("statuses = %s", got)
+	}
+}
+
+func TestReconfirmingAnAnsweredPlateWithAnAssignmentsOnlyAnswerMakesNothingStale(t *testing.T) {
+	c := withSections(t, func(d map[string]any, s []map[string]any) {
+		s[0]["answer"] = map[string]any{"selected": []any{map[string]any{"id": "SRC-B"}}}
+		s[1]["answer"] = pythonPlateAnswer("treated", "control")
+		s[2]["answer"] = map[string]any{"value": 0.2}
+		s[3]["answer"] = map[string]any{"answer": "ok"}
+	})
+	if got := statuses(c); got != "done,done,done,done" {
+		t.Fatalf("statuses = %s", got)
+	}
+	press(t, c, "tab", "enter") // groups, unchanged
+	if got := statuses(c); got != "done,done,done,done" {
+		t.Fatalf("re-confirming the answered plate made something stale: %s (%q)",
+			got, c.sections[2].staleWhy)
+	}
+}
+
+func TestSameAnswerComparesTheEarlierAnswersKeys(t *testing.T) {
+	full := map[string]any{"assignments": map[string]any{"S01": "control"}, "changes": []any{}}
+	cases := []struct {
+		name   string
+		before map[string]any
+		want   bool
+	}{
+		{"no earlier answer", nil, false},
+		{"empty earlier answer", map[string]any{}, false},
+		{"subset, same value", map[string]any{"assignments": map[string]any{"S01": "control"}}, true},
+		{"subset, other value", map[string]any{"assignments": map[string]any{"S01": "treated"}}, false},
+		{"key the reply lacks", map[string]any{"reviewed_flags": []any{}}, false},
+		{"full, same", full, true},
+	}
+	for _, tc := range cases {
+		if got := sameAnswer(tc.before, full); got != tc.want {
+			t.Errorf("%s: sameAnswer = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

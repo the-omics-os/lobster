@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 from tests.integration.decision_components._harness import (
     LEAVE_OUT,
     answer_rows,
@@ -190,7 +188,6 @@ def test_e23_review_screen_shows_exactly_what_is_sent(start_tui, review8):
     }
 
 
-@pytest.mark.xfail(strict=True, reason="E2E_REPORT #1")
 def test_e07_reconfirming_an_unchanged_plate_on_a_reask_marks_nothing_stale(
     start_tui, review8
 ):

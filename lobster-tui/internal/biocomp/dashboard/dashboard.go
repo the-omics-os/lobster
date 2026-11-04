@@ -345,7 +345,7 @@ func (c *Component) record(i int, data map[string]any) {
 	answer := normalize(data)
 	s.answer, s.status, s.staleWhy, s.showProblems = answer, answered, "", false
 	s.summary = summarize(s.sectionData, answer)
-	if reflect.DeepEqual(before, answer) {
+	if sameAnswer(before, answer) {
 		return
 	}
 	why := fmt.Sprintf("%q was answered", s.Title)
@@ -366,6 +366,24 @@ func (c *Component) record(i int, data map[string]any) {
 		}
 		queue = append(queue, c.sections[j].dependents...)
 	}
+}
+
+// sameAnswer reports whether a newly recorded reply keeps the earlier answer.
+// Only the keys the earlier answer has are compared: an answer sent with the
+// request may leave out what the component works out from it and its data
+// (a plate's "changes" and "reviewed_flags" follow from its "assignments"),
+// so the full reply to the same decision still counts as the same. A key the
+// earlier answer has and the new reply lacks counts as a change.
+func sameAnswer(before, after map[string]any) bool {
+	if len(before) == 0 {
+		return reflect.DeepEqual(before, after)
+	}
+	for k, v := range before {
+		if !reflect.DeepEqual(v, after[k]) {
+			return false
+		}
+	}
+	return true
 }
 
 // nextOpen is the first section after the active one that isn't answered,
