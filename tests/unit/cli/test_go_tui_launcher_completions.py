@@ -957,13 +957,33 @@ def test_decision_request_waits_ten_minutes_for_an_answer():
 
 
 def test_component_error_is_reported_and_cancels_the_question():
+    """A screen that fails is not the user's cancel: the comment says so."""
     bridge = _GoBridge([("error", {"error": "init_failed", "detail": "bad data"})])
     response = go_tui_launcher._handle_interrupts(
         bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
     )
     assert response["intr-1"]["action"] == "cancel"
+    assert response["intr-1"]["comment"] == (
+        "Not answered: this terminal can't show this question (bad data). Don't "
+        "ask again with the same shape; ask in chat or with a shape it can show."
+    )
     alerts = [c[1]["message"] for c in bridge.calls if c[0] == "alert"]
     assert alerts == ["Couldn't show the question: bad data"]
+
+
+def test_component_error_without_detail_still_says_the_screen_failed():
+    """A screen that breaks while drawing names its error code instead."""
+    request = _decision_request(
+        key="note", type="text", options=None, question="Anything else?"
+    )
+    bridge = _GoBridge([("error", {"error": "view_panic"})])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": request, "interrupt_id": "intr-1"}]
+    )
+    assert response["intr-1"]["action"] == "cancel"
+    assert response["intr-1"]["comment"].startswith(
+        "Not answered: this terminal can't show this question (view_panic)."
+    )
 
 
 def test_question_the_terminal_cannot_draw_is_cancelled_with_a_reason():
@@ -979,6 +999,27 @@ def test_question_the_terminal_cannot_draw_is_cancelled_with_a_reason():
     comment = response["intr-1"]["comment"]
     assert comment.startswith("Not answered: this terminal can't show times: a list")
     assert "Don't ask again with the same shape" in comment
+
+
+def test_plate_the_go_screen_would_refuse_is_cancelled_before_rendering():
+    """More than 9 options: the plate's Init would fail, so it is never sent."""
+    request = _decision_request(
+        key="groups",
+        view="plate_map",
+        for_each=["S01", "S02"],
+        options=[f"g{n}" for n in range(10)],
+    )
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": request, "interrupt_id": "intr-1"}]
+    )
+    assert bridge.renders() == []
+    assert response["intr-1"]["action"] == "cancel"
+    assert response["intr-1"]["comment"] == (
+        "Not answered: this terminal can't show groups: a plate with 10 options "
+        "(at most 9). Don't ask again with the same shape; ask in chat or with a "
+        "shape it can show."
+    )
 
 
 # --- Interrupts that are not DecisionRequests keep the _handle_interrupt path ---

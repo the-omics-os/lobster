@@ -36,6 +36,8 @@ from lobster.services.interaction.component_schemas import (
 Render = Callable[[str, Dict[str, Any]], Tuple[str, Dict[str, Any]]]
 
 _PLATE_COLUMNS = 12  # a 96-well plate is 8 rows x 12 columns
+_PLATE_WELLS = 96  # the plate is always drawn as 96 wells
+_PLATE_CHOICES = 9  # one number key (1-9) per choice
 
 # The key each component's reply carries. A reply without it but with
 # "answer" came from an older TUI's text box (see _said).
@@ -66,8 +68,13 @@ class _FreeText(Exception):
         super().__init__(text)
 
 
-def unsupported(request: Dict[str, Any]) -> List[str]:
-    """What this terminal can't draw in a request. Empty when all is drawable."""
+def unsupported(request: Dict[str, Any], go_screens: bool = True) -> List[str]:
+    """What this terminal can't draw in a request. Empty when all is drawable.
+
+    With ``go_screens`` (the Go TUI), it also lists the shapes the Go screens
+    refuse to start with, so they are never sent to fail there. The classic
+    UI asks in text and passes False.
+    """
     parsed = DecisionRequest.model_validate(request)
     problems: List[str] = []
 
@@ -76,6 +83,8 @@ def unsupported(request: Dict[str, Any]) -> List[str]:
             where = f"{path}{field.key}"
             if field.count is not None and field.type != "choice":
                 problems.append(f"{where}: a list of {field.type} values (count)")
+            if go_screens:
+                problems.extend(f"{where}: {limit}" for limit in _go_limits(field))
             if field.type == "record":
                 visit(field.fields, f"{where}.")
             if field.type == "choice":
@@ -85,6 +94,45 @@ def unsupported(request: Dict[str, Any]) -> List[str]:
 
     visit(parsed.fields, "")
     return problems
+
+
+def _go_limits(field: Any) -> List[str]:
+    """The limits of the Go screens that ``field`` breaks (their Init refuses).
+
+    lobster-tui/internal/biocomp: the plate takes 1 to 9 choices
+    (sampleplate.go) and, drawn as 96 wells, at most 96 samples; a plate
+    needs one well and a choice_list one available item (choicelist.go); a
+    slider needs min below max (threshold.go).
+    """
+    limits = []
+    if (
+        field.type == "choice"
+        and field.for_each
+        and (field.view == "plate_map" or _is_list(field))
+    ):
+        kind = "plate" if field.view == "plate_map" else "list"
+        open_items = [item for item in field.for_each if not item.unavailable]
+        if not open_items:
+            limits.append(f"a {kind} where every item is unavailable")
+        if field.view == "plate_map":
+            choices = [option for option in field.options if not option.unavailable]
+            if len(choices) > _PLATE_CHOICES:
+                limits.append(
+                    f"a plate with {len(choices)} options (at most {_PLATE_CHOICES})"
+                )
+            if len(open_items) > _PLATE_WELLS:
+                limits.append(
+                    f"a plate with {len(open_items)} samples (at most {_PLATE_WELLS})"
+                )
+    if (
+        field.type == "number"
+        and field.view == "slider"
+        and field.min is not None
+        and field.max is not None
+        and field.min >= field.max
+    ):
+        limits.append(f"a slider whose min and max are both {field.min:g}")
+    return limits
 
 
 def cannot_show(problems: Sequence[str]) -> str:
@@ -333,7 +381,7 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
     data = {
         "question": question,
         "title": field.question or field.key,
-        "format": 96 if len(items) <= 96 else 384,
+        "format": _PLATE_WELLS,  # unsupported() refuses more samples
         "choices": [o.id for o in field.options if not o.unavailable],
         "wells": wells,
     }

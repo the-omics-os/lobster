@@ -170,7 +170,7 @@ def _ask_decision(request: Dict[str, Any]) -> Dict[str, Any]:
         unsupported,
     )
 
-    problems = unsupported(request)
+    problems = unsupported(request, go_screens=False)
     if problems:
         print(f"\n{request.get('question', '')}")
         print("This terminal can't show: " + "; ".join(problems))
@@ -377,7 +377,11 @@ def _draw_text(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _draw_dashboard(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Every section in order, then a summary to confirm (no = decide later)."""
+    """Every section in order, then a summary to confirm.
+
+    y or yes sends; n, no or Enter decides later; anything else asks again,
+    so a typo never throws the answers away.
+    """
     print(f"\n{data['question']}")
     for problem in data.get("problems") or []:
         print(f"⚠ {problem}")
@@ -396,9 +400,13 @@ def _draw_dashboard(data: Dict[str, Any]) -> Dict[str, Any]:
         reply = replies[section["key"]]
         summary = _summary(section["component"], section["data"], reply)
         print(f"  {section['title']}: {summary}")
-    if _read("Confirm all? [y/N]: ").lower() not in ("y", "yes"):
-        raise _Stop("defer")
-    return {"answers": replies}
+    while True:
+        said = _read("Confirm all? [y/N]: ").lower()
+        if said in ("y", "yes"):
+            return {"answers": replies}
+        if said in ("", "n", "no"):
+            raise _Stop("defer")
+        print("Type y to send these answers, or n to decide later.")
 
 
 def _summary(component: str, data: Dict[str, Any], reply: Dict[str, Any]) -> str:

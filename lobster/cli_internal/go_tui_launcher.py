@@ -1146,6 +1146,14 @@ class _QuitTurn(Exception):
     """The user quit or cancelled the turn, or an answer timed out."""
 
 
+class _ScreenFailed(Exception):
+    """The TUI couldn't show a component (its Init or drawing failed)."""
+
+    def __init__(self, detail: str):
+        self.detail = detail
+        super().__init__(detail)
+
+
 def _is_decision_request(data: Any) -> bool:
     """True for an ask_user DecisionRequest payload (schema lobster.ask/1)."""
     from lobster.services.interaction.component_schemas import SCHEMA_VERSION
@@ -1212,7 +1220,12 @@ def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
     def render(component: str, component_data: dict) -> Tuple[str, dict]:
         return _render_component(bridge, component, component_data, prompt)
 
-    action, answer = collect(data, render)
+    try:
+        action, answer = collect(data, render)
+    except _ScreenFailed as failed:
+        # Not the user's cancel: the screen failed, so tell the supervisor why.
+        problem = f"this question ({failed.detail})"
+        return build_answer(data, "cancel", comment=cannot_show([problem]))
     return build_answer(data, action, answer)
 
 
@@ -1228,7 +1241,8 @@ def _render_component(
     component. Only a reply carrying this render's id is accepted: a late
     answer to an earlier question is ignored instead of being taken as this
     one's answer. Raises _QuitTurn when the user quits or cancels the turn,
-    or on timeout.
+    or on timeout, and _ScreenFailed when the TUI replies that it couldn't
+    show the component.
     """
     msg_id = str(uuid.uuid4())
     if not fallback:
@@ -1255,7 +1269,7 @@ def _render_component(
                 "alert",
                 {"level": "error", "message": f"Couldn't show the question: {detail}"},
             )
-            return "cancel", {}
+            raise _ScreenFailed(detail)
         return action, reply
 
 

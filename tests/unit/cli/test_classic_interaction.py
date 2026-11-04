@@ -342,6 +342,28 @@ def test_dashboard_not_confirmed_is_deferred(capsys):
     assert "answer" not in result
 
 
+@pytest.mark.parametrize("typed", ["n", "No"])
+def test_dashboard_answered_no_is_deferred(typed, capsys):
+    result, _ = _classic(_small_dashboard(), ["2", "ok", typed], capsys)
+    assert result["action"] == "defer"
+
+
+def test_dashboard_confirm_asks_again_on_anything_but_yes_or_no(capsys):
+    """A typo at the confirm prompt never throws the answers away."""
+    typed = ["2", "ok", "yy", "send", "yes"]
+    result, shown = _classic(_small_dashboard(), typed, capsys)
+    assert result["action"] == "submit"
+    assert result["answer"] == {"source": {"id": "SRC-B"}, "notes": "ok"}
+    assert shown.count("Type y to send these answers, or n to decide later.") == 2
+
+
+@pytest.mark.parametrize("key, action", [("d", "defer"), ("q", "cancel")])
+def test_d_and_q_still_work_at_the_confirm_prompt(key, action, capsys):
+    result, _ = _classic(_small_dashboard(), ["2", "ok", "x", key], capsys)
+    assert result["action"] == action
+    assert "answer" not in result
+
+
 @pytest.mark.parametrize("key, action", [("d", "defer"), ("q", "cancel")])
 def test_d_defers_and_q_cancels_at_any_prompt(key, action, capsys):
     result, _ = _classic(_decision(SOURCE), [key], capsys)
@@ -377,6 +399,19 @@ def test_shape_the_terminal_cannot_show_is_cancelled_with_a_reason(capsys):
     assert reply["action"] == "cancel"
     assert "Don't ask again with the same shape" in reply["comment"]
     assert "can't show" in capsys.readouterr().out
+
+
+def test_plate_with_more_than_nine_options_is_still_asked_in_text(capsys):
+    """Only the Go plate is limited to 9 number keys; the text prompt is not."""
+    plate = {
+        "key": "groups",
+        "type": "choice",
+        "view": "plate_map",
+        "for_each": ["S01"],
+        "options": [f"g{n}" for n in range(10)],
+    }
+    result, _ = _classic(_decision(plate), ["10"], capsys)
+    assert result["answer"] == {"groups": {"S01": {"id": "g9"}}}
 
 
 def test_classic_answers_go_through_the_checks_and_reask():

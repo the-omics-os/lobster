@@ -583,7 +583,10 @@ def test_reasked_dashboard_routes_problems_and_sends_every_previous_answer():
 
 
 def test_reasked_dashboard_section_without_a_previous_answer_gets_none():
-    request = _reasked(_review_dashboard(), [("notes", "no answer")], notes=None)
+    groups = {"S01": {"id": "control"}, "S05": {"id": "treated"}}
+    request = _reasked(
+        _review_dashboard(), [("notes", "no answer")], groups=groups, notes=None
+    )
     by_key = {
         s["key"]: s
         for s in dashboard_data(DecisionRequest.model_validate(request))["sections"]
@@ -592,7 +595,7 @@ def test_reasked_dashboard_section_without_a_previous_answer_gets_none():
     assert by_key["groups"]["answer"]["assignments"] == {
         "S01": "control",
         "S05": "treated",
-    }  # the supervisor's defaults, which the user saw as pre-filled
+    }  # the groups the user submitted
 
 
 def _proposed_dashboard():
@@ -781,6 +784,74 @@ def test_unsupported_names_what_the_terminal_cannot_draw():
     assert unsupported(_request(nested)) == [
         "qc.x.notes: a list of text values (count)"
     ]
+
+
+def _samples(count, unavailable=0):
+    open_ = [f"S{n:03d}" for n in range(1, count + 1)]
+    gone = [{"id": f"X{n:02d}", "unavailable": "removed"} for n in range(unavailable)]
+    return open_ + gone
+
+
+@pytest.mark.parametrize(
+    "field, problem",
+    [
+        (
+            {**PLATE, "options": [f"g{n}" for n in range(10)], "default": None},
+            "groups: a plate with 10 options (at most 9)",
+        ),
+        (
+            {**PLATE, "for_each": _samples(97), "default": None},
+            "groups: a plate with 97 samples (at most 96)",
+        ),
+        (
+            {
+                **PLATE,
+                "for_each": [{"id": "S09", "unavailable": "gone"}],
+                "default": None,
+            },
+            "groups: a plate where every item is unavailable",
+        ),
+        (
+            {**QC, "for_each": [{"id": "S07", "unavailable": "already removed"}]},
+            "qc: a list where every item is unavailable",
+        ),
+        (
+            {
+                "key": "mito",
+                "type": "number",
+                "question": "Mito cutoff?",
+                "view": "slider",
+                "min": 0.2,
+                "max": 0.2,
+            },
+            "mito: a slider whose min and max are both 0.2",
+        ),
+    ],
+)
+def test_unsupported_lists_the_shapes_the_go_screens_refuse(field, problem):
+    """Go's Init refuses these, so they are cancelled before any render; as a
+    dashboard section too. The classic UI asks in text and can show them."""
+    assert unsupported(_request(field)) == [problem]
+    first = {**SOURCE, "question": "Count source?"}
+    dashboard = _request(first, field, view="dashboard")
+    assert unsupported(dashboard) == [problem]
+    assert unsupported(_request(field), go_screens=False) == []
+
+
+def test_unavailable_options_and_samples_do_not_count_against_the_plate():
+    options = [f"g{n}" for n in range(9)] + [{"id": "g9", "unavailable": "none left"}]
+    field = {**PLATE, "options": options, "for_each": _samples(96, 3), "default": None}
+    assert unsupported(_request(field)) == []
+
+
+def test_plate_of_96_samples_fills_all_96_wells():
+    field = {**PLATE, "for_each": _samples(96), "default": None}
+    reply = {"assignments": {sample: "control" for sample in _samples(96)}}
+    drawn, result = _ask(_request(field), ("submit", reply))
+    data = drawn[0][1]
+    assert data["format"] == 96
+    assert (data["wells"][-1]["row"], data["wells"][-1]["col"]) == (7, 11)
+    assert result["action"] == "submit"
 
 
 def test_cannot_show_comment_tells_the_supervisor_not_to_retry_the_shape():

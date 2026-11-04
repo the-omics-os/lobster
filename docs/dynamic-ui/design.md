@@ -234,7 +234,7 @@ A view asks for a richer drawing of the same answer.
 | View | Applies to | Needs | Drawn as |
 |---|---|---|---|
 | `slider` | `number` | `min`, `max` | `threshold_slider` |
-| `plate_map` | `choice` | `for_each` | `plate_map` (wells on a 96- or 384-well plate) |
+| `plate_map` | `choice` | `for_each` | `plate_map` (wells on a 96-well plate, so up to 96 samples and 9 options; larger groupings use the per-item list) |
 | `dashboard` | the whole question | at least 2 fields | `dashboard`, one section per field, with a review screen |
 
 A dashboard section may be a choice (with or without `count`), a per-item choice on a plate, a
@@ -497,11 +497,22 @@ If an entry is lost (restart, another process), the question is simply built aga
 ## 11. Fallbacks
 
 **A shape this terminal can't draw.** Today that means `count` on a field that isn't a choice (a list of
-numbers, texts or records), at any depth. The user sees an alert. The supervisor gets `cancel` with the
-comment `Not answered: this terminal can't show <what>. Don't ask again with the same shape; ask in chat
-or with a shape it can show.` (`test_question_the_terminal_cannot_draw_is_cancelled_with_a_reason`,
-`test_cannot_show_comment_tells_the_supervisor_not_to_retry_the_shape`). A dashboard with such a
-section is already refused at request time.
+numbers, texts or records), at any depth. In the Go TUI it also means the shapes its screens refuse to
+start with: a plate with more than 9 options or more than 96 samples, a plate or per-item list whose
+items are all unavailable, and a slider whose `min` equals its `max`, alone or as a dashboard section
+(`test_unsupported_lists_the_shapes_the_go_screens_refuse`). The user sees an alert. The supervisor
+gets `cancel` with the comment `Not answered: this terminal can't show <what>. Don't ask again with the
+same shape; ask in chat or with a shape it can show.`
+(`test_question_the_terminal_cannot_draw_is_cancelled_with_a_reason`,
+`test_cannot_show_comment_tells_the_supervisor_not_to_retry_the_shape`,
+`test_plate_the_go_screen_would_refuse_is_cancelled_before_rendering`). A dashboard with a `count`
+section that isn't a choice is already refused at request time.
+
+**A screen that fails anyway.** If the Go TUI replies that it couldn't show a component (its start-up
+check or its drawing failed), the user sees `Couldn't show the question: <detail>`. The supervisor gets
+`cancel` with the same kind of comment, `Not answered: this terminal can't show this question
+(<detail>). Don't ask again with the same shape; …`, so it never reads as the user's own cancel
+(`test_component_error_is_reported_and_cancels_the_question`).
 
 **An older Go TUI** that doesn't know `choice`, `choice_list`, `plate_map` or `dashboard` shows its
 text box instead. Every render carries a `fallback_prompt` with the whole question in plain words: the
@@ -519,8 +530,10 @@ restate how it understood the answer and confirm before acting
 switch to it) asks a `DecisionRequest` as plain-text prompts (`classic_interaction.py`): numbered
 options (unavailable ones listed and refused), comma-separated numbers for several picks, one prompt per
 available item, a `Reason:` prompt for an option that needs one, numbers asked again until valid, and
-dashboard sections in order followed by a summary and `Confirm all? [y/N]` (no means defer). `d` defers
-and `q` cancels at any prompt. A lone `d` or `q` typed at a text prompt also means defer or cancel. It
+dashboard sections in order followed by a summary and `Confirm all? [y/N]` (`y` or `yes` sends; `n`,
+`no` or Enter defers; anything else asks again, so a typo doesn't throw the answers away:
+`test_dashboard_confirm_asks_again_on_anything_but_yes_or_no`). `d` defers and `q` cancels at any
+prompt. A lone `d` or `q` typed at a text prompt also means defer or cancel. It
 reuses the Go adapter's translation, so the answer is the same envelope and the same checks and re-asks
 apply (`test_classic_answers_go_through_the_checks_and_reask`). It has no staleness markers and no
 review screen.
@@ -563,7 +576,8 @@ review screen.
   (`test_unanswered_question_times_out_and_ends_the_turn`, `test_answer_timeout_is_ten_minutes`). A
   long 72-sample review can hit it.
 - **The plate map needs a terminal at least about 52 columns wide**, assigns with number keys, so it
-  takes 1 to 9 choices, and shows **choice ids, not labels**.
+  takes 1 to 9 choices, holds at most 96 samples, and shows **choice ids, not labels**. A plate beyond
+  either limit is cancelled with the "can't show" comment before it is drawn (section 11).
 - **`record` and `PROFILES` are available, not used by v1** (5.5).
 - **The bare-id default is a deliberate leniency** in the input (5.8).
 - **The supervisor prompt is unchanged.** A line asking the supervisor to prefer `ask_user` over
@@ -571,6 +585,19 @@ review screen.
   changed nothing on any prompt: the improved `ask_user` description was already enough. So the line
   was dropped.
 - **Everything is process-local.** No decision store, no restart durability, no idempotency store.
+  The list of versions shown lives in a process-local request cache. If an entry is lost, the question
+  is built again with fresh data-file fingerprints, so an answer given against the older data is then
+  judged against the data as it is now.
+- **A data change re-asks with every answer kept.** The "the data changed" problem is shown above the
+  dashboard's sections, and each section starts answered with the user's earlier answer, so the user
+  can send the same answers again without opening a section.
+- **Known terminal limits (not fixed in v1):**
+  - A terminal resize does not reach `lobster-tui` as the launcher starts it (its own session,
+    `os.setsid`, unchanged from upstream), so the screen keeps its starting size
+    (`test_e27_resize_reaches_the_binary_as_the_launcher_starts_it`, a strict xfail).
+  - After the 10-minute timeout the question stays drawn, but anything answered on it is ignored.
+  - After ctrl+c cancels a question, the cancel reaches the supervisor, but its reply to that cancel
+    is cut off in the TUI.
 - **Go tests outside CI.** The upstream workflows run `go test ./internal/chat ./internal/protocol
   ./internal/initwizard`, so the new `biocomp` tests run only locally (`cd lobster-tui && go test ./...`).
 - **Dependency.** `lobster-tui` now requires `github.com/the-omics-os/crust v0.1.0` for the plate map.

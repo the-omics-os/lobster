@@ -179,9 +179,9 @@ uv run pytest tests/unit/cli/test_go_tui_components.py -q --no-cov
 |---|---|
 | `choice`, one pick | ↑/↓ or k/j move · enter picks · 1–9 picks that option directly (up to 9 options) · esc cancels |
 | `choice`, several picks | ↑/↓ move · space ticks or unticks · enter sends once the number ticked is allowed · esc cancels |
-| `choice_list` (one row per item) | ↑/↓ or k/j rows (unavailable rows are skipped) · →/← next or previous option · 1–9 option N · enter sends when every row has an option and every needed reason; otherwise it says what is missing · esc cancels |
+| `choice_list` (one row per item) | ↑/↓ or k/j rows (unavailable rows are skipped) · →/← next or previous option · 1–9 option N · enter sends when every row has an option and every needed reason; otherwise it says what is missing · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over) |
 | `choice_list` reason box | type the reason (every printable key goes into the box) · backspace · paste works · enter saves (an empty reason is refused) · esc discards the change · ←/→ still change the option |
-| `plate_map` | arrows move between wells · 1–9 give the well the 1st–9th choice · 0 marks it unresolved · enter sends (refused while any sample is unresolved) · tab switches Crust's view · esc cancels. Needs about 52 columns or more |
+| `plate_map` | arrows move between wells · 1–9 give the well the 1st–9th choice · 0 marks it unresolved · enter sends (refused while any sample is unresolved) · tab switches Crust's view · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over); an esc that closes Crust's help or a row or column selection doesn't count. Up to 96 samples and 9 choices. Needs about 52 columns or more |
 | `dashboard` | tab / shift+tab move between sections · enter inside a section records it · ctrl+s opens the review screen, or lists what blocks it (not answered, needs re-checking, unsaved changes) · ctrl+d defers · esc twice cancels. While a section is typing text (a reason box, a text box), esc and tab go to that section; shift+tab, ctrl+s and ctrl+d still work |
 | review screen | enter sends exactly what is shown · b, esc or shift+tab go back · ↑/↓ or k/j scroll · pgup / pgdown / space by 10 lines · ctrl+d defers |
 | classic UI prompts | type the option number, or several comma-separated · Enter keeps the default shown in brackets · `d` decide later · `q` cancel |
@@ -260,9 +260,11 @@ sections, ctrl+s, enter. The result is `submit` with `attempts: 2`.
 
 - **Narrow terminal:** run the dashboard at about 60 columns (`tput cols` prints the width). Long
   questions, details and options wrap instead of being cut. Below about 52 columns the plate doesn't fit.
-- **Older TUI:** set `LOBSTER_TUI_BINARY` to a `lobster-tui` built before this work. Each screen
-  becomes a text box with the whole question in words. Type an answer in your own words; the supervisor
-  gets `free_text` with `checked: false` and should restate what it understood before acting.
+- **Older TUI:** set `LOBSTER_TUI_BINARY` to a `lobster-tui` built before this work. Sliders and text
+  boxes are drawn as before. A choice, list, plate or dashboard becomes a text box with the whole
+  question in words. Type an answer in your own words; the supervisor gets `free_text` with
+  `checked: false` and should restate what it understood before acting. Only those words are sent: in a
+  question with several fields, an answer already given on a slider or text box is dropped.
 - **Classic UI:** `lobster chat --ui classic` (or `--classic`). The source question is printed with
   numbered options; typing the number of SRC-C prints `SRC-C can't be picked: …`; `d` or `q` defers or
   cancels.
@@ -271,6 +273,17 @@ sections, ctrl+s, enter. The result is `submit` with `attempts: 2`.
 
 ## 6. What is real, simulated, or not tested
 
+The simulated column includes the end-to-end suite in `tests/integration/decision_components` (57
+tests, named `test_eNN_…`; the table cites them as ENN). Apart from E26 (the classic UI), it runs the
+real `lobster-tui` binary under a pseudo-terminal with the real `AgentClient`, `ask_user`, checkpointer
+and launcher bridge. The supervisor's chat model is scripted, so there is no LLM and no key. It is
+opt-in and needs the binary built
+(`cd lobster-tui && go build -o lobster-tui ./cmd/lobster-tui && cd ..`):
+
+```bash
+uv run pytest tests/integration/decision_components -m e2e_tui -q --no-cov
+```
+
 | Behaviour | Real (live TUI, real supervisor) | Simulated (tests) | Not tested |
 |---|---|---|---|
 | Supervisor calls `ask_user` for source, QC, groups, dashboard | measured: all 9 runs of each of the four prompts (63 sessions in all), stopped at the first question | — | — |
@@ -278,11 +291,11 @@ sections, ctrl+s, enter. The result is `submit` with `attempts: 2`.
 | Slider prompt (T2), "can't show" prompt (N2) | measured 0 of 9 each: these prompts miss their target | the paths are covered by unit tests | live, until the prompts are reworded |
 | Bare-id default accepted | measured as the main first-call failure, before the fix | `test_bare_id_default_pauses_instead_of_invalid_context` | live after the fix |
 | Direction asked with every grouping | measured 0 of 9 on T4 before the description change | `test_docstring_asks_for_the_direction_of_a_group_comparison` | live after the change |
-| Screens: choice, choice_list, plate, dashboard, review, wrapping | not yet run at the keyboard on this version when this was written | Go unit tests drive each component with key messages | below about 52 columns; terminals other than WSL2 |
-| Answers checked, re-asked with answers kept, five-refusal limit | not yet run at the keyboard (rule-break scenario) | real checkpointed LangGraph with a fake TUI | — |
-| Misrouted, stale, duplicate and stray replies | — | launcher tests with a fake bridge and real pipes; LangGraph tests | live (hard to cause by hand) |
-| Data changed while reviewing | — | `test_data_edited_before_submit_is_asked_again_with_answers_kept` | live |
+| Screens: choice, choice_list, plate, dashboard, review, wrapping | not yet run at the keyboard on this version when this was written | Go unit tests drive each component with key messages; end to end, keys typed into the real binary (E01–E10, E19, E21–E23, E27, E29, E30) | below about 52 columns; terminals other than WSL2 |
+| Answers checked, re-asked with answers kept, five-refusal limit | not yet run at the keyboard (rule-break scenario) | real checkpointed LangGraph with a fake TUI; end to end E06–E09, E12, E13 | — |
+| Misrouted, stale, duplicate and stray replies | — | launcher tests with a fake bridge and real pipes; LangGraph tests; end to end E14 (stale version or render id), E16 (another render id, another decision), E17 (duplicate, and after the turn), E18 (two pending) | live (hard to cause by hand) |
+| Data changed while reviewing | — | `test_data_edited_before_submit_is_asked_again_with_answers_kept`; end to end E15 | live |
 | Python ↔ Go wire agreement | — | fixture round trip in both languages | — |
-| Older TUI fallback, classic UI | not yet run at the keyboard | adapter, launcher and classic tests with fake input | — |
-| 600 s timeout | — | with a patched short timeout | the real 10 minutes |
+| Older TUI fallback, classic UI | not yet run at the keyboard | adapter, launcher and classic tests with fake input; end to end E25 (older TUI: an unknown component name stands in for one) and E26 (classic UI, scripted stdin, no binary) | — |
+| 600 s timeout | — | with a patched short timeout, also end to end (E20) | the real 10 minutes |
 | Restart durability, networked hosts, Ink / browser / Cloud | — | — | not built in v1 |
