@@ -378,9 +378,11 @@ An answer is refused when:
 | misrouted | answers another decision | unchanged |
 | malformed | not an answer at all | unchanged |
 
-`reask()` sets `prefilled_from_answer` to `true` only when it refilled the defaults from a submitted
-answer. After a misrouted or malformed reply the defaults are still the supervisor's proposals, so no
-dashboard section starts ticked (`test_reask_says_whether_the_defaults_came_from_the_user`,
+`reask()` sets `prefilled_from_answer` to `true` only when every default is the user's own: refilled
+from the submitted answer, or already the user's. After a misrouted or malformed reply, an empty
+answer (defer, cancel, free_text) or a partial one, some defaults are still the supervisor's proposals,
+so no dashboard section starts ticked (`test_reask_says_whether_the_defaults_came_from_the_user`,
+`test_reask_after_a_partial_answer_keeps_but_does_not_claim_the_rest`,
 `test_misrouted_reask_shows_problems_but_no_section_is_answered`).
 
 How the problems are shown:

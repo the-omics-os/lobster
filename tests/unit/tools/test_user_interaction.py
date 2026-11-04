@@ -679,6 +679,14 @@ def test_no_default_for_a_listed_option_never_pauses():
     assert "'exclude'" in problem["message"]
 
 
+def test_plate_map_with_a_count_never_pauses():
+    """Finding 4a: the plate answers one option per well, so a count could
+    only end in five refused answers."""
+    plate = {**GROUPS, "view": "plate_map", "count": {"min": 1}}
+    (problem,) = _invalid({"fields": [plate]})
+    assert "'plate_map' takes one option per item" in problem["message"]
+
+
 def test_reask_prefilled_with_the_users_own_answer_does_not_trip_no_default_for():
     """A14: request-time checks run once, on the supervisor's context."""
     spec = {"check": "no_default_for", "field": "groups", "items": ["S04"]}
@@ -856,6 +864,29 @@ def test_deleted_data_file_is_stale(tmp_path):
     assert "data/counts.csv" in second.value["problems"][0]["message"]
     third = _answer_pending(graph, second, {"source": {"id": "SRC-A"}})
     assert third is not None  # still gone: still stale
+
+
+def test_data_file_turned_into_a_link_out_is_stale_not_an_error(tmp_path):
+    """Finding 9: an answer-time fingerprint failure is a data change; the
+    user's answer is kept and they are asked again."""
+    workspace, graph, first = _ask_about_file(tmp_path / "ws")
+    counts = workspace / "data" / "counts.csv"
+    original = counts.read_text()
+    (tmp_path / "outside.csv").write_text(original)
+    counts.unlink()
+    counts.symlink_to(tmp_path / "outside.csv")
+    second = _answer_pending(graph, first, {"source": {"id": "SRC-A"}})
+    assert second.value["problems"] == [
+        {
+            "path": "data_files",
+            "message": "the data changed while you were reviewing it: data/counts.csv",
+        }
+    ]
+    assert second.value["fields"][0]["default"] == {"id": "SRC-A"}
+    counts.unlink()
+    counts.write_text(original)  # back as it was when asked
+    assert _answer_pending(graph, second, {"source": {"id": "SRC-A"}}) is None
+    assert _tool_results(graph)["call_1"]["attempts"] == 2
 
 
 @pytest.mark.parametrize("path", ["../outside.csv", "/etc/hostname", "data/none.csv"])

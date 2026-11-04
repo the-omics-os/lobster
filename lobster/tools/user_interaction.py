@@ -142,8 +142,8 @@ def create_ask_user_tool(
         go in "details".
 
         context = {"fields": [field, ...], "checks": [check, ...],
-                   "data_files": [path, ...]}. Several fields are answered on
-        one screen. Every field:
+                   "data_files": [path, ...]}. Fields are asked one after
+        another. Every field:
           key       name the answer comes back under, e.g. "source"
           type      "choice" | "number" | "text" | "record"
           question  what to ask (may be left out when there is only one field)

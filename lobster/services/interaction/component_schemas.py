@@ -172,6 +172,7 @@ VIEWS: Dict[str, Dict[str, Any]] = {
             "for_each": ["S01", "S02", "S03"],
             "options": ["control", "treated"],
         },
+        "check": lambda owner: _check_plate_map(owner),
     },
     "dashboard": {
         "applies_to": "fields",
@@ -425,31 +426,40 @@ def fingerprint(
     """sha256 of each workspace file, read in chunks.
 
     Paths must be relative and stay inside the workspace (no absolute paths,
-    no "..", no links out). A missing or unreadable file raises ValueError,
-    or with ``missing_ok`` gets ``sha256 = None`` (used when re-reading files
-    at answer time, where a gone file means the data changed).
+    no "..", no links out). A file that breaks this, or is missing or
+    unreadable, raises ValueError, or with ``missing_ok`` gets
+    ``sha256 = None`` (used when re-reading files at answer time, where any
+    such failure means the data changed).
     """
     root = Path(workspace).resolve()
     files = []
     for raw in paths:
         relative = Path(raw)
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError(
-                f"{raw!r} must be a path inside the workspace "
-                "(relative, without '..')"
-            )
-        resolved = (root / relative).resolve()
-        if not resolved.is_relative_to(root):
-            raise ValueError(f"{raw!r} leads outside the workspace")
         try:
-            digest = _sha256(resolved)
-        except OSError as error:
+            digest = _sha256_inside(root, relative, raw)
+        except (OSError, RuntimeError, ValueError):
+            # RuntimeError: a link loop on Python < 3.13.
             if not missing_ok:
-                reason = error.strerror or type(error).__name__
-                raise ValueError(f"can't read {raw!r} in the workspace ({reason})")
+                raise
             digest = None
         files.append(FileFingerprint(path=relative.as_posix(), sha256=digest))
     return FileSnapshot(files=files)
+
+
+def _sha256_inside(root: Path, relative: Path, raw: str) -> str:
+    """sha256 of ``root / relative``; ValueError if it is outside or unreadable."""
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError(
+            f"{raw!r} must be a path inside the workspace (relative, without '..')"
+        )
+    resolved = (root / relative).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"{raw!r} leads outside the workspace")
+    try:
+        return _sha256(resolved)
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ValueError(f"can't read {raw!r} in the workspace ({reason})") from error
 
 
 def _sha256(path: Path) -> str:
@@ -872,16 +882,25 @@ def reask(
     rows are dropped. Anything unusable keeps the previous default.
     ``submitted = None`` (an answer that was not for this question, or not
     an answer at all) changes no default, so ``prefilled_from_answer`` stays
-    as it was; with a submitted answer it becomes True. ``snapshot``, a fresh
-    reading of the data files, replaces the old fingerprints, except for a
-    file that is gone, which keeps its old one so the answer stays stale
-    until the file is back.
+    as it was. Otherwise it becomes True only when every default is now the
+    user's: refilled from ``submitted``, or already the user's before. A
+    field left out of ``submitted`` (an empty answer, a partial submit)
+    keeps the supervisor's default, which is never shown as the user's,
+    so then it is False. ``snapshot``, a fresh reading of the data files,
+    replaces the old fingerprints, except for a file that is gone, which
+    keeps its old one so the answer stays stale until the file is back.
     """
     fields = request.fields
     prefilled = request.prefilled_from_answer
     if isinstance(submitted, dict):
-        fields = [_refill(field, submitted) for field in request.fields]
-        prefilled = True
+        refilled = [_refill(field, submitted) for field in request.fields]
+        fields = [field for field, _ in refilled]
+        owned = [
+            from_user or request.prefilled_from_answer
+            for field, from_user in refilled
+            if field.default is not None
+        ]
+        prefilled = bool(owned) and all(owned)
     update: Dict[str, Any] = {
         "request_version": request.request_version + 1,
         "problems": list(problems),
@@ -901,26 +920,34 @@ def reask(
     return request.model_copy(update=update)
 
 
-def _refill(field: Any, submitted: Dict[str, Any]) -> Any:
-    """``field`` with the submitted value as its default, where it is valid."""
+def _refill(field: Any, submitted: Dict[str, Any]) -> Tuple[Any, bool]:
+    """``field`` with the submitted value as its default, where it is valid.
+
+    Also says whether the new default is all the user's: False when the
+    field kept its previous default, or a for_each field kept rows the
+    user didn't send.
+    """
     if field.key not in submitted:
-        return field
+        return field, False
     value = submitted[field.key]
     if field.for_each:
         if not isinstance(value, dict):
-            return field
+            return field, False
         rows = dict(field.default) if isinstance(field.default, dict) else {}
+        sent = set()
         for item_id, row in value.items():
             try:
                 rows.update(check_value(field, {item_id: row}, field.key, partial=True))
+                sent.add(item_id)
             except AnswerRejected:
                 rows.pop(item_id, None)
-        return field.model_copy(update={"default": rows or None})
+        refilled = field.model_copy(update={"default": rows or None})
+        return refilled, set(rows) <= sent
     try:
         default = check_value(field, value, field.key, partial=True)
     except AnswerRejected:
-        return field
-    return field.model_copy(update={"default": default})
+        return field, False
+    return field.model_copy(update={"default": default}), True
 
 
 # ---------------------------------------------------------------------------
@@ -984,6 +1011,15 @@ def _check_view(view: str, field_type: str, owner: Any) -> None:
         raise ValueError(f"view {view!r} needs {', '.join(missing)}")
     if "check" in entry:
         entry["check"](owner)
+
+
+def _check_plate_map(field: Any) -> None:
+    """A well holds one option, so the plate can't answer a count."""
+    if field.count is not None:
+        raise ValueError(
+            "view 'plate_map' takes one option per item; leave count out "
+            "(or leave the view out to pick several per item)"
+        )
 
 
 def _check_dashboard(owner: Any) -> None:

@@ -875,6 +875,17 @@ def test_dashboard_list_section_refuses_other_option_fields(options, message):
         AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, qc]})
 
 
+@pytest.mark.parametrize("view", [None, "dashboard"])
+def test_plate_map_refuses_a_count(view):
+    """Finding 4a: a well holds one option, so the answer could never pass."""
+    plate = {**GROUPS_8, "view": "plate_map", "count": {"min": 1, "max": 2}}
+    context = {"fields": [plate] if view is None else [SOURCE, plate]}
+    if view:
+        context["view"] = view
+    with pytest.raises(ValidationError, match="'plate_map' takes one option"):
+        AskUserContext.model_validate(context)
+
+
 def test_dashboard_still_refuses_counts_and_reasons_it_cannot_draw():
     counted = {**QC_REVIEW, "options": ["retain", "defer"], "count": {"min": 1}}
     with pytest.raises(ValidationError, match="one option per item"):
@@ -955,6 +966,67 @@ def test_reask_says_whether_the_defaults_came_from_the_user():
     misrouted = reask(request, problem, None)
     assert misrouted.prefilled_from_answer is False
     assert misrouted.to_wire()["prefilled_from_answer"] is False
+
+
+@pytest.mark.parametrize("action", ["defer", "cancel", "free_text"])
+def test_reask_with_an_empty_answer_keeps_the_defaults_the_supervisors(action):
+    """Finding 3: defer, cancel and free_text carry an empty answer."""
+    request = _request({**SOURCE, "default": {"id": "SRC-A"}}, GROUPS_8)
+    stale = [Problem(path="responds_to.request_version", message="old version")]
+    text = {"text": "SRC-B, I think"} if action == "free_text" else {}
+    again = reask(request, stale, _answer(request, action=action, **text).answer)
+    assert again.fields[0].default == {"id": "SRC-A"}
+    assert again.prefilled_from_answer is False
+
+
+def test_reask_with_an_empty_answer_and_no_defaults_is_not_prefilled():
+    request = _request(SOURCE, GROUPS_8)
+    assert reask(request, [], {}).prefilled_from_answer is False
+
+
+def test_reask_after_a_partial_answer_keeps_but_does_not_claim_the_rest():
+    """A field left out keeps the supervisor's default, not as the user's."""
+    from lobster.cli_internal.go_tui_components import dashboard_data
+
+    request = _request(
+        {**SOURCE, "default": {"id": "SRC-A"}},
+        {**GROUPS_8, "default": {"S01": {"id": "control"}}},
+        view="dashboard",
+    )
+    problem = [Problem(path="source", message="no answer")]
+    again = reask(request, problem, {"groups": {"S02": {"id": "treated"}}})
+    assert again.fields[0].default == {"id": "SRC-A"}
+    # S01 is still the supervisor's proposal, so groups isn't all the user's.
+    assert again.fields[1].default == {
+        "S01": {"id": "control"},
+        "S02": {"id": "treated"},
+    }
+    assert again.prefilled_from_answer is False
+    for section in dashboard_data(again)["sections"]:
+        assert "answer" not in section
+
+
+def test_reask_with_every_default_from_the_user_is_prefilled():
+    request = _request(
+        {**SOURCE, "default": {"id": "SRC-A"}},
+        {**GROUPS_8, "default": {"S01": {"id": "control"}}},
+    )
+    submitted = {"source": {"id": "SRC-B"}, "groups": {"S01": {"id": "treated"}}}
+    again = reask(request, [], submitted)
+    assert again.prefilled_from_answer is True
+    # An unusable value keeps the supervisor's default: not the user's.
+    bad = {"source": {"id": "SRC-C"}, "groups": {"S01": {"id": "treated"}}}
+    assert reask(request, [], bad).prefilled_from_answer is False
+
+
+def test_reask_after_the_users_answer_keeps_their_defaults_theirs():
+    """Once every default is the user's, a later partial answer keeps it so."""
+    request = _request({**SOURCE, "default": {"id": "SRC-A"}}, GROUPS_8)
+    problem = [Problem(path="groups", message="no answer")]
+    refused = reask(request, problem, {"source": {"id": "SRC-B"}})
+    assert reask(refused, problem, {}).prefilled_from_answer is True
+    partial = reask(refused, problem, {"groups": {"S01": {"id": "control"}}})
+    assert partial.prefilled_from_answer is True
 
 
 def test_reask_without_an_answer_keeps_where_the_defaults_came_from():
@@ -1053,6 +1125,17 @@ def test_fingerprint_may_report_a_missing_file_instead_of_refusing(tmp_path):
         ["data/counts.csv", "data/gone.csv"], workspace, missing_ok=True
     )
     assert [f.sha256 is None for f in snapshot.files] == [False, True]
+
+
+def test_fingerprint_at_answer_time_reports_a_link_out_as_changed(tmp_path):
+    """Finding 9: any failure at answer time means the data changed."""
+    workspace = _workspace(tmp_path / "ws", **{"counts.csv": "x"})
+    (tmp_path / "outside.csv").write_text("secret")
+    link = workspace / "data" / "counts.csv"
+    link.unlink()
+    link.symlink_to(tmp_path / "outside.csv")
+    snapshot = fingerprint(["data/counts.csv"], workspace, missing_ok=True)
+    assert snapshot.files[0].sha256 is None
 
 
 def test_data_files_are_workspace_relative_strings():
