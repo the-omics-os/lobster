@@ -52,8 +52,35 @@ def test_threshold_context_maps_to_threshold_slider():
 
 
 def test_threshold_keyword_in_question_maps_to_threshold():
+    # No bounds were given, so none are invented (a 0-1 slider would be wrong
+    # for a log2 fold change): the number is typed in.
     field = _only_field(map_question("What log2FC cutoff should I use?"))
-    assert (field.type, field.view) == ("number", "slider")
+    assert (field.type, field.view) == ("number", "default")
+    assert field.min is None and field.max is None
+
+
+def test_threshold_hint_without_bounds_keeps_its_default():
+    """FX x2: a 5.0 mmol/L cutoff must stay reachable and suggested."""
+    field = _only_field(
+        map_question(
+            "Which concentration flags an outlier?",
+            context={"threshold": 5.0, "unit": "mmol/L"},
+        )
+    )
+    assert (field.view, field.min, field.max, field.default) == (
+        "default",
+        None,
+        None,
+        5.0,
+    )
+    assert field.unit == "mmol/L"
+
+
+def test_threshold_hint_with_both_bounds_is_a_slider():
+    field = _only_field(
+        map_question("Set cutoff", context={"min": 0, "max": 10, "default": 2.5})
+    )
+    assert (field.view, field.min, field.max, field.default) == ("slider", 0, 10, 2.5)
 
 
 def test_confirm_pattern_maps_to_confirm():

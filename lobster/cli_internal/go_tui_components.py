@@ -27,8 +27,10 @@ import uuid
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from lobster.services.interaction.component_schemas import (
+    MAX_ATTEMPTS,
     DecisionRequest,
     _is_one_required_text,
+    plain_number,
 )
 
 # render(component, data) -> (action, reply). action is "submit", "cancel" or
@@ -108,13 +110,13 @@ def _go_limits(field: Any) -> List[str]:
     if (
         field.type == "choice"
         and field.for_each
-        and (field.view == "plate_map" or _is_list(field))
+        and (_draws_plate(field) or _is_list(field))
     ):
-        kind = "plate" if field.view == "plate_map" else "list"
+        kind = "plate" if _draws_plate(field) else "list"
         open_items = [item for item in field.for_each if not item.unavailable]
         if not open_items:
             limits.append(f"a {kind} where every item is unavailable")
-        if field.view == "plate_map":
+        if _draws_plate(field):
             choices = [option for option in field.options if not option.unavailable]
             if len(choices) > _PLATE_CHOICES:
                 limits.append(
@@ -131,7 +133,7 @@ def _go_limits(field: Any) -> List[str]:
         and field.max is not None
         and field.min >= field.max
     ):
-        limits.append(f"a slider whose min and max are both {field.min:g}")
+        limits.append(f"a slider whose min and max are both {plain_number(field.min)}")
     return limits
 
 
@@ -156,7 +158,7 @@ def collect(request: Dict[str, Any], render: Render) -> Tuple[str, Dict[str, Any
             return "submit", _collect_dashboard(parsed, render)
         notes = _problems_by_field(parsed)
         first = parsed.fields[0].key
-        notes[first] = notes.pop("", []) + notes.get(first, [])
+        notes[first] = _reask_banner(parsed) + notes.pop("", []) + notes.get(first, [])
         return "submit", {
             field.key: _ask(field, render, notes.get(field.key, []))
             for field in parsed.fields
@@ -215,7 +217,7 @@ def _collect_dashboard(request: DecisionRequest, render: Render) -> Dict[str, An
 
 def _ask(field: Any, render: Render, notes: Sequence[str] = ()) -> Any:
     """Ask a field (all of its for_each items); return its answer."""
-    if field.for_each and (field.view == "plate_map" or _is_list(field)):
+    if field.for_each and (_draws_plate(field) or _is_list(field)):
         return _shown(field, render, *_render_one(field, notes=notes))
     if field.for_each:
         return {
@@ -237,8 +239,12 @@ def _ask_one(field: Any, render: Render, item: Any, notes: Sequence[str]) -> Any
     # An option with fields asks its follow-up fields once it is picked.
     picks = value if isinstance(value, list) else [value]
     for pick in picks:
-        option = next(o for o in field.options if o.id == pick["id"])
-        if option.fields:
+        if not isinstance(pick, dict):
+            continue  # nothing picked: the contract check reports it
+        # An id the question doesn't offer has no follow-up fields; the
+        # contract check names it and the question is asked again.
+        option = next((o for o in field.options if o.id == pick.get("id")), None)
+        if option is not None and option.fields:
             pick["fields"] = {sub.key: _ask(sub, render) for sub in option.fields}
     return value
 
@@ -285,13 +291,26 @@ def _said(component: str, reply: Any) -> Optional[str]:
     return str(reply["answer"] or "").strip()
 
 
+def _draws_plate(field: Any) -> bool:
+    """A plate_map field is drawn as a plate only when no option asks for
+    more (a reason): a well holds one option and can't collect fields, so
+    such a field is drawn as the per-item list instead (FX W1). The view is a
+    drawing hint; the answer is the same either way."""
+    return (
+        field.type == "choice"
+        and bool(field.for_each)
+        and field.view == "plate_map"
+        and not any(option.fields for option in field.options)
+    )
+
+
 def _is_list(field: Any) -> bool:
     """A per-item choice drawn as one choice_list: one option per item, and
     each option has no fields or one required text field (a reason)."""
     return (
         field.type == "choice"
         and bool(field.for_each)
-        and field.view != "plate_map"
+        and not _draws_plate(field)
         and field.count is None
         and all(
             not option.fields or _is_one_required_text(option.fields)
@@ -321,7 +340,7 @@ def _render_one(
     )
     default = _item_default(field, item)
 
-    if field.type == "choice" and field.for_each and field.view == "plate_map":
+    if _draws_plate(field):
         return "plate_map", _plate_data(field, _join(question, details))
     if item is None and _is_list(field):
         return "choice_list", _list_data(field, question, details)
@@ -349,7 +368,9 @@ def _render_one(
             "default": default if default is not None else field.min,
         }
         if field.integer:
-            data["step"] = 1
+            # A hundredth of the range per key (shift: a tenth), as the
+            # slider does for decimals, but whole: never 1 read in 18 million.
+            data["step"] = max(1, round((field.max - field.min) / 100))
         return "threshold_slider", _with(data, "unit", field.unit)
     # text, and numbers without a slider (typed in, parsed here).
     hint = _number_hint(field) if field.type == "number" else None
@@ -438,10 +459,27 @@ def dashboard_data(request: DecisionRequest) -> Dict[str, Any]:
             section["answer"] = _as_reply(field, component, field.default)
         sections.append(section)
     out: Dict[str, Any] = {"question": request.question}
-    if notes.get(""):
-        out["problems"] = notes[""]
+    top = _reask_banner(request) + notes.get("", [])
+    if top:
+        out["problems"] = top
     out["sections"] = sections
     return out
+
+
+def _reask_banner(request: DecisionRequest) -> List[str]:
+    """On a re-ask, one line saying so, so it doesn't look like the first
+    screen; on the last attempt, that a refusal closes the question."""
+    version = request.request_version
+    if version <= 1:
+        return []
+    line = f"Asked again (attempt {version} of {MAX_ATTEMPTS}): fix what is marked"
+    line += "; your earlier answers are kept." if request.prefilled_from_answer else "."
+    if version >= MAX_ATTEMPTS:
+        line += (
+            " This is the last attempt: if this answer is refused too, the"
+            " question is closed and nothing is decided."
+        )
+    return [line]
 
 
 def _problems_by_field(request: DecisionRequest) -> Dict[str, List[str]]:
@@ -631,9 +669,9 @@ def _number_hint(field: Any) -> str:
     kind = "a whole number" if field.integer else "a number"
     bounds = []
     if field.min is not None:
-        bounds.append(f"min {field.min:g}")
+        bounds.append(f"min {plain_number(field.min)}")
     if field.max is not None:
-        bounds.append(f"max {field.max:g}")
+        bounds.append(f"max {plain_number(field.max)}")
     unit = f" ({field.unit})" if field.unit else ""
     return f"Enter {kind}{unit}" + (f", {', '.join(bounds)}" if bounds else "")
 

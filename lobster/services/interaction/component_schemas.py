@@ -36,6 +36,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCHEMA_VERSION = "lobster.ask/1"
 
+# After this many refused answers in a row the supervisor is told instead
+# ("rejected"), so an interface or a user that keeps sending a bad answer
+# can't loop. Surfaces use it to say which attempt the user is on.
+MAX_ATTEMPTS = 5
+
 # What a request may offer. "free_text" is never offered: it is how an older
 # terminal, which could only show the question as text, sends the user's reply.
 Action = Literal["submit", "defer", "cancel"]
@@ -63,6 +68,13 @@ class Problem(BaseModel):
 
 def _problem(path: str, message: str) -> Problem:
     return Problem(path=path, message=message)
+
+
+def plain_number(value: Union[int, float]) -> str:
+    """A number as a person reads it: 2,000,000 or 0.31, never 2e+06."""
+    if float(value).is_integer():
+        return f"{int(value):,}"
+    return f"{value:,.10f}".rstrip("0").rstrip(".")
 
 
 # ---------------------------------------------------------------------------
@@ -153,18 +165,19 @@ VIEWS: Dict[str, Dict[str, Any]] = {
         "needs": ["min", "max"],
         "use_when": "one number between a known min and max, e.g. a cutoff",
         "example": {
-            "key": "mito_cutoff",
+            "key": "max_missing",
             "type": "number",
             "view": "slider",
             "min": 0,
-            "max": 0.5,
-            "default": 0.2,
+            "max": 1,
+            "default": 0.3,
         },
     },
     "plate_map": {
         "applies_to": "choice",
         "needs": ["for_each"],
-        "use_when": "the same choice for each sample, shown as wells on a plate",
+        "use_when": "the same choice for each sample, shown as wells on a plate "
+        "(up to 96 samples; for more, leave the view out: a per-item list)",
         "example": {
             "key": "condition",
             "type": "choice",
@@ -801,11 +814,27 @@ def _check_number(field: NumberField, value: Any, path: str) -> Union[int, float
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AnswerRejected([_problem(path, "expected a number")])
     if field.integer and not float(value).is_integer():
-        raise AnswerRejected([_problem(path, f"{value} must be a whole number")])
+        raise AnswerRejected(
+            [_problem(path, f"{plain_number(value)} must be a whole number")]
+        )
     if field.min is not None and value < field.min:
-        raise AnswerRejected([_problem(path, f"{value} is below min ({field.min})")])
+        raise AnswerRejected(
+            [
+                _problem(
+                    path,
+                    f"{plain_number(value)} is below min ({plain_number(field.min)})",
+                )
+            ]
+        )
     if field.max is not None and value > field.max:
-        raise AnswerRejected([_problem(path, f"{value} is above max ({field.max})")])
+        raise AnswerRejected(
+            [
+                _problem(
+                    path,
+                    f"{plain_number(value)} is above max ({plain_number(field.max)})",
+                )
+            ]
+        )
     return int(value) if field.integer else value
 
 
@@ -1034,8 +1063,9 @@ def _check_dashboard(owner: Any) -> None:
             raise ValueError(f"{where}: count is only supported on a choice here")
         if field.for_each and field.type != "choice":
             raise ValueError(f"{where}: for_each is only supported on a choice here")
-        if field.for_each and field.view != "plate_map":
-            # A per-item list: one option per item, an option may ask for a reason.
+        if field.for_each:
+            # One option per item; an option may ask for a reason. (A plate
+            # whose option asks for one is drawn as the per-item list.)
             if field.count:
                 raise ValueError(f"{where}: a per-item list takes one option per item")
             for option in field.options:

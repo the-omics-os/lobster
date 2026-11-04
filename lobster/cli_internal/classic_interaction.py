@@ -341,13 +341,16 @@ def _draw_plate(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _draw_slider(data: Dict[str, Any]) -> Dict[str, Any]:
     """A number within the slider's bounds; asks again until it is valid."""
+    from lobster.services.interaction.component_schemas import plain_number
+
     low, high, default = data["min"], data["max"], data.get("default")
-    whole = data.get("step") == 1
+    # The adapter sends a step only for whole-number fields.
+    whole = isinstance(data.get("step"), int)
     unit = f" {data['unit']}" if data.get("unit") else ""
     _show(data.get("label") or "")
     kind = "A whole number" if whole else "A number"
-    print(f"  {kind} from {low:g} to {high:g}{unit}")
-    keep = f" [Enter = {default:g}]" if default is not None else ""
+    print(f"  {kind} from {plain_number(low)} to {plain_number(high)}{unit}")
+    keep = f" [Enter = {plain_number(default)}]" if default is not None else ""
     while True:
         text = _read(f"Value{keep}: ")
         if not text and default is not None:
@@ -360,7 +363,7 @@ def _draw_slider(data: Dict[str, Any]) -> Dict[str, Any]:
         if whole and not value.is_integer():
             print("Enter a whole number.")
         elif not low <= value <= high:
-            print(f"Enter a value from {low:g} to {high:g}.")
+            print(f"Enter a value from {plain_number(low)} to {plain_number(high)}.")
         else:
             return {"value": int(value) if whole else value}
 
@@ -411,6 +414,8 @@ def _draw_dashboard(data: Dict[str, Any]) -> Dict[str, Any]:
 
 def _summary(component: str, data: Dict[str, Any], reply: Dict[str, Any]) -> str:
     """One line for a section's reply, for the confirmation summary."""
+    from lobster.services.interaction.component_schemas import plain_number
+
     if component == "choice":
         names = {option["id"]: _name(option) for option in data["options"]}
         return ", ".join(names[pick["id"]] for pick in reply["selected"]) or "none"
@@ -428,7 +433,7 @@ def _summary(component: str, data: Dict[str, Any], reply: Dict[str, Any]) -> str
                 groups.append(f"{choice}: {', '.join(ids)}")
         return "; ".join(groups)
     if component == "threshold_slider":
-        return f"{reply['value']:g}"
+        return plain_number(reply["value"])
     return reply.get("answer") or "(kept)"
 
 

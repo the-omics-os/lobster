@@ -487,6 +487,11 @@ def _reasked(request, problems, **defaults):
     ).to_wire()
 
 
+_KEPT = (
+    "Asked again (attempt 2 of 5): fix what is marked; your earlier answers are kept."
+)
+
+
 def test_reask_shows_problems_in_details_and_prefills():
     request = _reasked(
         _request(SOURCE),
@@ -496,6 +501,8 @@ def test_reask_shows_problems_in_details_and_prefills():
     drawn, _ = _ask(request, ("submit", {"selected": [{"id": "SRC-A"}]}))
     data = drawn[0][1]
     assert data["details"] == (
+        "⚠ Asked again (attempt 2 of 5): fix what is marked; your earlier answers"
+        " are kept.\n"
         "⚠ option 'SRC-C' is unavailable (Normalized; build unknown)\n"
         "Recommended: SRC-A"
     )
@@ -513,7 +520,9 @@ def test_reask_of_a_choice_list_names_the_item_and_keeps_good_rows():
         ("submit", {"answers": {"S02": {"id": "retain"}, "S06": {"id": "defer"}}}),
     )
     data = drawn[0][1]
-    assert data["details"].startswith("⚠ S06: option 'exclude' needs its fields\n")
+    assert data["details"].startswith(
+        f"⚠ {_KEPT}\n⚠ S06: option 'exclude' needs its fields\n"
+    )
     assert data["default"] == {"S02": {"id": "retain"}}  # the bad row is dropped
 
 
@@ -563,7 +572,10 @@ def test_reasked_dashboard_routes_problems_and_sends_every_previous_answer():
         notes="ok",
     )
     data = dashboard_data(DecisionRequest.model_validate(request))
-    assert data["problems"] == ["the data changed while you were reviewing it: c.csv"]
+    assert data["problems"] == [
+        _KEPT,
+        "the data changed while you were reviewing it: c.csv",
+    ]
     by_key = {s["key"]: s for s in data["sections"]}
     assert by_key["groups"]["problems"] == [message]
     assert by_key["qc"]["problems"] == [message, "S06 reason: expected non-empty text"]
@@ -617,7 +629,11 @@ def test_misrouted_reask_shows_problems_but_no_section_is_answered():
     again = reask(request, [Problem(path="responds_to", message=message)], None)
     assert again.prefilled_from_answer is False
     data = dashboard_data(again)
-    assert data["problems"] == [message]
+    # Not "answers are kept": the defaults are still the supervisor's.
+    assert data["problems"] == [
+        "Asked again (attempt 2 of 5): fix what is marked.",
+        message,
+    ]
     for section in data["sections"]:
         assert "answer" not in section
     by_key = {s["key"]: s for s in data["sections"]}
@@ -1288,3 +1304,120 @@ def test_full_path_older_tui_text_answer_is_unchecked_free_text():
     assert result["text"] == "S01 and S02 stay; S03, S04 treated"
     assert result["checked"] is False
     assert result["attempts"] == 1
+
+
+def test_first_ask_has_no_reask_banner():
+    data = dashboard_data(DecisionRequest.model_validate(_proposed_dashboard()))
+    assert "problems" not in data
+
+
+def test_last_attempt_says_a_refusal_closes_the_question():
+    """FX w9b: the user must learn that a fifth refusal ends the question."""
+    from lobster.services.interaction.component_schemas import Problem, reask
+
+    request = DecisionRequest.model_validate(_request(SOURCE))
+    for _ in range(4):
+        request = reask(request, [Problem(path="source", message="no")], None)
+    assert request.request_version == 5
+    drawn, _ = _ask(request.to_wire(), ("submit", {"selected": [{"id": "SRC-A"}]}))
+    assert (
+        "This is the last attempt: if this answer is refused too, the question"
+        " is closed and nothing is decided." in drawn[0][1]["details"]
+    )
+
+
+def test_integer_slider_step_scales_with_the_range():
+    """FX w5: one key may not move 1 read in an 18,000,000-read range."""
+    field = {
+        "key": "floor",
+        "type": "number",
+        "view": "slider",
+        "integer": True,
+        "min": 2_000_000,
+        "max": 20_000_000,
+        "default": 2_000_000,
+    }
+    drawn, _ = _ask(_request(field), ("submit", {"value": 2_180_000}))
+    assert drawn[0][1]["step"] == 180_000
+    small = {**field, "min": 0, "max": 7, "default": 3}
+    drawn, _ = _ask(_request(small), ("submit", {"value": 4}))
+    assert drawn[0][1]["step"] == 1  # never below one whole unit
+
+
+def test_typed_number_bounds_never_use_exponent_form():
+    """FX w8/x3: 2e+06 must reach the screen as 2,000,000."""
+    field = {"key": "floor", "type": "number", "integer": True}
+    field.update(min=2_000_000, max=20_000_000, unit="reads")
+    drawn, _ = _ask(_request(field), ("submit", {"answer": "2500000"}))
+    assert "min 2,000,000, max 20,000,000" in drawn[0][1]["question"]
+    assert "e+" not in drawn[0][1]["question"]
+
+
+def test_a_reply_naming_an_unknown_option_goes_to_the_check():
+    """FX w14: an option id the question doesn't offer must not crash the
+    adapter (it used to raise StopIteration, an empty ✖ ERROR); it reaches the
+    contract check, which names it, and ask_user asks again."""
+    from lobster.services.interaction.component_schemas import AnswerRejected
+
+    with pytest.raises(AnswerRejected, match="unknown option 'SRC-9'"):
+        _ask(_request(SOURCE), ("submit", {"selected": [{"id": "SRC-9"}]}))
+
+
+def _flag_plate(n=4):
+    return {
+        "key": "review",
+        "type": "choice",
+        "question": "Flag samples for review?",
+        "view": "plate_map",
+        "for_each": [f"S{i:02d}" for i in range(1, n + 1)],
+        "options": [
+            "no_flag",
+            {"id": "flag", "fields": [{"key": "reason", "type": "text"}]},
+        ],
+    }
+
+
+def test_plate_whose_option_needs_a_reason_is_drawn_as_the_list():
+    """FX W1: a well can't collect a reason, so such a plate was unanswerable.
+    It is drawn as the per-item list, which can; the answer is the same."""
+    reply = {
+        "answers": {
+            "S01": {"id": "flag", "fields": {"reason": "odd profile"}},
+            "S02": {"id": "no_flag"},
+            "S03": {"id": "no_flag"},
+            "S04": {"id": "no_flag"},
+        }
+    }
+    drawn, result = _ask(_request(_flag_plate()), ("submit", reply))
+    assert [component for component, _ in drawn] == ["choice_list"]
+    assert result["answer"]["review"]["S01"] == {
+        "id": "flag",
+        "fields": {"reason": "odd profile"},
+    }
+
+
+def test_plate_without_option_fields_is_still_a_plate():
+    field = {**_flag_plate(), "options": ["no_flag", "flag"]}
+    drawn, _ = _ask(
+        _request(field),
+        ("submit", {"assignments": {f"S0{i}": "no_flag" for i in range(1, 5)}}),
+    )
+    assert [component for component, _ in drawn] == ["plate_map"]
+
+
+def test_plate_drawn_as_the_list_is_not_held_to_the_plate_limits():
+    """More than 96 samples is a plate limit, not a list limit."""
+    assert unsupported(_request(_flag_plate(n=120))) == []
+
+
+def test_dashboard_plate_section_with_a_reason_is_drawn_as_the_list():
+    request = _request(
+        {**SOURCE, "question": "Source?"},
+        {**_flag_plate(), "depends_on": ["source"]},
+        view="dashboard",
+    )
+    sections = {
+        s["key"]: s
+        for s in dashboard_data(DecisionRequest.model_validate(request))["sections"]
+    }
+    assert sections["review"]["component"] == "choice_list"

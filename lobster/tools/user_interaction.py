@@ -26,6 +26,7 @@ from pydantic import ValidationError
 
 from lobster.services.interaction.component_schemas import (
     CHECKS,
+    MAX_ATTEMPTS,
     VIEWS,
     AnswerMisrouted,
     AnswerRejected,
@@ -42,9 +43,8 @@ from lobster.services.interaction.component_schemas import (
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-# After this many refused answers in a row the supervisor is told instead, so
-# an interface (or a user) that keeps sending the same bad answer can't loop.
-_MAX_REJECTED = 5
+# After this many refused answers in a row the supervisor is told instead.
+_MAX_REJECTED = MAX_ATTEMPTS
 
 _FREE_TEXT_NOTE = (
     "The user's terminal could not show this question, so they answered in "
@@ -135,8 +135,10 @@ def create_ask_user_tool(
         """Pause and ask the user. Use ONLY when user input is genuinely required
         (ambiguous intent, an approval gate, or a scientific choice only they can make).
         The question might come from a sub-agent that needs user input.
-        Ask ONE question per turn. For several linked decisions on one screen,
-        call get_dashboard_schema first.
+        Ask ONE question per turn. Before your first ask_user, list the
+        decisions the task needs from the user: when they are linked (one
+        changes another), ask them together on one dashboard, whatever the
+        user's wording; call get_dashboard_schema first.
 
         question: one short line. Explanations, evidence and recommendations
         go in "details".
@@ -148,12 +150,16 @@ def create_ask_user_tool(
           type      "choice" | "number" | "text" | "record"
           question  what to ask (may be left out when there is only one field)
           details   evidence or your recommendation; shown, never applied
-          default   a pre-filled answer, shaped exactly like the answer
+          default   a pre-filled answer, shaped exactly like the answer; a
+                    choice only the user can make (an unresolved item, an
+                    exclusion, a choice the data doesn't settle) gets no default
           count     {"min", "max"}: how many values; the answer becomes a list
           for_each  [item, ...]: ask the same field once per item; answer keyed by id
           view      how to draw it (see Views); never changes the answer
         choice:  options: [item, ...]. An option may carry "fields", shown only
-                 when it is picked, e.g. a reason for "exclude".
+                 when it is picked. Every option that removes, excludes or
+                 overrides something carries a required reason field:
+                 "fields": [{"key": "reason", "type": "text"}].
         number:  min, max (value bounds), integer (true/false), unit
         text:    only when the answer can't be listed or counted
         record:  fields: [field, ...] answered together
@@ -167,7 +173,9 @@ def create_ask_user_tool(
                  about; if one changes before the user answers, they are
                  asked again.
         To put items into groups, ask ONE choice field with for_each over
-        every item (view "plate_map" for samples), with the known groups as
+        every item (view "plate_map" for up to 96 samples; without a view it
+        is a per-item list, for more than 96 items or items that aren't
+        samples), with the known groups as
         its default and none for an unresolved item; never one field per
         item: checks only see groups asked as one field. Also ask, as its own
         choice field, which group is compared with which ("B relative to A"
@@ -175,7 +183,7 @@ def create_ask_user_tool(
 
         Example: keep or exclude each flagged sample, with a reason to exclude:
           {"fields": [{"key": "qc", "type": "choice",
-             "for_each": [{"id": "S02", "details": "low library size"}, "S06"],
+             "for_each": [{"id": "S02", "details": "fails a QC threshold"}, "S06"],
              "options": ["retain",
                          {"id": "exclude", "fields": [{"key": "reason", "type": "text"}]}]}]}
 
@@ -380,8 +388,8 @@ Rules:
 - Order sections upstream first.
 - A section may be:
     choice                    options; add count {"min", "max"} for several picks
-    choice + for_each         the same choice per item, on a plate:
-                              add "view": "plate_map"
+    choice + for_each         the same choice per item, on a plate (up to 96
+                              samples): add "view": "plate_map"
     choice + for_each (list)  one row per item, one option per row, without
                               plate_map; an option may ask for one reason:
                               "fields": [{"key": "reason", "type": "text"}]
@@ -397,16 +405,16 @@ Rules:
   For a QC review whose exclusions must not empty a group, use each_option_kept
   with "minus" listing every QC option that takes an item out of its group:
   exclude and defer (a deferred item does not count toward its group).
-- data_files: the workspace files the decision is about, e.g. the counts table.
+- data_files: the workspace files the decision is about, e.g. the data table.
 - Use ids exactly as they appear in the data; never invent ids. Put evidence and
   your recommendations in "details" (shown, never applied) or "default"
   (pre-filled). Show an ineligible option or item with "unavailable": "<reason>"
   instead of leaving it out.
 
 Example:
-  {"view": "dashboard", "data_files": ["data/counts.csv"], "fields": [
-    {"key": "source", "type": "choice", "question": "Which count table?",
-     "options": [{"id": "SRC-A", "details": "raw counts"},
+  {"view": "dashboard", "data_files": ["data/matrix.csv"], "fields": [
+    {"key": "source", "type": "choice", "question": "Which data table?",
+     "options": [{"id": "SRC-A", "details": "raw values"},
                  {"id": "SRC-B", "unavailable": "already normalized"}]},
     {"key": "groups", "type": "choice", "question": "Group of each sample?",
      "view": "plate_map", "depends_on": ["source"],
@@ -417,7 +425,7 @@ Example:
                  {"id": "control_vs_case", "label": "control compared with case"}]},
     {"key": "qc", "type": "choice", "question": "Keep each flagged sample?",
      "depends_on": ["groups"],
-     "for_each": [{"id": "P2", "details": "low library size"}, "P3"],
+     "for_each": [{"id": "P2", "details": "fails a QC threshold"}, "P3"],
      "options": ["retain", "defer",
                  {"id": "exclude", "fields": [{"key": "reason", "type": "text"}]}]}],
    "checks": [
@@ -431,7 +439,7 @@ The answer has one entry per section key:
    "groups": {"P1": {"id": "case"}, "P2": {"id": "case"},
               "P3": {"id": "control"}, "P4": {"id": "control"}},
    "direction": {"id": "case_vs_control"},
-   "qc": {"P2": {"id": "exclude", "fields": {"reason": "low library size"}},
+   "qc": {"P2": {"id": "exclude", "fields": {"reason": "fails QC"}},
           "P3": {"id": "retain"}}}"""
 
 

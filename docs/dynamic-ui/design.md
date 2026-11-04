@@ -111,7 +111,8 @@ sequenceDiagram
 2. **The question is built** (`_build_request` in `lobster/tools/user_interaction.py`).
    `map_question` (`lobster/services/interaction/component_mapper.py`) uses `context.fields` as given
    and validates it. Older hint-style context (`options`, `clusters`, threshold keys) is converted by
-   rules, an ambiguous question can be formatted by an optional LLM, and anything else becomes one
+   rules (a threshold hint becomes a slider only when it gives both `min` and `max`; bounds are never
+   invented, so otherwise the number is typed in), an ambiguous question can be formatted by an optional LLM, and anything else becomes one
    free-text field. Then `check_request` runs the request-time checks once, and the files in
    `context.data_files` are fingerprinted. Any problem returns `invalid_context` with a list of
    problems, and nothing is shown (`test_invalid_context_never_pauses`,
@@ -238,8 +239,9 @@ A view asks for a richer drawing of the same answer.
 | `dashboard` | the whole question | at least 2 fields | `dashboard`, one section per field, with a review screen |
 
 A dashboard section may be a choice (with or without `count`), a per-item choice on a plate, a
-per-item list (one option per item, an option may ask for one reason), a number or a text. It may not
-be a record, a choice whose options carry other fields, or a per-item list with `count`
+per-item list (one option per item, an option may ask for one reason; a plate whose option asks for
+one is drawn as the list), a number or a text. It may not be a record, a choice whose options carry
+other fields, or a per-item list with `count`
 (`_check_dashboard`; `test_dashboard_refuses_sections_it_cannot_draw`,
 `test_dashboard_allows_a_per_item_list_with_reason_fields`).
 
@@ -248,11 +250,15 @@ The Go adapter picks the component from the field, not only from the view:
 | Field | Go component |
 |---|---|
 | choice | `choice` (a radio list for one pick, a checklist with `count`) |
-| choice + `for_each` + `view: plate_map` | `plate_map` |
+| choice + `for_each` + `view: plate_map`, no option with fields | `plate_map` |
+| the same, with an option that asks for a reason | `choice_list`: a well holds one option and can't collect a reason, so the view is treated as a hint (`test_plate_whose_option_needs_a_reason_is_drawn_as_the_list`) |
 | choice + `for_each`, no count, options with no fields or one required text field | `choice_list`: one screen, one row per item (`test_qc_review_is_one_choice_list_render`) |
 | other choice + `for_each` shapes | one `choice` screen per item (`test_for_each_choice_with_count_keeps_one_render_per_item`) |
-| number + `view: slider` | `threshold_slider` |
+| number + `view: slider` | `threshold_slider`; a whole-number slider moves a hundredth of the range per key, shift a tenth, never less than 1 (`test_integer_slider_step_scales_with_the_range`) |
 | number without slider, text | `text_input` (a typed number is parsed and asked again if invalid) |
+
+Numbers are shown as a person reads them, `2,000,000` or `0.31`, never `2e+06`: in the hints, the
+classic prompts, the problems and the dashboard's review screen (`plain_number`, Go `plainNumber`).
 | record | each sub-field in turn |
 
 ### 5.5 Profiles, and the `record` type: available, not used by v1
@@ -386,6 +392,12 @@ so no dashboard section starts ticked (`test_reask_says_whether_the_defaults_cam
 `test_misrouted_reask_shows_problems_but_no_section_is_answered`).
 
 How the problems are shown:
+
+- **every re-ask** starts with one line saying so: "Asked again (attempt 2 of 5): fix what is
+  marked; your earlier answers are kept." ("kept" only when `prefilled_from_answer` is true). On the
+  fifth attempt it adds that a refusal closes the question and nothing is decided
+  (`test_last_attempt_says_a_refusal_closes_the_question`). The screen itself closes when the user
+  submits; afterwards the supervisor, told `rejected`, is instructed to tell the user;
 
 - **single question:** `⚠ <message>` lines at the top of the field's details; a problem in a row names
   the row (`test_reask_shows_problems_in_details_and_prefills`,

@@ -189,18 +189,26 @@ def _has_threshold_context(ctx: Dict[str, Any]) -> bool:
 
 
 def _threshold_field(ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """A number field on a slider; the default is kept only when in range."""
-    low = float(ctx.get("min", 0.0))
-    high = float(ctx.get("max", 1.0))
-    field: Dict[str, Any] = {
-        "key": "value",
-        "type": "number",
-        "view": "slider",
-        "min": low,
-        "max": high,
-    }
+    """A number field: on a slider only when both bounds are given.
+
+    Bounds are never invented: a 0-1 range fits a fraction, not a
+    concentration or a read count. Without both bounds the user types the
+    number. The default is kept when it is inside the bounds that were given.
+    """
+    field: Dict[str, Any] = {"key": "value", "type": "number"}
+    low, high = ctx.get("min"), ctx.get("max")
+    if isinstance(low, (int, float)) and not isinstance(low, bool):
+        field["min"] = float(low)
+    if isinstance(high, (int, float)) and not isinstance(high, bool):
+        field["max"] = float(high)
+    if "min" in field and "max" in field:
+        field["view"] = "slider"
     default = ctx.get("default", ctx.get("threshold", ctx.get("cutoff")))
-    if isinstance(default, (int, float)) and low <= default <= high:
+    if (
+        isinstance(default, (int, float))
+        and not isinstance(default, bool)
+        and field.get("min", default) <= default <= field.get("max", default)
+    ):
         field["default"] = float(default)
     if ctx.get("unit"):
         field["unit"] = str(ctx["unit"])

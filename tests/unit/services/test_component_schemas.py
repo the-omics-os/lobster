@@ -892,10 +892,15 @@ def test_dashboard_still_refuses_counts_and_reasons_it_cannot_draw():
         AskUserContext.model_validate(
             {"view": "dashboard", "fields": [SOURCE, counted]}
         )
+    # A plate whose option asks for one reason is drawn as the per-item list
+    # (FX W1), so it is accepted; an option asking for more is not.
     on_plate = {**QC_REVIEW, "view": "plate_map"}
-    with pytest.raises(ValidationError, match="options with fields"):
+    AskUserContext.model_validate({"view": "dashboard", "fields": [SOURCE, on_plate]})
+    two = [{"key": "reason", "type": "text"}, {"key": "by", "type": "text"}]
+    too_much = {**on_plate, "options": ["retain", {"id": "exclude", "fields": two}]}
+    with pytest.raises(ValidationError, match="only have one required text field"):
         AskUserContext.model_validate(
-            {"view": "dashboard", "fields": [SOURCE, on_plate]}
+            {"view": "dashboard", "fields": [SOURCE, too_much]}
         )
     texts = {"key": "names", "type": "text", "question": "Names?", "for_each": ["a"]}
     with pytest.raises(ValidationError, match="for_each"):
@@ -1190,3 +1195,13 @@ def test_reask_takes_fresh_fingerprints_but_keeps_a_gone_file_stale(tmp_path):
     with pytest.raises(AnswerStale, match="data/b.csv"):
         check_answer(again, _answer(again, {"source": {"id": "SRC-A"}}), now)
     assert isinstance(again.snapshot, FileSnapshot)
+
+
+def test_plain_number_never_uses_exponent_form():
+    from lobster.services.interaction.component_schemas import plain_number
+
+    assert plain_number(2e6) == "2,000,000"
+    assert plain_number(2_000_519) == "2,000,519"
+    assert plain_number(0.31) == "0.31"
+    assert plain_number(0.0001) == "0.0001"
+    assert plain_number(-1500) == "-1,500"

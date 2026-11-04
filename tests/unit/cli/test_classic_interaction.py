@@ -312,6 +312,23 @@ def test_slider_number_is_kept_within_its_bounds(capsys):
     assert result["answer"] == {"mito": 0.2}  # the default, kept on Enter
 
 
+def test_whole_number_slider_with_a_big_range(capsys):
+    """The adapter's step grows with the range; classic still asks for a whole
+    number and shows the bounds without exponent form."""
+    field = {
+        "key": "floor",
+        "type": "number",
+        "view": "slider",
+        "integer": True,
+        "min": 2_000_000,
+        "max": 20_000_000,
+    }
+    result, shown = _classic(_decision(field), ["2500000.5", "2500000"], capsys)
+    assert result["answer"] == {"floor": 2_500_000}
+    assert "A whole number from 2,000,000 to 20,000,000" in shown
+    assert "Enter a whole number." in shown
+
+
 def test_text_needs_an_answer(capsys):
     result, shown = _classic(
         _decision({"key": "note", "type": "text"}), ["", "looks fine"], capsys
