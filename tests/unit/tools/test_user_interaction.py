@@ -1116,7 +1116,7 @@ def test_items_from_is_read_when_the_question_is_built(tmp_path):
         ("P2", "D2"),
     ]
     assert field["default"] == {"P1": {"id": "case"}}  # "?" proposes nothing
-    assert "items_from" not in field
+    assert field["items_from"]["file"] == "data/layout.csv"  # kept to re-read it
     assert pending.value["snapshot"]["files"] == [
         {
             "path": "data/layout.csv",
@@ -1149,3 +1149,105 @@ def test_the_supervisor_is_told_when_to_use_the_plate():
         assert said in text, said
     schema = create_dashboard_schema_tool().invoke({})
     assert "Ask over all the samples" in schema and "items_from" in schema
+
+
+def test_a_changed_table_is_read_again_on_the_reask(tmp_path):
+    """Swapped wells, a vanished and a new sample: the re-ask shows the table
+    as it is now, keeps the answers for samples still there, and the old
+    layout is no longer accepted."""
+    tool, context = _plate_from_table(tmp_path)
+    graph, pending = _ask(context, question="Group of each sample?", tool=tool)
+    (tmp_path / "data" / "layout.csv").write_text(
+        "sample,well,condition\nP2,D1,?\nP1,D2,case\nP3,D3,control\n"
+    )
+    answer = {"groups": {"P1": {"id": "case"}, "P2": {"id": "control"}}}
+    again = _answer_pending(graph, pending, answer)
+    field = again.value["fields"][0]
+    assert [(i["id"], i["position"]) for i in field["for_each"]] == [
+        ("P2", "D1"),
+        ("P1", "D2"),
+        ("P3", "D3"),
+    ]
+    assert field["default"] == answer["groups"]  # kept; P3 left unresolved
+    messages = [p["message"] for p in again.value["problems"]]
+    assert "new in data/layout.csv, not answered yet: P3" in messages
+    assert any("changed" in m for m in messages)
+
+    (tmp_path / "data" / "layout.csv").write_text(
+        "sample,well,condition\nP2,D1,?\nP3,D3,control\n"
+    )
+    third = _answer_pending(
+        graph, again, {"groups": {**answer["groups"], "P3": {"id": "case"}}}
+    )
+    messages = [p["message"] for p in third.value["problems"]]
+    assert "no longer in data/layout.csv: P1" in messages
+    assert [i["id"] for i in third.value["fields"][0]["for_each"]] == ["P2", "P3"]
+
+    final = {"groups": {"P2": {"id": "control"}, "P3": {"id": "case"}}}
+    assert _answer_pending(graph, third, final) is None
+    assert _tool_results(graph)["call_1"]["answer"] == final
+
+
+def test_a_table_that_breaks_keeps_the_answer_stale(tmp_path):
+    tool, context = _plate_from_table(tmp_path)
+    graph, pending = _ask(context, question="Group?", tool=tool)
+    (tmp_path / "data" / "layout.csv").write_text("sample,condition\nP1,case\n")
+    answer = {"groups": {"P1": {"id": "case"}, "P2": {"id": "control"}}}
+    again = _answer_pending(graph, pending, answer)
+    messages = [p["message"] for p in again.value["problems"]]
+    assert any(m.startswith("couldn't read data/layout.csv again: ") for m in messages)
+    # Still the old layout, and an answer to it is not accepted.
+    assert _answer_pending(graph, again, answer) is not None
+
+
+def test_context_sent_as_json_text_is_read():
+    graph = _graph(("call_1", "Which count source?", json.dumps(SOURCE)))
+    (pending,) = _run(graph, {"messages": []})
+    assert pending.value["fields"][0]["key"] == "source"
+
+
+@pytest.mark.parametrize("text", ["{not json", "[1, 2]", '"fields"'])
+def test_context_text_that_is_not_a_json_object_is_refused(text):
+    graph = _graph(("call_1", "Which count source?", text))
+    assert _run(graph, {"messages": []}) == []
+    result = _tool_results(graph)["call_1"]
+    assert result["action"] == "invalid_context"
+    assert result["problems"][0]["path"] == "context"
+
+
+def _per_item(default=None, checks=None):
+    field = {
+        "key": "groups",
+        "type": "choice",
+        "for_each": ["S07", "S13"],
+        "options": [
+            "vehicle",
+            {"id": "leave_out", "fields": [{"key": "reason", "type": "text"}]},
+        ],
+    }
+    if default:
+        field["default"] = default
+    return {"fields": [field], "checks": checks or []}
+
+
+def _settle(context, answer):
+    graph, pending = _ask(context, question="Group?")
+    _answer_pending(graph, pending, answer)
+    return _tool_results(graph)["call_1"]
+
+
+ANSWERED = {"groups": {"S07": {"id": "vehicle"}, "S13": {"id": "vehicle"}}}
+
+
+def test_a_per_item_question_with_nothing_pre_filled_gets_the_note():
+    result = _settle(_per_item(), ANSWERED)
+    assert result["note"] == (
+        "ask over all the samples, with the known ones pre-filled, so the user "
+        "sees them in context"
+    )
+
+
+def test_no_note_when_items_are_pre_filled_or_left_open_on_purpose():
+    assert "note" not in _settle(_per_item(default={"S07": "vehicle"}), ANSWERED)
+    check = [{"check": "no_default_for", "field": "groups", "items": ["S07", "S13"]}]
+    assert "note" not in _settle(_per_item(checks=check), ANSWERED)

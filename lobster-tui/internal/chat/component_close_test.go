@@ -2,6 +2,7 @@ package chat
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -119,5 +120,26 @@ func TestCtrlCOnAQuestionCancelsOnlyTheQuestion(t *testing.T) {
 		if len(sent) != 1 || sent[0].Type != protocol.TypeCancel || !m.isCanceling || m.quitting {
 			t.Fatalf("%s: the second ctrl+c must cancel the turn, sent %+v", busy, sent)
 		}
+	}
+}
+
+// While a question is on screen the chat box is hidden and gets nothing: a
+// paste meant for the question used to land in it too, and be sent later.
+func TestAQuestionHidesTheChatBoxAndKeepsPastesOutOfIt(t *testing.T) {
+	m, _ := withScreen(t, "render-1")
+	m.inline = true
+	m.width, m.height = 100, 40
+	composer := m.renderComposer()
+	if strings.Contains(m.View().Content, composer) {
+		t.Fatal("the chat box is drawn under the question")
+	}
+	updated, _ := m.Update(tea.PasteMsg{Content: "smudged, unreadable"})
+	m = updated.(Model)
+	if v := m.input.Value(); v != "" {
+		t.Fatalf("the paste reached the chat box: %q", v)
+	}
+	m.dropComponent()
+	if !strings.Contains(m.View().Content, m.renderComposer()) {
+		t.Fatal("the chat box should come back when the question is gone")
 	}
 }

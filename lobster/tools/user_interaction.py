@@ -39,6 +39,7 @@ from lobster.services.interaction.component_schemas import (
     expand_items_from,
     fingerprint,
     reask,
+    reread_items,
 )
 
 if TYPE_CHECKING:
@@ -150,7 +151,7 @@ def create_ask_user_tool(
     async def ask_user(
         question: str,
         tool_call_id: Annotated[str, InjectedToolCallId],
-        context: Optional[Dict[str, Any]] = None,
+        context: Optional[Union[Dict[str, Any], str]] = None,
     ) -> str:
         """Pause and ask the user. Use ONLY when user input is genuinely required
         (ambiguous intent, an approval gate, or a scientific choice only they can make).
@@ -161,7 +162,8 @@ def create_ask_user_tool(
         user's wording; call get_dashboard_schema first.
 
         question: one short line. Explanations, evidence and recommendations
-        go in "details".
+        go in "details". Don't restate counts or totals (group sizes, how
+        many are unresolved) in question or details: the screen counts them.
 
         context = {"fields": [field, ...], "checks": [check, ...],
                    "data_files": [path, ...]}. Fields are asked one after
@@ -177,8 +179,10 @@ def create_ask_user_tool(
           for_each  [item, ...]: ask the same field once per item; answer keyed by id
           items_from  (choice) read for_each and default from a workspace CSV or
                     TSV instead of writing them out: {"file", "id", "default",
-                    "label", "details": [col, ...], "position", "where":
-                    {col: value}, "match": "exact" | "ignore_case_and_spaces"};
+                    "label", "details": [col, ...], "position", "warning",
+                    "where": {col: value}, "unavailable": {"column", "values":
+                    {value: reason}}, "match": "exact" |
+                    "ignore_case_and_spaces"};
                     you name the columns; a "default" value that isn't an
                     option (blank, "?", "unknown") proposes nothing; the file
                     is added to data_files
@@ -190,9 +194,11 @@ def create_ask_user_tool(
         number:  min, max (value bounds), integer (true/false), unit
         text:    only when the answer can't be listed or counted
         record:  fields: [field, ...] answered together
-        item:    {"id", "label", "details", "unavailable", "position"} or a
-                 plain string. position: a sample's plate well, e.g. "D1",
-                 given for every item or none.
+        item:    {"id", "label", "details", "warning", "unavailable",
+                 "position"} or a plain string. position: a sample's plate
+                 well, e.g. "D1", given for every item or none. warning: a
+                 caution about the item, e.g. "condition box unreadable";
+                 on a plate it is offered as the reason, never filled in.
                  id is a stable identity (sample ID, accession), never a row
                  number; label is display only. An option or item that exists
                  but can't be used (ruled out by a rule or by the data) stays
@@ -208,19 +214,28 @@ def create_ask_user_tool(
         just the uncertain few (the others give context): known groups as
         the default, none for an uncertain sample. Give each sample its well
         in "position" when known. An option there may ask one reason
-        ("fields": [{"key": "reason", "type": "text"}]); a sample's warning
-        written in its details as "warning: ..." is offered as the reason.
+        ("fields": [{"key": "reason", "type": "text"}]); a sample's "warning"
+        is offered there as the reason.
         Use the per-item list (leave the view out) instead for more than 96
         items or 9 options, items that aren't samples (clusters, features,
         ASVs), more than one pick per item, options needing more than one
         reason, or items with their own option lists. When the samples are
-        rows of a file, prefer items_from to copying ids by hand, e.g.
-          "items_from": {"file": "data/plate1_layout.csv", "id": "sample",
-            "default": "condition", "details": ["batch", "note"],
-            "position": "well", "where": {"sample_type": "study"},
-            "match": "ignore_case_and_spaces"}
+        rows of a file, prefer items_from to copying ids by hand; QC pools
+        and blanks stay on the plate, greyed, through items_from.unavailable.
         Also ask, as its own choice field, which group is compared with which
         ("B relative to A" or "A relative to B").
+
+        Example: put the samples of a plate into groups (the usual case):
+          {"fields": [{"key": "groups", "type": "choice", "view": "plate_map",
+             "question": "Which group is each sample in?",
+             "items_from": {"file": "data/plate1_layout.csv", "id": "sample",
+               "default": "condition", "position": "well",
+               "details": ["batch"], "warning": "note",
+               "unavailable": {"column": "sample_type", "values":
+                 {"pooled_qc": "pooled QC, never grouped", "blank": "blank"}},
+               "match": "ignore_case_and_spaces"},
+             "options": ["vehicle", "treated",
+               {"id": "leave_out", "fields": [{"key": "reason", "type": "text"}]}]}]}
 
         Example: keep or exclude each flagged sample, with a reason to exclude:
           {"fields": [{"key": "qc", "type": "choice",
@@ -249,6 +264,24 @@ def create_ask_user_tool(
               "rejected": the answers kept failing the checks; see "problems"."""
         from langgraph.errors import GraphInterrupt
 
+        if isinstance(context, str):
+            # Some models send the object as JSON text: read it if it is one.
+            context = _context_from_text(context)
+            if context is None:
+                return json.dumps(
+                    {
+                        "action": "invalid_context",
+                        "problems": [
+                            {
+                                "path": "context",
+                                "message": "context must be a JSON object, "
+                                'e.g. {"fields": [...]}',
+                            }
+                        ],
+                        "note": "Nothing was shown to the user. "
+                        "Fix context and call ask_user again.",
+                    }
+                )
         decision_id = _decision_id(tool_call_id)
         key = _cache_key(decision_id, question, context, workspace_path)
         shown = _recall(key)
@@ -277,7 +310,7 @@ def create_ask_user_tool(
         finally:
             if not paused:
                 _forget(key)
-        return json.dumps(result)
+        return json.dumps(_with_advice(result, shown[0]))
 
     ask_user.description += _views_section() + _checks_section()
     ask_user.metadata = {"categories": ["UTILITY"], "provenance": False}
@@ -286,6 +319,49 @@ def create_ask_user_tool(
     from lobster.tools._async_compat import enable_sync_fallback
 
     return enable_sync_fallback(ask_user)
+
+
+def _context_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """The object a JSON text holds, or None if it isn't a JSON object."""
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+_ASK_OVER_ALL = (
+    "ask over all the samples, with the known ones pre-filled, so the user "
+    "sees them in context"
+)
+
+
+def _with_advice(result: Dict[str, Any], first: DecisionRequest) -> Dict[str, Any]:
+    """Add a note when a question that could be a plate pre-filled no item:
+    such a question usually lists only the uncertain few, and the user can't
+    judge them without the rest. A field a no_default_for check covers left
+    its defaults out on purpose (a QC review), so it gets no note."""
+    excused = {
+        spec.get("field")
+        for spec in first.checks
+        if spec.get("check") == "no_default_for"
+    }
+    for field in first.fields:
+        if (
+            field.type == "choice"
+            and field.for_each
+            and field.count is None
+            and not field.default
+            and field.key not in excused
+            and len([o for o in field.options if not o.unavailable]) <= 9
+            and len(field.for_each) <= 96
+        ):
+            note = result.get("note")
+            return {
+                **result,
+                "note": f"{note} {_ASK_OVER_ALL}" if note else _ASK_OVER_ALL,
+            }
+    return result
 
 
 def _build_request(
@@ -435,7 +511,9 @@ async def _judge(
     except AnswerMisrouted as error:
         return reask(request, error.problems, None)
     except AnswerStale as error:
-        return reask(request, error.problems, answer.answer, snapshot=error.snapshot)
+        stale = reask(request, error.problems, answer.answer, snapshot=error.snapshot)
+        # A field read from a table shows the table as it is now.
+        return await asyncio.to_thread(reread_items, stale, request.snapshot, workspace)
     except AnswerRejected as error:
         return reask(request, error.problems, answer.answer)
     if result["action"] == "free_text":
@@ -485,7 +563,9 @@ Rules:
 - items_from: when a section's items are rows of a workspace CSV or TSV (a
   sample sheet, plate layout, channel map), name the columns instead of
   copying ids: "items_from": {"file", "id", "default", "details", "position",
-  "where", "match"} (see ask_user). The file is added to data_files.
+  "warning", "where", "unavailable", "match"} (see ask_user). The file is
+  added to data_files.
+- Don't restate counts or totals in a question or details; the screen counts.
 - Use ids exactly as they appear in the data; never invent ids. Put evidence and
   your recommendations in "details" (shown, never applied) or "default"
   (pre-filled). Show an ineligible option or item with "unavailable": "<reason>"

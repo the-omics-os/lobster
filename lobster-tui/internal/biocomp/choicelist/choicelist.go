@@ -506,10 +506,14 @@ func Describe(data json.RawMessage, reply map[string]any) []string {
 	return lines
 }
 
-// withID is "label (id)", or just the id when there is no other label.
+// withID is "label (id)"; just the id when there is no label, and just the
+// label when it already holds the id.
 func withID(label, id string) string {
-	if label == "" || label == id {
+	switch {
+	case label == "":
 		return id
+	case strings.Contains(label, id): // the label already names it
+		return label
 	}
 	return label + " (" + id + ")"
 }
@@ -552,11 +556,29 @@ func (c *Component) View(width, height int) string {
 	}
 	avail := height - lipgloss.Height(strings.Join(top, "\n")) - lipgloss.Height(strings.Join(bottom, "\n"))
 	start, end := c.window(heights, max(avail, 3))
+	if start > 0 || end < len(rows) {
+		// Some rows are out of view: keep a line above and below to say so.
+		start, end = c.window(heights, max(avail-2, 3))
+	}
 
 	lines := append([]string{}, top...)
+	if start > 0 || end < len(rows) {
+		lines = append(lines, moreLine("↑", start))
+	}
 	lines = append(lines, rows[start:end]...)
+	if start > 0 || end < len(rows) {
+		lines = append(lines, moreLine("↓", len(rows)-end))
+	}
 	lines = append(lines, bottom...)
 	return strings.Join(lines, "\n")
+}
+
+// moreLine says how many rows are out of view in one direction ("" when none).
+func moreLine(arrow string, n int) string {
+	if n == 0 {
+		return ""
+	}
+	return dimStyle.Render(fmt.Sprintf("  %s %d more", arrow, n))
 }
 
 // window picks the rows to show so the cursor row is fully visible, keeping

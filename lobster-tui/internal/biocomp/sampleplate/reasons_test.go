@@ -283,3 +283,45 @@ func TestDescribeListsEveryReasonForTheReview(t *testing.T) {
 		t.Fatalf("Summary = %q", s)
 	}
 }
+
+func TestNSwitchesTheWellsToNumbersAndBack(t *testing.T) {
+	c := reasonPlate(t)
+	c.HandleMsg(press("n"))
+	if v := view(c); !strings.Contains(v, "D  1   2   3!  3") || !strings.Contains(v, "n dots") {
+		t.Fatalf("numbers not drawn:\n%s", v)
+	}
+	c.HandleMsg(press("n"))
+	if v := view(c); !strings.Contains(v, "D  ●   ●   ●!  ◉") || !strings.Contains(v, "n numbers") {
+		t.Fatalf("dots not back:\n%s", v)
+	}
+}
+
+func TestAGapSeparatesThePlateFromTheLinesUnderIt(t *testing.T) {
+	lines := strings.Split(view(reasonPlate(t)), "\n")
+	for i, l := range lines {
+		if strings.HasPrefix(l, "H  ") {
+			if strings.TrimSpace(lines[i+1]) != "" || !strings.HasPrefix(lines[i+2], "1 ● vehicle") {
+				t.Fatalf("no gap under the plate:\n%s", strings.Join(lines, "\n"))
+			}
+			return
+		}
+	}
+	t.Fatal("no row H")
+}
+
+func TestALabelHoldingTheIdIsNotRepeated(t *testing.T) {
+	c := &SamplePlateComponent{}
+	raw := `{"options": [{"id": "a"}], "wells": [
+	  {"row": 0, "col": 0, "sample_id": "R01", "label": "R01 Line A"},
+	  {"row": 0, "col": 1, "sample_id": "R02", "label": "Line B"}]}`
+	if err := c.Init([]byte(raw)); err != nil {
+		t.Fatal(err)
+	}
+	if v := view(c); !strings.Contains(v, "A1  R01 Line A · proposed") {
+		t.Fatalf("id repeated:\n%s", v)
+	}
+	c.HandleMsg(press("right"))
+	if v := view(c); !strings.Contains(v, "A2  R02 · Line B · proposed") {
+		t.Fatalf("a label without the id should keep it:\n%s", v)
+	}
+}

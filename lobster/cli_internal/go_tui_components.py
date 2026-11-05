@@ -442,7 +442,7 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
             "sample_id": item.id,
             "label": _label(item),
         }
-        details, warning = _details_map(item.details)
+        details = _details_map(item.details)
         if item.unavailable:
             well["excluded"] = item.unavailable
         else:
@@ -450,7 +450,7 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
             well["condition"] = picked.get("id", "")
             reason = next(iter((picked.get("fields") or {}).values()), None)
             _with(well, "reason", reason)
-            _with(well, "warning", warning)
+            _with(well, "warning", item.warning)  # the reason hint
         wells.append(_with(well, "details", details))
     options = []
     for option in field.options:
@@ -469,26 +469,20 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
     }
 
 
-# "batch: B1 · warning: low RIN" (as items_from writes details).
+# "batch: B1 · note: re-plated" (as items_from writes details).
 _DETAIL_PART = re.compile(r"([^:·]{1,40}):\s*(.+)")
 
 
-def _details_map(text: Optional[str]) -> Tuple[Dict[str, str], Optional[str]]:
-    """An item's details as the plate shows them, and its warning (offered
-    as the reason hint, never filled in). Details written as "key: value"
-    parts joined by " · " keep their keys; other text is a note."""
+def _details_map(text: Optional[str]) -> Dict[str, str]:
+    """An item's details as the plate shows them: "key: value" parts joined
+    by " · " keep their keys; other text is a note."""
     if not text:
-        return {}, None
+        return {}
     parts = [part.strip() for part in text.split(" · ")]
     found = [_DETAIL_PART.fullmatch(part) for part in parts]
     if not all(found):
-        return {"note": text}, None
-    details = {match.group(1).strip(): match.group(2).strip() for match in found}
-    warning = next(
-        (details.pop(key) for key in list(details) if key.casefold() == "warning"),
-        None,
-    )
-    return details, warning
+        return {"note": text}
+    return {match.group(1).strip(): match.group(2).strip() for match in found}
 
 
 def _list_data(field: Any, question: str, details: str) -> Dict[str, Any]:
@@ -747,7 +741,8 @@ def _as_reply(field: Any, component: str, value: Any) -> Dict[str, Any]:
 
 def _item(option: Any) -> Dict[str, Any]:
     data = {"id": option.id, "label": option.label}
-    _with(data, "details", option.details)
+    warning = getattr(option, "warning", None)
+    _with(data, "details", _join(option.details, warning and f"⚠ {warning}", sep=" · "))
     return _with(data, "unavailable", option.unavailable)
 
 
@@ -764,7 +759,8 @@ def _item_question(field: Any, item: Any) -> str:
 
 
 def _item_name(item: Any) -> str:
-    return item.id if item.label == item.id else f"{item.label} ({item.id})"
+    """ "label (id)"; the label alone when it already holds the id."""
+    return item.label if item.id in item.label else f"{item.label} ({item.id})"
 
 
 def _plain_question(field: Any) -> str:

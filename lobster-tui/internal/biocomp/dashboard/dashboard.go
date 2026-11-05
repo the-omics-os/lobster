@@ -697,10 +697,14 @@ func plainNumber(v any) string {
 	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
-// withID is "label (id)", or just the id when there is no other label.
+// withID is "label (id)"; just the id when there is no label, and just the
+// label when it already holds the id.
 func withID(label, id string) string {
-	if label == "" || label == id {
+	switch {
+	case label == "":
 		return id
+	case strings.Contains(label, id): // the label already names it
+		return label
 	}
 	return label + " (" + id + ")"
 }

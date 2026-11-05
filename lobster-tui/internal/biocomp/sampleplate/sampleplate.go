@@ -18,7 +18,8 @@
 // Keys: number keys 1-9 put the current sample in the 1st-9th option; 0 marks
 // it unresolved. An option that asks a reason opens a one-line reason box on
 // the current-well line (enter saves, esc puts the sample back); r edits a
-// saved reason. esc asks first: a second esc in a row cancels the question.
+// saved reason. n switches the wells between coloured dots and each option's
+// number. esc asks first: a second esc in a row cancels the question.
 //
 // Samples marked "excluded" (QC pools, blanks) sit greyed in their wells,
 // with the reason on the current-well line; they are never in the reply.
@@ -387,6 +388,17 @@ func rowName(row int) string {
 	return string(rune('A'+row/26-1)) + string(rune('A'+row%26))
 }
 
+// labelled is "id · label", or the label alone when it already holds the id.
+func labelled(s sampleWell) string {
+	switch {
+	case s.Label == "":
+		return s.SampleID
+	case strings.Contains(s.Label, s.SampleID):
+		return s.Label
+	}
+	return s.SampleID + " · " + s.Label
+}
+
 // named lists samples as "D1 TW.M01", at most six, then "and N more".
 func named(samples []sampleWell) string {
 	parts := []string{}
@@ -462,6 +474,11 @@ func (c *SamplePlateComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult,
 		switch k {
 		case "r":
 			c.editReason()
+			return nil, nil
+		case "n":
+			// Numbers for a terminal without colour, or a reader who can't
+			// tell the colours apart.
+			c.plate.SetGroupNumbers(!c.plate.GroupNumbers())
 			return nil, nil
 		case "tab", "shift+tab":
 			return nil, nil // Crust's other views mean nothing here
@@ -726,7 +743,11 @@ func (c *SamplePlateComponent) marks() string {
 			break
 		}
 	}
-	return strings.Join(append(parts, "· no sample"), " · ")
+	parts = append(parts, "· no sample")
+	if c.plate.GroupNumbers() {
+		return strings.Join(append(parts, "n dots"), " · ")
+	}
+	return strings.Join(append(parts, "n numbers"), " · ")
 }
 
 // currentWell is the line under the plate about the sample under the cursor:
@@ -742,10 +763,7 @@ func (c *SamplePlateComponent) currentWell(width int) (line string, details []st
 	if !ok {
 		return dimStyle.Render(c.plate.Coordinate() + "  (no sample)"), nil
 	}
-	name := coordinate(s) + "  " + s.SampleID
-	if s.Label != "" {
-		name += " · " + s.Label
-	}
+	name := coordinate(s) + "  " + labelled(s)
 	if s.Excluded != "" {
 		return hang("", name+" · can't be assigned: "+s.Excluded, width, dimStyle), nil
 	}
@@ -807,6 +825,7 @@ func (c *SamplePlateComponent) View(width, height int) string {
 	}
 
 	below := []string{
+		"", // a gap between the plate and the lines about it
 		hang("", c.legend(), width, lipgloss.NewStyle()),
 		hang("", c.marks(), width, dimStyle),
 		hang("", c.countsLine(), width, dimStyle),
@@ -873,6 +892,7 @@ func (c *SamplePlateComponent) KeyBindings() []key.Binding {
 		key.NewBinding(key.WithKeys("up", "down", "left", "right"), key.WithHelp("arrows", "move")),
 		key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"), key.WithHelp("1-9/0", "assign")),
 		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reason")),
+		key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "numbers")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit all")),
 		key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "defer")),
 		// Help key stays "esc" so a dashboard can leave it out (it has its own).

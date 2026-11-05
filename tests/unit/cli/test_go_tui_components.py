@@ -1605,7 +1605,12 @@ def _placed_plate():
         "question": "Group of each sample?",
         "for_each": [
             {"id": "S01", "position": "D1"},
-            {"id": "S02", "position": "D2", "details": "batch: B1 · warning: low RIN"},
+            {
+                "id": "S02",
+                "position": "D2",
+                "details": "batch: B1",
+                "warning": "low RIN",
+            },
             {"id": "QC1", "position": "C6", "unavailable": "pooled QC sample"},
         ],
         "options": [
@@ -1680,3 +1685,30 @@ def test_a_reasked_plate_section_starts_with_its_reasons():
         "assignments": {"S01": "vehicle", "S02": "leave_out"},
         "reasons": {"S02": "spilled"},
     }
+
+
+def test_a_list_item_shows_its_warning_with_its_details():
+    field = {
+        "key": "qc",
+        "type": "choice",
+        "for_each": [{"id": "S02", "details": "low library size", "warning": "check"}],
+        "options": ["retain", "drop"],
+    }
+    drawn, _ = _ask(_request(field), ("submit", {"answers": {"S02": {"id": "retain"}}}))
+    assert drawn[0][1]["items"][0]["details"] == "low library size · ⚠ check"
+
+
+def test_a_label_holding_the_id_is_not_repeated_in_a_follow_up():
+    field = {
+        "key": "keep",
+        "type": "choice",
+        "for_each": [{"id": "TW.M07", "label": "TW.M07 (well C2, batch 1)"}],
+        "options": [{"id": "yes", "fields": [{"key": "why", "type": "text"}]}],
+        "count": {"min": 1, "max": 1},
+    }
+    drawn, _ = _ask(
+        _request(field),
+        ("submit", {"selected": [{"id": "yes"}]}),
+        ("submit", {"answer": "fine"}),
+    )
+    assert drawn[1][1]["question"].startswith("TW.M07 (well C2, batch 1), yes: ")

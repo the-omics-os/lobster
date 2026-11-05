@@ -203,9 +203,11 @@ def _show(text: str, details: Optional[str] = None) -> None:
 
 
 def _name(item: Dict[str, Any]) -> str:
-    """ "label (id)", or the id when the label is the same or missing."""
+    """ "label (id)"; the id when there is no label, the label when it holds the id."""
     label = item.get("label") or ""
-    return item["id"] if label in ("", item["id"]) else f"{label} ({item['id']})"
+    if not label:
+        return item["id"]
+    return label if item["id"] in label else f"{label} ({item['id']})"
 
 
 def _list_options(options: List[Dict[str, Any]]) -> None:
@@ -331,7 +333,9 @@ def _draw_plate(data: Dict[str, Any]) -> Dict[str, Any]:
     reasons: Dict[str, Any] = {}
     for well in data["wells"]:
         place = f"{chr(ord('A') + well['row'])}{well['col'] + 1}"
-        name = " ".join(filter(None, [place, well["sample_id"], well.get("label")]))
+        label = well.get("label") or ""
+        who = label if well["sample_id"] in label else f"{well['sample_id']} {label}"
+        name = f"{place} {who.strip()}"
         if well.get("excluded"):
             print(f"  Not assignable: {name} — {well['excluded']}")
             continue

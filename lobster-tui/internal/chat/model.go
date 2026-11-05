@@ -668,9 +668,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	m.input, cmd = m.input.Update(msg)
-	if cmd != nil {
-		cmds = append(cmds, cmd)
+	// Not while a question is on screen: a paste meant for it would also
+	// land in the hidden chat box and be sent with the next message.
+	if m.activeComponent == nil {
+		m.input, cmd = m.input.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -771,11 +775,12 @@ func (m Model) viewInline() tea.View {
 		b.WriteByte('\n')
 	}
 
-	// Input / confirm.
+	// Input / confirm. No composer while a question is on screen: keys and
+	// pastes go to the question, so a prompt there would only mislead.
 	if m.pendingConfirm != nil {
 		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 		b.WriteByte('\n')
-	} else {
+	} else if m.activeComponent == nil {
 		if m.inlineHasPromptSpacer() {
 			b.WriteByte('\n')
 		}
@@ -2258,6 +2263,8 @@ func (m Model) layoutReservedRowsLegacy() int {
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" && !m.inline {
 		_, oh := biocomp.OverlaySize(m.width, m.height, "small")
 		rows += oh
+	} else if m.activeComponent != nil && m.inline {
+		// No composer while a question is on screen (see View).
 	} else if m.pendingConfirm != nil {
 		rows += lineCount(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 	} else {

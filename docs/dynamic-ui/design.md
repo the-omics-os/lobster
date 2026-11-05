@@ -641,8 +641,9 @@ review screen.
   (`TestOnlyCrustsGridAndNoLineIsWiderThanTheScreen`). It assigns with number keys, so it takes 1 to
   9 options and holds at most 96 samples (unavailable ones take a well too). A plate beyond either
   limit is cancelled with the "can't show" comment before it is drawn (section 11).
-- **Without colour, the groups look alike on the grid.** Every group is a `●`; colour tells them
-  apart. The current-well line and the counts still name each sample's group.
+- **Without colour, the dots look alike.** Every group is a `●`; colour tells them apart. `n`
+  switches the wells to each option's number, in its colour, for a terminal without colour or a
+  reader who can't tell the colours apart (`TestNSwitchesTheWellsToNumbersAndBack`).
 - **The plate's flag review is not used.** The plate can force a review of flagged wells, but the
   adapter never marks a well as flagged, so a warned sample on a plate is not forced into review. Ask
   warned samples with the per-item list (or a `no_default_for` check) instead.
@@ -682,12 +683,14 @@ The plate puts each sample into one group (`plate_map`). What it shows, and why:
   be assigned, `·` no sample. Group colours are Crust's category palette, in option order; orange
   and grey are the plate's own status colours, so a group never looks like a warning. The legend pairs
   each number key with its dot: `1 ● vehicle   2 ● TDX-9   3 ● leave out (asks a reason)   0 ○
-  unresolved` (`TestGroupsAreDotsWithMarksAndTheLegendNamesTheKeys`).
+  unresolved` (`TestGroupsAreDotsWithMarksAndTheLegendNamesTheKeys`). The cursor's row letter and
+  column number are bold and underlined, a blank line separates the plate from the lines under
+  it, and `n` switches the dots to option numbers.
 - **Reasons on the plate.** An option with one required text field (a reason) opens a one-line box on
   the current-well line under the plate: `D2  X02 → leave out · Why leave it out: █`; the plate
-  stays visible. An empty reason is refused; esc puts the sample back to its previous option. A
-  sample's warning (a `warning: ...` part of its details) is shown greyed as a hint that tab
-  inserts; it is never filled in by itself. `r` edits a saved reason. Enter is refused while a
+  stays visible. An empty reason is refused; esc puts the sample back to its previous option. An
+  item's `warning` (its own field; `items_from` reads it from a column) is shown greyed as a hint
+  that tab inserts; it is never filled in by itself. `r` edits a saved reason. Enter is refused while a
   sample is unresolved or lacks its reason; the message names the wells and the cursor moves to the
   first. Reasons come back keyed by sample id and become the option's fields, the list's answer
   shape; a re-ask and a dashboard prefill start with them; the review screen lists every reason
@@ -697,12 +700,21 @@ The plate puts each sample into one group (`plate_map`). What it shows, and why:
   or two samples in one well are refused (`test_plate_positions_are_checked`). Without positions,
   wells are filled in list order and the plate says these are not the physical positions.
 - **Samples that can't be assigned** (an unavailable item: a QC pool, a blank) sit greyed in their
-  wells, with the reason on the current-well line, and are never in the answer.
+  wells, with the reason on the current-well line, and are never in the answer. From a table,
+  `items_from.unavailable: {"column", "values": {value: reason}}` marks them.
+- **A label that already holds the id** is shown alone (`TW.M07 (well C2)`, not `TW.M07 (well C2)
+  (TW.M07)`), on the plate, in the list, on the review screen and in the classic UI.
 - **`items_from`.** Instead of writing out up to 96 ids, positions and defaults, the supervisor names
   the columns of a workspace CSV or TSV: `"items_from": {"file", "id", "default", "label",
-  "details", "position", "where", "match"}`. Python reads it when the question is built
-  (`expand_items_from`, called by `ask_user`), so every screen gets an ordinary `for_each`, and the
-  file is added to `data_files`. A `default` value that isn't an option (blank, `?`, `unknown`)
+  "details", "position", "warning", "where", "unavailable", "match"}`. Python reads it when
+  the question is built (`expand_items_from`, called by `ask_user`), so every screen gets an
+  ordinary `for_each`, and the file is added to `data_files`. The field keeps its `items_from`:
+  when the data changes while the user reviews it, the re-ask reads the table again
+  (`reread_items`): positions and items come from the new file, answers are kept for ids still
+  there, new rows start unresolved, and new and vanished ids are named in problems; a table that
+  can no longer be read keeps the old items and its old fingerprint, so the answer stays stale
+  (`test_a_changed_table_is_read_again_on_the_reask`). More than 96 rows on a plate says "a plate
+  holds at most 96 samples; leave the view out to ask them as a list". A `default` value that isn't an option (blank, `?`, `unknown`)
   proposes nothing, so the sample starts unresolved. A missing file or column, a blank or repeated
   id, no matching rows, or more rows than the view takes (96 on a plate, 500 otherwise) return
   `invalid_context`: nothing built from a broken table is shown (`test_items_from.py`). Nothing in it
@@ -714,14 +726,27 @@ The plate puts each sample into one group (`plate_map`). What it shows, and why:
   the uncertain few; prefer `items_from` when the samples are in a file; use the list for more than
   96 items or 9 options, items that aren't samples, several picks per item, options needing more
   than one reason, or items with their own option lists
-  (`test_the_supervisor_is_told_when_to_use_the_plate`).
+  (`test_the_supervisor_is_told_when_to_use_the_plate`). The groups example uses `items_from`
+  with `view: plate_map`, and the supervisor is told not to restate counts in its text (the
+  screen counts). When a per-item question that could be a plate pre-filled no item, the result
+  carries the note "ask over all the samples, with the known ones pre-filled, so the user sees
+  them in context" (not when a `no_default_for` check covers the field, as in a QC review).
+- **Context sent as text.** A `context` that is JSON text for an object is read as that object;
+  other text is refused with `invalid_context` (`test_context_sent_as_json_text_is_read`).
+- **No chat box under a question.** While a question is on screen (inline mode too), the chat box
+  is hidden and gets nothing: a paste meant for a reason used to land in it as well
+  (`TestAQuestionHidesTheChatBoxAndKeepsPastesOutOfIt`). This applies to the older question
+  screens too.
+- **Hidden list rows are counted.** When rows of the per-item list are scrolled out of view, a dim
+  `↑ N more` / `↓ N more` says so (`TestHiddenRowsAreCountedAboveAndBelow`).
 
 ### Crust dependency
 
 **The plate needs a Crust change that is not released yet.** Crust v0.1.0 draws every sample as `.`,
 with no way to show a group. The Groups view (`platemap.ViewGroups`, `Well.Group`, `Noted`,
 `Flagged`, `Excluded`, `PlateData.Groups`, `Theme.Groups`, `WithGridOnly`, `GroupColor`) is on the
-Crust branch `platemap-groups-view`, written to be offered to the Crust repository as its own pull
+Crust branch `platemap-groups-view` (with `WithGroupNumbers` and the focused row and column
+headers bold and underlined), written to be offered to the Crust repository as its own pull
 request. Until Crust merges and releases it and `lobster-tui/go.mod` requires that version, this
 branch's `lobster-tui` **does not build against the `go.mod` as committed**. Locally it builds
 with an uncommitted `lobster-tui/go.work` that uses the Crust branch; that file is never committed.

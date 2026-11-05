@@ -112,6 +112,11 @@ class Item(BaseModel):
         default=None,
         description="Reason this item can't be picked or answered; shown greyed out",
     )
+    warning: Optional[str] = Field(
+        default=None,
+        description="A caution about this item (a QC flag, an unreadable label); "
+        "shown beside it, and offered on a plate as the reason (never filled in)",
+    )
     position: Optional[str] = Field(
         default=None,
         description='Where a sample physically sits, a plate well such as "D1" '
@@ -193,6 +198,56 @@ def well_index(position: str) -> Tuple[int, int]:
     for letter in letters:
         row = row * 26 + (ord(letter) - ord("A") + 1)
     return row - 1, int(number) - 1
+
+
+class ItemsFrom(BaseModel):
+    """A choice field's ``items_from``: its items (and their proposed options)
+    are rows of a CSV or TSV file in the workspace, so the supervisor names
+    columns instead of copying ids by hand. Python reads the file when the
+    question is built; the screens get the same question as with for_each."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: str = Field(min_length=1, description="Workspace-relative .csv or .tsv")
+    id: str = Field(min_length=1, description="Column with each item's stable id")
+    label: Optional[str] = Field(default=None, description="Column shown as the label")
+    default: Optional[str] = Field(
+        default=None,
+        description="Column with each item's proposed option; a value that is "
+        "not an option (blank, '?', 'unknown') proposes nothing",
+    )
+    details: List[str] = Field(
+        default_factory=list, description="Columns shown beside each item"
+    )
+    position: Optional[str] = Field(
+        default=None, description='Column with each sample\'s well, e.g. "D1"'
+    )
+    warning: Optional[str] = Field(
+        default=None, description="Column with each item's warning, if any"
+    )
+    unavailable: Optional["ItemsFromUnavailable"] = Field(
+        default=None,
+        description="Rows that can't be answered, shown greyed with a reason: "
+        '{"column": "sample_type", "values": {"blank": "blank"}}',
+    )
+    where: Dict[str, str] = Field(
+        default_factory=dict, description="Keep only rows with these column values"
+    )
+    match: Literal["exact", "ignore_case_and_spaces"] = Field(
+        default="exact",
+        description="How 'where' values and 'default' values are compared",
+    )
+
+
+class ItemsFromUnavailable(BaseModel):
+    """Rows whose ``column`` holds one of ``values`` (compared with the
+    table's ``match``) become unavailable items with that value's reason:
+    on a plate they sit greyed in their wells."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    column: str = Field(min_length=1)
+    values: Dict[str, Annotated[str, Field(min_length=1)]] = Field(min_length=1)
 
 
 class Count(BaseModel):
@@ -346,6 +401,11 @@ class ChoiceField(_FieldBase):
 
     type: Literal["choice"]
     options: List[Option] = Field(min_length=1)
+    items_from: Optional[ItemsFrom] = Field(
+        default=None,
+        description="Where for_each was read from (set by ask_user when it "
+        "reads the table); the table is read again if it changes",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -581,37 +641,6 @@ _PLATE_WELLS = PLATE_ROWS * PLATE_COLUMNS
 _TABLE_ROWS_READ = 100_000  # stop reading a table larger than this
 
 
-class ItemsFrom(BaseModel):
-    """A choice field's ``items_from``: its items (and their proposed options)
-    are rows of a CSV or TSV file in the workspace, so the supervisor names
-    columns instead of copying ids by hand. Python reads the file when the
-    question is built; the screens get the same question as with for_each."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    file: str = Field(min_length=1, description="Workspace-relative .csv or .tsv")
-    id: str = Field(min_length=1, description="Column with each item's stable id")
-    label: Optional[str] = Field(default=None, description="Column shown as the label")
-    default: Optional[str] = Field(
-        default=None,
-        description="Column with each item's proposed option; a value that is "
-        "not an option (blank, '?', 'unknown') proposes nothing",
-    )
-    details: List[str] = Field(
-        default_factory=list, description="Columns shown beside each item"
-    )
-    position: Optional[str] = Field(
-        default=None, description='Column with each sample\'s well, e.g. "D1"'
-    )
-    where: Dict[str, str] = Field(
-        default_factory=dict, description="Keep only rows with these column values"
-    )
-    match: Literal["exact", "ignore_case_and_spaces"] = Field(
-        default="exact",
-        description="How 'where' values and 'default' values are compared",
-    )
-
-
 def expand_items_from(
     context: Any, workspace: Optional[Union[str, Path]]
 ) -> Tuple[Any, List[Problem]]:
@@ -676,25 +705,52 @@ def _expand_field(
         return field, [
             _problem(where, "no workspace is open, so the file can't be read")
         ]
+    items, defaults, problems = read_items(
+        spec, field.get("options"), field.get("view"), workspace, where
+    )
+    if problems:
+        return field, problems
+    built = dict(field)
+    # Kept with the question, so a changed table can be read again (reread_items).
+    built["items_from"] = spec.model_dump(exclude_none=True)
+    built["for_each"] = items
+    if defaults:
+        built["default"] = defaults
+    return built, []
+
+
+def read_items(
+    spec: ItemsFrom,
+    options: Any,
+    view: Optional[str],
+    workspace: Union[str, Path],
+    where: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], List[Problem]]:
+    """The items and proposed options a table gives, or the problems with it."""
     try:
         header, rows = _read_table(Path(workspace).resolve(), spec.file)
     except ValueError as error:
-        return field, [_problem(f"{where}.file", str(error))]
+        return [], {}, [_problem(f"{where}.file", str(error))]
 
-    wanted = [spec.id, spec.label, spec.default, spec.position, *spec.details]
+    gone = spec.unavailable.column if spec.unavailable else None
+    wanted = [spec.id, spec.label, spec.default, spec.position, spec.warning, gone]
     missing = [
         column
-        for column in dict.fromkeys([*wanted, *spec.where])
+        for column in dict.fromkeys([*wanted, *spec.details, *spec.where])
         if column and column not in header
     ]
     if missing:
-        return field, [
-            _problem(
-                where,
-                f"{spec.file} has no column {', '.join(repr(c) for c in missing)}; "
-                f"its columns are {', '.join(repr(c) for c in header)}",
-            )
-        ]
+        return (
+            [],
+            {},
+            [
+                _problem(
+                    where,
+                    f"{spec.file} has no column {', '.join(repr(c) for c in missing)}; "
+                    f"its columns are {', '.join(repr(c) for c in header)}",
+                )
+            ],
+        )
 
     same = _matcher(spec.match)
     rows = [
@@ -702,61 +758,82 @@ def _expand_field(
         for row in rows
         if all(same(row.get(column, ""), value) for column, value in spec.where.items())
     ]
-    limit = _PLATE_WELLS if field.get("view") == "plate_map" else ITEMS_FROM_MAX_ROWS
+    plate = view == "plate_map"
+    limit = _PLATE_WELLS if plate else ITEMS_FROM_MAX_ROWS
     if not rows:
-        return field, [_problem(where, f"no rows of {spec.file} match {spec.where}")]
+        return [], {}, [_problem(where, f"no rows of {spec.file} match {spec.where}")]
     if len(rows) > limit:
-        what = "a plate" if limit == _PLATE_WELLS else "one question"
-        return field, [
-            _problem(
-                where,
-                f"{len(rows)} rows of {spec.file} match; {what} takes at most "
-                f"{limit}: narrow 'where'",
-            )
-        ]
+        advice = (
+            "a plate holds at most 96 samples; leave the view out to ask them "
+            "as a list"
+            if plate
+            else f"one question takes at most {limit}"
+        )
+        return (
+            [],
+            {},
+            [_problem(where, f"{len(rows)} rows of {spec.file} match; {advice}")],
+        )
 
     ids = [(row.get(spec.id) or "").strip() for row in rows]
     blank = [str(number) for number, item_id in enumerate(ids, 1) if not item_id]
     if blank:
-        return field, [
-            _problem(where, f"rows {_some(blank)} have no {spec.id!r} (the id)")
-        ]
+        return (
+            [],
+            {},
+            [_problem(where, f"rows {_some(blank)} have no {spec.id!r} (the id)")],
+        )
     repeated = sorted(item_id for item_id, n in Counter(ids).items() if n > 1)
     if repeated:
-        return field, [
-            _problem(where, f"{spec.id!r} repeats ids {_some(repeated)} in {spec.file}")
-        ]
+        return (
+            [],
+            {},
+            [
+                _problem(
+                    where, f"{spec.id!r} repeats ids {_some(repeated)} in {spec.file}"
+                )
+            ],
+        )
 
-    options = _option_names(field.get("options"))
+    names = _option_names(options)
     items: List[Dict[str, Any]] = []
     defaults: Dict[str, Any] = {}
     for item_id, row in zip(ids, rows):
         item: Dict[str, Any] = {"id": item_id}
-        if spec.label and (row.get(spec.label) or "").strip():
-            item["label"] = row[spec.label].strip()
-        shown = [
-            f"{column}: {row[column].strip()}"
-            for column in spec.details
-            if (row.get(column) or "").strip()
-        ]
+
+        def value(column: Optional[str], row: Dict[str, str] = row) -> str:
+            return (row.get(column) or "").strip() if column else ""
+
+        if value(spec.label):
+            item["label"] = value(spec.label)
+        shown = [f"{c}: {value(c)}" for c in spec.details if value(c)]
         if shown:
             item["details"] = " · ".join(shown)
-        if spec.position and (row.get(spec.position) or "").strip():
-            item["position"] = row[spec.position].strip()
+        if value(spec.warning):
+            item["warning"] = value(spec.warning)
+        if value(spec.position):
+            item["position"] = value(spec.position)
+        if spec.unavailable:
+            reason = next(
+                (
+                    why
+                    for match, why in spec.unavailable.values.items()
+                    if same(row.get(gone, ""), match)
+                ),
+                None,
+            )
+            if reason:
+                item["unavailable"] = reason
         items.append(item)
-        if spec.default:
+        if spec.default and "unavailable" not in item:
             picked = [
                 o
-                for o, names in options
-                if any(same(row[spec.default], n) for n in names)
+                for o, alias in names
+                if any(same(row[spec.default], n) for n in alias)
             ]
             if len(picked) == 1:  # one option: proposed; none or several: unresolved
                 defaults[item_id] = {"id": picked[0]}
-    built = {key: value for key, value in field.items() if key != "items_from"}
-    built["for_each"] = items
-    if defaults:
-        built["default"] = defaults
-    return built, []
+    return items, defaults, []
 
 
 def _read_table(root: Path, raw: str) -> Tuple[List[str], List[Dict[str, str]]]:
@@ -1277,6 +1354,99 @@ def reask(
             ]
         )
     return request.model_copy(update=update)
+
+
+def reread_items(
+    request: DecisionRequest,
+    before: Optional[FileSnapshot],
+    workspace: Optional[Union[str, Path]],
+) -> DecisionRequest:
+    """After a stale answer, read every table a field came from again.
+
+    The re-ask then shows the table as it is now: positions and items come
+    from the new file, answers are kept for ids still there, new rows start
+    unresolved, and vanished ids are named in a problem. If a table can no
+    longer be read, the field keeps its old items, a problem says why, and
+    that file keeps its old fingerprint (``before``), so an answer stays
+    stale until the table is fixed.
+    """
+    if workspace is None or not any(
+        getattr(field, "items_from", None) for field in request.fields
+    ):
+        return request
+    fields: List[Any] = []
+    problems = list(request.problems)
+    unreadable = set()
+    for field in request.fields:
+        spec = getattr(field, "items_from", None)
+        if spec is None:
+            fields.append(field)
+            continue
+        options = [o.model_dump(exclude_none=True) for o in field.options]
+        items, _, found = read_items(spec, options, field.view, workspace, field.key)
+        rebuilt = None
+        if not found:
+            open_ids = {item["id"] for item in items if "unavailable" not in item}
+            kept = {k: v for k, v in (field.default or {}).items() if k in open_ids}
+            try:
+                rebuilt = type(field).model_validate(
+                    {
+                        **field.model_dump(exclude_none=True),
+                        "for_each": items,
+                        "default": kept or None,
+                    }
+                )
+            except ValidationError as error:
+                found = problems_of(error, field.key)
+        if rebuilt is None:
+            problems += [
+                _problem(field.key, f"couldn't read {spec.file} again: {p.message}")
+                for p in found
+            ]
+            unreadable.add(spec.file)
+            fields.append(field)
+            continue
+        old = [item.id for item in field.for_each]
+        new = [item["id"] for item in items]
+        vanished = [item_id for item_id in old if item_id not in new]
+        added = [item_id for item_id in new if item_id not in old]
+        if vanished:
+            problems.append(
+                _problem(field.key, f"no longer in {spec.file}: {_some(vanished)}")
+            )
+        if added:
+            problems.append(
+                _problem(
+                    field.key,
+                    f"new in {spec.file}, not answered yet: {_some(added)}",
+                )
+            )
+        fields.append(rebuilt)
+    update: Dict[str, Any] = {"fields": fields, "problems": problems}
+    if unreadable and before is not None and request.snapshot is not None:
+        old_sha = {entry.path: entry.sha256 for entry in before.files}
+        update["snapshot"] = FileSnapshot(
+            files=[
+                FileFingerprint(
+                    path=entry.path,
+                    sha256=(
+                        old_sha.get(entry.path, entry.sha256)
+                        if entry.path in unreadable
+                        else entry.sha256
+                    ),
+                )
+                for entry in request.snapshot.files
+            ]
+        )
+    return request.model_copy(update=update)
+
+
+def problems_of(error: ValidationError, path: str) -> List[Problem]:
+    """One Problem per pydantic error, under ``path``."""
+    return [
+        _problem(path, item["msg"].removeprefix("Value error, "))
+        for item in error.errors()
+    ]
 
 
 def _refill(field: Any, submitted: Dict[str, Any]) -> Tuple[Any, bool]:

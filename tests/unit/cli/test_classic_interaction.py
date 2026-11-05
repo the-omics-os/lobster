@@ -487,7 +487,7 @@ def test_plate_asks_a_reason_after_an_option_that_needs_one(capsys):
         "view": "plate_map",
         "for_each": [
             {"id": "S01", "position": "D1"},
-            {"id": "S02", "position": "D2", "details": "warning: low RNA yield"},
+            {"id": "S02", "position": "D2", "warning": "low RNA yield"},
         ],
         "options": [
             "vehicle",

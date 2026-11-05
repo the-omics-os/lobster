@@ -43,7 +43,8 @@ SPEC = {
     "file": "data/layout.csv",
     "id": "sample",
     "default": "condition",
-    "details": ["batch", "note", "warning"],
+    "details": ["batch", "note"],
+    "warning": "warning",
     "position": "well",
     "where": {"sample_type": "study"},
     "match": "ignore_case_and_spaces",
@@ -65,7 +66,9 @@ def test_items_and_defaults_come_from_the_table(workspace):
     context, problems = _expand(workspace)
     assert problems == []
     (field,) = context["fields"]
-    assert "items_from" not in field  # the screens get an ordinary question
+    # Kept with the question, so the table can be read again if it changes;
+    # the screens get an ordinary for_each.
+    assert field["items_from"]["file"] == "data/layout.csv"
     assert [item["id"] for item in field["for_each"]] == [
         "TW.M01",
         "TW.M02",
@@ -78,7 +81,12 @@ def test_items_and_defaults_come_from_the_table(workspace):
         "details": "batch: B1",
         "position": "D1",
     }
-    assert field["for_each"][2]["details"] == "batch: B2 · warning: low RNA yield"
+    assert field["for_each"][2] == {
+        "id": "TW.M03",
+        "details": "batch: B2",
+        "warning": "low RNA yield",
+        "position": "D3",
+    }
     # "TDX 9" is the id tdx9 once case and spaces are ignored; "?", "unknown"
     # and blank are not options, so those samples start unresolved.
     assert field["default"] == {"TW.M01": {"id": "vehicle"}, "TW.M02": {"id": "tdx9"}}
@@ -186,8 +194,9 @@ def test_too_many_rows_for_a_plate_or_a_list(workspace):
     (workspace / "data" / "big.csv").write_text("id,kind\n" + rows + "\n")
     spec = {"file": "data/big.csv", "id": "id"}
     _, problems = _expand(workspace, spec)
-    assert (
-        "97 rows of data/big.csv match; a plate takes at most 96" in problems[0].message
+    assert problems[0].message == (
+        "97 rows of data/big.csv match; a plate holds at most 96 samples; "
+        "leave the view out to ask them as a list"
     )
     _, problems = _expand(workspace, spec, view="default")
     assert problems == []
@@ -259,3 +268,25 @@ def test_an_option_has_no_position():
     context["fields"][0]["options"] = [{"id": "a", "position": "A1"}, "b"]
     with pytest.raises(ValidationError, match="an option has no position"):
         AskUserContext.model_validate(context)
+
+
+def test_unavailable_rows_sit_greyed_with_their_reason(workspace):
+    spec = {k: v for k, v in SPEC.items() if k != "where"}
+    spec["unavailable"] = {
+        "column": "sample_type",
+        "values": {"QC": "pooled QC, never grouped", "blank": "blank"},
+    }
+    context, problems = _expand(workspace, spec)
+    assert problems == []
+    field = context["fields"][0]
+    pool = next(item for item in field["for_each"] if item["id"] == "QC.P1")
+    assert pool["unavailable"] == "pooled QC, never grouped"  # "qc" ignoring case
+    assert pool["position"] == "C6"
+    assert "QC.P1" not in field.get("default", {})
+    AskUserContext.model_validate(context)
+
+
+def test_an_unavailable_column_that_is_missing_is_refused(workspace):
+    spec = {**SPEC, "unavailable": {"column": "kind", "values": {"qc": "qc"}}}
+    _, problems = _expand(workspace, spec)
+    assert "no column 'kind'" in problems[0].message
