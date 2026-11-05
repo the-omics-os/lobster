@@ -281,11 +281,16 @@ def test_plate_asks_each_sample_and_lists_unavailable_ones(capsys):
     with patch("builtins.input", side_effect=["", "2"]) as prompt:
         reply = handle_interrupt_classic(_decision(plate))
     asked = [call.args[0] for call in prompt.call_args_list]
-    assert asked == ["S01 Donor A [Enter = 1]: ", "S08 Donor H (condition unknown): "]
+    assert asked == [
+        "A1 S01 Donor A [Enter = 1]: ",
+        "A2 S08 Donor H (condition unknown): ",
+    ]
     assert reply["answer"] == {
         "groups": {"S01": {"id": "control"}, "S08": {"id": "treated"}}
     }
-    assert "Not assignable: S09 — consent withdrawn" in capsys.readouterr().out
+    shown = capsys.readouterr().out
+    assert "Not assignable: A3 S09 — consent withdrawn" in shown
+    assert "No positions were given: the wells are in list order." in shown
 
 
 def test_typed_number_is_asked_again_until_it_is_a_number(capsys):
@@ -473,3 +478,30 @@ def test_classic_answers_go_through_the_checks_and_reask():
     }
     text = "\n".join(" ".join(map(str, line)) for line in printed)
     assert "⚠ 'control' has no items left after removing S01, S02" in text
+
+
+def test_plate_asks_a_reason_after_an_option_that_needs_one(capsys):
+    plate = {
+        "key": "groups",
+        "type": "choice",
+        "view": "plate_map",
+        "for_each": [
+            {"id": "S01", "position": "D1"},
+            {"id": "S02", "position": "D2", "details": "warning: low RNA yield"},
+        ],
+        "options": [
+            "vehicle",
+            {"id": "leave_out", "fields": [{"key": "reason", "type": "text"}]},
+        ],
+        "default": {"S01": {"id": "vehicle"}},
+    }
+    result, shown = _classic(_decision(plate), ["", "2", "", "low RNA yield"], capsys)
+    assert result["answer"] == {
+        "groups": {
+            "S01": {"id": "vehicle"},
+            "S02": {"id": "leave_out", "fields": {"reason": "low RNA yield"}},
+        }
+    }
+    assert "2. leave_out (asks for a reason)" in shown
+    assert "An answer is needed." in shown  # an empty reason is refused
+    assert "No positions were given" not in shown

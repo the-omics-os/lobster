@@ -33,9 +33,7 @@ func TestPythonFixtureRoundTrip(t *testing.T) {
 	if view := c.View(120, 50); !strings.Contains(view, "S08") {
 		t.Fatalf("the plate doesn't name the unresolved sample:\n%s", view)
 	}
-	for i := 0; i < 7; i++ { // the cursor starts on S01 (A1); S08 is A8
-		c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
-	}
+	// The refused enter moved the cursor to the first unresolved sample, S08.
 	press(t, c, "2", "enter") // S08 -> the 2nd choice, "treated"
 	press(t, c, "enter")      // direction: treated compared with control
 	if c.sections[c.active].Component != "choice_list" {

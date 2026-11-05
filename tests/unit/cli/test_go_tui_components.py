@@ -269,14 +269,18 @@ def test_plate_map_lays_items_out_as_wells():
     drawn, result = _ask(_request(PLATE), ("submit", reply))
     ((component, data),) = drawn
     assert component == "plate_map"
-    assert data["choices"] == ["control", "treated"]
+    assert data["options"] == [
+        {"id": "control", "label": "control"},
+        {"id": "treated", "label": "treated"},
+    ]
+    assert data["positions"] == "list_order"  # no positions: filled in order
     assert data["wells"][1] == {
         "row": 0,
         "col": 1,
         "sample_id": "S05",
         "label": "Donor A",
         "condition": "treated",
-        "details": {"note": "metadata: treated"},
+        "details": {"metadata": "treated"},
     }
     assert data["wells"][2]["condition"] == ""  # no default: must be resolved
     assert result["answer"]["groups"]["S08"] == {"id": "treated"}
@@ -456,7 +460,9 @@ def test_dashboard_qc_section_is_a_choice_list():
     }
 
 
-def test_plate_lists_unavailable_items_below_it_never_as_wells():
+def test_plate_puts_unavailable_items_greyed_in_their_wells():
+    """A QC pool or blank sits in its well, greyed, with its reason; it is
+    never answered."""
     field = {
         **PLATE,
         "for_each": [
@@ -467,10 +473,14 @@ def test_plate_lists_unavailable_items_below_it_never_as_wells():
     reply = {"assignments": {"S01": "control", "S05": "treated", "S08": "treated"}}
     drawn, result = _ask(_request(field), ("submit", reply))
     data = drawn[0][1]
-    assert [w["sample_id"] for w in data["wells"]] == ["S01", "S05", "S08"]
-    assert data["unavailable"] == [
-        {"sample_id": "S09", "label": "Donor J", "reason": "consent withdrawn"}
-    ]
+    assert [w["sample_id"] for w in data["wells"]] == ["S01", "S05", "S08", "S09"]
+    assert data["wells"][3] == {
+        "row": 0,
+        "col": 3,
+        "sample_id": "S09",
+        "label": "Donor J",
+        "excluded": "consent withdrawn",
+    }
     assert "S09" not in result["answer"]["groups"]
 
 
@@ -1377,23 +1387,30 @@ def _flag_plate(n=4):
     }
 
 
-def test_plate_whose_option_needs_a_reason_is_drawn_as_the_list():
-    """FX W1: a well can't collect a reason, so such a plate was unanswerable.
-    It is drawn as the per-item list, which can; the answer is the same."""
+def test_plate_whose_option_needs_a_reason_is_a_plate_that_collects_it():
+    """FX W1, now on the plate: the reason is typed on the plate and comes
+    back keyed by sample id; the answer has the list's shape."""
     reply = {
-        "answers": {
-            "S01": {"id": "flag", "fields": {"reason": "odd profile"}},
-            "S02": {"id": "no_flag"},
-            "S03": {"id": "no_flag"},
-            "S04": {"id": "no_flag"},
-        }
+        "assignments": {
+            "S01": "flag",
+            "S02": "no_flag",
+            "S03": "no_flag",
+            "S04": "no_flag",
+        },
+        "reasons": {"S01": "odd profile"},
     }
     drawn, result = _ask(_request(_flag_plate()), ("submit", reply))
-    assert [component for component, _ in drawn] == ["choice_list"]
+    assert [component for component, _ in drawn] == ["plate_map"]
+    assert drawn[0][1]["options"][1] == {
+        "id": "flag",
+        "label": "flag",
+        "reason": {"key": "reason"},
+    }
     assert result["answer"]["review"]["S01"] == {
         "id": "flag",
         "fields": {"reason": "odd profile"},
     }
+    assert result["answer"]["review"]["S02"] == {"id": "no_flag"}
 
 
 def test_plate_without_option_fields_is_still_a_plate():
@@ -1405,12 +1422,14 @@ def test_plate_without_option_fields_is_still_a_plate():
     assert [component for component, _ in drawn] == ["plate_map"]
 
 
-def test_plate_drawn_as_the_list_is_not_held_to_the_plate_limits():
-    """More than 96 samples is a plate limit, not a list limit."""
-    assert unsupported(_request(_flag_plate(n=120))) == []
+def test_a_plate_with_a_reason_option_is_held_to_the_plate_limits():
+    """It is a plate now, so 96 wells is its limit."""
+    assert unsupported(_request(_flag_plate(n=120))) == [
+        "review: a plate with 120 samples (at most 96)"
+    ]
 
 
-def test_dashboard_plate_section_with_a_reason_is_drawn_as_the_list():
+def test_dashboard_plate_section_with_a_reason_is_a_plate():
     request = _request(
         {**SOURCE, "question": "Source?"},
         {**_flag_plate(), "depends_on": ["source"]},
@@ -1420,7 +1439,7 @@ def test_dashboard_plate_section_with_a_reason_is_drawn_as_the_list():
         s["key"]: s
         for s in dashboard_data(DecisionRequest.model_validate(request))["sections"]
     }
-    assert sections["review"]["component"] == "choice_list"
+    assert sections["review"]["component"] == "plate_map"
 
 
 # --- v3 findings ---
@@ -1573,3 +1592,91 @@ def test_record_sub_fields_name_the_record():
         "Mito fraction range: From?",
         "Mito fraction range: To?",
     ]
+
+
+# --- the plate: positions, reasons, warnings ---
+
+
+def _placed_plate():
+    return {
+        "key": "groups",
+        "type": "choice",
+        "view": "plate_map",
+        "question": "Group of each sample?",
+        "for_each": [
+            {"id": "S01", "position": "D1"},
+            {"id": "S02", "position": "D2", "details": "batch: B1 · warning: low RIN"},
+            {"id": "QC1", "position": "C6", "unavailable": "pooled QC sample"},
+        ],
+        "options": [
+            "vehicle",
+            {
+                "id": "leave_out",
+                "label": "leave out",
+                "fields": [{"key": "why", "type": "text", "question": "Why?"}],
+            },
+        ],
+        "default": {
+            "S01": {"id": "vehicle"},
+            "S02": {"id": "leave_out", "fields": {"why": "spilled"}},
+        },
+    }
+
+
+def test_samples_sit_in_their_own_wells():
+    reply = {"assignments": {"S01": "vehicle", "S02": "vehicle"}}
+    drawn, _ = _ask(_request(_placed_plate()), ("submit", reply))
+    data = drawn[0][1]
+    assert data["positions"] == "given"
+    assert [(w["sample_id"], w["row"], w["col"]) for w in data["wells"]] == [
+        ("S01", 3, 0),
+        ("S02", 3, 1),
+        ("QC1", 2, 5),
+    ]
+
+
+def test_a_proposed_reason_and_a_warning_reach_the_well():
+    reply = {"assignments": {"S01": "vehicle", "S02": "vehicle"}}
+    drawn, _ = _ask(_request(_placed_plate()), ("submit", reply))
+    s02 = drawn[0][1]["wells"][1]
+    assert s02["condition"] == "leave_out" and s02["reason"] == "spilled"
+    assert s02["warning"] == "low RIN"  # offered as a hint, not filled in
+    assert s02["details"] == {"batch": "B1"}
+    assert drawn[0][1]["options"][1]["reason"] == {"key": "why", "question": "Why?"}
+
+
+def test_plate_reasons_become_the_options_fields():
+    reply = {
+        "assignments": {"S01": "leave_out", "S02": "vehicle"},
+        "reasons": {"S01": "tube cracked", "S02": "ignored: vehicle takes none"},
+    }
+    _, result = _ask(_request(_placed_plate()), ("submit", reply))
+    assert result["answer"]["groups"] == {
+        "S01": {"id": "leave_out", "fields": {"why": "tube cracked"}},
+        "S02": {"id": "vehicle"},
+    }
+
+
+def test_a_missing_plate_reason_is_refused_by_the_contract():
+    reply = {"assignments": {"S01": "leave_out", "S02": "vehicle"}}
+    with pytest.raises(Exception, match="option .leave_out. needs its fields"):
+        _ask(_request(_placed_plate()), ("submit", reply))
+
+
+def test_a_reasked_plate_section_starts_with_its_reasons():
+    """A re-ask or dashboard prefill gives the plate its earlier reasons."""
+    request = _request(
+        {**SOURCE, "question": "Source?"},
+        {**_placed_plate(), "depends_on": ["source"]},
+        view="dashboard",
+        request_version=2,
+        prefilled_from_answer=True,
+    )
+    sections = {
+        s["key"]: s
+        for s in dashboard_data(DecisionRequest.model_validate(request))["sections"]
+    }
+    assert sections["groups"]["answer"] == {
+        "assignments": {"S01": "vehicle", "S02": "leave_out"},
+        "reasons": {"S02": "spilled"},
+    }

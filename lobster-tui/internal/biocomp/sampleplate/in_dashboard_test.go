@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp/dashboard"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/sampleplate"
@@ -60,5 +61,27 @@ func TestInADashboardEscEscStillCancelsEverySection(t *testing.T) {
 		if r, _ := d.HandleMsg(key("esc")); r == nil || r.Action != "cancel" {
 			t.Fatalf("%s: esc esc should cancel the dashboard, got %+v", section, r)
 		}
+	}
+}
+
+// While the plate's reason box is open, the dashboard gives esc to the box:
+// it puts the well back instead of arming the dashboard's cancel.
+func TestInADashboardEscInTheReasonBoxUndoesTheWell(t *testing.T) {
+	data := strings.Replace(twoSections, `"choices": ["control", "treated"]`,
+		`"options": [{"id": "control"}, {"id": "leave_out", "reason": {"key": "reason"}}]`, 1)
+	d := &dashboard.Component{}
+	if err := d.Init(json.RawMessage(data)); err != nil {
+		t.Fatal(err)
+	}
+	d.HandleMsg(tea.KeyPressMsg{Code: '2', Text: "2"}) // S01 -> leave_out: the box opens
+	if view := ansi.Strip(d.View(100, 40)); !strings.Contains(view, "S01 → leave_out · Reason: █") {
+		t.Fatalf("reason box not open:\n%s", view)
+	}
+	if r, _ := d.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape}); r != nil {
+		t.Fatalf("esc in the box replied: %+v", r)
+	}
+	view := ansi.Strip(d.View(100, 40))
+	if strings.Contains(view, "press esc again") || !strings.Contains(view, "S01 back to control.") {
+		t.Fatalf("esc should undo the well, not arm the dashboard:\n%s", view)
 	}
 }

@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -39,6 +38,7 @@ import (
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	"github.com/the-omics-os/lobster-tui/internal/biocomp/choicelist"
+	"github.com/the-omics-os/lobster-tui/internal/biocomp/sampleplate"
 )
 
 func init() {
@@ -621,22 +621,7 @@ func summarize(s sectionData, answer map[string]any) string {
 	case "threshold_slider":
 		return sliderText(s.Data, answer)
 	case "plate_map":
-		counts := map[string]int{}
-		if assignments, ok := answer["assignments"].(map[string]any); ok {
-			for _, v := range assignments {
-				counts[fmt.Sprint(v)]++
-			}
-		}
-		keys := make([]string, 0, len(counts))
-		for k := range counts {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		parts := make([]string, 0, len(keys))
-		for _, k := range keys {
-			parts = append(parts, fmt.Sprintf("%s %d", k, counts[k]))
-		}
-		return strings.Join(parts, " · ")
+		return sampleplate.Summary(s.Data, answer)
 	case "text_input":
 		text := []rune(fmt.Sprint(answer["answer"]))
 		if len(text) > 40 { // a summary: the review screen shows it in full
@@ -668,7 +653,7 @@ func describe(s sectionData, answer map[string]any) []string {
 	case "threshold_slider":
 		return []string{sliderText(s.Data, answer)}
 	case "plate_map":
-		return describePlate(s.Data, answer)
+		return sampleplate.Describe(s.Data, answer)
 	case "text_input":
 		if text := fmt.Sprint(answer["answer"]); text != "" {
 			return []string{text}
@@ -677,68 +662,6 @@ func describe(s sectionData, answer map[string]any) []string {
 	}
 	raw, _ := json.Marshal(answer)
 	return []string{string(raw)}
-}
-
-// describePlate groups the assignments by choice, in the plate's choice
-// order and sample order, then lists what changed from the data and the
-// flags that were reviewed.
-func describePlate(data json.RawMessage, answer map[string]any) []string {
-	var d struct {
-		Choices []string `json:"choices"`
-		Wells   []struct {
-			SampleID string `json:"sample_id"`
-		} `json:"wells"`
-	}
-	_ = json.Unmarshal(data, &d)
-	assignments, _ := answer["assignments"].(map[string]any)
-	var order []string
-	inData := map[string]bool{}
-	for _, w := range d.Wells {
-		if _, ok := assignments[w.SampleID]; ok {
-			order = append(order, w.SampleID)
-			inData[w.SampleID] = true
-		}
-	}
-	var extra []string
-	for id := range assignments {
-		if !inData[id] {
-			extra = append(extra, id)
-		}
-	}
-	sort.Strings(extra)
-	groups := map[string][]string{}
-	for _, id := range append(order, extra...) {
-		v := fmt.Sprint(assignments[id])
-		groups[v] = append(groups[v], id)
-	}
-	values := append([]string{}, d.Choices...)
-	var others []string
-	for v := range groups {
-		if !contains(d.Choices, v) {
-			others = append(others, v)
-		}
-	}
-	sort.Strings(others)
-	var lines []string
-	for _, v := range append(values, others...) {
-		if ids := groups[v]; len(ids) > 0 {
-			lines = append(lines, fmt.Sprintf("%s (%d): %s", v, len(ids), strings.Join(ids, ", ")))
-		}
-	}
-	for _, ch := range asMaps(answer["changes"]) {
-		supplied := fmt.Sprint(ch["supplied"])
-		if strings.TrimSpace(supplied) == "" {
-			supplied = "(blank)"
-		}
-		lines = append(lines, fmt.Sprintf("changed from the data: %v %s → %v", ch["sample_id"], supplied, ch["assigned"]))
-	}
-	for _, f := range asMaps(answer["reviewed_flags"]) {
-		lines = append(lines, fmt.Sprintf("flag reviewed: %v (%v) → %v", f["sample_id"], f["flag"], f["assigned"]))
-	}
-	if len(lines) == 0 {
-		return []string{"no assignments"}
-	}
-	return lines
 }
 
 func sliderText(data json.RawMessage, answer map[string]any) string {
@@ -772,27 +695,6 @@ func plainNumber(v any) string {
 		return digits
 	}
 	return strconv.FormatFloat(f, 'f', -1, 64)
-}
-
-func asMaps(v any) []map[string]any {
-	var out []map[string]any
-	if list, ok := v.([]any); ok {
-		for _, e := range list {
-			if m, ok := e.(map[string]any); ok {
-				out = append(out, m)
-			}
-		}
-	}
-	return out
-}
-
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
 
 // withID is "label (id)", or just the id when there is no other label.

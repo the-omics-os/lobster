@@ -945,16 +945,18 @@ def press_in_plate(
     choices: Sequence[str] = GROUP_CHOICES,
     columns: int = 12,
     submit: bool = True,
+    start: Optional[str] = None,
 ) -> None:
     """Move the plate cursor to each sample and press its choice's number.
 
     ``ids`` is the well order (row by row from A1, as the adapter lays them
-    out); the cursor starts on A1 and is moved back there first.
+    out); the cursor starts on A1, or on ``start`` (a refused enter moves it
+    to the first sample it names).
     ``assignments`` maps sample id → choice id, or "0" for unresolved.
     Keys are processed in order by the binary, so no wait is needed between
     them; the last assignment's message is awaited before Enter.
     """
-    row = col = 0
+    row, col = divmod(list(ids).index(start), columns) if start else (0, 0)
     last = None
     for sid, choice in assignments.items():
         index = list(ids).index(sid)
@@ -975,7 +977,7 @@ def press_in_plate(
         row, col = target_row, target_col
         last = (sid, choice)
     if last:
-        tui.wait_screen(f"{last[0]} set to {last[1] if last[1] != '0' else 'unknown'}")
+        tui.wait_screen(f"{last[0]} set to ")  # the option's label follows
     if submit:
         tui.key("enter")
 

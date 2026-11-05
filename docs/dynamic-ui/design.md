@@ -251,12 +251,11 @@ A view asks for a richer drawing of the same answer.
 | View | Applies to | Needs | Drawn as |
 |---|---|---|---|
 | `slider` | `number` | `min`, `max` | `threshold_slider` |
-| `plate_map` | `choice` | `for_each` | `plate_map` (wells on a 96-well plate, so up to 96 samples and 9 options; larger groupings use the per-item list) |
+| `plate_map` | `choice` | `for_each` | `plate_map` (samples into groups on a 96-well plate, so up to 96 samples and 9 options; an option may ask one reason; larger groupings, items that aren't samples, or several picks per item use the per-item list) |
 | `dashboard` | the whole question | at least 2 fields | `dashboard`, one section per field, with a review screen |
 
 A dashboard section may be a choice (with or without `count`), a per-item choice on a plate, a
-per-item list (one option per item, an option may ask for one reason; a plate whose option asks for
-one is drawn as the list), a number or a text. It may not be a record, a choice whose options carry
+per-item list (one option per item; on both, an option may ask for one reason), a number or a text. It may not be a record, a choice whose options carry
 other fields, or a per-item list with `count`
 (`_check_dashboard`; `test_dashboard_refuses_sections_it_cannot_draw`,
 `test_dashboard_allows_a_per_item_list_with_reason_fields`).
@@ -266,8 +265,7 @@ The Go adapter picks the component from the field, not only from the view:
 | Field | Go component |
 |---|---|
 | choice | `choice` (a radio list for one pick, a checklist with `count`) |
-| choice + `for_each` + `view: plate_map`, no option with fields, none unavailable | `plate_map` |
-| the same, with an option that asks for a reason | `choice_list`: a well holds one option and can't collect a reason, so the view is treated as a hint (`test_plate_whose_option_needs_a_reason_is_drawn_as_the_list`) |
+| choice + `for_each` + `view: plate_map`, each option with no fields or one required text field (a reason), none unavailable | `plate_map`; the reason is typed on the plate (`test_plate_whose_option_needs_a_reason_is_a_plate_that_collects_it`) |
 | the same, with an unavailable option | `choice_list`: the plate's legend has no place for an option shown greyed with its reason (`test_plate_with_an_unavailable_option_is_drawn_as_the_list`) |
 | choice + `for_each`, no count, options with no fields or one required text field | `choice_list`: one screen, one row per item (`test_qc_review_is_one_choice_list_render`) |
 | other choice + `for_each` shapes | one `choice` screen per item (`test_for_each_choice_with_count_keeps_one_render_per_item`) |
@@ -638,12 +636,13 @@ review screen.
   Whenever a turn ends with a question still drawn, the TUI removes it and says `This question was
   closed; nothing was sent.`, so a screen can't be answered after nothing reads it
   (`TestTurnEndRemovesALeftoverScreen`, `TestComponentCloseRemovesTheScreenAndSaysWhy`).
-- **The plate map's grid needs 48 columns**; its status lines (header, window, focused well) are 56 to
-  65 columns and are cut with `…` on a narrower terminal, never wrapped. The question is drawn above the
-  plate, not repeated in its header, so at 60 columns the cursor position still shows
-  (`TestCrustGetsNoTitleAndNoLineIsWiderThanTheScreen`). It assigns with number keys, so it takes 1 to 9
-  choices, holds at most 96 samples, and shows **choice ids, not labels**. A plate beyond either limit
-  is cancelled with the "can't show" comment before it is drawn (section 11).
+- **The plate map's grid needs 48 columns.** Crust draws only the grid; the question, legend and
+  current-well line are drawn by the plate and wrap at the width
+  (`TestOnlyCrustsGridAndNoLineIsWiderThanTheScreen`). It assigns with number keys, so it takes 1 to
+  9 options and holds at most 96 samples (unavailable ones take a well too). A plate beyond either
+  limit is cancelled with the "can't show" comment before it is drawn (section 11).
+- **Without colour, the groups look alike on the grid.** Every group is a `●`; colour tells them
+  apart. The current-well line and the counts still name each sample's group.
 - **The plate's flag review is not used.** The plate can force a review of flagged wells, but the
   adapter never marks a well as flagged, so a warned sample on a plate is not forced into review. Ask
   warned samples with the per-item list (or a `no_default_for` check) instead.
@@ -671,7 +670,63 @@ review screen.
     terminal, so its top scrolls off.
 - **Go tests outside CI.** The upstream workflows run `go test ./internal/chat ./internal/protocol
   ./internal/initwizard`, so the new `biocomp` tests run only locally (`cd lobster-tui && go test ./...`).
-- **Dependency.** `lobster-tui` now requires `github.com/the-omics-os/crust v0.1.0` for the plate map.
+- **Dependency.** `lobster-tui` requires `github.com/the-omics-os/crust` for the plate map. See
+  "Crust dependency" below: the plate now needs an unreleased Crust change.
+
+### The plate map
+
+The plate puts each sample into one group (`plate_map`). What it shows, and why:
+
+- **Groups on the grid.** Each well is drawn by Crust's Groups view: `●` in its group's colour, `◉`
+  when it has a reason, `!` after it when it needs a reason, `○` (orange) unresolved, `◌` (grey) can't
+  be assigned, `·` no sample. Group colours are Crust's category palette, in option order; orange
+  and grey are the plate's own status colours, so a group never looks like a warning. The legend pairs
+  each number key with its dot: `1 ● vehicle   2 ● TDX-9   3 ● leave out (asks a reason)   0 ○
+  unresolved` (`TestGroupsAreDotsWithMarksAndTheLegendNamesTheKeys`).
+- **Reasons on the plate.** An option with one required text field (a reason) opens a one-line box on
+  the current-well line under the plate: `D2  X02 → leave out · Why leave it out: █`; the plate
+  stays visible. An empty reason is refused; esc puts the sample back to its previous option. A
+  sample's warning (a `warning: ...` part of its details) is shown greyed as a hint that tab
+  inserts; it is never filled in by itself. `r` edits a saved reason. Enter is refused while a
+  sample is unresolved or lacks its reason; the message names the wells and the cursor moves to the
+  first. Reasons come back keyed by sample id and become the option's fields, the list's answer
+  shape; a re-ask and a dashboard prefill start with them; the review screen lists every reason
+  (`reasons_test.go`, `test_plate_reasons_become_the_options_fields`).
+- **Real wells.** An item may carry `position` (`"D1"`, or `{"row": "D", "column": 1}`), and the
+  sample is drawn there. Positions are given for every item or none; a position outside A1 to H12
+  or two samples in one well are refused (`test_plate_positions_are_checked`). Without positions,
+  wells are filled in list order and the plate says these are not the physical positions.
+- **Samples that can't be assigned** (an unavailable item: a QC pool, a blank) sit greyed in their
+  wells, with the reason on the current-well line, and are never in the answer.
+- **`items_from`.** Instead of writing out up to 96 ids, positions and defaults, the supervisor names
+  the columns of a workspace CSV or TSV: `"items_from": {"file", "id", "default", "label",
+  "details", "position", "where", "match"}`. Python reads it when the question is built
+  (`expand_items_from`, called by `ask_user`), so every screen gets an ordinary `for_each`, and the
+  file is added to `data_files`. A `default` value that isn't an option (blank, `?`, `unknown`)
+  proposes nothing, so the sample starts unresolved. A missing file or column, a blank or repeated
+  id, no matching rows, or more rows than the view takes (96 on a plate, 500 otherwise) return
+  `invalid_context`: nothing built from a broken table is shown (`test_items_from.py`). Nothing in it
+  is specific to a modality: it reads sample sheets, plate layouts, channel maps, cluster tables and
+  ASV lists alike, for the list as well as the plate.
+- **When the supervisor uses the plate.** The `ask_user` description, the view's own description and
+  `get_dashboard_schema` say: plate_map to put samples into groups, one group each, up to 96 samples
+  and 9 options; ask over all the samples (known groups pre-filled, uncertain ones empty), not just
+  the uncertain few; prefer `items_from` when the samples are in a file; use the list for more than
+  96 items or 9 options, items that aren't samples, several picks per item, options needing more
+  than one reason, or items with their own option lists
+  (`test_the_supervisor_is_told_when_to_use_the_plate`).
+
+### Crust dependency
+
+**The plate needs a Crust change that is not released yet.** Crust v0.1.0 draws every sample as `.`,
+with no way to show a group. The Groups view (`platemap.ViewGroups`, `Well.Group`, `Noted`,
+`Flagged`, `Excluded`, `PlateData.Groups`, `Theme.Groups`, `WithGridOnly`, `GroupColor`) is on the
+Crust branch `platemap-groups-view`, written to be offered to the Crust repository as its own pull
+request. Until Crust merges and releases it and `lobster-tui/go.mod` requires that version, this
+branch's `lobster-tui` **does not build against the `go.mod` as committed**. Locally it builds
+with an uncommitted `lobster-tui/go.work` that uses the Crust branch; that file is never committed.
+Once Crust is released: bump the `require` in `go.mod`, delete `go.work`, and run
+`cd lobster-tui && go test ./...`.
 
 ---
 
@@ -708,7 +763,7 @@ The contract doesn't depend on the Go TUI. A new surface needs:
 | `lobster/cli_internal/classic_interaction.py` | plain-text prompts |
 | `lobster-tui/internal/biocomp/choice/` | `choice` |
 | `lobster-tui/internal/biocomp/choicelist/` | `choice_list` |
-| `lobster-tui/internal/biocomp/sampleplate/` | `plate_map` (on Crust's plate map) |
+| `lobster-tui/internal/biocomp/sampleplate/` | `plate_map` (on Crust's plate map, Groups view; see "Crust dependency") |
 | `lobster-tui/internal/biocomp/dashboard/` | `dashboard` and the review screen; `testdata/` holds the Python ↔ Go fixtures |
 | `docs/dynamic-ui/demo/make_synthetic_rnaseq.py` | the fictional 8- and 72-sample datasets |
 | `docs/dynamic-ui/demo.md` | how to run all of it |

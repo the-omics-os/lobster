@@ -36,6 +36,7 @@ from lobster.services.interaction.component_schemas import (
     Problem,
     check_answer,
     check_request,
+    expand_items_from,
     fingerprint,
     reask,
 )
@@ -174,6 +175,13 @@ def create_ask_user_tool(
                     exclusion, a choice the data doesn't settle) gets no default
           count     {"min", "max"}: how many values; the answer becomes a list
           for_each  [item, ...]: ask the same field once per item; answer keyed by id
+          items_from  (choice) read for_each and default from a workspace CSV or
+                    TSV instead of writing them out: {"file", "id", "default",
+                    "label", "details": [col, ...], "position", "where":
+                    {col: value}, "match": "exact" | "ignore_case_and_spaces"};
+                    you name the columns; a "default" value that isn't an
+                    option (blank, "?", "unknown") proposes nothing; the file
+                    is added to data_files
           view      how to draw it (see Views); never changes the answer
         choice:  options: [item, ...]. An option may carry "fields", shown only
                  when it is picked. Every option that removes, excludes or
@@ -182,7 +190,9 @@ def create_ask_user_tool(
         number:  min, max (value bounds), integer (true/false), unit
         text:    only when the answer can't be listed or counted
         record:  fields: [field, ...] answered together
-        item:    {"id", "label", "details", "unavailable"} or a plain string.
+        item:    {"id", "label", "details", "unavailable", "position"} or a
+                 plain string. position: a sample's plate well, e.g. "D1",
+                 given for every item or none.
                  id is a stable identity (sample ID, accession), never a row
                  number; label is display only. An option or item that exists
                  but can't be used (ruled out by a rule or by the data) stays
@@ -192,13 +202,25 @@ def create_ask_user_tool(
                  about; if one changes before the user answers, they are
                  asked again.
         To put items into groups, ask ONE choice field with for_each over
-        every item (view "plate_map" for up to 96 samples; without a view it
-        is a per-item list, for more than 96 items or items that aren't
-        samples), with the known groups as
-        its default and none for an unresolved item; never one field per
-        item: checks only see groups asked as one field. Also ask, as its own
-        choice field, which group is compared with which ("B relative to A"
-        or "A relative to B").
+        every item; never one field per item: checks only see groups asked as
+        one field. Use view "plate_map" to put samples into groups, one group
+        each, up to 96 samples and 9 options. Ask over ALL the samples, not
+        just the uncertain few (the others give context): known groups as
+        the default, none for an uncertain sample. Give each sample its well
+        in "position" when known. An option there may ask one reason
+        ("fields": [{"key": "reason", "type": "text"}]); a sample's warning
+        written in its details as "warning: ..." is offered as the reason.
+        Use the per-item list (leave the view out) instead for more than 96
+        items or 9 options, items that aren't samples (clusters, features,
+        ASVs), more than one pick per item, options needing more than one
+        reason, or items with their own option lists. When the samples are
+        rows of a file, prefer items_from to copying ids by hand, e.g.
+          "items_from": {"file": "data/plate1_layout.csv", "id": "sample",
+            "default": "condition", "details": ["batch", "note"],
+            "position": "well", "where": {"sample_type": "study"},
+            "match": "ignore_case_and_spaces"}
+        Also ask, as its own choice field, which group is compared with which
+        ("B relative to A" or "A relative to B").
 
         Example: keep or exclude each flagged sample, with a reason to exclude:
           {"fields": [{"key": "qc", "type": "choice",
@@ -276,10 +298,14 @@ def _build_request(
     """The first version of the request, or the problems that stop it.
 
     Request-time checks run here, once, on the supervisor's context; data
-    files are fingerprinted here, once.
+    files are fingerprinted here, once. A field's items_from is read here
+    first, so the rest sees an ordinary for_each (and its file in data_files).
     """
     from lobster.services.interaction.component_mapper import map_question
 
+    context, problems = expand_items_from(context, workspace)
+    if problems:
+        return problems
     try:
         asked = map_question(question, context, llm=llm)
     except ValidationError as error:
@@ -432,10 +458,16 @@ Rules:
 - Order sections upstream first.
 - A section may be:
     choice                    options; add count {"min", "max"} for several picks
-    choice + for_each         the same choice per item, on a plate (up to 96
-                              samples): add "view": "plate_map"
+    choice + for_each         samples into groups, one group each, on a plate:
+                              add "view": "plate_map" (up to 96 samples and 9
+                              options). Ask over all the samples, known groups
+                              as the default and uncertain ones empty, not just
+                              the uncertain few; give wells in "position"
     choice + for_each (list)  one row per item, one option per row, without
-                              plate_map; an option may ask for one reason:
+                              plate_map: for more than 96 items or 9 options,
+                              items that aren't samples (clusters, features,
+                              ASVs), or items with their own option lists
+                              On both, an option may ask for one reason:
                               "fields": [{"key": "reason", "type": "text"}]
     number                    add "view": "slider" when min and max are known
     text                      only when the answer can't be listed or counted
@@ -450,6 +482,10 @@ Rules:
   with "minus" listing every QC option that takes an item out of its group:
   exclude and defer (a deferred item does not count toward its group).
 - data_files: the workspace files the decision is about, e.g. the data table.
+- items_from: when a section's items are rows of a workspace CSV or TSV (a
+  sample sheet, plate layout, channel map), name the columns instead of
+  copying ids: "items_from": {"file", "id", "default", "details", "position",
+  "where", "match"} (see ask_user). The file is added to data_files.
 - Use ids exactly as they appear in the data; never invent ids. Put evidence and
   your recommendations in "details" (shown, never applied) or "default"
   (pre-filled). Show an ineligible option or item with "unavailable": "<reason>"

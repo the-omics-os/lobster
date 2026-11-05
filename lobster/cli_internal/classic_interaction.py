@@ -319,24 +319,42 @@ def _read_text(label: str, kept: Optional[str]) -> str:
 
 
 def _draw_plate(data: Dict[str, Any]) -> Dict[str, Any]:
-    """One prompt per sample; unavailable samples are listed, never asked."""
+    """One prompt per sample, named with its well; an option that needs one
+    asks a reason. Samples that can't be assigned are listed, never asked."""
     _show(data["question"])
-    for sample in data.get("unavailable") or []:
-        name = " ".join(filter(None, [sample["sample_id"], sample.get("label")]))
-        print(f"  Not assignable: {name} — {sample.get('reason', '')}")
-    choices = data["choices"]
-    options = [{"id": choice} for choice in choices]
+    if data.get("positions") == "list_order":
+        print("  (No positions were given: the wells are in list order.)")
+    options = data.get("options") or [{"id": c} for c in data.get("choices", [])]
+    ids = [option["id"] for option in options]
     _list_options(options)
-    assignments = {}
+    assignments: Dict[str, Any] = {}
+    reasons: Dict[str, Any] = {}
     for well in data["wells"]:
-        name = " ".join(filter(None, [well["sample_id"], well.get("label")]))
-        note = (well.get("details") or {}).get("note")
-        if note:
-            name += f" ({note})"
+        place = f"{chr(ord('A') + well['row'])}{well['col'] + 1}"
+        name = " ".join(filter(None, [place, well["sample_id"], well.get("label")]))
+        if well.get("excluded"):
+            print(f"  Not assignable: {name} — {well['excluded']}")
+            continue
+        details = (well.get("details") or {}).items()
+        shown = "; ".join(v if k == "note" else f"{k}: {v}" for k, v in details)
+        if well.get("warning"):
+            shown = "; ".join(filter(None, [shown, f"warning: {well['warning']}"]))
+        if shown:
+            name += f" ({shown})"
         condition = well.get("condition")
-        default = [choices.index(condition)] if condition in choices else []
-        assignments[well["sample_id"]] = choices[_pick(options, name, default)[0]]
-    return {"assignments": assignments}
+        default = [ids.index(condition)] if condition in ids else []
+        option = options[_pick(options, name, default)[0]]
+        assignments[well["sample_id"]] = option["id"]
+        reason = option.get("reason")
+        if reason:
+            kept = well.get("reason") if condition == option["id"] else None
+            reasons[well["sample_id"]] = _read_text(
+                reason.get("question") or "Reason", kept
+            )
+    reply: Dict[str, Any] = {"assignments": assignments}
+    if reasons:
+        reply["reasons"] = reasons
+    return reply
 
 
 def _draw_slider(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -427,10 +445,16 @@ def _summary(component: str, data: Dict[str, Any], reply: Dict[str, Any]) -> str
         return "; ".join(rows)
     if component == "plate_map":
         groups = []
-        for choice in data["choices"]:
-            ids = [i for i, picked in reply["assignments"].items() if picked == choice]
+        reasons = reply.get("reasons") or {}
+        options = data.get("options") or [{"id": c} for c in data.get("choices", [])]
+        for option in options:
+            ids = [
+                i + (f" ({reasons[i]})" if reasons.get(i) else "")
+                for i, picked in reply["assignments"].items()
+                if picked == option["id"]
+            ]
             if ids:
-                groups.append(f"{choice}: {', '.join(ids)}")
+                groups.append(f"{_name(option)}: {', '.join(ids)}")
         return "; ".join(groups)
     if component == "threshold_slider":
         return plain_number(reply["value"])

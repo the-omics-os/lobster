@@ -1074,3 +1074,78 @@ def test_overrides_compare_with_the_first_proposal_not_a_reask():
     assert result["changed_from_default"] == {
         "groups": {"S01": {"proposed": "control", "answered": "treated"}}
     }
+
+
+# --- items_from: the samples read from a workspace table ---
+
+PLATE_LAYOUT = "sample,well,condition\nP1,D1,case\nP2,D2,?\n"
+
+
+def _plate_from_table(tmp_path, **spec):
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "layout.csv").write_text(PLATE_LAYOUT)
+    items_from = {
+        "file": "data/layout.csv",
+        "id": "sample",
+        "default": "condition",
+        "position": "well",
+        **spec,
+    }
+    context = {
+        "fields": [
+            {
+                "key": "groups",
+                "type": "choice",
+                "view": "plate_map",
+                "options": ["case", "control"],
+                "items_from": items_from,
+            }
+        ]
+    }
+    return create_ask_user_tool(workspace_path=tmp_path), context
+
+
+def test_items_from_is_read_when_the_question_is_built(tmp_path):
+    import hashlib
+
+    tool, context = _plate_from_table(tmp_path)
+    _, pending = _ask(context, question="Group of each sample?", tool=tool)
+    field = pending.value["fields"][0]
+    assert [(item["id"], item["position"]) for item in field["for_each"]] == [
+        ("P1", "D1"),
+        ("P2", "D2"),
+    ]
+    assert field["default"] == {"P1": {"id": "case"}}  # "?" proposes nothing
+    assert "items_from" not in field
+    assert pending.value["snapshot"]["files"] == [
+        {
+            "path": "data/layout.csv",
+            "sha256": hashlib.sha256(PLATE_LAYOUT.encode()).hexdigest(),
+        }
+    ]
+
+
+def test_items_from_with_a_missing_column_is_invalid_context(tmp_path):
+    tool, context = _plate_from_table(tmp_path, position="plate_well")
+    graph = _graph(("call_1", "Group?", context), tool=tool)
+    assert _run(graph, {"messages": []}) == []  # never pauses
+    result = _tool_results(graph)["call_1"]
+    assert result["action"] == "invalid_context"
+    assert result["problems"][0]["path"] == "fields.0.items_from"
+    assert "no column 'plate_well'" in result["problems"][0]["message"]
+
+
+def test_the_supervisor_is_told_when_to_use_the_plate():
+    from lobster.tools.user_interaction import create_dashboard_schema_tool
+
+    text = create_ask_user_tool().description
+    for said in (
+        'Use view "plate_map" to put samples into groups, one group',
+        "Ask over ALL the samples, not",
+        "prefer items_from",
+        "items that aren't samples (clusters, features,",
+        "more than one pick per item",
+    ):
+        assert said in text, said
+    schema = create_dashboard_schema_tool().invoke({})
+    assert "Ask over all the samples" in schema and "items_from" in schema

@@ -53,10 +53,20 @@
         "question": "Group of each sample?",
         "title": "Group of each sample?",
         "format": 96,
-        "choices": [
-          "control",
-          "treated",
-          "leave_out"
+        "positions": "list_order",
+        "options": [
+          {
+            "id": "control",
+            "label": "control"
+          },
+          {
+            "id": "treated",
+            "label": "treated"
+          },
+          {
+            "id": "leave_out",
+            "label": "leave out of the comparison"
+          }
         ],
         "wells": [
           {

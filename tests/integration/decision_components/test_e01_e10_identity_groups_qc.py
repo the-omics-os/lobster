@@ -139,10 +139,11 @@ def test_e04_unresolved_sample_blocks_the_plate_submit(start_tui, review8):
     assert wells["S08"] == ""  # no default: the suggestion is not applied
 
     tui.key("enter")
-    tui.wait_screen("Resolve before submitting: S08")
+    tui.wait_screen("Resolve before submitting (press a number): A8 S08")
     assert tui.responses() == []
 
-    press_in_plate(tui, ds.ids, {"S08": "treated"})
+    # The refused enter moved the cursor to S08, the sample it named.
+    press_in_plate(tui, ds.ids, {"S08": "treated"}, start="S08")
     assert tui.wait_turn_end() == ""
     groups = tool_results(tui.client)[cid]["answer"]["groups"]
     assert groups["S08"] == {"id": "treated"}

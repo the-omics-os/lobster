@@ -32,6 +32,7 @@ from lobster.services.interaction.component_schemas import (
     DecisionRequest,
     _is_one_required_text,
     plain_number,
+    well_index,
 )
 
 # render(component, data) -> (action, reply). action is "submit", "cancel" or
@@ -107,9 +108,10 @@ def _go_limits(field: Any) -> List[str]:
     """The limits of the Go screens that ``field`` breaks (their Init refuses).
 
     lobster-tui/internal/biocomp: the plate takes 1 to 9 choices
-    (sampleplate.go) and, drawn as 96 wells, at most 96 samples; a plate
-    needs one well and a choice_list one available item (choicelist.go); a
-    slider needs min below max (threshold.go).
+    (sampleplate.go) and, drawn as 96 wells, at most 96 samples (unavailable
+    ones take a well too, greyed); a plate needs one sample that can be
+    assigned and a choice_list one available item (choicelist.go); a slider
+    needs min below max (threshold.go).
     """
     limits = []
     if (
@@ -127,9 +129,9 @@ def _go_limits(field: Any) -> List[str]:
                 limits.append(
                     f"a plate with {len(choices)} options (at most {_PLATE_CHOICES})"
                 )
-            if len(open_items) > _PLATE_WELLS:
+            if len(field.for_each) > _PLATE_WELLS:
                 limits.append(
-                    f"a plate with {len(open_items)} samples (at most {_PLATE_WELLS})"
+                    f"a plate with {len(field.for_each)} samples (at most {_PLATE_WELLS})"
                 )
     if (
         field.type == "number"
@@ -327,16 +329,20 @@ def _said(component: str, reply: Any) -> Optional[str]:
 
 
 def _draws_plate(field: Any) -> bool:
-    """A plate_map field is drawn as a plate only when no option asks for
-    more (a reason) and none is unavailable: a well holds one option and
-    can't collect fields, and the plate's legend has no place for an option
-    shown greyed with its reason. Such a field is drawn as the per-item list
-    instead (FX W1). The view is a drawing hint; the answer is the same."""
+    """A plate_map field is drawn as a plate when each option asks for at
+    most one required text field (a reason, typed on the plate) and none is
+    unavailable: the plate's legend has no place for an option shown greyed
+    with its reason. Any other such field is drawn as the per-item list (FX
+    W1). The view is a drawing hint; the answer is the same."""
     return (
         field.type == "choice"
         and bool(field.for_each)
         and field.view == "plate_map"
-        and not any(option.fields or option.unavailable for option in field.options)
+        and not any(option.unavailable for option in field.options)
+        and all(
+            not option.fields or _is_one_required_text(option.fields)
+            for option in field.options
+        )
     )
 
 
@@ -417,37 +423,72 @@ def _render_one(
 
 
 def _plate_data(field: Any, question: str) -> Dict[str, Any]:
-    """Each available item becomes a well, filled row by row (A1, A2, ...).
-
-    Unavailable items are never wells: they are listed under the plate.
+    """Each item becomes a well: at its own position when items have them,
+    else filled row by row (A1, A2, ...) and the plate says so. Unavailable
+    items sit greyed in their wells with the reason ("excluded"). An option
+    that asks a reason carries the key and question of its text field.
     """
-    items = [item for item in field.for_each if not item.unavailable]
     defaults = field.default or {}
+    placed = all(item.position for item in field.for_each)
     wells = []
-    for index, item in enumerate(items):
-        well = {
-            "row": index // _PLATE_COLUMNS,
-            "col": index % _PLATE_COLUMNS,
+    for index, item in enumerate(field.for_each):
+        if placed:
+            row, col = well_index(item.position)
+        else:
+            row, col = divmod(index, _PLATE_COLUMNS)
+        well: Dict[str, Any] = {
+            "row": row,
+            "col": col,
             "sample_id": item.id,
             "label": _label(item),
-            "condition": (defaults.get(item.id) or {}).get("id", ""),
         }
-        if item.details:
-            well["details"] = {"note": item.details}
-        wells.append(well)
-    data = {
+        details, warning = _details_map(item.details)
+        if item.unavailable:
+            well["excluded"] = item.unavailable
+        else:
+            picked = defaults.get(item.id) or {}
+            well["condition"] = picked.get("id", "")
+            reason = next(iter((picked.get("fields") or {}).values()), None)
+            _with(well, "reason", reason)
+            _with(well, "warning", warning)
+        wells.append(_with(well, "details", details))
+    options = []
+    for option in field.options:
+        data: Dict[str, Any] = {"id": option.id, "label": option.label}
+        if option.fields:  # one required text field: the reason
+            sub = option.fields[0]
+            data["reason"] = _with({"key": sub.key}, "question", sub.question)
+        options.append(data)
+    return {
         "question": question,
         "title": field.question or field.key,
         "format": _PLATE_WELLS,  # unsupported() refuses more samples
-        "choices": [o.id for o in field.options if not o.unavailable],
+        "positions": "given" if placed else "list_order",
+        "options": options,
         "wells": wells,
     }
-    unavailable = [
-        {"sample_id": item.id, "label": _label(item), "reason": item.unavailable}
-        for item in field.for_each
-        if item.unavailable
-    ]
-    return _with(data, "unavailable", unavailable)
+
+
+# "batch: B1 · warning: low RIN" (as items_from writes details).
+_DETAIL_PART = re.compile(r"([^:·]{1,40}):\s*(.+)")
+
+
+def _details_map(text: Optional[str]) -> Tuple[Dict[str, str], Optional[str]]:
+    """An item's details as the plate shows them, and its warning (offered
+    as the reason hint, never filled in). Details written as "key: value"
+    parts joined by " · " keep their keys; other text is a note."""
+    if not text:
+        return {}, None
+    parts = [part.strip() for part in text.split(" · ")]
+    found = [_DETAIL_PART.fullmatch(part) for part in parts]
+    if not all(found):
+        return {"note": text}, None
+    details = {match.group(1).strip(): match.group(2).strip() for match in found}
+    warning = next(
+        (details.pop(key) for key in list(details) if key.casefold() == "warning"),
+        None,
+    )
+    return details, warning
 
 
 def _list_data(field: Any, question: str, details: str) -> Dict[str, Any]:
@@ -629,8 +670,16 @@ def _from_reply(field: Any, component: str, data: Dict[str, Any], reply: Any) ->
     """Translate one component's own reply into the field's answer shape."""
     reply = reply or {}
     if component == "plate_map":
-        assignments = reply.get("assignments") or {}
-        return {item: {"id": choice} for item, choice in assignments.items()}
+        # A reason comes back keyed by sample id; it becomes the fields of the
+        # option that asked for it, the shape the per-item list sends.
+        keys = {o["id"]: o["reason"]["key"] for o in data["options"] if o.get("reason")}
+        reasons = reply.get("reasons") or {}
+        answers = {}
+        for item, choice in (reply.get("assignments") or {}).items():
+            answers[item] = {"id": choice}
+            if choice in keys and reasons.get(item):
+                answers[item]["fields"] = {keys[choice]: reasons[item]}
+        return answers
     if component == "choice_list":
         answers = {}
         for item, row in (reply.get("answers") or {}).items():
@@ -674,7 +723,13 @@ def _as_reply(field: Any, component: str, value: Any) -> Dict[str, Any]:
     """A field's answer in ``component``'s own reply shape (the reverse of
     _from_reply), so a re-asked dashboard section can start from it."""
     if component == "plate_map":
-        return {"assignments": {item: row["id"] for item, row in value.items()}}
+        reply = {"assignments": {item: row["id"] for item, row in value.items()}}
+        reasons = {
+            item: next(iter(row["fields"].values()))
+            for item, row in value.items()
+            if row.get("fields")
+        }
+        return _with(reply, "reasons", reasons)
     if component == "choice_list":
         return {"answers": {item: dict(row) for item, row in value.items()}}
     if component == "choice":

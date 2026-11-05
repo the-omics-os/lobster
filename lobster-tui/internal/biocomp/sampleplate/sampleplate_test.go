@@ -256,8 +256,8 @@ func TestInitRefusesAnEmptyChoice(t *testing.T) {
 
 func TestViewShowsFocusAndPlate(t *testing.T) {
 	c := newComp(t)
-	out := c.View(90, 18)
-	for _, want := range []string{"X01", "Line 1", "unresolved 1", "96-Well Plate"} {
+	out := ansi.Strip(c.View(90, 30))
+	for _, want := range []string{"X01", "Line 1", "unresolved 1", "   1   2   3", "A  ●   ●   ○", "H  ·"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q", want)
 		}
@@ -277,7 +277,7 @@ func TestNumberKeysFollowTheChoices(t *testing.T) {
 	if c.assignments["X01"] != "control" {
 		t.Fatalf("key 4 changed X01 to %q", c.assignments["X01"])
 	}
-	if out := c.View(90, 18); !strings.Contains(out, "1 control · 2 treated · 3 leave_out · 0 unresolved") {
+	if out := ansi.Strip(c.View(90, 30)); !strings.Contains(out, "1 ● control   2 ● treated   3 ● leave_out   0 ○ unresolved") {
 		t.Fatalf("legend missing:\n%s", out)
 	}
 }
@@ -291,43 +291,39 @@ func TestInitNeedsOneToNineChoices(t *testing.T) {
 	}
 }
 
-func TestUnavailableSamplesAreListedUnderThePlateAndNotAnswered(t *testing.T) {
+func TestExcludedSamplesSitGreyedInTheirWellsAndAreNotAnswered(t *testing.T) {
 	raw := strings.Replace(lookAlike, `"wells": [`,
-		`"unavailable": [{"sample_id": "X09", "label": "Line 9", "reason": "No counts in this source"}],
-  "wells": [`, 1)
+		`"wells": [{"row": 0, "col": 3, "sample_id": "QC1", "label": "Pool", "excluded": "pooled QC sample"},`, 1)
 	c := &SamplePlateComponent{}
 	if err := c.Init([]byte(raw)); err != nil {
 		t.Fatal(err)
 	}
+	if row, col := c.plate.Cursor(); row != 0 || col != 0 {
+		t.Fatalf("the cursor should start on the first sample that can be assigned, got %d,%d", row, col)
+	}
 	view := ansi.Strip(c.View(90, 30))
-	if !strings.Contains(view, "✕ X09 Line 9 — No counts in this source") {
-		t.Fatalf("unavailable sample not listed:\n%s", view)
+	if !strings.Contains(view, "A  ●   ●   ○   ◌") || !strings.Contains(view, "can't be assigned 1") ||
+		!strings.Contains(view, "◌ can't be assigned") {
+		t.Fatalf("excluded well not drawn greyed:\n%s", view)
 	}
-	if plate := strings.Index(view, "96-Well Plate"); plate < 0 || strings.Index(view, "X09") < plate {
-		t.Fatalf("unavailable list should be under the plate:\n%s", view)
+	for i := 0; i < 3; i++ {
+		c.HandleMsg(press("right"))
 	}
-	c.HandleMsg(press("right"))
-	c.HandleMsg(press("right"))
+	if view := ansi.Strip(c.View(90, 30)); !strings.Contains(view, "A4  QC1 · Pool · can't be assigned: pooled QC sample") {
+		t.Fatalf("current-well line should give the reason:\n%s", view)
+	}
 	c.HandleMsg(press("1"))
+	if c.message != "QC1 can't be assigned: pooled QC sample." {
+		t.Fatalf("message = %q", c.message)
+	}
+	c.HandleMsg(press("left"))
+	c.HandleMsg(press("1")) // X03 -> control
 	res, _ := c.HandleMsg(press("enter"))
 	if res == nil || res.Action != "submit" {
 		t.Fatalf("expected submit, got %+v (%q)", res, c.message)
 	}
-	if _, ok := res.Data["assignments"].(map[string]any)["X09"]; ok {
-		t.Fatal("an unavailable sample is in the reply")
-	}
-}
-
-func TestInitRejectsBadUnavailableSamples(t *testing.T) {
-	for name, list := range map[string]string{
-		"no id":     `[{"label": "x", "reason": "r"}]`,
-		"duplicate": `[{"sample_id": "X09", "reason": "r"}, {"sample_id": "X09", "reason": "r"}]`,
-		"on plate":  `[{"sample_id": "X01", "reason": "r"}]`,
-	} {
-		raw := strings.Replace(lookAlike, `"wells": [`, `"unavailable": `+list+`, "wells": [`, 1)
-		if err := (&SamplePlateComponent{}).Init([]byte(raw)); err == nil {
-			t.Errorf("%s: expected an error", name)
-		}
+	if _, ok := res.Data["assignments"].(map[string]any)["QC1"]; ok {
+		t.Fatal("an excluded sample is in the reply")
 	}
 }
 
@@ -346,8 +342,8 @@ func seventyTwo(t *testing.T) *SamplePlateComponent {
 			i/12, i%12, i+1, i+1, cond))
 	}
 	raw := `{"question": "Group of each sample?", "format": 96, "choices": ["control", "treated", "leave_out"],
-	  "unavailable": [{"sample_id": "S73", "label": "Donor 73", "reason": "failed library"}],
-	  "wells": [` + strings.Join(wells, ",") + `]}`
+	  "wells": [` + strings.Join(wells, ",") + `,
+	    {"row": 6, "col": 0, "sample_id": "S73", "label": "Donor 73", "excluded": "failed library"}]}`
 	c := &SamplePlateComponent{}
 	if err := c.Init([]byte(raw)); err != nil {
 		t.Fatal(err)
@@ -358,19 +354,16 @@ func seventyTwo(t *testing.T) *SamplePlateComponent {
 func TestSeventyTwoSamplesOnA96Plate(t *testing.T) {
 	c := seventyTwo(t)
 	view := ansi.Strip(c.View(100, 40))
-	for _, want := range []string{"96-Well Plate", "control 36", "treated 35", "unresolved 1", "✕ S73 Donor 73 — failed library"} {
+	for _, want := range []string{"control 36", "treated 35", "unresolved 1", "can't be assigned 1", "G  ◌", "H  ·"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
 	}
-	if res, _ := c.HandleMsg(press("enter")); res != nil || !strings.Contains(c.message, "S72") {
+	if res, _ := c.HandleMsg(press("enter")); res != nil || !strings.Contains(c.message, "F12 S72") {
 		t.Fatalf("enter should name S72 as unresolved: %+v %q", res, c.message)
 	}
-	for i := 0; i < 5; i++ {
-		c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-	for i := 0; i < 11; i++ {
-		c.HandleMsg(press("right"))
+	if row, col := c.plate.Cursor(); row != 5 || col != 11 {
+		t.Fatalf("the refused enter should move to S72 (F12), got %d,%d", row, col)
 	}
 	c.HandleMsg(press("3")) // S72 (F12) -> leave_out
 	res, _ := c.HandleMsg(press("enter"))
@@ -424,9 +417,8 @@ func TestDraftAndPrefill(t *testing.T) {
 	}
 }
 
-// The selected sample's details (from a data reference) wrap on the plate's
-// own focus lines; Crust's footer line is cut at the width, so they are not
-// put there. E2E_REPORT #2.
+// The selected sample's details (from a data reference) wrap on their own
+// lines under the current-well line, never cut. E2E_REPORT #2.
 const longNote = "Condition label unresolved; a second manifest suggests treated (suggestion only)"
 
 func withNote(t *testing.T) *SamplePlateComponent {
@@ -442,76 +434,70 @@ func withNote(t *testing.T) *SamplePlateComponent {
 
 func TestLongDetailsWrapUnderTheFocusLine(t *testing.T) {
 	c := withNote(t) // cursor on X01, the sample with the note
-	for _, width := range []int{40, 60} {
-		lines := strings.Split(ansi.Strip(c.View(width, 40)), "\n")
-		plate := -1
-		for i, l := range lines {
-			if strings.Contains(l, "96-Well Plate") {
-				plate = i
-				break
-			}
-		}
-		if plate < 0 {
-			t.Fatalf("width %d: no plate:\n%s", width, strings.Join(lines, "\n"))
-		}
-		own := strings.Join(lines[:plate], "\n") // Crust's lines follow its own width rules
-		for _, l := range lines[:plate] {
+	for _, width := range []int{50, 60} {
+		view := ansi.Strip(c.View(width, 40))
+		for _, l := range strings.Split(view, "\n") {
 			if w := ansi.StringWidth(strings.TrimRight(l, " ")); w > width {
 				t.Errorf("width %d: line is %d wide: %q", width, w, l)
 			}
 		}
-		words := strings.Fields(own)
+		focus := strings.Index(view, "A1  X01")
+		if focus < 0 || focus < strings.Index(view, "H  ·") {
+			t.Fatalf("width %d: the current-well line should be under the plate:\n%s", width, view)
+		}
+		words := strings.Fields(view[focus:])
 		for _, w := range strings.Fields("note: " + longNote) {
 			if !slices.Contains(words, w) {
-				t.Errorf("width %d: word %q missing:\n%s", width, w, own)
+				t.Errorf("width %d: word %q missing:\n%s", width, w, view)
 			}
-		}
-		if footer := lines[len(lines)-1]; strings.Contains(footer, "note") {
-			t.Errorf("width %d: the note is also in Crust's cut-off line: %q", width, footer)
 		}
 	}
 }
 
 func TestLongDetailsNeverPushThePlateOffScreen(t *testing.T) {
 	c := withNote(t)
-	full := ansi.Strip(c.View(40, 40)) // the note takes 3 lines at width 40
-	plateLines := lipgloss.Height(full[strings.Index(full, "96-Well Plate |"):])
-	// The plate gives up its spare rows first; 2 lines fewer than that and the
-	// note must be clipped rather than push the plate down.
-	height := lipgloss.Height(full) - (plateLines - plateMinHeight) - 2
-	view := ansi.Strip(c.View(40, height))
+	full := ansi.Strip(c.View(50, 60))
+	noteLines := 0
+	for _, l := range strings.Split(full, "\n") {
+		if strings.HasPrefix(l, "    ") {
+			noteLines++
+		}
+	}
+	if noteLines < 2 {
+		t.Fatalf("the note should take several lines at width 50:\n%s", full)
+	}
+	height := lipgloss.Height(full) - 1 // one line short: the note gives way
+	view := ansi.Strip(c.View(50, height))
 	if got := lipgloss.Height(view); got > height {
 		t.Fatalf("view is %d lines, given %d:\n%s", got, height, view)
 	}
-	for _, want := range []string{"96-Well Plate", "[A1] Sample", "note: Condition", "…"} {
+	for _, want := range []string{"A  ●", "H  ·", "A1  X01", "note: Condition", "…"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q:\n%s", want, view)
 		}
 	}
 }
 
-// Crust gets no title (the question above the plate holds it), so its header
-// keeps "Cursor: A1" on a 60-column screen; and no line of the plate, Crust's
-// included, is wider than the screen, even with a long title and label (C-08).
-func TestCrustGetsNoTitleAndNoLineIsWiderThanTheScreen(t *testing.T) {
+// Crust draws only the grid: no header, footer or title of its own, and no
+// line of the screen is wider than the screen (C-08).
+func TestOnlyCrustsGridAndNoLineIsWiderThanTheScreen(t *testing.T) {
 	raw := strings.Replace(lookAlike, `"Sample conditions (synthetic)"`,
 		`"Which group is each sample in? Assign each one, or leave it out."`, 1)
 	c := &SamplePlateComponent{}
 	if err := c.Init([]byte(raw)); err != nil {
 		t.Fatal(err)
 	}
-	header := ""
 	for _, width := range []int{52, 60, 80} {
-		for _, l := range strings.Split(ansi.Strip(c.View(width, 40)), "\n") {
+		view := ansi.Strip(c.View(width, 40))
+		for _, l := range strings.Split(view, "\n") {
 			if w := ansi.StringWidth(l); w > width {
 				t.Errorf("width %d: line is %d wide: %q", width, w, l)
 			}
-			if width == 60 && strings.Contains(l, "96-Well Plate") {
-				header = l
+		}
+		for _, chrome := range []string{"96-Well Plate", "View:", "Cursor:", "[A1]"} {
+			if strings.Contains(view, chrome) {
+				t.Errorf("width %d: Crust's %q is drawn:\n%s", width, chrome, view)
 			}
 		}
-	}
-	if !strings.HasPrefix(header, "96-Well Plate |") || !strings.Contains(header, "Cursor: A1") {
-		t.Fatalf("header at 60 columns = %q", header)
 	}
 }

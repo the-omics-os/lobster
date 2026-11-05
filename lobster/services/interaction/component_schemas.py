@@ -16,8 +16,10 @@ request after a refused answer, keeping what the user got right.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import math
+import re
 import stat
 import uuid
 from collections import Counter
@@ -35,7 +37,14 @@ from typing import (
     Union,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 SCHEMA_VERSION = "lobster.ask/1"
 
@@ -103,6 +112,28 @@ class Item(BaseModel):
         default=None,
         description="Reason this item can't be picked or answered; shown greyed out",
     )
+    position: Optional[str] = Field(
+        default=None,
+        description='Where a sample physically sits, a plate well such as "D1" '
+        '(or {"row": "D", "column": 1}); a plate draws it there',
+    )
+
+    @field_validator("position", mode="before")
+    @classmethod
+    def _position_is_a_well(cls, value: Any) -> Any:
+        """ "D1", "d01" and {"row": "D", "column": 1} all become "D1"."""
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            if set(value) != {"row", "column"}:
+                raise ValueError('a position is "D1" or {"row": "D", "column": 1}')
+            value = f"{value['row']}{value['column']}"
+        if not isinstance(value, str):
+            raise ValueError(f"position {value!r} is not a well like 'D1'")
+        found = _WELL.fullmatch(value.strip().upper())
+        if not found:
+            raise ValueError(f"position {value!r} is not a well like 'D1'")
+        return found.group(1) + found.group(2)
 
     @model_validator(mode="before")
     @classmethod
@@ -138,9 +169,30 @@ class Option(Item):
 
     @model_validator(mode="after")
     def _check_option_fields(self) -> "Option":
+        if self.position is not None:
+            raise ValueError(
+                "an option has no position; positions are for for_each items"
+            )
         if self.fields:
             _check_siblings(self.fields)
         return self
+
+
+# A plate well: one or two row letters, then the column number ("D1", "AA12").
+_WELL = re.compile(r"([A-Z]{1,2})0*([1-9][0-9]{0,2})")
+PLATE_ROWS, PLATE_COLUMNS = 8, 12  # a plate is drawn as 96 wells, A1 to H12
+
+
+def well_index(position: str) -> Tuple[int, int]:
+    """(row, column) of a well, from 0: "D1" is (3, 0), "AA1" is (26, 0)."""
+    found = _WELL.fullmatch(position)
+    if not found:
+        raise ValueError(f"position {position!r} is not a well like 'D1'")
+    letters, number = found.groups()
+    row = 0
+    for letter in letters:
+        row = row * 26 + (ord(letter) - ord("A") + 1)
+    return row - 1, int(number) - 1
 
 
 class Count(BaseModel):
@@ -187,8 +239,10 @@ VIEWS: Dict[str, Dict[str, Any]] = {
     "plate_map": {
         "applies_to": "choice",
         "needs": ["for_each"],
-        "use_when": "the same choice for each sample, shown as wells on a plate "
-        "(up to 96 samples; for more, leave the view out: a per-item list)",
+        "use_when": "putting samples into groups, one group each, shown as wells "
+        "on a plate (up to 96 samples and 9 options; an option may ask one "
+        "reason); ask over all the samples, known groups pre-filled; for more, "
+        "or items that aren't samples, leave the view out: a per-item list",
         "example": {
             "key": "condition",
             "type": "choice",
@@ -480,6 +534,17 @@ def fingerprint(
 
 def _sha256_inside(root: Path, relative: Path, raw: str) -> str:
     """sha256 of ``root / relative``; ValueError if it is outside or unreadable."""
+    resolved = _file_inside(root, relative, raw)
+    try:
+        return _sha256(resolved)
+    except OSError as error:
+        reason = error.strerror or type(error).__name__
+        raise ValueError(f"can't read {raw!r} in the workspace ({reason})") from error
+
+
+def _file_inside(root: Path, relative: Path, raw: str) -> Path:
+    """``root / relative`` resolved; ValueError unless it is a regular file
+    inside the workspace."""
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError(
             f"{raw!r} must be a path inside the workspace (relative, without '..')"
@@ -491,10 +556,10 @@ def _sha256_inside(root: Path, relative: Path, raw: str) -> str:
         # A pipe or device would block the read forever: regular files only.
         if not stat.S_ISREG(resolved.stat().st_mode):
             raise ValueError(f"can't read {raw!r} in the workspace (not a file)")
-        return _sha256(resolved)
     except OSError as error:
         reason = error.strerror or type(error).__name__
         raise ValueError(f"can't read {raw!r} in the workspace ({reason})") from error
+    return resolved
 
 
 def _sha256(path: Path) -> str:
@@ -503,6 +568,242 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(_CHUNK), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Items from a table: for_each and default read from a workspace file
+# ---------------------------------------------------------------------------
+
+# The most rows items_from turns into items: a plate draws 96 wells; a list
+# of more than this many is no longer a question one person answers.
+ITEMS_FROM_MAX_ROWS = 500
+_PLATE_WELLS = PLATE_ROWS * PLATE_COLUMNS
+_TABLE_ROWS_READ = 100_000  # stop reading a table larger than this
+
+
+class ItemsFrom(BaseModel):
+    """A choice field's ``items_from``: its items (and their proposed options)
+    are rows of a CSV or TSV file in the workspace, so the supervisor names
+    columns instead of copying ids by hand. Python reads the file when the
+    question is built; the screens get the same question as with for_each."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: str = Field(min_length=1, description="Workspace-relative .csv or .tsv")
+    id: str = Field(min_length=1, description="Column with each item's stable id")
+    label: Optional[str] = Field(default=None, description="Column shown as the label")
+    default: Optional[str] = Field(
+        default=None,
+        description="Column with each item's proposed option; a value that is "
+        "not an option (blank, '?', 'unknown') proposes nothing",
+    )
+    details: List[str] = Field(
+        default_factory=list, description="Columns shown beside each item"
+    )
+    position: Optional[str] = Field(
+        default=None, description='Column with each sample\'s well, e.g. "D1"'
+    )
+    where: Dict[str, str] = Field(
+        default_factory=dict, description="Keep only rows with these column values"
+    )
+    match: Literal["exact", "ignore_case_and_spaces"] = Field(
+        default="exact",
+        description="How 'where' values and 'default' values are compared",
+    )
+
+
+def expand_items_from(
+    context: Any, workspace: Optional[Union[str, Path]]
+) -> Tuple[Any, List[Problem]]:
+    """Replace each top-level field's ``items_from`` with the ``for_each`` and
+    ``default`` read from its file, and add the file to ``data_files``.
+
+    Returns the new context, or the problems that stop it (a missing file or
+    column, a blank or duplicate id, too many or no rows), so nothing built
+    from a broken table is ever shown. A context without items_from is
+    returned unchanged.
+    """
+    fields = context.get("fields") if isinstance(context, dict) else None
+    if not isinstance(fields, list) or not any(
+        isinstance(field, dict) and "items_from" in field for field in fields
+    ):
+        return context, []
+    problems: List[Problem] = []
+    expanded: List[Any] = []
+    files = list(context.get("data_files") or [])
+    for index, field in enumerate(fields):
+        if not (isinstance(field, dict) and "items_from" in field):
+            expanded.append(field)
+            continue
+        where = f"fields.{index}.items_from"
+        built, found = _expand_field(field, where, workspace)
+        problems += found
+        expanded.append(built)
+        file = field["items_from"].get("file") if not found else None
+        if file and file not in files:
+            files.append(file)
+    if problems:
+        return context, problems
+    return {**context, "fields": expanded, "data_files": files}, []
+
+
+def _expand_field(
+    field: Dict[str, Any], where: str, workspace: Optional[Union[str, Path]]
+) -> Tuple[Dict[str, Any], List[Problem]]:
+    try:
+        spec = ItemsFrom.model_validate(field["items_from"])
+    except ValidationError as error:
+        return field, [
+            _problem(
+                ".".join([where, *(str(part) for part in item["loc"])]),
+                item["msg"].removeprefix("Value error, "),
+            )
+            for item in error.errors()
+        ]
+    if field.get("type") != "choice":
+        return field, [_problem(where, "items_from is only for a choice field")]
+    if "for_each" in field:
+        return field, [_problem(where, "give for_each or items_from, not both")]
+    if field.get("default") is not None:
+        return field, [
+            _problem(
+                where,
+                "items_from proposes each item's option from its 'default' "
+                "column; leave the field's default out",
+            )
+        ]
+    if workspace is None:
+        return field, [
+            _problem(where, "no workspace is open, so the file can't be read")
+        ]
+    try:
+        header, rows = _read_table(Path(workspace).resolve(), spec.file)
+    except ValueError as error:
+        return field, [_problem(f"{where}.file", str(error))]
+
+    wanted = [spec.id, spec.label, spec.default, spec.position, *spec.details]
+    missing = [
+        column
+        for column in dict.fromkeys([*wanted, *spec.where])
+        if column and column not in header
+    ]
+    if missing:
+        return field, [
+            _problem(
+                where,
+                f"{spec.file} has no column {', '.join(repr(c) for c in missing)}; "
+                f"its columns are {', '.join(repr(c) for c in header)}",
+            )
+        ]
+
+    same = _matcher(spec.match)
+    rows = [
+        row
+        for row in rows
+        if all(same(row.get(column, ""), value) for column, value in spec.where.items())
+    ]
+    limit = _PLATE_WELLS if field.get("view") == "plate_map" else ITEMS_FROM_MAX_ROWS
+    if not rows:
+        return field, [_problem(where, f"no rows of {spec.file} match {spec.where}")]
+    if len(rows) > limit:
+        what = "a plate" if limit == _PLATE_WELLS else "one question"
+        return field, [
+            _problem(
+                where,
+                f"{len(rows)} rows of {spec.file} match; {what} takes at most "
+                f"{limit}: narrow 'where'",
+            )
+        ]
+
+    ids = [(row.get(spec.id) or "").strip() for row in rows]
+    blank = [str(number) for number, item_id in enumerate(ids, 1) if not item_id]
+    if blank:
+        return field, [
+            _problem(where, f"rows {_some(blank)} have no {spec.id!r} (the id)")
+        ]
+    repeated = sorted(item_id for item_id, n in Counter(ids).items() if n > 1)
+    if repeated:
+        return field, [
+            _problem(where, f"{spec.id!r} repeats ids {_some(repeated)} in {spec.file}")
+        ]
+
+    options = _option_names(field.get("options"))
+    items: List[Dict[str, Any]] = []
+    defaults: Dict[str, Any] = {}
+    for item_id, row in zip(ids, rows):
+        item: Dict[str, Any] = {"id": item_id}
+        if spec.label and (row.get(spec.label) or "").strip():
+            item["label"] = row[spec.label].strip()
+        shown = [
+            f"{column}: {row[column].strip()}"
+            for column in spec.details
+            if (row.get(column) or "").strip()
+        ]
+        if shown:
+            item["details"] = " · ".join(shown)
+        if spec.position and (row.get(spec.position) or "").strip():
+            item["position"] = row[spec.position].strip()
+        items.append(item)
+        if spec.default:
+            picked = [
+                o
+                for o, names in options
+                if any(same(row[spec.default], n) for n in names)
+            ]
+            if len(picked) == 1:  # one option: proposed; none or several: unresolved
+                defaults[item_id] = {"id": picked[0]}
+    built = {key: value for key, value in field.items() if key != "items_from"}
+    built["for_each"] = items
+    if defaults:
+        built["default"] = defaults
+    return built, []
+
+
+def _read_table(root: Path, raw: str) -> Tuple[List[str], List[Dict[str, str]]]:
+    """The header and rows of a workspace .csv or .tsv file."""
+    relative = Path(raw)
+    suffix = relative.suffix.lower()
+    if suffix not in (".csv", ".tsv", ".tab"):
+        raise ValueError(f"{raw!r} is not a .csv or .tsv file")
+    path = _file_inside(root, relative, raw)
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            reader = csv.DictReader(handle, delimiter="," if suffix == ".csv" else "\t")
+            header = [column for column in reader.fieldnames or []]
+            rows = []
+            for row in reader:
+                rows.append(row)
+                if len(rows) > _TABLE_ROWS_READ:
+                    raise ValueError(f"{raw!r} has more than {_TABLE_ROWS_READ} rows")
+    except (OSError, UnicodeDecodeError, csv.Error) as error:
+        raise ValueError(f"can't read {raw!r} ({type(error).__name__})") from error
+    if not header:
+        raise ValueError(f"{raw!r} is empty")
+    return header, rows
+
+
+def _matcher(match: str) -> Callable[[str, str], bool]:
+    if match == "ignore_case_and_spaces":
+        return (
+            lambda a, b: "".join(str(a).split()).casefold()
+            == "".join(str(b).split()).casefold()
+        )
+    return lambda a, b: str(a).strip() == str(b).strip()
+
+
+def _option_names(options: Any) -> List[Tuple[str, List[str]]]:
+    """Each option's id with the names a table may use for it: id and label."""
+    named = []
+    for option in options or []:
+        if isinstance(option, str):
+            named.append((option, [option]))
+        elif isinstance(option, dict) and isinstance(option.get("id"), str):
+            names = [option["id"]]
+            if isinstance(option.get("label"), str) and option["label"]:
+                names.append(option["label"])
+            if not option.get("unavailable"):
+                named.append((option["id"], names))
+    return named
 
 
 # ---------------------------------------------------------------------------
@@ -1072,12 +1373,41 @@ def _check_view(view: str, field_type: str, owner: Any) -> None:
 
 
 def _check_plate_map(field: Any) -> None:
-    """A well holds one option, so the plate can't answer a count."""
+    """A well holds one option, so the plate can't answer a count. Positions
+    are given for every item or none, each inside the plate, one per well."""
     if field.count is not None:
         raise ValueError(
             "view 'plate_map' takes one option per item; leave count out "
             "(or leave the view out to pick several per item)"
         )
+    items = field.for_each or []
+    unplaced = [item.id for item in items if item.position is None]
+    if len(unplaced) == len(items):
+        return
+    if unplaced:
+        raise ValueError(
+            f"give every item a position, or none; {_some(unplaced)} have none"
+        )
+    taken: Dict[str, str] = {}
+    for item in items:
+        row, column = well_index(item.position)
+        if row >= PLATE_ROWS or column >= PLATE_COLUMNS:
+            raise ValueError(
+                f"item {item.id!r} is at {item.position}, outside the plate "
+                f"(A1 to H{PLATE_COLUMNS})"
+            )
+        if item.position in taken:
+            raise ValueError(
+                f"items {taken[item.position]!r} and {item.id!r} are both in well "
+                f"{item.position}"
+            )
+        taken[item.position] = item.id
+
+
+def _some(ids: List[str], limit: int = 5) -> str:
+    """At most ``limit`` ids, then how many more: "S01, S02 and 3 more"."""
+    shown = ", ".join(ids[:limit])
+    return shown if len(ids) <= limit else f"{shown} and {len(ids) - limit} more"
 
 
 def _check_dashboard(owner: Any) -> None:
@@ -1093,8 +1423,8 @@ def _check_dashboard(owner: Any) -> None:
         if field.for_each and field.type != "choice":
             raise ValueError(f"{where}: for_each is only supported on a choice here")
         if field.for_each:
-            # One option per item; an option may ask for a reason. (A plate
-            # whose option asks for one is drawn as the per-item list.)
+            # One option per item; an option may ask for a reason (the list
+            # and the plate both collect it).
             if field.count:
                 raise ValueError(f"{where}: a per-item list takes one option per item")
             for option in field.options:
