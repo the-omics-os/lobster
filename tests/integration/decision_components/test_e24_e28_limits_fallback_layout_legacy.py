@@ -228,7 +228,7 @@ def test_e27_plate_sample_details_are_not_cut_off(start_tui, review8, cols):
         "note"
     ]
     tui.key(*["right"] * 7)
-    screen = tui.wait_screen("Cursor: A8")
+    screen = tui.wait_screen("A8  S08")  # the current-well line
     assert _missing_words(note, screen) == [], tui.screen.text()
 
 

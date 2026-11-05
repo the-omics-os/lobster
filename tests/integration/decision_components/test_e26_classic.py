@@ -73,7 +73,8 @@ def test_e26_classic_plate_is_rechecked_and_reasked_with_answers_kept(
 
     out = capsys.readouterr().out
     assert "(At any prompt: d = decide later, q = cancel.)" in out
-    assert "1. control" in out and "3. leave_out" in out
+    assert "1. control" in out
+    assert "3. leave out (leave_out) (asks for a reason)" in out
     assert (
         "S08 Donor H (Condition label unresolved; a second manifest suggests treated"
         in out

@@ -315,7 +315,10 @@ def test_e07_excluding_every_remaining_control_is_reasked_then_fixed(
     assert result["answer"]["qc"] == {"S02": {"id": "retain"}, "S06": {"id": "retain"}}
     assert result["answer"]["groups"]["S02"] == {"id": "control"}
     for sid, choice in groups.items():
-        assert result["answer"]["groups"][sid] == {"id": choice}
+        expected = {"id": choice}
+        if choice == LEAVE_OUT:  # a removal carries its reason
+            expected["fields"] = {"reason": LEAVE_OUT_REASON}
+        assert result["answer"]["groups"][sid] == expected
 
 
 def test_e08_deferring_the_last_control_is_refused_like_e7(start_tui, review8):

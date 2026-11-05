@@ -8,6 +8,8 @@ launcher hands to the real ``client.resume_from_interrupt``.
 
 from __future__ import annotations
 
+import re
+
 import time
 
 from tests.integration.decision_components._harness import (
@@ -340,7 +342,11 @@ def test_e18_two_parallel_questions_answered_in_reverse_order(start_tui, review8
     (response,) = tui.resumes
     assert len(response) == 2
     by_decision = {v["responds_to"]["decision_id"]: k for k, v in response.items()}
-    assert set(by_decision) == {f"dec-{cid_source}", f"dec-{cid_qc}"}
+    # decision_id is dec-<tool_call_id>-<8 hex> (U-26 #3): one per call.
+    assert sorted(re.sub(r"-[0-9a-f]{8}$", "", d) for d in by_decision) == sorted(
+        [f"dec-{cid_source}", f"dec-{cid_qc}"]
+    )
+    assert all(re.fullmatch(r"dec-.+-[0-9a-f]{8}", d) for d in by_decision)
     results = tool_results(tui.client)
     assert results[cid_source]["answer"] == {"source": {"id": "SRC-B"}}
     assert results[cid_qc]["answer"] == {
