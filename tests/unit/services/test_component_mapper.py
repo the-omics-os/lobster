@@ -292,3 +292,43 @@ def test_llm_select_prompt_includes_component_descriptions():
     assert "Pick the best approach" in prompt
     for field_type in ("choice", "number", "text", "record"):
         assert field_type in prompt
+
+
+# --- v3 findings ---
+
+
+def test_hint_context_keeps_data_files_checks_and_view():
+    """A hint-style context (no "fields") used to drop data_files silently,
+    so the answer was never checked against the data it was about."""
+    context = {"options": ["DESeq2", "CPM"], "data_files": ["data/counts.csv"]}
+    result = map_question("Which normalization method?", context=context)
+    assert result.data_files == ["data/counts.csv"]
+    assert [option.id for option in result.fields[0].options] == ["DESeq2", "CPM"]
+
+
+def test_hint_context_keys_are_still_judged():
+    """Kept keys are validated, never passed through unchecked."""
+    with pytest.raises(ValidationError, match="duplicate paths"):
+        map_question("Pick one", context={"options": ["a"], "data_files": ["x", "x"]})
+
+
+def test_placeholder_hint_is_shown_never_filled_in():
+    field = _only_field(
+        map_question("Describe the batch", context={"placeholder": "e.g. run 2"})
+    )
+    assert (field.type, field.details, field.default) == ("text", "e.g. run 2", None)
+
+
+def test_threshold_hint_numbers_written_as_text_are_read():
+    field = _only_field(
+        map_question(
+            "Set p-value threshold", {"min": "0", "max": "0.1", "default": "0.05"}
+        )
+    )
+    assert (field.min, field.max, field.default, field.view) == (0, 0.1, 0.05, "slider")
+
+
+@pytest.mark.parametrize("bad", ["nan", "inf", float("nan"), "lots", True])
+def test_threshold_hint_values_that_are_not_finite_numbers_are_dropped(bad):
+    field = _only_field(map_question("Set p-value threshold", {"min": 0, "max": bad}))
+    assert field.max is None and field.view == "default"

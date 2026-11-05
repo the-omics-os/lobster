@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json as _json
 import logging
+import math
 import re
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -59,7 +60,26 @@ def map_question(
 
     if "fields" in ctx:
         return AskUserContext.model_validate(ctx)
+    asked = _from_hints(question, ctx, llm)
+    # Keys that mean the same on any context are kept, and judged like any
+    # other: never dropped silently (a supervisor that attached data_files
+    # must get the fingerprint, or invalid_context).
+    kept = {key: ctx[key] for key in _CONTEXT_KEYS if key in ctx}
+    if not kept:
+        return asked
+    return AskUserContext.model_validate(
+        {**asked.model_dump(exclude_none=True), **kept}
+    )
 
+
+# Context keys valid whatever builds the fields.
+_CONTEXT_KEYS = ("view", "checks", "data_files")
+
+
+def _from_hints(
+    question: str, ctx: Dict[str, Any], llm: Optional["BaseChatModel"]
+) -> AskUserContext:
+    """The fields for hint-style context (no "fields" key)."""
     # --- Rule-based fast path (unambiguous structural context) ---
 
     # Explicit options list -> choice. Dict options keep their id.
@@ -96,7 +116,7 @@ def map_question(
         return _llm_format_question(llm, question, ctx)
 
     # --- Fallback: free text ---
-    return _text_only(question)
+    return _text_only(question, ctx.get("placeholder"))
 
 
 def _llm_format_question(
@@ -138,10 +158,13 @@ def _single(field: Dict[str, Any]) -> AskUserContext:
     return AskUserContext(fields=[field])
 
 
-def _text_only(question: str) -> AskUserContext:
-    return AskUserContext(
-        fields=[{"key": "answer", "type": "text", "question": question}]
-    )
+def _text_only(question: str, placeholder: Any = None) -> AskUserContext:
+    """One free-text field; a hint's placeholder (an example answer) is shown
+    as its details, never filled in as the answer."""
+    field = {"key": "answer", "type": "text", "question": question}
+    if placeholder:
+        field["details"] = str(placeholder)
+    return AskUserContext(fields=[field])
 
 
 def _to_items(options: list) -> list:
@@ -196,20 +219,30 @@ def _threshold_field(ctx: Dict[str, Any]) -> Dict[str, Any]:
     number. The default is kept when it is inside the bounds that were given.
     """
     field: Dict[str, Any] = {"key": "value", "type": "number"}
-    low, high = ctx.get("min"), ctx.get("max")
-    if isinstance(low, (int, float)) and not isinstance(low, bool):
-        field["min"] = float(low)
-    if isinstance(high, (int, float)) and not isinstance(high, bool):
-        field["max"] = float(high)
+    low, high = _number(ctx.get("min")), _number(ctx.get("max"))
+    if low is not None:
+        field["min"] = low
+    if high is not None:
+        field["max"] = high
     if "min" in field and "max" in field:
         field["view"] = "slider"
-    default = ctx.get("default", ctx.get("threshold", ctx.get("cutoff")))
-    if (
-        isinstance(default, (int, float))
-        and not isinstance(default, bool)
-        and field.get("min", default) <= default <= field.get("max", default)
+    default = _number(ctx.get("default", ctx.get("threshold", ctx.get("cutoff"))))
+    if default is not None and field.get("min", default) <= default <= field.get(
+        "max", default
     ):
-        field["default"] = float(default)
+        field["default"] = default
     if ctx.get("unit"):
         field["unit"] = str(ctx["unit"])
     return field
+
+
+def _number(value: Any) -> Optional[float]:
+    """A finite number from a hint value (numbers, or numbers written as
+    text such as "0.05"); None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None

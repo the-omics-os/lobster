@@ -1323,3 +1323,26 @@ def test_bridge_cancel_event_set_bypasses_event_loop():
         bridge.cancel_event.set()
 
     assert cancel_event.is_set(), "cancel_event should be set by bridge-level signal"
+
+
+def test_several_questions_without_ids_are_refused_not_merged():
+    """Answers are keyed by interrupt id; without ids the second answer would
+    overwrite the first, so nothing is sent (the classic UI refuses too)."""
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge,
+        [
+            {"type": "interrupt", "data": _decision_request("dec-call_a")},
+            {"type": "interrupt", "data": _decision_request("dec-call_b")},
+        ],
+    )
+    assert response is None
+    assert bridge.renders() == []
+    alerts = [c[1] for c in bridge.calls if c[0] == "alert"]
+    assert alerts == [
+        {
+            "level": "error",
+            "message": "Several questions arrived without their ids, so their "
+            "answers can't be told apart. Nothing was sent.",
+        }
+    ]

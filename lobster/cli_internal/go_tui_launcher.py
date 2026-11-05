@@ -1178,6 +1178,20 @@ def _handle_interrupts(bridge: _LightBridge, interrupt_events: list) -> Optional
         return _handle_interrupt(bridge, interrupt_events[0])
 
     bridge.send("spinner", {"active": False})
+    if len(interrupt_events) > 1 and any(
+        not event.get("interrupt_id") for event in interrupt_events
+    ):
+        # Answers are matched to questions by interrupt id; without one, a
+        # second answer would overwrite the first (the classic UI refuses too).
+        bridge.send(
+            "alert",
+            {
+                "level": "error",
+                "message": "Several questions arrived without their ids, so "
+                "their answers can't be told apart. Nothing was sent.",
+            },
+        )
+        return None
     answers: Dict[Any, Any] = {}
     for event in interrupt_events:
         data = event.get("data")

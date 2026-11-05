@@ -6,6 +6,7 @@ resumes. The factory tests patch interrupt() and call the tool directly.
 """
 
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -168,7 +169,7 @@ def test_ask_user_calls_interrupt_with_component_selection():
     call_arg = mock_interrupt.call_args[0][0]
     assert isinstance(call_arg, dict)
     assert call_arg["schema"] == "lobster.ask/1"
-    assert call_arg["decision_id"] == "dec-call_1"
+    assert call_arg["decision_id"] == "dec-call_1"  # no graph: no task part
     assert call_arg["fields"][0]["type"] == "choice"
 
     # The result is the checked answer, as JSON.
@@ -284,7 +285,8 @@ def test_question_pauses_with_a_decision_request():
     (pending,) = _run(graph, {"messages": []})
     request = pending.value
     assert request["schema"] == "lobster.ask/1"
-    assert request["decision_id"] == "dec-call_1"
+    # dec-<tool-call id>-<graph task>: a reused tool-call id stays distinct
+    assert re.fullmatch(r"dec-call_1-[0-9a-f]{8}", request["decision_id"])
     assert request["request_version"] == 1
     assert request["question"] == "Which count source?"
     options = request["fields"][0]["options"]
@@ -300,7 +302,7 @@ def test_submitted_answer_reaches_the_supervisor():
     request, result = _ask_and_answer(
         SOURCE, lambda r: _reply(r, {"source": {"id": "SRC-A"}}, comment="raw counts")
     )
-    assert result["decision_id"] == request["decision_id"] == "dec-call_1"
+    assert result["decision_id"] == request["decision_id"]
     assert result["action"] == "submit"
     assert result["answer"] == {"source": {"id": "SRC-A"}}
     assert result["comment"] == "raw counts"
@@ -346,7 +348,7 @@ def test_old_style_reply_is_asked_again_not_passed_through():
 def test_defer_resumes_with_no_answer():
     _, result = _ask_and_answer(SOURCE, lambda r: _reply(r, action="defer"))
     assert result == {
-        "decision_id": "dec-call_1",
+        "decision_id": result["decision_id"],
         "answer_id": result["answer_id"],
         "action": "defer",
         "attempts": 1,
@@ -383,7 +385,10 @@ def test_two_pending_decisions_answered_out_of_order():
         ]
     }
     graph = _graph(("call_a", "Which source?", SOURCE), ("call_b", "Treated?", groups))
-    pending = {p.value["decision_id"]: p for p in _run(graph, {"messages": []})}
+    pending = {
+        p.value["decision_id"].rsplit("-", 1)[0]: p
+        for p in _run(graph, {"messages": []})
+    }
     assert sorted(pending) == ["dec-call_a", "dec-call_b"]
     a, b = pending["dec-call_a"], pending["dec-call_b"]
     resume = {
@@ -511,7 +516,8 @@ def test_rejected_answer_is_asked_again_prefilled():
     }
     second = _answer_pending(graph, first, submitted)
     request = second.value
-    assert (request["decision_id"], request["request_version"]) == ("dec-call_1", 2)
+    assert request["decision_id"].startswith("dec-call_1-")
+    assert request["request_version"] == 2
     assert [p["path"] for p in request["problems"]] == ["groups.S02", "qc.S01.fields"]
     groups, qc = request["fields"]
     assert groups["default"] == {k: v for k, v in GOOD_GROUPS.items() if k != "S02"}
@@ -973,3 +979,98 @@ def test_dashboard_schema_covers_lists_checks_direction_and_review():
     ):
         assert phrase in text
     assert "for_each without plate_map" not in text
+
+
+# --- v3 findings: reused call ids, overrides ---
+
+
+def test_reused_tool_call_ids_get_their_own_decisions():
+    """Some providers number tool calls (call_0, call_1, ...) and can repeat
+    one in a message. The graph task tells the calls apart, so each answer
+    still reaches its own question."""
+    graph = _graph(
+        ("call_1", "Which source?", SOURCE), ("call_1", "Which other source?", SOURCE)
+    )
+    first, second = _run(graph, {"messages": []})
+    ids = {first.value["decision_id"], second.value["decision_id"]}
+    assert len(ids) == 2
+    assert all(re.fullmatch(r"dec-call_1-[0-9a-f]{8}", i) for i in ids)
+    by_question = {p.value["question"]: p for p in (first, second)}
+    a, b = by_question["Which source?"], by_question["Which other source?"]
+    resume = {
+        a.id: _reply(a.value, {"source": {"id": "SRC-A"}}),
+        b.id: _reply(b.value, {"source": {"id": "SRC-B"}}),
+    }
+    assert _run(graph, Command(resume=resume)) == []
+    answers = sorted(
+        json.loads(m.content)["answer"]["source"]["id"]
+        for m in graph.get_state(CONFIG).values["messages"]
+        if m.type == "tool"
+    )
+    assert answers == ["SRC-A", "SRC-B"]
+
+
+def test_decision_id_is_the_same_on_replay():
+    """The suffix comes from the graph task, which a resume replays as is."""
+    graph, first = _ask(SOURCE)
+    second = _answer_pending(graph, first, {"source": {"id": "SRC-C"}})
+    assert second.value["decision_id"] == first.value["decision_id"]
+
+
+PROPOSED_GROUPS = {
+    "fields": [
+        {
+            "key": "groups",
+            "type": "choice",
+            "question": "Group of each sample?",
+            "for_each": ["S01", "S02", "S08"],
+            "options": ["control", "treated"],
+            "default": {"S01": {"id": "control"}, "S02": {"id": "treated"}},
+        }
+    ]
+}
+
+
+def test_picks_changed_from_the_default_are_reported_as_overrides():
+    """S01 was proposed as control and answered treated: an override. S08
+    had no proposal, so answering it is not one."""
+    answer = {
+        "groups": {
+            "S01": {"id": "treated"},
+            "S02": {"id": "treated"},
+            "S08": {"id": "control"},
+        }
+    }
+    _, result = _ask_and_answer(
+        PROPOSED_GROUPS, lambda request: _reply(request, answer)
+    )
+    assert result["changed_from_default"] == {
+        "groups": {"S01": {"proposed": "control", "answered": "treated"}}
+    }
+
+
+def test_no_overrides_means_no_changed_from_default():
+    answer = {
+        "groups": {
+            "S01": {"id": "control"},
+            "S02": {"id": "treated"},
+            "S08": {"id": "control"},
+        }
+    }
+    _, result = _ask_and_answer(
+        PROPOSED_GROUPS, lambda request: _reply(request, answer)
+    )
+    assert "changed_from_default" not in result
+
+
+def test_overrides_compare_with_the_first_proposal_not_a_reask():
+    """A re-ask's defaults are the user's own answers; the proposal is v1's."""
+    graph, first = _ask(PROPOSED_GROUPS, question="Groups?")
+    full = {"groups": {k: {"id": "treated"} for k in ("S01", "S02", "S08")}}
+    second = _answer_pending(graph, first, {"groups": {"S01": {"id": "treated"}}})
+    assert second is not None  # S02 and S08 missing: asked again
+    assert _answer_pending(graph, second, full) is None
+    result = _tool_results(graph)["call_1"]
+    assert result["changed_from_default"] == {
+        "groups": {"S01": {"proposed": "control", "answered": "treated"}}
+    }

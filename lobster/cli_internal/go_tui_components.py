@@ -22,6 +22,7 @@ its ``{"answer": text}`` reply becomes the ``free_text`` answer action.
 
 from __future__ import annotations
 
+import math
 import re
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -40,6 +41,7 @@ Render = Callable[[str, Dict[str, Any]], Tuple[str, Dict[str, Any]]]
 _PLATE_COLUMNS = 12  # a 96-well plate is 8 rows x 12 columns
 _PLATE_WELLS = 96  # the plate is always drawn as 96 wells
 _PLATE_CHOICES = 9  # one number key (1-9) per choice
+_LARGEST_WHOLE = 2**53  # the largest whole number a float holds exactly
 
 # The key each component's reply carries. A reply without it but with
 # "answer" came from an older TUI's text box (see _said).
@@ -51,6 +53,9 @@ _REPLY_KEY = {
     "dashboard": "answers",
 }
 
+# 2,000,000 or -1,234.5: commas only between groups of three digits, as
+# numbers are shown; "1,5" stays "not a number".
+_THOUSANDS = re.compile(r"[+-]?\d{1,3}(,\d{3})+(\.\d+)?")
 _WRITE_IN_YOUR_OWN_WORDS = "Write your answer in your own words."
 
 
@@ -231,7 +236,11 @@ def _ask(field: Any, render: Render, notes: Sequence[str] = ()) -> Any:
 def _ask_one(field: Any, render: Render, item: Any, notes: Sequence[str]) -> Any:
     """Ask a field once (for one for_each item, or for the field itself)."""
     if field.type == "record":
-        return {sub.key: _ask(sub, render) for sub in field.fields}
+        earlier = _item_default(field, item)
+        return {
+            sub.key: _ask(_follow_up(sub, field, item, None, earlier), render)
+            for sub in field.fields
+        }
     component, data = _render_one(field, item, notes)
     value = _shown(field, render, component, data)
     if field.type != "choice":
@@ -245,19 +254,45 @@ def _ask_one(field: Any, render: Render, item: Any, notes: Sequence[str]) -> Any
         # contract check names it and the question is asked again.
         option = next((o for o in field.options if o.id == pick.get("id")), None)
         if option is not None and option.fields:
-            pick["fields"] = {sub.key: _ask(sub, render) for sub in option.fields}
+            earlier = _picked_fields(_item_default(field, item), option.id)
+            pick["fields"] = {
+                sub.key: _ask(_follow_up(sub, field, item, option, earlier), render)
+                for sub in option.fields
+            }
     return value
+
+
+def _follow_up(sub: Any, parent: Any, item: Any, option: Any, earlier: Any) -> Any:
+    """A sub-field as its own screen: its question names the item and the
+    parent (or the option picked), and an earlier answer is its default."""
+    lead = option.label if option is not None else _plain_question(parent)
+    lead = f"{lead}: " if item is None else f"{_item_name(item)}, {lead}: "
+    update = {"question": lead + _plain_question(sub)}
+    if isinstance(earlier, dict) and earlier.get(sub.key) is not None:
+        update["default"] = earlier[sub.key]
+    return sub.model_copy(update=update)
+
+
+def _picked_fields(default: Any, option_id: str) -> Dict[str, Any]:
+    """The fields of ``option_id`` in a default (one pick or a list)."""
+    picks = default if isinstance(default, list) else [default]
+    for pick in picks:
+        if isinstance(pick, dict) and pick.get("id") == option_id:
+            return pick.get("fields") or {}
+    return {}
 
 
 def _shown(field: Any, render: Render, component: str, data: Dict[str, Any]) -> Any:
     """Render until the reply translates to a valid value, or the user stops."""
+    first = data
     while True:
         reply = _show(render, component, data)
         try:
             return _from_reply(field, component, data, reply)
         except ValueError as error:
-            # Only typed-in numbers can fail here; ask again with the reason.
-            data = {**data, "question": f"{error}\n{_plain_question(field)}"}
+            # Only typed-in numbers can fail here; ask again with the reason
+            # above the whole question (its details and bounds).
+            data = {**first, "question": f"{error}\n{first.get('question', '')}"}
 
 
 def _show(render: Render, component: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -293,14 +328,15 @@ def _said(component: str, reply: Any) -> Optional[str]:
 
 def _draws_plate(field: Any) -> bool:
     """A plate_map field is drawn as a plate only when no option asks for
-    more (a reason): a well holds one option and can't collect fields, so
-    such a field is drawn as the per-item list instead (FX W1). The view is a
-    drawing hint; the answer is the same either way."""
+    more (a reason) and none is unavailable: a well holds one option and
+    can't collect fields, and the plate's legend has no place for an option
+    shown greyed with its reason. Such a field is drawn as the per-item list
+    instead (FX W1). The view is a drawing hint; the answer is the same."""
     return (
         field.type == "choice"
         and bool(field.for_each)
         and field.view == "plate_map"
-        and not any(option.fields for option in field.options)
+        and not any(option.fields or option.unavailable for option in field.options)
     )
 
 
@@ -488,16 +524,27 @@ def _problems_by_field(request: DecisionRequest) -> Dict[str, List[str]]:
     A problem deeper in a field (an item, a reason) names where, e.g.
     "S02 reason: expected non-empty text".
     """
-    keys = {field.key for field in request.fields}
+    by_key = {field.key: field for field in request.fields}
     out: Dict[str, List[str]] = {}
     for problem in request.problems:
         head, rest = re.match(r"([^.\[]*)(.*)", problem.path).groups()
-        if head not in keys:
+        if head not in by_key:
             out.setdefault("", []).append(problem.message)
             continue
-        where = " ".join(
-            part for part in re.split(r"[.\[\]]+", rest) if part and part != "fields"
+        # An item id may itself hold a "." (ENSG00000141510.17): match it
+        # against the field's items before splitting the rest.
+        item = next(
+            (
+                i.id
+                for i in sorted(by_key[head].for_each or [], key=lambda i: -len(i.id))
+                if rest == f".{i.id}" or rest.startswith((f".{i.id}.", f".{i.id}["))
+            ),
+            None,
         )
+        if item is not None:
+            rest = rest[len(item) + 1 :]
+        parts = [p for p in re.split(r"[.\[\]]+", rest) if p and p != "fields"]
+        where = " ".join(([item] if item is not None else []) + parts)
         out.setdefault(head, []).append(
             f"{where}: {problem.message}" if where else problem.message
         )
@@ -518,7 +565,7 @@ def fallback_prompt(request: Dict[str, Any]) -> str:
     """
     parsed = DecisionRequest.model_validate(request)
     numbered = len(parsed.fields) > 1
-    lines = [parsed.question]
+    lines = [parsed.question] + _reask_banner(parsed)
     for key, notes in _problems_by_field(parsed).items():
         where = f"{key}: " if key and numbered else ""
         lines += [f"⚠ {where}{note}" for note in notes]
@@ -605,13 +652,20 @@ def _from_reply(field: Any, component: str, data: Dict[str, Any], reply: Any) ->
         return field.default
     if field.type != "number":
         return text
+    plain = text.replace(",", "") if _THOUSANDS.fullmatch(text) else text
     try:
-        number = float(text)
+        number = float(plain)
     except ValueError:
         raise ValueError(f"'{text}' is not a number.") from None
+    if not math.isfinite(number):  # "nan", "inf", 1e309
+        raise ValueError(f"'{text}' is not a number.")
     if field.integer:
         if not number.is_integer():
             raise ValueError(f"{text} is not a whole number.")
+        if abs(number) > _LARGEST_WHOLE:
+            # Beyond it a float is no longer exact, and past 64 bits the
+            # graph's checkpoint can't store the answer at all.
+            raise ValueError(f"{text} is too large.")
         return int(number)
     return number
 
@@ -651,8 +705,11 @@ def _item_question(field: Any, item: Any) -> str:
     question = _plain_question(field)
     if item is None:
         return question
-    name = item.id if item.label == item.id else f"{item.label} ({item.id})"
-    return f"{name}: {question}"
+    return f"{_item_name(item)}: {question}"
+
+
+def _item_name(item: Any) -> str:
+    return item.id if item.label == item.id else f"{item.label} ({item.id})"
 
 
 def _plain_question(field: Any) -> str:

@@ -87,6 +87,25 @@ def _cache_key(decision_id: str, question: str, context: Any, workspace: Any) ->
     return f"{decision_id}:{hashlib.sha256(inputs.encode()).hexdigest()[:16]}"
 
 
+def _decision_id(tool_call_id: str) -> str:
+    """dec-<tool-call id>-<graph task>.
+
+    Some providers reuse tool-call ids (call_0, call_1, ...), even twice in
+    one message. The graph task that runs this call tells such calls apart,
+    and it is the same on the replay after a resume. Without a graph (the
+    tool called directly) the tool-call id alone is used.
+    """
+    from langgraph.config import get_config
+
+    try:
+        task = get_config().get("configurable", {}).get("checkpoint_ns", "")
+    except RuntimeError:  # not running inside a graph
+        task = ""
+    if not task:
+        return f"dec-{tool_call_id}"
+    return f"dec-{tool_call_id}-{hashlib.sha256(task.encode()).hexdigest()[:8]}"
+
+
 def _recall(key: str) -> Optional[List[DecisionRequest]]:
     with _REQUESTS_LOCK:
         shown = _REQUESTS.get(key)
@@ -197,6 +216,8 @@ def create_ask_user_tool(
               "submit": "answer" mirrors the fields:
                 {"qc": {"S02": {"id": "exclude", "fields": {"reason": "..."}},
                         "S06": {"id": "retain"}}}
+                "changed_from_default" lists per-item picks the user changed
+                from your default: report them as the user's overrides.
               "defer" / "cancel": nothing was decided; don't continue with a
                 default or a guess. If the comment says the terminal can't show
                 a shape, don't ask with the same shape again.
@@ -206,7 +227,7 @@ def create_ask_user_tool(
               "rejected": the answers kept failing the checks; see "problems"."""
         from langgraph.errors import GraphInterrupt
 
-        decision_id = f"dec-{tool_call_id}"
+        decision_id = _decision_id(tool_call_id)
         key = _cache_key(decision_id, question, context, workspace_path)
         shown = _recall(key)
         if shown is None:
@@ -315,7 +336,7 @@ async def _ask_until_settled(
             continue
         outcome = await _judge(request, raw, workspace)
         if isinstance(outcome, dict):
-            return {**outcome, "attempts": attempt}
+            return {**outcome, **_changed(shown[0], outcome), "attempts": attempt}
         if attempt >= _MAX_REJECTED:
             return {
                 "decision_id": request.decision_id,
@@ -325,6 +346,29 @@ async def _ask_until_settled(
                 "note": _REJECTED_NOTE,
             }
         shown.append(outcome)
+
+
+def _changed(first: DecisionRequest, result: Dict[str, Any]) -> Dict[str, Any]:
+    """Per-item picks the user answered differently from the supervisor's
+    default (``first`` is version 1: its defaults are always the proposals),
+    so an override is never mistaken for the data. Items proposed without a
+    default were open, not overridden."""
+    answer = result.get("answer") if result.get("action") == "submit" else None
+    if not isinstance(answer, dict):
+        return {}
+    changed: Dict[str, Any] = {}
+    for field in first.fields:
+        if field.type != "choice" or not field.for_each or field.count is not None:
+            continue
+        rows = answer.get(field.key) or {}
+        for item_id, proposed in (field.default or {}).items():
+            given = rows.get(item_id)
+            if isinstance(given, dict) and given.get("id") != proposed.get("id"):
+                changed.setdefault(field.key, {})[item_id] = {
+                    "proposed": proposed.get("id"),
+                    "answered": given.get("id"),
+                }
+    return {"changed_from_default": changed} if changed else {}
 
 
 async def _judge(

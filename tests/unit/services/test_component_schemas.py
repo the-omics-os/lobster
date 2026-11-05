@@ -1205,3 +1205,57 @@ def test_plain_number_never_uses_exponent_form():
     assert plain_number(0.31) == "0.31"
     assert plain_number(0.0001) == "0.0001"
     assert plain_number(-1500) == "-1,500"
+
+
+# --- v3 findings: numbers, names and files the checks must refuse ---
+
+
+@pytest.mark.parametrize(
+    "value, message",
+    [
+        (float("nan"), "expected a finite number"),
+        (float("inf"), "expected a finite number"),
+        (float("-inf"), "expected a finite number"),
+        pytest.param(10**400, "the number is too large", id="huge-int"),
+    ],
+)
+def test_a_number_that_is_not_finite_is_refused(value, message):
+    """NaN passes every bound and isn't valid JSON; an int past a float's
+    range used to raise OverflowError instead of a problem."""
+    field = {"key": "mito", "type": "number", "min": 0, "max": 1}
+    request = _request(field)
+    with pytest.raises(AnswerRejected) as error:
+        check_answer(request, _answer(request, {"mito": value}))
+    assert [(p.path, p.message) for p in error.value.problems] == [("mito", message)]
+
+
+@pytest.mark.parametrize("key", ["a.b", "qc[0]", "x]", " mito", "mito "])
+def test_a_key_that_would_break_problem_paths_is_refused(key):
+    """Problem paths join keys with "." and "[i]": a key holding them would
+    point at the wrong field."""
+    with pytest.raises(ValidationError, match="can't contain"):
+        AskUserContext.model_validate(
+            {"fields": [{"key": key, "type": "text", "question": "Note?"}]}
+        )
+
+
+@pytest.mark.parametrize("item_id", ["S01 ", " S01", "   "])
+def test_an_item_id_with_spaces_at_an_end_is_refused(item_id):
+    """ "S01" and "S01 " look the same on screen but are different answers."""
+    with pytest.raises(ValidationError, match="spaces at an end or is blank"):
+        AskUserContext.model_validate(
+            {"fields": [{"key": "pick", "type": "choice", "options": [item_id, "S02"]}]}
+        )
+
+
+def test_fingerprint_refuses_a_pipe_instead_of_waiting_on_it(tmp_path):
+    """Reading a FIFO blocks until something writes to it; only regular
+    files are read. At answer time it counts as changed data."""
+    import os
+
+    workspace = _workspace(tmp_path, **{"counts.csv": "x"})
+    os.mkfifo(workspace / "data" / "pipe.csv")
+    with pytest.raises(ValueError, match="not a file"):
+        fingerprint(["data/pipe.csv"], workspace)
+    snapshot = fingerprint(["data/pipe.csv"], workspace, missing_ok=True)
+    assert snapshot.files[0].sha256 is None

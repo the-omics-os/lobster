@@ -1421,3 +1421,155 @@ def test_dashboard_plate_section_with_a_reason_is_drawn_as_the_list():
         for s in dashboard_data(DecisionRequest.model_validate(request))["sections"]
     }
     assert sections["review"]["component"] == "choice_list"
+
+
+# --- v3 findings ---
+
+
+def test_typed_number_may_use_thousands_commas():
+    """Numbers are shown as 2,000,000, so the same form must be accepted."""
+    field = {"key": "floor", "type": "number", "integer": True, "min": 0}
+    _, result = _ask(_request(field), ("submit", {"answer": "2,000,000"}))
+    assert result["answer"] == {"floor": 2_000_000}
+
+
+@pytest.mark.parametrize(
+    "typed, message",
+    [
+        ("1,5", "'1,5' is not a number."),
+        ("nan", "'nan' is not a number."),
+        ("inf", "'inf' is not a number."),
+        ("1e309", "'1e309' is not a number."),
+        ("123456789012345678901", "123456789012345678901 is too large."),
+    ],
+)
+def test_typed_number_that_cannot_be_an_answer_is_asked_again(typed, message):
+    """A 21-digit whole number used to pass here and crash the graph's
+    checkpoint (it holds 64-bit integers at most)."""
+    field = {"key": "reads", "type": "number", "integer": True}
+    drawn, result = _ask(
+        _request(field), ("submit", {"answer": typed}), ("submit", {"answer": "7"})
+    )
+    assert drawn[1][1]["question"].startswith(message + "\n")
+    assert result["answer"] == {"reads": 7}
+
+
+def test_typed_number_retry_keeps_the_whole_question():
+    """The retry adds the reason above the question; its bounds stay."""
+    field = {"key": "reads", "type": "number", "integer": True, "min": 0}
+    drawn, _ = _ask(
+        _request(field), ("submit", {"answer": "lots"}), ("submit", {"answer": "5"})
+    )
+    first, retry = drawn[0][1], drawn[1][1]
+    assert retry["question"] == "'lots' is not a number.\n" + first["question"]
+    assert {k: v for k, v in retry.items() if k != "question"} == {
+        k: v for k, v in first.items() if k != "question"
+    }
+
+
+def test_plate_with_an_unavailable_option_is_drawn_as_the_list():
+    """The plate's legend has no place for an option shown greyed with its
+    reason, so it would vanish; the list shows it."""
+    field = {
+        **_flag_plate(),
+        "options": ["no_flag", "flag", {"id": "drop", "unavailable": "locked"}],
+    }
+    answers = {f"S0{i}": {"id": "no_flag"} for i in range(1, 5)}
+    drawn, _ = _ask(_request(field), ("submit", {"answers": answers}))
+    assert [component for component, _ in drawn] == ["choice_list"]
+    assert drawn[0][1]["options"][2]["unavailable"] == "locked"
+
+
+def test_problem_for_an_item_id_with_a_dot_names_the_whole_id():
+    """ENSG00000141510.17 must not be split into "ENSG00000141510 17"."""
+    field = {
+        "key": "keep",
+        "type": "choice",
+        "for_each": ["ENSG00000141510.17", "ENSG00000141510"],
+        "options": [
+            "yes",
+            {"id": "no", "fields": [{"key": "reason", "type": "text"}]},
+        ],
+    }
+    request = _reasked(
+        _request(field), [("keep.ENSG00000141510.17.fields", "needs its fields")]
+    )
+    drawn, _ = _ask(
+        request,
+        (
+            "submit",
+            {
+                "answers": {
+                    "ENSG00000141510.17": {"id": "yes"},
+                    "ENSG00000141510": {"id": "yes"},
+                }
+            },
+        ),
+    )
+    assert "⚠ ENSG00000141510.17: needs its fields" in drawn[0][1]["details"]
+
+
+def test_fallback_prompt_says_it_is_asked_again():
+    """The older TUI's text prompt carries the same re-ask line as the
+    components, so a re-ask doesn't look like the first question."""
+    request = _reasked(_request(SOURCE), [("source", "pick one")])
+    assert fallback_prompt(request).splitlines()[:3] == [
+        "Review",
+        "Asked again (attempt 2 of 5): fix what is marked.",
+        "⚠ pick one",
+    ]
+
+
+def test_follow_up_names_the_item_and_option_and_keeps_an_earlier_answer():
+    """A sub-field on its own screen used to read just "reason", with no
+    sample named, and a re-ask lost what the user had typed."""
+    field = {
+        "key": "qc",
+        "type": "choice",
+        "question": "Keep each sample?",
+        "for_each": [{"id": "S02", "label": "Donor B"}, "S03"],
+        "options": [
+            "retain",
+            {
+                "id": "exclude",
+                "label": "Exclude",
+                "fields": [
+                    {"key": "reason", "type": "text", "question": "Why?"},
+                    {"key": "by", "type": "text", "question": "Who decided?"},
+                ],
+            },
+        ],
+    }
+    kept = {"id": "exclude", "fields": {"reason": "low reads", "by": "Ana"}}
+    request = _reasked(_request(field), [("qc.S03", "no answer")], qc={"S02": kept})
+    drawn, result = _ask(
+        request,
+        ("submit", {"selected": [{"id": "exclude"}]}),
+        ("submit", {"answer": ""}),
+        ("submit", {"answer": ""}),
+        ("submit", {"selected": [{"id": "retain"}]}),
+    )
+    reason, by = drawn[1][1], drawn[2][1]
+    assert reason["question"] == "Donor B (S02), Exclude: Why?"
+    assert reason["placeholder"] == "Enter = keep low reads"
+    assert by["question"] == "Donor B (S02), Exclude: Who decided?"
+    assert result["answer"] == {"qc": {"S02": kept, "S03": {"id": "retain"}}}
+
+
+def test_record_sub_fields_name_the_record():
+    field = {
+        "key": "mito",
+        "type": "record",
+        "question": "Mito fraction range",
+        "fields": [
+            {"key": "from", "type": "number", "question": "From?"},
+            {"key": "to", "type": "number", "question": "To?"},
+        ],
+    }
+    drawn, _ = _ask(
+        _request(field), ("submit", {"answer": "0"}), ("submit", {"answer": "0.2"})
+    )
+    assert [d["question"].splitlines()[0] for _, d in drawn] == [
+        "Mito fraction range: From?",
+        "Mito fraction range: To?",
+    ]

@@ -17,7 +17,10 @@ request after a refused answer, keeping what the user got right.
 from __future__ import annotations
 
 import hashlib
+import math
+import stat
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import (
     Annotated,
@@ -32,7 +35,7 @@ from typing import (
     Union,
 )
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = "lobster.ask/1"
 
@@ -107,6 +110,14 @@ class Item(BaseModel):
         """Allow "S01" as shorthand for {"id": "S01"}."""
         if isinstance(value, str):
             return {"id": value}
+        return value
+
+    @field_validator("id")
+    @classmethod
+    def _id_is_exact(cls, value: str) -> str:
+        """No spaces at either end: "S01" and "S01 " would look identical."""
+        if value != value.strip() or not value.strip():
+            raise ValueError(f"id {value!r} has spaces at an end or is blank")
         return value
 
     @model_validator(mode="after")
@@ -250,6 +261,16 @@ class _FieldBase(BaseModel):
         default_factory=list,
         description="Sibling keys this field depends on; changing them makes it stale",
     )
+
+    @field_validator("key")
+    @classmethod
+    def _key_is_a_plain_name(cls, value: str) -> str:
+        """Problem paths join keys with "." and "[i]", so a key can't hold them."""
+        if value != value.strip() or any(c in value for c in ".[]"):
+            raise ValueError(
+                f"key {value!r} can't contain '.', '[' or ']' or spaces at an end"
+            )
+        return value
 
     @model_validator(mode="after")
     def _check_common(self) -> "_FieldBase":
@@ -399,9 +420,7 @@ class AskUserContext(BaseModel):
         _check_view(self.view, "fields", self)
         # Shape only. Request-time checks run once, in ask_user (check_request).
         _check_check_specs(self.checks, self.fields)
-        duplicates = sorted(
-            {p for p in self.data_files if self.data_files.count(p) > 1}
-        )
+        duplicates = sorted(p for p, n in Counter(self.data_files).items() if n > 1)
         if duplicates:
             raise ValueError(f"data_files has duplicate paths {duplicates}")
         return self
@@ -469,6 +488,9 @@ def _sha256_inside(root: Path, relative: Path, raw: str) -> str:
     if not resolved.is_relative_to(root):
         raise ValueError(f"{raw!r} leads outside the workspace")
     try:
+        # A pipe or device would block the read forever: regular files only.
+        if not stat.S_ISREG(resolved.stat().st_mode):
+            raise ValueError(f"can't read {raw!r} in the workspace (not a file)")
         return _sha256(resolved)
     except OSError as error:
         reason = error.strerror or type(error).__name__
@@ -717,13 +739,14 @@ def check_value(field: Any, value: Any, path: str, partial: bool = False) -> Any
             [_problem(path, "expected an answer per item, keyed by id")]
         )
     open_ids = [item.id for item in field.for_each if not item.unavailable]
+    is_open = set(open_ids)
     problems = (
         []
         if partial
         else [_problem(f"{path}.{i}", "no answer") for i in open_ids if i not in value]
     )
     problems += [
-        _problem(f"{path}.{i}", "not an item here") for i in value if i not in open_ids
+        _problem(f"{path}.{i}", "not an item here") for i in value if i not in is_open
     ]
     cleaned: Dict[str, Any] = {}
     for item_id in open_ids:
@@ -813,6 +836,12 @@ def _check_choice(field: ChoiceField, value: Any, path: str) -> Dict[str, Any]:
 def _check_number(field: NumberField, value: Any, path: str) -> Union[int, float]:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AnswerRejected([_problem(path, "expected a number")])
+    try:
+        finite = math.isfinite(value)
+    except OverflowError:  # an int too large for a float
+        raise AnswerRejected([_problem(path, "the number is too large")]) from None
+    if not finite:  # NaN passes every bound, and is not valid JSON
+        raise AnswerRejected([_problem(path, "expected a finite number")])
     if field.integer and not float(value).is_integer():
         raise AnswerRejected(
             [_problem(path, f"{plain_number(value)} must be a whole number")]
@@ -985,16 +1014,16 @@ def _refill(field: Any, submitted: Dict[str, Any]) -> Tuple[Any, bool]:
 
 
 def _check_unique_ids(items: List[Item], where: str) -> None:
-    ids = [item.id for item in items]
-    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    duplicates = sorted(
+        i for i, n in Counter(item.id for item in items).items() if n > 1
+    )
     if duplicates:
         raise ValueError(f"{where} have duplicate ids {duplicates}")
 
 
 def _check_siblings(fields: List[Any]) -> None:
     """Sibling keys are unique; depends_on names existing siblings, without cycles."""
-    keys = [field.key for field in fields]
-    duplicates = sorted({k for k in keys if keys.count(k) > 1})
+    duplicates = sorted(k for k, n in Counter(f.key for f in fields).items() if n > 1)
     if duplicates:
         raise ValueError(f"fields have duplicate keys {duplicates}")
     graph = {field.key: field.depends_on for field in fields}
