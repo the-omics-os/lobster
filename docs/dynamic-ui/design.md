@@ -286,7 +286,11 @@ reason goes above the whole question, so its bounds stay on screen.
 **Keys.** The new screens (choice, per-item list, plate, dashboard) share one rule: enter submits, ctrl+d
 defers, and esc asks first, so it takes esc twice to cancel; nothing is sent by a single esc. The
 upstream slider and text screens are unchanged: one esc cancels, there is no defer key, and their help
-line says `esc cancel`.
+line says `esc cancel`. On any question screen, ctrl+c cancels only that question and shows "Question
+cancelled"; the turn goes on, so the supervisor gets the cancel and replies. A second ctrl+c cancels
+the turn, as anywhere else (`TestCtrlCOnAQuestionCancelsOnlyTheQuestion`). Before, the same press
+also cancelled the turn, which dropped the cancel from the conversation, so the supervisor redid the
+original request on the next message.
 
 ### 5.5 Profiles, and the `record` type: available, not used by v1
 
@@ -663,8 +667,6 @@ review screen.
   - A terminal resize does not reach `lobster-tui` as the launcher starts it (its own session,
     `os.setsid`, unchanged from upstream), so the screen keeps its starting size
     (`test_e27_resize_reaches_the_binary_as_the_launcher_starts_it`, a strict xfail).
-  - After ctrl+c cancels a question, the cancel reaches the supervisor, but its reply to that cancel
-    is cut off in the TUI.
   - In inline mode on a terminal 6 to 9 rows tall, a question's frame is 10 lines, taller than the
     terminal, so its top scrolls off.
 - **Go tests outside CI.** The upstream workflows run `go test ./internal/chat ./internal/protocol

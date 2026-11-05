@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 )
 
@@ -85,5 +86,38 @@ func TestInterruptPauseKeepsTheScreen(t *testing.T) {
 	}
 	if _, text := lastAlert(m); text != "" {
 		t.Fatalf("unexpected alert %q", text)
+	}
+}
+
+// ctrl+c on a question cancels only that question: the turn goes on so the
+// supervisor can reply to the cancel. A second ctrl+c cancels the turn.
+func TestCtrlCOnAQuestionCancelsOnlyTheQuestion(t *testing.T) {
+	for _, busy := range []string{"streaming", "spinner"} {
+		m, out := withScreen(t, "render-1")
+		m.isStreaming = busy == "streaming"
+		m.spinnerActive = busy == "spinner"
+		updated, _ := m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+		m = updated.(Model)
+		if m.activeComponent != nil {
+			t.Fatalf("%s: the screen is still drawn", busy)
+		}
+		if m.quitting || m.isCanceling {
+			t.Fatalf("%s: the first ctrl+c also cancelled the turn or quit", busy)
+		}
+		if _, text := lastAlert(m); text != questionCancelledNotice {
+			t.Fatalf("%s: alert = %q", busy, text)
+		}
+		sent := parseCapturedMessages(out)
+		if len(sent) != 1 || sent[0].Type != protocol.TypeComponentResponse {
+			t.Fatalf("%s: want only the question's cancel, sent %+v", busy, sent)
+		}
+
+		out.Reset()
+		updated, _ = m.handleKey(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+		m = updated.(Model)
+		sent = parseCapturedMessages(out)
+		if len(sent) != 1 || sent[0].Type != protocol.TypeCancel || !m.isCanceling || m.quitting {
+			t.Fatalf("%s: the second ctrl+c must cancel the turn, sent %+v", busy, sent)
+		}
 	}
 }

@@ -184,6 +184,7 @@ uv run pytest tests/unit/cli/test_go_tui_components.py -q --no-cov
 | `plate_map` | arrows move between wells · 1–9 give the well the 1st–9th choice · 0 marks it unresolved · enter sends (refused while any sample is unresolved) · tab switches Crust's view · ctrl+d defers · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over); an esc that closes Crust's help or a row or column selection doesn't count. Up to 96 samples and 9 choices. The grid needs 48 columns; status lines wider than the terminal are cut with …. A plate whose option asks for a reason, or has an unavailable option, is shown as the `choice_list` instead |
 | `dashboard` | tab / shift+tab move between sections · enter inside a section records it · ctrl+s opens the review screen, or lists what blocks it (not answered, needs re-checking, unsaved changes) · ctrl+d defers · esc twice cancels. While a section is typing text (a reason box, a text box), esc and tab go to that section; shift+tab, ctrl+s and ctrl+d still work |
 | review screen | enter sends exactly what is shown · b, esc or shift+tab go back · ↑/↓ or k/j scroll · pgup / pgdown / space by 10 lines · ctrl+d defers |
+| any question screen | ctrl+c cancels only this question and shows "Question cancelled"; the supervisor replies to the cancel. A second ctrl+c cancels the turn |
 | classic UI prompts | type the option number, or several comma-separated · Enter keeps the default shown in brackets · `d` decide later · `q` cancel |
 
 ---

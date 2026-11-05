@@ -1218,13 +1218,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Global keys that must ALWAYS work, even with an active component.
+	// ctrl+c on a question cancels only the question: the supervisor gets the
+	// cancel and replies. Cancelling the turn too would drop that cancel from
+	// the conversation. A second ctrl+c (no question now) cancels the turn.
 	if msg.String() == "ctrl+c" && m.activeComponent != nil {
 		m.sendComponentResponse(m.activeComponent.MsgID, "cancel", map[string]any{"reason": "ctrl+c"})
-		m.activeComponent = nil
-		m.pendingChangeEvent = nil
-		m.changeDebounceActive = false
-		m.recalculateViewportHeight()
-		// Fall through to the normal ctrl+c handler below.
+		m.dropComponent()
+		m.appendMessage(alertMessage("warning", questionCancelledNotice), false)
+		return m, nil
 	}
 
 	// Intercept keys for active BioComp overlay component.
@@ -1714,6 +1715,9 @@ func (m *Model) rebuildViewport() {
 
 // staleComponentNotice is shown when a turn ends with a question still drawn.
 const staleComponentNotice = "This question was closed; nothing was sent."
+
+// questionCancelledNotice is shown when ctrl+c cancels the question on screen.
+const questionCancelledNotice = "Question cancelled"
 
 // dropComponent removes the active component without replying for it.
 func (m *Model) dropComponent() {

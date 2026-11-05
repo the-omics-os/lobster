@@ -178,13 +178,12 @@ def test_e19_esc_on_the_review_screen_goes_back_not_cancel(start_tui, review8):
     assert tool_results(tui.client)[cid]["action"] == "cancel"
 
 
-def test_e19_ctrl_c_cancels_the_question_and_turn_second_ctrl_c_quits(
-    start_tui, review8
-):
-    """E19 quit: the first ctrl+c on a question sends the question's cancel and
-    cancels the running turn (the paused turn is still active, so the TUI's
-    upstream ctrl+c means "cancel the turn"); ask_user records cancel. A second
-    ctrl+c at the idle prompt quits the TUI and the launcher's loop ends."""
+def test_e19_ctrl_c_cancels_only_the_question_second_ctrl_c_quits(start_tui, review8):
+    """E19 quit: the first ctrl+c on a question cancels only that question: it
+    sends the question's cancel, says "Question cancelled", and the turn goes on
+    so the supervisor learns of the cancel and replies (cancelling the turn too
+    would drop the cancel from the conversation). A second ctrl+c at the idle
+    prompt quits the TUI and the launcher's loop ends."""
     ds = review8
     cid = new_id()
     tui = start_tui([ask((cid, "Which count source?", {"fields": [source_field(ds)]}))])
@@ -193,8 +192,9 @@ def test_e19_ctrl_c_cancels_the_question_and_turn_second_ctrl_c_quits(
     tui.key("ctrl+c")
     response = tui.wait_response(render.msg_id)
     assert response["payload"]["data"]["action"] == "cancel"
-    assert tui.wait_turn_end() == "cancelled"
-    assert tui.messages("from_go", "cancel")
+    tui.wait_screen("Question cancelled")
+    assert tui.wait_turn_end() == ""
+    assert not tui.messages("from_go", "cancel")  # the turn was not cancelled
     (resumed,) = tui.resumes
     assert [v["action"] for v in resumed.values()] == ["cancel"]
     assert tool_results(tui.client)[cid]["action"] == "cancel"
