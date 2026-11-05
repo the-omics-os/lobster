@@ -65,7 +65,10 @@
           },
           {
             "id": "leave_out",
-            "label": "leave out of the comparison"
+            "label": "leave out of the comparison",
+            "reason": {
+              "key": "reason"
+            }
           }
         ],
         "wells": [
@@ -74,7 +77,8 @@
             "col": 0,
             "sample_id": "S01",
             "label": "Donor A",
-            "condition": "leave_out"
+            "condition": "leave_out",
+            "reason": "pilot run"
           },
           {
             "row": 0,
@@ -91,14 +95,16 @@
             "col": 2,
             "sample_id": "S03",
             "label": "Donor C",
-            "condition": "leave_out"
+            "condition": "leave_out",
+            "reason": "pilot run"
           },
           {
             "row": 0,
             "col": 3,
             "sample_id": "S04",
             "label": "Donor D",
-            "condition": "leave_out"
+            "condition": "leave_out",
+            "reason": "pilot run"
           },
           {
             "row": 0,
@@ -149,6 +155,11 @@
           "S06": "treated",
           "S07": "treated",
           "S08": "treated"
+        },
+        "reasons": {
+          "S01": "pilot run",
+          "S03": "pilot run",
+          "S04": "pilot run"
         }
       }
     },

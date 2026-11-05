@@ -52,10 +52,13 @@ type Component struct {
 	options  []option
 	min, max int
 	picked   []bool // picked[i] is true when options[i] is selected
-	cursor   int
-	offset   int    // first visible row, for long lists
-	problem  string // why the last action was refused
-	escArmed bool   // the last key was a first esc; the next esc cancels
+	// defaultAt is a single choice's default, -1 for none: the only row
+	// drawn (●), so the cursor alone never looks like a pick.
+	defaultAt int
+	cursor    int
+	offset    int    // first visible row, for long lists
+	problem   string // why the last action was refused
+	escArmed  bool   // the last key was a first esc; the next esc cancels
 }
 
 func (c *Component) Init(data json.RawMessage) error {
@@ -103,13 +106,14 @@ func (c *Component) Init(data json.RawMessage) error {
 	c.options = d.Options
 	c.picked = make([]bool, len(d.Options))
 	c.cursor = c.firstAvailable()
+	c.defaultAt = -1
 	for _, id := range d.Default {
 		i, ok := seen[id]
 		if !ok || d.Options[i].Unavailable != "" {
 			continue // a stale default is ignored, never picked silently
 		}
 		if c.single() {
-			c.cursor = i
+			c.cursor, c.defaultAt = i, i
 			break
 		}
 		c.picked[i] = true
@@ -305,8 +309,10 @@ func (c *Component) row(i, width int) string {
 		mark = "[x]"
 	}
 	if c.single() {
+		// The cursor is the > pointer; (●) only marks a real default, so a
+		// screen with nothing pre-selected never looks pre-selected.
 		mark = "( )"
-		if i == c.cursor {
+		if i == c.defaultAt {
 			mark = "(●)"
 		}
 	}

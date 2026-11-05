@@ -667,8 +667,9 @@ def test_bad_check_specs_never_pause(spec, message):
 def test_reason_required_without_a_reason_field_never_pauses():
     qc = {**QC, "options": ["retain", "exclude"]}
     spec = {"check": "reason_required", "field": "qc", "options": ["exclude"]}
-    (problem,) = _invalid({"fields": [qc], "checks": [spec]})
-    assert problem["path"] == "qc"
+    problems = _invalid({"fields": [qc], "checks": [spec]})
+    # The check and the removal rule both name 'exclude'.
+    assert {p["path"] for p in problems} == {"qc"} and len(problems) == 2
 
 
 def test_no_default_for_a_listed_item_never_pauses():
@@ -1215,13 +1216,15 @@ def test_context_text_that_is_not_a_json_object_is_refused(text):
     assert result["problems"][0]["path"] == "context"
 
 
-def _per_item(default=None, checks=None):
+def _per_item(default=None, checks=None, options=None):
     field = {
         "key": "groups",
         "type": "choice",
         "for_each": ["S07", "S13"],
-        "options": [
+        "options": options
+        or [
             "vehicle",
+            "treated",
             {"id": "leave_out", "fields": [{"key": "reason", "type": "text"}]},
         ],
     }
@@ -1242,9 +1245,21 @@ ANSWERED = {"groups": {"S07": {"id": "vehicle"}, "S13": {"id": "vehicle"}}}
 def test_a_per_item_question_with_nothing_pre_filled_gets_the_note():
     result = _settle(_per_item(), ANSWERED)
     assert result["note"] == (
-        "ask over all the samples, with the known ones pre-filled, so the user "
-        "sees them in context"
+        "When samples are being put into groups, ask over all of them; never "
+        "pre-fill exclusions or QC decisions."
     )
+
+
+def test_a_qc_review_gets_no_note():
+    """v4 1.3: a keep/exclude review is not a grouping; the note made the
+    supervisor pre-fill exclusions next time."""
+    qc = [
+        "retain",
+        "defer",
+        {"id": "exclude", "fields": [{"key": "reason", "type": "text"}]},
+    ]
+    answered = {"groups": {"S07": {"id": "retain"}, "S13": {"id": "retain"}}}
+    assert "note" not in _settle(_per_item(options=qc), answered)
 
 
 def test_no_note_when_items_are_pre_filled_or_left_open_on_purpose():

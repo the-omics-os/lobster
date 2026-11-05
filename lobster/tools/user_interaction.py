@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -25,6 +26,7 @@ from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import ValidationError
 
 from lobster.services.interaction.component_schemas import (
+    _TAKES_OUT,
     CHECKS,
     MAX_ATTEMPTS,
     VIEWS,
@@ -333,31 +335,49 @@ def _context_from_text(text: str) -> Optional[Dict[str, Any]]:
 
 
 _ASK_OVER_ALL = (
-    "ask over all the samples, with the known ones pre-filled, so the user "
-    "sees them in context"
+    "When samples are being put into groups, ask over all of them; never "
+    "pre-fill exclusions or QC decisions."
+)
+
+# Options that are a QC verdict, not a group (a removal is _TAKES_OUT).
+_VERDICT = re.compile(
+    r"\b(retain\w*|keep\w*|kept|defer\w*|flag\w*|review\w*|pass\w*|fail\w*)\b"
 )
 
 
+def _is_group_field(field: Any) -> bool:
+    """A per-item choice that puts items into groups and fits a plate: one
+    pick per item, at most 9 options and 96 items, and at least two options
+    that are groups rather than a removal or a QC verdict (so a keep/exclude
+    review is not one)."""
+    if field.type != "choice" or not field.for_each or field.count is not None:
+        return False
+    options = [o for o in field.options if not o.unavailable]
+    groups = [
+        o
+        for o in options
+        if not _TAKES_OUT.search(_words(o)) and not _VERDICT.search(_words(o))
+    ]
+    return len(options) <= 9 and len(field.for_each) <= 96 and len(groups) >= 2
+
+
+def _words(option: Any) -> str:
+    return f"{option.id} {option.label}".replace("_", " ").replace("-", " ").lower()
+
+
 def _with_advice(result: Dict[str, Any], first: DecisionRequest) -> Dict[str, Any]:
-    """Add a note when a question that could be a plate pre-filled no item:
-    such a question usually lists only the uncertain few, and the user can't
-    judge them without the rest. A field a no_default_for check covers left
-    its defaults out on purpose (a QC review), so it gets no note."""
+    """Add a note when a group question that could be a plate pre-filled no
+    item: such a question usually lists only the uncertain few, and the user
+    can't judge them without the rest. A QC review gets no note (its
+    decisions must not be pre-filled), nor does a field a no_default_for
+    check covers."""
     excused = {
         spec.get("field")
         for spec in first.checks
         if spec.get("check") == "no_default_for"
     }
     for field in first.fields:
-        if (
-            field.type == "choice"
-            and field.for_each
-            and field.count is None
-            and not field.default
-            and field.key not in excused
-            and len([o for o in field.options if not o.unavailable]) <= 9
-            and len(field.for_each) <= 96
-        ):
+        if _is_group_field(field) and not field.default and field.key not in excused:
             note = result.get("note")
             return {
                 **result,

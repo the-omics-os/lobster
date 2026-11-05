@@ -195,6 +195,9 @@ def make_dataset(case: str, workspace: Path) -> Dataset:
 # --------------------------------------------------------------------------
 
 LEAVE_OUT = "leave_out"
+# The reason press_in_plate types for a sample left out (a removal always
+# asks one: check_request refuses a removal option without a reason field).
+LEAVE_OUT_REASON = "e2e: left out"
 
 
 def source_field(ds: Dataset) -> Dict[str, Any]:
@@ -244,7 +247,13 @@ def groups_field(
         items.append(item)
     options: List[Any] = ["control", "treated"]
     if leave_out:
-        options.append({"id": LEAVE_OUT, "label": "leave out"})
+        options.append(
+            {
+                "id": LEAVE_OUT,
+                "label": "leave out",
+                "fields": [{"key": "reason", "type": "text"}],
+            }
+        )
     field: Dict[str, Any] = {
         "key": "groups",
         "type": "choice",
@@ -974,10 +983,16 @@ def press_in_plate(
         )
         digit = "0" if choice == "0" else str(list(choices).index(choice) + 1)
         tui.key(*keys, digit)
+        if choice == LEAVE_OUT:  # the reason box opens on the well
+            tui.type(LEAVE_OUT_REASON)
+            tui.key("enter")
         row, col = target_row, target_col
         last = (sid, choice)
     if last:
-        tui.wait_screen(f"{last[0]} set to ")  # the option's label follows
+        if last[1] == LEAVE_OUT:
+            tui.wait_screen(f"{last[0]}: leave out, reason saved.")
+        else:
+            tui.wait_screen(f"{last[0]} set to ")  # the option's label follows
     if submit:
         tui.key("enter")
 

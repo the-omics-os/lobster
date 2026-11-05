@@ -181,6 +181,7 @@ def test_slider_number():
                 "min": 0,
                 "max": 0.5,
                 "default": 0.2,
+                "step": 0.01,  # round: 0 to 0.5 in hundredths
                 "unit": "fraction",
             },
         )
@@ -956,7 +957,11 @@ EXAMPLE_DASHBOARD = [
         "options": [
             "control",
             "treated",
-            {"id": "leave_out", "label": "leave out of the comparison"},
+            {
+                "id": "leave_out",
+                "label": "leave out of the comparison",
+                "fields": [{"key": "reason", "type": "text"}],
+            },
         ],
         # S08 is unknown: no default, the scientist resolves it.
         "default": {i: {"id": c} for i, _, c, _ in _SAMPLES if c != "unknown"},
@@ -1063,9 +1068,9 @@ _EMPTIED = {
     "source": {"id": "SRC-A"},
     "groups": {
         **{i: {"id": c} for i, _, c, _ in _SAMPLES if c != "unknown"},
-        "S01": {"id": "leave_out"},
-        "S03": {"id": "leave_out"},
-        "S04": {"id": "leave_out"},
+        "S01": {"id": "leave_out", "fields": {"reason": "pilot run"}},
+        "S03": {"id": "leave_out", "fields": {"reason": "pilot run"}},
+        "S04": {"id": "leave_out", "fields": {"reason": "pilot run"}},
         "S08": {"id": "treated"},
     },
     "direction": {"id": "treated_vs_control"},
@@ -1105,7 +1110,10 @@ def test_go_dashboard_reply_to_the_reask_is_accepted():
     _, result = _ask(_example_reask(), ("submit", reply))
     answer = result["answer"]
     assert answer["groups"]["S01"] == {"id": "control"}  # the fix made in Go
-    assert answer["groups"]["S03"] == {"id": "leave_out"}  # kept from before
+    assert answer["groups"]["S03"] == {  # kept from before
+        "id": "leave_out",
+        "fields": {"reason": "pilot run"},
+    }
     assert answer["qc"]["S02"]["fields"] == {"reason": "low library size"}
     assert answer["direction"] == {"id": "treated_vs_control"}
 
@@ -1712,3 +1720,14 @@ def test_a_label_holding_the_id_is_not_repeated_in_a_follow_up():
         ("submit", {"answer": "fine"}),
     )
     assert drawn[1][1]["question"].startswith("TW.M07 (well C2, batch 1), yes: ")
+
+
+@pytest.mark.parametrize(
+    "low, high, step",
+    [(0.5, 0.99, 0.01), (0, 1, 0.01), (0, 1000, 1.0), (-5.5, 5.5, 0.1)],
+)
+def test_a_decimal_slider_gets_a_round_step(low, high, step):
+    """0.50 to 0.99 moved by 0.0049 and could not land on 0.75."""
+    field = {"key": "cut", "type": "number", "view": "slider", "min": low, "max": high}
+    drawn, _ = _ask(_request(field), ("submit", {"value": low}))
+    assert drawn[0][1]["step"] == step

@@ -50,8 +50,8 @@ func (c *ThresholdSliderComponent) Init(data json.RawMessage) error {
 		}
 	}
 	c.data = d
-	c.value = clamp(d.Default, d.Min, d.Max)
-	c.precision = decimalPlaces(d.Step)
+	c.precision = max(decimalPlaces(d.Step), decimalPlaces(math.Abs(d.Min)))
+	c.value = c.snap(d.Default)
 	c.pendingChange = false
 	return nil
 }
@@ -216,10 +216,19 @@ func (c *ThresholdSliderComponent) ChangeEvent() map[string]any {
 // Only sets pendingChange if the value actually changed.
 func (c *ThresholdSliderComponent) adjustValue(delta float64) {
 	old := c.value
-	c.value = clamp(c.value+delta, c.data.Min, c.data.Max)
+	c.value = c.snap(c.value + delta)
 	if c.value != old {
 		c.pendingChange = true
 	}
+}
+
+// snap puts v on the slider's grid, min + k*step, rounded to the step's
+// precision, within [min, max]: repeated steps never drift (0.75, not
+// 0.7499999), and a step of 0.01 from 0.50 can land on 0.75.
+func (c *ThresholdSliderComponent) snap(v float64) float64 {
+	v = clamp(v, c.data.Min, c.data.Max)
+	k := math.Round((v - c.data.Min) / c.data.Step)
+	return clamp(roundTo(c.data.Min+k*c.data.Step, c.precision), c.data.Min, c.data.Max)
 }
 
 // clamp restricts v to [lo, hi].

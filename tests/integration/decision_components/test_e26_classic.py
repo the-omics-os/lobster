@@ -141,14 +141,15 @@ def test_e26_classic_dashboard_reask_after_emptying_control(
     )
     first = (
         ["1"]
-        + ["3", "", "3", "3", "", "", "", "2"]  # only S02 stays control
+        # only S02 stays control; each sample left out is asked a reason
+        + ["3", "pilot", "", "3", "pilot", "3", "pilot", "", "", "", "2"]
         + ["1"]
         + ["3", "low library size", "1"]
         + ["y"]
     )
     second = (
         [""]  # source kept
-        + [""] * 8  # plate kept
+        + [""] * 11  # plate kept: 8 samples, and the 3 kept reasons
         + [""]  # direction kept
         + ["1", ""]  # S02 → retain; S06 kept
         + ["y"]
@@ -160,7 +161,10 @@ def test_e26_classic_dashboard_reask_after_emptying_control(
     result = tool_results(client)[cid]
     assert result["attempts"] == 2
     assert result["answer"]["qc"]["S02"] == {"id": "retain"}
-    assert result["answer"]["groups"]["S01"] == {"id": "leave_out"}
+    assert result["answer"]["groups"]["S01"] == {
+        "id": "leave_out",
+        "fields": {"reason": "pilot"},
+    }
 
 
 @pytest.mark.parametrize("key, action", [("d", "defer"), ("q", "cancel")])

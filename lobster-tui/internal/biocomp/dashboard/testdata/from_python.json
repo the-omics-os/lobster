@@ -52,7 +52,10 @@
           },
           {
             "id": "leave_out",
-            "label": "leave out of the comparison"
+            "label": "leave out of the comparison",
+            "reason": {
+              "key": "reason"
+            }
           }
         ],
         "wells": [

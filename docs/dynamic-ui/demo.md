@@ -177,7 +177,7 @@ uv run pytest tests/unit/cli/test_go_tui_components.py -q --no-cov
 
 | Screen | Keys |
 |---|---|
-| `choice`, one pick | ↑/↓ or k/j move · enter picks · 1–9 picks that option directly (up to 9 options) · ctrl+d defers · esc twice in a row cancels |
+| `choice`, one pick | every row is `( )` and the cursor is `>`; `(●)` marks only a default · ↑/↓ or k/j move · enter picks · 1–9 picks that option directly (up to 9 options) · ctrl+d defers · esc twice in a row cancels |
 | `choice`, several picks | ↑/↓ move · space ticks or unticks · enter sends once the number ticked is allowed · ctrl+d defers · esc twice in a row cancels |
 | `choice_list` (one row per item) | ↑/↓ or k/j rows (unavailable rows are skipped; rows out of view are counted as `↑ N more` / `↓ N more`) · →/← next or previous option · 1–9 option N · enter sends when every row has an option and every needed reason; otherwise it says what is missing · ctrl+d defers · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over) |
 | `choice_list` reason box | type the reason (every printable key goes into the box) · backspace · paste works · enter saves (an empty reason is refused) · esc discards the change · ←/→ still change the option |

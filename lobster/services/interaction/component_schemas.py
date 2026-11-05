@@ -1174,12 +1174,57 @@ def check_request(context: AskUserContext) -> List[Problem]:
     answers) can't trip them.
     """
     by_key = {field.key: field for field in context.fields}
-    problems: List[Problem] = []
+    problems: List[Problem] = _removals_without_reason(context.fields, "")
     for spec in context.checks:
         entry = CHECKS[spec["check"]]
         if entry["on"] == "request":
             problems += entry["run"](spec, by_key, None)
     return problems
+
+
+# An option whose id or label says it takes an item out of the analysis.
+_TAKES_OUT = re.compile(
+    r"\b(remov\w*|exclu\w*|drop\w*|discard\w*|leave\s*out|left\s*out)\b"
+)
+
+
+def _removals_without_reason(fields: List[Any], path: str) -> List[Problem]:
+    """Options that take something out (remove, exclude, drop, discard, leave
+    out) must ask for a reason, whatever checks the supervisor attached: a
+    removal is never recorded without one. Unavailable options are skipped
+    (they can't be picked); nested fields are checked too."""
+    problems: List[Problem] = []
+    for field in fields:
+        where = f"{path}{field.key}"
+        if field.type == "record":
+            problems += _removals_without_reason(field.fields, f"{where}.")
+        if field.type != "choice":
+            continue
+        for option in field.options:
+            if option.fields:
+                problems += _removals_without_reason(
+                    option.fields, f"{where}.{option.id}."
+                )
+            if option.unavailable or _asks_a_reason(option):
+                continue
+            words = f"{option.id} {option.label}".replace("_", " ").replace("-", " ")
+            if _TAKES_OUT.search(words.lower()):
+                problems.append(
+                    _problem(
+                        where,
+                        f"option '{option.id}' takes something out: give it a "
+                        "reason field",
+                    )
+                )
+    return problems
+
+
+def _asks_a_reason(option: Any) -> bool:
+    """The option asks for at least one required text field."""
+    return any(
+        sub.type == "text" and (sub.count is None or sub.count.min >= 1)
+        for sub in option.fields or []
+    )
 
 
 def check_value(field: Any, value: Any, path: str, partial: bool = False) -> Any:

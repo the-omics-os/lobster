@@ -25,6 +25,10 @@
           "supplied": "leave_out"
         }
       ],
+      "reasons": {
+        "S03": "pilot run",
+        "S04": "pilot run"
+      },
       "reviewed_flags": []
     },
     "qc": {

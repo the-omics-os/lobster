@@ -739,6 +739,23 @@ The plate puts each sample into one group (`plate_map`). What it shows, and why:
   screen counts). When a per-item question that could be a plate pre-filled no item, the result
   carries the note "ask over all the samples, with the known ones pre-filled, so the user sees
   them in context" (not when a `no_default_for` check covers the field, as in a QC review).
+- **A removal always asks a reason.** `check_request` returns `invalid_context` for an option whose
+  id or label says it takes something out (remove, exclude, drop, discard, leave out) and that has no
+  required text field: `option 'remove' takes something out: give it a reason field`. It doesn't depend
+  on a `reason_required` check. It goes by words, so an option named like `removed_batch_effect` (a
+  source, not a removal) is refused too; rename it or give it a reason field
+  (`test_an_option_that_takes_something_out_needs_a_reason`).
+- **Decimal sliders move in round steps.** The adapter sends a step from the decimals in `min` and
+  `max` (0.50 to 0.99: 0.01), ten times finer until there are at least 20 positions (0 to 1: 0.01);
+  the slider puts every value on `min + k × step`, rounded to the step, so 0.75 is reachable and steps
+  never drift (`test_a_decimal_slider_gets_a_round_step`, `TestValuesLandOnTheStepGrid`).
+- **The "ask over all" note is for groupings only.** It reads "When samples are being put into groups,
+  ask over all of them; never pre-fill exclusions or QC decisions." and is added only to a per-item
+  question that fits a plate and has at least two options that are groups, not a removal or a QC
+  verdict (retain, keep, defer, flag, review, pass, fail), so a keep/exclude review never gets it
+  (`test_a_qc_review_gets_no_note`).
+- **A single choice shows no pick it doesn't have.** Every row is `( )`; the cursor is the `>`
+  pointer; `(●)` marks only a real default (`TestASingleChoiceShowsADotOnlyForItsDefault`).
 - **Context sent as text.** A `context` that is JSON text for an object is read as that object;
   other text is refused with `invalid_context` (`test_context_sent_as_json_text_is_read`).
 - **No chat box under a question.** While a question is on screen (inline mode too), the chat box

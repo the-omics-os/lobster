@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from tests.integration.decision_components._harness import (
     LEAVE_OUT,
+    LEAVE_OUT_REASON,
     QC_CHECKS,
     answer_rows,
     ask,
@@ -166,7 +167,7 @@ def test_e05_unresolved_sample_left_out_is_in_no_group(start_tui, review8):
     result = tool_results(tui.client)[cid]
     assert result["action"] == "submit"
     groups = result["answer"]["groups"]
-    assert groups["S08"] == {"id": LEAVE_OUT}
+    assert groups["S08"] == {"id": LEAVE_OUT, "fields": {"reason": LEAVE_OUT_REASON}}
     assert "S08" not in [
         s for s, g in groups.items() if g["id"] in ("control", "treated")
     ]

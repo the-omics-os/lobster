@@ -25,6 +25,7 @@ from __future__ import annotations
 import math
 import re
 import uuid
+from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from lobster.services.interaction.component_schemas import (
@@ -413,6 +414,8 @@ def _render_one(
             # A hundredth of the range per key (shift: a tenth), as the
             # slider does for decimals, but whole: never 1 read in 18 million.
             data["step"] = max(1, round((field.max - field.min) / 100))
+        else:
+            data["step"] = _round_step(field.min, field.max)
         return "threshold_slider", _with(data, "unit", field.unit)
     # text, and numbers without a slider (typed in, parsed here).
     hint = _number_hint(field) if field.type == "number" else None
@@ -420,6 +423,25 @@ def _render_one(
     if default is not None:
         data["placeholder"] = f"Enter = keep {default}"
     return "text_input", data
+
+
+def _round_step(low: float, high: float) -> float:
+    """A round step for a decimal slider, from the decimals in its bounds:
+    0.50 and 0.99 give 0.01, so 0.75 can be reached (a hundredth of the
+    range, 0.0049, could not). It is made ten times finer until the slider
+    has at least 20 positions, so 0 to 1 gets 0.01, not 1."""
+    places = max(
+        0,
+        *(
+            -Decimal(str(bound)).normalize().as_tuple().exponent
+            for bound in (low, high)
+        ),
+    )
+    step = Decimal(1).scaleb(-places)
+    span = Decimal(str(high)) - Decimal(str(low))
+    while span / step < 20:
+        step = step.scaleb(-1)
+    return float(step)
 
 
 def _plate_data(field: Any, question: str) -> Dict[str, Any]:

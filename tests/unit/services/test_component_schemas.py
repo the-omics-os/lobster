@@ -751,7 +751,8 @@ def test_reason_required_needs_a_required_text_field_on_each_option():
         ],
     }
     for qc in (no_reason, optional):
-        (problem,) = check_request(_context(qc, checks=[spec]))
+        # The removal rule also names 'exclude'; this test is about the check.
+        (problem,) = _without_removal_rule(check_request(_context(qc, checks=[spec])))
         assert problem.path == "qc"
         assert "'exclude' needs a required text field" in problem.message
 
@@ -762,11 +763,11 @@ def test_no_default_for_refuses_prefilled_items():
         "default": {"S01": {"id": "control"}, "S08": {"id": "treated"}},
     }
     spec = {"check": "no_default_for", "field": "groups", "items": ["S08"]}
-    (problem,) = check_request(_context(field, checks=[spec]))
+    (problem,) = _without_removal_rule(check_request(_context(field, checks=[spec])))
     assert problem.path == "groups"
     assert "pre-fills S08" in problem.message
     allowed = {**GROUPS_8, "default": {"S01": {"id": "control"}}}
-    assert check_request(_context(allowed, checks=[spec])) == []
+    assert _without_removal_rule(check_request(_context(allowed, checks=[spec]))) == []
 
 
 def test_no_default_for_refuses_a_listed_option_for_listed_items():
@@ -799,13 +800,17 @@ def test_no_default_for_without_items_or_options_means_no_default():
 def test_no_default_for_sees_a_bare_id_default():
     """U-17: the check runs on the normalised default."""
     items = {"check": "no_default_for", "field": "groups", "items": ["S08"]}
-    (problem,) = check_request(
-        _context({**GROUPS_8, "default": {"S08": "treated"}}, checks=[items])
+    (problem,) = _without_removal_rule(
+        check_request(
+            _context({**GROUPS_8, "default": {"S08": "treated"}}, checks=[items])
+        )
     )
     assert "pre-fills S08" in problem.message
     options = {"check": "no_default_for", "field": "groups", "options": ["leave_out"]}
-    (problem,) = check_request(
-        _context({**GROUPS_8, "default": {"S03": "leave_out"}}, checks=[options])
+    (problem,) = _without_removal_rule(
+        check_request(
+            _context({**GROUPS_8, "default": {"S03": "leave_out"}}, checks=[options])
+        )
     )
     assert "pre-fills S03 with 'Leave out'" in problem.message
     single = {"check": "no_default_for", "field": "source", "options": ["SRC-A"]}
@@ -1259,3 +1264,65 @@ def test_fingerprint_refuses_a_pipe_instead_of_waiting_on_it(tmp_path):
         fingerprint(["data/pipe.csv"], workspace)
     snapshot = fingerprint(["data/pipe.csv"], workspace, missing_ok=True)
     assert snapshot.files[0].sha256 is None
+
+
+def _without_removal_rule(problems):
+    """The problems other than "takes something out: give it a reason field"."""
+    return [p for p in problems if "takes something out" not in p.message]
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        "remove",
+        "exclude",
+        "drop_sample",
+        "discard",
+        "leave_out",
+        {"id": "x", "label": "Leave out of the comparison"},
+        {"id": "removed", "label": "Removed"},
+    ],
+)
+def test_an_option_that_takes_something_out_needs_a_reason(option):
+    """Without depending on a reason_required check (v4 live test 1.1)."""
+    field = {
+        "key": "qc",
+        "type": "choice",
+        "for_each": ["S01"],
+        "options": ["retain", option],
+    }
+    (problem,) = check_request(_context(field))
+    option_id = option if isinstance(option, str) else option["id"]
+    assert problem.path == "qc"
+    assert problem.message == (
+        f"option '{option_id}' takes something out: give it a reason field"
+    )
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        {"id": "exclude", "fields": [{"key": "reason", "type": "text"}]},
+        {"id": "drop", "unavailable": "locked"},
+        "retain",
+        "control",
+    ],
+)
+def test_a_removal_with_a_reason_or_no_removal_passes(option):
+    field = {
+        "key": "qc",
+        "type": "choice",
+        "for_each": ["S01"],
+        "options": ["keep", option],
+    }
+    assert check_request(_context(field)) == []
+
+
+def test_a_removal_inside_a_record_is_found():
+    field = {
+        "key": "plan",
+        "type": "record",
+        "fields": [{"key": "step", "type": "choice", "options": ["run", "discard"]}],
+    }
+    (problem,) = check_request(_context(field))
+    assert problem.path == "plan.step"
