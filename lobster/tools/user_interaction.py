@@ -40,6 +40,7 @@ from lobster.services.interaction.component_schemas import (
     fingerprint,
     reask,
     reread_items,
+    watch_data_folder,
 )
 
 if TYPE_CHECKING:
@@ -206,7 +207,8 @@ def create_ask_user_tool(
                  why; never drop it or mention it only in "details".
         data_files: workspace-relative paths of the files the decision is
                  about; if one changes before the user answers, they are
-                 asked again.
+                 asked again. data_files limits which files are watched;
+                 without it, every file in data/ is.
         To put items into groups, ask ONE choice field with for_each over
         every item; never one field per item: checks only see groups asked as
         one field. Use view "plate_map" to put samples into groups, one group
@@ -403,6 +405,10 @@ def _build_request(
             snapshot = fingerprint(asked.data_files, workspace)
         except ValueError as error:
             return [Problem(path="data_files", message=str(error))]
+    elif workspace is not None:
+        # Nothing named: watch the data folder, so a change to the file the
+        # question was built from is caught even when the supervisor forgot.
+        snapshot = watch_data_folder(workspace)
     return DecisionRequest(
         decision_id=decision_id,
         question=question,

@@ -19,6 +19,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import math
+import os
 import re
 import stat
 import uuid
@@ -43,6 +44,7 @@ from pydantic import (
     Field,
     ValidationError,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -551,8 +553,22 @@ class FileFingerprint(BaseModel):
     path: str = Field(min_length=1, description="Workspace-relative path")
     sha256: Optional[str] = Field(
         default=None,
-        description="Hex digest; None only in a fresh reading of a file that is gone",
+        description="Hex digest; None for a quick fingerprint, or in a fresh "
+        "reading of a file that is gone",
     )
+    quick: Optional[str] = Field(
+        default=None,
+        description="Set instead of sha256 for a file above QUICK_FINGERPRINT_BYTES: "
+        '"<size> bytes, modified <mtime_ns>" (fingerprinted by size and time)',
+    )
+
+    @model_serializer(mode="wrap")
+    def _leave_out_unset_quick(self, handler: Any) -> Dict[str, Any]:
+        """A hashed file's fingerprint stays {"path", "sha256"}, as before."""
+        data = handler(self)
+        if data.get("quick") is None:
+            data.pop("quick", None)
+        return data
 
 
 class FileSnapshot(BaseModel):
@@ -565,11 +581,65 @@ class FileSnapshot(BaseModel):
 
 _CHUNK = 1024 * 1024
 
+# Files larger than this are fingerprinted by size and modification time
+# instead of being read in full, so a large .h5ad never slows a question.
+QUICK_FINGERPRINT_BYTES = 50 * 1024 * 1024
+
+# The most files the default watch (the workspace's data/ folder) records.
+DATA_FOLDER_LIMIT = 500
+
+
+def data_folder_files(
+    workspace: Union[str, Path], limit: int = DATA_FOLDER_LIMIT
+) -> List[str]:
+    """Workspace-relative paths of the regular files in the workspace's data/
+    folder and its subfolders, in a stable order: hidden files and folders
+    and links are skipped, and the list stops at ``limit``. Empty when the
+    folder is missing."""
+    root = Path(workspace).resolve()
+    folder = root / "data"
+    if folder.is_symlink() or not folder.is_dir():
+        return []
+    found: List[str] = []
+    for current, folders, names in os.walk(folder):  # links are not followed
+        folders[:] = sorted(name for name in folders if not name.startswith("."))
+        for name in sorted(names):
+            path = Path(current) / name
+            if name.startswith(".") or path.is_symlink() or not path.is_file():
+                continue
+            found.append(path.relative_to(root).as_posix())
+            if len(found) >= limit:
+                return found
+    return found
+
+
+def watch_data_folder(workspace: Union[str, Path]) -> Optional[FileSnapshot]:
+    """The fingerprints of the data/ folder's files, for a question that
+    named no data_files; None when there is nothing to watch. A file that
+    can't be read is left out rather than stopping the question."""
+    paths = data_folder_files(workspace)
+    if not paths:
+        return None
+    readable = [
+        entry
+        for entry in fingerprint(paths, workspace, missing_ok=True).files
+        if _seen(entry) is not None
+    ]
+    return FileSnapshot(files=readable) if readable else None
+
+
+def _seen(entry: FileFingerprint) -> Optional[Tuple[Optional[str], Optional[str]]]:
+    """What a fingerprint recorded, or None for a file that is gone."""
+    if entry.sha256 is None and entry.quick is None:
+        return None
+    return entry.sha256, entry.quick
+
 
 def fingerprint(
     paths: Iterable[str], workspace: Union[str, Path], missing_ok: bool = False
 ) -> FileSnapshot:
-    """sha256 of each workspace file, read in chunks.
+    """sha256 of each workspace file, read in chunks; for a file above
+    QUICK_FINGERPRINT_BYTES, its size and modification time instead.
 
     Paths must be relative and stay inside the workspace (no absolute paths,
     no "..", no links out). A file that breaks this, or is missing or
@@ -582,21 +652,29 @@ def fingerprint(
     for raw in paths:
         relative = Path(raw)
         try:
-            digest = _sha256_inside(root, relative, raw)
+            digest, quick = _fingerprint_inside(root, relative, raw)
         except (OSError, RuntimeError, ValueError):
             # RuntimeError: a link loop on Python < 3.13.
             if not missing_ok:
                 raise
-            digest = None
-        files.append(FileFingerprint(path=relative.as_posix(), sha256=digest))
+            digest = quick = None
+        files.append(
+            FileFingerprint(path=relative.as_posix(), sha256=digest, quick=quick)
+        )
     return FileSnapshot(files=files)
 
 
-def _sha256_inside(root: Path, relative: Path, raw: str) -> str:
-    """sha256 of ``root / relative``; ValueError if it is outside or unreadable."""
+def _fingerprint_inside(
+    root: Path, relative: Path, raw: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """(sha256, None), or (None, size and time) for a big file; ValueError if
+    the file is outside the workspace or unreadable."""
     resolved = _file_inside(root, relative, raw)
     try:
-        return _sha256(resolved)
+        status = resolved.stat()
+        if status.st_size > QUICK_FINGERPRINT_BYTES:
+            return None, f"{status.st_size} bytes, modified {status.st_mtime_ns}"
+        return _sha256(resolved), None
     except OSError as error:
         reason = error.strerror or type(error).__name__
         raise ValueError(f"can't read {raw!r} in the workspace ({reason})") from error
@@ -1063,11 +1141,11 @@ def check_answer(
 
 def _changed_files(asked: FileSnapshot, now: FileSnapshot) -> List[str]:
     """Paths whose content differs from when the question was asked, or is gone."""
-    current = {entry.path: entry.sha256 for entry in now.files}
+    current = {entry.path: _seen(entry) for entry in now.files}
     return [
         entry.path
         for entry in asked.files
-        if current.get(entry.path) is None or current[entry.path] != entry.sha256
+        if current.get(entry.path) is None or current[entry.path] != _seen(entry)
     ]
 
 
@@ -1344,14 +1422,11 @@ def reask(
         "prefilled_from_answer": prefilled,
     }
     if snapshot is not None and request.snapshot is not None:
-        fresh = {entry.path: entry.sha256 for entry in snapshot.files}
+        fresh = {
+            entry.path: entry for entry in snapshot.files if _seen(entry) is not None
+        }
         update["snapshot"] = FileSnapshot(
-            files=[
-                FileFingerprint(
-                    path=entry.path, sha256=fresh.get(entry.path) or entry.sha256
-                )
-                for entry in request.snapshot.files
-            ]
+            files=[fresh.get(entry.path, entry) for entry in request.snapshot.files]
         )
     return request.model_copy(update=update)
 
@@ -1424,17 +1499,10 @@ def reread_items(
         fields.append(rebuilt)
     update: Dict[str, Any] = {"fields": fields, "problems": problems}
     if unreadable and before is not None and request.snapshot is not None:
-        old_sha = {entry.path: entry.sha256 for entry in before.files}
+        old = {entry.path: entry for entry in before.files}
         update["snapshot"] = FileSnapshot(
             files=[
-                FileFingerprint(
-                    path=entry.path,
-                    sha256=(
-                        old_sha.get(entry.path, entry.sha256)
-                        if entry.path in unreadable
-                        else entry.sha256
-                    ),
-                )
+                old.get(entry.path, entry) if entry.path in unreadable else entry
                 for entry in request.snapshot.files
             ]
         )

@@ -1251,3 +1251,45 @@ def test_no_note_when_items_are_pre_filled_or_left_open_on_purpose():
     assert "note" not in _settle(_per_item(default={"S07": "vehicle"}), ANSWERED)
     check = [{"check": "no_default_for", "field": "groups", "items": ["S07", "S13"]}]
     assert "note" not in _settle(_per_item(checks=check), ANSWERED)
+
+
+# --- the data folder is watched when data_files is left out ---
+
+
+def _folder_workspace(tmp_path):
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "layout.csv").write_text("sample,well\nS1,A1\n")
+    (tmp_path / "data" / "counts.csv").write_text("gene,S1\nG1,5\n")
+    return tmp_path
+
+
+def test_without_data_files_the_data_folder_is_watched(tmp_path):
+    workspace = _folder_workspace(tmp_path)
+    tool = create_ask_user_tool(workspace_path=workspace)
+    graph, pending = _ask(SOURCE, tool=tool)
+    paths = [entry["path"] for entry in pending.value["snapshot"]["files"]]
+    assert paths == ["data/counts.csv", "data/layout.csv"]
+
+    (workspace / "data" / "layout.csv").write_text("sample,well\nS1,D1\n")
+    (workspace / "data" / "new.csv").write_text("added during the question\n")
+    again = _answer_pending(graph, pending, {"source": {"id": "SRC-A"}})
+    assert [p["message"] for p in again.value["problems"]] == [
+        "the data changed while you were reviewing it: data/layout.csv"
+    ]  # the new file is not a change
+    assert _answer_pending(graph, again, {"source": {"id": "SRC-A"}}) is None
+    assert _tool_results(graph)["call_1"]["action"] == "submit"
+
+
+def test_named_data_files_are_the_only_ones_watched(tmp_path):
+    workspace = _folder_workspace(tmp_path)
+    tool = create_ask_user_tool(workspace_path=workspace)
+    _, pending = _ask({**SOURCE, "data_files": ["data/counts.csv"]}, tool=tool)
+    assert [e["path"] for e in pending.value["snapshot"]["files"]] == [
+        "data/counts.csv"
+    ]
+
+
+def test_without_a_data_folder_nothing_is_watched(tmp_path):
+    tool = create_ask_user_tool(workspace_path=tmp_path)
+    _, pending = _ask(SOURCE, tool=tool)
+    assert pending.value.get("snapshot") is None

@@ -471,6 +471,14 @@ block the read (`invalid_context`; `test_fingerprint_refuses_a_pipe_instead_of_w
 refused too (`test_untrusted_or_missing_data_file_is_invalid_context`,
 `test_data_files_without_a_workspace_is_invalid_context`).
 
+**Without `data_files`, Python watches the workspace's `data/` folder:** every regular file in it and
+its subfolders (hidden files and links skipped, at most 500 files) is fingerprinted when the question
+is built, so a change to the file a question was built from is caught even when the supervisor named
+none; a named `data_files` list watches only those files, and files added during the question are
+ignored (`test_without_data_files_the_data_folder_is_watched`). A file above 50 MB is fingerprinted by
+its size and modification time instead of its sha256 (`quick`), so a large `.h5ad` never slows a
+question (`test_a_big_file_is_fingerprinted_by_size_and_time`).
+
 When a `submit` arrives, Python reads the files again. If any differs, the answer is stale with the
 problem `the data changed while you were reviewing it: <path>`, and the question comes back with fresh
 fingerprints and the answers kept (`test_data_edited_before_submit_is_asked_again_with_answers_kept`).
