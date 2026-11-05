@@ -756,6 +756,13 @@ The plate puts each sample into one group (`plate_map`). What it shows, and why:
   (`test_a_qc_review_gets_no_note`).
 - **A single choice shows no pick it doesn't have.** Every row is `( )`; the cursor is the `>`
   pointer; `(●)` marks only a real default (`TestASingleChoiceShowsADotOnlyForItsDefault`).
+- **The result says why a question came back.** A result after a re-ask carries `reasked_because`:
+  the problem messages of every re-asked version, in order, once each (for example `the data changed
+  while you were reviewing it: data/layout.csv`), so the supervisor can explain it
+  (`test_the_result_says_why_the_question_came_back`). After the five-refusal limit, the note also says
+  "Don't ask the same question again in this turn; tell the user what failed first." When the
+  supervisor asks again itself, the guidance tells it to put the user's earlier answers in `default`.
+  An empty `for_each` next to `items_from` counts as left out.
 - **Context sent as text.** A `context` that is JSON text for an object is read as that object;
   other text is refused with `invalid_context` (`test_context_sent_as_json_text_is_read`).
 - **No chat box under a question.** While a question is on screen (inline mode too), the chat box

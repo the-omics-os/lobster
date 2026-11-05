@@ -601,6 +601,14 @@ def test_five_rejections_in_a_row_return_rejected():
     assert (result["action"], result["attempts"]) == ("rejected", 5)
     assert result["problems"][0]["path"] == "source"
     assert "nothing was decided" in result["note"]
+    # v4 2.4: and it must not just ask the same question again.
+    assert (
+        "Don't ask the same question again in this turn; tell the user what "
+        "failed first." in result["note"]
+    )
+    # v4 2.3: why it came back, once each.
+    assert len(result["reasked_because"]) == 1
+    assert "SRC-C" in result["reasked_because"][0]
 
 
 def test_resume_with_a_non_pending_interrupt_id():
@@ -1308,3 +1316,31 @@ def test_without_a_data_folder_nothing_is_watched(tmp_path):
     tool = create_ask_user_tool(workspace_path=tmp_path)
     _, pending = _ask(SOURCE, tool=tool)
     assert pending.value.get("snapshot") is None
+
+
+def test_the_result_says_why_the_question_came_back(tmp_path):
+    """v4 2.3: the supervisor can explain a re-ask."""
+    workspace = _folder_workspace(tmp_path)
+    tool = create_ask_user_tool(workspace_path=workspace)
+    graph, pending = _ask(SOURCE, tool=tool)
+    (workspace / "data" / "layout.csv").write_text("sample,well\nS1,D1\n")
+    again = _answer_pending(graph, pending, {"source": {"id": "SRC-A"}})
+    _answer_pending(graph, again, {"source": {"id": "SRC-A"}})
+    result = _tool_results(graph)["call_1"]
+    assert result["reasked_because"] == [
+        "the data changed while you were reviewing it: data/layout.csv"
+    ]
+
+
+def test_an_answer_at_the_first_attempt_has_no_reasked_because():
+    graph, pending = _ask(SOURCE)
+    _answer_pending(graph, pending, {"source": {"id": "SRC-A"}})
+    assert "reasked_because" not in _tool_results(graph)["call_1"]
+
+
+def test_the_supervisor_is_told_to_pre_fill_earlier_answers_when_it_asks_again():
+    """v4 2.5: it re-asked showing an item the user had dropped as undecided."""
+    assert (
+        "When you ask again yourself, put the user's earlier"
+        in create_ask_user_tool().description
+    )

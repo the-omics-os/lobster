@@ -290,3 +290,12 @@ def test_an_unavailable_column_that_is_missing_is_refused(workspace):
     spec = {**SPEC, "unavailable": {"column": "kind", "values": {"qc": "qc"}}}
     _, problems = _expand(workspace, spec)
     assert "no column 'kind'" in problems[0].message
+
+
+def test_an_empty_for_each_next_to_items_from_counts_as_left_out(workspace):
+    """v4 2.6: it was refused as "give for_each or items_from, not both"."""
+    context, problems = _expand(workspace, for_each=[])
+    assert problems == []
+    assert len(context["fields"][0]["for_each"]) == 5
+    _, problems = _expand(workspace, for_each=["S1"])
+    assert "not both" in problems[0].message

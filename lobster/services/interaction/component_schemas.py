@@ -769,7 +769,7 @@ def _expand_field(
         ]
     if field.get("type") != "choice":
         return field, [_problem(where, "items_from is only for a choice field")]
-    if "for_each" in field:
+    if field.get("for_each"):  # an empty for_each counts as left out
         return field, [_problem(where, "give for_each or items_from, not both")]
     if field.get("default") is not None:
         return field, [

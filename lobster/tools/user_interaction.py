@@ -58,7 +58,9 @@ _FREE_TEXT_NOTE = (
 )
 _REJECTED_NOTE = (
     "The user's answers kept failing these checks; nothing was decided. "
-    "Tell the user what failed and how to answer, or ask differently."
+    "Tell the user what failed and how to answer, or ask differently. "
+    "Don't ask the same question again in this turn; tell the user what "
+    "failed first."
 )
 
 # --- Request cache ---------------------------------------------------------
@@ -177,7 +179,10 @@ def create_ask_user_tool(
           details   evidence or your recommendation; shown, never applied
           default   a pre-filled answer, shaped exactly like the answer; a
                     choice only the user can make (an unresolved item, an
-                    exclusion, a choice the data doesn't settle) gets no default
+                    exclusion, a choice the data doesn't settle) gets no default.
+                    When you ask again yourself, put the user's earlier
+                    answers in default, so they see what they already
+                    decided (an item they dropped shows as dropped)
           count     {"min", "max"}: how many values; the answer becomes a list
           for_each  [item, ...]: ask the same field once per item; answer keyed by id
           items_from  (choice) read for_each and default from a workspace CSV or
@@ -464,16 +469,34 @@ async def _ask_until_settled(
             continue
         outcome = await _judge(request, raw, workspace)
         if isinstance(outcome, dict):
-            return {**outcome, **_changed(shown[0], outcome), "attempts": attempt}
+            return {
+                **outcome,
+                **_changed(shown[0], outcome),
+                **_reasked_because(shown[:attempt]),
+                "attempts": attempt,
+            }
         if attempt >= _MAX_REJECTED:
             return {
                 "decision_id": request.decision_id,
                 "action": "rejected",
                 "problems": [problem.model_dump() for problem in outcome.problems],
+                **_reasked_because(shown[:attempt]),
                 "attempts": attempt,
                 "note": _REJECTED_NOTE,
             }
         shown.append(outcome)
+
+
+def _reasked_because(asked: List[DecisionRequest]) -> Dict[str, Any]:
+    """Why the question came back: each re-asked version's problem messages,
+    in order, once each, so the supervisor can explain a re-ask (e.g. that
+    the data changed while the user was answering)."""
+    messages: List[str] = []
+    for version in asked[1:]:
+        for problem in version.problems:
+            if problem.message not in messages:
+                messages.append(problem.message)
+    return {"reasked_because": messages} if messages else {}
 
 
 def _changed(first: DecisionRequest, result: Dict[str, Any]) -> Dict[str, Any]:
