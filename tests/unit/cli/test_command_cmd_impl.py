@@ -6,6 +6,15 @@ import typer
 from lobster.cli_internal.commands.heavy import slash_commands
 
 
+@pytest.fixture(autouse=True)
+def preserve_shared_console_target(monkeypatch):
+    # Rich's file getter resolves a dynamic None target to the active capture
+    # stream. command_cmd_impl restores through its setter, pinning that stream.
+    # Preserve the underlying target across each test, not a soon-stale getter
+    # result, so a JSON-command test cannot leak capture state to later modules.
+    monkeypatch.setattr(slash_commands.console, "_file", slash_commands.console._file)
+
+
 class _StubCommandClient:
     def __init__(self, workspace_path, session_id=None):
         self.workspace_path = workspace_path

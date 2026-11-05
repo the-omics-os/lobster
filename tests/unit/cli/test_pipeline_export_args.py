@@ -20,6 +20,14 @@ from lobster.cli_internal.commands.light.pipeline_commands import (
 )
 
 
+@pytest.fixture(autouse=True)
+def preserve_shared_console_target(monkeypatch):
+    # command_cmd_impl's file getter/setter round-trip can pin pytest's
+    # temporary capture stream. Restore Rich's underlying dynamic target at
+    # the test boundary so export tests do not contaminate later setup tests.
+    monkeypatch.setattr(slash_commands.console, "_file", slash_commands.console._file)
+
+
 @pytest.mark.parametrize(
     ("args", "expected"),
     [

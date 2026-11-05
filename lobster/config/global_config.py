@@ -91,6 +91,30 @@ def global_credentials_exist() -> bool:
     return get_global_credentials_path().exists()
 
 
+def _open_private_file(path: Path, *, binary: bool = False, exclusive: bool = False):
+    """Open a secret file at 0600 before truncating or writing any contents.
+
+    Existing files are tightened before rewrite. Permission failures propagate;
+    this is not an atomic replacement or a rollback of an earlier configuration.
+    """
+    flags = os.O_WRONLY | os.O_CREAT
+    if exclusive:
+        flags |= os.O_EXCL
+    fd = os.open(path, flags, CREDENTIALS_FILE_MODE)
+    try:
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, CREDENTIALS_FILE_MODE)
+        else:
+            os.chmod(path, CREDENTIALS_FILE_MODE)
+        os.ftruncate(fd, 0)
+        return os.fdopen(
+            fd, "wb" if binary else "w", encoding=None if binary else "utf-8"
+        )
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def save_global_credentials(env_vars: dict, append: bool = False) -> Path:
     """
     Save credentials to global credentials.env with secure permissions.
@@ -149,16 +173,9 @@ def save_global_credentials(env_vars: dict, append: bool = False) -> Path:
     if not content.endswith("\n"):
         content += "\n"
 
-    credentials_path.write_text(content)
-
-    # Set secure permissions (owner read/write only)
-    try:
-        credentials_path.chmod(CREDENTIALS_FILE_MODE)
-        logger.info(f"Saved global credentials to {credentials_path} (mode: 0o600)")
-    except Exception as e:
-        # On some systems (Windows), chmod may not work as expected
-        logger.warning(f"Could not set secure permissions on {credentials_path}: {e}")
-        logger.info(f"Saved global credentials to {credentials_path}")
+    with _open_private_file(credentials_path) as stream:
+        stream.write(content)
+    logger.info(f"Saved global credentials to {credentials_path} (mode: 0o600)")
 
     return credentials_path
 

@@ -10,7 +10,7 @@ Usage:
       export LOBSTER_LLM_PROVIDER=omics-os
 
     Or authenticate via CLI:
-      lobster cloud login
+      lobster cloud login --api-key <key>
 """
 
 import logging
@@ -142,10 +142,9 @@ class OmicsOSProvider(ILLMProvider):
 
         api_key = kwargs.pop("api_key", None) or get_api_key()
         if not api_key:
-            raise ValueError(
-                "Omics-OS Cloud not configured. "
-                "Run 'lobster cloud login' or set OMICS_OS_API_KEY."
-            )
+            from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
+
+            raise ValueError("Omics-OS Cloud not configured. " + OMICS_OS_AUTH_GUIDANCE)
 
         # Validate the endpoint before attaching the token: this is the default
         # `lobster chat` path, so a poisoned profile/env endpoint would exfil the
@@ -171,14 +170,12 @@ class OmicsOSProvider(ILLMProvider):
         )
 
     def get_configuration_help(self) -> str:
+        from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
+
         return (
-            "Configure Omics-OS Cloud (managed Bedrock via gateway):\n\n"
-            "1. Authenticate via CLI:\n"
-            "   lobster cloud login\n\n"
-            "2. Or set environment variable:\n"
-            "   export OMICS_OS_API_KEY=omk_...\n\n"
-            "Get your API key at: https://app.omics-os.com/settings/api-keys\n\n"
-            f"Default model: {self.get_default_model()}"
+            "Configure the Python Omics-OS Cloud provider (managed Bedrock gateway):\n\n"
+            + OMICS_OS_AUTH_GUIDANCE
+            + f"\n\nDefault model: {self.get_default_model()}"
         )
 
 

@@ -34,13 +34,22 @@
 
 **1. Install Lobster AI (macOS/Linux):**
 ```bash
-curl -fsSL https://install.lobsterbio.com | bash
+curl -fsSL https://install.lobsterbio.com -o install.sh && bash install.sh
 ```
-*(Windows users: `irm https://install.lobsterbio.com/windows | iex`)*
+*(Download first, then run: the installer asks interactive questions that a piped `curl | bash` cannot read. Windows users: `irm https://install.lobsterbio.com/windows | iex`)*
 
-**2. Configure your LLM (Anthropic, Gemini, local Ollama, etc.):**
+**2. Configure your LLM** (skip if you already chose a provider during install):
 ```bash
 lobster init
+```
+Pick a provider — Omics-OS Cloud (managed, API key from [app.omics-os.com/account](https://app.omics-os.com/account)), Anthropic, Gemini, or a local Ollama.
+
+Non-interactive setup (agents, CI, scripts):
+```bash
+export OMICS_OS_API_KEY="..."             # from app.omics-os.com/account
+lobster init --non-interactive --global --use-omics-os --skip-extras
+lobster status                            # shows configuration, not account proof
+lobster config-test --json                # optional: one real connectivity check
 ```
 
 <details>
@@ -102,7 +111,7 @@ lobster query --session-id latest "Download the first result"  # resume last ses
 ```bash
 lobster scaffold agent --name my_expert --display-name "My Expert" \
   --description "Description" --tier free   # Generate a new agent package
-lobster validate-plugin ./my-package/        # Validate package structure (7 checks)
+lobster validate-plugin ./lobster-my/       # Validate package structure and AQUADIF contract
 ```
 
 <br/>
@@ -236,6 +245,12 @@ lobster chat
 > /status                  # Session info
 > /help                    # All commands
 ```
+
+Headless re-runs: execute the exported notebook with Papermill — only names in the
+notebook's parameters cell can be overridden:
+```bash
+papermill analysis.ipynb output.ipynb -p input_data "new_dataset.h5ad"
+```
 </details>
 
 <details>
@@ -248,9 +263,18 @@ irm https://install.lobsterbio.com/windows | iex
 
 **uv** (recommended manual install):
 ```bash
-uv tool install 'lobster-ai[full]'              # All agents, choose provider at init
+uv tool install 'lobster-ai[full]'   # All bundled domains (transcriptomics, genomics,
+                                     #  proteomics) + metadata assistant; provider at init
 lobster init
 ```
+
+Optional domains ship as separate packages — add them to the same tool environment:
+```bash
+uv tool install 'lobster-ai[full]' --with lobster-metabolomics --with lobster-ml \
+  --with lobster-drug-discovery --with lobster-structural-viz
+```
+Re-running `uv tool install` rebuilds the tool environment: extras and `--with` packages
+reset to whatever the new command includes — list them again when upgrading.
 
 **pip**:
 ```bash
@@ -292,12 +316,13 @@ run_analysis.tags = ["ANALYZE"]
 
 **3. Validate the package structure** before wiring:
 ```bash
-lobster validate-plugin ./my-domain-package/
+lobster validate-plugin ./lobster-my_domain/
 ```
 
 **4. Install and test:**
 ```bash
-uv pip install -e ./my-domain-package/
+cd lobster-my_domain && uv venv --python 3.12 .venv && source .venv/bin/activate
+uv pip install -e . pytest
 pytest -m contract  # runs all AQUADIF contract checks
 ```
 

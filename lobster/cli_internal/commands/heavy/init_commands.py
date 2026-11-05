@@ -712,7 +712,34 @@ def _build_uv_tool_init_command(
     )
 
 
-def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str], str]:
+def _print_deferred_agent_install(selected_agents: list[str]) -> None:
+    """Record the choice without installs; show a command valid for this environment."""
+    import shlex
+
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
+    from lobster.core.uv_tool_env import is_uv_tool_env
+
+    packages = sorted(
+        {AGENT_TO_PACKAGE[a] for a in selected_agents if a in AGENT_TO_PACKAGE}
+    )
+    if not packages:
+        return
+    if is_uv_tool_env():
+        from lobster.core.uv_tool_env import build_tool_install_command
+
+        command = build_tool_install_command(with_packages=packages)
+        command.insert(3, "--reinstall")
+    else:
+        command = ["uv", "pip", "install", *packages]
+    console.print(
+        "Selected agents recorded; --skip-extras prevented package installation."
+    )
+    console.print("Install later: " + shlex.join(command), markup=False)
+
+
+def _perform_agent_selection_interactive(
+    workspace_path: Path, *, skip_extras: bool = False
+) -> tuple[list[str], str]:
     """Handle interactive agent selection. Returns (selected_agents, preset_name or None)."""
     from rich.console import Console
 
@@ -725,8 +752,10 @@ def _perform_agent_selection_interactive(workspace_path: Path) -> tuple[list[str
     selected = _prompt_manual_agent_selection(workspace_path)
 
     if selected:
-        # Check for missing packages
-        selected = _check_and_prompt_install_packages(selected, workspace_path)
+        if skip_extras:
+            _print_deferred_agent_install(selected)
+        else:
+            selected = _check_and_prompt_install_packages(selected, workspace_path)
         console.print(f"\n[green]v[/green] {len(selected)} agent(s) configured")
 
     return selected, None
@@ -810,6 +839,55 @@ def _install_smart_standardization_dependencies() -> None:
         )
 
 
+def _repair_skipped_secret_permissions(path: Path) -> None:
+    """Tighten an owned, regular legacy secret during init, without rewriting it."""
+    import os
+    import shlex
+    import stat
+
+    if not hasattr(os, "getuid"):
+        return  # POSIX ownership/mode checks do not certify Windows ACLs.
+    fd = None
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            return
+        if not stat.S_IMODE(info.st_mode) & 0o077:
+            return
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_uid != os.getuid():
+            return
+        os.fchmod(fd, 0o600)
+        console.print(
+            f"tightened permissions on {path} to 0600", markup=False, soft_wrap=True
+        )
+    except FileNotFoundError:
+        return  # No existing secret to repair; no misleading chmod command.
+    except OSError:
+        command = shlex.join(["chmod", "600", str(path)])
+        console.print(
+            f"Warning: could not tighten secret file permissions; run {command}",
+            markup=False,
+            soft_wrap=True,
+        )
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def _backup_init_file(source: Path, destination: Path) -> None:
+    """Back up a workspace secret privately; retain non-secret JSON metadata."""
+    if source.name == ".env":
+        from lobster.config.global_config import _open_private_file
+
+        with source.open("rb") as original:
+            with _open_private_file(destination, binary=True, exclusive=True) as backup:
+                shutil.copyfileobj(original, backup)
+    else:
+        shutil.copy2(source, destination)
+
+
 def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) -> None:
     """
     Create workspace-scoped provider configuration from structured config dict.
@@ -867,7 +945,11 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
         )
 
     except Exception as e:
-        # Non-fatal error - .env is still valid, workspace config is optimization
+        if config_dict.get("provider") == "omics-os":
+            from lobster.config.cloud_setup import fail_cloud_setup_write
+
+            fail_cloud_setup_write(e)
+        # Preserve legacy best-effort behaviour for other providers.
         logger.warning(f"Failed to create workspace config: {e}")
         console.print(
             f"[dim yellow]⚠️  Note: Workspace config creation skipped ({e})[/dim yellow]"
@@ -981,6 +1063,10 @@ def _uv_tool_env_handoff(
 
     If the user declines, this function returns normally.
     """
+    if skip_extras:
+        return  # No prompt, command construction, or package handoff under --skip-extras.
+
+    import shlex
     import subprocess as _sp
 
     from rich.prompt import Confirm
@@ -996,11 +1082,13 @@ def _uv_tool_env_handoff(
         selected_agents,
         include_vector_search=include_vector_search,
     )
-    cmd_str = " ".join(cmd)
+    cmd.insert(3, "--reinstall")
+    cmd_str = shlex.join(cmd)
 
     # Skip if the computed command wouldn't add anything new.
-    existing_cmd = " ".join(_build_uv_tool_init_command(None, None))
-    if cmd_str == existing_cmd:
+    existing_cmd = _build_uv_tool_init_command(None, None)
+    existing_cmd.insert(3, "--reinstall")
+    if cmd == existing_cmd:
         return
 
     console.print()
@@ -1009,7 +1097,7 @@ def _uv_tool_env_handoff(
         "  Your Lobster is installed via [cyan]uv tool[/cyan], so packages must\n"
         "  be added through [cyan]uv tool install[/cyan] rather than pip.\n"
     )
-    console.print(f"  [bold]{cmd_str}[/bold]\n")
+    console.print(f"  {cmd_str}\n", markup=False)
 
     if Confirm.ask("  Run this now?", default=True):
         console.print("[dim]  Running uv tool install...[/dim]")
@@ -1054,7 +1142,7 @@ def _uv_tool_env_handoff(
             sys.stdout.flush()
             _os._exit(result.returncode)
     else:
-        console.print(f"  [dim]Run manually when ready:[/dim]\n  {cmd_str}\n")
+        console.print(f"  Run manually when ready:\n  {cmd_str}\n", markup=False)
 
 
 def _ensure_provider_installed(provider_name: str) -> bool:
@@ -1158,51 +1246,47 @@ def _postprocess_tui_init_result(
     # Handle Omics-OS Cloud authentication.
     provider_name = (normalized_result.get("provider") or "").strip().lower()
     api_key = (normalized_result.get("api_key") or "").strip()
-    oauth_done = normalized_result.get("oauth_authenticated", False)
+    if provider_name == "omics-os":
+        from lobster.config.cloud_setup import (
+            OMICS_OS_AUTH_GUIDANCE,
+            OMICS_OS_KEY_NOT_VERIFIED,
+        )
 
-    if provider_name == "omics-os" and not api_key:
-        if oauth_done:
-            # Go TUI saved raw tokens to credentials.json. Validate against
-            # the gateway to enrich with email/tier/user_id (matching the
-            # Python browser login flow in cloud_commands.py).
-            _validate_oauth_credentials()
-        else:
-            from lobster.cli_internal.commands.light.cloud_commands import (
-                attempt_login_for_init,
-            )
-
-            success = attempt_login_for_init()
-            if not success:
-                console.print(
-                    "[yellow]Browser login did not complete. "
-                    "You can paste an API key instead.[/yellow]"
-                )
-                api_key = Prompt.ask(
-                    "[bold white]Enter your Omics-OS API key (omk_...)[/bold white]",
-                    default="",
-                )
-                if api_key.strip():
-                    normalized_result["api_key"] = api_key.strip()
-                else:
-                    console.print(
-                        "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
-                    )
+        if not api_key:
+            console.print("[red]Omics-OS Cloud API key is required.[/red]")
+            console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
+            raise typer.Exit(1)
+        normalized_result["api_key"] = api_key
 
     normalized_agents = _normalize_selected_agents(
         normalized_result.get("agents") or []
     )
     if normalized_agents:
-        normalized_agents = _check_and_prompt_install_packages(
-            normalized_agents, workspace_path
-        )
+        if skip_extras:
+            _print_deferred_agent_install(normalized_agents)
+        else:
+            normalized_agents = _check_and_prompt_install_packages(
+                normalized_agents, workspace_path
+            )
     normalized_result["agents"] = normalized_agents
 
-    apply_tui_init_result(
-        normalized_result,
-        workspace_path=workspace_path,
-        env_path=env_path,
-        global_config=global_config,
-    )
+    try:
+        apply_tui_init_result(
+            normalized_result,
+            workspace_path=workspace_path,
+            env_path=env_path,
+            global_config=global_config,
+        )
+    except typer.Exit:
+        raise
+    except Exception as error:
+        if provider_name == "omics-os":
+            from lobster.config.cloud_setup import fail_cloud_setup_write
+
+            fail_cloud_setup_write(error)
+        raise
+    if provider_name == "omics-os":
+        console.print(OMICS_OS_KEY_NOT_VERIFIED)
 
     if is_uv_tool_env():
         return normalized_result
@@ -1520,6 +1604,8 @@ def init_impl(
         "--non-interactive",
         help="Non-interactive mode for CI/CD (requires API key flags)",
     ),
+    use_omics_os: bool = False,
+    omics_os_key: Optional[str] = None,
     anthropic_key: Optional[str] = typer.Option(
         None, "--anthropic-key", help="Claude API key (non-interactive mode)"
     ),
@@ -1720,11 +1806,108 @@ def init_impl(
         config_path = Path.cwd() / ".lobster_workspace" / "provider_config.json"
         env_path = Path.cwd() / ".env"
 
+    # Cloud is additive: retain the established priority of explicit providers.
+    # Resolve/validate its input before a skipped configuration or force backup
+    # can falsely look like a completed change to the gateway provider.
+    cloud_selected = (
+        non_interactive
+        and (use_omics_os or omics_os_key is not None)
+        and not any(
+            (
+                anthropic_key is not None,
+                bedrock_access_key is not None and bedrock_secret_key is not None,
+                use_ollama,
+                gemini_key is not None,
+                openai_key is not None,
+                openrouter_key is not None,
+                nebius_key is not None,
+                azure_endpoint is not None and azure_credential is not None,
+            )
+        )
+    )
+    cloud_api_key = None
+    if cloud_selected:
+        from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
+        from lobster.config.credentials import get_api_key
+
+        cloud_api_key = omics_os_key if omics_os_key is not None else get_api_key()
+        if omics_os_key is None and (not cloud_api_key or not cloud_api_key.strip()):
+            from dotenv import dotenv_values
+
+            from lobster.config.global_config import get_global_credentials_path
+
+            saved_paths = [] if global_config else [env_path]
+            saved_paths.append(get_global_credentials_path())
+            for saved_path in saved_paths:
+                if saved_path and saved_path.is_file():
+                    saved_key = dotenv_values(saved_path).get("OMICS_OS_API_KEY")
+                    if saved_key and saved_key.strip():
+                        cloud_api_key = saved_key
+                        break
+        if not cloud_api_key or not cloud_api_key.strip():
+            console.print(
+                "[red]Omics-OS Cloud API key is required: supply --omics-os-key or OMICS_OS_API_KEY.[/red]"
+            )
+            console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
+            raise typer.Exit(1)
+        cloud_api_key = cloud_api_key.strip()
+
     # Check if configuration already exists
+    workspace_provider_path = Path.cwd() / ".lobster_workspace" / "provider_config.json"
     config_exists = (
         config_path.exists() if global_config else (env_path and env_path.exists())
     )
+    if cloud_selected and not global_config:
+        config_exists = config_exists or workspace_provider_path.exists()
     if config_exists and not force:
+        from lobster.config.global_config import get_global_credentials_path
+
+        _repair_skipped_secret_permissions(
+            get_global_credentials_path() if global_config else env_path
+        )
+        if cloud_selected:
+            from dotenv import dotenv_values
+
+            from lobster.config.credentials import get_api_key
+
+            if global_config:
+                from lobster.config.global_config import get_global_credentials_path
+
+                existing = GlobalProviderConfig.load()
+                existing_provider = existing.default_provider if existing else None
+                credentials_path = get_global_credentials_path()
+            else:
+                from lobster.config.workspace_config import WorkspaceProviderConfig
+
+                existing = WorkspaceProviderConfig.load(
+                    Path.cwd() / ".lobster_workspace"
+                )
+                existing_provider = (
+                    existing.global_provider
+                    if existing
+                    else dotenv_values(env_path).get("LOBSTER_LLM_PROVIDER")
+                )
+                credentials_path = env_path
+            stored_key = (
+                dotenv_values(credentials_path).get("OMICS_OS_API_KEY")
+                if credentials_path.exists()
+                else None
+            )
+            existing_key = get_api_key() or stored_key
+            if (
+                existing_provider == "omics-os"
+                and existing_key
+                and existing_key.strip()
+            ):
+                console.print(
+                    "already configured for Omics-OS Cloud (account access not checked)."
+                )
+                raise typer.Exit(0)
+            console.print(
+                f"Existing configuration found at {config_path if global_config else (workspace_provider_path if workspace_provider_path.exists() else env_path)}; "
+                "rerun with --force to replace it (a backup is kept)."
+            )
+            raise typer.Exit(1)
         console.print()
         if global_config:
             console.print(
@@ -1762,21 +1945,25 @@ def init_impl(
     backup_path = None
     if config_exists and force:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        if global_config:
-            backup_path = config_path.parent / f"providers.json.backup.{timestamp}"
-            backup_source = config_path
+        if cloud_selected and not global_config:
+            backup_sources = [
+                p for p in (env_path, workspace_provider_path) if p.exists()
+            ]
         else:
-            backup_path = Path.cwd() / f".env.backup.{timestamp}"
-            backup_source = env_path
-
-        if not non_interactive:
-            console.print("[yellow]⚠️  Existing config will be backed up to:[/yellow]")
-            console.print(f"[yellow]   {backup_path}[/yellow]")
-            console.print()
-
-        # Create backup
+            backup_sources = [config_path if global_config else env_path]
         try:
-            shutil.copy2(backup_source, backup_path)
+            for backup_source in backup_sources:
+                destination = backup_source.with_name(
+                    f"{backup_source.name}.backup.{timestamp}"
+                )
+                if not non_interactive:
+                    console.print(
+                        "[yellow]⚠️  Existing config will be backed up to:[/yellow]"
+                    )
+                    console.print(f"[yellow]   {destination}[/yellow]")
+                _backup_init_file(backup_source, destination)
+                if backup_path is None:
+                    backup_path = destination
         except Exception as e:
             console.print(f"[red]❌ Failed to create backup: {str(e)}[/red]")
             raise typer.Exit(1)
@@ -1846,6 +2033,8 @@ def init_impl(
             has_nebius=has_nebius,
             has_azure=has_azure,
         )
+        if cloud_selected:
+            valid = True
         if not valid:
             console.print(f"[red]❌ Error: {error_msg}[/red]")
             console.print()
@@ -1875,6 +2064,10 @@ def init_impl(
         )
         if priority_warning:
             console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
+        if (use_omics_os or omics_os_key is not None) and not cloud_selected:
+            console.print(
+                "[yellow]Warning: an explicit provider takes priority over Omics-OS Cloud.[/yellow]"
+            )
 
         # Validate profile parameter (only relevant for Anthropic/Bedrock)
         from lobster.config.constants import (
@@ -1914,7 +2107,12 @@ def init_impl(
                 selected_profile = "production"  # Default profile
 
         # Create provider configuration
-        if has_anthropic:
+        if cloud_selected:
+            config = provider_setup.create_omics_os_config(cloud_api_key)
+            for key, value in config.env_vars.items():
+                env_lines.append(f"{key}={value}")
+            config_dict["provider"] = "omics-os"
+        elif has_anthropic:
             config = provider_setup.create_anthropic_config(anthropic_key)
             if config.success:
                 for key, value in config.env_vars.items():
@@ -2159,15 +2357,25 @@ def init_impl(
                 if backup_path:
                     console.print(f"  • Backup: {backup_path}")
             except Exception as e:
+                if config_dict.get("provider") == "omics-os":
+                    from lobster.config.cloud_setup import fail_cloud_setup_write
+
+                    fail_cloud_setup_write(e)
                 console.print(f"[red]❌ Failed to write global config: {str(e)}[/red]")
                 raise typer.Exit(1)
         else:
             # Workspace mode: write both .env and workspace config
             try:
-                with open(env_path, "w") as f:
+                from lobster.config.global_config import _open_private_file
+
+                with _open_private_file(env_path) as f:
                     f.write("\n".join(env_lines))
                     f.write("\n")
             except Exception as e:
+                if config_dict.get("provider") == "omics-os":
+                    from lobster.config.cloud_setup import fail_cloud_setup_write
+
+                    fail_cloud_setup_write(e)
                 console.print(f"[red]❌ Failed to write .env file: {str(e)}[/red]")
                 raise typer.Exit(1)
 
@@ -2208,6 +2416,10 @@ def init_impl(
             )
             console.print(f"\n[bold]uv tool command:[/bold] {' '.join(cmd)}")
 
+        if cloud_selected:
+            from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
+
+            console.print(OMICS_OS_KEY_NOT_VERIFIED)
         raise typer.Exit(0)
 
     # Interactive mode: run wizard
@@ -2264,7 +2476,7 @@ def init_impl(
                         )
                         from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
-                        if _is_uv():
+                        if _is_uv() and not skip_extras:
                             _uv_tool_env_handoff(
                                 provider_name=(_tui_result.get("provider") or "")
                                 .strip()
@@ -2326,7 +2538,7 @@ def init_impl(
                 )
                 from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
-                if _is_uv():
+                if _is_uv() and not skip_extras:
                     _uv_tool_env_handoff(
                         provider_name=(_q_result.get("provider") or "").strip().lower()
                         or None,
@@ -2408,7 +2620,7 @@ def init_impl(
         # ================================================================== #
         console.print("[bold white]Select your LLM provider:[/bold white]")
         console.print(
-            "  [cyan]1[/cyan] - Omics-OS Cloud          — managed, login via browser"
+            "  [cyan]1[/cyan] - Omics-OS Cloud          — managed gateway, API key"
         )
         console.print(
             "  [cyan]2[/cyan] - Claude API (Anthropic)  — direct access to Claude models"
@@ -2459,42 +2671,24 @@ def init_impl(
         # Step 2 — Credentials (provider-specific)                            #
         # ================================================================== #
         if provider_name == "omics-os":
-            from lobster.cli_internal.commands.light.cloud_commands import (
-                attempt_login_for_init,
+            from lobster.config.cloud_setup import (
+                OMICS_OS_AUTH_GUIDANCE,
+                OMICS_OS_KEY_NOT_VERIFIED,
             )
 
-            success = attempt_login_for_init()
-            if success:
-                config_dict["provider"] = "omics-os"
-                env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
-                console.print("[green]✓ Omics-OS Cloud provider configured[/green]")
-            else:
-                console.print(
-                    "\n[yellow]Browser login did not complete. "
-                    "You can paste an API key instead.[/yellow]"
-                )
-                api_key = Prompt.ask(
-                    "[bold white]Enter your Omics-OS API key (omk_...)[/bold white]",
-                    default="",
-                )
-                if api_key.strip():
-                    config = provider_setup.create_omics_os_config(api_key)
-                    if config.success:
-                        for key, value in config.env_vars.items():
-                            env_lines.append(f"{key}={value}")
-                        config_dict["provider"] = "omics-os"
-                        console.print(
-                            "[green]✓ Omics-OS Cloud provider configured[/green]"
-                        )
-                    else:
-                        console.print(f"[red]❌ {config.message}[/red]")
-                        raise typer.Exit(1)
-                else:
-                    console.print(
-                        "[yellow]No credentials provided. Run 'lobster cloud login' later.[/yellow]"
-                    )
-                    config_dict["provider"] = "omics-os"
-                    env_lines.append("LOBSTER_LLM_PROVIDER=omics-os")
+            console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
+            api_key = Prompt.ask(
+                "[bold white]Enter your Omics-OS API key[/bold white]",
+                password=True,
+                default="",
+            )
+            config = provider_setup.create_omics_os_config(api_key)
+            if not config.success:
+                console.print(f"[red]❌ {config.message}[/red]")
+                raise typer.Exit(1)
+            for key, value in config.env_vars.items():
+                env_lines.append(f"{key}={value}")
+            config_dict["provider"] = "omics-os"
 
         elif provider_name == "anthropic":
             console.print("\n[bold white]🔑 Claude API Configuration[/bold white]")
@@ -2744,7 +2938,7 @@ def init_impl(
         # Step 4 — Agent selection                                            #
         # ================================================================== #
         selected_agents, preset_name = _perform_agent_selection_interactive(
-            workspace_path
+            workspace_path, skip_extras=skip_extras
         )
         if selected_agents:
             _save_agent_config(selected_agents, workspace_path, preset_name)
@@ -2834,12 +3028,25 @@ def init_impl(
                     success_message += f"Backup: [cyan]{backup_path}[/cyan]\n"
                 success_message += f"\n[bold white]Next step:[/bold white] Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!"
             except Exception as e:
+                if config_dict.get("provider") == "omics-os":
+                    from lobster.config.cloud_setup import fail_cloud_setup_write
+
+                    fail_cloud_setup_write(e)
                 console.print(f"[red]❌ Failed to write global config: {str(e)}[/red]")
                 raise typer.Exit(1)
         else:
-            with open(env_path, "w") as f:
-                f.write("\n".join(env_lines))
-                f.write("\n")
+            try:
+                from lobster.config.global_config import _open_private_file
+
+                with _open_private_file(env_path) as f:
+                    f.write("\n".join(env_lines))
+                    f.write("\n")
+            except Exception as error:
+                if config_dict.get("provider") == "omics-os":
+                    from lobster.config.cloud_setup import fail_cloud_setup_write
+
+                    fail_cloud_setup_write(error)
+                raise
 
             _create_workspace_config(config_dict, workspace_path)
 
@@ -2854,11 +3061,13 @@ def init_impl(
                 success_message += "\n"
             success_message += f"[bold white]Next step:[/bold white] Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!"
 
+        if config_dict.get("provider") == "omics-os":
+            console.print(OMICS_OS_KEY_NOT_VERIFIED)
         console.print(Panel.fit(success_message, border_style="green"))
         console.print()
 
         # In uv tool env, offer to run `uv tool install` for new packages
-        if _in_uv_tool:
+        if _in_uv_tool and not skip_extras:
             _want_vector_search = False
             if not skip_extras and _is_vector_search_backend_available():
                 try:

@@ -767,6 +767,16 @@ def init(
         "--non-interactive",
         help="Non-interactive mode for CI/CD (requires API key flags)",
     ),
+    use_omics_os: bool = typer.Option(
+        False,
+        "--use-omics-os",
+        help="Use Omics-OS Cloud with OMICS_OS_API_KEY or saved credentials (non-interactive mode)",
+    ),
+    omics_os_key: Optional[str] = typer.Option(
+        None,
+        "--omics-os-key",
+        help="Omics-OS Cloud gateway API key (non-interactive mode; saved, not checked)",
+    ),
     anthropic_key: Optional[str] = typer.Option(
         None, "--anthropic-key", help="Claude API key (non-interactive mode)"
     ),
@@ -955,6 +965,8 @@ def init(
         global_config=global_config,
         force=force,
         non_interactive=non_interactive,
+        use_omics_os=use_omics_os,
+        omics_os_key=omics_os_key,
         anthropic_key=anthropic_key,
         bedrock_access_key=bedrock_access_key,
         bedrock_secret_key=bedrock_secret_key,

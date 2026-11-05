@@ -75,7 +75,7 @@ def _fetch_events(
             if resp.status_code == 401:
                 console.print(
                     "[red]Authentication failed.[/red]\n"
-                    "Run: [bold]lobster cloud login[/bold]"
+                    "Run: [bold]lobster cloud login --api-key <key>[/bold]"
                 )
                 return None
             if resp.status_code == 403:
@@ -120,7 +120,7 @@ def events(
     if not api_key:
         console.print(
             "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
-            "Run: [bold]lobster cloud login[/bold]"
+            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
         )
         raise typer.Exit(0)
 

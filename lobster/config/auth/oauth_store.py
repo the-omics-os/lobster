@@ -54,9 +54,11 @@ def save(creds: OAuthCredentials) -> None:
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(AUTH_DIR, 0o700)
 
+    from lobster.config.global_config import _open_private_file
+
     path = _cred_path(creds.provider)
-    path.write_text(json.dumps(creds.to_dict(), indent=2) + "\n", encoding="utf-8")
-    os.chmod(path, 0o600)
+    with _open_private_file(path) as stream:
+        stream.write(json.dumps(creds.to_dict(), indent=2) + "\n")
     logger.debug("Saved OAuth credentials for provider=%s", creds.provider)
 
 

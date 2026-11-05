@@ -6,7 +6,7 @@ Extracted from cli.py for modularity.
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from rich import box
 from rich.table import Table
@@ -168,7 +168,12 @@ def _get_matrix_info(matrix) -> Dict[str, Any]:
     return info
 
 
-def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
+def build_status_blocks(
+    *,
+    compact: bool = False,
+    workspace_path: Optional[Path] = None,
+    provider_override: Optional[str] = None,
+) -> List[OutputBlock]:
     """
     Build structured status blocks for console, JSON, and protocol adapters.
 
@@ -177,32 +182,17 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
     blocks: List[OutputBlock] = [
         section_block(title="Lobster Status"),
     ]
-    # Check initialization status
-    env_file = Path.cwd() / ".env"
-    is_initialized = env_file.exists()
+    # Resolve provider configuration exactly as the local runtime does. A
+    # resolved configuration does not establish valid credentials/account access.
+    from lobster.core.config_resolver import ConfigResolver, ConfigurationError
+    from lobster.core.runtime.workspace import resolve_workspace
 
-    init_rows = [
-        ("Initialization", "Configured" if is_initialized else "Not configured")
-    ]
-    if is_initialized:
-        try:
-            from dotenv import dotenv_values
-
-            env_vars = dotenv_values(env_file)
-            provider = env_vars.get("LOBSTER_LLM_PROVIDER")
-            if provider:
-                init_rows.append(("Provider", provider))
-            else:
-                if env_vars.get("ANTHROPIC_API_KEY"):
-                    init_rows.append(("Provider", "anthropic (auto-detected)"))
-                elif env_vars.get("AWS_BEDROCK_ACCESS_KEY"):
-                    init_rows.append(("Provider", "bedrock (auto-detected)"))
-                elif env_vars.get("OLLAMA_BASE_URL"):
-                    init_rows.append(("Provider", "ollama (auto-detected)"))
-        except Exception:
-            pass
-        init_rows.append(("Config File", str(env_file)))
-    else:
+    try:
+        provider, source = ConfigResolver(
+            resolve_workspace(workspace_path, create=False)
+        ).resolve_provider(runtime_override=provider_override)
+    except ConfigurationError:
+        init_rows = [("Initialization", "Not configured")]
         blocks.append(
             alert_block(
                 "Lobster is not initialized yet",
@@ -212,9 +202,18 @@ def build_status_blocks(*, compact: bool = False) -> List[OutputBlock]:
         )
         blocks.append(
             hint_block(
-                "Run `lobster init` to configure your LLM provider (Anthropic/Bedrock/Ollama)."
+                "Run `lobster init` to configure your LLM provider, including Omics-OS Cloud. "
+                "For machine setup use `lobster init --non-interactive --use-omics-os "
+                "--skip-extras --skip-ssl-test` with OMICS_OS_API_KEY."
             )
         )
+    else:
+        init_rows = [
+            ("Initialization", "Configured"),
+            ("Provider", provider),
+            ("Configuration Source", source),
+            ("Account Access", "Not checked (configuration only)"),
+        ]
     blocks.append(kv_block(init_rows, title="Initialization"))
 
     # Get entitlement status

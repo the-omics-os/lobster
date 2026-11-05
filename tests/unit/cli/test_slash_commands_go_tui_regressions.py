@@ -2758,10 +2758,17 @@ def test_status_command_protocol_mode_resolves_provider_and_model(
 ):
     output = ProtocolOutputAdapter()
     client = _DummyClient(tmp_path)
+    client.provider_override = "bedrock"
     captured = {}
 
-    def _fake_status_blocks(compact=False):
-        captured["compact"] = compact
+    def _fake_status_blocks(
+        *, compact=False, workspace_path=None, provider_override=None
+    ):
+        captured.update(
+            compact=compact,
+            workspace_path=workspace_path,
+            provider_override=provider_override,
+        )
         return [
             section_block(title="Lobster Status"),
             kv_block(
@@ -2794,7 +2801,11 @@ def test_status_command_protocol_mode_resolves_provider_and_model(
     )
 
     assert summary is None
-    assert captured["compact"] is True
+    assert captured == {
+        "compact": True,
+        "workspace_path": tmp_path,
+        "provider_override": "bedrock",
+    }
     assert output.messages == [
         (None, "Lobster Status"),
         (

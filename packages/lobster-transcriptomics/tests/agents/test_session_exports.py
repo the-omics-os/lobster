@@ -1,5 +1,6 @@
 """Exports remain visible when the process cwd is not the session workspace."""
 
+import ast
 import json
 from pathlib import Path
 from unittest.mock import Mock
@@ -129,6 +130,45 @@ def test_de_export_path(session, tool_name, prefix, output):
     response = tools[tool_name].invoke(args)
     path = assert_export(dm, cwd, filename, response, "- Output: ")
     pd.testing.assert_frame_equal(pd.read_csv(path, index_col=0), results)
+
+
+@pytest.mark.parametrize(
+    "tool_name", ["export_de_results", "extract_and_export_de_results"]
+)
+def test_de_export_generated_import_cell_is_import_statements(
+    session, monkeypatch, tool_name
+):
+    """Exercise both real IR producers and only their generated import cell.
+
+    This does not execute a notebook kernel or certify the analysis replay.
+    The existing factory fixture replaces the LLM; no provider call is made.
+    """
+    from lobster.core.notebooks.exporter import NotebookExporter
+
+    dm, _, _ = session
+    recorded = []
+    original_log = dm.log_tool_usage
+
+    def capture_ir(*args, **kwargs):
+        recorded.append(kwargs.get("ir"))
+        return original_log(*args, **kwargs)
+
+    monkeypatch.setattr(dm, "log_tool_usage", capture_ir)
+    tools = factory_tools(de_analysis_expert, DE_MODULE, dm)
+    args = {"modality_name": "de_results"}
+    if tool_name == "extract_and_export_de_results":
+        args["shrink_lfc"] = False
+    response = tools[tool_name].invoke(args)
+    produced = [ir for ir in recorded if ir is not None and ir.tool_name == tool_name]
+    assert len(produced) == 1, response
+    cell = NotebookExporter(dm.provenance, dm)._create_imports_cell(produced)
+    statements = ast.parse(cell.source).body
+    assert statements and all(
+        isinstance(statement, (ast.Import, ast.ImportFrom)) for statement in statements
+    ), cell.source
+    namespace = {}
+    exec(compile(cell.source, "<generated-de-import-cell>", "exec"), namespace)
+    assert namespace["pd"] is pd
 
 
 @pytest.mark.parametrize("format", ["json", "csv"])

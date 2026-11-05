@@ -227,8 +227,10 @@ def apply_tui_init_result(
 
 def _write_workspace_env(env_path: Path, env_lines: list[str]) -> None:
     """Write the workspace .env file."""
+    from lobster.config.global_config import _open_private_file
+
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(env_path, "w") as fh:
+    with _open_private_file(env_path) as fh:
         fh.write("\n".join(env_lines))
         fh.write("\n")
     logger.info("Wrote workspace .env: %s", env_path)
@@ -279,7 +281,12 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
             creds_path = save_global_credentials(credentials)
             logger.info("Wrote global credentials: %s", creds_path)
         except Exception as exc:
-            logger.warning("Failed to write global credentials: %s", exc)
+            if config_dict.get("provider") == "omics-os":
+                from lobster.config.cloud_setup import fail_cloud_setup_write
+
+                fail_cloud_setup_write(exc)
+            logger.error("Failed to write global credentials: %s", exc)
+            raise
 
 
 def _write_agent_config(agents: list[str], workspace_path: Path) -> None:
