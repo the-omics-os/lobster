@@ -930,25 +930,117 @@ def test_decision_request_quit_returns_none():
     )
 
 
-def test_decision_request_timeout_returns_none():
-    """If no answer arrives in time, the turn ends without resuming."""
+def test_unanswered_question_is_closed_and_the_supervisor_told():
+    """v3 L-01: no answer in time used to end the turn with the screen still
+    drawn and nothing said. Now the screen is closed, the user is told, and
+    the supervisor resumes with a cancel saying why."""
     bridge = _GoBridge([None])
-    assert (
-        go_tui_launcher._handle_interrupts(
-            bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
-        )
-        is None
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
     )
+    answer = response["intr-1"]
+    assert answer["action"] == "cancel"
+    assert "answer" not in answer
+    assert answer["comment"] == (
+        "Not answered: the question was closed (no answer after 30 minutes); "
+        "nothing was decided. Ask again if it is still needed."
+    )
+    (render,) = [c for c in bridge.calls if c[0] == "component_render"]
+    (close,) = [c for c in bridge.calls if c[0] == "component_close"]
+    assert close[2] == render[2]  # closes exactly the screen it drew
+    assert close[1] == {
+        "message": "This question was closed (no answer after 30 minutes); "
+        "nothing was sent."
+    }
 
 
-def test_decision_request_waits_ten_minutes_for_an_answer():
-    """A DecisionRequest render waits 600 s; other interrupts keep their wait."""
-    assert go_tui_launcher._ANSWER_TIMEOUT_S == 600
+def test_decision_request_waits_thirty_minutes_for_an_answer():
+    """A DecisionRequest render waits 30 minutes; other interrupts keep theirs."""
+    assert go_tui_launcher._ANSWER_TIMEOUT_S == 1800
     bridge = _GoBridge([None])
     go_tui_launcher._handle_interrupts(
         bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
     )
-    assert bridge.timeouts == [600]
+    (waited,) = bridge.timeouts
+    assert 1790 < waited <= 1800
+    legacy = _GoBridge([None])
+    go_tui_launcher._handle_interrupts(
+        legacy, [{"data": {"component": "text_input"}, "interrupt_id": "i"}]
+    )
+    assert legacy.timeouts == [300]
+
+
+def test_other_messages_do_not_extend_the_wait(monkeypatch):
+    """The wait counts from when the screen is drawn: resizes (or any other
+    message) used to start it again each time."""
+    import time as real_time
+
+    monkeypatch.setattr(go_tui_launcher, "_ANSWER_TIMEOUT_S", 0.3)
+
+    class _Resizing(_GoBridge):
+        def recv_event(self, timeout=None):
+            self.timeouts.append(timeout)
+            real_time.sleep(min(timeout, 0.05))
+            return {"type": "resize", "payload": {"width": 80, "height": 24}}
+
+    bridge = _Resizing([])
+    started = real_time.monotonic()
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    assert real_time.monotonic() - started < 2
+    assert response["intr-1"]["action"] == "cancel"
+    assert bridge.timeouts == sorted(bridge.timeouts, reverse=True)
+
+
+def test_a_fault_while_asking_closes_the_screen_and_tells_the_supervisor(
+    monkeypatch,
+):
+    """An error while the question is open resumes with a cancel naming only
+    the error's type, never a silent end of turn."""
+    from lobster.cli_internal import go_tui_components
+
+    def broken(request, render):
+        raise KeyError("/private/path")
+
+    monkeypatch.setattr(go_tui_components, "collect", broken)
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    answer = response["intr-1"]
+    assert answer["action"] == "cancel"
+    assert "(an error (KeyError))" in answer["comment"]
+    assert "/private/path" not in json.dumps(answer)
+    (close,) = [c for c in bridge.calls if c[0] == "component_close"]
+    assert close[2] == ""  # whichever screen is open
+    assert close[1]["message"] == (
+        "This question was closed (an error (KeyError)); nothing was sent."
+    )
+
+
+def test_a_closed_tui_ends_the_wait_at_once_without_resuming():
+    """When the TUI exits, the 30-minute wait must not run on: the reader
+    stops, the wait ends at once, and the turn ends (nobody is there)."""
+    import time as real_time
+
+    to_go_read, to_go_write = os.pipe()
+    from_go_read, from_go_write = os.pipe()
+    bridge = go_tui_launcher._LightBridge(None, to_go_write, from_go_read)
+    try:
+        os.close(from_go_write)  # the TUI is gone
+        started = real_time.monotonic()
+        response = go_tui_launcher._handle_interrupts(
+            bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+        )
+        elapsed = real_time.monotonic() - started
+        assert bridge.closed.is_set()
+        assert bridge.recv_event(timeout=60) is None  # every later wait too
+    finally:
+        bridge.close()
+        os.close(to_go_read)
+    assert response is None
+    assert elapsed < 5
     legacy = _GoBridge([None])
     go_tui_launcher._handle_interrupts(
         legacy, [{"data": {"component": "text_input"}, "interrupt_id": "i"}]
@@ -1230,8 +1322,9 @@ def test_quit_while_a_question_is_shown_ends_the_turn(monkeypatch):
     assert _done(bridge) == ["interrupt", "cancelled"]
 
 
-def test_unanswered_question_times_out_and_ends_the_turn(monkeypatch):
-    """With a real bridge and a short patched timeout, no answer ends the turn."""
+def test_unanswered_question_is_closed_and_the_turn_goes_on(monkeypatch):
+    """With a real bridge and a short patched wait, no answer closes the
+    screen and resumes the supervisor with a cancel (v3 L-01)."""
     import time as real_time
 
     monkeypatch.setattr(go_tui_launcher, "_ANSWER_TIMEOUT_S", 0.05)
@@ -1251,14 +1344,14 @@ def test_unanswered_question_times_out_and_ends_the_turn(monkeypatch):
         os.close(from_go_write)  # the reader thread sees EOF and stops
         bridge.close()
         os.close(to_go_read)
-    assert client.resumed_with == []
+    (resumed,) = client.resumed_with
+    assert resumed["intr-1"]["action"] == "cancel"
+    assert "no answer after 0.05 seconds" in resumed["intr-1"]["comment"]
     assert elapsed < 5
+    types = [m["type"] for m in sent]
+    assert types.index("component_render") < types.index("component_close")
     done = [m["payload"]["summary"] for m in sent if m["type"] == "done"]
-    assert done == ["interrupt", "cancelled"]
-
-
-def test_answer_timeout_is_ten_minutes():
-    assert go_tui_launcher._ANSWER_TIMEOUT_S == 600
+    assert done == ["interrupt", ""]
 
 
 def test_other_interrupt_payload_goes_through_upstream_handle_interrupt(monkeypatch):

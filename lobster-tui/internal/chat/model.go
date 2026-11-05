@@ -889,6 +889,13 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var dp protocol.DonePayload
 		_ = protocol.DecodePayload(msg.Message, &dp)
 
+		if dp.Summary != "interrupt" && m.activeComponent != nil {
+			// The turn is over, so nothing reads this screen's reply any
+			// more: never leave it drawn to be answered into the void.
+			m.dropComponent()
+			m.appendMessage(alertMessage("warning", staleComponentNotice), false)
+		}
+
 		if dp.Summary == "cancelled" {
 			// Cancel: discard the unfinished turn. Its partial stream and any
 			// block that was never handed to scrollback must neither print now
@@ -1169,6 +1176,17 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		var p protocol.ComponentRenderPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
 			return m.handleComponentRender(p, msg.ID)
+		}
+		return m, waitForProtocolMsg(m.handler)
+
+	case protocol.TypeComponentClose:
+		var p protocol.ComponentClosePayload
+		_ = protocol.DecodePayload(msg.Message, &p)
+		if m.activeComponent != nil && (msg.ID == "" || msg.ID == m.activeComponent.MsgID) {
+			m.dropComponent()
+		}
+		if p.Message != "" {
+			m.appendMessage(alertMessage("warning", p.Message), false)
 		}
 		return m, waitForProtocolMsg(m.handler)
 
@@ -1692,6 +1710,24 @@ func (m *Model) getMarkdownRenderer() *glamour.TermRenderer {
 // rebuildViewport reconstructs the viewport content from messages + active stream.
 func (m *Model) rebuildViewport() {
 	m.rebuildViewportWithMode(false)
+}
+
+// staleComponentNotice is shown when a turn ends with a question still drawn.
+const staleComponentNotice = "This question was closed; nothing was sent."
+
+// dropComponent removes the active component without replying for it.
+func (m *Model) dropComponent() {
+	m.activeComponent = nil
+	m.pendingChangeEvent = nil
+	m.changeDebounceActive = false
+	m.recalculateViewportHeight()
+}
+
+func alertMessage(level, message string) ChatMessage {
+	return ChatMessage{
+		Role:   "alert_" + level,
+		Blocks: []ContentBlock{BlockAlert{Level: level, Message: message}},
+	}
 }
 
 func (m *Model) appendMessage(msg ChatMessage, forceBottom bool) {

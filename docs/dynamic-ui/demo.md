@@ -201,9 +201,10 @@ Type the prompt exactly as written. The supervisor is an LLM, so the field keys,
 ids differ from run to run. What should hold is listed under "Expect". To see the exact tool result,
 type afterwards: `Print the exact JSON that your last ask_user call returned, unchanged.`
 
-**The 10-minute timeout.** Python waits up to 600 s for each screen's reply, counted from when the screen
-appears; typing inside the screen doesn't extend it. When it runs out, the turn ends as cancelled and the
-supervisor is not told. A reply sent after that is ignored.
+**The 30-minute wait.** Python waits up to 30 minutes for each screen's reply, counted from when the
+screen appears; typing inside the screen doesn't extend it. When it runs out, the screen closes with
+"This question was closed (no answer after 30 minutes); nothing was sent." and the supervisor is told
+the question was not answered, so it can ask again.
 
 | Id | Workspace | Prompt | Expect |
 |---|---|---|---|
@@ -298,5 +299,5 @@ uv run pytest tests/integration/decision_components -m e2e_tui -q --no-cov
 | Data changed while reviewing | — | `test_data_edited_before_submit_is_asked_again_with_answers_kept`; end to end E15 | live |
 | Python ↔ Go wire agreement | — | fixture round trip in both languages | — |
 | Older TUI fallback, classic UI | not yet run at the keyboard | adapter, launcher and classic tests with fake input; end to end E25 (older TUI: an unknown component name stands in for one) and E26 (classic UI, scripted stdin, no binary) | — |
-| 600 s timeout | — | with a patched short timeout, also end to end (E20) | the real 10 minutes |
+| 30-minute wait, screen closed and supervisor told | — | with a patched short wait, also end to end (E20) | the real 30 minutes |
 | Restart durability, networked hosts, Ink / browser / Cloud | — | — | not built in v1 |

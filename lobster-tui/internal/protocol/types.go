@@ -112,6 +112,11 @@ const (
 	// TypeComponentSetData pushes updated data to an active BioComp component.
 	// Used for streaming updates (e.g. threshold slider count refresh).
 	TypeComponentSetData = "component_set_data"
+
+	// TypeComponentClose removes a component Python stopped waiting for
+	// (no answer in time, or an error), and says why. The Message.ID names
+	// the component; an empty ID closes whichever is active.
+	TypeComponentClose = "component_close"
 )
 
 // ---- Go → Python message type constants -----------------------------------
@@ -356,6 +361,12 @@ type ComponentRenderPayload struct {
 // ComponentSetDataPayload pushes updated data to an active BioComp component.
 // The ID must match the active component's MsgID; mismatches are silently
 // discarded (stale guard).
+// ComponentClosePayload explains why a component was closed. Nothing is
+// sent back: Python has already stopped waiting for its reply.
+type ComponentClosePayload struct {
+	Message string `json:"message,omitempty"`
+}
+
 type ComponentSetDataPayload struct {
 	// ID matches the Message.ID of the originating ComponentRenderPayload.
 	ID string `json:"id"`

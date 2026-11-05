@@ -242,6 +242,10 @@ def _make_message(
     return json.dumps(msg)
 
 
+# Queued by the bridge's reader when it stops: nothing more will arrive.
+_CLOSED: Any = object()
+
+
 class _LightBridge:
     """Minimal IPC bridge to the Go TUI -- stdlib only, no lobster imports.
 
@@ -261,6 +265,8 @@ class _LightBridge:
         self._reader = os.fdopen(reader_fd, "r", encoding="utf-8", buffering=1)
         self._events: queue.Queue[dict] = queue.Queue()
         self._running = True
+        # Set when the reader stops (the TUI exited or the pipe broke).
+        self.closed = threading.Event()
         self._write_lock = threading.Lock()
         self.cancel_event: Optional[threading.Event] = None
         self._read_thread = threading.Thread(
@@ -289,12 +295,18 @@ class _LightBridge:
     def recv_event(self, *, timeout: Optional[float] = None) -> Optional[dict]:
         """Block until a message arrives or *timeout* expires.
 
-        Returns ``None`` on timeout or if the bridge is closed.
+        Returns ``None`` on timeout or if the bridge is closed. Once the
+        reader has stopped, every wait returns ``None`` at once instead of
+        running to its timeout (``closed`` tells the two apart).
         """
         try:
-            return self._events.get(timeout=timeout)
+            event = self._events.get(timeout=timeout)
         except queue.Empty:
             return None
+        if event is _CLOSED:
+            self._events.put(_CLOSED)  # every later wait ends at once too
+            return None
+        return event
 
     def _read_loop(self) -> None:
         """Background thread: read JSON-lines from the Go TUI."""
@@ -316,6 +328,8 @@ class _LightBridge:
             except json.JSONDecodeError:
                 logger.debug("Ignoring malformed message from Go TUI: %s", line[:200])
                 continue
+        self.closed.set()
+        self._events.put(_CLOSED)
 
     def close(self) -> None:
         """Shut down the bridge and terminate the Go process."""
@@ -1054,8 +1068,8 @@ def _handle_user_query(
 
             response = _handle_interrupts(bridge, interrupt_events)
             if response is None:
-                # The user quit, an answer timed out, or a question that is
-                # not an ask_user DecisionRequest was cancelled: the paused
+                # The user quit, the TUI is gone, or a question that is not
+                # an ask_user DecisionRequest was cancelled or timed out: the paused
                 # turn will never resume, so end it. (A cancelled or deferred
                 # DecisionRequest does resume, so the supervisor learns about
                 # it.) The TUI discards nothing it already printed (the
@@ -1137,13 +1151,25 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
         # Other message types (heartbeat, resize, etc.) — ignore and keep waiting.
 
 
-# How long to wait for the answer to one ask_user DecisionRequest render. A
-# dashboard review can take a while. (_handle_interrupt keeps its own wait.)
-_ANSWER_TIMEOUT_S = 600
+# How long one ask_user DecisionRequest screen waits for an answer, counted
+# from when it is drawn (keys on the screen send nothing to Python, so they
+# can't extend it). A real dashboard review takes well over 10 minutes. When
+# it runs out, the screen is closed and the supervisor told; nothing is
+# dropped silently. (_handle_interrupt keeps its own wait.)
+_ANSWER_TIMEOUT_S = 1800
 
 
 class _QuitTurn(Exception):
-    """The user quit or cancelled the turn, or an answer timed out."""
+    """The user quit or cancelled the turn, or the TUI is gone."""
+
+
+class _NoAnswer(Exception):
+    """A screen got no answer in time; the TUI is still there."""
+
+    def __init__(self, reason: str, msg_id: str):
+        self.reason = reason
+        self.msg_id = msg_id
+        super().__init__(reason)
 
 
 class _ScreenFailed(Exception):
@@ -1240,7 +1266,44 @@ def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
         # Not the user's cancel: the screen failed, so tell the supervisor why.
         problem = f"this question ({failed.detail})"
         return build_answer(data, "cancel", comment=cannot_show([problem]))
+    except _QuitTurn:
+        raise
+    except _NoAnswer as ended:
+        return _close_unanswered(bridge, data, ended.reason, ended.msg_id)
+    except Exception as error:
+        # A fault while the question was open must not end the turn with
+        # the screen still drawn. Only the type is named (the message could
+        # carry paths or user data).
+        _note_suppressed("decision screen", error)
+        reason = f"an error ({type(error).__name__})"
+        return _close_unanswered(bridge, data, reason, "")
     return build_answer(data, action, answer)
+
+
+def _duration(seconds: float) -> str:
+    """30 minutes, or 2 seconds for a short wait."""
+    if seconds >= 60:
+        return f"{seconds / 60:g} minutes"
+    return f"{seconds:g} seconds"
+
+
+def _close_unanswered(
+    bridge: _LightBridge, data: dict, reason: str, msg_id: str
+) -> Dict[str, Any]:
+    """Close a screen whose answer will never be read, tell the user, and
+    return a cancel for the supervisor saying why (the turn goes on)."""
+    from lobster.cli_internal.go_tui_components import build_answer
+
+    bridge.send(
+        "component_close",
+        {"message": f"This question was closed ({reason}); nothing was sent."},
+        msg_id=msg_id,
+    )
+    comment = (
+        f"Not answered: the question was closed ({reason}); nothing was "
+        "decided. Ask again if it is still needed."
+    )
+    return build_answer(data, "cancel", comment=comment)
 
 
 def _render_component(
@@ -1254,9 +1317,11 @@ def _render_component(
     ``fallback`` is the text an older TUI shows when it can't draw the
     component. Only a reply carrying this render's id is accepted: a late
     answer to an earlier question is ignored instead of being taken as this
-    one's answer. Raises _QuitTurn when the user quits or cancels the turn,
-    or on timeout, and _ScreenFailed when the TUI replies that it couldn't
-    show the component.
+    one's answer. Raises _QuitTurn when the user quits or cancels the turn
+    or the TUI is gone, _NoAnswer when no answer came within
+    ``_ANSWER_TIMEOUT_S`` of drawing it (other messages, such as resizes,
+    don't extend it), and _ScreenFailed when the TUI replies that it
+    couldn't show the component.
     """
     msg_id = str(uuid.uuid4())
     if not fallback:
@@ -1266,9 +1331,16 @@ def _render_component(
         {"component": component, "data": data, "fallback_prompt": fallback},
         msg_id=msg_id,
     )
+    deadline = time.monotonic() + _ANSWER_TIMEOUT_S
     while True:
-        event = bridge.recv_event(timeout=_ANSWER_TIMEOUT_S)
-        if event is None or event.get("type") in ("quit", "cancel"):
+        left = deadline - time.monotonic()
+        event = bridge.recv_event(timeout=left) if left > 0 else None
+        if event is None:
+            closed = getattr(bridge, "closed", None)
+            if isinstance(closed, threading.Event) and closed.is_set():
+                raise _QuitTurn()  # the TUI is gone: nobody to tell
+            raise _NoAnswer(f"no answer after {_duration(_ANSWER_TIMEOUT_S)}", msg_id)
+        if event.get("type") in ("quit", "cancel"):
             raise _QuitTurn()
         if event.get("type") != "component_response":
             continue  # heartbeats, resizes, ...

@@ -231,11 +231,12 @@ def test_e19_protocol_quit_while_asking_ends_the_turn_without_resuming(
     assert len(pending_interrupts(tui.client)) == 1  # paused, never answered
 
 
-def test_e20_answer_timeout_ends_the_turn_and_a_late_reply_is_ignored(
+def test_e20_unanswered_question_is_closed_and_the_supervisor_told(
     start_tui, review8, monkeypatch
 ):
-    """E20: with a 2 s timeout the turn ends as cancelled, the supervisor is
-    not resumed, and a reply sent afterwards is ignored (design.md)."""
+    """E20 (v3 L-01): with a 2 s wait, the screen is closed with an alert,
+    the supervisor resumes with a cancel saying why, and a key pressed
+    afterwards answers nothing (no screen is left to answer)."""
     from lobster.cli_internal import go_tui_launcher
 
     monkeypatch.setattr(go_tui_launcher, "_ANSWER_TIMEOUT_S", 2)
@@ -243,16 +244,17 @@ def test_e20_answer_timeout_ends_the_turn_and_a_late_reply_is_ignored(
     cid = new_id()
     tui = start_tui([ask((cid, "Which count source?", {"fields": [source_field(ds)]}))])
     tui.ask_supervisor()
-    render = tui.wait_render(1)
+    tui.wait_render(1)
     started = time.time()
-    assert tui.wait_turn_end(timeout=15) == "cancelled"
+    tui.wait_screen("This question was closed", timeout=15)
     assert 1.5 <= time.time() - started <= 10
-    assert tui.resumes == []
-    assert tool_results(tui.client) == {}
+    assert tui.wait_turn_end(timeout=15) == ""
+    result = tool_results(tui.client)[cid]
+    assert result["action"] == "cancel"
+    assert "answer" not in result
+    assert "no answer after 2 seconds" in result["comment"]
 
-    tui.key("1")  # the question is still drawn; answering it now does nothing
-    tui.wait_response(render.msg_id)
+    tui.key("1")  # nothing is drawn any more: no reply is sent
     time.sleep(1.0)
-    assert tui.resumes == []
-    assert tool_results(tui.client) == {}
-    assert len(pending_interrupts(tui.client)) == 1
+    assert tui.responses() == []
+    assert len(tui.resumes) == 1
