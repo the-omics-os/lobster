@@ -55,6 +55,7 @@ type Component struct {
 	cursor   int
 	offset   int    // first visible row, for long lists
 	problem  string // why the last action was refused
+	escArmed bool   // the last key was a first esc; the next esc cancels
 }
 
 func (c *Component) Init(data json.RawMessage) error {
@@ -134,6 +135,8 @@ func (c *Component) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 		return nil, nil
 	}
 	c.problem = ""
+	armed := c.escArmed && km.String() == "esc"
+	c.escArmed = false // any key but a second esc starts over
 
 	switch km.String() {
 	case "up", "k":
@@ -158,7 +161,12 @@ func (c *Component) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 		}
 		return c.submit(c.pickedIndexes()), nil
 	case "esc":
-		return &biocomp.ComponentResult{Action: "cancel", Data: map[string]any{}}, nil
+		if armed {
+			return &biocomp.ComponentResult{Action: "cancel", Data: map[string]any{}}, nil
+		}
+		c.escArmed, c.problem = true, escPrompt
+	case "ctrl+d":
+		return &biocomp.ComponentResult{Action: "defer", Data: map[string]any{}}, nil
 	default:
 		// Number keys 1-9 pick directly in a short radio list.
 		if c.single() && len(c.options) <= 9 && len(km.Text) == 1 {
@@ -222,6 +230,8 @@ func (c *Component) submit(indexes []int) *biocomp.ComponentResult {
 		Data:   map[string]any{"selected": selected},
 	}
 }
+
+const escPrompt = "press esc again to cancel this question; nothing will be sent"
 
 var (
 	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
@@ -357,14 +367,16 @@ func (c *Component) KeyBindings() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "move")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "pick")),
-			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+			key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "defer")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "twice: cancel")),
 		}
 	}
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "move")),
 		key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "defer")),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "twice: cancel")),
 	}
 }
 
@@ -375,6 +387,9 @@ func (c *Component) ChangeEvent() map[string]any { return nil }
 // tell whether it differs from the answer it recorded.
 func (c *Component) Draft() map[string]any {
 	if c.single() {
+		if c.options[c.cursor].Unavailable != "" {
+			return nil // can't be picked, so it is no unsaved change
+		}
 		return c.submit([]int{c.cursor}).Data
 	}
 	return c.submit(c.pickedIndexes()).Data

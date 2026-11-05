@@ -271,6 +271,8 @@ func (c *Component) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 			return &biocomp.ComponentResult{Action: "cancel", Data: map[string]any{}}, nil
 		}
 		c.escArmed, c.message = true, escPrompt
+	case "ctrl+d":
+		return &biocomp.ComponentResult{Action: "defer", Data: map[string]any{}}, nil
 	default:
 		if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
 			if j := int(k[0] - '1'); j < len(c.options) {
@@ -672,6 +674,7 @@ func (c *Component) KeyBindings() []key.Binding {
 		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "row")),
 		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→/1-9", "option")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit")),
+		key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "defer")),
 		// Help key stays "esc" so a dashboard can leave it out (it has its own).
 		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "twice: cancel")),
 	}

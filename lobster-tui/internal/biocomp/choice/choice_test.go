@@ -58,6 +58,8 @@ func press(c *Component, keys ...string) *biocomp.ComponentResult {
 			msg = tea.KeyPressMsg{Code: tea.KeyEnter}
 		case "esc":
 			msg = tea.KeyPressMsg{Code: tea.KeyEscape}
+		case "ctrl+d":
+			msg = tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
 		default:
 			msg = tea.KeyPressMsg{Code: rune(k[0]), Text: k}
 		}
@@ -173,11 +175,47 @@ func TestRepeatedLabelsShowTheirIDs(t *testing.T) {
 	}
 }
 
-func TestEscCancels(t *testing.T) {
+// One esc only asks; a second cancels, as on the list, plate and dashboard
+// (C-04). Any other key in between starts over.
+func TestEscTwiceCancels(t *testing.T) {
 	c := newChoice(t, data(1, 1, sources, nil))
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("one esc cancelled: %+v", r)
+	}
+	if !strings.Contains(c.View(100, 20), "press esc again") {
+		t.Fatalf("no prompt after one esc:\n%s", c.View(100, 20))
+	}
+	press(c, "down")
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("esc after another key cancelled: %+v", r)
+	}
 	if r := press(c, "esc"); r == nil || r.Action != "cancel" {
+		t.Fatalf("second esc: got %+v", r)
+	}
+}
+
+// ctrl+d defers the question: nothing is decided (C-07).
+func TestCtrlDDefers(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	if r := press(c, "ctrl+d"); r == nil || r.Action != "defer" {
 		t.Fatalf("got %+v", r)
 	}
+}
+
+// The cursor on an unavailable option is no draft: a dashboard must not ask
+// to "keep" something that can't be picked (C-02).
+func TestCursorOnAnUnavailableOptionIsNoDraft(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	for i, o := range c.options {
+		if o.Unavailable != "" {
+			c.cursor = i
+			if d := c.Draft(); d != nil {
+				t.Fatalf("draft on unavailable %s: %v", o.ID, d)
+			}
+			return
+		}
+	}
+	t.Skip("fixture has no unavailable option")
 }
 
 func TestLongTextWrapsAndNothingIsLost(t *testing.T) {

@@ -90,7 +90,6 @@ type sampleplateData struct {
 type SamplePlateComponent struct {
 	plate       platemap.Model
 	question    string
-	title       string
 	format      platemap.PlateFormat
 	choices     []string
 	samples     []sampleWell // in the order supplied
@@ -163,10 +162,6 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	}
 
 	c.question = d.Question
-	c.title = d.Title
-	if c.title == "" {
-		c.title = "Sample conditions"
-	}
 	c.format = format
 	c.choices = choices
 	c.samples = append([]sampleWell(nil), d.Wells...)
@@ -180,14 +175,10 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 	for _, s := range c.samples {
 		wells = append(wells, c.toCrustWell(s))
 	}
-	// Crust's header line is cut at the width; a title that only repeats the
-	// question (shown in full above the plate) would push "Cursor: A1" off it.
-	crustTitle := c.title
-	if strings.TrimSpace(crustTitle) == strings.TrimSpace(c.question) {
-		crustTitle = ""
-	}
+	// No Crust title: the question, which holds it, is drawn above the plate,
+	// and a title only makes Crust's header line wider than the screen.
 	c.plate = platemap.New(
-		platemap.WithPlate(platemap.PlateData{Format: format, Title: crustTitle, Wells: wells}),
+		platemap.WithPlate(platemap.PlateData{Format: format, Wells: wells}),
 		platemap.WithViewMode(platemap.ViewHitClass),
 		platemap.WithCursor(c.samples[0].Row, c.samples[0].Col),
 	)
@@ -336,6 +327,9 @@ func (c *SamplePlateComponent) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult,
 			c.message = fmt.Sprintf("%s set to %s.", s.SampleID, shown(choice))
 			return nil, nil
 		}
+		if k == "ctrl+d" {
+			return &biocomp.ComponentResult{Action: "defer", Data: map[string]any{}}, nil
+		}
 		if k == "enter" {
 			// Crust would submit the focused well; we submit all assignments.
 			if ids := c.unresolvedSamples(); len(ids) > 0 {
@@ -422,6 +416,18 @@ func hang(prefix, text string, width int, style lipgloss.Style) string {
 
 // clipLines keeps at most n lines of block; when lines are dropped, the last
 // one kept ends in "…" so it is clear there is more.
+// clipWidth cuts every line of block to width cells.
+func clipWidth(block string, width int) string {
+	if width <= 0 {
+		return block
+	}
+	lines := strings.Split(block, "\n")
+	for i, line := range lines {
+		lines[i] = ansi.Truncate(line, width, "…")
+	}
+	return strings.Join(lines, "\n")
+}
+
 func clipLines(block string, n, width int) string {
 	lines := strings.Split(block, "\n")
 	if len(lines) <= n {
@@ -448,7 +454,7 @@ func (c *SamplePlateComponent) View(width, height int) string {
 	if s, ok := c.sampleAtCursor(); ok {
 		supplied := s.Condition
 		if strings.TrimSpace(supplied) == "" {
-			supplied = "(blank)"
+			supplied = "(none)"
 		}
 		line := fmt.Sprintf("%s  %s", c.plate.Coordinate(), s.SampleID)
 		if s.Label != "" {
@@ -457,7 +463,8 @@ func (c *SamplePlateComponent) View(width, height int) string {
 		if s.Batch != "" {
 			line += " · batch: " + s.Batch
 		}
-		line += fmt.Sprintf(" · data: %s · now: %s", supplied, shown(c.assignments[s.SampleID]))
+		// The well's condition is the supervisor's default, not the data file.
+		line += fmt.Sprintf(" · proposed: %s · now: %s", supplied, shown(c.assignments[s.SampleID]))
 		if s.Warning != "" {
 			line += " · warning: " + s.Warning
 		}
@@ -509,7 +516,10 @@ func (c *SamplePlateComponent) View(width, height int) string {
 	}
 	c.plate.SetWidth(width)
 	c.plate.SetHeight(max(height-rest, plateMinHeight))
-	parts := append(top, c.plate.Render())
+	// Crust's header and inspector lines can be wider than the screen
+	// (about 66 cells, more with long labels): cut them, so the terminal
+	// never wraps the plate. The focused well is in full on our own line.
+	parts := append(top, clipWidth(c.plate.Render(), width))
 	return lipgloss.JoinVertical(lipgloss.Left, append(parts, below...)...)
 }
 
@@ -543,6 +553,7 @@ func (c *SamplePlateComponent) KeyBindings() []key.Binding {
 		key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"), key.WithHelp("1-9/0", "assign")),
 		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "view")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "submit all")),
+		key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "defer")),
 		// Help key stays "esc" so a dashboard can leave it out (it has its own).
 		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "twice: cancel")),
 	}

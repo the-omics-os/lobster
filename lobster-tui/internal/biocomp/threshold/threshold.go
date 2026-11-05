@@ -198,6 +198,12 @@ func (c *ThresholdSliderComponent) KeyBindings() []key.Binding {
 	}
 }
 
+// Draft returns the value on screen in the reply's shape, so a dashboard can
+// tell a moved slider from the answer it recorded.
+func (c *ThresholdSliderComponent) Draft() map[string]any {
+	return map[string]any{"value": roundTo(c.value, c.precision)}
+}
+
 func (c *ThresholdSliderComponent) ChangeEvent() map[string]any {
 	if !c.pendingChange {
 		return nil

@@ -718,3 +718,53 @@ func TestPlainNumberNeverUsesExponentForm(t *testing.T) {
 		}
 	}
 }
+
+// A moved slider or edited text after its section was recorded is unsaved
+// too (v3 C-01): only choices reported a draft, so these were sent as the
+// old value without a word.
+func TestMovedSliderIsUnsaved(t *testing.T) {
+	c := newDashboard(t)
+	answerAll(t, c)
+	press(t, c, "shift+tab") // mito: 0.2 recorded
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyRight})
+	if r := press(t, c, "ctrl+s"); r != nil || c.reviewing {
+		t.Fatalf("submitted with a moved slider: %+v (reviewing %v)", r, c.reviewing)
+	}
+	if want := `unsaved changes in "Mito cutoff"`; !strings.Contains(c.message, want) {
+		t.Fatalf("message = %q", c.message)
+	}
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyLeft}) // back to what was recorded
+	if r := submitViaReview(t, c); r == nil || r.Action != "submit" {
+		t.Fatalf("got %+v (%q)", r, c.message)
+	}
+}
+
+func TestEditedTextIsUnsaved(t *testing.T) {
+	c := newDashboard(t)
+	answerAll(t, c) // notes: "ok" recorded, still the active section
+	press(t, c, "!")
+	if r := press(t, c, "ctrl+s"); r != nil || c.reviewing {
+		t.Fatalf("submitted with edited text: %+v (reviewing %v)", r, c.reviewing)
+	}
+	if want := `unsaved changes in "Notes"`; !strings.Contains(c.message, want) {
+		t.Fatalf("message = %q", c.message)
+	}
+	c.HandleMsg(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	if r := submitViaReview(t, c); r == nil || r.Action != "submit" {
+		t.Fatalf("got %+v (%q)", r, c.message)
+	}
+}
+
+// The dashboard lists ctrl+d once, as its own key: a child's is left out.
+func TestCtrlDIsListedOnce(t *testing.T) {
+	c := newDashboard(t)
+	n := 0
+	for _, b := range c.KeyBindings() {
+		if b.Help().Key == "ctrl+d" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("ctrl+d listed %d times", n)
+	}
+}

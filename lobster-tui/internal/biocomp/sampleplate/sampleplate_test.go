@@ -475,7 +475,7 @@ func TestLongDetailsWrapUnderTheFocusLine(t *testing.T) {
 func TestLongDetailsNeverPushThePlateOffScreen(t *testing.T) {
 	c := withNote(t)
 	full := ansi.Strip(c.View(40, 40)) // the note takes 3 lines at width 40
-	plateLines := lipgloss.Height(full[strings.Index(full, "Sample conditions (synthetic) |"):])
+	plateLines := lipgloss.Height(full[strings.Index(full, "96-Well Plate |"):])
 	// The plate gives up its spare rows first; 2 lines fewer than that and the
 	// note must be clipped rather than push the plate down.
 	height := lipgloss.Height(full) - (plateLines - plateMinHeight) - 2
@@ -490,22 +490,28 @@ func TestLongDetailsNeverPushThePlateOffScreen(t *testing.T) {
 	}
 }
 
-// A title that only repeats the question is not given to Crust, so its
-// header (cut at the width) keeps "Cursor: A1" on a 60-column screen.
-func TestTitleRepeatingTheQuestionLeavesCrustsHeaderShort(t *testing.T) {
+// Crust gets no title (the question above the plate holds it), so its header
+// keeps "Cursor: A1" on a 60-column screen; and no line of the plate, Crust's
+// included, is wider than the screen, even with a long title and label (C-08).
+func TestCrustGetsNoTitleAndNoLineIsWiderThanTheScreen(t *testing.T) {
 	raw := strings.Replace(lookAlike, `"Sample conditions (synthetic)"`,
-		`"Assign each sample to control or treated, or leave it out."`, 1)
+		`"Which group is each sample in? Assign each one, or leave it out."`, 1)
 	c := &SamplePlateComponent{}
 	if err := c.Init([]byte(raw)); err != nil {
 		t.Fatal(err)
 	}
-	for _, l := range strings.Split(ansi.Strip(c.View(60, 40)), "\n") {
-		if strings.Contains(l, "96-Well Plate") {
-			if !strings.HasPrefix(l, "96-Well Plate |") || !strings.Contains(l[:60], "Cursor: A1") {
-				t.Fatalf("header = %q", l)
+	header := ""
+	for _, width := range []int{52, 60, 80} {
+		for _, l := range strings.Split(ansi.Strip(c.View(width, 40)), "\n") {
+			if w := ansi.StringWidth(l); w > width {
+				t.Errorf("width %d: line is %d wide: %q", width, w, l)
 			}
-			return
+			if width == 60 && strings.Contains(l, "96-Well Plate") {
+				header = l
+			}
 		}
 	}
-	t.Fatal("no plate header")
+	if !strings.HasPrefix(header, "96-Well Plate |") || !strings.Contains(header, "Cursor: A1") {
+		t.Fatalf("header at 60 columns = %q", header)
+	}
 }

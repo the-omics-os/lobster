@@ -589,7 +589,7 @@ func (c *Component) KeyBindings() []key.Binding {
 		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc esc", "cancel")),
 	}
 	for _, b := range c.child().KeyBindings() {
-		if h := b.Help().Key; h != "esc" && h != "tab" {
+		if h := b.Help().Key; h != "esc" && h != "tab" && h != "ctrl+d" {
 			own = append(own, b)
 		}
 	}

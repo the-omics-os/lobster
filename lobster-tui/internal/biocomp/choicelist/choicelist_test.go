@@ -478,3 +478,20 @@ func TestDraftIsTheReplyShapeOfWhatIsOnScreen(t *testing.T) {
 		t.Fatalf("draft = %v", d)
 	}
 }
+
+// ctrl+d defers the whole question (v3 C-02): nothing is sent as an answer.
+func TestCtrlDDefers(t *testing.T) {
+	c := newList(t, listData(qcItems, qcOptions, nil))
+	press(c, "1")
+	r, _ := c.HandleMsg(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	if r == nil || r.Action != "defer" || len(r.Data) != 0 {
+		t.Fatalf("ctrl+d: got %+v", r)
+	}
+	found := false
+	for _, b := range c.KeyBindings() {
+		found = found || (b.Help().Key == "ctrl+d" && b.Help().Desc == "defer")
+	}
+	if !found {
+		t.Fatal("ctrl+d is not in the help")
+	}
+}
