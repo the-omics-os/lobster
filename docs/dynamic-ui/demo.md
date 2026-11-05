@@ -177,11 +177,11 @@ uv run pytest tests/unit/cli/test_go_tui_components.py -q --no-cov
 
 | Screen | Keys |
 |---|---|
-| `choice`, one pick | ↑/↓ or k/j move · enter picks · 1–9 picks that option directly (up to 9 options) · esc cancels |
-| `choice`, several picks | ↑/↓ move · space ticks or unticks · enter sends once the number ticked is allowed · esc cancels |
-| `choice_list` (one row per item) | ↑/↓ or k/j rows (unavailable rows are skipped) · →/← next or previous option · 1–9 option N · enter sends when every row has an option and every needed reason; otherwise it says what is missing · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over) |
+| `choice`, one pick | ↑/↓ or k/j move · enter picks · 1–9 picks that option directly (up to 9 options) · ctrl+d defers · esc twice in a row cancels |
+| `choice`, several picks | ↑/↓ move · space ticks or unticks · enter sends once the number ticked is allowed · ctrl+d defers · esc twice in a row cancels |
+| `choice_list` (one row per item) | ↑/↓ or k/j rows (unavailable rows are skipped) · →/← next or previous option · 1–9 option N · enter sends when every row has an option and every needed reason; otherwise it says what is missing · ctrl+d defers · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over) |
 | `choice_list` reason box | type the reason (every printable key goes into the box) · backspace · paste works · enter saves (an empty reason is refused) · esc discards the change · ←/→ still change the option |
-| `plate_map` | arrows move between wells · 1–9 give the well the 1st–9th choice · 0 marks it unresolved · enter sends (refused while any sample is unresolved) · tab switches Crust's view · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over); an esc that closes Crust's help or a row or column selection doesn't count. Up to 96 samples and 9 choices. Needs about 52 columns or more. A plate whose option asks for a reason is shown as the `choice_list` instead, which can collect it |
+| `plate_map` | arrows move between wells · 1–9 give the well the 1st–9th choice · 0 marks it unresolved · enter sends (refused while any sample is unresolved) · tab switches Crust's view · ctrl+d defers · esc twice in a row cancels (the first esc shows "press esc again to cancel this question; nothing will be sent"; any other key starts over); an esc that closes Crust's help or a row or column selection doesn't count. Up to 96 samples and 9 choices. The grid needs 48 columns; status lines wider than the terminal are cut with …. A plate whose option asks for a reason, or has an unavailable option, is shown as the `choice_list` instead |
 | `dashboard` | tab / shift+tab move between sections · enter inside a section records it · ctrl+s opens the review screen, or lists what blocks it (not answered, needs re-checking, unsaved changes) · ctrl+d defers · esc twice cancels. While a section is typing text (a reason box, a text box), esc and tab go to that section; shift+tab, ctrl+s and ctrl+d still work |
 | review screen | enter sends exactly what is shown · b, esc or shift+tab go back · ↑/↓ or k/j scroll · pgup / pgdown / space by 10 lines · ctrl+d defers |
 | classic UI prompts | type the option number, or several comma-separated · Enter keeps the default shown in brackets · `d` decide later · `q` cancel |
@@ -259,7 +259,8 @@ sections, ctrl+s, enter. The result is `submit` with `attempts: 2`.
 ### Other scenarios
 
 - **Narrow terminal:** run the dashboard at about 60 columns (`tput cols` prints the width). Long
-  questions, details and options wrap instead of being cut. Below about 52 columns the plate doesn't fit.
+  questions, details and options wrap instead of being cut. The plate's grid needs 48 columns; its
+  status lines are cut with … when the terminal is narrower than they are.
 - **Older TUI:** set `LOBSTER_TUI_BINARY` to a `lobster-tui` built before this work. Sliders and text
   boxes are drawn as before. A choice, list, plate or dashboard becomes a text box with the whole
   question in words. Type an answer in your own words; the supervisor gets `free_text` with

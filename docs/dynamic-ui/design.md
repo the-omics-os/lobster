@@ -112,13 +112,16 @@ sequenceDiagram
    `map_question` (`lobster/services/interaction/component_mapper.py`) uses `context.fields` as given
    and validates it. Older hint-style context (`options`, `clusters`, threshold keys) is converted by
    rules (a threshold hint becomes a slider only when it gives both `min` and `max`; bounds are never
-   invented, so otherwise the number is typed in), an ambiguous question can be formatted by an optional LLM, and anything else becomes one
-   free-text field. Then `check_request` runs the request-time checks once, and the files in
+   invented, so otherwise the number is typed in; bounds written as text, `"0.05"`, are read), an
+   ambiguous question can be formatted by an optional LLM, and anything else becomes one free-text
+   field, whose `placeholder` hint is shown as its details, never filled in as the answer. A hint-style
+   context keeps its `view`, `checks` and `data_files`, judged as on any context, never dropped
+   (`test_hint_context_keeps_data_files_checks_and_view`). Then `check_request` runs the request-time checks once, and the files in
    `context.data_files` are fingerprinted. Any problem returns `invalid_context` with a list of
    problems, and nothing is shown (`test_invalid_context_never_pauses`,
    `test_bad_check_specs_never_pause`).
 3. **The graph pauses.** `ask_user` calls `interrupt(request.to_wire())`. The id of the decision is
-   `dec-<tool_call_id>`.
+   `dec-<tool_call_id>-<task>` (section 4).
 4. **The launcher collects every pending question** (`_handle_user_query`, `_handle_interrupts` in
    `go_tui_launcher.py`). It keeps reading after the first interrupt event, because the client yields
    one event per pending question. A `DecisionRequest` (schema `lobster.ask/1`) goes to
@@ -147,10 +150,17 @@ sequenceDiagram
 
 | Id | Made by | Looks like | What it is for |
 |---|---|---|---|
-| `decision_id` | `ask_user`, from the tool call id | `dec-<tool_call_id>` | Which question this is. Stays the same across re-asks. An answer whose `responds_to.decision_id` differs is *misrouted*: never used, the question is asked again (`test_answer_for_another_decision_is_not_consumed`). |
+| `decision_id` | `ask_user`, from the tool call id and the graph task | `dec-<tool_call_id>-<8 hex>` | Which question this is. Stays the same across re-asks. An answer whose `responds_to.decision_id` differs is *misrouted*: never used, the question is asked again (`test_answer_for_another_decision_is_not_consumed`). |
 | `request_version` | `ask_user` | `1`, `2`, … | Which version of the question. Goes up by one on every re-ask. An answer for another version is *stale* and is asked again (`test_answer_to_an_old_question_version_is_asked_again`). |
 | LangGraph interrupt id | LangGraph | opaque string | Which paused `interrupt()` a resume value belongs to. The launcher keys answers by it. A re-ask inside the same tool call pauses again under the same interrupt id. |
 | Render id | the launcher, per screen | a UUID in the message id | Which screen a Go reply belongs to. A reply with another id is ignored (`test_stray_reply_to_an_old_render_is_ignored`). |
+
+**Why the task suffix.** The tool call id is set by the model provider, never written by the model, and
+some providers number calls (`call_0`, `call_1`, …) and can repeat one inside one message. The 8 hex
+characters are a hash of LangGraph's task name for this call (`checkpoint_ns`, one task per tool call),
+which is the same when the call is replayed after a resume. So two calls with the same id get two
+decisions, and each answer reaches its own (`_decision_id`; `test_reused_tool_call_ids_get_their_own_decisions`,
+`test_decision_id_is_the_same_on_replay`). Called outside a graph, the id is `dec-<tool_call_id>`.
 
 The answer also carries an `answer_id` (`ans-<uuid>`). It is passed to the supervisor for reference;
 nothing deduplicates on it.
@@ -166,7 +176,7 @@ the `context`; Python builds the envelope.
 
 ```json
 {"schema": "lobster.ask/1",
- "decision_id": "dec-call_1",
+ "decision_id": "dec-call_1-3f9a2c01",
  "request_version": 2,
  "actions": ["submit", "defer", "cancel"],
  "question": "Set up the treated vs control comparison",
@@ -218,12 +228,18 @@ option is picked (for example a reason for `exclude`). A `number` has value boun
 `integer` and `unit`. A `text` field is for answers that can't be listed or counted. A `record` asks
 several sub-fields together.
 
+A `key` is a plain name: it can't contain `.`, `[` or `]`, or start or end with a space, because problem
+paths join keys with them (`qc.S02.fields.reason`, `treated[1]`), and a key holding one would point at
+the wrong field (`test_a_key_that_would_break_problem_paths_is_refused`). A number answer must be finite:
+NaN and infinity are refused, as NaN passes every bound (`test_a_number_that_is_not_finite_is_refused`).
+
 ### 5.3 Items and options
 
 An item (an option, or an entry of `for_each`) is `{"id", "label", "details", "unavailable"}` or just a
 plain string, which becomes the id. The **id** is the identity the answer uses (a sample ID, an
 accession). The **label** is only for display and may repeat: two samples labelled "Donor A" are still
-two samples (`test_repeated_labels_keep_distinct_ids`). An ineligible option or item is shown with
+two samples (`test_repeated_labels_keep_distinct_ids`). An id can't start or end with a space, because
+`S01` and `S01 ` look the same on screen (`test_an_item_id_with_spaces_at_an_end_is_refused`). An ineligible option or item is shown with
 `"unavailable": "<reason>"` rather than left out: the screens show it greyed out with the reason, it
 can't be picked, and an answer that picks it anyway is refused
 (`test_unavailable_rows_are_not_answered`, `test_hint_option_marked_unavailable_stays_unavailable`).
@@ -250,16 +266,27 @@ The Go adapter picks the component from the field, not only from the view:
 | Field | Go component |
 |---|---|
 | choice | `choice` (a radio list for one pick, a checklist with `count`) |
-| choice + `for_each` + `view: plate_map`, no option with fields | `plate_map` |
+| choice + `for_each` + `view: plate_map`, no option with fields, none unavailable | `plate_map` |
 | the same, with an option that asks for a reason | `choice_list`: a well holds one option and can't collect a reason, so the view is treated as a hint (`test_plate_whose_option_needs_a_reason_is_drawn_as_the_list`) |
+| the same, with an unavailable option | `choice_list`: the plate's legend has no place for an option shown greyed with its reason (`test_plate_with_an_unavailable_option_is_drawn_as_the_list`) |
 | choice + `for_each`, no count, options with no fields or one required text field | `choice_list`: one screen, one row per item (`test_qc_review_is_one_choice_list_render`) |
 | other choice + `for_each` shapes | one `choice` screen per item (`test_for_each_choice_with_count_keeps_one_render_per_item`) |
 | number + `view: slider` | `threshold_slider`; a whole-number slider moves a hundredth of the range per key, shift a tenth, never less than 1 (`test_integer_slider_step_scales_with_the_range`) |
-| number without slider, text | `text_input` (a typed number is parsed and asked again if invalid) |
+| number without slider, text | `text_input` (a typed number is parsed and asked again if invalid; thousands commas such as `2,000,000` are accepted; `nan`, `inf` and whole numbers above 2^53 are asked again, as the graph's checkpoint can't store a whole number past 64 bits) |
 
 Numbers are shown as a person reads them, `2,000,000` or `0.31`, never `2e+06`: in the hints, the
 classic prompts, the problems and the dashboard's review screen (`plain_number`, Go `plainNumber`).
 | record | each sub-field in turn |
+
+A sub-field asked on its own screen (a record's, or a picked option's when the list can't hold it) names
+where it belongs, `Donor B (S02), Exclude: Why?`, and a re-ask starts it at the user's earlier answer
+(`test_follow_up_names_the_item_and_option_and_keeps_an_earlier_answer`). On a typed-number retry the
+reason goes above the whole question, so its bounds stay on screen.
+
+**Keys.** The new screens (choice, per-item list, plate, dashboard) share one rule: enter submits, ctrl+d
+defers, and esc asks first, so it takes esc twice to cancel; nothing is sent by a single esc. The
+upstream slider and text screens are unchanged: one esc cancels, there is no defer key, and their help
+line says `esc cancel`.
 
 ### 5.5 Profiles, and the `record` type: available, not used by v1
 
@@ -314,7 +341,7 @@ pins the current set, so a new entry also updates that test, on purpose.
 
 ```json
 {"schema": "lobster.ask/1",
- "responds_to": {"decision_id": "dec-call_1", "request_version": 1},
+ "responds_to": {"decision_id": "dec-call_1-3f9a2c01", "request_version": 1},
  "answer_id": "ans-…",
  "action": "submit",
  "answer": {"source": {"id": "SRC-A"},
@@ -340,11 +367,19 @@ What the supervisor receives from `ask_user` (all JSON):
 
 | `action` | Other keys | Meaning |
 |---|---|---|
-| `submit` | `decision_id`, `answer_id`, `answer`, `attempts`, optional `comment` | checked and accepted |
+| `submit` | `decision_id`, `answer_id`, `answer`, `attempts`, optional `comment`, optional `changed_from_default` | checked and accepted |
 | `defer`, `cancel` | `decision_id`, `answer_id`, `attempts`, optional `comment` | nothing decided; continue without a guess. A comment may say the terminal can't show a shape |
 | `free_text` | `text`, `checked: false`, `note`, `attempts` | the user's own words, not checked; the note tells the supervisor to restate its understanding and confirm |
 | `invalid_context` | `problems`, `note` | the question was malformed; nothing was shown |
 | `rejected` | `decision_id`, `problems`, `attempts`, `note` | five answers in a row were refused; nothing decided |
+
+`changed_from_default` lists, for a per-item single-choice field, each item the user answered differently
+from the supervisor's default: `{"groups": {"S01": {"proposed": "control", "answered": "treated"}}}`. It
+compares with version 1 of the question, because a re-ask's defaults are the user's own answers. An
+item proposed without a default was open, not overridden. The description asks the supervisor to report
+these as the user's overrides, so an override is never read as what the data said
+(`test_picks_changed_from_the_default_are_reported_as_overrides`,
+`test_overrides_compare_with_the_first_proposal_not_a_reask`). No reason is asked for.
 
 ### 5.8 A pinned leniency: a choice default may be a bare option id
 
@@ -429,7 +464,8 @@ Rules of the loop (`_ask_until_settled` in `lobster/tools/user_interaction.py`):
 The question may name the workspace files it is about in `context.data_files` (workspace-relative
 paths). When asking, Python computes a sha256 fingerprint of each file and stores it in the request's
 `snapshot`. Paths must stay inside the workspace: absolute paths, `..` and links leading out are
-refused, and so is a missing file (`invalid_context`). Without an open workspace, `data_files` is
+refused, and so is a missing file or anything that isn't a regular file, such as a pipe, which would
+block the read (`invalid_context`; `test_fingerprint_refuses_a_pipe_instead_of_waiting_on_it`). Without an open workspace, `data_files` is
 refused too (`test_untrusted_or_missing_data_file_is_invalid_context`,
 `test_data_files_without_a_workspace_is_invalid_context`).
 
@@ -485,6 +521,7 @@ There is no idempotency store. Duplicates can't be consumed because of how the p
 | A late reply to an earlier screen taken as this screen's answer | the render id must match | `test_stray_reply_to_an_old_render_is_ignored` |
 | The same reply sent twice | after the first, the screen's id is gone: the next screen ignores it, and the main loop ignores a reply when no question is shown | `test_duplicate_reply_after_resume_is_ignored_by_the_next_render`, `test_duplicate_reply_after_the_turn_is_ignored_by_the_main_loop` |
 | One answer consumed by two pending questions | LangGraph resumes each pending interrupt once, keyed by interrupt id | `test_two_pending_decisions_answered_out_of_order` |
+| Several questions pending without interrupt ids, so their answers would overwrite each other | the launcher sends nothing, and says so in an alert (the classic UI refuses too) | `test_several_questions_without_ids_are_refused_not_merged` |
 | A resume keyed by an id that isn't pending | reaches the pending pause as a malformed answer and is asked again | `test_resume_with_a_non_pending_interrupt_id` |
 | An answer for another decision | misrouted, asked again, never used to pre-fill | `test_answer_for_another_decision_is_not_consumed` |
 
@@ -530,7 +567,7 @@ check or its drawing failed), the user sees `Couldn't show the question: <detail
 
 **An older Go TUI** that doesn't know `choice`, `choice_list`, `plate_map` or `dashboard` shows its
 text box instead. Every render carries a `fallback_prompt` with the whole question in plain words: the
-question, any problems, each field (each dashboard section, in order) with its details, items and
+question, on a re-ask the same "Asked again (attempt n of 5)" line the screens show, any problems, each field (each dashboard section, in order) with its details, items and
 options as `id — label: details (unavailable: reason)`, then "Write your answer in your own words."
 (`test_fallback_prompt_states_the_whole_question`,
 `test_every_render_carries_the_whole_question_as_fallback_prompt`). The typed reply becomes a
@@ -589,9 +626,18 @@ review screen.
   timeout the turn ends as cancelled and the supervisor is not resumed; a late reply is ignored
   (`test_unanswered_question_times_out_and_ends_the_turn`, `test_answer_timeout_is_ten_minutes`). A
   long 72-sample review can hit it.
-- **The plate map needs a terminal at least about 52 columns wide**, assigns with number keys, so it
-  takes 1 to 9 choices, holds at most 96 samples, and shows **choice ids, not labels**. A plate beyond
-  either limit is cancelled with the "can't show" comment before it is drawn (section 11).
+- **The plate map's grid needs 48 columns**; its status lines (header, window, focused well) are 56 to
+  65 columns and are cut with `…` on a narrower terminal, never wrapped. The question is drawn above the
+  plate, not repeated in its header, so at 60 columns the cursor position still shows
+  (`TestCrustGetsNoTitleAndNoLineIsWiderThanTheScreen`). It assigns with number keys, so it takes 1 to 9
+  choices, holds at most 96 samples, and shows **choice ids, not labels**. A plate beyond either limit
+  is cancelled with the "can't show" comment before it is drawn (section 11).
+- **The plate's flag review is not used.** The plate can force a review of flagged wells, but the
+  adapter never marks a well as flagged, so a warned sample on a plate is not forced into review. Ask
+  warned samples with the per-item list (or a `no_default_for` check) instead.
+- **Long lists get slower to draw.** One key press and frame on the per-item list takes about 10 ms at
+  72 rows, 30 ms at 200 and up to 55 ms at 500 (measured, machine-dependent). Fine for v1's sizes; past
+  200 items, caching each row's wrapped height would be needed.
 - **`record` and `PROFILES` are available, not used by v1** (5.5).
 - **The bare-id default is a deliberate leniency** in the input (5.8).
 - **The supervisor prompt is unchanged.** A line asking the supervisor to prefer `ask_user` over
@@ -612,6 +658,8 @@ review screen.
   - After the 10-minute timeout the question stays drawn, but anything answered on it is ignored.
   - After ctrl+c cancels a question, the cancel reaches the supervisor, but its reply to that cancel
     is cut off in the TUI.
+  - In inline mode on a terminal 6 to 9 rows tall, a question's frame is 10 lines, taller than the
+    terminal, so its top scrolls off.
 - **Go tests outside CI.** The upstream workflows run `go test ./internal/chat ./internal/protocol
   ./internal/initwizard`, so the new `biocomp` tests run only locally (`cd lobster-tui && go test ./...`).
 - **Dependency.** `lobster-tui` now requires `github.com/the-omics-os/crust v0.1.0` for the plate map.
