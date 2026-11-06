@@ -331,10 +331,9 @@ async def test_actual_native_raw_and_beta_paths(bound, beta, asynchronous):
         message = raw.parse()
     assert message.content[0].text == "ok"
     assert len(endpoint.calls) == len(hooks.ends) == 1
-    expected = "https://binding.example/native/v1/messages" + (
-        "?beta=true" if beta else ""
-    )
-    assert endpoint.calls[0][0] == expected
+    route = "https://binding.example/native/v1/messages"
+    # anthropic<2 posts beta requests to ?beta=true; anthropic>=2 to the plain route.
+    assert endpoint.calls[0][0] in ({route, route + "?beta=true"} if beta else {route})
 
 
 @pytest.mark.asyncio

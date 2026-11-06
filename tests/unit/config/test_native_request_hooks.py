@@ -75,7 +75,11 @@ async def test_native_hook_covers_every_execution_mode(native_model, operation):
     else:
         assert payload["model"] == ANTHROPIC_MODEL
         assert payload["max_tokens"] == 137
-        assert request.headers["x-api-key"] == "fake-anthropic-key"
+        # anthropic>=2 sends the key as a Bearer token; older SDKs as x-api-key.
+        credential = request.headers.get("x-api-key") or request.headers.get(
+            "authorization", ""
+        ).removeprefix("Bearer ")
+        assert credential == "fake-anthropic-key"
 
 
 @pytest.mark.no_auto_config
