@@ -98,7 +98,7 @@ def _fetch_latest_version() -> Optional[str]:
                 "User-Agent": f"lobster-ai/{__version__}",
             },
         )
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310 # fixed https URL
             request, timeout=REQUEST_TIMEOUT_SECONDS
         ) as response:
             data = json.loads(response.read().decode("utf-8"))

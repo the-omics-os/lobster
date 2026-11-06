@@ -6,7 +6,7 @@ LLM providers (Anthropic, Bedrock, Ollama). It is separated from CLI
 presentation logic for better testability and reusability.
 """
 
-import subprocess
+import subprocess  # nosec B404 # used only to query the local ollama CLI with fixed arguments
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -52,7 +52,7 @@ def check_ollama_installation() -> Tuple[bool, Optional[str]]:
         Tuple of (installed: bool, version: Optional[str])
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 # fixed argv, PATH lookup intended
             ["ollama", "--version"], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:
@@ -72,7 +72,7 @@ def check_ollama_server() -> bool:
         bool: True if server is accessible, False otherwise
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 # fixed argv, PATH lookup intended
             ["ollama", "list"], capture_output=True, text=True, timeout=5
         )
         return result.returncode == 0
@@ -88,7 +88,7 @@ def get_ollama_models() -> List[str]:
         List[str]: List of model names, or empty list if none available
     """
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 # fixed argv, PATH lookup intended
             ["ollama", "list"], capture_output=True, text=True, timeout=5
         )
         if result.returncode == 0:

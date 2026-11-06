@@ -10,7 +10,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import typer
 from rich.markup import escape as _markup_escape
@@ -1076,7 +1076,7 @@ def _uv_tool_env_handoff(
         return  # No prompt, command construction, or package handoff under --skip-extras.
 
     import shlex
-    import subprocess as _sp
+    import subprocess as _sp  # nosec B404 # used only to re-run the installer with a fixed argv list
 
     from rich.prompt import Confirm
 
@@ -1129,7 +1129,7 @@ def _uv_tool_env_handoff(
 
         # Stream output so the user sees resolver/download progress
         # instead of staring at a frozen terminal.
-        result = _sp.run(cmd)
+        result = _sp.run(cmd)  # nosec B603 # fixed argv, no shell
 
         # === DANGER ZONE: venv on disk has been replaced ===
         _use_color = _os.environ.get("NO_COLOR") is None and sys.stdout.isatty()
@@ -1338,7 +1338,9 @@ def _validate_oauth_credentials() -> None:
             _validate_credentials,
         )
 
-        data = _validate_credentials(endpoint, token, token_type="token")
+        data = _validate_credentials(  # nosec B106 # token_type is a label
+            endpoint, token, token_type="token"
+        )
         if data is None:
             console.print(
                 "[yellow]Token validation failed. "
@@ -1552,8 +1554,16 @@ def _resolve_workspace_or_exit(create: bool = True) -> Path:
         raise typer.Exit(1)
 
 
-def _print_init_summary(result: Dict[str, Any], workspace_path: Path) -> None:
-    """Print the localized final summary of a TUI/questionary init run."""
+def _print_init_summary(
+    result: Dict[str, Any],
+    workspace_path: Path,
+    extra_lines: Optional[List[str]] = None,
+) -> None:
+    """Print the localized final summary of a TUI/questionary init run.
+
+    ``extra_lines`` are already-localized plain-text lines printed after the
+    workspace line and before the closing "next step" line.
+    """
     from lobster.i18n import t
 
     provider = (result.get("provider") or "").strip()
@@ -1563,6 +1573,8 @@ def _print_init_summary(result: Dict[str, Any], workspace_path: Path) -> None:
     console.print(f"[bold green]✓[/bold green] {esc(t('cli.init.done'))}")
     console.print(f"  {esc(t('cli.init.done_provider', provider=provider_text))}")
     console.print(f"  {esc(t('cli.init.done_workspace', path=str(workspace_path)))}")
+    for line in extra_lines or []:
+        console.print(f"  {esc(line)}")
     console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
 
 
@@ -2427,14 +2439,10 @@ def init_impl(
             # Success message for non-interactive
             from lobster.i18n import t
 
-            _print_init_summary(config_dict, workspace_path)
-            console.print(
-                f"  {_markup_escape(t('cli.init.done_env', path=str(env_path)))}"
-            )
+            summary_extras = [t("cli.init.done_env", path=str(env_path))]
             if backup_path:
-                console.print(
-                    f"  {_markup_escape(t('cli.init.done_backup', path=str(backup_path)))}"
-                )
+                summary_extras.append(t("cli.init.done_backup", path=str(backup_path)))
+            _print_init_summary(config_dict, workspace_path, summary_extras)
 
         # In uv tool env (non-interactive), print the command for the caller
         if _in_uv_tool_ni and not skip_extras:

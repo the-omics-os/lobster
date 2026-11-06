@@ -1639,7 +1639,10 @@ def vector_search_cmd(
 @app.command(help=h("Start the agent system as an API server (for React UI)."))
 def serve(
     port: int = typer.Option(8000, "--port", "-p"),
-    host: str = typer.Option("0.0.0.0", "--host"),
+    host: str = typer.Option(
+        "0.0.0.0",  # nosec B104 # serve defaults to all interfaces; --host overrides
+        "--host",
+    ),
 ):
     """
     Start the agent system as an API server (for React UI).

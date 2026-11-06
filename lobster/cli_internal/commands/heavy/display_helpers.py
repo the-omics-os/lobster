@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from rich import box
+from rich.markup import escape
 from rich.table import Table
 
 from lobster.cli_internal.commands.output_adapter import (
@@ -204,7 +205,7 @@ def build_status_blocks(
             alert_block(
                 t("cli.status.not_initialized")
                 + "\n"
-                + t("cli.status.no_config", path=str(resolved_workspace)),
+                + t("cli.status.no_config", path=escape(str(resolved_workspace))),
                 level="warning",
                 title=h("Initialization"),
             )

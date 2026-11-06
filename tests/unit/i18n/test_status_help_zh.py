@@ -8,6 +8,9 @@ from __future__ import annotations
 import ast
 import importlib
 import json
+import os
+import subprocess  # nosec B404 # test runs the CLI as a child process
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -361,3 +364,69 @@ def test_non_interactive_init_prints_backup_path(monkeypatch, init_env):
     assert result.exit_code == 0, result.output
     assert "备份：" in text
     assert ".env.backup" in text
+
+
+def test_non_interactive_init_lists_credentials_and_backup_before_next(
+    monkeypatch, init_env
+):
+    (init_env / ".env").write_text("ANTHROPIC_API_KEY=old\n")
+    result, text = _run_init(monkeypatch, "en", ("--force",))
+    assert result.exit_code == 0, result.output
+    credentials = text.index("Credentials:")
+    backup = text.index("Backup:")
+    next_step = text.index("Next:")
+    assert text.index("Workspace:") < credentials < backup < next_step
+
+
+@pytest.mark.parametrize("lang", ["en", "zh"])
+def test_status_not_initialized_survives_markup_in_workspace_path(
+    monkeypatch, init_env, lang
+):
+    cli_module = importlib.import_module("lobster.cli")
+    workspace = init_env / "ws[/x][bold]y"
+    monkeypatch.setenv("LOBSTER_WORKSPACE", str(workspace))
+    monkeypatch.setenv("COLUMNS", "400")
+    set_lang(lang)
+    result = CliRunner().invoke(cli_module.app, ["status"])
+    output = result.output
+    assert result.exit_code == 0, output
+    assert "Traceback" not in output
+    assert "MarkupError" not in output
+    assert "ws[/x][bold]y" in output.replace("\n", "")
+
+
+def _cli_json_stdout(tmp_path, args, lang):
+    # A subprocess, not CliRunner: JSON mode rebinds the shared console to the
+    # runner's stream, which would leak into later tests in the same process.
+    env = os.environ.copy()
+    env.update(
+        HOME=str(tmp_path),
+        XDG_CONFIG_HOME=str(tmp_path / "config"),
+        XDG_CACHE_HOME=str(tmp_path / "cache"),
+        PYTHONPATH=str(ROOT),
+        LOBSTER_WORKSPACE=str(tmp_path / "ws"),
+    )
+    env.pop("LOBSTER_LANG", None)
+    proc = subprocess.run(  # nosec B603 # fixed argv, no shell
+        [sys.executable, "-m", "lobster.cli", "--lang", lang, *args],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout[proc.stdout.index("{") :])
+    assert payload["success"] is True
+    return proc.stdout
+
+
+@pytest.mark.parametrize(
+    "args",
+    [["command", "help", "--json"], ["query", "/help", "--json"]],
+    ids=["command-help", "query-slash-help"],
+)
+def test_cli_help_json_stdout_is_identical_across_languages(tmp_path, args):
+    english = _cli_json_stdout(tmp_path, args, "en")
+    chinese = _cli_json_stdout(tmp_path, args, "zh")
+    assert english == chinese

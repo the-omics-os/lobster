@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
+import subprocess  # nosec B404 # test runs the CLI as a child process
 import sys
 from pathlib import Path
 
@@ -60,7 +60,7 @@ def _run_cli(
     cwd: Path | None = None,
     timeout: int = 30,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", *args],
         cwd=str(cwd or REPO_ROOT),
         env=_isolated_env(tmp_path, hide_npm_cli=hide_npm_cli),
@@ -85,7 +85,7 @@ def test_local_python_cli_can_hide_global_npm_and_find_go_binary(
     tmp_path: Path,
 ) -> None:
     env = _isolated_env(tmp_path, hide_npm_cli=True)
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 # fixed argv, no shell
         [
             sys.executable,
             "-c",
@@ -181,7 +181,7 @@ def test_cloud_chat_with_stub_npm_binary_reaches_tty_guard(tmp_path: Path) -> No
     env = _isolated_env(tmp_path, hide_npm_cli=True)
     env["PATH"] = os.pathsep.join([str(bin_dir), env["PATH"]])
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", "cloud", "chat"],
         cwd=str(REPO_ROOT),
         env=env,

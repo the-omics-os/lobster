@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import shlex
-import subprocess
+import subprocess  # nosec B404 # test runs a workflow shell step against a stub PATH
 from pathlib import Path
 
 import pytest
@@ -79,7 +79,7 @@ def test_pr_go_filter_handles_catalog_only_and_unrelated_changes(
         TEST_CHANGED_PATHS=changed_paths,
         GITHUB_OUTPUT=str(output),
     )
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 B607 # fixed argv, PATH lookup intended
         ["bash", "-e", "-o", "pipefail", "-c", script],
         env=env,
         text=True,

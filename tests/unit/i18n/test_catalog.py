@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
+import subprocess  # nosec B404 # test runs the CLI as a child process
 import sys
 from pathlib import Path
 
@@ -152,7 +152,7 @@ def test_help_uses_mandarin_app_sentence():
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env.pop("LOBSTER_LANG", None)
-    proc = subprocess.run(
+    proc = subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", "--lang", "zh", "--help"],
         cwd=ROOT,
         env=env,

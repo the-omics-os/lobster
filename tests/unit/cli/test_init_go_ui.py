@@ -1,5 +1,5 @@
 import json
-import subprocess
+import subprocess  # nosec B404 # test inspects subprocess call arguments
 from pathlib import Path
 
 import pytest
@@ -51,7 +51,7 @@ def test_init_force_go_skips_reconfirm_and_uses_go_wizard(monkeypatch, tmp_path)
     )
     monkeypatch.setattr(
         "lobster.ui.bridge.binary_finder.find_tui_binary",
-        lambda: "/tmp/fake-lobster-tui",
+        lambda: "/fake/lobster-tui",
     )
     monkeypatch.setattr(
         "lobster.ui.bridge.go_tui_bridge.run_init_wizard",
@@ -93,7 +93,7 @@ def test_init_force_go_skips_reconfirm_and_uses_go_wizard(monkeypatch, tmp_path)
         )
 
     assert exc_info.value.exit_code == 0
-    assert seen["binary_path"] == "/tmp/fake-lobster-tui"
+    assert seen["binary_path"] == "/fake/lobster-tui"
     assert seen["workspace_path"] == tmp_path / ".lobster_workspace"
     assert seen["env_path"] == tmp_path / ".env"
     assert seen["result"]["provider"] == "anthropic"
@@ -115,7 +115,7 @@ def test_init_go_cancel_exits_without_classic_fallback(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "lobster.ui.bridge.binary_finder.find_tui_binary",
-        lambda: "/tmp/fake-lobster-tui",
+        lambda: "/fake/lobster-tui",
     )
     monkeypatch.setattr(
         "lobster.ui.bridge.go_tui_bridge.run_init_wizard",
@@ -174,7 +174,7 @@ def test_run_init_wizard_reads_result_file_without_capture(monkeypatch, tmp_path
 
     monkeypatch.setattr("lobster.ui.bridge.go_tui_bridge.subprocess.run", _fake_run)
 
-    payload = run_init_wizard("/tmp/fake-lobster-tui")
+    payload = run_init_wizard("/fake/lobster-tui")
 
     assert payload == {"provider": "anthropic", "cancelled": False}
     assert "--result-file" in seen["cmd"]
@@ -190,7 +190,7 @@ def test_run_init_wizard_returns_cancelled_payload_from_result_file(monkeypatch)
 
     monkeypatch.setattr("lobster.ui.bridge.go_tui_bridge.subprocess.run", _fake_run)
 
-    payload = run_init_wizard("/tmp/fake-lobster-tui")
+    payload = run_init_wizard("/fake/lobster-tui")
 
     assert payload == {"cancelled": True}
 
@@ -202,4 +202,4 @@ def test_run_init_wizard_raises_when_result_missing(monkeypatch):
     monkeypatch.setattr("lobster.ui.bridge.go_tui_bridge.subprocess.run", _fake_run)
 
     with pytest.raises(BridgeError, match="exit code 1"):
-        run_init_wizard("/tmp/fake-lobster-tui")
+        run_init_wizard("/fake/lobster-tui")

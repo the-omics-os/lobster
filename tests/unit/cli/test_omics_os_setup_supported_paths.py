@@ -543,7 +543,7 @@ def test_interactive_init_bridge_has_no_five_minute_deadline(monkeypatch):
 def test_init_bridge_restores_original_terminal_state_on_every_exit(
     outcome, monkeypatch
 ):
-    import subprocess
+    import subprocess  # nosec B404 # test inspects subprocess call arguments
     import termios
 
     from lobster.ui.bridge import go_tui_bridge

@@ -2,7 +2,8 @@
 
 import json
 import os
-import subprocess
+import re
+import subprocess  # nosec B404 # test runs the CLI as a child process
 import sys
 from pathlib import Path
 from unittest.mock import Mock
@@ -37,7 +38,7 @@ def cli(tmp_path, *args):
         LOBSTER_WORKSPACE=str(tmp_path / "workspace"),
         LOBSTER_LANG="en",
     )
-    return subprocess.run(
+    return subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", *args],
         cwd=tmp_path,
         env=env,
@@ -53,7 +54,7 @@ def test_language_flag_respects_literal_argument_separator():
     assert argv == ["lobster", "query", "--", "--lang", "literal"]
 
 
-@pytest.mark.parametrize("language", ["../phrases.zh", "/tmp/zh", "../../en"])
+@pytest.mark.parametrize("language", ["../phrases.zh", "/fake/zh", "../../en"])
 def test_unsafe_locale_names_fall_back_to_english(language):
     assert set_lang(language) == "en"
 
@@ -157,8 +158,10 @@ def test_init_bridge_passes_resolved_language(tmp_path, monkeypatch):
 def test_real_upgrade_help_is_localized(tmp_path, lang, expected):
     proc = cli(tmp_path, "--lang", lang, "upgrade", "--help")
     assert proc.returncode == 0, proc.stderr
-    assert expected in proc.stdout
-    assert "--dry-run" in proc.stdout
+    # CI may force colour; Rich then styles "--dry-run" in separate spans.
+    stdout = re.sub(r"\x1b\[[0-9;]*m", "", proc.stdout)
+    assert expected in stdout
+    assert "--dry-run" in stdout
 
 
 def test_missing_language_value_is_usage_error(tmp_path):

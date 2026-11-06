@@ -316,8 +316,14 @@ jobs:
         # build that wheel from the repo and let pip find it locally.
         python -m build --wheel --outdir dist-tui packages/lobster-ai-tui
         twine check dist-tui/*
-        pip install --no-cache-dir --find-links dist-tui dist/*.whl
-        python -c "from lobster.version import __version__; print(f'lobster-ai {__version__} installed')"
+        # Install from outside the checkout. With the job-wide PYTHONPATH and the
+        # lobster_ai.egg-info written by the build, pip treats lobster-ai as
+        # already installed and silently skips the wheel.
+        wheel="$(ls "$PWD"/dist/lobster_ai-*.whl)"
+        tui_links="$PWD/dist-tui"
+        cd "$RUNNER_TEMP"
+        env -u PYTHONPATH python -I -m pip install --no-cache-dir --find-links "$tui_links" "$wheel"
+        env -u PYTHONPATH python -I -c "from lobster.version import __version__; print(f'lobster-ai {__version__} installed')"
 
     - name: Verify installed wheel language catalogs and help
       run: |

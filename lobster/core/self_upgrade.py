@@ -21,7 +21,7 @@ new version (``run_upgrade`` prints this).
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # nosec B404 # used only to run the upgrade command with an argv list
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -181,7 +181,7 @@ def run_upgrade(console: "Console", dry_run: bool = False) -> int:
         return 0
 
     console.print(f"[dim]{h('Running:')} {plan.display}[/dim]")
-    result = subprocess.run(plan.command)
+    result = subprocess.run(plan.command)  # nosec B603 # fixed argv, no shell
 
     if result.returncode != 0:
         console.print(f"[red]✗[/red] Upgrade failed (exit code {result.returncode}).")

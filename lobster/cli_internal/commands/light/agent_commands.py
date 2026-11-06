@@ -22,7 +22,7 @@ Example:
 """
 
 import logging
-import subprocess
+import subprocess  # nosec B404 # used only to run pip with a fixed argv list
 import sys
 from pathlib import Path
 from typing import Optional
@@ -118,7 +118,7 @@ def _uv_pip_install(package: str) -> tuple[bool, str]:
         cmd = [sys.executable, "-m", "pip", "install", "--quiet"] + install_args
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 # fixed argv, no shell
             cmd,
             capture_output=True,
             text=True,
@@ -152,7 +152,7 @@ def _uv_pip_uninstall(package: str) -> tuple[bool, str]:
         cmd = [sys.executable, "-m", "pip", "uninstall", package, "-y"]
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 # fixed argv, no shell
             cmd,
             capture_output=True,
             text=True,

@@ -110,7 +110,7 @@ class HistoryConsole(Console):
                 raise
             except Exception:
                 # Fall back to built-in input on any error
-                pass
+                pass  # nosec B110 # fall back to built-in input on any prompt error
 
         # Fall back to built-in input
         return input()
@@ -454,7 +454,7 @@ class LobsterConsoleManager:
         try:
             muted_file.close()
         except Exception:
-            pass
+            pass  # nosec B110 # best-effort close of a muted output file
 
     def has_history_support(self) -> bool:
         """Check if the console has command history support enabled."""

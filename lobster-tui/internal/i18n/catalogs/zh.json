@@ -21,7 +21,7 @@
   "cli.init.cancelled": "已取消设置。",
   "cli.status.no_config": "在 {path} 中没有找到 Lobster 配置",
   "cli.status.not_initialized": "Lobster 还没有设置",
-  "cli.status.init_hint": "运行 `lobster init` 来配置你的 LLM 提供商，包括 Omics-OS Cloud。在机器上自动设置时，请使用 `lobster init --non-interactive --use-omics-os --skip-extras --skip-ssl-test`，并提供 OMICS_OS_API_KEY。",
+  "cli.status.init_hint": "运行 `lobster init` 来配置你的 模型服务，包括 Omics-OS Cloud。在机器上自动设置时，请使用 `lobster init --non-interactive --use-omics-os --skip-extras --skip-ssl-test`，并提供 OMICS_OS_API_KEY。",
   "cli.status.license_expires": "许可证将在 {days} 天后到期",
   "cli.status.available_agents": "可用智能体（{n}）",
   "cli.status.more_agents": "……还有 {n} 个可用智能体",

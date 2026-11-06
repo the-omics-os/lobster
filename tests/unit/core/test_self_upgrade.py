@@ -1,7 +1,7 @@
 """Tests for lobster.core.self_upgrade (the ``lobster upgrade`` core)."""
 
 import json
-import subprocess
+import subprocess  # nosec B404 # test inspects subprocess call arguments
 from pathlib import Path
 
 import pytest
@@ -128,6 +128,8 @@ class TestDetectUpgradePlan:
 class TestRunUpgrade:
     def test_dry_run_prints_command_without_running(self, monkeypatch):
         monkeypatch.setattr("lobster.core.uv_tool_env.detect_uv_tool_env", lambda: None)
+        # Do not depend on the test interpreter itself running in a virtualenv.
+        monkeypatch.setattr(self_upgrade, "_is_virtualenv", lambda: True)
         monkeypatch.setattr(
             self_upgrade.shutil, "which", lambda name: "/usr/local/bin/uv"
         )

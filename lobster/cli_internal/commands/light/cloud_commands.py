@@ -43,7 +43,7 @@ def _is_secure_endpoint(endpoint: str) -> bool:
     return False
 
 
-def _validate_credentials(
+def _validate_credentials(  # nosec B107 # token_type is a display label, not a credential
     endpoint: str, token: str, token_type: str = "API key"
 ) -> Optional[dict]:
     """Validate credentials against the gateway. Returns usage data or None on failure."""
@@ -403,7 +403,7 @@ def chat(
 ) -> None:
     """Start an interactive cloud chat session (lobster-cli, direct connection)."""
     import os
-    import subprocess
+    import subprocess  # nosec B404 # used only to launch the installed chat client with an argv list
 
     from lobster.cli_internal.npm_launcher import find_npm_binary, install_hint
 
@@ -452,7 +452,9 @@ def chat(
     if project_id:
         cmd.append(f"--project-id={project_id}")
 
-    proc = subprocess.Popen(cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+    proc = subprocess.Popen(  # nosec B603 # fixed argv, no shell
+        cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr
+    )
     try:
         proc.wait()
     except KeyboardInterrupt:
@@ -622,7 +624,7 @@ def query(
         try:
             workspace_files = fetch_workspace_files(rest_base, headers, sid)
         except Exception:
-            pass
+            pass  # nosec B110 # workspace file listing is optional; the chat result is still reported
 
     if json_output:
         print(

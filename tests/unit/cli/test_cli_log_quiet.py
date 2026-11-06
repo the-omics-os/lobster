@@ -8,7 +8,7 @@ default). The CLI host must lower it to its own resolved level, and an explicit
 import logging
 import os
 import re
-import subprocess
+import subprocess  # nosec B404 # test runs the CLI as a child process
 import sys
 
 import pytest
@@ -91,7 +91,7 @@ def test_status_subprocess_has_no_info_or_pkg_resources_noise(tmp_path):
     env = {k: v for k, v in os.environ.items() if k != "LOBSTER_LOG_LEVEL"}
     env["LOBSTER_WORKSPACE"] = str(tmp_path / "ws")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", "status"],
         cwd=tmp_path,
         env=env,
