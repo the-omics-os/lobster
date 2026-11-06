@@ -2,9 +2,16 @@
 
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404 # used only to launch the installed chat client with an argv list
 import sys
 from typing import Optional
+
+NPM_PACKAGE = "@omicsos/lobster"
+
+
+def install_hint() -> str:
+    """Return the command that installs the npm cloud TUI."""
+    return f"npm install -g {NPM_PACKAGE}"
 
 
 def find_npm_binary() -> Optional[str]:
@@ -36,7 +43,7 @@ def launch_cloud_chat(
     if project_id:
         cmd.extend(["--project-id", project_id])
     try:
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd)  # nosec B603 # fixed argv, no shell
         sys.exit(result.returncode)
     except FileNotFoundError:
         return False

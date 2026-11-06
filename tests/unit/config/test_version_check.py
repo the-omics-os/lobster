@@ -9,7 +9,8 @@ def test_get_update_message_uses_uv_tool_upgrade_when_in_uv_tool_env(monkeypatch
 
     message = version_check.get_update_message("9.9.9")
 
-    assert "Update with: uv tool upgrade lobster-ai" in message
+    assert "Update with: lobster upgrade" in message
+    assert "(or: uv tool upgrade lobster-ai)" in message
 
 
 def test_get_update_message_uses_uv_pip_when_not_in_uv_tool_env(monkeypatch):
@@ -20,7 +21,8 @@ def test_get_update_message_uses_uv_pip_when_not_in_uv_tool_env(monkeypatch):
 
     message = version_check.get_update_message("9.9.9")
 
-    assert "Update with: uv pip install --upgrade lobster-ai" in message
+    assert "Update with: lobster upgrade" in message
+    assert "(or: uv pip install --upgrade lobster-ai)" in message
 
 
 def test_get_update_message_falls_back_to_uv_pip_on_detection_error(monkeypatch):
@@ -34,4 +36,5 @@ def test_get_update_message_falls_back_to_uv_pip_on_detection_error(monkeypatch)
 
     message = version_check.get_update_message("9.9.9")
 
-    assert "Update with: uv pip install --upgrade lobster-ai" in message
+    assert "Update with: lobster upgrade" in message
+    assert "(or: uv pip install --upgrade lobster-ai)" in message

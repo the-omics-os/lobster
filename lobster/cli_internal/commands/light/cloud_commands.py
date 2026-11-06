@@ -20,11 +20,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from lobster.i18n import h, t
+
 logger = logging.getLogger(__name__)
 
 cloud_app = typer.Typer(
     name="cloud",
-    help="Manage Omics-OS Cloud connection and usage",
+    help=t("light.cloud.help"),
     no_args_is_help=True,
 )
 
@@ -41,7 +43,7 @@ def _is_secure_endpoint(endpoint: str) -> bool:
     return False
 
 
-def _validate_credentials(
+def _validate_credentials(  # nosec B107 # token_type is a display label, not a credential
     endpoint: str, token: str, token_type: str = "API key"
 ) -> Optional[dict]:
     """Validate credentials against the gateway. Returns usage data or None on failure."""
@@ -244,7 +246,7 @@ def account() -> None:
 
 keys_app = typer.Typer(
     name="keys",
-    help="API key management (web only)",
+    help=t("light.cloud.keys"),
     no_args_is_help=False,
     invoke_without_command=True,
 )
@@ -268,7 +270,7 @@ def login(
     api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
-        help="Omics-OS API key from app.omics-os.com/account",
+        help=h("Omics-OS API key from app.omics-os.com/account"),
     ),
 ) -> None:
     """Authenticate the Python local gateway provider with --api-key <key>.
@@ -382,34 +384,34 @@ def logout() -> None:
 @cloud_app.command()
 def chat(
     session_id: Optional[str] = typer.Option(
-        None, "--session-id", "-s", help="Resume an existing cloud session"
+        None, "--session-id", "-s", help=h("Resume an existing cloud session")
     ),
     token: Optional[str] = typer.Option(
-        None, "--token", help="Override stored auth token"
+        None, "--token", help=h("Override stored auth token")
     ),
     endpoint: Optional[str] = typer.Option(
-        None, "--endpoint", help="Custom cloud API endpoint"
+        None, "--endpoint", help=h("Custom cloud API endpoint")
     ),
     stream_endpoint: Optional[str] = typer.Option(
         None,
         "--stream-endpoint",
-        help="Custom stream origin (e.g., https://stream.omics-os.com)",
+        help=h("Custom stream origin (e.g., https://stream.omics-os.com)"),
     ),
     project_id: Optional[str] = typer.Option(
-        None, "--project-id", "-p", help="Associate session with a cloud project"
+        None, "--project-id", "-p", help=h("Associate session with a cloud project")
     ),
 ) -> None:
     """Start an interactive cloud chat session (lobster-cli, direct connection)."""
     import os
-    import subprocess
+    import subprocess  # nosec B404 # used only to launch the installed chat client with an argv list
 
-    from lobster.cli_internal.npm_launcher import find_npm_binary
+    from lobster.cli_internal.npm_launcher import find_npm_binary, install_hint
 
     binary = find_npm_binary()
     if not binary:
         console.print(
             "[red]Error:[/red] Cloud TUI not installed.\n"
-            "Install: [bold]npm install -g @omicsos/lobster[/bold]"
+            f"Install: [bold]{install_hint()}[/bold]"
         )
         raise typer.Exit(1)
 
@@ -450,7 +452,9 @@ def chat(
     if project_id:
         cmd.append(f"--project-id={project_id}")
 
-    proc = subprocess.Popen(cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+    proc = subprocess.Popen(  # nosec B603 # fixed argv, no shell
+        cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr
+    )
     try:
         proc.wait()
     except KeyboardInterrupt:
@@ -463,43 +467,43 @@ def chat(
 
 @cloud_app.command()
 def query(
-    question: str = typer.Argument(..., help="Question to ask"),
+    question: str = typer.Argument(..., help=h("Question to ask")),
     session_id: Optional[str] = typer.Option(
-        None, "--session-id", "-s", help="Session UUID to continue (or 'latest')"
+        None, "--session-id", "-s", help=h("Session UUID to continue (or 'latest')")
     ),
     token: Optional[str] = typer.Option(
         None,
         "--token",
-        help="Override stored auth token (prefer OMICS_OS_API_KEY env var)",
+        help=h("Override stored auth token (prefer OMICS_OS_API_KEY env var)"),
     ),
     endpoint: Optional[str] = typer.Option(
         None,
         "--endpoint",
-        help="Custom REST API origin (e.g., https://app.omics-os.com)",
+        help=h("Custom REST API origin (e.g., https://app.omics-os.com)"),
     ),
     stream_endpoint: Optional[str] = typer.Option(
         None,
         "--stream-endpoint",
-        help="Custom stream origin (e.g., https://stream.omics-os.com)",
+        help=h("Custom stream origin (e.g., https://stream.omics-os.com)"),
     ),
     unsafe_endpoint: bool = typer.Option(
         False,
         "--unsafe-endpoint",
         is_flag=True,
         hidden=True,
-        help="Skip endpoint allowlist validation (DANGEROUS)",
+        help=h("Skip endpoint allowlist validation (DANGEROUS)"),
     ),
     stream: bool = typer.Option(
-        False, "--stream/--no-stream", help="Stream text as it arrives"
+        False, "--stream/--no-stream", help=h("Stream text as it arrives")
     ),
     json_output: bool = typer.Option(
-        False, "--json", "-j", is_flag=True, help="Output JSON only on stdout"
+        False, "--json", "-j", is_flag=True, help=h("Output JSON only on stdout")
     ),
     project_id: Optional[str] = typer.Option(
         None,
         "--project-id",
         "-p",
-        help="Associate session with a cloud project (personal projects only)",
+        help=h("Associate session with a cloud project (personal projects only)"),
     ),
 ) -> None:
     """Send a single query to Omics-OS Cloud (agents run on ECS Fargate)."""
@@ -620,7 +624,7 @@ def query(
         try:
             workspace_files = fetch_workspace_files(rest_base, headers, sid)
         except Exception:
-            pass
+            pass  # nosec B110 # workspace file listing is optional; the chat result is still reported
 
     if json_output:
         print(
@@ -677,7 +681,7 @@ def query(
 @cloud_app.command("projects")
 def projects(
     json_output: bool = typer.Option(
-        False, "--json", "-j", is_flag=True, help="Output JSON"
+        False, "--json", "-j", is_flag=True, help=h("Output JSON")
     ),
 ) -> None:
     """List your Omics-OS Cloud projects."""

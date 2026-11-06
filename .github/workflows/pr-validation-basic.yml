@@ -92,7 +92,7 @@ jobs:
       run: |
         uv venv --python 3.12 .venv
         # These local packages provide the selected agent tests and scanpy.
-        uv pip install -e ".[dev]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization
+        uv pip install -e ".[dev,openai]" -e packages/lobster-research -e packages/lobster-transcriptomics -e packages/lobster-visualization
         echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
     
     - name: Run basic linting
@@ -148,6 +148,9 @@ jobs:
           tests/unit/core/test_client_interrupt.py \
           tests/unit/core/test_schemas.py \
           tests/unit/core/test_data_manager_v2.py \
+          tests/unit/core/test_self_upgrade.py \
+          tests/unit/i18n \
+          tests/unit/ci \
           tests/unit/cli \
           tests/unit/agents/test_agent_registry.py \
           tests/unit/agents/test_research_agent.py \
@@ -194,7 +197,7 @@ jobs:
     - name: Detect Go TUI changes
       id: detect
       run: |
-        tui_changes=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | grep -E '^lobster-tui/|^lobster/cli_internal/go_tui_launcher\.py|^lobster/ui/callbacks/protocol_callback\.py|^lobster/ui/bridge/' | wc -l)
+        tui_changes=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}..HEAD | awk '/^lobster-tui\/|^lobster\/i18n\/|^tests\/unit\/i18n\/|^lobster\/cli_internal\/go_tui_launcher\.py$|^lobster\/ui\/callbacks\/protocol_callback\.py$|^lobster\/ui\/bridge\// {count++} END {print count+0}')
         if [ "$tui_changes" -gt 0 ]; then
           echo "has_changes=true" >> $GITHUB_OUTPUT
         else
@@ -218,7 +221,7 @@ jobs:
     - name: Run Go tests
       if: steps.detect.outputs.has_changes == 'true'
       working-directory: lobster-tui
-      run: go test ./internal/chat ./internal/protocol ./internal/initwizard -v
+      run: go test ./internal/chat ./internal/protocol ./internal/initwizard ./internal/i18n -v
 
     - name: Build Go binary
       if: steps.detect.outputs.has_changes == 'true'

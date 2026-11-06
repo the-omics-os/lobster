@@ -7,7 +7,7 @@ import logging
 import os
 import queue
 import signal
-import subprocess
+import subprocess  # nosec B404 # used only to launch the terminal UI binary with an argv list
 import tempfile
 import threading
 from pathlib import Path
@@ -75,7 +75,7 @@ class GoTUIBridge:
 
         stderr_pipe = subprocess.PIPE
         try:
-            self._process = subprocess.Popen(
+            self._process = subprocess.Popen(  # nosec B603 # fixed argv, no shell
                 cmd,
                 pass_fds=(p2g_r, g2p_w),
                 stdout=subprocess.DEVNULL,
@@ -122,18 +122,18 @@ class GoTUIBridge:
         try:
             self.send(MessageType.QUIT.value, {})
         except Exception:
-            pass
+            pass  # nosec B110 # best-effort shutdown message; teardown continues
 
         try:
             if self._writer:
                 self._writer.close()
         except Exception:
-            pass
+            pass  # nosec B110 # best-effort close during teardown
         try:
             if self._reader:
                 self._reader.close()
         except Exception:
-            pass
+            pass  # nosec B110 # best-effort close during teardown
 
         proc = self._process
         if proc and proc.poll() is None:
@@ -283,11 +283,16 @@ def run_init_wizard(
     cmd = [binary_path, "init", "--result-file", result_path]
     if theme:
         cmd.extend(["--theme", theme])
+    from lobster.i18n import current_lang
+
+    child_env = os.environ.copy()
+    child_env["LOBSTER_LANG"] = current_lang()
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 # fixed argv, no shell
             cmd,
             text=True,
             timeout=timeout,
+            env=child_env,
         )
 
         try:

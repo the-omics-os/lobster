@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from rich import box
+from rich.markup import escape
 from rich.table import Table
 
 from lobster.cli_internal.commands.output_adapter import (
@@ -21,6 +22,7 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
     table_block,
 )
+from lobster.i18n import h, t
 from lobster.ui.console_manager import get_console_manager
 
 if TYPE_CHECKING:
@@ -168,6 +170,11 @@ def _get_matrix_info(matrix) -> Dict[str, Any]:
     return info
 
 
+def _kv(rows, *, title: Optional[str] = None) -> OutputBlock:
+    """kv block whose column headers follow the UI language."""
+    return kv_block(rows, title=title, key_label=h("Field"), value_label=h("Value"))
+
+
 def build_status_blocks(
     *,
     compact: bool = False,
@@ -180,41 +187,38 @@ def build_status_blocks(
     Shared implementation for both `lobster status` and `/status`.
     """
     blocks: List[OutputBlock] = [
-        section_block(title="Lobster Status"),
+        section_block(title=h("Lobster Status")),
     ]
     # Resolve provider configuration exactly as the local runtime does. A
     # resolved configuration does not establish valid credentials/account access.
     from lobster.core.config_resolver import ConfigResolver, ConfigurationError
     from lobster.core.runtime.workspace import resolve_workspace
 
+    resolved_workspace = resolve_workspace(workspace_path, create=False)
     try:
-        provider, source = ConfigResolver(
-            resolve_workspace(workspace_path, create=False)
-        ).resolve_provider(runtime_override=provider_override)
+        provider, source = ConfigResolver(resolved_workspace).resolve_provider(
+            runtime_override=provider_override
+        )
     except ConfigurationError:
-        init_rows = [("Initialization", "Not configured")]
+        init_rows = [(h("Initialization"), h("Not configured"))]
         blocks.append(
             alert_block(
-                "Lobster is not initialized yet",
+                t("cli.status.not_initialized")
+                + "\n"
+                + t("cli.status.no_config", path=escape(str(resolved_workspace))),
                 level="warning",
-                title="Initialization",
+                title=h("Initialization"),
             )
         )
-        blocks.append(
-            hint_block(
-                "Run `lobster init` to configure your LLM provider, including Omics-OS Cloud. "
-                "For machine setup use `lobster init --non-interactive --use-omics-os "
-                "--skip-extras --skip-ssl-test` with OMICS_OS_API_KEY."
-            )
-        )
+        blocks.append(hint_block(t("cli.status.init_hint")))
     else:
         init_rows = [
-            ("Initialization", "Configured"),
-            ("Provider", provider),
-            ("Configuration Source", source),
-            ("Account Access", "Not checked (configuration only)"),
+            (h("Initialization"), h("Configured")),
+            (h("Provider"), provider),
+            (h("Configuration Source"), source),
+            (h("Account Access"), h("Not checked (configuration only)")),
         ]
-    blocks.append(kv_block(init_rows, title="Initialization"))
+    blocks.append(_kv(init_rows, title=h("Initialization")))
 
     # Get entitlement status
     from lobster.core.license_manager import get_entitlement_status
@@ -235,8 +239,8 @@ def build_status_blocks(
     available = [name for name in worker_agents if is_agent_available(name, tier)]
 
     tier_rows = [
-        ("Subscription Tier", entitlement.get("tier_display", "Free")),
-        ("Source", entitlement.get("source", "default")),
+        (h("Subscription Tier"), entitlement.get("tier_display", "Free")),
+        (h("Source"), entitlement.get("source", "default")),
     ]
 
     if entitlement.get("expires_at"):
@@ -244,53 +248,53 @@ def build_status_blocks(
         if days is not None and days < 30:
             blocks.append(
                 alert_block(
-                    f"License expires in {days} days",
+                    t("cli.status.license_expires", days=days),
                     level="warning",
                 )
             )
         else:
-            tier_rows.append(("Expires", entitlement.get("expires_at")))
+            tier_rows.append((h("Expires"), entitlement.get("expires_at")))
 
     if entitlement.get("warnings"):
         for warning in entitlement["warnings"]:
             blocks.append(alert_block(warning, level="error"))
-    blocks.append(kv_block(tier_rows, title="Subscription"))
+    blocks.append(_kv(tier_rows, title=h("Subscription")))
 
     package_rows = []
     package_counts = {"installed": 0, "development": 0, "missing": 0}
     for pkg_name, version in packages.items():
         if version == "missing":
-            status_str = "Missing"
+            status_str = h("Missing")
             package_counts["missing"] += 1
         elif version == "dev":
-            status_str = "Development"
+            status_str = h("Development")
             package_counts["development"] += 1
         else:
-            status_str = "Installed"
+            status_str = h("Installed")
             package_counts["installed"] += 1
         package_rows.append([pkg_name, version, status_str])
     if compact:
         blocks.append(
-            kv_block(
+            _kv(
                 [
-                    ("Installed Packages", str(package_counts["installed"])),
-                    ("Development Packages", str(package_counts["development"])),
-                    ("Missing Packages", str(package_counts["missing"])),
-                    ("Available Agents", str(len(available))),
+                    (h("Installed Packages"), str(package_counts["installed"])),
+                    (h("Development Packages"), str(package_counts["development"])),
+                    (h("Missing Packages"), str(package_counts["missing"])),
+                    (h("Available Agents"), str(len(available))),
                 ],
-                title="Runtime Summary",
+                title=h("Runtime Summary"),
             )
         )
     else:
         blocks.append(
             table_block(
                 [
-                    {"name": "Package"},
-                    {"name": "Version"},
-                    {"name": "Status"},
+                    {"name": h("Package")},
+                    {"name": h("Version")},
+                    {"name": h("Status")},
                 ],
                 package_rows,
-                title="Installed Packages",
+                title=h("Installed Packages"),
             )
         )
 
@@ -299,7 +303,11 @@ def build_status_blocks(
         from lobster.vector.service import VectorSearchService  # noqa: F401
 
         capabilities.append(
-            ("available", "Semantic Search", "Vector backend available")
+            (
+                h("available"),
+                h("Semantic Search"),
+                h("Vector backend available"),
+            )
         )
     except ImportError:
         from lobster.core.component_registry import get_install_command
@@ -307,23 +315,23 @@ def build_status_blocks(
         vector_cmd = get_install_command("vector-search", is_extra=True)
         capabilities.append(
             (
-                "optional",
-                "Semantic Search",
-                f"{vector_cmd} (+ lobster-metadata backend, dev-only)",
+                h("optional"),
+                h("Semantic Search"),
+                f"{vector_cmd} {h('(+ lobster-metadata backend, dev-only)')}",
             )
         )
     try:
         import docling  # noqa: F401
 
-        capabilities.append(("available", "Document Intelligence", "docling"))
+        capabilities.append((h("available"), h("Document Intelligence"), "docling"))
     except ImportError:
         from lobster.core.component_registry import get_install_command
 
         docling_cmd = get_install_command("docling", is_extra=True)
         capabilities.append(
             (
-                "optional",
-                "Document Intelligence",
+                h("optional"),
+                h("Document Intelligence"),
                 docling_cmd,
             )
         )
@@ -331,21 +339,21 @@ def build_status_blocks(
         capability_items = [
             f"{label}: {status} ({details})" for status, label, details in capabilities
         ]
-        blocks.append(list_block(capability_items, title="Optional Capabilities"))
+        blocks.append(list_block(capability_items, title=h("Optional Capabilities")))
         blocks.append(
-            hint_block("Use `lobster status` for the full package and agent roster.")
+            hint_block(h("Use `lobster status` for the full package and agent roster."))
         )
         return blocks
 
     blocks.append(
         table_block(
             [
-                {"name": "Status"},
-                {"name": "Capability"},
-                {"name": "Details"},
+                {"name": h("Status")},
+                {"name": h("Capability")},
+                {"name": h("Details")},
             ],
             capabilities,
-            title="Optional Capabilities",
+            title=h("Optional Capabilities"),
         )
     )
 
@@ -355,13 +363,16 @@ def build_status_blocks(
         blocks.append(
             list_block(
                 available_preview,
-                title=f"Available Agents ({len(available)})",
+                title=t("cli.status.available_agents", n=len(available)),
             )
         )
         if compact and len(available_names) > len(available_preview):
             blocks.append(
                 hint_block(
-                    f"... and {len(available_names) - len(available_preview)} more available agents"
+                    t(
+                        "cli.status.more_agents",
+                        n=len(available_names) - len(available_preview),
+                    )
                 )
             )
 
@@ -369,11 +380,14 @@ def build_status_blocks(
     if features:
         feature_items = [str(feature) for feature in features]
         feature_preview = feature_items[:6] if compact else feature_items
-        blocks.append(list_block(feature_preview, title="Enabled Features"))
+        blocks.append(list_block(feature_preview, title=h("Enabled Features")))
         if compact and len(feature_items) > len(feature_preview):
             blocks.append(
                 hint_block(
-                    f"... and {len(feature_items) - len(feature_preview)} more enabled features"
+                    t(
+                        "cli.status.more_features",
+                        n=len(feature_items) - len(feature_preview),
+                    )
                 )
             )
 

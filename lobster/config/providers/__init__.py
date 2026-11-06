@@ -24,6 +24,7 @@ Usage:
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
 from lobster.config.providers.nebius_provider import NebiusProvider
+from lobster.config.providers.ollama_cloud_provider import OllamaCloudProvider
 from lobster.config.providers.openrouter_provider import OpenRouterProvider
 from lobster.config.providers.registry import ProviderRegistry, get_provider
 
@@ -34,4 +35,5 @@ __all__ = [
     "get_provider",
     "OpenRouterProvider",
     "NebiusProvider",
+    "OllamaCloudProvider",
 ]

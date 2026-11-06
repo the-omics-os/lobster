@@ -4,7 +4,18 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
+
+func TestResearchDescriptionMatchesCatalog(t *testing.T) {
+	if initAgentPackages[0].Name != "lobster-research" {
+		t.Fatalf("unexpected first package %s", initAgentPackages[0].Name)
+	}
+	if initAgentPackages[0].Description != i18n.T("wizard.pkg.research") {
+		t.Fatalf("description %q", initAgentPackages[0].Description)
+	}
+}
 
 func TestExpandSelectedPackagesExpandsPackageIDs(t *testing.T) {
 	agents := expandSelectedPackages([]string{
@@ -348,8 +359,8 @@ func TestWizardModelAnthropicShowsProfileStep(t *testing.T) {
 func TestWizardModelNonAnthropicSkipsProfile(t *testing.T) {
 	m := NewWizardModel("", "")
 
-	// Select Gemini (index 4 — Omics-OS Cloud at 0).
-	for i := 0; i < 4; i++ {
+	// Select Gemini (index 5 — cloud providers precede it).
+	for i := 0; i < 5; i++ {
 		result, _ := m.Update(makeKeyPress("down"))
 		m = result.(WizardModel)
 	}
@@ -649,5 +660,35 @@ func TestResolveDefaultOllamaSelectChoice(t *testing.T) {
 	idx2 := resolveDefaultOllamaSelectChoice(items2)
 	if idx2 != 0 {
 		t.Fatalf("expected index 0 when default not found, got %d", idx2)
+	}
+}
+
+func TestOllamaCloudWizardSelectionAndCredentials(t *testing.T) {
+	m := NewWizardModel("", "")
+	found := false
+	for _, item := range m.providerSelect.items {
+		if item.value == providerOllamaCloud {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Ollama Cloud missing from provider selector")
+	}
+	m.result.Provider = providerOllamaCloud
+	m.initAPIKeyStep()
+	if len(m.apiKeyInputs) != 1 {
+		t.Fatal("cloud requires one masked key field")
+	}
+	m.apiKeyInputs[0].SetValue("test-only-cloud-key")
+	m.collectAPIKeys()
+	m.advanceFromAPIKey()
+	if m.step != stepModelSelect {
+		t.Fatal("cloud should offer model selection")
+	}
+	if m.modelSelect.items[m.modelSelect.cursor].value != "glm-5.2" {
+		t.Fatal("wrong cloud default")
+	}
+	if m.result.APIKey != "test-only-cloud-key" {
+		t.Fatal("key not retained for adapter")
 	}
 }

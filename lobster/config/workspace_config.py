@@ -113,6 +113,10 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         description="OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
     )
 
+    ollama_cloud_model: Optional[str] = Field(
+        default=None, description="Ollama Cloud model"
+    )
+
     nebius_model: Optional[str] = Field(
         None,
         description="Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507', 'deepseek-ai/DeepSeek-V4-Pro')",
@@ -138,6 +142,11 @@ class WorkspaceProviderConfig(ProviderConfigBase):
     profile: str = Field(
         "production",
         description="Agent configuration profile (development | production | performance | max | hybrid)",
+    )
+
+    lang: Optional[str] = Field(
+        None,
+        description="Local UI language (en, zh). Empty means English. Does not change agent selection.",
     )
 
     def save(self, workspace_path: Path) -> None:
@@ -251,6 +260,7 @@ class WorkspaceProviderConfig(ProviderConfigBase):
         self.openai_model = None
         self.openrouter_model = None
         self.nebius_model = None
+        self.ollama_cloud_model = None
         self.ollama_host = "http://localhost:11434"
         self.model_context_windows = {}
         self.per_agent_providers = {}

@@ -36,6 +36,18 @@ def _get_cache_path() -> Path:
     return cache_dir / CACHE_FILE_NAME
 
 
+def clear_update_cache() -> None:
+    """Remove the cached latest-version so the next run re-checks PyPI.
+
+    Best-effort: never raises. Called after a successful self-upgrade so
+    the update notification does not linger with a stale cached version.
+    """
+    try:
+        _get_cache_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def _read_cache() -> Optional[dict]:
     """Read cached version check result."""
     cache_path = _get_cache_path()
@@ -86,7 +98,7 @@ def _fetch_latest_version() -> Optional[str]:
                 "User-Agent": f"lobster-ai/{__version__}",
             },
         )
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310 # fixed https URL
             request, timeout=REQUEST_TIMEOUT_SECONDS
         ) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -176,7 +188,7 @@ def get_update_message(latest_version: str) -> str:
     return (
         f"A new version of lobster-ai is available: {latest_version} "
         f"(current: {__version__})\n"
-        f"Update with: {update_cmd}"
+        f"Update with: lobster upgrade  (or: {update_cmd})"
     )
 
 
