@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from typing import Literal
+from typing import Literal, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +43,8 @@ class ModelDef:
     description: str = ""
     is_default: bool = False
     context_window: int = 0
-    input_cost_per_million: float = 0.0
-    output_cost_per_million: float = 0.0
+    input_cost_per_million: Optional[float] = None
+    output_cost_per_million: Optional[float] = None
 
 
 @dataclass
@@ -153,18 +153,20 @@ _MODEL_SELECTION: dict[str, Literal["explicit", "profile", "local", "managed"]] 
     "openrouter": "explicit",
     "omics-os": "managed",
     "nebius": "explicit",
+    "ollama-cloud": "explicit",
 }
 
 _PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
     "anthropic": ("Anthropic", "Claude models via Anthropic API"),
     "bedrock": ("AWS Bedrock", "Claude models via AWS Bedrock"),
     "ollama": ("Ollama", "Local models via Ollama"),
-    "gemini": ("Google Gemini", "Gemini models via Google AI"),
+    "gemini": ("Google Gemini", "Gemini models"),
     "azure": ("Azure AI", "Models via Azure AI"),
-    "openai": ("OpenAI", "GPT models via OpenAI API"),
+    "openai": ("OpenAI", "GPT models"),
     "openrouter": ("OpenRouter", "Multi-provider model proxy"),
-    "omics-os": ("Omics-OS Cloud", "Managed models via Omics-OS"),
-    "nebius": ("Nebius AI Studio", "Open-weight models via Nebius"),
+    "omics-os": ("Omics-OS Cloud", "Free Omics-OS Cloud LLMs"),
+    "nebius": ("Nebius AI Studio", "Open-weight models"),
+    "ollama-cloud": ("Ollama Cloud", "Hosted models, requires API key"),
 }
 
 _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
@@ -203,6 +205,13 @@ _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
     ],
     "omics-os": [
         CredentialField(key="OMICS_OS_API_KEY", label="Omics-OS API Key"),
+    ],
+    "ollama-cloud": [
+        CredentialField(
+            key="OLLAMA_API_KEY",
+            label="Ollama API Key",
+            help_url="https://ollama.com/settings/keys",
+        )
     ],
     "nebius": [
         CredentialField(key="NEBIUS_API_KEY", label="Nebius API Key"),
@@ -257,8 +266,15 @@ def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
         models: list[ModelDef] = []
         if model_sel == "explicit":
             provider = ProviderRegistry.get(name)
-            if provider and hasattr(provider, "KNOWN_MODELS"):
-                for mi in provider.KNOWN_MODELS:
+            if provider and (
+                name == "ollama-cloud" or hasattr(provider, "KNOWN_MODELS")
+            ):
+                catalog = (
+                    provider.list_models()
+                    if name == "ollama-cloud"
+                    else provider.KNOWN_MODELS
+                )
+                for mi in catalog:
                     models.append(
                         ModelDef(
                             name=mi.name,

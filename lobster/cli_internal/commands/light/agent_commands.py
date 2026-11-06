@@ -34,12 +34,14 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from lobster.i18n import h, t
+
 logger = logging.getLogger(__name__)
 
 # Create the agents subcommand group
 agents_app = typer.Typer(
     name="agents",
-    help="Manage agent packages and composition",
+    help=t("light.agents.help"),
     no_args_is_help=True,
 )
 
@@ -209,7 +211,7 @@ def agents_list(
         None,
         "--workspace",
         "-w",
-        help="Path to workspace directory",
+        help=h("Path to workspace directory"),
     ),
 ) -> None:
     """
@@ -273,7 +275,7 @@ def agents_list(
 
 @agents_app.command("info")
 def agents_info(
-    agent_name: str = typer.Argument(..., help="Agent name to inspect"),
+    agent_name: str = typer.Argument(..., help=h("Agent name to inspect")),
 ) -> None:
     """
     Show detailed agent information.
@@ -294,8 +296,8 @@ def agents_info(
     agent_config = component_registry.get_agent(agent_name)
 
     if not agent_config:
-        console.print(f"[red]Agent '{agent_name}' not found.[/red]")
-        console.print("[dim]Use 'lobster agents list' to see available agents.[/dim]")
+        console.print(f"[red]{t('light.agent.not_found', name=agent_name)}[/red]")
+        console.print(f"[dim]{t('light.agent.list_hint')}[/dim]")
         raise typer.Exit(1)
 
     # Extract agent properties
@@ -327,12 +329,12 @@ def agents_info(
 
 @agents_app.command("install")
 def agents_install(
-    package_name: str = typer.Argument(..., help="Package name to install"),
+    package_name: str = typer.Argument(..., help=h("Package name to install")),
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Path to workspace directory",
+        help=h("Path to workspace directory"),
     ),
 ) -> None:
     """
@@ -366,7 +368,7 @@ def agents_install(
         progress.remove_task(task)
 
     if not success:
-        console.print("[red]Installation failed:[/red]")
+        console.print(f"[red]{t('light.agent.install_failed')}[/red]")
         console.print(f"[dim]{message}[/dim]")
         raise typer.Exit(1)
 
@@ -403,12 +405,12 @@ def agents_install(
 
 @agents_app.command("uninstall")
 def agents_uninstall(
-    package_name: str = typer.Argument(..., help="Package name to uninstall"),
+    package_name: str = typer.Argument(..., help=h("Package name to uninstall")),
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Path to workspace directory",
+        help=h("Path to workspace directory"),
     ),
 ) -> None:
     """
@@ -439,7 +441,7 @@ def agents_uninstall(
         progress.remove_task(task)
 
     if not success:
-        console.print("[red]Uninstallation failed:[/red]")
+        console.print(f"[red]{t('light.agent.uninstall_failed')}[/red]")
         console.print(f"[dim]{message}[/dim]")
         raise typer.Exit(1)
 

@@ -219,6 +219,10 @@ class LobsterConsoleManager:
             handlers=[rich_handler],
         )
 
+        # The engine owns a "lobster" namespace logger pinned at INFO; root's
+        # level never reaches it, so the CLI host must set it explicitly.
+        _set_engine_log_level(log_level)
+
         # Adjust levels for specific loggers (always suppress noisy libraries)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -492,6 +496,18 @@ def get_console() -> Console:
     return _console_manager.console
 
 
+def _set_engine_log_level(level: int) -> None:
+    """Apply the CLI log level to the engine's ``lobster`` namespace logger.
+
+    The engine configures that logger once, lazily, on the first
+    ``get_logger`` call (INFO by default). Trigger that configuration first so
+    a later first call cannot reset the level we set here.
+    """
+    from lobster.utils.logger import get_logger
+
+    get_logger("lobster").setLevel(level)
+
+
 def get_console_manager() -> LobsterConsoleManager:
     """Get the console manager instance."""
     global _console_manager
@@ -524,6 +540,7 @@ def setup_logging(level: int = None):
     get_console_manager()
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
+    _set_engine_log_level(level)
 
     # Update all existing handlers to respect the new level
     for handler in root_logger.handlers:

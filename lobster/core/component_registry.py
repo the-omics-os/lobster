@@ -128,6 +128,7 @@ LLM_PROVIDER_PACKAGES: Dict[str, Tuple[str, str]] = {
     "openai": ("openai", "langchain-openai"),
     "openrouter": ("openrouter", "langchain-openai"),
     "nebius": ("nebius", "langchain-openai"),
+    "ollama-cloud": ("openai", "langchain-openai"),
 }
 
 

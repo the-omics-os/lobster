@@ -18,11 +18,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from lobster.i18n import h, t
+
 logger = logging.getLogger(__name__)
 
 data_app = typer.Typer(
     name="data",
-    help="Data provenance and audit trail",
+    help=t("light.data.help"),
     no_args_is_help=True,
 )
 
@@ -96,10 +98,12 @@ def _fetch_events(
 
 @data_app.command()
 def events(
-    entity_id: str = typer.Argument(help="Dataset or session ID"),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max events to fetch (1-200)"),
+    entity_id: str = typer.Argument(help=h("Dataset or session ID")),
+    limit: int = typer.Option(
+        50, "--limit", "-n", help=h("Max events to fetch (1-200)")
+    ),
     format: str = typer.Option(
-        "table", "--format", "-f", help="Output format: table or csv"
+        "table", "--format", "-f", help=h("Output format: table or csv")
     ),
 ) -> None:
     """Show provenance events for a dataset or session.

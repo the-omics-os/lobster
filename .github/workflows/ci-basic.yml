@@ -45,7 +45,7 @@ jobs:
         # lobster-ai-tui~=1.2 is a core dependency that is not on PyPI until the 1.2.0
         # release, and pip ignores [tool.uv.sources]: install the in-repo package in
         # the same resolve (pure setuptools, no Go needed).
-        pip install --no-cache-dir -e packages/lobster-ai-tui -e ".[dev]"
+        pip install --no-cache-dir -e packages/lobster-ai-tui -e ".[dev,openai]"
 
     - name: Run linting
       # A failed step skipped the rest, hiding steps 7-12 from 2026-07-23 to 2026-09-16,
@@ -89,6 +89,15 @@ jobs:
           --import-mode=importlib \
           --maxfail=10 \
           --durations=10 \
+          -v
+
+    - name: Run language and upgrade regression tests
+      if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      run: |
+        python -m pytest tests/unit/i18n tests/unit/core/test_self_upgrade.py tests/unit/ci \
+          -m "not slow and not real_api" \
+          --import-mode=importlib \
+          --maxfail=10 \
           -v
 
     # verify_env's reporting contract. Stdlib-only, so it runs here even
@@ -217,7 +226,7 @@ jobs:
 
     - name: Run Go tests
       working-directory: lobster-tui
-      run: go test ./internal/chat ./internal/protocol ./internal/initwizard -v
+      run: go test ./internal/chat ./internal/protocol ./internal/initwizard ./internal/i18n -v
 
     - name: Build Go binary with version injection
       working-directory: lobster-tui
@@ -309,6 +318,39 @@ jobs:
         twine check dist-tui/*
         pip install --no-cache-dir --find-links dist-tui dist/*.whl
         python -c "from lobster.version import __version__; print(f'lobster-ai {__version__} installed')"
+
+    - name: Verify installed wheel language catalogs and help
+      run: |
+        # The job-wide PYTHONPATH and checkout cwd would otherwise mask a wheel
+        # missing its catalogs. Isolated mode also excludes user/site overrides.
+        cd "$RUNNER_TEMP"
+        env -u PYTHONPATH python -I - <<'PY'
+        import json
+        import os
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        import lobster.i18n
+
+        checkout = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+        installed = Path(lobster.i18n.__file__).resolve()
+        assert not installed.is_relative_to(checkout), installed
+        for name in ("en.json", "zh.json", "phrases.zh.json"):
+            catalog = json.loads(installed.with_name(name).read_text(encoding="utf-8"))
+            assert isinstance(catalog, dict) and catalog, name
+        for lang, expected in (
+            ("en", "Multi-Agent Bioinformatics Analysis System"),
+            ("zh", "用对话做生物信息分析"),
+        ):
+            result = subprocess.run(
+                [sys.executable, "-I", "-m", "lobster.cli", "--lang", lang, "--help"],
+                text=True, capture_output=True, timeout=120,
+            )
+            assert result.returncode == 0, result.stderr
+            assert expected in result.stdout, result.stdout
+        print(f"Installed wheel language smoke passed: {installed}")
+        PY
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

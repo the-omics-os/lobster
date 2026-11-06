@@ -18,6 +18,21 @@ This is the **local Python engine** surface. npm `@omicsos/lobster` owns
 Read these implementations when changing a command. Old command docstrings are
 not proof that every listed slash command has a programmatic dispatcher branch.
 
+## Local language
+
+Chinese (`zh`) is a local UI option. English stays the complete catalog.
+
+```bash
+lobster --lang zh --help
+lobster --lang zh init
+# inside chat:
+/lang zh
+```
+
+`zh-CN`, `zh-Hans`, `cn`, `chinese`, and `mandarin` select the same catalog. `LOBSTER_LANG` and `lang` in `.lobster_workspace/provider_config.json` do too, after `--lang`. An unknown code stays English. The Go screen reads the language when it starts.
+
+When you add or change text a local user reads, add easy Simplified Chinese in the same change. `lobster/i18n/README.md` is the how-to. Copy `en.json`, `zh.json`, and `phrases.zh.json` into `lobster-tui/internal/i18n/catalogs/`. Leave command names, flags, `--json` keys, tool docstrings, and agent prompts in English.
+
 ## Basic Commands
 
 ```bash

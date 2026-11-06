@@ -336,6 +336,37 @@ def create_nebius_config(api_key: str) -> ProviderConfig:
     )
 
 
+def create_ollama_cloud_config(api_key: str) -> ProviderConfig:
+    """
+    Create configuration for Ollama Cloud.
+
+    Ollama Cloud hosts open-weight models via an
+    OpenAI-compatible API. Browse models at: https://ollama.com/settings/keys
+
+    Args:
+        api_key: Ollama Cloud API key
+
+    Returns:
+        ProviderConfig with environment variables
+    """
+    if not api_key or not api_key.strip():
+        return ProviderConfig(
+            provider_type="ollama-cloud",
+            env_vars={},
+            success=False,
+            message="API key cannot be empty",
+        )
+
+    return ProviderConfig(
+        provider_type="ollama-cloud",
+        env_vars={
+            "LOBSTER_LLM_PROVIDER": "ollama-cloud",
+            "OLLAMA_API_KEY": api_key.strip(),
+        },
+        success=True,
+    )
+
+
 def create_omics_os_config(api_key: str) -> ProviderConfig:
     """
     Create configuration for Omics-OS Cloud gateway.
@@ -466,6 +497,7 @@ def validate_provider_choice(
     has_openrouter: bool = False,
     has_nebius: bool = False,
     has_azure: bool = False,
+    has_ollama_cloud: bool = False,
 ) -> Tuple[bool, Optional[str]]:
     """
     Validate that at least one provider is configured.
@@ -491,6 +523,7 @@ def validate_provider_choice(
         and not has_openai
         and not has_openrouter
         and not has_nebius
+        and not has_ollama_cloud
         and not has_azure
     ):
         return (
@@ -510,6 +543,7 @@ def get_provider_priority_warning(
     has_openrouter: bool = False,
     has_nebius: bool = False,
     has_azure: bool = False,
+    has_ollama_cloud: bool = False,
 ) -> Optional[str]:
     """
     Get warning message if multiple providers are configured.
@@ -540,6 +574,7 @@ def get_provider_priority_warning(
             has_openrouter,
             has_nebius,
             has_azure,
+            has_ollama_cloud,
         ]
     )
 
@@ -565,5 +600,8 @@ def get_provider_priority_warning(
         )
     elif has_azure:
         return "Multiple providers specified. Using Azure AI (eighth priority)."
+
+    if has_ollama_cloud:
+        return "Multiple providers specified. Using Ollama Cloud."
 
     return None

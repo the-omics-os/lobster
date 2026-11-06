@@ -13,6 +13,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 )
 
@@ -25,37 +26,37 @@ type commandDef struct {
 // topLevelCommands are the commands shown when the user types "/".
 // Order: most-used first for discovery, then alphabetical.
 var topLevelCommands = []commandDef{
-	{"/data", "Current data summary"},
-	{"/help", "Show available commands"},
-	{"/input-features", "Show input capabilities"},
-	{"/read", "View file contents"},
-	{"/workspace", "Workspace info & management"},
-	{"/plots", "List generated plots"},
-	{"/tokens", "Token usage & costs"},
-	{"/session", "Current session status"},
-	{"/status", "Subscription tier & agents"},
-	{"/status-panel", "System status dashboard"},
-	{"/workspace-info", "Workspace overview dashboard"},
-	{"/analysis-dash", "Analysis dashboard"},
-	{"/progress", "Progress monitor"},
-	{"/pipeline", "Pipeline operations"},
-	{"/config", "Configuration settings"},
-	{"/queue", "Download queue management"},
-	{"/metadata", "Metadata overview"},
-	{"/modalities", "Detailed modality info"},
-	{"/describe", "Describe a specific modality"},
-	{"/export", "Export to ZIP"},
-	{"/save", "Save state to workspace"},
-	{"/files", "List workspace files"},
-	{"/tree", "Directory tree view"},
-	{"/plot", "Open plot file"},
-	{"/open", "Open file in system app"},
-	{"/restore", "Restore previous datasets"},
-	{"/vector-search", "Search ontology collections"},
-	{"/reset", "Reset conversation"},
-	{"/clear", "Clear screen"},
-	{"/dashboard", "Open classic dashboard"},
-	{"/exit", "Exit"},
+	{"/data", i18n.T("tui.complete.data")},
+	{"/help", i18n.T("tui.complete.help")},
+	{"/input-features", i18n.P("Show input capabilities")},
+	{"/read", i18n.T("tui.complete.read")},
+	{"/workspace", i18n.P("Workspace info & management")},
+	{"/plots", i18n.T("tui.complete.plots")},
+	{"/tokens", i18n.P("Token usage & costs")},
+	{"/session", i18n.P("Current session status")},
+	{"/status", i18n.P("Subscription tier & agents")},
+	{"/status-panel", i18n.P("System status dashboard")},
+	{"/workspace-info", i18n.P("Workspace overview dashboard")},
+	{"/analysis-dash", i18n.P("Analysis dashboard")},
+	{"/progress", i18n.P("Progress monitor")},
+	{"/pipeline", i18n.P("Pipeline operations")},
+	{"/config", i18n.P("Configuration settings")},
+	{"/queue", i18n.P("Download queue management")},
+	{"/metadata", i18n.P("Metadata overview")},
+	{"/modalities", i18n.P("Detailed modality info")},
+	{"/describe", i18n.P("Describe a specific modality")},
+	{"/export", i18n.P("Export to ZIP")},
+	{"/save", i18n.P("Save state to workspace")},
+	{"/files", i18n.T("tui.complete.files")},
+	{"/tree", i18n.P("Directory tree view")},
+	{"/plot", i18n.P("Open plot file")},
+	{"/open", i18n.P("Open file in system app")},
+	{"/restore", i18n.P("Restore previous datasets")},
+	{"/vector-search", i18n.P("Search ontology collections")},
+	{"/reset", i18n.P("Reset conversation")},
+	{"/clear", i18n.P("Clear screen")},
+	{"/dashboard", i18n.P("Open classic dashboard")},
+	{"/exit", i18n.P("Exit")},
 }
 
 // subcommands maps parent commands to their subcommand completions.

@@ -42,6 +42,7 @@ def isolated_setup(monkeypatch, tmp_path):
         "LOBSTER_LLM_PROVIDER",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
+        "LOBSTER_WORKSPACE",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)

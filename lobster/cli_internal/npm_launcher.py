@@ -6,6 +6,13 @@ import subprocess
 import sys
 from typing import Optional
 
+NPM_PACKAGE = "@omicsos/lobster"
+
+
+def install_hint() -> str:
+    """Return the command that installs the npm cloud TUI."""
+    return f"npm install -g {NPM_PACKAGE}"
+
 
 def find_npm_binary() -> Optional[str]:
     """Find the @omicsos/lobster npm binary via the lobster-cli discovery name.

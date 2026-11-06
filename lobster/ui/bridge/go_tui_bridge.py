@@ -283,11 +283,16 @@ def run_init_wizard(
     cmd = [binary_path, "init", "--result-file", result_path]
     if theme:
         cmd.extend(["--theme", theme])
+    from lobster.i18n import current_lang
+
+    child_env = os.environ.copy()
+    child_env["LOBSTER_LANG"] = current_lang()
     try:
         proc = subprocess.run(
             cmd,
             text=True,
             timeout=timeout,
+            env=child_env,
         )
 
         try:

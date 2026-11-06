@@ -23,6 +23,7 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
     table_block,
 )
+from lobster.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -1454,13 +1455,30 @@ def list_models_impl():
     table.add_column("Output $/M", style="cyan", justify="right")
 
     all_models = ProviderRegistry.get_all_models_with_pricing()
+    cloud_provider = ProviderRegistry.get("ollama-cloud")
+    if cloud_provider:
+        for model in cloud_provider.list_models():
+            all_models[model.name] = {
+                "provider": "ollama-cloud",
+                "display_name": model.display_name,
+                "input_per_million": model.input_cost_per_million,
+                "output_per_million": model.output_cost_per_million,
+            }
     for model_id, info in sorted(all_models.items()):
         table.add_row(
             info.get("provider", ""),
             model_id,
             info.get("display_name", ""),
-            f"${info.get('input_per_million', 0):.2f}",
-            f"${info.get('output_per_million', 0):.2f}",
+            (
+                f"${info['input_per_million']:.2f}"
+                if info.get("input_per_million") is not None
+                else "unknown"
+            ),
+            (
+                f"${info['output_per_million']:.2f}"
+                if info.get("output_per_million") is not None
+                else "unknown"
+            ),
         )
 
     console.print(table)
@@ -1757,10 +1775,8 @@ def test_impl(profile=None, agent=None):
             configured = ProviderRegistry.get_configured_providers()
 
             if not configured:
-                console.print("[red]❌ No LLM provider configured[/red]")
-                console.print(
-                    "[yellow]💡 Run 'lobster init' to configure a provider[/yellow]"
-                )
+                console.print(f"[red]❌ {t('light.config.no_provider')}[/red]")
+                console.print(f"[yellow]💡 {t('light.config.run_init')}[/yellow]")
                 raise typer.Exit(1)
 
             # Check environment variable first
@@ -1774,10 +1790,8 @@ def test_impl(profile=None, agent=None):
                 provider = configured[0].name
 
             if provider is None:
-                console.print("[red]❌ No LLM provider configured[/red]")
-                console.print(
-                    "[yellow]💡 Run 'lobster init' to configure a provider[/yellow]"
-                )
+                console.print(f"[red]❌ {t('light.config.no_provider')}[/red]")
+                console.print(f"[yellow]💡 {t('light.config.run_init')}[/yellow]")
                 raise typer.Exit(1)
 
             # provider is a string, not an enum
@@ -2001,11 +2015,13 @@ def config_models_impl(workspace=None):
         provider_name, _ = resolver.resolve_provider()
         provider_obj = get_provider(provider_name)
     except (ConfigurationError, Exception):
-        console.print("[red]No provider configured. Run 'lobster init' first.[/red]")
+        console.print(f"[red]{t('light.config.no_provider_first')}[/red]")
         return
 
     if not provider_obj:
-        console.print(f"[red]Provider '{provider_name}' not found.[/red]")
+        console.print(
+            f"[red]{t('light.config.provider_not_found', name=provider_name)}[/red]"
+        )
         return
 
     # Get available models for current provider

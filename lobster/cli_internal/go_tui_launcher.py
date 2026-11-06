@@ -1555,6 +1555,12 @@ def _prepare_go_tui_chat_env(
     if model:
         child_env["LOBSTER_TUI_MODEL"] = model
     child_env["LOBSTER_TUI_WORKSPACE"] = str(workspace or Path.cwd())
+    try:
+        from lobster.i18n import current_lang
+
+        child_env["LOBSTER_LANG"] = current_lang()
+    except Exception:
+        child_env.setdefault("LOBSTER_LANG", "en")
     if not child_env.get("LOBSTER_TUI_APP_VERSION"):
         try:
             from lobster.version import __version__

@@ -4,9 +4,11 @@ from pathlib import Path
 
 import typer
 
+from lobster.i18n import h, t
+
 validate_app = typer.Typer(
     name="validate-plugin",
-    help="Validate Lobster AI plugin packages for contract compliance",
+    help=t("light.validate.help"),
     invoke_without_command=True,
 )
 
@@ -14,7 +16,7 @@ validate_app = typer.Typer(
 @validate_app.callback(invoke_without_command=True)
 def validate_plugin_cmd(
     plugin_dir: Path = typer.Argument(
-        ..., help="Path to plugin package directory", exists=True
+        ..., help=h("Path to plugin package directory"), exists=True
     ),
 ):
     """Validate a plugin package for Lobster AI contract compliance.

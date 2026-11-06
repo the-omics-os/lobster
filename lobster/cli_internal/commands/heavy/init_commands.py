@@ -6,12 +6,14 @@ helper functions for provider setup, agent selection, and package installation.
 """
 
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import typer
+from rich.markup import escape as _markup_escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
@@ -677,7 +679,9 @@ def _build_uv_tool_init_command(
             try:
                 importlib.import_module(module_name)
             except ImportError:
-                extras.append(provider_name)
+                extras.append(
+                    "openai" if provider_name == "ollama-cloud" else provider_name
+                )
 
     if include_vector_search:
         try:
@@ -911,7 +915,10 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
 
     try:
         # Create workspace config from structured dict
-        workspace_config = WorkspaceProviderConfig()
+        workspace_config = WorkspaceProviderConfig.load(workspace_path)
+        from lobster.i18n import current_lang
+
+        workspace_config.lang = workspace_config.lang or current_lang()
 
         # Set provider (required)
         if "provider" in config_dict:
@@ -1025,6 +1032,7 @@ _PROVIDER_PACKAGES = {
     "openai": "langchain-openai",
     "openrouter": "langchain-openai",
     "nebius": "langchain-openai",
+    "ollama-cloud": "langchain-openai",
 }
 
 # Map provider choice → Python import module name
@@ -1037,6 +1045,7 @@ _PROVIDER_IMPORT_NAMES = {
     "openai": "langchain_openai",
     "openrouter": "langchain_openai",
     "nebius": "langchain_openai",
+    "ollama-cloud": "langchain_openai",
 }
 
 
@@ -1519,57 +1528,50 @@ def _install_extended_data() -> None:
         # Don't warn on failure — these all have graceful fallbacks
 
 
-def _offer_npm_cross_install() -> None:
-    """Offer to install @omicsos/lobster npm CLI if not already present."""
-    from lobster.cli_internal.npm_launcher import find_npm_binary
+def _cancelled_text() -> str:
+    from lobster.i18n import t
 
-    if find_npm_binary():
-        console.print("[green]✓[/green] Cloud TUI installed (npm)")
-        return
+    return _markup_escape(t("cli.init.cancelled"))
 
-    console.print()
-    console.print(
-        "[bold]Cloud TUI[/bold] enables interactive cloud sessions "
-        "from your terminal."
-    )
-    console.print("  Install: [bold cyan]npm install -g @omicsos/lobster[/bold cyan]")
+
+def _resolve_workspace_or_exit(create: bool = True) -> Path:
+    """Resolve the init workspace, exiting 1 with a clear message on OS errors."""
+    from lobster.core.runtime.workspace import resolve_workspace
 
     try:
-        install = Confirm.ask("  Install now?", default=True, console=console)
-    except (KeyboardInterrupt, EOFError):
-        return
-
-    if not install:
-        console.print(
-            "  [dim]Skipped. Run 'npm install -g @omicsos/lobster' later.[/dim]"
+        return resolve_workspace(None, create=create)
+    except OSError as exc:
+        configured = os.environ.get("LOBSTER_WORKSPACE") or str(
+            Path.cwd() / ".lobster_workspace"
         )
-        return
-
-    npm = shutil.which("npm")
-    if not npm:
         console.print(
-            "  [yellow]npm not found.[/yellow] Install Node.js 22+ first, then:\n"
-            "  [bold]npm install -g @omicsos/lobster[/bold]"
+            f"[red]Error:[/red] cannot create the workspace at "
+            f"{_markup_escape(configured)} ({_markup_escape(exc.strerror or str(exc))}). "
+            "Fix the path or unset LOBSTER_WORKSPACE."
         )
-        return
+        raise typer.Exit(1)
 
-    import subprocess
 
-    console.print("  [dim]Installing @omicsos/lobster...[/dim]")
-    result = subprocess.run(
-        [npm, "install", "-g", "@omicsos/lobster"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        console.print("  [green]✓[/green] @omicsos/lobster installed")
-    else:
-        console.print(
-            f"  [yellow]Install failed (exit {result.returncode}).[/yellow]\n"
-            "  Run manually: [bold]npm install -g @omicsos/lobster[/bold]"
-        )
-        if result.stderr:
-            console.print(f"  [dim]{result.stderr[:200]}[/dim]")
+def _print_init_summary(result: Dict[str, Any], workspace_path: Path) -> None:
+    """Print the localized final summary of a TUI/questionary init run."""
+    from lobster.i18n import t
+
+    provider = (result.get("provider") or "").strip()
+    model = (result.get("model_id") or result.get("ollama_model") or "").strip()
+    provider_text = f"{provider} ({model})" if provider and model else provider
+    esc = _markup_escape
+    console.print(f"[bold green]✓[/bold green] {esc(t('cli.init.done'))}")
+    console.print(f"  {esc(t('cli.init.done_provider', provider=provider_text))}")
+    console.print(f"  {esc(t('cli.init.done_workspace', path=str(workspace_path)))}")
+    console.print(f"  {_bold_command(t('cli.init.next_chat'))}")
+
+
+def _bold_command(text: str) -> str:
+    """Escape Rich markup and bold the ``lobster chat`` command inside text."""
+    from rich.markup import escape
+
+    escaped = escape(text)
+    return escaped.replace("lobster chat", "[bold]lobster chat[/bold]")
 
 
 def _ensure_tui_installed() -> None:
@@ -1646,6 +1648,9 @@ def init_impl(
     ),
     nebius_key: Optional[str] = typer.Option(
         None, "--nebius-key", help="Nebius AI Studio API key (non-interactive mode)"
+    ),
+    ollama_cloud_key: Optional[str] = typer.Option(
+        None, "--ollama-cloud-key", help="Ollama Cloud API key (non-interactive mode)"
     ),
     azure_endpoint: Optional[str] = typer.Option(
         None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
@@ -1798,17 +1803,22 @@ def init_impl(
         )
         raise typer.Exit(1)
 
+    from lobster.core.runtime.workspace import resolve_workspace
+
     # Determine paths based on global vs workspace mode
     if global_config:
         config_path = GlobalProviderConfig.get_config_path()
         env_path = None  # Global mode doesn't create .env (use env vars for API keys)
     else:
-        config_path = Path.cwd() / ".lobster_workspace" / "provider_config.json"
+        config_path = resolve_workspace(None, create=False) / "provider_config.json"
         env_path = Path.cwd() / ".env"
 
     # Cloud is additive: retain the established priority of explicit providers.
     # Resolve/validate its input before a skipped configuration or force backup
     # can falsely look like a completed change to the gateway provider.
+    if not isinstance(ollama_cloud_key, str):
+        ollama_cloud_key = None
+
     cloud_selected = (
         non_interactive
         and (use_omics_os or omics_os_key is not None)
@@ -1821,6 +1831,7 @@ def init_impl(
                 openai_key is not None,
                 openrouter_key is not None,
                 nebius_key is not None,
+                ollama_cloud_key is not None,
                 azure_endpoint is not None and azure_credential is not None,
             )
         )
@@ -1853,10 +1864,24 @@ def init_impl(
         cloud_api_key = cloud_api_key.strip()
 
     # Check if configuration already exists
-    workspace_provider_path = Path.cwd() / ".lobster_workspace" / "provider_config.json"
+    workspace_provider_path = (
+        resolve_workspace(None, create=False) / "provider_config.json"
+    )
     config_exists = (
         config_path.exists() if global_config else (env_path and env_path.exists())
     )
+    # The workspace may be resolved outside the cwd (LOBSTER_WORKSPACE), so an
+    # earlier init from another directory leaves only provider_config.json here.
+    if not global_config:
+        from lobster.config.workspace_config import WorkspaceProviderConfig
+
+        workspace_has_provider = bool(
+            workspace_provider_path.exists()
+            and WorkspaceProviderConfig.load(
+                workspace_provider_path.parent
+            ).global_provider
+        )
+        config_exists = config_exists or workspace_has_provider
     if cloud_selected and not global_config:
         config_exists = config_exists or workspace_provider_path.exists()
     if config_exists and not force:
@@ -1880,7 +1905,7 @@ def init_impl(
                 from lobster.config.workspace_config import WorkspaceProviderConfig
 
                 existing = WorkspaceProviderConfig.load(
-                    Path.cwd() / ".lobster_workspace"
+                    resolve_workspace(None, create=False)
                 )
                 existing_provider = (
                     existing.global_provider
@@ -1922,10 +1947,11 @@ def init_impl(
                 )
             )
         else:
+            _existing_path = env_path if env_path.exists() else workspace_provider_path
             console.print(
                 Panel.fit(
                     "[bold yellow]⚠️  Configuration Already Exists[/bold yellow]\n\n"
-                    f"A .env file already exists at:\n[cyan]{env_path}[/cyan]\n\n"
+                    f"A configuration file already exists at:\n[cyan]{_markup_escape(str(_existing_path))}[/cyan]\n\n"
                     "To reconfigure, use:\n"
                     f"[bold {LobsterTheme.PRIMARY_ORANGE}]lobster init --force[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
                     "Or edit the file manually.",
@@ -1935,7 +1961,7 @@ def init_impl(
             )
         console.print()
         console.print(
-            f"[dim]Configuration file: {config_path if global_config else env_path}[/dim]"
+            f"[dim]Configuration file: {_markup_escape(str(config_path if global_config else _existing_path))}[/dim]"
         )
         raise typer.Exit(0)
 
@@ -1945,7 +1971,7 @@ def init_impl(
     backup_path = None
     if config_exists and force:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        if cloud_selected and not global_config:
+        if not global_config:
             backup_sources = [
                 p for p in (env_path, workspace_provider_path) if p.exists()
             ]
@@ -1977,8 +2003,7 @@ def init_impl(
 
         # === AGENT SELECTION (BEFORE PROVIDER SETUP) ===
         # Resolve workspace path for agent config
-        workspace_path = Path.cwd() / ".lobster_workspace"
-        workspace_path.mkdir(parents=True, exist_ok=True)
+        workspace_path = _resolve_workspace_or_exit()
 
         # Handle agent selection via flags (CLI-01, CLI-02)
         if agents or preset or auto_agents:
@@ -2019,6 +2044,10 @@ def init_impl(
         has_gemini = gemini_key is not None
         has_openai = openai_key is not None
         has_openrouter = openrouter_key is not None
+        if ollama_cloud_key is not None and not ollama_cloud_key.strip():
+            console.print("[red]Ollama Cloud API key cannot be empty[/red]")
+            raise typer.Exit(1)
+        has_ollama_cloud = ollama_cloud_key is not None
         has_nebius = nebius_key is not None
         has_azure = azure_endpoint is not None and azure_credential is not None
 
@@ -2031,6 +2060,7 @@ def init_impl(
             has_openai,
             has_openrouter=has_openrouter,
             has_nebius=has_nebius,
+            has_ollama_cloud=has_ollama_cloud,
             has_azure=has_azure,
         )
         if cloud_selected:
@@ -2048,6 +2078,7 @@ def init_impl(
             console.print("  • OpenAI: --openai-key=xxx")
             console.print("  • OpenRouter: --openrouter-key=xxx")
             console.print("  • Nebius AI Studio: --nebius-key=xxx")
+            console.print("  • Ollama Cloud: --ollama-cloud-key=xxx")
             console.print("  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx")
             raise typer.Exit(1)
 
@@ -2060,6 +2091,7 @@ def init_impl(
             has_openai,
             has_openrouter=has_openrouter,
             has_nebius=has_nebius,
+            has_ollama_cloud=has_ollama_cloud,
             has_azure=has_azure,
         )
         if priority_warning:
@@ -2172,6 +2204,13 @@ def init_impl(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "azure"
                 console.print("[green]✓ Azure AI provider configured[/green]")
+        elif has_ollama_cloud:
+            config = provider_setup.create_ollama_cloud_config(ollama_cloud_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "ollama-cloud"
+                console.print("[green]✓ Ollama Cloud provider configured[/green]")
 
         # Write profile configuration (only for Anthropic/Bedrock)
         if selected_profile:
@@ -2263,6 +2302,8 @@ def init_impl(
                 _ensure_provider_installed("openrouter")
             elif has_nebius:
                 _ensure_provider_installed("nebius")
+            elif has_ollama_cloud:
+                _ensure_provider_installed("ollama-cloud")
             elif has_azure:
                 _ensure_provider_installed("azure")
 
@@ -2380,15 +2421,20 @@ def init_impl(
                 raise typer.Exit(1)
 
             # Create workspace config from structured config_dict
-            workspace_path = Path.cwd() / ".lobster_workspace"
+            workspace_path = _resolve_workspace_or_exit()
             _create_workspace_config(config_dict, workspace_path)
 
             # Success message for non-interactive
-            console.print("[green]✅ Configuration saved:[/green]")
-            console.print(f"  • Environment: {env_path}")
-            console.print(f"  • Workspace:   {workspace_path / 'provider_config.json'}")
+            from lobster.i18n import t
+
+            _print_init_summary(config_dict, workspace_path)
+            console.print(
+                f"  {_markup_escape(t('cli.init.done_env', path=str(env_path)))}"
+            )
             if backup_path:
-                console.print(f"  • Backup:      {backup_path}")
+                console.print(
+                    f"  {_markup_escape(t('cli.init.done_backup', path=str(backup_path)))}"
+                )
 
         # In uv tool env (non-interactive), print the command for the caller
         if _in_uv_tool_ni and not skip_extras:
@@ -2407,6 +2453,8 @@ def init_impl(
                 provider_name_ni = "openrouter"
             elif has_nebius:
                 provider_name_ni = "nebius"
+            elif has_ollama_cloud:
+                provider_name_ni = "ollama-cloud"
             elif has_azure:
                 provider_name_ni = "azure"
             cmd = _build_uv_tool_init_command(
@@ -2457,10 +2505,10 @@ def init_impl(
 
                         _tui_result = run_init_wizard(_binary)
                         if _tui_result.get("cancelled", False):
-                            console.print("[yellow]Setup cancelled.[/yellow]")
+                            console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                             raise typer.Exit(0)
 
-                        _ws_path = Path.cwd() / ".lobster_workspace"
+                        _ws_path = _resolve_workspace_or_exit()
                         _ev_path = Path.cwd() / ".env"
                         _tui_result = _postprocess_tui_init_result(
                             _tui_result,
@@ -2470,10 +2518,7 @@ def init_impl(
                             skip_extras=skip_extras,
                         )
 
-                        console.print(
-                            "[bold green]Configuration saved![/bold green] "
-                            "Run [bold]lobster chat[/bold] to start analyzing."
-                        )
+                        _print_init_summary(_tui_result, _ws_path)
                         from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
                         if _is_uv() and not skip_extras:
@@ -2519,10 +2564,10 @@ def init_impl(
 
                 _q_result = run_questionary_init(build_init_manifest())
                 if _q_result.get("cancelled", False):
-                    console.print("[yellow]Setup cancelled.[/yellow]")
+                    console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                     raise typer.Exit(0)
 
-                _ws_path = Path.cwd() / ".lobster_workspace"
+                _ws_path = _resolve_workspace_or_exit()
                 _ev_path = Path.cwd() / ".env"
                 _q_result = _postprocess_tui_init_result(
                     _q_result,
@@ -2532,10 +2577,7 @@ def init_impl(
                     skip_extras=skip_extras,
                 )
 
-                console.print(
-                    "[bold green]Configuration saved![/bold green] "
-                    "Run [bold]lobster chat[/bold] to start analyzing."
-                )
+                _print_init_summary(_q_result, _ws_path)
                 from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
                 if _is_uv() and not skip_extras:
@@ -2561,8 +2603,6 @@ def init_impl(
                 )
 
         if _tui_handled:
-            if not skip_extras:
-                _offer_npm_cross_install()
             raise typer.Exit(0)
     # === END GO TUI / QUESTIONARY PATH ===
 
@@ -2604,8 +2644,7 @@ def init_impl(
             "\n  any new packages will be installed after setup completes.[/dim]\n"
         )
 
-    workspace_path = Path.cwd() / ".lobster_workspace"
-    workspace_path.mkdir(parents=True, exist_ok=True)
+    workspace_path = _resolve_workspace_or_exit()
 
     try:
         env_lines = []
@@ -2619,38 +2658,25 @@ def init_impl(
         # Step 1 — Provider selection (unified list)                          #
         # ================================================================== #
         console.print("[bold white]Select your LLM provider:[/bold white]")
-        console.print(
-            "  [cyan]1[/cyan] - Omics-OS Cloud          — managed gateway, API key"
-        )
-        console.print(
-            "  [cyan]2[/cyan] - Claude API (Anthropic)  — direct access to Claude models"
-        )
-        console.print(
-            "  [cyan]3[/cyan] - AWS Bedrock             — production, enterprise"
-        )
-        console.print(
-            "  [cyan]4[/cyan] - Ollama (local)          — privacy, zero cost, offline"
-        )
-        console.print(
-            "  [cyan]5[/cyan] - Google Gemini           — Gemini models + thinking"
-        )
-        console.print(
-            "  [cyan]6[/cyan] - Azure AI                — enterprise Azure deployments"
-        )
-        console.print(
-            "  [cyan]7[/cyan] - OpenAI                  — GPT-4o, o-series reasoning"
-        )
-        console.print(
-            "  [cyan]8[/cyan] - OpenRouter              — 600+ models via one API key"
-        )
-        console.print(
-            "  [cyan]9[/cyan] - Nebius AI Studio        — open-weight models (Qwen, DeepSeek)"
-        )
-        console.print()
+        from lobster.i18n import h
 
+        provider_menu = [
+            "Omics-OS Cloud          — Free Omics-OS Cloud LLMs",
+            "Claude API (Anthropic)  — direct access to Claude models",
+            "AWS Bedrock             — production, enterprise",
+            "Ollama (local)          — privacy, zero cost, offline",
+            "Google Gemini           — Gemini models",
+            "Azure AI                — enterprise Azure deployments",
+            "OpenAI                  — GPT models",
+            "OpenRouter              — 600+ models via one API key",
+            "Nebius AI Studio        — open-weight models",
+            "Ollama Cloud            — hosted models, requires API key",
+        ]
+        for _n, _label in enumerate(provider_menu, start=1):
+            console.print(f"  [cyan]{_n:>2}[/cyan] - {h(_label)}")
         provider = Prompt.ask(
             "[bold white]Choose provider[/bold white]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
             default="1",
         )
 
@@ -2664,6 +2690,7 @@ def init_impl(
             "7": "openai",
             "8": "openrouter",
             "9": "nebius",
+            "10": "ollama-cloud",
         }
         provider_name = provider_map[provider]
 
@@ -2881,6 +2908,28 @@ def init_impl(
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "nebius"
                 console.print("[green]✓ Nebius AI Studio provider configured[/green]")
+            else:
+                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                raise typer.Exit(1)
+
+        elif provider_name == "ollama-cloud":
+            console.print("\n[bold white]🧬 Ollama Cloud Configuration[/bold white]")
+            console.print(
+                "Get your API key from: [link]https://ollama.com/settings/keys[/link]\n"
+            )
+            api_key = Prompt.ask(
+                "[bold white]Enter your Ollama Cloud API key[/bold white]",
+                password=True,
+            )
+            if not api_key.strip():
+                console.print("[red]❌ API key cannot be empty[/red]")
+                raise typer.Exit(1)
+            config = provider_setup.create_ollama_cloud_config(api_key)
+            if config.success:
+                for key, value in config.env_vars.items():
+                    env_lines.append(f"{key}={value}")
+                config_dict["provider"] = "ollama-cloud"
+                console.print("[green]✓ Ollama Cloud provider configured[/green]")
             else:
                 console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
                 raise typer.Exit(1)

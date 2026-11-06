@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-
 pytestmark = pytest.mark.integration
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -82,7 +81,9 @@ def _assert_no_python_traceback(result: subprocess.CompletedProcess[str]) -> Non
     assert "Traceback (most recent call last)" not in output, output
 
 
-def test_local_python_cli_can_hide_global_npm_and_find_go_binary(tmp_path: Path) -> None:
+def test_local_python_cli_can_hide_global_npm_and_find_go_binary(
+    tmp_path: Path,
+) -> None:
     env = _isolated_env(tmp_path, hide_npm_cli=True)
     result = subprocess.run(
         [
@@ -200,7 +201,7 @@ def test_cloud_chat_with_stub_npm_binary_reaches_tty_guard(tmp_path: Path) -> No
 
 def test_init_manifest_fallback_and_preflight_import_contracts() -> None:
     from lobster.cli import _preflight_provider_check
-    from lobster.cli_internal.commands.heavy.init_commands import _offer_npm_cross_install
+    from lobster.cli_internal.commands.heavy import init_commands
     from lobster.ui.bridge.questionary_fallback import run_questionary_init
     from lobster.ui.wizard.manifest import build_init_manifest
 
@@ -208,7 +209,7 @@ def test_init_manifest_fallback_and_preflight_import_contracts() -> None:
 
     assert len(manifest.providers) >= 1
     assert run_questionary_init is not None
-    assert _offer_npm_cross_install is not None
+    assert not hasattr(init_commands, "_offer_npm_cross_install")
     assert _preflight_provider_check is not None
 
 

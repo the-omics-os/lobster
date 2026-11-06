@@ -1268,3 +1268,24 @@ def malformed_sra_samples():
     fixture_path = Path(__file__).parent / "fixtures" / "sra_malformed_samples.json"
     with open(fixture_path) as f:
         return json.load(f)
+
+
+@pytest.fixture(autouse=True)
+def _engine_log_level_baseline():
+    """Start every test with the engine's own ``lobster`` logger level.
+
+    Importing ``lobster.cli`` builds the console manager, which lowers the
+    ``lobster`` namespace logger to the CLI level (WARNING by default) for the
+    rest of the process. Tests that capture engine INFO records via
+    ``caplog.at_level(logging.INFO)`` (root only) would otherwise depend on
+    whether an earlier test happened to import the CLI.
+    """
+    from lobster.utils.logger import _resolve_level, get_logger
+
+    engine_logger = get_logger("lobster")
+    previous = engine_logger.level
+    engine_logger.setLevel(_resolve_level())
+    try:
+        yield
+    finally:
+        engine_logger.setLevel(previous)

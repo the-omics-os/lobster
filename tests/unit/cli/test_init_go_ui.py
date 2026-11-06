@@ -11,9 +11,12 @@ from lobster.ui.bridge.go_tui_bridge import BridgeError, run_init_wizard
 
 def test_init_force_go_skips_reconfirm_and_uses_go_wizard(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("LOBSTER_WORKSPACE", raising=False)
     (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=test\n", encoding="utf-8")
     # TTY guard: pretend stdin is a terminal so the interactive path proceeds
-    monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})())
+    monkeypatch.setattr(
+        "sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})()
+    )
 
     seen = {}
 
@@ -99,7 +102,10 @@ def test_init_force_go_skips_reconfirm_and_uses_go_wizard(monkeypatch, tmp_path)
 
 def test_init_go_cancel_exits_without_classic_fallback(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})())
+    monkeypatch.delenv("LOBSTER_WORKSPACE", raising=False)
+    monkeypatch.setattr(
+        "sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})()
+    )
 
     def _fake_run_init_wizard(binary_path, *, theme="lobster-dark", timeout=300):
         return {"cancelled": True}

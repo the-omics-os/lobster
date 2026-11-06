@@ -2773,6 +2773,8 @@ func providerIcon(provider string) string {
 		return "🦙"
 	case "openrouter":
 		return "🔵"
+	case "ollama-cloud":
+		return "☁️"
 	case "nebius":
 		return "🔹"
 	case "azure":

@@ -854,3 +854,9 @@ verify: $(VENV_PATH)
 run: $(VENV_PATH)
 	@echo "🦞 Starting Lobster AI..."
 	$(VENV_PATH)/bin/lobster chat
+
+# Rebuild the local Go UI. Use LOBSTER_TUI_BINARY to select it over installed wheels.
+.PHONY: dev-build
+dev-build:
+	cd lobster-tui && go build -ldflags "-X main.Version=$$(sed -n 's/^__version__ = "\([^"]*\)"/\1/p' ../lobster/version.py)" -o lobster-tui ./cmd/lobster-tui
+	@echo 'Local TUI rebuilt. Run: export LOBSTER_TUI_BINARY="$(CURDIR)/lobster-tui/lobster-tui"'

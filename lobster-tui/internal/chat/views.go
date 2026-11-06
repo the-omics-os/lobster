@@ -11,6 +11,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -156,15 +157,15 @@ func renderInlineIntro(m Model) string {
 	titleLines := welcomeTitleLinesForWidth(m.width)
 	title := renderAnimatedWelcomeTitle(m, titleLines)
 	center := lipgloss.NewStyle().Width(m.width).MaxWidth(m.width).Align(lipgloss.Center)
-	tagline := center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.Text).Render(welcomeTagline))
-	subTagline := center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.TextMuted).Render(welcomeSubTagline))
+	tagline := center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.Text).Render(i18n.T("tui.welcome.tagline")))
+	subTagline := center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.TextMuted).Render(i18n.T("tui.welcome.sub")))
 
 	lines := []string{center.Render(title), "", tagline, subTagline}
 	if m.width < 70 {
 		lines = []string{
 			center.Render(title),
 			"",
-			center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.TextMuted).Render("on-prem | python native | open-source")),
+			center.Render(lipgloss.NewStyle().Foreground(theme.Current.Colors.TextMuted).Render(i18n.T("tui.welcome.narrow"))),
 		}
 	}
 	return strings.Join(lines, "\n")

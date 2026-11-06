@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -53,17 +55,18 @@ type WizardResult struct {
 // ---------------------------------------------------------------------------
 
 const (
-	providerAnthropic  = "anthropic"
-	providerBedrock    = "bedrock"
-	providerOllama     = "ollama"
-	providerGemini     = "gemini"
-	providerAzure      = "azure"
-	providerOpenAI     = "openai"
-	providerOmicsOS    = "omics-os"
-	providerOpenRouter = "openrouter"
-	providerNebius     = "nebius"
-	customOllamaModel  = "__custom_ollama_model__"
-	defaultOllamaModel = "gpt-oss:20b"
+	providerAnthropic   = "anthropic"
+	providerBedrock     = "bedrock"
+	providerOllama      = "ollama"
+	providerGemini      = "gemini"
+	providerAzure       = "azure"
+	providerOpenAI      = "openai"
+	providerOmicsOS     = "omics-os"
+	providerOpenRouter  = "openrouter"
+	providerNebius      = "nebius"
+	providerOllamaCloud = "ollama-cloud"
+	customOllamaModel   = "__custom_ollama_model__"
+	defaultOllamaModel  = "gpt-oss:20b"
 )
 
 // providersWithProfile are the providers that expose a profile selection step.
@@ -90,57 +93,57 @@ type ollamaStatus struct {
 var initAgentPackages = []initAgentPackage{
 	{
 		Name:        "lobster-research",
-		Description: "Literature search & data discovery",
+		Description: i18n.T("wizard.pkg.research"),
 		Agents:      []string{"research_agent", "data_expert_agent"},
 		Default:     true,
 	},
 	{
 		Name:        "lobster-transcriptomics",
-		Description: "Single-cell & bulk RNA-seq analysis",
+		Description: i18n.T("wizard.pkg.transcriptomics"),
 		Agents:      []string{"transcriptomics_expert", "annotation_expert", "de_analysis_expert"},
 		Default:     true,
 	},
 	{
 		Name:        "lobster-visualization",
-		Description: "Data visualization & plotting",
+		Description: i18n.T("wizard.pkg.visualization"),
 		Agents:      []string{"visualization_expert_agent"},
 	},
 	{
 		Name:        "lobster-genomics",
-		Description: "Genomics, GWAS, and clinical variants",
+		Description: i18n.T("wizard.pkg.genomics"),
 		Agents:      []string{"genomics_expert", "variant_analysis_expert"},
 	},
 	{
 		Name:        "lobster-proteomics",
-		Description: "Mass spec, affinity proteomics, and biomarkers",
+		Description: i18n.T("wizard.pkg.proteomics"),
 		Agents:      []string{"proteomics_expert", "proteomics_de_analysis_expert", "biomarker_discovery_expert"},
 	},
 	{
 		Name:        "lobster-metabolomics",
-		Description: "LC-MS, GC-MS, and NMR metabolomics",
+		Description: i18n.T("wizard.pkg.metabolomics"),
 		Agents:      []string{"metabolomics_expert"},
 	},
 	{
 		Name:         "lobster-ml",
-		Description:  "Machine learning, feature selection, and survival analysis",
+		Description:  i18n.T("wizard.pkg.ml"),
 		Agents:       []string{"machine_learning_expert", "feature_selection_expert", "survival_analysis_expert"},
 		Experimental: true,
 	},
 	{
 		Name:         "lobster-drug-discovery",
-		Description:  "Drug discovery, cheminformatics, and translational strategy",
+		Description:  i18n.T("wizard.pkg.drug"),
 		Agents:       []string{"drug_discovery_expert", "cheminformatics_expert", "clinical_dev_expert", "pharmacogenomics_expert"},
 		Experimental: true,
 	},
 	{
 		Name:         "lobster-metadata",
-		Description:  "Metadata filtering & standardization",
+		Description:  i18n.T("wizard.pkg.metadata"),
 		Agents:       []string{"metadata_assistant"},
 		Experimental: true,
 	},
 	{
 		Name:         "lobster-structural-viz",
-		Description:  "Protein structure visualization (PyMOL, PDB)",
+		Description:  i18n.T("wizard.pkg.structure"),
 		Agents:       []string{"protein_structure_visualization_expert"},
 		Experimental: true,
 	},
@@ -150,10 +153,10 @@ var curatedOllamaModels = []struct {
 	Name        string
 	Description string
 }{
-	{Name: "qwen3:8b", Description: "Fast local default"},
-	{Name: "qwen3:14b", Description: "Stronger reasoning"},
-	{Name: "gpt-oss:20b", Description: "Best Lobster default"},
-	{Name: "qwen3:30b-a3b", Description: "Highest-quality curated option"},
+	{Name: "qwen3:8b", Description: i18n.T("wizard.model.fast")},
+	{Name: "qwen3:14b", Description: i18n.T("wizard.model.stronger")},
+	{Name: "gpt-oss:20b", Description: i18n.T("wizard.model.best")},
+	{Name: "qwen3:30b-a3b", Description: i18n.T("wizard.model.highest")},
 }
 
 // customModelSentinel is the value used for the "Other model" option.
@@ -198,6 +201,11 @@ var providerModels = map[string][]struct {
 		{Name: "anthropic/claude-sonnet-4-5", Description: "Claude Sonnet 4.5 via OpenRouter", IsDefault: true},
 		{Name: "openai/gpt-4o", Description: "GPT-4o via OpenRouter"},
 		{Name: "google/gemini-3-pro-preview", Description: "Gemini 3 Pro via OpenRouter"},
+	},
+	providerOllamaCloud: {
+		{Name: "glm-5.2", Description: "Hosted model, pricing varies by subscription", IsDefault: true},
+		{Name: "gpt-oss:120b", Description: "Hosted GPT-OSS 120B"},
+		{Name: "gpt-oss:20b", Description: "Hosted GPT-OSS 20B"},
 	},
 	providerNebius: {
 		{Name: "Qwen/Qwen3-30B-A3B-Instruct-2507", Description: "Qwen3 30B A3B — versatile, 262k context", IsDefault: true},
@@ -300,9 +308,9 @@ func (m multiSelectModel) View(th *lobsterTheme.Theme) string {
 	unselectedStyle := lipgloss.NewStyle().Foreground(th.Colors.Text)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render(m.title) + "\n")
+	sb.WriteString(titleStyle.Render(i18n.P(m.title)) + "\n")
 	if m.description != "" {
-		sb.WriteString(descStyle.Render(m.description) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P(m.description)) + "\n")
 	}
 	sb.WriteString("\n")
 
@@ -381,9 +389,9 @@ func (m singleSelectModel) View(th *lobsterTheme.Theme) string {
 	itemStyle := lipgloss.NewStyle().Foreground(th.Colors.Text)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render(m.title) + "\n")
+	sb.WriteString(titleStyle.Render(i18n.P(m.title)) + "\n")
 	if m.description != "" {
-		sb.WriteString(descStyle.Render(m.description) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P(m.description)) + "\n")
 	}
 	sb.WriteString("\n")
 
@@ -392,10 +400,10 @@ func (m singleSelectModel) View(th *lobsterTheme.Theme) string {
 		if i == m.cursor {
 			cursor = cursorStyle.Render("> ")
 		}
-		sb.WriteString(cursor + itemStyle.Render(item.label) + "\n")
+		sb.WriteString(cursor + itemStyle.Render(i18n.P(item.label)) + "\n")
 	}
 
-	sb.WriteString("\n" + descStyle.Render("enter: select  esc: back"))
+	sb.WriteString("\n" + descStyle.Render(i18n.P("enter: select  esc: back")))
 	return sb.String()
 }
 
@@ -440,9 +448,9 @@ func (m confirmModel) View(th *lobsterTheme.Theme) string {
 	inactiveStyle := lipgloss.NewStyle().Foreground(th.Colors.TextMuted)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render(m.title) + "\n")
+	sb.WriteString(titleStyle.Render(i18n.P(m.title)) + "\n")
 	if m.description != "" {
-		sb.WriteString(descStyle.Render(m.description) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P(m.description)) + "\n")
 	}
 	sb.WriteString("\n")
 
@@ -561,15 +569,16 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 		title:       "LLM Provider",
 		description: "Select the provider for Lobster AI.",
 		items: []singleSelectItem{
-			{label: "Omics-OS Cloud      -- Managed Bedrock gateway, API key", value: providerOmicsOS},
+			{label: "Omics-OS Cloud      -- Free Omics-OS Cloud LLMs", value: providerOmicsOS},
 			{label: "Anthropic (Claude)  -- Quick testing, development", value: providerAnthropic},
 			{label: "AWS Bedrock         -- Production, enterprise use", value: providerBedrock},
 			{label: "Ollama (Local)      -- Privacy, zero cost, offline", value: providerOllama},
-			{label: "Google Gemini       -- Latest models with thinking", value: providerGemini},
+			{label: "Ollama Cloud        -- Hosted models, requires API key", value: providerOllamaCloud},
+			{label: "Google Gemini       -- Gemini models", value: providerGemini},
 			{label: "Azure AI            -- Enterprise Azure deployments", value: providerAzure},
-			{label: "OpenAI              -- GPT-4o, reasoning models", value: providerOpenAI},
+			{label: "OpenAI              -- GPT models", value: providerOpenAI},
 			{label: "OpenRouter          -- 600+ models via one API key", value: providerOpenRouter},
-			{label: "Nebius AI Studio    -- Open-weight models (Qwen, DeepSeek)", value: providerNebius},
+			{label: "Nebius AI Studio    -- Open-weight models", value: providerNebius},
 		},
 	}
 
@@ -752,6 +761,14 @@ func (m *WizardModel) initAPIKeyStep() {
 		ti.Focus()
 		m.apiKeyInputs = []textinput.Model{ti}
 		m.apiKeyLabels = []string{"OpenRouter API Key"}
+
+	case providerOllamaCloud:
+		ti := textinput.New()
+		ti.Placeholder = "API key from ollama.com/settings/keys"
+		ti.EchoMode = textinput.EchoPassword
+		ti.Focus()
+		m.apiKeyInputs = []textinput.Model{ti}
+		m.apiKeyLabels = []string{"Ollama API Key"}
 
 	case providerNebius:
 		ti := textinput.New()
