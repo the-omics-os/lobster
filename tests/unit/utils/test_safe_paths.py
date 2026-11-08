@@ -30,6 +30,12 @@ def test_unusable_names_are_refused(tmp_path, name):
         safe_download_path(tmp_path, name)
 
 
+@pytest.mark.parametrize("name", ["a\x00b.txt", "../x\x00", "\x00"])
+def test_nul_in_name_is_refused_explicitly(tmp_path, name):
+    with pytest.raises(ValueError, match="Unusable file name"):
+        safe_download_path(tmp_path, name)
+
+
 def test_existing_symlink_out_of_the_directory_is_refused(tmp_path):
     outside = tmp_path / "outside.txt"
     outside.write_text("x")

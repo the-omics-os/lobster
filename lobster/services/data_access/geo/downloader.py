@@ -399,7 +399,8 @@ class GEODownloadManager:
                         local_path = safe_download_path(
                             self.cache_dir, f"{gse_id}_suppl_{file_name}"
                         )
-                    except ValueError:
+                    except ValueError as e:
+                        logger.warning(f"Skipping supplementary file: {e}")
                         continue
 
                     # Check if file is already cached and get its size

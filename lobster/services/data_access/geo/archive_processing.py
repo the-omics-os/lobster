@@ -346,6 +346,7 @@ class ArchiveProcessor:
 
                 all_matrices = []
                 for i, archive_path in enumerate(nested_archives, start=1):
+                    sample_extract_dir = None
                     try:
                         sample_id = archive_path.stem.split(".")[0]
                         sample_extract_dir = nested_extract_dir / sample_id
@@ -374,6 +375,8 @@ class ArchiveProcessor:
                         logger.warning(
                             f"Failed to extract/parse sample {i}/{n_samples} ({archive_path.name}): {e}"
                         )
+                        if sample_extract_dir is not None:
+                            shutil.rmtree(sample_extract_dir, ignore_errors=True)
                         continue
 
                 if all_matrices:

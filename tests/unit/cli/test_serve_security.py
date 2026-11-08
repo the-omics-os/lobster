@@ -95,6 +95,7 @@ def test_cli_serve_defaults_to_loopback(monkeypatch):
     monkeypatch.delenv("LOBSTER_SERVE_TOKEN", raising=False)
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 0, result.output
+    # nosec: Bandit reads the "token" key as a password; this is an expectation.
     assert seen == {"port": 8000, "host": "127.0.0.1", "token": None}  # nosec B105
 
 

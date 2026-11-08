@@ -10,10 +10,11 @@ def safe_download_path(directory: Path, name: str) -> Path:
     component is kept, so ``../../x`` and ``/abs/x`` both become ``x``.
 
     Raises:
-        ValueError: if no usable file name is left (empty, ``.`` or ``..``).
+        ValueError: if no usable file name is left (empty, ``.`` or ``..``),
+            or if the name contains a NUL character.
     """
     base = PureWindowsPath(PurePosixPath(str(name)).name).name.strip()
-    if base in ("", ".", ".."):
+    if base in ("", ".", "..") or "\x00" in base:
         raise ValueError(f"Unusable file name from remote listing: {name!r}")
     root = Path(directory).resolve()
     candidate = (root / base).resolve()

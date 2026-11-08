@@ -27,6 +27,12 @@ def _link(name: str, target: str, hard: bool = False) -> tuple:
     return info, None
 
 
+def _dev(name: str, member_type: bytes = tarfile.CHRTYPE) -> tuple:
+    info = tarfile.TarInfo(name)
+    info.type = member_type
+    return info, None
+
+
 def _write_tar(path: Path, members, mode: str = "w") -> Path:
     with tarfile.open(path, mode) as tar:
         for info, data in members:
@@ -44,6 +50,7 @@ UNSAFE = {
         _file("ok.txt"),
         _link("hard", "../out", hard=True),
     ],
+    "device file": lambda root: [_file("ok.txt"), _dev("null")],
 }
 
 
@@ -111,6 +118,8 @@ def test_unsafe_nested_sample_archive_is_skipped(tmp_path):
     assert result is None
     processor.service.geo_parser.parse_10x_data.assert_not_called()
     assert not any(tmp_path.rglob("nested-escape.txt"))
+    # The refused sample's extraction folder is removed.
+    assert not any(cache.rglob("GSM1_sample"))
 
 
 @pytest.mark.parametrize("case", sorted(UNSAFE))
