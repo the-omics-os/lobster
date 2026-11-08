@@ -39,13 +39,22 @@ def _supported_rna():
 @pytest.mark.parametrize(
     "gpl,title,technology,platform_type",
     [
-        # Neither title matches the old keyword list.
+        # Not registered; the GEO technology decides. The title matches no
+        # keyword.
+        (
+            "GPL99998",
+            "Custom spotted cDNA v1",
+            "spotted dna/cdna",
+            "microarray",
+        ),
+        # Not registered; refused by technology (and by the "oligo" word).
         (
             "GPL3255",
             "VUMC MACF human 19K oligo v33",
             "spotted oligonucleotide",
             "microarray",
         ),
+        # Registered as methylation arrays.
         (
             "GPL21145",
             "Infinium MethylationEPIC",
@@ -177,3 +186,26 @@ def test_entrez_style_array_series_is_not_waved_through_as_mixed(geo_service):
     with patch.object(geo_service, "_data_expert_assistant", create=True):
         with pytest.raises(UnsupportedPlatformError):
             geo_service._check_platform_compatibility("GSE1", metadata)
+
+
+def test_sequencing_keyword_wins_a_tie_without_technology(geo_service):
+    metadata = _metadata("GPL99997", "Illumina HiSeq 2500 array-capture panel", "")
+    with patch.object(geo_service, "_data_expert_assistant", create=True) as llm:
+        llm.detect_modality.return_value = _supported_rna()
+        ok, _ = geo_service._check_platform_compatibility("GSE1", metadata)
+    assert ok is True
+    llm.detect_modality.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Affymetrix Human Mitochondrial Resequencing Array 2.0",
+        "GeneChip resequencing array",
+    ],
+)
+def test_resequencing_array_is_not_a_sequencing_keyword(geo_service, title):
+    with pytest.raises(UnsupportedPlatformError):
+        geo_service._check_platform_compatibility(
+            "GSE1", _metadata("GPL99996", title, "")
+        )

@@ -175,6 +175,12 @@ SUPPORTED_KEYWORDS = [
     "sequencing",
 ]
 
+# SUPPORTED_KEYWORDS matched at the start of a word in the lowercased title, so
+# "sequencing" does not hit "Resequencing Array" (an Affymetrix array).
+SUPPORTED_TITLE_PATTERNS = [
+    re.compile(r"(?<![a-z0-9])" + re.escape(kw)) for kw in SUPPORTED_KEYWORDS
+]
+
 # GEO "!Platform_technology" values of array platforms. They classify platforms
 # whose title matches no keyword (e.g. GPL3255, GPL21145 "Infinium MethylationEPIC").
 ARRAY_TECHNOLOGIES = {

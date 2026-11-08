@@ -34,7 +34,7 @@ from lobster.services.data_access.geo.constants import (
     METHYLATION_PLATFORMS,
     PLATFORM_REGISTRY,
     SEQUENCING_TECHNOLOGIES,
-    SUPPORTED_KEYWORDS,
+    SUPPORTED_TITLE_PATTERNS,
     UNSUPPORTED_KEYWORDS,
     UNSUPPORTED_TITLE_PATTERNS,
     PlatformCompatibility,
@@ -645,6 +645,8 @@ class MetadataFetcher:
 
         Entrez provides limited platform information compared to SOFT files.
         This method creates a minimal platform dict compatible with downstream processing.
+        ``technology`` is the series-level ``ptechtype``, applied to every GPL;
+        it is empty when Entrez gives none.
 
         Args:
             entrez_record: Entrez esummary record
@@ -915,10 +917,19 @@ class MetadataFetcher:
         """
         Check if dataset platform is supported before downloading files.
 
-        Performs multi-level platform detection:
-        1. Series-level platforms (most common)
-        2. Sample-level platforms (for mixed-platform datasets)
-        3. Keyword matching for unknown platforms
+        Collects series-level and sample-level platforms, then classifies each:
+        1. GPL in PLATFORM_REGISTRY: the registry decides.
+        2. GEO technology is an array technology: unsupported; a sequencing
+           technology: supported.
+        3. Technology empty or unrecognised: a sequencing title keyword makes
+           it supported, else an array title keyword makes it unsupported,
+           else it is unknown.
+
+        Platforms from Entrez esummary carry the series-level ``ptechtype`` on
+        every GPL (Entrez has no per-platform technology). In a multi-platform
+        series that value may not fit each GPL: an unregistered array GPL in a
+        series marked "high throughput sequencing" is classed supported, so
+        the series is treated as mixed. SOFT metadata has per-GPL technology.
 
         Args:
             geo_id: GEO series identifier
@@ -1010,12 +1021,15 @@ class MetadataFetcher:
             elif platform_technology in SEQUENCING_TECHNOLOGIES:
                 supported_platforms.append((platform_id, platform_info))
             else:
-                if any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS) or any(
+                # A sequencing keyword wins over an array keyword: the title of
+                # a sequencing panel may say "array", and an accepted platform
+                # still gets the modality check.
+                if any(p.search(platform_title) for p in SUPPORTED_TITLE_PATTERNS):
+                    supported_platforms.append((platform_id, platform_info))
+                elif any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS) or any(
                     p.search(platform_title) for p in UNSUPPORTED_TITLE_PATTERNS
                 ):
                     unsupported_platforms.append((platform_id, platform_info))
-                elif any(kw in platform_title for kw in SUPPORTED_KEYWORDS):
-                    supported_platforms.append((platform_id, platform_info))
                 else:
                     unknown_platforms.append((platform_id, platform_info))
 
