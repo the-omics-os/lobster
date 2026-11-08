@@ -467,10 +467,9 @@ Ready for quality control and downstream analysis!"""
 
 Multi-Modal Dataset Detected:
    Loaded: RNA ({len(sample_types.get("rna", []))} samples)
-   Skipped: {excluded_summary} (support coming in v2.6+)
+   Skipped: {excluded_summary} (Lobster does not import these modalities)
 
-   Note: Only RNA samples were downloaded. Unsupported modalities were excluded to save bandwidth.
-   When protein/VDJ support is added, you can re-download to get all modalities."""
+   Note: Only RNA samples were downloaded."""
 
             success_msg += f"\n\nThe dataset is now available as modality '{modality_name}' for other agents to use."
 

@@ -369,7 +369,6 @@ class DataExpertAssistant(InferenceBoundHelper):
                         f"Title/Summary/Design mentions multi-omics modality: {pre_filtered_modality}",
                     ],
                     suggestions=[
-                        f"Wait for Lobster v2.6+ with {pre_filtered_modality} support",
                         "Check if controlled-access data (dbGaP) contains additional modalities",
                         "Manually download only the RNA component if available in GEO",
                     ],

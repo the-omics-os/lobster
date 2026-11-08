@@ -1238,8 +1238,7 @@ class MetadataFetcher:
                     ]
                 )
                 logger.debug(
-                    f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}. "
-                    f"Support planned for future releases (v2.6+)."
+                    f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}."
                 )
 
                 return (
@@ -1271,11 +1270,11 @@ class MetadataFetcher:
                         "detected_signals": modality_result.detected_signals,
                         "explanation": modality_result.compatibility_reason,
                         "current_workaround": (
-                            f"Lobster v2.3 currently supports bulk RNA-seq, 10X single-cell, and Smart-seq2. "
-                            f"Support for {modality_result.modality} is planned for future releases."
+                            "Lobster imports bulk RNA-seq and single-cell RNA-seq "
+                            "(for example 10x Genomics and Smart-seq2) from GEO. "
+                            f"It does not import {modality_result.modality} data."
                         ),
                         "suggestions": modality_result.suggestions,
-                        "estimated_implementation": "Planned for Lobster v2.6-v2.8 depending on modality",
                         "detected_signals_formatted": signals_display,
                         "sample_types_detected": (
                             sample_types if sample_types else "No samples classified"
