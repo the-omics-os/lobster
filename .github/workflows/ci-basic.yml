@@ -45,7 +45,7 @@ jobs:
         # lobster-ai-tui~=1.2 is a core dependency that is not on PyPI until the 1.2.0
         # release, and pip ignores [tool.uv.sources]: install the in-repo package in
         # the same resolve (pure setuptools, no Go needed).
-        pip install --no-cache-dir -e packages/lobster-ai-tui -e ".[dev,openai]"
+        pip install --no-cache-dir -e packages/lobster-ai-tui -e ".[dev,openai,server]"
 
     - name: Run linting
       # A failed step skipped the rest, hiding steps 7-12 from 2026-07-23 to 2026-09-16,
