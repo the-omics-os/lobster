@@ -29,6 +29,8 @@ from lobster.core.exceptions import (
     reraise_inference_refusal,
 )
 from lobster.services.data_access.geo.constants import (
+    ARRAY_TECHNOLOGIES,
+    METHYLATION_KEYWORDS,
     PLATFORM_REGISTRY,
     SUPPORTED_KEYWORDS,
     UNSUPPORTED_KEYWORDS,
@@ -925,7 +927,9 @@ class MetadataFetcher:
                 - message: Human-readable explanation
 
         Raises:
-            UnsupportedPlatformError: If platform is explicitly unsupported (microarray)
+            UnsupportedPlatformError: If every platform is an expression or DNA
+                methylation array (by registry, title keyword or GEO technology).
+                Unknown platforms are not refused here; they get the modality check.
         """
         # CHANGE 1: Store minimal metadata BEFORE any early returns
         # This guarantees metadata availability for all code paths (including early returns)
@@ -956,8 +960,13 @@ class MetadataFetcher:
         # Combine both levels
         all_platforms = {}
         for platform_id, platform_data in series_platforms.items():
+            # GEOparse metadata uses "title"/"technology"; raw SOFT parsing
+            # keeps the "platform_" prefix.
             all_platforms[platform_id] = {
-                "title": platform_data.get("title", ""),
+                "title": platform_data.get("title")
+                or platform_data.get("platform_title", ""),
+                "technology": platform_data.get("technology")
+                or platform_data.get("platform_technology", ""),
                 "level": "series",
                 "samples": sample_platforms.get(platform_id, []),
             }
@@ -983,6 +992,7 @@ class MetadataFetcher:
 
         for platform_id, platform_info in all_platforms.items():
             platform_title = platform_info.get("title", "").lower()
+            platform_technology = platform_info.get("technology", "").strip().lower()
 
             # Check registry
             if platform_id in PLATFORM_REGISTRY:
@@ -996,7 +1006,10 @@ class MetadataFetcher:
                     experimental_platforms.append((platform_id, platform_info))
             else:
                 # Unknown platform - use keyword matching
-                if any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS):
+                if (
+                    any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS)
+                    or platform_technology in ARRAY_TECHNOLOGIES
+                ):
                     unsupported_platforms.append((platform_id, platform_info))
                 elif any(kw in platform_title for kw in SUPPORTED_KEYWORDS):
                     supported_platforms.append((platform_id, platform_info))
@@ -1025,6 +1038,35 @@ class MetadataFetcher:
                 ]
             )
 
+            # DNA methylation arrays are their own class, not expression microarrays.
+            kinds = sorted(
+                {
+                    (
+                        "methylation_array"
+                        if any(
+                            kw in info.get("title", "").lower()
+                            for kw in METHYLATION_KEYWORDS
+                        )
+                        else "microarray"
+                    )
+                    for _, info in unsupported_platforms
+                }
+            )
+            platform_type = "+".join(kinds)
+            if kinds == ["methylation_array"]:
+                explanation = (
+                    "This dataset uses DNA methylation array platform(s) (for example "
+                    "Illumina 450K or EPIC). Lobster does not import methylation data; "
+                    "it is designed for RNA-seq data (bulk or single-cell) and "
+                    "proteomics data."
+                )
+            else:
+                explanation = (
+                    "This dataset appears to use microarray platform(s), which are not "
+                    "currently supported by Lobster. Lobster is designed for RNA-seq data "
+                    "(bulk or single-cell) and proteomics data."
+                )
+
             raise UnsupportedPlatformError(
                 message=f"Dataset {geo_id} uses unsupported platform(s)",
                 details={
@@ -1032,12 +1074,9 @@ class MetadataFetcher:
                     "unsupported_platforms": [
                         (pid, info["title"]) for pid, info in unsupported_platforms
                     ],
-                    "platform_type": "microarray",
-                    "explanation": (
-                        "This dataset appears to use microarray platform(s), which are not "
-                        "currently supported by Lobster. Lobster is designed for RNA-seq data "
-                        "(bulk or single-cell) and proteomics data."
-                    ),
+                    "platform_type": platform_type,
+                    "modality": platform_type,
+                    "explanation": explanation,
                     "detected_platforms": platform_list,
                     "suggestions": [
                         "Search for RNA-seq version of this experiment",
@@ -1057,18 +1096,17 @@ class MetadataFetcher:
             )
             return True, "Experimental platform detected - proceed with validation"
 
-        # Handle unknown platforms conservatively
+        # Unknown platforms are not trusted on their own: the modality check
+        # below still runs for them.
         if unknown_platforms and not supported_platforms:
             platform_list = ", ".join([pid for pid, _ in unknown_platforms])
             logger.warning(
                 f"{geo_id} has unknown platform(s): {platform_list}. "
-                f"Will attempt loading but recommend validation."
+                f"Checking the data modality before loading."
             )
-            return True, "Unknown platform - will attempt loading"
-
-        # All platforms supported (GPL registry check passed)
-        platform_list = ", ".join([pid for pid, _ in supported_platforms])
-        logger.info(f"GPL registry check passed for {geo_id}: {platform_list}")
+        else:
+            platform_list = ", ".join([pid for pid, _ in supported_platforms])
+            logger.info(f"GPL registry check passed for {geo_id}: {platform_list}")
 
         # === TIER 2: LLM MODALITY DETECTION (Phase 2.1) ===
         logger.info(f"Running LLM modality detection for {geo_id}...")

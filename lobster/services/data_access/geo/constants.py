@@ -148,6 +148,8 @@ UNSUPPORTED_KEYWORDS = [
     "snp chip",
     "exon array",
     "gene chip",
+    "oligo",  # e.g. "VUMC MACF human 19K oligo v33"
+    "nimblegen",
 ]
 
 SUPPORTED_KEYWORDS = [
@@ -163,3 +165,15 @@ SUPPORTED_KEYWORDS = [
     "single-cell",
     "sequencing",
 ]
+
+# GEO "!Platform_technology" values of array platforms. They classify platforms
+# whose title matches no keyword (e.g. GPL3255, GPL21145 "Infinium MethylationEPIC").
+ARRAY_TECHNOLOGIES = {
+    "in situ oligonucleotide",
+    "spotted oligonucleotide",
+    "spotted dna/cdna",
+    "oligonucleotide beads",
+}
+
+# Array platforms that measure DNA methylation rather than gene expression.
+METHYLATION_KEYWORDS = ["methylation"]
