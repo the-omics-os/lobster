@@ -212,3 +212,34 @@ def test_resequencing_array_is_not_a_sequencing_keyword(geo_service, title):
         geo_service._check_platform_compatibility(
             "GSE1", _metadata("GPL99996", title, "")
         )
+
+
+@pytest.mark.parametrize(
+    "title", ["In-house scRNA-seq", "Custom snRNA-seq", "In-house mRNA-seq"]
+)
+def test_rna_seq_inside_a_word_is_a_sequencing_keyword(geo_service, title):
+    # Next to an array platform, a sequencing platform makes the series mixed
+    # instead of array-only, so it is not refused.
+    metadata = {
+        "title": "test series",
+        "platforms": {
+            "GPL3255": {
+                "title": "VUMC MACF human 19K oligo v33",
+                "technology": "spotted oligonucleotide",
+            },
+            "GPL99995": {"title": title, "technology": ""},
+        },
+        "samples": {},
+    }
+    ok, message = geo_service._check_platform_compatibility("GSE1", metadata)
+    assert ok is True
+    assert message.startswith("Mixed platform dataset")
+
+
+def test_rna_seq_inside_a_word_wins_over_an_array_keyword(geo_service):
+    metadata = _metadata("GPL99995", "snRNA-seq capture array", "")
+    with patch.object(geo_service, "_data_expert_assistant", create=True) as llm:
+        llm.detect_modality.return_value = _supported_rna()
+        ok, _ = geo_service._check_platform_compatibility("GSE1", metadata)
+    assert ok is True
+    llm.detect_modality.assert_called_once()
