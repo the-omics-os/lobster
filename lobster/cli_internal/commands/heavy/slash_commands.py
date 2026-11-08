@@ -3478,7 +3478,7 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
         client = AgentClient(workspace_path=str(workspace_path))
 
         # Route to appropriate command
-        if subcommand is None:
+        if subcommand in (None, "overview"):
             metadata_overview(client, output)
         elif subcommand in ("publications", "pub"):
             metadata_publications(client, output, status_filter=status_filter)

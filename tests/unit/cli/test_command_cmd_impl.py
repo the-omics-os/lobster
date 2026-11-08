@@ -256,3 +256,43 @@ def test_command_cmd_impl_query_help_profile_renders_query_subset(
     assert payload["success"] is True
     assert titles == ["Query-Compatible Commands"]
     assert all(title != "Admin & UI Commands" for title in titles)
+
+
+def _route_metadata(monkeypatch, tmp_path, **kwargs):
+    """Run metadata_command_impl with every metadata view stubbed; return the calls."""
+    calls = []
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=False: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.core.client.AgentClient", lambda workspace_path: object()
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.ConsoleOutputAdapter",
+        _StubConsoleOutputAdapter,
+    )
+    for name in (
+        "metadata_overview",
+        "metadata_publications",
+        "metadata_samples",
+        "metadata_workspace",
+        "metadata_exports",
+        "metadata_list",
+        "metadata_clear",
+        "metadata_clear_exports",
+        "metadata_clear_all",
+    ):
+        monkeypatch.setattr(
+            f"lobster.cli_internal.commands.{name}",
+            lambda *a, _name=name, **k: calls.append(_name),
+        )
+    slash_commands.metadata_command_impl(workspace=tmp_path, **kwargs)
+    return calls
+
+
+@pytest.mark.parametrize("subcommand", [None, "overview"])
+def test_metadata_overview_is_reachable_by_name(monkeypatch, tmp_path, subcommand):
+    assert _route_metadata(monkeypatch, tmp_path, subcommand=subcommand) == [
+        "metadata_overview"
+    ]
