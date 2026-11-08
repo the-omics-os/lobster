@@ -3728,43 +3728,41 @@ def vector_search_cmd_impl(query_text: str, top_k=None, pretty: bool = True):
 
 def serve_impl(
     port: int = 8000,
-    host: str = "0.0.0.0",  # nosec B104 - API server; bind address is set with --host
+    host: str = "127.0.0.1",
+    token: Optional[str] = None,
 ):
-    """Start the agent system as an API server (extracted from cli.py)."""
-    from typing import Optional
+    """Start the agent system as an API server (extracted from cli.py).
 
+    Non-loopback binds require a bearer token from ``token`` or
+    ``LOBSTER_SERVE_TOKEN``.
+    """
     import typer
     import uvicorn
-    from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel
 
-    from lobster.cli_internal.commands.heavy.session_infra import init_client
-
-    # Create FastAPI app
-    api = FastAPI(
-        title="Lobster Agent API",
-        description="🦞 Multi-Agent Bioinformatics System by Omics-OS",
-        version="2.0",
+    from lobster.cli_internal.commands.heavy.serve_app import (
+        TOKEN_ENV_VAR,
+        build_serve_app,
+        is_loopback_host,
     )
 
-    class QueryRequest(BaseModel):
-        question: str
-        session_id: Optional[str] = None
-        stream: bool = False
+    token = token or os.environ.get(TOKEN_ENV_VAR) or None
+    if not is_loopback_host(host):
+        if token is None:
+            typer.echo(
+                h(
+                    "Error: serving on {host} needs a token. Set LOBSTER_SERVE_TOKEN or pass --token, or use the default --host 127.0.0.1."
+                ).format(host=host),
+                err=True,
+            )
+            raise typer.Exit(1)
+        typer.echo(
+            h(
+                "Warning: {host} is reachable from other machines. Every request must send 'Authorization: Bearer <token>'. The agent can run code and use your API keys."
+            ).format(host=host),
+            err=True,
+        )
 
-    @api.post("/query")
-    async def query_endpoint(request: QueryRequest):
-        try:
-            client = init_client()
-            result = client.query(request.question, stream=request.stream)
-            return result
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @api.get("/status")
-    async def status_endpoint():
-        client = init_client()
-        return client.get_status()
+    api = build_serve_app(host, token)
 
     typer.echo(
         h("Starting Lobster API server on {host}:{port}").format(host=host, port=port)

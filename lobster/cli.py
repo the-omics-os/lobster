@@ -1652,16 +1652,20 @@ def vector_search_cmd(
 def serve(
     port: int = typer.Option(8000, "--port", "-p"),
     host: str = typer.Option(
-        "0.0.0.0",  # nosec B104 # serve defaults to all interfaces; --host overrides
+        "127.0.0.1",
         "--host",
+        help=h("Bind address. Anything other than localhost requires a token."),
+    ),
+    token: Optional[str] = typer.Option(
+        None,
+        "--token",
+        envvar="LOBSTER_SERVE_TOKEN",
+        help=h("Bearer token required when --host is not localhost."),
     ),
 ):
-    """
-    Start the agent system as an API server (for React UI).
-    """
     from lobster.cli_internal.commands.heavy.slash_commands import serve_impl
 
-    serve_impl(port=port, host=host)
+    serve_impl(port=port, host=host, token=token)
 
 
 # Config subcommands
