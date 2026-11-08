@@ -14,7 +14,8 @@ from lobster.cli_internal.commands.heavy.serve_app import (
     is_loopback_host,
 )
 
-TOKEN = "s3cret-token"
+TOKEN = "s3cret-token"  # nosec B105 # test value, not a secret
+ALL_INTERFACES = "0.0.0.0"  # nosec B104 # test value; tests never bind a socket
 LEAK = "boom at /Users/someone/private/path"
 
 
@@ -67,7 +68,7 @@ def test_cli_serve_defaults_to_loopback(monkeypatch):
     monkeypatch.delenv("LOBSTER_SERVE_TOKEN", raising=False)
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 0, result.output
-    assert seen == {"port": 8000, "host": "127.0.0.1", "token": None}
+    assert seen == {"port": 8000, "host": "127.0.0.1", "token": None}  # nosec B105
 
 
 def test_cli_serve_reads_token_from_env(monkeypatch):
@@ -78,7 +79,7 @@ def test_cli_serve_reads_token_from_env(monkeypatch):
         slash_commands, "serve_impl", lambda **kwargs: seen.update(kwargs)
     )
     monkeypatch.setenv("LOBSTER_SERVE_TOKEN", TOKEN)
-    result = CliRunner().invoke(app, ["serve", "--host", "0.0.0.0"])
+    result = CliRunner().invoke(app, ["serve", "--host", ALL_INTERFACES])
     assert result.exit_code == 0, result.output
     assert seen["token"] == TOKEN
 
@@ -90,7 +91,9 @@ def test_loopback_hosts(host):
     assert is_loopback_host(host)
 
 
-@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.10", "example.com", ""])
+@pytest.mark.parametrize(
+    "host", [ALL_INTERFACES, "::", "192.168.1.10", "example.com", ""]
+)
 def test_non_loopback_hosts(host):
     assert not is_loopback_host(host)
 
@@ -105,8 +108,8 @@ def test_loopback_bind_has_no_warning(no_uvicorn, capsys):
 
 
 def test_non_loopback_bind_warns(no_uvicorn, capsys):
-    slash_commands.serve_impl(host="0.0.0.0", token=TOKEN)
-    assert no_uvicorn == ["0.0.0.0"]
+    slash_commands.serve_impl(host=ALL_INTERFACES, token=TOKEN)
+    assert no_uvicorn == [ALL_INTERFACES]
     err = capsys.readouterr().err
     assert "Warning: 0.0.0.0 is reachable from other machines" in err
     assert TOKEN not in err
@@ -114,7 +117,7 @@ def test_non_loopback_bind_warns(no_uvicorn, capsys):
 
 def test_non_loopback_bind_without_token_refuses(no_uvicorn, capsys):
     with pytest.raises(typer.Exit) as exc:
-        slash_commands.serve_impl(host="0.0.0.0")
+        slash_commands.serve_impl(host=ALL_INTERFACES)
     assert exc.value.exit_code == 1
     assert no_uvicorn == []
     assert "needs a token" in capsys.readouterr().err
@@ -122,8 +125,8 @@ def test_non_loopback_bind_without_token_refuses(no_uvicorn, capsys):
 
 def test_non_loopback_bind_uses_env_token(no_uvicorn, monkeypatch):
     monkeypatch.setenv("LOBSTER_SERVE_TOKEN", TOKEN)
-    slash_commands.serve_impl(host="0.0.0.0")
-    assert no_uvicorn == ["0.0.0.0"]
+    slash_commands.serve_impl(host=ALL_INTERFACES)
+    assert no_uvicorn == [ALL_INTERFACES]
 
 
 # 3. Bearer token on non-loopback binds
@@ -131,9 +134,9 @@ def test_non_loopback_bind_uses_env_token(no_uvicorn, monkeypatch):
 
 def test_build_app_requires_token_off_loopback():
     with pytest.raises(ValueError):
-        build_serve_app("0.0.0.0", None, FakeClient)
+        build_serve_app(ALL_INTERFACES, None, FakeClient)
     with pytest.raises(ValueError):
-        build_serve_app("0.0.0.0", "", FakeClient)
+        build_serve_app(ALL_INTERFACES, "", FakeClient)
 
 
 @pytest.mark.parametrize(
@@ -146,7 +149,7 @@ def test_build_app_requires_token_off_loopback():
     ],
 )
 def test_missing_or_wrong_token_is_401(headers):
-    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    client = _client(ALL_INTERFACES, TOKEN, base_url="http://192.168.1.10:8000")
     for response in (
         client.get("/status", headers=headers),
         client.post("/query", json={"question": "hi"}, headers=headers),
@@ -157,7 +160,7 @@ def test_missing_or_wrong_token_is_401(headers):
 
 
 def test_correct_token_is_accepted():
-    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    client = _client(ALL_INTERFACES, TOKEN, base_url="http://192.168.1.10:8000")
     auth = {"Authorization": f"Bearer {TOKEN}"}
     assert client.get("/status", headers=auth).json() == {"ok": True}
     response = client.post("/query", json={"question": "hi"}, headers=auth)
@@ -173,7 +176,7 @@ def test_token_compare_is_constant_time(monkeypatch):
         return real(a, b)
 
     monkeypatch.setattr(serve_app.hmac, "compare_digest", spy)
-    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    client = _client(ALL_INTERFACES, TOKEN, base_url="http://192.168.1.10:8000")
     client.get("/status", headers={"Authorization": f"Bearer {TOKEN}"})
     assert calls == [(TOKEN.encode(), TOKEN.encode())]
 
@@ -204,7 +207,7 @@ def test_loopback_enforces_a_configured_token():
     ],
 )
 def test_every_route_needs_the_token(method, path):
-    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    client = _client(ALL_INTERFACES, TOKEN, base_url="http://192.168.1.10:8000")
     response = client.request(method, path)
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
@@ -293,7 +296,7 @@ def test_foreign_origins_rejected(origin):
 def test_token_bind_does_not_check_origin():
     # Intended: a browser cannot attach the bearer cross-site without CORS,
     # which the app does not enable.
-    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    client = _client(ALL_INTERFACES, TOKEN, base_url="http://192.168.1.10:8000")
     headers = {"Authorization": f"Bearer {TOKEN}", "Origin": "https://evil.example"}
     assert client.get("/status", headers=headers).status_code == 200
 
@@ -301,7 +304,7 @@ def test_token_bind_does_not_check_origin():
 # 5. No exception text in 500 responses
 
 
-@pytest.mark.parametrize("host,token", [("127.0.0.1", None), ("0.0.0.0", TOKEN)])
+@pytest.mark.parametrize("host,token", [("127.0.0.1", None), (ALL_INTERFACES, TOKEN)])
 def test_errors_do_not_leak_exception_text(host, token):
     base = "http://localhost:8000" if token is None else "http://10.0.0.5:8000"
     client = _client(host, token, factory=FailingClient, base_url=base)

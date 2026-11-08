@@ -12,7 +12,7 @@ Key features:
 - Support for both proteomics and metabolomics data
 """
 
-import ftplib
+import ftplib  # nosec B402 # PRIDE and MassIVE serve FTP only
 import re
 import time
 from pathlib import Path
@@ -298,7 +298,7 @@ class MassIVEDownloadService(IDownloadService):
         files = []
 
         try:
-            ftp = ftplib.FTP(host, timeout=60)
+            ftp = ftplib.FTP(host, timeout=60)  # nosec B321 # MassIVE serves FTP only
             ftp.login()
             ftp.set_pasv(True)
 
@@ -447,7 +447,7 @@ class MassIVEDownloadService(IDownloadService):
 
         for attempt in range(max_retries):
             try:
-                ftp = ftplib.FTP(host, timeout=60)
+                ftp = ftplib.FTP(host, timeout=60)  # nosec B321 # FTP-only host
                 ftp.login()  # Anonymous login
                 ftp.set_pasv(True)
 

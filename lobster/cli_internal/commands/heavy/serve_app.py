@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
-TOKEN_ENV_VAR = "LOBSTER_SERVE_TOKEN"
+TOKEN_ENV_VAR = "LOBSTER_SERVE_TOKEN"  # nosec B105 # env var name, not a secret
 INTERNAL_ERROR_DETAIL = "Internal server error"
 
 

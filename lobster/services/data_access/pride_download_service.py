@@ -12,7 +12,7 @@ Key features:
 - Support for multiple download strategies
 """
 
-import ftplib
+import ftplib  # nosec B402 # PRIDE and MassIVE serve FTP only
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -376,7 +376,7 @@ class PRIDEDownloadService(IDownloadService):
 
         for attempt in range(max_retries):
             try:
-                ftp = ftplib.FTP(host, timeout=60)
+                ftp = ftplib.FTP(host, timeout=60)  # nosec B321 # PRIDE serves FTP only
                 ftp.login()  # Anonymous login
                 ftp.set_pasv(True)  # Passive mode
 
