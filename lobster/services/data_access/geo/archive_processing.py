@@ -30,6 +30,33 @@ from lobster.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _extract_tar_all_or_nothing(tar: tarfile.TarFile, dest: Path) -> int:
+    """Extract every member of ``tar`` into ``dest``, or nothing.
+
+    Uses the stdlib ``data`` filter: absolute paths, ``..`` escapes, links
+    pointing outside ``dest`` and device files are refused. All members are
+    checked before anything is written, so a refused archive leaves no files.
+    """
+    dest_str = str(dest.resolve())
+    members = tar.getmembers()
+    unsafe = []
+    for member in members:
+        # The data filter would strip a leading "/"; refuse such names instead.
+        if member.name.startswith(("/", "\\")) or os.path.isabs(member.name):
+            unsafe.append(f"{member.name} (AbsolutePath)")
+            continue
+        try:
+            tarfile.data_filter(member, dest_str)
+        except tarfile.FilterError as e:
+            unsafe.append(f"{member.name} ({type(e).__name__})")
+    if unsafe:
+        raise GEODownloadError(
+            f"Archive refused: {len(unsafe)} unsafe member(s): {unsafe[:10]}"
+        )
+    tar.extractall(path=dest, members=members, filter="data")
+    return len(members)
+
+
 class ArchiveProcessor:
     """GEO archive processing - TAR extraction, nested archives, 10X handling.
 
@@ -346,7 +373,7 @@ class ArchiveProcessor:
 
                         logger.debug(f"Extracting nested archive: {archive_path.name}")
                         with tarfile.open(archive_path, "r:gz") as nested_tar:
-                            nested_tar.extractall(path=sample_extract_dir)
+                            _extract_tar_all_or_nothing(nested_tar, sample_extract_dir)
 
                         adata_sample = self.service.geo_parser.parse_10x_data(
                             sample_extract_dir, sample_id
