@@ -75,7 +75,7 @@ class GoTUIBridge:
 
         stderr_pipe = subprocess.PIPE
         try:
-            self._process = subprocess.Popen(  # nosec B603 # fixed argv, no shell
+            self._process = subprocess.Popen(  # nosec B603 # argv list for the bundled TUI binary; no shell
                 cmd,
                 pass_fds=(p2g_r, g2p_w),
                 stdout=subprocess.DEVNULL,
@@ -293,7 +293,7 @@ def run_init_wizard(
     if not language_was_explicit():
         child_env["LOBSTER_INIT_ASK_LANG"] = "1"
     try:
-        proc = subprocess.run(  # nosec B603 # fixed argv, no shell
+        proc = subprocess.run(  # nosec B603 # argv list for the bundled TUI binary; no shell
             cmd,
             text=True,
             timeout=timeout,

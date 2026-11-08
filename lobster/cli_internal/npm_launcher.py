@@ -43,7 +43,7 @@ def launch_cloud_chat(
     if project_id:
         cmd.extend(["--project-id", project_id])
     try:
-        result = subprocess.run(cmd)  # nosec B603 # fixed argv, no shell
+        result = subprocess.run(cmd)  # nosec B603 # chat client argv list; no shell
         sys.exit(result.returncode)
     except FileNotFoundError:
         return False

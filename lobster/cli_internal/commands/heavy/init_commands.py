@@ -1191,7 +1191,7 @@ def _uv_tool_env_handoff(
         return  # No prompt, command construction, or package handoff under --skip-extras.
 
     import shlex
-    import subprocess as _sp  # nosec B404 # used only to re-run the installer with a fixed argv list
+    import subprocess as _sp  # nosec B404 # used only to re-run the installer with an argv list
 
     from rich.prompt import Confirm
 
@@ -1244,7 +1244,7 @@ def _uv_tool_env_handoff(
 
         # Stream output so the user sees resolver/download progress
         # instead of staring at a frozen terminal.
-        result = _sp.run(cmd)  # nosec B603 # fixed argv, no shell
+        result = _sp.run(cmd)  # nosec B603 # argv shown and confirmed above; no shell
 
         # === DANGER ZONE: venv on disk has been replaced ===
         _use_color = _os.environ.get("NO_COLOR") is None and sys.stdout.isatty()

@@ -492,7 +492,7 @@ def chat(
     if project_id:
         cmd.append(f"--project-id={project_id}")
 
-    proc = subprocess.Popen(  # nosec B603 # fixed argv, no shell
+    proc = subprocess.Popen(  # nosec B603 # argv list for the installed chat client; no shell
         cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr
     )
     try:

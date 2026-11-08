@@ -185,7 +185,7 @@ def run_upgrade(console: "Console", dry_run: bool = False) -> int:
         return 0
 
     console.print(f"[dim]{h('Running:')} {plan.display}[/dim]")
-    result = subprocess.run(plan.command)  # nosec B603 # fixed argv, no shell
+    result = subprocess.run(plan.command)  # nosec B603 # upgrade-plan argv; no shell
 
     if result.returncode != 0:
         console.print(
