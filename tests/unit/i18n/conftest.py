@@ -2,11 +2,11 @@
 
 import pytest
 
-from lobster.i18n import current_lang, set_lang
+import lobster.i18n as i18n
 
 
 @pytest.fixture(autouse=True)
 def _restore_ui_language():
-    before = current_lang()
+    before = (i18n._LANG, i18n._SOURCE)
     yield
-    set_lang(before)
+    i18n._LANG, i18n._SOURCE = before

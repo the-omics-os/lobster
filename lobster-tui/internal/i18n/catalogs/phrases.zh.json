@@ -1966,5 +1966,13 @@
   "Next steps:": "下一步：",
   "  Resume: lobster chat --ui go --session-id latest": "  继续会话：lobster chat --ui go --session-id latest",
   "  New chat: lobster chat --ui go": "  新对话：lobster chat --ui go",
-  "  Help: lobster --help": "  帮助：lobster --help"
+  "  Help: lobster --help": "  帮助：lobster --help",
+  "Language": "语言",
+  "Choose the language for Lobster AI.": "选择 Lobster AI 的界面语言。",
+  "Usage:": "用法：",
+  "Show this message and exit.": "显示此帮助后退出。",
+  "Install completion for the current shell.": "为当前 shell 安装命令补全。",
+  "Show completion for the current shell, to copy it or customize the installation.": "显示当前 shell 的命令补全脚本，可复制或自行安装。",
+  "Install completion for the specified shell.": "为指定的 shell 安装命令补全。",
+  "Show completion for the specified shell, to copy it or customize the installation.": "显示指定 shell 的命令补全脚本，可复制或自行安装。"
 }

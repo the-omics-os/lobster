@@ -980,9 +980,7 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
     try:
         # Create workspace config from structured dict
         workspace_config = WorkspaceProviderConfig.load(workspace_path)
-        from lobster.i18n import current_lang
-
-        workspace_config.lang = workspace_config.lang or current_lang()
+        workspace_config.lang = _init_lang(workspace_config.lang)
 
         # Set provider (required)
         if "provider" in config_dict:
@@ -1029,6 +1027,56 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
         )
 
 
+# Language names are shown in their own language and never translated.
+_INIT_LANGUAGES = (("en", "English"), ("zh", "简体中文 (Simplified Chinese)"))
+
+
+def _ask_language(use_questionary: bool) -> Optional[str]:
+    """Ask for the UI language once, unless the user already chose it.
+
+    Returns the chosen code, or None when skipped. Raises KeyboardInterrupt
+    when the user cancels the questionary prompt.
+    """
+    from lobster.i18n import current_lang, language_was_explicit, set_lang
+
+    if language_was_explicit():
+        return None
+    default = current_lang()
+    prompt = h("Choose the language for Lobster AI.")
+    if use_questionary:
+        import questionary
+
+        choice = questionary.select(
+            prompt,
+            choices=[
+                questionary.Choice(label, value=code) for code, label in _INIT_LANGUAGES
+            ],
+            default=default,
+        ).ask()
+        if choice is None:
+            raise KeyboardInterrupt
+    else:
+        for index, (code, label) in enumerate(_INIT_LANGUAGES, 1):
+            console.print(f"  {index}. {label}")
+        codes = [code for code, _ in _INIT_LANGUAGES]
+        picked = Prompt.ask(
+            prompt,
+            choices=[str(i) for i in range(1, len(codes) + 1)],
+            default=str(codes.index(default) + 1 if default in codes else 1),
+        )
+        choice = codes[int(picked) - 1]
+    return set_lang(choice)
+
+
+def _init_lang(stored: Optional[str]) -> str:
+    """Language to save at init: an explicit choice wins over the stored one."""
+    from lobster.i18n import current_lang, language_was_explicit
+
+    if language_was_explicit():
+        return current_lang()
+    return stored or current_lang()
+
+
 def _create_global_config(config_dict: Dict[str, Any]) -> Path:
     """
     Create global user-level provider configuration.
@@ -1052,6 +1100,7 @@ def _create_global_config(config_dict: Dict[str, Any]) -> Path:
 
     try:
         global_config = GlobalProviderConfig()
+        global_config.lang = _init_lang(None)
 
         # Set provider (required)
         if "provider" in config_dict:
@@ -1336,6 +1385,13 @@ def _postprocess_tui_init_result(
     from lobster.ui.bridge.init_adapter import apply_tui_init_result
 
     normalized_result = dict(result)
+
+    # The language screen ran first; show everything after it in that language.
+    chosen_lang = (normalized_result.get("lang") or "").strip()
+    if chosen_lang:
+        from lobster.i18n import set_lang
+
+        set_lang(chosen_lang)
 
     # Handle Omics-OS Cloud authentication.
     provider_name = (normalized_result.get("provider") or "").strip().lower()
@@ -2818,7 +2874,14 @@ def init_impl(
                 from lobster.ui.bridge.questionary_fallback import run_questionary_init
                 from lobster.ui.wizard.manifest import build_init_manifest
 
+                try:
+                    _q_lang = _ask_language(use_questionary=True)
+                except KeyboardInterrupt:
+                    console.print(f"[yellow]{_cancelled_text()}[/yellow]")
+                    raise typer.Exit(0)
                 _q_result = run_questionary_init(build_init_manifest())
+                if _q_lang:
+                    _q_result["lang"] = _q_lang
                 if _q_result.get("cancelled", False):
                     console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                     raise typer.Exit(0)
@@ -2864,6 +2927,7 @@ def init_impl(
             raise typer.Exit(0)
     # === END GO TUI / QUESTIONARY PATH ===
 
+    _ask_language(use_questionary=False)
     console.print("\n")
     if global_config:
         from lobster.config.global_config import get_global_credentials_path

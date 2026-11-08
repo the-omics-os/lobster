@@ -17,6 +17,10 @@ from typing import Iterator, Mapping, MutableSequence, Optional
 
 _DIR = Path(__file__).resolve().parent
 _LANG = "en"
+# Where the current language came from: default, flag, env, workspace,
+# global or explicit (set in code, e.g. the init language screen).
+_SOURCE = "default"
+_EXPLICIT_SOURCES = frozenset({"flag", "env", "explicit"})
 _CACHE: dict[str, dict[str, str]] = {}
 
 # Easy-Mandarin overlay. Aliases all select ``zh``.
@@ -38,6 +42,16 @@ def catalog_dir() -> Path:
 
 def current_lang() -> str:
     return _LANG
+
+
+def lang_source() -> str:
+    """Return where the current language came from."""
+    return _SOURCE
+
+
+def language_was_explicit() -> bool:
+    """True when the user chose the language for this run (flag, env or prompt)."""
+    return _SOURCE in _EXPLICIT_SOURCES
 
 
 def canonicalize(lang: Optional[str]) -> str:
@@ -114,13 +128,42 @@ def read_workspace_lang(workspace: Optional[Path] = None) -> Optional[str]:
     return None
 
 
+def _global_config_dir(environ: Optional[Mapping[str, str]] = None) -> Path:
+    """User-wide config folder. Mirrors ``lobster.config.global_config.CONFIG_DIR``."""
+    env = os.environ if environ is None else environ
+    if os.name == "nt":
+        return Path(env.get("APPDATA", str(Path.home()))) / "lobster"
+    return Path(env.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "lobster"
+
+
+def read_global_lang(environ: Optional[Mapping[str, str]] = None) -> Optional[str]:
+    """Read ``lang`` from the user-wide providers.json, if any."""
+    path = _global_config_dir(environ) / "providers.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    value = data.get("lang")
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
 def resolve_lang(
     argv: Optional[MutableSequence[str]] = None,
     environ: Optional[Mapping[str, str]] = None,
     workspace: Optional[Path] = None,
 ) -> str:
-    """Pick a language and make it current. First source wins: flag, env, file."""
-    global _LANG
+    """Pick a language and make it current.
+
+    First source wins: ``--lang``, ``LOBSTER_LANG``, the workspace, the user-wide
+    config, then English.
+    """
+    global _LANG, _SOURCE
     env = os.environ if environ is None else environ
     # Read workspace selection without consuming its actual CLI arguments.
     selected_workspace = workspace
@@ -134,12 +177,26 @@ def resolve_lang(
                 selected_workspace = Path(item.split("=", 1)[1]).expanduser()
     if selected_workspace is None and env.get("LOBSTER_WORKSPACE"):
         selected_workspace = Path(env["LOBSTER_WORKSPACE"]).expanduser()
+    source = "flag"
     chosen = consume_lang_flag(argv)
     if not chosen:
-        chosen = env.get("LOBSTER_LANG")
+        source, chosen = "env", env.get("LOBSTER_LANG")
     if not chosen:
-        chosen = read_workspace_lang(selected_workspace)
+        source, chosen = "workspace", read_workspace_lang(selected_workspace)
+    if not chosen:
+        source, chosen = "global", read_global_lang(env)
+    if not chosen:
+        source = "default"
     code = canonicalize(chosen)
+    if not known_overlay(code):
+        code = "en"
+    _LANG, _SOURCE = code, source
+    return _LANG
+
+
+def _apply(lang: Optional[str]) -> str:
+    global _LANG
+    code = canonicalize(lang)
     if not known_overlay(code):
         code = "en"
     _LANG = code
@@ -147,13 +204,13 @@ def resolve_lang(
 
 
 def set_lang(lang: Optional[str]) -> str:
-    """Set the process language. Unknown codes fall back to English."""
-    global _LANG
-    code = canonicalize(lang)
-    if not known_overlay(code):
-        code = "en"
-    _LANG = code
-    return _LANG
+    """Set the process language as the user's explicit choice.
+
+    Unknown codes fall back to English.
+    """
+    global _SOURCE
+    _SOURCE = "explicit"
+    return _apply(lang)
 
 
 @contextmanager
@@ -163,12 +220,12 @@ def use_lang(lang: Optional[str]) -> Iterator[str]:
     Machine-readable output (JSON) renders under ``use_lang("en")`` so keys,
     labels and enum-like values never depend on the UI language.
     """
-    global _LANG
-    previous = _LANG
+    global _LANG, _SOURCE
+    previous, previous_source = _LANG, _SOURCE
     try:
-        yield set_lang(lang)
+        yield _apply(lang)
     finally:
-        _LANG = previous
+        _LANG, _SOURCE = previous, previous_source
 
 
 def write_workspace_lang(workspace: Path, lang: str) -> str:

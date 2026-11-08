@@ -22,13 +22,11 @@ from lobster.i18n import current_lang, h, resolve_lang, t
 
 resolve_lang(sys.argv)
 
-# Typer help chrome (zh only; h() keeps the English text otherwise).
+# Typer help chrome (zh only; English text is left untouched).
 if current_lang() == "zh":
-    import typer.rich_utils as _ru
+    from lobster.cli_internal.typer_i18n import localize_typer_help
 
-    _ru.OPTIONS_PANEL_TITLE, _ru.COMMANDS_PANEL_TITLE = h("Options"), h("Commands")
-    _ru.ARGUMENTS_PANEL_TITLE, _ru.ERRORS_PANEL_TITLE = h("Arguments"), h("Error")
-    _ru.DEFAULT_STRING, _ru.ENVVAR_STRING = h("[default: {}]"), h("[env var: {}]")
+    localize_typer_help()
 
 if sys.version_info < (3, 12):
     print(
