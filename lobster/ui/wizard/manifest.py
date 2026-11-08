@@ -19,6 +19,8 @@ import logging
 from dataclasses import asdict, dataclass, field
 from typing import Literal, Optional
 
+from lobster.i18n import h
+
 logger = logging.getLogger(__name__)
 
 
@@ -171,50 +173,50 @@ _PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
 
 _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
     "anthropic": [
-        CredentialField(key="ANTHROPIC_API_KEY", label="Anthropic API Key"),
+        CredentialField(key="ANTHROPIC_API_KEY", label=h("Anthropic API Key")),
     ],
     "bedrock": [
         CredentialField(
-            key="AWS_ACCESS_KEY_ID", label="AWS Access Key ID", secret=False
+            key="AWS_ACCESS_KEY_ID", label=h("AWS Access Key ID"), secret=False
         ),
-        CredentialField(key="AWS_SECRET_ACCESS_KEY", label="AWS Secret Access Key"),
+        CredentialField(key="AWS_SECRET_ACCESS_KEY", label=h("AWS Secret Access Key")),
         CredentialField(
             key="AWS_DEFAULT_REGION",
-            label="AWS Region",
+            label=h("AWS Region"),
             secret=False,
             required=False,
         ),
     ],
     "ollama": [],  # No credentials needed
     "gemini": [
-        CredentialField(key="GOOGLE_API_KEY", label="Google API Key"),
+        CredentialField(key="GOOGLE_API_KEY", label=h("Google API Key")),
     ],
     "azure": [
-        CredentialField(key="AZURE_OPENAI_API_KEY", label="Azure OpenAI API Key"),
+        CredentialField(key="AZURE_OPENAI_API_KEY", label=h("Azure OpenAI API Key")),
         CredentialField(
             key="AZURE_OPENAI_ENDPOINT",
-            label="Azure OpenAI Endpoint",
+            label=h("Azure OpenAI Endpoint"),
             secret=False,
         ),
     ],
     "openai": [
-        CredentialField(key="OPENAI_API_KEY", label="OpenAI API Key"),
+        CredentialField(key="OPENAI_API_KEY", label=h("OpenAI API Key")),
     ],
     "openrouter": [
-        CredentialField(key="OPENROUTER_API_KEY", label="OpenRouter API Key"),
+        CredentialField(key="OPENROUTER_API_KEY", label=h("OpenRouter API Key")),
     ],
     "omics-os": [
-        CredentialField(key="OMICS_OS_API_KEY", label="Omics-OS API Key"),
+        CredentialField(key="OMICS_OS_API_KEY", label=h("Omics-OS API Key")),
     ],
     "ollama-cloud": [
         CredentialField(
             key="OLLAMA_API_KEY",
-            label="Ollama API Key",
+            label=h("Ollama API Key"),
             help_url="https://ollama.com/settings/keys",
         )
     ],
     "nebius": [
-        CredentialField(key="NEBIUS_API_KEY", label="Nebius API Key"),
+        CredentialField(key="NEBIUS_API_KEY", label=h("Nebius API Key")),
     ],
 }
 
@@ -222,10 +224,10 @@ _PROVIDER_AUTH_METHODS: dict[str, list[AuthMethodDef]] = {
     "anthropic": [
         AuthMethodDef(
             type="oauth",
-            label="Login with Claude account (Pro/Max)",
+            label=h("Login with Claude account (Pro/Max)"),
             is_default=True,
         ),
-        AuthMethodDef(type="api_key", label="Paste API key"),
+        AuthMethodDef(type="api_key", label=h("Paste API key")),
     ],
     # Other providers: api_key only (no explicit auth_methods needed)
 }

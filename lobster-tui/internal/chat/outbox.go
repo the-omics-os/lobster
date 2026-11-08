@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
 // Inline scrollback outbox.
@@ -41,7 +43,10 @@ const printDeferDelay = 50 * time.Millisecond
 
 // incompleteResponseNotice follows partial output of a turn that ended
 // abnormally, so a truncated answer is never mistaken for a finished one.
-const incompleteResponseNotice = "Response incomplete: the turn ended before the answer finished."
+// It is a function so the text follows the runtime language.
+func incompleteResponseNotice() string {
+	return i18n.P("Response incomplete: the turn ended before the answer finished.")
+}
 
 // printSegment is one immutable unit of scrollback output.
 type printSegment struct {

@@ -26,6 +26,7 @@ from lobster.cli_internal.commands.output_adapter import (
 # Import status display configurations (single source of truth)
 from lobster.core.schemas.download_queue import DOWNLOAD_STATUS_DISPLAY
 from lobster.core.schemas.publication_queue import PUBLICATION_STATUS_DISPLAY
+from lobster.i18n import h
 
 
 class QueueFileTypeNotSupported(Exception):
@@ -62,11 +63,19 @@ def _resolve_queue_file_path(
 
         if not resolved.is_safe:
             return None, [
-                alert_block(f"Security error: {resolved.error}", level="error")
+                alert_block(
+                    h("Security error: {error}").format(error=resolved.error),
+                    level="error",
+                )
             ]
 
         if not resolved.exists:
-            return None, [alert_block(f"File not found: {filename}", level="error")]
+            return None, [
+                alert_block(
+                    h("File not found: {filename}").format(filename=filename),
+                    level="error",
+                )
+            ]
 
         return resolved.path, None
 
@@ -75,7 +84,11 @@ def _resolve_queue_file_path(
         file_path = client.data_manager.workspace_path / filename
 
     if not file_path.exists():
-        return None, [alert_block(f"File not found: {filename}", level="error")]
+        return None, [
+            alert_block(
+                h("File not found: {filename}").format(filename=filename), level="error"
+            )
+        ]
 
     return file_path, None
 
@@ -139,12 +152,12 @@ def _build_status_table(
         rows.append([_status_label(status_name, display_config), str(count)])
 
     # Add total row
-    rows.append(["Total", str(total)])
+    rows.append([h("Total"), str(total)])
 
     return table_block(
         columns=[
-            {"name": "Status", "style": "cyan"},
-            {"name": "Count", "style": "white", "justify": "right"},
+            {"name": h("Status"), "style": "cyan"},
+            {"name": h("Count"), "style": "white", "justify": "right"},
         ],
         rows=rows,
     )
@@ -170,21 +183,23 @@ def show_queue_status(client: "AgentClient", output: OutputAdapter) -> Optional[
     has_publication_queue = bool(pub_stats)
 
     if not has_download_queue and not has_publication_queue:
-        _render_blocks(output, [alert_block("No queues initialized", level="warning")])
+        _render_blocks(
+            output, [alert_block(h("No queues initialized"), level="warning")]
+        )
         return None
-    blocks: list[OutputBlock] = [section_block(title="Queue Status")]
+    blocks: list[OutputBlock] = [section_block(title=h("Queue Status"))]
 
-    blocks.append(section_block(title="Download Queue"))
+    blocks.append(section_block(title=h("Download Queue")))
     if has_download_queue:
         dl_rows = [
             [_status_label(status_name, DOWNLOAD_STATUS_DISPLAY), str(count)]
             for status_name, count in dl_stats.get("by_status", {}).items()
         ]
-        dl_rows.append(["Total", str(dl_total)])
+        dl_rows.append([h("Total"), str(dl_total)])
         blocks.append(
             table_block(
-                title="Status Breakdown",
-                columns=[{"name": "Status"}, {"name": "Count"}],
+                title=h("Status Breakdown"),
+                columns=[{"name": h("Status")}, {"name": h("Count")}],
                 rows=dl_rows,
             )
         )
@@ -192,21 +207,25 @@ def show_queue_status(client: "AgentClient", output: OutputAdapter) -> Optional[
         if by_database:
             db_items = [f"{db}: {cnt}" for db, cnt in by_database.items() if cnt > 0]
             if db_items:
-                blocks.append(hint_block(f"Databases: {', '.join(db_items)}"))
+                blocks.append(
+                    hint_block(
+                        h("Databases: {items}").format(items=", ".join(db_items))
+                    )
+                )
     else:
-        blocks.append(hint_block("Not initialized"))
+        blocks.append(hint_block(h("Not initialized")))
 
-    blocks.append(section_block(title="Publication Queue"))
+    blocks.append(section_block(title=h("Publication Queue")))
     if has_publication_queue:
         pub_rows = [
             [_status_label(status_name, PUBLICATION_STATUS_DISPLAY), str(count)]
             for status_name, count in pub_stats.get("by_status", {}).items()
         ]
-        pub_rows.append(["Total", str(pub_total)])
+        pub_rows.append([h("Total"), str(pub_total)])
         blocks.append(
             table_block(
-                title="Status Breakdown",
-                columns=[{"name": "Status"}, {"name": "Count"}],
+                title=h("Status Breakdown"),
+                columns=[{"name": h("Status")}, {"name": h("Count")}],
                 rows=pub_rows,
             )
         )
@@ -215,27 +234,35 @@ def show_queue_status(client: "AgentClient", output: OutputAdapter) -> Optional[
             level_items = [f"{lvl}: {cnt}" for lvl, cnt in by_level.items() if cnt > 0]
             if level_items:
                 blocks.append(
-                    hint_block(f"Extraction levels: {', '.join(level_items)}")
+                    hint_block(
+                        h("Extraction levels: {items}").format(
+                            items=", ".join(level_items)
+                        )
+                    )
                 )
         ids_extracted = pub_stats.get("identifiers_extracted", 0)
         if ids_extracted > 0:
-            blocks.append(hint_block(f"Identifiers extracted: {ids_extracted}"))
+            blocks.append(
+                hint_block(
+                    h("Identifiers extracted: {count}").format(count=ids_extracted)
+                )
+            )
     else:
-        blocks.append(hint_block("Not initialized"))
+        blocks.append(hint_block(h("Not initialized")))
 
     blocks.extend(
         [
             list_block(
                 [
-                    "/queue load <file> - Load .ris file into publication queue",
-                    "/queue list - List publication queue items",
-                    "/queue list download - List download queue items",
-                    "/queue clear - Clear publication queue",
-                    "/queue clear download - Clear download queue",
-                    "/queue clear all - Clear all queues",
-                    "/queue export - Export publication queue to workspace",
+                    f"/queue load <file> - {h('Load .ris file into publication queue')}",
+                    f"/queue list - {h('List publication queue items')}",
+                    f"/queue list download - {h('List download queue items')}",
+                    f"/queue clear - {h('Clear publication queue')}",
+                    f"/queue clear download - {h('Clear download queue')}",
+                    f"/queue clear all - {h('Clear all queues')}",
+                    f"/queue export - {h('Export publication queue to workspace')}",
                 ],
-                title="Commands",
+                title=h("Commands"),
             )
         ]
     )
@@ -269,7 +296,7 @@ def queue_load_file(
     """
     if not filename:
         _render_blocks(
-            output, [alert_block("Usage: /queue load <file>", level="warning")]
+            output, [alert_block(h("Usage: /queue load <file>"), level="warning")]
         )
         return None
 
@@ -291,13 +318,24 @@ def queue_load_file(
         if not resolved.is_safe:
             _render_blocks(
                 output,
-                [alert_block(f"Security error: {resolved.error}", level="error")],
+                [
+                    alert_block(
+                        h("Security error: {error}").format(error=resolved.error),
+                        level="error",
+                    )
+                ],
             )
             return None
 
         if not resolved.exists:
             _render_blocks(
-                output, [alert_block(f"File not found: {filename}", level="error")]
+                output,
+                [
+                    alert_block(
+                        h("File not found: {filename}").format(filename=filename),
+                        level="error",
+                    )
+                ],
             )
             return None
 
@@ -310,7 +348,13 @@ def queue_load_file(
 
         if not file_path.exists():
             _render_blocks(
-                output, [alert_block(f"File not found: {filename}", level="error")]
+                output,
+                [
+                    alert_block(
+                        h("File not found: {filename}").format(filename=filename),
+                        level="error",
+                    )
+                ],
             )
             return None
 
@@ -319,7 +363,12 @@ def queue_load_file(
     # Supported: .ris files
     if ext in [".ris", ".txt"]:
         _render_blocks(
-            output, [section_block(title=f"Loading into queue: {file_path.name}")]
+            output,
+            [
+                section_block(
+                    title=h("Loading into queue: {name}").format(name=file_path.name)
+                )
+            ],
         )
 
         try:
@@ -338,22 +387,36 @@ def queue_load_file(
 
             if added > 0:
                 blocks: list[OutputBlock] = [
-                    section_block(body=f"Loaded {added} items into queue")
+                    section_block(
+                        body=h("Loaded {count} items into queue").format(count=added)
+                    )
                 ]
 
                 # Show deduplication info (informational, not warning)
                 if duplicates > 0:
                     dup_details = []
                     if file_dups > 0:
-                        dup_details.append(f"{file_dups} duplicates in file")
+                        dup_details.append(
+                            h("{count} duplicates in file").format(count=file_dups)
+                        )
                     if queue_dups > 0:
-                        dup_details.append(f"{queue_dups} already in queue")
-                    blocks.append(hint_block(f"Deduplicated: {', '.join(dup_details)}"))
+                        dup_details.append(
+                            h("{count} already in queue").format(count=queue_dups)
+                        )
+                    blocks.append(
+                        hint_block(
+                            h("Deduplicated: {items}").format(
+                                items=", ".join(dup_details)
+                            )
+                        )
+                    )
 
                 if malformed > 0:
                     blocks.append(
                         alert_block(
-                            f"Skipped {malformed} malformed entries",
+                            h("Skipped {count} malformed entries").format(
+                                count=malformed
+                            ),
                             level="warning",
                         )
                     )
@@ -361,12 +424,12 @@ def queue_load_file(
                 blocks.append(
                     list_block(
                         [
-                            "Extract methods and parameters",
-                            "Search for related datasets (GEO)",
-                            "Build citation network",
-                            "Custom analysis (describe your intent)",
+                            h("Extract methods and parameters"),
+                            h("Search for related datasets (GEO)"),
+                            h("Build citation network"),
+                            h("Custom analysis (describe your intent)"),
                         ],
-                        title="Next Steps",
+                        title=h("Next Steps"),
                     )
                 )
                 _render_blocks(output, blocks)
@@ -377,13 +440,17 @@ def queue_load_file(
                 # All entries were duplicates - not an error, just informational
                 blocks = [
                     section_block(
-                        body=f"No new items added - all {duplicates} entries already in queue or duplicated"
+                        body=h(
+                            "No new items added - all {count} entries already in queue or duplicated"
+                        ).format(count=duplicates)
                     )
                 ]
                 if queue_dups > 0:
                     blocks.append(
                         hint_block(
-                            f"{queue_dups} already in queue, {file_dups} duplicates in file"
+                            h(
+                                "{queue} already in queue, {file} duplicates in file"
+                            ).format(queue=queue_dups, file=file_dups)
                         )
                     )
                 _render_blocks(output, blocks)
@@ -391,13 +458,13 @@ def queue_load_file(
 
             else:
                 blocks = [
-                    alert_block("No items could be loaded from file", level="error")
+                    alert_block(h("No items could be loaded from file"), level="error")
                 ]
                 if result.get("errors"):
                     blocks.append(
                         list_block(
                             [str(error) for error in result["errors"][:3]],
-                            title="Errors",
+                            title=h("Errors"),
                         )
                     )
                 _render_blocks(output, blocks)
@@ -405,35 +472,44 @@ def queue_load_file(
 
         except Exception as e:
             _render_blocks(
-                output, [alert_block(f"Failed to load file: {str(e)}", level="error")]
+                output,
+                [
+                    alert_block(
+                        h("Failed to load file: {error}").format(error=str(e)),
+                        level="error",
+                    )
+                ],
             )
             return None
 
     # Placeholder: .bib files (BibTeX)
     elif ext == ".bib":
         raise QueueFileTypeNotSupported(
-            "BibTeX (.bib) support coming soon. "
-            "Convert to .ris format or wait for future release."
+            h(
+                "BibTeX (.bib) support coming soon. Convert to .ris format or wait for future release."
+            )
         )
 
     # Placeholder: .csv files (custom lists)
     elif ext == ".csv":
         raise QueueFileTypeNotSupported(
-            "CSV queue loading coming soon. "
-            "Expected format: columns for DOI, PMID, or title."
+            h(
+                "CSV queue loading coming soon. Expected format: columns for DOI, PMID, or title."
+            )
         )
 
     # Placeholder: .json files (API exports)
     elif ext == ".json":
         raise QueueFileTypeNotSupported(
-            "JSON queue loading coming soon. Planned support for PubMed API exports."
+            h("JSON queue loading coming soon. Planned support for PubMed API exports.")
         )
 
     # Unknown type
     else:
         raise QueueFileTypeNotSupported(
-            f"Unsupported file type: {ext}. "
-            f"Currently supported: .ris. Coming soon: .bib, .csv, .json"
+            h(
+                "Unsupported file type: {ext}. Currently supported: .ris. Coming soon: .bib, .csv, .json"
+            ).format(ext=ext)
         )
 
 
@@ -472,7 +548,8 @@ def _queue_list_publication(
     """
     if client.publication_queue is None:
         _render_blocks(
-            output, [alert_block("Publication queue not initialized", level="warning")]
+            output,
+            [alert_block(h("Publication queue not initialized"), level="warning")],
         )
         return None
 
@@ -480,7 +557,7 @@ def _queue_list_publication(
 
     if not entries:
         _render_blocks(
-            output, [alert_block("Publication queue is empty", level="warning")]
+            output, [alert_block(h("Publication queue is empty"), level="warning")]
         )
         return "Publication queue is empty"
 
@@ -508,21 +585,25 @@ def _queue_list_publication(
 
     blocks: list[OutputBlock] = [
         section_block(
-            title=f"Publication Queue ({len(display_entries)} of {total_count} shown)"
+            title=h("Publication Queue ({shown} of {total} shown)").format(
+                shown=len(display_entries), total=total_count
+            )
         ),
         table_block(
             columns=[
                 {"name": "#", "width": 4},
-                {"name": "Title"},
-                {"name": "Year", "width": 6},
-                {"name": "Status"},
+                {"name": h("Title")},
+                {"name": h("Year"), "width": 6},
+                {"name": h("Status")},
                 {"name": "PMID/DOI"},
             ],
             rows=rows,
         ),
     ]
     if total_count > 20:
-        blocks.append(hint_block(f"... and {total_count - 20} more items"))
+        blocks.append(
+            hint_block(h("... and {count} more items").format(count=total_count - 20))
+        )
     _render_blocks(output, blocks)
 
     return f"Listed {len(display_entries)} of {total_count} publication queue items"
@@ -541,14 +622,14 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
     """
     if not hasattr(client, "data_manager") or client.data_manager is None:
         _render_blocks(
-            output, [alert_block("Data manager not initialized", level="warning")]
+            output, [alert_block(h("Data manager not initialized"), level="warning")]
         )
         return None
 
     download_queue = client.data_manager.download_queue
     if download_queue is None:
         _render_blocks(
-            output, [alert_block("Download queue not initialized", level="warning")]
+            output, [alert_block(h("Download queue not initialized"), level="warning")]
         )
         return None
 
@@ -556,7 +637,7 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
 
     if not entries:
         _render_blocks(
-            output, [alert_block("Download queue is empty", level="warning")]
+            output, [alert_block(h("Download queue is empty"), level="warning")]
         )
         return "Download queue is empty"
 
@@ -596,24 +677,30 @@ def _queue_list_download(client: "AgentClient", output: OutputAdapter) -> Option
 
     blocks = [
         section_block(
-            title=f"Download Queue ({len(display_entries)} of {total_count} shown)"
+            title=h("Download Queue ({shown} of {total} shown)").format(
+                shown=len(display_entries), total=total_count
+            )
         ),
         table_block(
             columns=[
                 {"name": "#", "width": 4},
-                {"name": "Accession"},
-                {"name": "Database"},
-                {"name": "Status"},
-                {"name": "Strategy"},
-                {"name": "Priority"},
+                {"name": h("Accession")},
+                {"name": h("Database")},
+                {"name": h("Status")},
+                {"name": h("Strategy")},
+                {"name": h("Priority")},
             ],
             rows=rows,
         ),
     ]
     if total_count > 20:
-        blocks.append(hint_block(f"... and {total_count - 20} more items"))
+        blocks.append(
+            hint_block(h("... and {count} more items").format(count=total_count - 20))
+        )
     if status_summary:
-        blocks.append(hint_block(f"Summary: {' | '.join(status_summary)}"))
+        blocks.append(
+            hint_block(h("Summary: {items}").format(items=" | ".join(status_summary)))
+        )
     _render_blocks(output, blocks)
 
     return f"Listed {len(display_entries)} of {total_count} download queue items"
@@ -652,7 +739,8 @@ def queue_clear(
 
         if grand_total == 0:
             _render_blocks(
-                output, [alert_block("All queues are already empty", level="warning")]
+                output,
+                [alert_block(h("All queues are already empty"), level="warning")],
             )
             return "All queues were already empty"
 
@@ -664,42 +752,47 @@ def queue_clear(
                     [
                         ("Publication queue", f"{pub_total} items"),
                         ("Download queue", f"{dl_total} items"),
-                        ("Total", f"{grand_total} items"),
+                        (h("Total"), f"{grand_total} items"),
                     ],
-                    title="About to Clear",
+                    title=h("About to Clear"),
                 )
             ],
         )
-        confirm = output.confirm(f"Clear all {grand_total} items from both queues?")
+        confirm = output.confirm(
+            h("Clear all {count} items from both queues?").format(count=grand_total)
+        )
 
         if confirm:
             cleared = []
             if pub_total > 0:
                 client.publication_queue.clear_queue()
-                cleared.append(f"publication ({pub_total})")
+                cleared.append(f"{h('publication')} ({pub_total})")
             if dl_total > 0:
                 client.data_manager.download_queue.clear_queue()
-                cleared.append(f"download ({dl_total})")
+                cleared.append(f"{h('download')} ({dl_total})")
 
             _render_blocks(
                 output,
                 [
                     alert_block(
-                        f"Cleared {grand_total} items from {', '.join(cleared)} queues",
+                        h("Cleared {count} items from {queues} queues").format(
+                            count=grand_total, queues=", ".join(cleared)
+                        ),
                         level="success",
                     )
                 ],
             )
             return f"Cleared {grand_total} items from all queues"
         else:
-            _render_blocks(output, [section_block(body="Operation cancelled")])
+            _render_blocks(output, [section_block(body=h("Operation cancelled"))])
             return None
 
     elif queue_type == "download":
         # Clear download queue
         if not hasattr(client, "data_manager") or not client.data_manager:
             _render_blocks(
-                output, [alert_block("Data manager not initialized", level="warning")]
+                output,
+                [alert_block(h("Data manager not initialized"), level="warning")],
             )
             return None
 
@@ -710,12 +803,14 @@ def queue_clear(
         if total == 0:
             _render_blocks(
                 output,
-                [alert_block("Download queue is already empty", level="warning")],
+                [alert_block(h("Download queue is already empty"), level="warning")],
             )
             return "Download queue was already empty"
 
         # Confirm with user
-        confirm = output.confirm(f"Clear all {total} items from download queue?")
+        confirm = output.confirm(
+            h("Clear all {count} items from download queue?").format(count=total)
+        )
 
         if confirm:
             download_queue.clear_queue()
@@ -723,21 +818,23 @@ def queue_clear(
                 output,
                 [
                     alert_block(
-                        f"Cleared {total} items from download queue",
+                        h("Cleared {count} items from download queue").format(
+                            count=total
+                        ),
                         level="success",
                     )
                 ],
             )
             return f"Cleared {total} items from download queue"
         else:
-            _render_blocks(output, [section_block(body="Operation cancelled")])
+            _render_blocks(output, [section_block(body=h("Operation cancelled"))])
             return None
 
     else:  # publication (default)
         if client.publication_queue is None:
             _render_blocks(
                 output,
-                [alert_block("Publication queue not initialized", level="warning")],
+                [alert_block(h("Publication queue not initialized"), level="warning")],
             )
             return None
 
@@ -748,12 +845,14 @@ def queue_clear(
         if total == 0:
             _render_blocks(
                 output,
-                [alert_block("Publication queue is already empty", level="warning")],
+                [alert_block(h("Publication queue is already empty"), level="warning")],
             )
             return "Publication queue was already empty"
 
         # Confirm with user
-        confirm = output.confirm(f"Clear all {total} items from publication queue?")
+        confirm = output.confirm(
+            h("Clear all {count} items from publication queue?").format(count=total)
+        )
 
         if confirm:
             client.publication_queue.clear_queue()
@@ -761,14 +860,16 @@ def queue_clear(
                 output,
                 [
                     alert_block(
-                        f"Cleared {total} items from publication queue",
+                        h("Cleared {count} items from publication queue").format(
+                            count=total
+                        ),
                         level="success",
                     )
                 ],
             )
             return f"Cleared {total} items from publication queue"
         else:
-            _render_blocks(output, [section_block(body="Operation cancelled")])
+            _render_blocks(output, [section_block(body=h("Operation cancelled"))])
             return None
 
 
@@ -788,14 +889,16 @@ def queue_export(
     """
     if client.publication_queue is None:
         _render_blocks(
-            output, [alert_block("Publication queue not initialized", level="warning")]
+            output,
+            [alert_block(h("Publication queue not initialized"), level="warning")],
         )
         return None
 
     stats = client.publication_queue.get_statistics()
     if stats.get("total_entries", 0) == 0:
         _render_blocks(
-            output, [alert_block("Queue is empty, nothing to export", level="warning")]
+            output,
+            [alert_block(h("Queue is empty, nothing to export"), level="warning")],
         )
         return None
 
@@ -806,7 +909,12 @@ def queue_export(
         name = f"queue_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     _render_blocks(
-        output, [section_block(body=f"Exporting queue to workspace as '{name}'...")]
+        output,
+        [
+            section_block(
+                body=h("Exporting queue to workspace as '{name}'...").format(name=name)
+            )
+        ],
     )
 
     try:
@@ -821,14 +929,23 @@ def queue_export(
             output,
             [
                 alert_block(
-                    f"Exported {stats.get('total_entries', 0)} items to: {export_path}",
+                    h("Exported {count} items to: {path}").format(
+                        count=stats.get("total_entries", 0), path=export_path
+                    ),
                     level="success",
                 )
             ],
         )
         return f"Exported {stats.get('total_entries', 0)} queue items to workspace as '{name}'"
     except Exception as e:
-        _render_blocks(output, [alert_block(f"Export failed: {str(e)}", level="error")])
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    h("Export failed: {error}").format(error=str(e)), level="error"
+                )
+            ],
+        )
         return None
 
 
@@ -883,7 +1000,8 @@ def queue_import(
 
     if not filename:
         _render_blocks(
-            output, [alert_block("Usage: /queue import <file.jsonl>", level="warning")]
+            output,
+            [alert_block(h("Usage: /queue import <file.jsonl>"), level="warning")],
         )
         return None
 
@@ -905,13 +1023,24 @@ def queue_import(
         if not resolved.is_safe:
             _render_blocks(
                 output,
-                [alert_block(f"Security error: {resolved.error}", level="error")],
+                [
+                    alert_block(
+                        h("Security error: {error}").format(error=resolved.error),
+                        level="error",
+                    )
+                ],
             )
             return None
 
         if not resolved.exists:
             _render_blocks(
-                output, [alert_block(f"File not found: {filename}", level="error")]
+                output,
+                [
+                    alert_block(
+                        h("File not found: {filename}").format(filename=filename),
+                        level="error",
+                    )
+                ],
             )
             return None
 
@@ -924,7 +1053,13 @@ def queue_import(
 
         if not file_path.exists():
             _render_blocks(
-                output, [alert_block(f"File not found: {filename}", level="error")]
+                output,
+                [
+                    alert_block(
+                        h("File not found: {filename}").format(filename=filename),
+                        level="error",
+                    )
+                ],
             )
             return None
 
@@ -935,23 +1070,32 @@ def queue_import(
         _render_blocks(
             output,
             [
-                alert_block(f"Unsupported file type: {ext}", level="error"),
-                section_block(
-                    body="The /queue import command only accepts .jsonl files (exported via /queue export)."
+                alert_block(
+                    h("Unsupported file type: {ext}").format(ext=ext), level="error"
                 ),
-                hint_block("To load .ris files, use: /queue load <file.ris>"),
+                section_block(
+                    body=h(
+                        "The /queue import command only accepts .jsonl files (exported via /queue export)."
+                    )
+                ),
+                hint_block(h("To load .ris files, use: /queue load <file.ris>")),
             ],
         )
         return None
 
     if client.publication_queue is None:
         _render_blocks(
-            output, [alert_block("Publication queue not initialized", level="error")]
+            output, [alert_block(h("Publication queue not initialized"), level="error")]
         )
         return None
 
     _render_blocks(
-        output, [section_block(body=f"Importing queue from: {file_path.name}")]
+        output,
+        [
+            section_block(
+                body=h("Importing queue from: {name}").format(name=file_path.name)
+            )
+        ],
     )
 
     # Parse JSONL file
@@ -974,7 +1118,9 @@ def queue_import(
                     parse_errors += 1
                     parse_blocks.append(
                         alert_block(
-                            f"Line {line_num}: Invalid JSON - {e}",
+                            h("Line {line}: Invalid JSON - {error}").format(
+                                line=line_num, error=e
+                            ),
                             level="warning",
                         )
                     )
@@ -982,7 +1128,9 @@ def queue_import(
                     parse_errors += 1
                     parse_blocks.append(
                         alert_block(
-                            f"Line {line_num}: Invalid entry - {e}",
+                            h("Line {line}: Invalid entry - {error}").format(
+                                line=line_num, error=e
+                            ),
                             level="warning",
                         )
                     )
@@ -992,7 +1140,8 @@ def queue_import(
 
         if not entries:
             _render_blocks(
-                output, [alert_block("No valid entries found in file", level="warning")]
+                output,
+                [alert_block(h("No valid entries found in file"), level="warning")],
             )
             return None
 
@@ -1007,13 +1156,18 @@ def queue_import(
         result_blocks: list[OutputBlock] = []
         if imported > 0:
             result_blocks.append(
-                alert_block(f"Imported {imported} entries into queue", level="success")
+                alert_block(
+                    h("Imported {count} entries into queue").format(count=imported),
+                    level="success",
+                )
             )
 
         if skipped > 0:
             result_blocks.append(
                 alert_block(
-                    f"Skipped {skipped} duplicate entries (already in queue)",
+                    h("Skipped {count} duplicate entries (already in queue)").format(
+                        count=skipped
+                    ),
                     level="warning",
                 )
             )
@@ -1022,7 +1176,7 @@ def queue_import(
             total_errors = errors + parse_errors
             result_blocks.append(
                 alert_block(
-                    f"{total_errors} entries failed to import",
+                    h("{count} entries failed to import").format(count=total_errors),
                     level="error",
                 )
             )
@@ -1037,23 +1191,29 @@ def queue_import(
             if missing_count > 0:
                 result_blocks.append(
                     alert_block(
-                        f"{missing_count} referenced metadata files not found in workspace",
+                        h(
+                            "{count} referenced metadata files not found in workspace"
+                        ).format(count=missing_count),
                         level="warning",
                     )
                 )
                 # Show first few missing files
                 preview = missing_files[:5]
                 result_blocks.append(
-                    list_block(preview, title="Missing Metadata Files")
+                    list_block(preview, title=h("Missing Metadata Files"))
                 )
                 if missing_count > 5:
                     result_blocks.append(
-                        hint_block(f"... and {missing_count - 5} more")
+                        hint_block(
+                            h("... and {count} more").format(count=missing_count - 5)
+                        )
                     )
 
                 result_blocks.append(
                     hint_block(
-                        "Tip: Re-run processing for affected entries to regenerate metadata."
+                        h(
+                            "Tip: Re-run processing for affected entries to regenerate metadata."
+                        )
                     )
                 )
 
@@ -1072,5 +1232,12 @@ def queue_import(
         return f"Queue import complete: {', '.join(summary_parts)}"
 
     except Exception as e:
-        _render_blocks(output, [alert_block(f"Import failed: {str(e)}", level="error")])
+        _render_blocks(
+            output,
+            [
+                alert_block(
+                    h("Import failed: {error}").format(error=str(e)), level="error"
+                )
+            ],
+        )
         return None

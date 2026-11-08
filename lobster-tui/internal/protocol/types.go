@@ -112,6 +112,9 @@ const (
 	// TypeComponentSetData pushes updated data to an active BioComp component.
 	// Used for streaming updates (e.g. threshold slider count refresh).
 	TypeComponentSetData = "component_set_data"
+
+	// TypeSetLang switches the UI language at runtime (e.g. after /lang zh).
+	TypeSetLang = "set_lang"
 )
 
 // ---- Go → Python message type constants -----------------------------------
@@ -264,6 +267,11 @@ type SpinnerPayload struct {
 // StatusPayload updates the status-bar line.
 type StatusPayload struct {
 	Text string `json:"text"`
+}
+
+// SetLangPayload carries the new UI language code (e.g. "en", "zh").
+type SetLangPayload struct {
+	Lang string `json:"lang"`
 }
 
 // ClearPayload optionally targets a specific region.

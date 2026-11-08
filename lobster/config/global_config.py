@@ -297,6 +297,11 @@ class GlobalProviderConfig(ProviderConfigBase):
         "http://localhost:11434", description="Default Ollama server URL"
     )
 
+    lang: Optional[str] = Field(
+        None,
+        description="UI language (en, zh) for all workspaces. A workspace lang wins.",
+    )
+
     model_context_windows: Dict[str, int] = Field(
         default_factory=dict,
         description="Context window overrides for arbitrary models (e.g., {'us.meta.llama3-1-70b-instruct-v1:0': 128000})",

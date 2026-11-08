@@ -15,6 +15,7 @@ from lobster.cli_internal.commands.output_adapter import (
     hint_block,
     section_block,
 )
+from lobster.i18n import h
 
 
 def _truncate_middle(text: str, max_length: int = 42) -> str:
@@ -52,7 +53,7 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         Summary string for conversation history, or None if no data loaded
     """
     if not client.data_manager.has_data():
-        output.print("[grey50]No data currently loaded[/grey50]", style="info")
+        output.print(h("[grey50]No data currently loaded[/grey50]"), style="info")
         return None
 
     summary = client.data_manager.get_data_summary()
@@ -61,84 +62,86 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     # Section 1: Main Data Summary Table
     # ========================================================================
     main_table_data = {
-        "title": "🦞 Current Data Summary",
+        "title": h("🦞 Current Data Summary"),
         "columns": [
-            {"name": "Property", "style": "bold grey93"},
-            {"name": "Value", "style": "white"},
+            {"name": h("Property"), "style": "bold grey93"},
+            {"name": h("Value"), "style": "white"},
         ],
         "rows": [],
     }
 
     # Status row
-    main_table_data["rows"].append(["Status", summary["status"]])
+    main_table_data["rows"].append([h("Status"), summary["status"]])
 
     # Handle shape - might be single modality or total for multiple modalities
     if "shape" in summary:
         main_table_data["rows"].append(
-            ["Shape", f"{summary['shape'][0]} × {summary['shape'][1]}"]
+            [h("Shape"), f"{summary['shape'][0]} × {summary['shape'][1]}"]
         )
     elif "total_obs" in summary and "total_vars" in summary:
         main_table_data["rows"].append(
-            ["Total Shape", f"{summary['total_obs']} × {summary['total_vars']}"]
+            [h("Total Shape"), f"{summary['total_obs']} × {summary['total_vars']}"]
         )
 
     # Memory usage
     if "memory_usage" in summary:
-        main_table_data["rows"].append(["Memory Usage", summary["memory_usage"]])
+        main_table_data["rows"].append([h("Memory Usage"), summary["memory_usage"]])
 
     # Modality name (single modality case)
     if summary.get("modality_name"):
-        main_table_data["rows"].append(["Modality", summary["modality_name"]])
+        main_table_data["rows"].append([h("Modality"), summary["modality_name"]])
 
     # Data type
     if summary.get("data_type"):
-        main_table_data["rows"].append(["Data Type", summary["data_type"]])
+        main_table_data["rows"].append([h("Data Type"), summary["data_type"]])
 
     # Matrix type (sparse vs dense)
     if summary.get("is_sparse") is not None:
-        sparse_status = "✓ Sparse" if summary["is_sparse"] else "✗ Dense"
-        main_table_data["rows"].append(["Matrix Type", sparse_status])
+        sparse_status = h("✓ Sparse") if summary["is_sparse"] else h("✗ Dense")
+        main_table_data["rows"].append([h("Matrix Type"), sparse_status])
 
     # Observation columns (prefer 'columns' key, fallback to 'obs_columns')
     obs_cols = summary.get("columns") or summary.get("obs_columns", [])
     if obs_cols:
         cols_preview = ", ".join(obs_cols[:5])
         if len(obs_cols) > 5:
-            cols_preview += f" ... (+{len(obs_cols) - 5} more)"
-        main_table_data["rows"].append(["Obs Columns", cols_preview])
+            cols_preview += h(" ... (+{n} more)").format(n=len(obs_cols) - 5)
+        main_table_data["rows"].append([h("Obs Columns"), cols_preview])
 
     # Variable columns
     if summary.get("var_columns"):
         var_cols = summary["var_columns"]
         var_preview = ", ".join(var_cols[:5])
         if len(var_cols) > 5:
-            var_preview += f" ... (+{len(var_cols) - 5} more)"
-        main_table_data["rows"].append(["Var Columns", var_preview])
+            var_preview += h(" ... (+{n} more)").format(n=len(var_cols) - 5)
+        main_table_data["rows"].append([h("Var Columns"), var_preview])
 
     # Sample names (prefer 'sample_names' key, fallback to 'obs_names')
     sample_names = summary.get("sample_names") or summary.get("obs_names", [])
     if sample_names:
         samples_preview = ", ".join(sample_names[:3])
         if len(sample_names) > 3:
-            samples_preview += f" ... (+{len(sample_names) - 3} more)"
-        main_table_data["rows"].append(["Samples", samples_preview])
+            samples_preview += h(" ... (+{n} more)").format(n=len(sample_names) - 3)
+        main_table_data["rows"].append([h("Samples"), samples_preview])
 
     # Layers
     if summary.get("layers"):
         layers_str = ", ".join(summary["layers"])
-        main_table_data["rows"].append(["Layers", layers_str])
+        main_table_data["rows"].append([h("Layers"), layers_str])
 
     # Obsm keys
     if summary.get("obsm"):
         obsm_str = ", ".join(summary["obsm"])
-        main_table_data["rows"].append(["Obsm Keys", obsm_str])
+        main_table_data["rows"].append([h("Obsm Keys"), obsm_str])
 
     # Metadata keys
     if summary.get("metadata_keys"):
         meta_preview = ", ".join(summary["metadata_keys"][:3])
         if len(summary["metadata_keys"]) > 3:
-            meta_preview += f" ... (+{len(summary['metadata_keys']) - 3} more)"
-        main_table_data["rows"].append(["Metadata Keys", meta_preview])
+            meta_preview += h(" ... (+{n} more)").format(
+                n=len(summary["metadata_keys"]) - 3
+            )
+        main_table_data["rows"].append([h("Metadata Keys"), meta_preview])
 
     # Processing log (recent steps)
     if summary.get("processing_log"):
@@ -147,7 +150,7 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             if len(summary["processing_log"]) > 2
             else summary["processing_log"]
         )
-        main_table_data["rows"].append(["Recent Steps", "; ".join(recent_steps)])
+        main_table_data["rows"].append([h("Recent Steps"), "; ".join(recent_steps)])
 
     output.print_table(main_table_data)
 
@@ -155,15 +158,15 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     # Section 2: Individual Modality Details (if multiple modalities)
     # ========================================================================
     if summary.get("modalities"):
-        output.render_blocks([section_block(title="Individual Modality Details")])
+        output.render_blocks([section_block(title=h("Individual Modality Details"))])
 
         modalities_table_data = {
             "title": None,
             "columns": [
-                {"name": "Modality", "style": "bold white"},
-                {"name": "Shape", "style": "white"},
-                {"name": "Memory", "style": "grey74"},
-                {"name": "Sparse", "style": "grey50"},
+                {"name": h("Modality"), "style": "bold white"},
+                {"name": h("Shape"), "style": "white"},
+                {"name": h("Memory"), "style": "grey74"},
+                {"name": h("Sparse"), "style": "grey50"},
             ],
             "rows": [],
         }
@@ -181,14 +184,14 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             else:
                 # Handle error case
                 error_msg = (
-                    mod_info.get("error", "Unknown error")
+                    mod_info.get("error", h("Unknown error"))
                     if isinstance(mod_info, dict)
-                    else "Invalid data"
+                    else h("Invalid data")
                 )
                 modalities_table_data["rows"].append(
                     [
                         display_name,
-                        "Error",
+                        h("Error"),
                         error_msg[:20] + "..." if len(error_msg) > 20 else error_msg,
                         "N/A",
                     ]
@@ -196,7 +199,11 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
 
         output.print_table(modalities_table_data)
         output.render_blocks(
-            [hint_block("Use `/describe <modality>` for a full modality inspection.")]
+            [
+                hint_block(
+                    h("Use `/describe <modality>` for a full modality inspection.")
+                )
+            ]
         )
 
     # ========================================================================
@@ -207,13 +214,13 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         and client.data_manager.current_metadata
     ):
         metadata = client.data_manager.current_metadata
-        output.render_blocks([section_block(title="Detailed Metadata")])
+        output.render_blocks([section_block(title=h("Detailed Metadata"))])
 
         metadata_table_data = {
             "title": None,
             "columns": [
-                {"name": "Key", "style": "bold grey93"},
-                {"name": "Value", "style": "white"},
+                {"name": h("Key"), "style": "bold grey93"},
+                {"name": h("Value"), "style": "white"},
             ],
             "rows": [],
         }
@@ -234,7 +241,7 @@ def data_summary(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         # Add "more items" indicator if needed
         if len(metadata) > 10:
             metadata_table_data["rows"].append(
-                ["...", f"(+{len(metadata) - 10} more items)"]
+                ["...", h("(+{n} more items)").format(n=len(metadata) - 10)]
             )
 
         output.print_table(metadata_table_data)

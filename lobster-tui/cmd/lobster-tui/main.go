@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/the-omics-os/lobster-tui/internal/chat"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	initwizard "github.com/the-omics-os/lobster-tui/internal/initwizard"
 )
 
@@ -41,7 +42,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Printf(`lobster-tui %s — Charm TUI frontend for Lobster AI
+	fmt.Printf(i18n.P(`lobster-tui %s — Charm TUI frontend for Lobster AI
 
 Usage:
   lobster-tui <command> [flags]
@@ -61,7 +62,7 @@ Flags for chat:
   --proto-fd-out <fd>  File descriptor for protocol output (required)
   --theme <name>       Theme to use (lobster-dark, lobster-light). Default: auto-detect
   --inline             Run in inline mode (no alternate screen, cleaner rendering)
-`, Version)
+`), Version)
 }
 
 // runInit parses the flags for the init subcommand and launches the wizard.

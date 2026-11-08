@@ -86,7 +86,7 @@ def _format_dataframe_preview(df: "pd.DataFrame", max_rows: int = 5) -> Table:
     table = Table(box=box.SIMPLE)
 
     # Add index column
-    table.add_column("Index", style="bold grey50")
+    table.add_column(h("Index"), style="bold grey50")
 
     # Add data columns
     for col in df.columns[:10]:  # Limit to first 10 columns
@@ -122,7 +122,9 @@ def _format_dataframe_preview(df: "pd.DataFrame", max_rows: int = 5) -> Table:
 
     # Add more columns indicator
     if len(df.columns) > 10:
-        table.add_column(f"... +{len(df.columns) - 10} more", style="dim")
+        table.add_column(
+            h("... +{count} more").format(count=len(df.columns) - 10), style="dim"
+        )
 
     return table
 
@@ -133,9 +135,9 @@ def _format_array_info(arrays_dict: Dict[str, "np.ndarray"]) -> Table:
         return None
 
     table = Table(box=box.SIMPLE)
-    table.add_column("Key", style="bold cyan")
-    table.add_column("Shape", style="white")
-    table.add_column("Dtype", style="grey70")
+    table.add_column(h("Key"), style="bold cyan")
+    table.add_column(h("Shape"), style="white")
+    table.add_column(h("Dtype"), style="grey70")
 
     for key, arr in arrays_dict.items():
         shape_str = " x ".join(str(d) for d in arr.shape)

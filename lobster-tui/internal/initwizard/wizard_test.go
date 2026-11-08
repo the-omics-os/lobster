@@ -9,11 +9,11 @@ import (
 )
 
 func TestResearchDescriptionMatchesCatalog(t *testing.T) {
-	if initAgentPackages[0].Name != "lobster-research" {
-		t.Fatalf("unexpected first package %s", initAgentPackages[0].Name)
+	if initAgentPackages()[0].Name != "lobster-research" {
+		t.Fatalf("unexpected first package %s", initAgentPackages()[0].Name)
 	}
-	if initAgentPackages[0].Description != i18n.T("wizard.pkg.research") {
-		t.Fatalf("description %q", initAgentPackages[0].Description)
+	if initAgentPackages()[0].Description != i18n.T("wizard.pkg.research") {
+		t.Fatalf("description %q", initAgentPackages()[0].Description)
 	}
 }
 

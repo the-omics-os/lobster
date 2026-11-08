@@ -29,6 +29,11 @@ NPM_PACKAGE = "@omicsos/lobster"
 @pytest.fixture(autouse=True)
 def isolated_setup(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    import lobster.i18n as i18n
+
+    # Start each test as a plain English run with no language choice yet.
+    monkeypatch.setattr(i18n, "_LANG", "en")
+    monkeypatch.setattr(i18n, "_SOURCE", "default")
     from lobster.config import global_config
 
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global-config")
@@ -313,7 +318,7 @@ def test_classic_cloud_wizard_does_not_attempt_browser_before_key(
 
     monkeypatch.setattr(http.server, "HTTPServer", forbidden_listener)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
-    answers = iter(["1", KEY])
+    answers = iter(["1", "1", KEY])  # language (English), provider, key
     monkeypatch.setattr(
         init_commands.Prompt, "ask", lambda *args, **kwargs: next(answers)
     )

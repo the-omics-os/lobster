@@ -107,7 +107,8 @@ def test_real_wizard_adapter_preserves_saved_language_and_new_provider(tmp_path)
 
     workspace = tmp_path / "workspace"
     write_workspace_lang(workspace, "zh")
-    set_lang("en")
+    # A plain English run with no language choice must keep the saved language.
+    resolve_lang(["lobster"], {"XDG_CONFIG_HOME": str(tmp_path / "xdg")}, tmp_path)
     apply_tui_init_result(
         {"provider": "ollama-cloud", "api_key": "test-only-key", "model_id": "glm-5.2"},
         workspace,

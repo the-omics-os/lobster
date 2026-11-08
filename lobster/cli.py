@@ -18,9 +18,15 @@ if sys.version_info >= (3, 13):
 
 # Runtime Python version guard — catch unsupported versions early with a clear message.
 # Language is resolved first so this message, and later Typer help, can be translated.
-from lobster.i18n import h, resolve_lang, t
+from lobster.i18n import current_lang, h, resolve_lang, t
 
 resolve_lang(sys.argv)
+
+# Typer help chrome (zh only; English text is left untouched).
+if current_lang() == "zh":
+    from lobster.cli_internal.typer_i18n import localize_typer_help
+
+    localize_typer_help()
 
 if sys.version_info < (3, 12):
     print(
@@ -1212,8 +1218,9 @@ def _maybe_launch_go_chat_ui(
             from lobster.core.component_registry import get_install_command
 
             print(
-                "\033[33mNote:\033[0m Go TUI not found, using classic mode. "
-                f"Install with: {get_install_command('lobster-ai-tui')}",
+                h(
+                    "\033[33mNote:\033[0m Go TUI not found, using classic mode. Install with: {command}"
+                ).format(command=get_install_command("lobster-ai-tui")),
                 file=sys.stderr,
             )
         return False
@@ -1240,7 +1247,9 @@ def _maybe_launch_go_chat_ui(
         import sys
 
         print(
-            f"\033[33mNote:\033[0m Go TUI failed ({exc}), falling back to classic mode.",
+            h(
+                "\033[33mNote:\033[0m Go TUI failed ({error}), falling back to classic mode."
+            ).format(error=exc),
             file=sys.stderr,
         )
         return False
@@ -1362,7 +1371,7 @@ def chat(
         import sys
 
         print(
-            "\033[33mNote:\033[0m Using classic terminal (Go TUI unavailable).",
+            h("\033[33mNote:\033[0m Using classic terminal (Go TUI unavailable)."),
             file=sys.stderr,
         )
     from lobster.cli_internal.commands.heavy.chat_commands import chat_impl
@@ -1400,12 +1409,15 @@ def dashboard_command(
         from lobster.core.component_registry import get_install_command
 
         console.print(
-            "[yellow]TUI mode requires the textual package.[/yellow]\n"
-            f"Install with: [bold]{get_install_command('classic-tui', is_extra=True)}[/bold]"
+            h(
+                "[yellow]TUI mode requires the textual package.[/yellow]\nInstall with: [bold]{command}[/bold]"
+            ).format(command=get_install_command("classic-tui", is_extra=True))
         )
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"[red]Failed to launch dashboard: {str(e)}[/red]")
+        console.print(
+            h("[red]Failed to launch dashboard: {error}[/red]").format(error=str(e))
+        )
         raise typer.Exit(1)
 
 
@@ -1534,7 +1546,7 @@ def _dispatch_command(cmd_str: str, client, output):
 )
 def command_cmd(
     cmd: str = typer.Argument(
-        help='Command to execute, e.g. "data", "workspace list", "files"'
+        help=h('Command to execute, e.g. "data", "workspace list", "files"')
     ),
     workspace: Optional[Path] = typer.Option(
         None,
@@ -1691,7 +1703,9 @@ def config_show_subcommand(
         output = ConsoleOutputAdapter(console)
         config_show(client, output)
     except Exception as e:
-        console.print(f"[red]Error displaying configuration: {str(e)}[/red]")
+        console.print(
+            h("[red]Error displaying configuration: {error}[/red]").format(error=str(e))
+        )
         raise typer.Exit(1)
 
 

@@ -57,9 +57,11 @@ def login(
 
     if provider not in OAUTH_PROVIDERS:
         console.print(
-            f"[red]Provider '{provider}' does not support OAuth login.[/red]\n"
-            f"[dim]Supported providers: {', '.join(OAUTH_PROVIDERS)}[/dim]\n"
-            f"[dim]For API key auth, use: lobster init[/dim]"
+            h(
+                "[red]Provider '{name}' does not support OAuth login.[/red]\n"
+                "[dim]Supported providers: {providers}[/dim]\n"
+                "[dim]For API key auth, use: lobster init[/dim]"
+            ).format(name=provider, providers=", ".join(OAUTH_PROVIDERS))
         )
         raise typer.Exit(1)
 
@@ -81,9 +83,9 @@ def logout(
         from lobster.config.auth.anthropic_oauth import logout as anth_logout
 
         if anth_logout():
-            console.print("[green]Logged out from Anthropic.[/green]")
+            console.print(h("[green]Logged out from Anthropic.[/green]"))
         else:
-            console.print("[dim]No Anthropic OAuth credentials found.[/dim]")
+            console.print(h("[dim]No Anthropic OAuth credentials found.[/dim]"))
     else:
         console.print(
             f"[red]{t('light.auth.unknown_provider', provider=provider)}[/red]"
@@ -95,20 +97,20 @@ def logout(
 def status() -> None:
     """Show authentication status for all providers."""
     table = Table(
-        title="Provider Authentication Status",
+        title=h("Provider Authentication Status"),
         show_header=True,
         border_style="cyan",
     )
-    table.add_column("Provider", style="bold")
-    table.add_column("Method")
-    table.add_column("Status")
+    table.add_column(h("Provider"), style="bold")
+    table.add_column(h("Method"))
+    table.add_column(h("Status"))
 
     # Anthropic: check env var, then OAuth
     import os
 
     anth_key = os.environ.get("ANTHROPIC_API_KEY")
     if anth_key and anth_key.strip():
-        table.add_row("anthropic", "API key (env)", "[green]configured[/green]")
+        table.add_row("anthropic", h("API key (env)"), h("[green]configured[/green]"))
     else:
         try:
             from lobster.config.auth import oauth_store
@@ -119,19 +121,19 @@ def status() -> None:
                     table.add_row(
                         "anthropic",
                         "OAuth",
-                        "[yellow]expired (will refresh)[/yellow]",
+                        h("[yellow]expired (will refresh)[/yellow]"),
                     )
                 else:
                     email = f" ({creds.email})" if creds.email else ""
                     table.add_row(
                         "anthropic",
                         "OAuth",
-                        f"[green]authenticated{email}[/green]",
+                        h("[green]authenticated{email}[/green]").format(email=email),
                     )
             else:
-                table.add_row("anthropic", "—", "[dim]not configured[/dim]")
+                table.add_row("anthropic", "—", h("[dim]not configured[/dim]"))
         except Exception:
-            table.add_row("anthropic", "—", "[dim]not configured[/dim]")
+            table.add_row("anthropic", "—", h("[dim]not configured[/dim]"))
 
     # Omics-OS Cloud
     try:
@@ -142,11 +144,15 @@ def status() -> None:
             mode = cloud_creds.get("auth_mode", "?")
             email = cloud_creds.get("email", "")
             label = f" ({email})" if email else ""
-            table.add_row("omics-os", mode, f"[green]configured{label}[/green]")
+            table.add_row(
+                "omics-os",
+                mode,
+                h("[green]configured{label}[/green]").format(label=label),
+            )
         else:
-            table.add_row("omics-os", "—", "[dim]not configured[/dim]")
+            table.add_row("omics-os", "—", h("[dim]not configured[/dim]"))
     except Exception:
-        table.add_row("omics-os", "—", "[dim]not configured[/dim]")
+        table.add_row("omics-os", "—", h("[dim]not configured[/dim]"))
 
     # Other env-var-based providers
     _env_providers = [
@@ -161,9 +167,9 @@ def status() -> None:
     for name, env_var in _env_providers:
         val = os.environ.get(env_var)
         if val and val.strip():
-            table.add_row(name, "API key (env)", "[green]configured[/green]")
+            table.add_row(name, h("API key (env)"), h("[green]configured[/green]"))
         else:
-            table.add_row(name, "—", "[dim]not configured[/dim]")
+            table.add_row(name, "—", h("[dim]not configured[/dim]"))
 
     console.print(table)
 
@@ -182,23 +188,31 @@ def _login_anthropic(no_browser: bool, timeout: int) -> None:
 
     if is_authenticated():
         console.print(
-            "[yellow]Already authenticated with Anthropic.[/yellow]\n"
-            "[dim]Run 'lobster auth logout anthropic' first to re-authenticate.[/dim]"
+            h(
+                "[yellow]Already authenticated with Anthropic.[/yellow]\n"
+                "[dim]Run 'lobster auth logout anthropic' first to re-authenticate.[/dim]"
+            )
         )
         raise typer.Exit(0)
 
     def _on_url(url: str):
         if no_browser:
-            console.print(f"\n[bold]Open this URL in your browser:[/bold]\n{url}\n")
+            console.print(
+                h("\n[bold]Open this URL in your browser:[/bold]\n{url}\n").format(
+                    url=url
+                )
+            )
         else:
-            console.print("[dim]Opening browser for Anthropic login...[/dim]")
-            console.print(f"[dim]If browser doesn't open: {url}[/dim]")
+            console.print(h("[dim]Opening browser for Anthropic login...[/dim]"))
+            console.print(
+                h("[dim]If browser doesn't open: {url}[/dim]").format(url=url)
+            )
 
     def _on_progress(msg: str):
         console.print(f"[dim]{msg}[/dim]")
 
     def _on_manual_input() -> str:
-        return typer.prompt("Paste the authorization code or full redirect URL")
+        return typer.prompt(h("Paste the authorization code or full redirect URL"))
 
     result = login_interactive(
         timeout=timeout,
@@ -210,10 +224,12 @@ def _login_anthropic(no_browser: bool, timeout: int) -> None:
 
     if result.success:
         console.print(
-            "[green]Successfully authenticated with Anthropic![/green]\n"
-            "[dim]Your Claude Pro/Max account is now linked. "
-            "Tokens refresh automatically.[/dim]"
+            h(
+                "[green]Successfully authenticated with Anthropic![/green]\n"
+                "[dim]Your Claude Pro/Max account is now linked. "
+                "Tokens refresh automatically.[/dim]"
+            )
         )
     else:
-        console.print(f"[red]Login failed: {result.error}[/red]")
+        console.print(h("[red]Login failed: {error}[/red]").format(error=result.error))
         raise typer.Exit(1)

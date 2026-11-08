@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from lobster.i18n import h
+
 
 def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
     """Render an interrupt as a terminal prompt and collect the response.
@@ -21,13 +23,13 @@ def handle_interrupt_classic(interrupt_data: Any) -> Dict[str, Any]:
     """
     if not isinstance(interrupt_data, dict):
         question = interrupt_data if isinstance(interrupt_data, str) else ""
-        return _handle_text_input(question or "Please provide input", {})
+        return _handle_text_input(question or h("Please provide input"), {})
 
     component = interrupt_data.get("component", "text_input")
-    fallback = interrupt_data.get("fallback_prompt", "Please provide input:")
+    fallback = interrupt_data.get("fallback_prompt", h("Please provide input:"))
     data = interrupt_data.get("data", {})
     if not isinstance(fallback, str) or not fallback.strip():
-        fallback = "Please provide input"
+        fallback = h("Please provide input")
     if not isinstance(data, dict):
         return _handle_text_input(fallback, {})
     if not isinstance(data.get("question"), str) or not data["question"].strip():
@@ -57,7 +59,11 @@ def _handle_confirm(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
     default = data.get("default", False)
     hint = "[Y/n]" if default else "[y/N]"
     question = data.get("question", fallback)
-    answer = input(f"\n{question} {hint}: ").strip().lower()
+    answer = (
+        input(h("\n{question} {hint}: ").format(question=question, hint=hint))
+        .strip()
+        .lower()
+    )
     if not answer:
         confirmed = default
     else:
@@ -74,14 +80,16 @@ def _handle_select(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
         print(f"  {i}. {opt}")
 
     while True:
-        answer = input("Enter number: ").strip()
+        answer = input(h("Enter number: ")).strip()
         try:
             idx = int(answer) - 1
             if 0 <= idx < len(options):
                 return {"selected": options[idx], "index": idx}
         except ValueError:
             pass
-        print(f"Please enter a number between 1 and {len(options)}.")
+        print(
+            h("Please enter a number between 1 and {count}.").format(count=len(options))
+        )
 
 
 def _handle_threshold(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -94,19 +102,27 @@ def _handle_threshold(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
     unit_str = f" {unit}" if unit else ""
 
     print(f"\n{label}")
-    print(f"  Range: {min_val}-{max_val}{unit_str}, Default: {default}{unit_str}")
+    print(
+        h(
+            "  Range: {min_val}-{max_val}{unit_str}, Default: {default}{unit_str}"
+        ).format(min_val=min_val, max_val=max_val, unit_str=unit_str, default=default)
+    )
 
     while True:
-        answer = input(f"Enter value [{default}]: ").strip()
+        answer = input(h("Enter value [{default}]: ").format(default=default)).strip()
         if not answer:
             return {"value": default}
         try:
             val = float(answer)
             if min_val <= val <= max_val:
                 return {"value": val}
-            print(f"Value must be between {min_val} and {max_val}.")
+            print(
+                h("Value must be between {min_val} and {max_val}.").format(
+                    min_val=min_val, max_val=max_val
+                )
+            )
         except ValueError:
-            print("Please enter a numeric value.")
+            print(h("Please enter a numeric value."))
 
 
 def _handle_cell_type(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -119,7 +135,11 @@ def _handle_cell_type(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
         cid = str(cluster.get("id", "?"))
         size = cluster.get("size", "?")
         markers = ", ".join(cluster.get("markers", [])[:5])
-        label = input(f"  Cluster {cid} ({size} cells, markers: {markers}): ").strip()
+        label = input(
+            h("  Cluster {cid} ({size} cells, markers: {markers}): ").format(
+                cid=cid, size=size, markers=markers
+            )
+        ).strip()
         if label:
             assignments[cid] = label
 
@@ -129,5 +149,5 @@ def _handle_cell_type(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
 def _handle_text_input(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Generic text input."""
     question = data.get("question", fallback)
-    answer = input(f"\n{question}: ").strip()
+    answer = input(h("\n{question}: ").format(question=question)).strip()
     return {"answer": answer}
