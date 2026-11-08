@@ -117,7 +117,8 @@ class UnsupportedPlatformError(LobsterCoreError):
         details: Contains:
             - geo_id: Dataset identifier
             - unsupported_platforms: List of (GPL_ID, platform_title) tuples
-            - platform_type: Type of platform (e.g., "microarray")
+            - platform_type: "microarray", "methylation_array", or both joined
+              with "+" when a series mixes them (also given as "modality")
             - explanation: Why this platform is not supported
             - detected_platforms: Formatted string of detected platforms
             - suggestions: List of alternative approaches

@@ -31,7 +31,9 @@ from lobster.core.exceptions import (
 from lobster.services.data_access.geo.constants import (
     ARRAY_TECHNOLOGIES,
     METHYLATION_KEYWORDS,
+    METHYLATION_PLATFORMS,
     PLATFORM_REGISTRY,
+    SEQUENCING_TECHNOLOGIES,
     SUPPORTED_KEYWORDS,
     UNSUPPORTED_KEYWORDS,
     UNSUPPORTED_TITLE_PATTERNS,
@@ -961,13 +963,9 @@ class MetadataFetcher:
         # Combine both levels
         all_platforms = {}
         for platform_id, platform_data in series_platforms.items():
-            # GEOparse metadata uses "title"/"technology"; raw SOFT parsing
-            # keeps the "platform_" prefix.
             all_platforms[platform_id] = {
-                "title": platform_data.get("title")
-                or platform_data.get("platform_title", ""),
-                "technology": platform_data.get("technology")
-                or platform_data.get("platform_technology", ""),
+                "title": platform_data.get("title", ""),
+                "technology": platform_data.get("technology", ""),
                 "level": "series",
                 "samples": sample_platforms.get(platform_id, []),
             }
@@ -1005,12 +1003,15 @@ class MetadataFetcher:
                     supported_platforms.append((platform_id, platform_info))
                 elif status == PlatformCompatibility.EXPERIMENTAL:
                     experimental_platforms.append((platform_id, platform_info))
+            # Not in the registry: a known GEO technology decides; title
+            # keywords only when the technology is empty or not recognised.
+            elif platform_technology in ARRAY_TECHNOLOGIES:
+                unsupported_platforms.append((platform_id, platform_info))
+            elif platform_technology in SEQUENCING_TECHNOLOGIES:
+                supported_platforms.append((platform_id, platform_info))
             else:
-                # Unknown platform - use keyword matching
-                if (
-                    any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS)
-                    or any(p.search(platform_title) for p in UNSUPPORTED_TITLE_PATTERNS)
-                    or platform_technology in ARRAY_TECHNOLOGIES
+                if any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS) or any(
+                    p.search(platform_title) for p in UNSUPPORTED_TITLE_PATTERNS
                 ):
                     unsupported_platforms.append((platform_id, platform_info))
                 elif any(kw in platform_title for kw in SUPPORTED_KEYWORDS):
@@ -1045,13 +1046,14 @@ class MetadataFetcher:
                 {
                     (
                         "methylation_array"
-                        if any(
+                        if pid in METHYLATION_PLATFORMS
+                        or any(
                             kw in info.get("title", "").lower()
                             for kw in METHYLATION_KEYWORDS
                         )
                         else "microarray"
                     )
-                    for _, info in unsupported_platforms
+                    for pid, info in unsupported_platforms
                 }
             )
             platform_type = "+".join(kinds)

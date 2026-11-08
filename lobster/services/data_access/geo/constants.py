@@ -101,6 +101,10 @@ PLATFORM_REGISTRY: Dict[str, PlatformCompatibility] = {
     "GPL21103": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2500 (single-cell)
     "GPL19057": PlatformCompatibility.SUPPORTED,  # Illumina NextSeq 500 (single-cell)
     # === UNSUPPORTED MICROARRAY PLATFORMS ===
+    # Illumina DNA methylation arrays (see METHYLATION_PLATFORMS)
+    "GPL8490": PlatformCompatibility.UNSUPPORTED,  # HumanMethylation27 BeadChip
+    "GPL13534": PlatformCompatibility.UNSUPPORTED,  # HumanMethylation450 BeadChip
+    "GPL21145": PlatformCompatibility.UNSUPPORTED,  # Infinium MethylationEPIC
     # Affymetrix arrays
     "GPL570": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 Plus 2.0
     "GPL96": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133A
@@ -180,5 +184,14 @@ ARRAY_TECHNOLOGIES = {
     "oligonucleotide beads",
 }
 
-# Array platforms that measure DNA methylation rather than gene expression.
+# GEO "!Platform_technology" values of sequencing platforms. Entrez esummary
+# writes "high throughput sequencing" without the hyphen.
+SEQUENCING_TECHNOLOGIES = {
+    "high-throughput sequencing",
+    "high throughput sequencing",
+}
+
+# Array platforms that measure DNA methylation rather than gene expression,
+# by title keyword or by GPL id (Entrez metadata has no platform titles).
 METHYLATION_KEYWORDS = ["methylation"]
+METHYLATION_PLATFORMS = {"GPL8490", "GPL13534", "GPL21145"}

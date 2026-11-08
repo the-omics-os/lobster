@@ -16,15 +16,10 @@ def geo_service(tmp_path):
     return GEOService(data_manager=DataManagerV2(workspace_path=tmp_path / "ws"))
 
 
-def _metadata(gpl: str, title: str, technology: str, soft_keys: bool = False) -> dict:
-    platform = (
-        {"platform_title": title, "platform_technology": technology}
-        if soft_keys
-        else {"title": title, "technology": technology}
-    )
+def _metadata(gpl: str, title: str, technology: str) -> dict:
     return {
         "title": "test series",
-        "platforms": {gpl: platform},
+        "platforms": {gpl: {"title": title, "technology": technology}},
         "samples": {"GSM1": {"platform_id": gpl, "title": "s1"}},
     }
 
@@ -88,19 +83,6 @@ def test_methylation_message_does_not_call_it_a_microarray(geo_service):
     assert "microarray" not in explanation.lower()
 
 
-def test_array_technology_is_read_from_soft_keys(geo_service):
-    with pytest.raises(UnsupportedPlatformError):
-        geo_service._check_platform_compatibility(
-            "GSE1",
-            _metadata(
-                "GPL3255",
-                "VUMC MACF human 19K oligo v33",
-                "spotted oligonucleotide",
-                soft_keys=True,
-            ),
-        )
-
-
 def test_unknown_platform_still_gets_the_modality_check(geo_service):
     metadata = _metadata("GPL99999", "In-house sequencer v2", "")
     with patch.object(geo_service, "_data_expert_assistant", create=True) as llm:
@@ -130,7 +112,13 @@ def test_oligo_title_keyword_refuses_without_technology(geo_service):
 
 
 @pytest.mark.parametrize(
-    "title", ["oligodendrocyte", "oligodendroglioma", "oligo-dT primed RNA-seq"]
+    "title",
+    [
+        "oligodendrocyte",
+        "oligodendroglioma",
+        "oligo-dT primed RNA-seq",
+        "oligoclonal B cells",
+    ],
 )
 def test_oligo_is_matched_as_a_word(geo_service, title):
     metadata = _metadata("GPL99999", title, "")
@@ -138,3 +126,34 @@ def test_oligo_is_matched_as_a_word(geo_service, title):
         llm.detect_modality.return_value = _supported_rna()
         ok, _ = geo_service._check_platform_compatibility("GSE1", metadata)
     assert ok is True
+
+
+@pytest.mark.parametrize(
+    "title", ["Custom oligo pool sequencing", "In-house array capture panel"]
+)
+def test_sequencing_technology_overrides_array_title_keywords(geo_service, title):
+    metadata = _metadata("GPL99999", title, "high-throughput sequencing")
+    with patch.object(geo_service, "_data_expert_assistant", create=True) as llm:
+        llm.detect_modality.return_value = _supported_rna()
+        ok, _ = geo_service._check_platform_compatibility("GSE1", metadata)
+    assert ok is True
+    llm.detect_modality.assert_called_once()
+
+
+@pytest.mark.parametrize("gpl", ["GPL8490", "GPL13534", "GPL21145"])
+def test_methylation_gpl_is_named_without_a_title(geo_service, gpl):
+    # Entrez-only metadata: placeholder title, technology defaulted to sequencing.
+    metadata = _metadata(gpl, f"Platform {gpl}", "high throughput sequencing")
+    with pytest.raises(UnsupportedPlatformError) as err:
+        geo_service._check_platform_compatibility("GSE1", metadata)
+    assert err.value.details["platform_type"] == "methylation_array"
+
+
+def test_unrecognised_technology_falls_back_to_title_keywords(geo_service):
+    metadata = _metadata(
+        "GPL99999",
+        "Affymetrix custom array",
+        "high-throughput sequencing; in situ oligonucleotide",
+    )
+    with pytest.raises(UnsupportedPlatformError):
+        geo_service._check_platform_compatibility("GSE1", metadata)
