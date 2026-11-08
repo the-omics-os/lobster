@@ -880,6 +880,8 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self._cache_cost_evidence: Dict[int, Dict[str, Any]] = {}
         self._cache_provider_labels: Dict[str, Optional[str]] = {}
         self._cache_identity_conflicts: set[str] = set()
+        # Cache-cost fallbacks seen per reason: WARNING on the first, DEBUG after.
+        self._cache_fallback_counts: Dict[str, int] = {}
 
         # Track current context (supervisor is always the first agent to run)
         self.current_agent: Optional[str] = "supervisor"
@@ -1287,13 +1289,19 @@ class TokenTrackingCallback(BaseCallbackHandler):
                 evidence["cache_cost_snapshot"] = decision.snapshot
             self._cache_cost_evidence[len(self.invocations)] = evidence
             if decision.status == "legacy_fallback":
-                logger.warning(
+                reason = decision.reason or "unknown"
+                seen = self._cache_fallback_counts.get(reason, 0) + 1
+                self._cache_fallback_counts[reason] = seen
+                logger.log(
+                    logging.WARNING if seen == 1 else logging.DEBUG,
                     "Cache cost fallback: reason=%s; logical_input_type=%s; "
-                    "cache_read_type=%s; cache_write_type=%s",
+                    "cache_read_type=%s; cache_write_type=%s; occurrence=%d "
+                    "(later occurrences with this reason are logged at DEBUG)",
                     decision.reason,
                     type(normalized.logical_input).__name__,
                     type(normalized.cache_read).__name__,
                     type(normalized.cache_write).__name__,
+                    seen,
                 )
 
         # Create invocation record
@@ -1801,6 +1809,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self._cache_cost_evidence.clear()
         self._cache_provider_labels.clear()
         self._cache_identity_conflicts.clear()
+        self._cache_fallback_counts.clear()
         self.unpriced_invocations = 0
         self._unpriced_models = set()
         self.by_agent = {}
