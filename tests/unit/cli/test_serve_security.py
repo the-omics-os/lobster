@@ -5,8 +5,12 @@ import inspect
 
 import pytest
 import typer
-from fastapi.testclient import TestClient
 from typer.testing import CliRunner
+
+# `lobster serve` needs the server extra (fastapi, uvicorn).
+pytest.importorskip("fastapi", reason="lobster serve needs the server extra")
+pytest.importorskip("uvicorn", reason="lobster serve needs the server extra")
+from fastapi.testclient import TestClient  # noqa: E402
 
 from lobster.cli_internal.commands.heavy import serve_app, slash_commands
 from lobster.cli_internal.commands.heavy.serve_app import (
