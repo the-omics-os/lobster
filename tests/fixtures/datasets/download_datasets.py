@@ -67,6 +67,12 @@ class DatasetDownloader:
         logger.info(f"Path: {output_dir.relative_to(self.datasets_dir)}")
         logger.info(f"{'='*60}")
 
+        if dataset.get("stale"):
+            logger.info(
+                f"Skipped: entry is stale ({dataset.get('stale_reason', '')})\n"
+            )
+            return
+
         # Handle metadata-only datasets (for rejection tests)
         if dataset.get("metadata_only"):
             logger.info("Metadata-only dataset (for rejection testing)")

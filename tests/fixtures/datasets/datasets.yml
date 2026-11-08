@@ -1,125 +1,152 @@
 # Test Dataset Configuration
 # 3-level nesting: omics_type → analysis_type → platform → [datasets]
+#
+# GEO entries were checked against the GEO records on 2026-11-08 (E-utilities
+# esummary, the series suppl/ and soft/ directory listings and suppl/filelist.txt;
+# metadata only). Facts the records give (files, platform, organism, sample count,
+# size) are corrected. Values the records cannot give (cells, genes, design) are
+# null. `stale: true` marks an entry whose real data does not fit its category or
+# test tags; do not build tests on it until it is replaced. `stale_reason` says why.
 
 single_cell:
   clustering:
     10x_chromium:
       - id: GSE132044
-        description: "Melanoma, ~15,000 cells"
+        description: "Systematic comparison of scRNA-seq methods (PBMC, cortex, cell-line mixture); 3,986 samples"
         geo_id: GSE132044
-        files: ["GSE132044_RAW.tar"]
-        format: 10x_mtx
-        size_gb: 2.5
-        organism: homo_sapiens
-        platform: GPL24676
-        expected_cells: 15000
-        expected_genes: 30000
-        transpose_required: true
+        files: ["GSE132044_pbmc_hg38_count_matrix.mtx.gz", "GSE132044_pbmc_hg38_cell.tsv.gz", "GSE132044_pbmc_hg38_gene.tsv.gz"]
+        format: matrix_market
+        size_gb: 0.12
+        organism: [homo_sapiens, mus_musculus]
+        platforms: [GPL17021, GPL22245, GPL18573, GPL19057, GPL16791]
+        expected_samples: 3986
+        expected_cells: null
+        expected_genes: null
+        transpose_required: null
+        stale: true
+        stale_reason: "Not a melanoma 10x dataset and has no RAW.tar: series-level Matrix Market files that pool several scRNA-seq protocols."
         test_tags: [format_preservation, transpose_correctness, clustering]
 
     matrix_market:
       - id: GSE144735
-        description: "COVID-19 PBMC, ~44,000 cells"
+        description: "Colorectal cancer (KUL3), 10x 3' scRNA-seq of 6 patients; 18 samples"
         geo_id: GSE144735
-        files: ["GSE144735_matrix.mtx.gz"]
-        format: matrix_market
-        size_gb: 1.8
+        files: ["GSE144735_processed_KUL3_CRC_10X_raw_UMI_count_matrix.txt.gz", "GSE144735_processed_KUL3_CRC_10X_annotation.txt.gz"]
+        format: dense_text
+        size_gb: 0.05
         organism: homo_sapiens
         platform: GPL24676
-        expected_cells: 44000
-        expected_genes: 25000
-        transpose_required: true
+        expected_samples: 18
+        expected_cells: null
+        expected_genes: null
+        transpose_required: null
+        stale: true
+        stale_reason: "Not COVID-19 PBMC and not Matrix Market: dense text raw-UMI and log-TPM matrices (54M and 256M)."
         test_tags: [format_preservation, transpose_correctness, large_dataset]
 
   quality_control:
     small_datasets:
       - id: GSE117089
-        description: "Kidney, ~3,000 cells (fast tests)"
+        description: "sci-CAR joint chromatin accessibility and gene expression; 6 samples"
         geo_id: GSE117089
-        files: ["GSE117089_counts_matrix.csv.gz"]
-        format: csv
-        size_gb: 0.3
-        organism: mus_musculus
-        platform: GPL19057
-        expected_cells: 3000
-        expected_genes: 15000
-        transpose_required: depends
+        files: ["GSE117089_RAW.tar"]
+        format: sparse_triplet_text
+        size_gb: 0.23
+        organism: [homo_sapiens, mus_musculus]
+        platforms: [GPL19057, GPL19415]
+        expected_samples: 6
+        expected_cells: null
+        expected_genes: null
+        transpose_required: null
+        stale: true
+        stale_reason: "Not a small kidney CSV: RAW.tar of per-sample cell/gene/gene_count text files for RNA and ATAC (multimodal)."
         test_tags: [fast_test, qc, data_type_detection]
 
   performance:
     large_datasets:
       - id: GSE154763
-        description: "Tumor microenvironment, ~120,000 cells"
+        description: "Pan-cancer tumor-infiltrating myeloid cells; 48 samples"
         geo_id: GSE154763
-        files: ["GSE154763_processed.h5ad"]
-        format: h5ad
-        size_gb: 3.2
+        files: ["GSE154763_KIDNEY_normalized_expression.csv.gz", "GSE154763_KIDNEY_metadata.csv.gz"]
+        format: csv
+        size_gb: 0.12
         organism: homo_sapiens
-        platform: GPL20301
-        expected_cells: 120000
-        expected_genes: 30000
-        transpose_required: false
+        platform: GPL28896
+        expected_samples: 48
+        expected_cells: null
+        expected_genes: null
+        transpose_required: null
+        stale: true
+        stale_reason: "No h5ad in the series: per-cancer normalized expression CSVs plus metadata CSVs."
         test_tags: [performance, memory_efficiency, h5ad_loading]
 
 bulk_rnaseq:
   differential_expression:
     standard_counts:
       - id: GSE147507
-        description: "COVID-19 vs control, 24 samples"
+        description: "Transcriptional response to SARS-CoV-2 infection (human and ferret); 110 samples"
         geo_id: GSE147507
-        files: ["GSE147507_RawReadCounts.tsv.gz"]
+        files: ["GSE147507_RawReadCounts_Human.tsv.gz"]
         format: tsv
-        size_gb: 0.5
-        organism: homo_sapiens
-        platform: GPL20301
-        expected_samples: 24
-        expected_genes: 60000
-        experimental_design: "2 groups (COVID-19 vs healthy)"
-        transpose_required: true
+        size_gb: 0.002
+        organism: [homo_sapiens, mustela_putorius_furo]
+        platforms: [GPL18573, GPL28369]
+        expected_samples: null  # 110 in the series including ferret; human subset not in the summary
+        expected_genes: null
+        experimental_design: null
+        transpose_required: null
+        stale: true
+        stale_reason: "Not a 2-group, 24-sample design: 110 samples across cell lines, viruses and ferret; counts split into _Human and _Ferret files."
         test_tags: [bulk_rnaseq, transpose_correctness, pyDESeq2, simple_design]
 
       - id: GSE130036
-        description: "Standard count matrix, 8 samples"
+        description: "Strand-specific RNA-seq of human hypertrophic cardiomyopathy hearts; 37 samples"
         geo_id: GSE130036
-        files: ["GSE130036_counts.txt.gz"]
-        format: txt
-        size_gb: 0.4
+        files: ["GSE130036_RAW.tar"]
+        format: kallisto_tsv
+        size_gb: 0.11
         organism: homo_sapiens
-        platform: GPL20301
-        expected_samples: 8
-        expected_genes: 60000
-        experimental_design: "2 conditions × 4 replicates"
-        transpose_required: true
+        platform: GPL20795
+        expected_samples: 37
+        expected_genes: null
+        experimental_design: null
+        transpose_required: null
+        stale: true
+        stale_reason: "No series count matrix: RAW.tar of 37 per-sample abundance.tsv.gz files, kallisto output by name (fits quantification/kallisto, not standard_counts)."
         test_tags: [bulk_rnaseq, baseline, clean_data]
 
     complex_design:
       - id: GSE137710
-        description: "Time series + treatment, 48 samples"
+        description: "Mouse and human dendritic cell heterogeneity by single-cell RNA-seq; 6 samples"
         geo_id: GSE137710
-        files: ["GSE137710_counts.txt.gz"]
-        format: txt
-        size_gb: 0.8
-        organism: mus_musculus
-        platform: GPL21103
-        expected_samples: 48
-        expected_genes: 58000
-        experimental_design: "3 time points × 2 treatments × 8 replicates"
-        transpose_required: true
+        files: ["GSE137710_RAW.tar"]
+        format: tsv
+        size_gb: 0.05
+        organism: [homo_sapiens, mus_musculus]
+        platforms: [GPL24676, GPL24247]
+        expected_samples: 6
+        expected_genes: null
+        experimental_design: null
+        transpose_required: null
+        stale: true
+        stale_reason: "Single-cell, not a bulk complex design: 6 samples; per-sample raw counts in RAW.tar plus normalized series matrices."
         test_tags: [bulk_rnaseq, formula_based_de, batch_effects, complex_design]
 
   quantification:
     kallisto:
       - id: GSE114762
-        description: "Kallisto abundance files, 12 samples"
+        description: "Kinetics of LPS induction in wt and Cop1-ko mouse BMDMs; 36 samples"
         geo_id: GSE114762
-        files: ["GSE114762_RAW.tar"]
-        format: kallisto_tsv
-        size_gb: 0.6
-        organism: homo_sapiens
-        platform: GPL16791
-        expected_samples: 12
-        expected_transcripts: 58000
-        transpose_required: special
+        files: ["GSE114762_raw_counts.csv.gz", "GSE114762_sample_info.csv.gz"]
+        format: csv
+        size_gb: 0.001
+        organism: mus_musculus
+        platform: GPL17021
+        expected_samples: 36
+        expected_transcripts: null
+        transpose_required: null
+        stale: true
+        stale_reason: "Not kallisto: series raw-count, RPKM and gene CSVs plus a RAW.tar of 36 per-sample .tsv.gz files whose content the record does not describe."
         test_tags: [kallisto, quantification_files, per_sample_merging]
 
 edge_cases:
@@ -136,26 +163,28 @@ edge_cases:
         test_tags: [platform_detection, error_handling, rejection_test]
 
       - id: GSE100618
-        description: "Mixed platforms (should reject)"
+        description: "Single-cell RNA-seq of human haemopoietic progenitors; 420 samples, one platform"
         geo_id: GSE100618
         metadata_only: true
-        format: mixed
-        platforms: [GPL16791, GPL570]
-        expected_error: UnsupportedPlatformError
+        format: txt
+        platforms: [GPL20301]
+        expected_error: null
+        stale: true
+        stale_reason: "Not mixed-platform: one sequencing platform (GPL20301) and an HTSeq counts file, so no UnsupportedPlatformError is expected."
         test_tags: [platform_detection, mixed_platform, rejection_test]
 
   format_specific:
     soft:
       - id: GSE48968
-        description: "SOFT format (older GEO standard)"
+        description: "SOFT family file of a mouse BMDC single-cell RNA-seq series; 2,425 samples"
         url: "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE48nnn/GSE48968/soft/GSE48968_family.soft.gz"
         format: soft
-        size_gb: 0.2
-        organism: homo_sapiens
-        platform: GPL6244
-        expected_samples: 6
-        expected_genes: 47000
-        transpose_required: true
+        size_gb: 0.0001
+        organism: mus_musculus
+        platforms: [GPL13112, GPL17021]
+        expected_samples: 2425
+        expected_genes: null
+        transpose_required: null
         test_tags: [soft_format, legacy_format, transpose_correctness]
 
   ambiguous:

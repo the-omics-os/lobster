@@ -86,12 +86,15 @@ class DatasetManager:
 
         return dataset
 
-    def list_by_tag(self, tag: str) -> List[Dict[str, Any]]:
+    def list_by_tag(
+        self, tag: str, include_stale: bool = False
+    ) -> List[Dict[str, Any]]:
         """
         Find all datasets with specific test tag.
 
         Args:
             tag: Tag to search for (e.g., 'clustering', 'transpose_correctness')
+            include_stale: Also return entries marked ``stale: true``
 
         Returns:
             List of dataset metadata dictionaries with matching tag
@@ -109,6 +112,8 @@ class DatasetManager:
             for analysis_type, analysis_data in omics_data.items():
                 for platform, datasets in analysis_data.items():
                     for dataset in datasets:
+                        if dataset.get("stale") and not include_stale:
+                            continue
                         tags = dataset.get("test_tags", [])
                         if tag in tags:
                             # Add hierarchical path for easy get() access
@@ -120,7 +125,10 @@ class DatasetManager:
         return results
 
     def list_by_type(
-        self, omics_type: str, analysis_type: Optional[str] = None
+        self,
+        omics_type: str,
+        analysis_type: Optional[str] = None,
+        include_stale: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         List all datasets for omics/analysis type.
@@ -128,6 +136,7 @@ class DatasetManager:
         Args:
             omics_type: Omics type ('single_cell', 'bulk_rnaseq', 'edge_cases')
             analysis_type: Optional analysis type filter
+            include_stale: Also return entries marked ``stale: true``
 
         Returns:
             List of dataset metadata dictionaries
@@ -148,6 +157,8 @@ class DatasetManager:
 
             for platform, datasets in analysis_data.items():
                 for dataset in datasets:
+                    if dataset.get("stale") and not include_stale:
+                        continue
                     dataset_with_path = dataset.copy()
                     dataset_with_path["_path"] = (
                         f"{omics_type}/{analysis_key}/{platform}/{dataset['id']}"
