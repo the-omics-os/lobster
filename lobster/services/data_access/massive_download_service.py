@@ -29,6 +29,7 @@ from lobster.services.data_access.proteomics_parsers import (
 )
 from lobster.tools.providers.massive_provider import MassIVEProvider
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -218,9 +219,12 @@ class MassIVEDownloadService(IDownloadService):
             download_dir.mkdir(parents=True, exist_ok=True)
 
             for file_info in selected_files[:5]:  # Limit to 5 files
-                local_path = self._download_ftp_file(
-                    file_info["url"], download_dir / file_info["filename"]
-                )
+                try:
+                    target = safe_download_path(download_dir, file_info["filename"])
+                except ValueError as e:
+                    logger.warning(f"Skipping file: {e}")
+                    continue
+                local_path = self._download_ftp_file(file_info["url"], target)
                 if local_path:
                     local_files.append(local_path)
 

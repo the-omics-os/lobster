@@ -28,6 +28,7 @@ from rich.progress import (
 
 from lobster.core.archive_utils import ArchiveExtractor
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -394,7 +395,12 @@ class GEODownloadManager:
                 file_sizes = {}
                 for file_url in suppl_files:
                     file_name = file_url.split("/")[-1]
-                    local_path = self.cache_dir / f"{gse_id}_suppl_{file_name}"
+                    try:
+                        local_path = safe_download_path(
+                            self.cache_dir, f"{gse_id}_suppl_{file_name}"
+                        )
+                    except ValueError:
+                        continue
 
                     # Check if file is already cached and get its size
                     if local_path.exists():
@@ -460,7 +466,9 @@ class GEODownloadManager:
 
             # Download the file
             file_name = selected_file.split("/")[-1]
-            local_path = self.cache_dir / f"{gse_id}_suppl_{file_name}"
+            local_path = safe_download_path(
+                self.cache_dir, f"{gse_id}_suppl_{file_name}"
+            )
 
             # Check if already cached
             if local_path.exists():

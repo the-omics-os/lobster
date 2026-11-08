@@ -38,6 +38,7 @@ from lobster.core.interfaces.download_service import IDownloadService
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -575,7 +576,11 @@ class MetaboLightsDownloadService(IDownloadService):
             logger.warning("Empty filename in file info, skipping")
             return None
 
-        output_path = download_dir / filename
+        try:
+            output_path = safe_download_path(download_dir, filename)
+        except ValueError as e:
+            logger.warning(f"Skipping file: {e}")
+            return None
         if output_path.exists() and output_path.stat().st_size > 0:
             logger.info(f"File already exists, skipping download: {filename}")
             return output_path

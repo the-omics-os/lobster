@@ -28,6 +28,7 @@ from lobster.services.data_access.proteomics_parsers import (
 )
 from lobster.tools.providers.pride_provider import PRIDEProvider
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -227,9 +228,12 @@ class PRIDEDownloadService(IDownloadService):
             download_dir.mkdir(parents=True, exist_ok=True)
 
             for file_info in selected_files:
-                local_path = self._download_ftp_file(
-                    file_info["url"], download_dir / file_info["filename"]
-                )
+                try:
+                    target = safe_download_path(download_dir, file_info["filename"])
+                except ValueError as e:
+                    logger.warning(f"Skipping file: {e}")
+                    continue
+                local_path = self._download_ftp_file(file_info["url"], target)
                 if local_path:
                     local_files.append(local_path)
 
