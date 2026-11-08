@@ -86,14 +86,14 @@ class ProviderConfigBase(BaseModel, abc.ABC):
         """Get the configured model for a specific provider."""
         if provider not in VALID_PROVIDERS:
             return None
-        field_name = f"{provider}{self.model_field_suffix}"
+        field_name = f"{provider.replace('-', '_')}{self.model_field_suffix}"
         return getattr(self, field_name, None)
 
     def set_model_for_provider(self, provider: str, model: str) -> None:
         """Set the model for a specific provider."""
         if provider not in VALID_PROVIDERS:
             raise ValueError(f"Invalid provider: '{provider}'")
-        field_name = f"{provider}{self.model_field_suffix}"
+        field_name = f"{provider.replace('-', '_')}{self.model_field_suffix}"
         if not hasattr(self, field_name):
             raise AttributeError(f"Config has no field for provider '{provider}'")
         setattr(self, field_name, model)

@@ -284,6 +284,10 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="Default OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
     )
 
+    ollama_cloud_default_model: Optional[str] = Field(
+        default=None, description="Ollama Cloud model"
+    )
+
     nebius_default_model: Optional[str] = Field(
         None,
         description="Default Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507')",
@@ -405,6 +409,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.azure_default_model = None
         self.openrouter_default_model = None
         self.nebius_default_model = None
+        self.ollama_cloud_default_model = None
         self.ollama_default_host = "http://localhost:11434"
         self.model_context_windows = {}
         logger.info("Reset global config to defaults")

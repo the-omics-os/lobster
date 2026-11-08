@@ -16,12 +16,19 @@ if sys.version_info >= (3, 13):
     except RuntimeError:
         pass  # Already set
 
-# Runtime Python version guard — catch unsupported versions early with a clear message
+# Runtime Python version guard — catch unsupported versions early with a clear message.
+# Language is resolved first so this message, and later Typer help, can be translated.
+from lobster.i18n import h, resolve_lang, t
+
+resolve_lang(sys.argv)
+
 if sys.version_info < (3, 12):
     print(
-        f"Error: Lobster AI requires Python 3.12+. "
-        f"Found Python {sys.version_info.major}.{sys.version_info.minor}.\n"
-        f"Fix: uv tool install --python 3.13 lobster-ai",
+        t(
+            "cli.python_version",
+            major=sys.version_info.major,
+            minor=sys.version_info.minor,
+        ),
         file=sys.stderr,
     )
     raise SystemExit(1)
@@ -31,6 +38,10 @@ import warnings
 
 warnings.filterwarnings(
     "ignore", message="Core Pydantic V1 functionality", category=UserWarning
+)
+# sgkit (genomics agent package) imports pkg_resources during agent discovery
+warnings.filterwarnings(
+    "ignore", message="pkg_resources is deprecated as an API", category=UserWarning
 )
 
 import os
@@ -300,7 +311,7 @@ console = console_manager.console
 
 app = typer.Typer(
     name="lobster",
-    help="🦞 Lobster by Omics-OS - Multi-Agent Bioinformatics Analysis System",
+    help=t("cli.app.help"),
     add_completion=True,
     rich_markup_mode="rich",
 )
@@ -308,7 +319,7 @@ app = typer.Typer(
 # Create a subcommand for configuration management
 config_app = typer.Typer(
     name="config",
-    help="Configuration management for Lobster agents",
+    help=t("cli.config.help"),
     invoke_without_command=True,
 )
 app.add_typer(config_app, name="config")
@@ -322,7 +333,7 @@ def config_callback(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory to use",
+        help=t("cli.config.workspace"),
     ),
 ):
     """Display current configuration including agent composition.
@@ -346,8 +357,8 @@ def config_callback(
             # Use unified config_show implementation from config_commands.py
             config_show(client, output)
         except Exception as e:
-            console.print(f"[red]Error displaying configuration: {str(e)}[/red]")
-            console.print("[dim]Run 'lobster init' if not yet configured[/dim]")
+            console.print(f"[red]{t('cli.config.error', detail=str(e))}[/red]")
+            console.print(f"[dim]{t('cli.config.run_init')}[/dim]")
             raise typer.Exit(1)
 
 
@@ -374,11 +385,14 @@ app.add_typer(init_protocol_app)
 @app.callback(invoke_without_command=True)
 def default_callback(
     ctx: typer.Context,
+    lang: Optional[str] = typer.Option(
+        None, "--lang", help=h("UI language (en or zh)")
+    ),
     version: bool = typer.Option(
         False,
         "--version",
         "-v",
-        help="Show version and exit",
+        help=t("cli.version.help"),
         is_flag=True,
     ),
 ):
@@ -601,13 +615,13 @@ def init_client_with_animation(
     )
 
 
-@app.command()
+@app.command(help=h("Test API connectivity and validate configuration."))
 def config_test(
     output_json: bool = typer.Option(
         False,
         "--json",
         "-j",
-        help="Output results as JSON (machine-readable)",
+        help=h("Output results as JSON (machine-readable)"),
     ),
 ):
     """Test API connectivity and validate configuration."""
@@ -616,7 +630,9 @@ def config_test(
     config_test_impl(output_json=output_json)
 
 
-@app.command()
+@app.command(
+    help=h("Display subscription tier, installed packages, and available agents.")
+)
 def status():
     """Display subscription tier, installed packages, and available agents."""
     from lobster.cli_internal.commands.heavy.display_helpers import _display_status_info
@@ -624,22 +640,38 @@ def status():
     _display_status_info()
 
 
-@app.command(name="metadata")
+@app.command(help=h("Upgrade lobster-ai to the latest published version."))
+def upgrade(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=h("Print the upgrade command without running it"),
+    ),
+):
+    """Upgrade lobster-ai to the latest published version."""
+    from lobster.cli_internal.commands.light.upgrade_commands import upgrade_impl
+
+    upgrade_impl(dry_run=dry_run)
+
+
+@app.command(name="metadata", help=h("Display metadata overview and statistics."))
 def metadata_command(
     subcommand: Optional[str] = typer.Argument(
         None,
-        help="Subcommand: overview, publications, samples, workspace, exports, list, clear",
+        help=h(
+            "Subcommand: overview, publications, samples, workspace, exports, list, clear"
+        ),
     ),
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Default: ./.lobster_workspace",
+        help=h("Workspace directory. Default: ./.lobster_workspace"),
     ),
     status_filter: Optional[str] = typer.Option(
         None,
         "--status",
-        help="Status filter for publications subcommand",
+        help=h("Status filter for publications subcommand"),
     ),
 ):
     """
@@ -668,31 +700,33 @@ def metadata_command(
     )
 
 
-@app.command()
+@app.command(help=h("Remove all Lobster AI files from your system."))
 def purge(
     scope: str = typer.Option(
         "all",
         "--scope",
         "-s",
-        help="What to purge: 'global' (~/.lobster, ~/.config/lobster), 'workspace' (current), or 'all'",
+        help=h(
+            "What to purge: 'global' (~/.lobster, ~/.config/lobster), 'workspace' (current), or 'all'"
+        ),
     ),
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory to purge (default: current workspace)",
+        help=h("Workspace directory to purge (default: current workspace)"),
     ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
         "-n",
-        help="Show what would be deleted without actually deleting",
+        help=h("Show what would be deleted without actually deleting"),
     ),
     force: bool = typer.Option(
         False,
         "--force",
         "-f",
-        help="Skip confirmation prompt",
+        help=h("Skip confirmation prompt"),
     ),
 ):
     """
@@ -751,159 +785,174 @@ def purge(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(help=t("cli.init.help"))
 def init(
     global_config: bool = typer.Option(
         False,
         "--global",
         "-g",
-        help="Save configuration globally (~/.config/lobster/) for all workspaces",
+        help=t("cli.init.global"),
     ),
-    force: bool = typer.Option(
-        False, "--force", "-f", help="Overwrite existing configuration"
-    ),
+    force: bool = typer.Option(False, "--force", "-f", help=t("cli.init.force")),
     non_interactive: bool = typer.Option(
         False,
         "--non-interactive",
-        help="Non-interactive mode for CI/CD (requires API key flags)",
+        help=t("cli.init.non_interactive"),
     ),
     use_omics_os: bool = typer.Option(
         False,
         "--use-omics-os",
-        help="Use Omics-OS Cloud with OMICS_OS_API_KEY or saved credentials (non-interactive mode)",
+        help=h(
+            "Use Omics-OS Cloud with OMICS_OS_API_KEY or saved credentials (non-interactive mode)"
+        ),
     ),
     omics_os_key: Optional[str] = typer.Option(
         None,
         "--omics-os-key",
-        help="Omics-OS Cloud gateway API key (non-interactive mode; saved, not checked)",
+        help=h(
+            "Omics-OS Cloud gateway API key (non-interactive mode; saved, not checked)"
+        ),
     ),
     anthropic_key: Optional[str] = typer.Option(
-        None, "--anthropic-key", help="Claude API key (non-interactive mode)"
+        None, "--anthropic-key", help=h("Claude API key (non-interactive mode)")
     ),
     bedrock_access_key: Optional[str] = typer.Option(
         None,
         "--bedrock-access-key",
-        help="AWS Bedrock access key (non-interactive mode)",
+        help=h("AWS Bedrock access key (non-interactive mode)"),
     ),
     bedrock_secret_key: Optional[str] = typer.Option(
         None,
         "--bedrock-secret-key",
-        help="AWS Bedrock secret key (non-interactive mode)",
+        help=h("AWS Bedrock secret key (non-interactive mode)"),
     ),
     use_ollama: bool = typer.Option(
         False,
         "--use-ollama",
-        help="Use Ollama (local LLM) provider (non-interactive mode)",
+        help=t("cli.init.ollama"),
     ),
     ollama_model: Optional[str] = typer.Option(
         None,
         "--ollama-model",
-        help="Ollama model name (default: llama3:8b-instruct, non-interactive mode)",
+        help=t("cli.init.ollama_model"),
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Default model ID for the selected provider (e.g., claude-sonnet-4-20250514, gpt-4o). Saved to workspace config.",
+        help=t("cli.init.model"),
     ),
     gemini_key: Optional[str] = typer.Option(
-        None, "--gemini-key", help="Google API key (non-interactive mode)"
+        None, "--gemini-key", help=h("Google API key (non-interactive mode)")
     ),
     openai_key: Optional[str] = typer.Option(
-        None, "--openai-key", help="OpenAI API key (non-interactive mode)"
+        None, "--openai-key", help=h("OpenAI API key (non-interactive mode)")
     ),
     openrouter_key: Optional[str] = typer.Option(
-        None, "--openrouter-key", help="OpenRouter API key (non-interactive mode)"
+        None, "--openrouter-key", help=h("OpenRouter API key (non-interactive mode)")
     ),
     nebius_key: Optional[str] = typer.Option(
-        None, "--nebius-key", help="Nebius AI Studio API key (non-interactive mode)"
+        None, "--nebius-key", help=h("Nebius AI Studio API key (non-interactive mode)")
+    ),
+    ollama_cloud_key: Optional[str] = typer.Option(
+        None,
+        "--ollama-cloud-key",
+        help=h("Ollama Cloud API key (non-interactive mode)"),
     ),
     azure_endpoint: Optional[str] = typer.Option(
-        None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
+        None, "--azure-endpoint", help=h("Azure AI endpoint URL (non-interactive mode)")
     ),
     azure_credential: Optional[str] = typer.Option(
         None,
         "--azure-credential",
-        help="Azure AI API credential (non-interactive mode)",
+        help=h("Azure AI API credential (non-interactive mode)"),
     ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
-        help="Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.",
+        help=h(
+            "Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers."
+        ),
     ),
     ncbi_key: Optional[str] = typer.Option(
-        None, "--ncbi-key", help="NCBI API key (optional, non-interactive mode)"
+        None, "--ncbi-key", help=h("NCBI API key (optional, non-interactive mode)")
     ),
     cloud_key: Optional[str] = typer.Option(
         None,
         "--cloud-key",
-        help="Lobster Cloud API key (optional, enables premium tier)",
+        help=h("Lobster Cloud API key (optional, enables premium tier)"),
     ),
     cloud_endpoint: Optional[str] = typer.Option(
         None,
         "--cloud-endpoint",
-        help="Custom cloud endpoint URL (optional)",
+        help=h("Custom cloud endpoint URL (optional)"),
     ),
     skip_ssl_test: bool = typer.Option(
         False,
         "--skip-ssl-test",
-        help="Skip SSL connectivity test during init",
+        help=h("Skip SSL connectivity test during init"),
     ),
     ssl_verify: Optional[bool] = typer.Option(
         None,
         "--ssl-verify/--no-ssl-verify",
-        help="Enable/disable SSL verification (non-interactive mode)",
+        help=h("Enable/disable SSL verification (non-interactive mode)"),
     ),
     ssl_cert_path: Optional[str] = typer.Option(
         None,
         "--ssl-cert-path",
-        help="Path to custom CA certificate bundle",
+        help=h("Path to custom CA certificate bundle"),
     ),
     # Agent selection parameters (CLI-01, CLI-02, CONF-07, CONF-08)
     agents: Optional[str] = typer.Option(
         None,
         "--agents",
-        help="Comma-separated list of agents to enable (non-interactive mode)",
+        help=h("Comma-separated list of agents to enable (non-interactive mode)"),
     ),
     preset: Optional[str] = typer.Option(
         None,
         "--preset",
-        help="Agent preset name (scrna-basic, scrna-full, multiomics-full)",
+        help=h("Agent preset name (scrna-basic, scrna-full, multiomics-full)"),
     ),
     auto_agents: bool = typer.Option(
         False,
         "--auto-agents",
-        help="Use LLM to suggest agents based on description (requires --agents-description)",
+        help=h(
+            "Use LLM to suggest agents based on description (requires --agents-description)"
+        ),
     ),
     agents_description: Optional[str] = typer.Option(
         None,
         "--agents-description",
-        help="Workflow description for LLM agent suggestion (with --auto-agents)",
+        help=h("Workflow description for LLM agent suggestion (with --auto-agents)"),
     ),
     skip_docling: bool = typer.Option(
         False,
         "--skip-docling",
-        help="Skip docling installation prompt (non-interactive mode)",
+        help=h("Skip docling installation prompt (non-interactive mode)"),
     ),
     install_docling: bool = typer.Option(
         False,
         "--install-docling",
-        help="Install docling for PDF intelligence (non-interactive mode)",
+        help=h("Install docling for PDF intelligence (non-interactive mode)"),
     ),
     install_vector_search: bool = typer.Option(
         False,
         "--install-vector-search",
-        help="Install Smart Standardization dependencies (backend requires lobster-metadata dev package)",
+        help=h(
+            "Install Smart Standardization dependencies (backend requires lobster-metadata dev package)"
+        ),
     ),
     skip_extras: bool = typer.Option(
         False,
         "--skip-extras",
-        help="Skip optional package installation (provider, TUI, extended-data)",
+        help=h("Skip optional package installation (provider, TUI, extended-data)"),
     ),
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)",
+        help=h(
+            "UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)"
+        ),
     ),
 ):
     """
@@ -977,6 +1026,7 @@ def init(
         openai_key=openai_key,
         openrouter_key=openrouter_key,
         nebius_key=nebius_key,
+        ollama_cloud_key=ollama_cloud_key,
         azure_endpoint=azure_endpoint,
         azure_credential=azure_credential,
         profile=profile,
@@ -1196,70 +1246,85 @@ def _maybe_launch_go_chat_ui(
         return False
 
 
-@app.command()
+@app.command(help=h("Start an interactive chat session with the multi-agent system."))
 def chat(
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
+        help=h(
+            "Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        ),
     ),
     session_id: Optional[str] = typer.Option(
         None,
         "--session-id",
         "-s",
-        help="Session ID to continue (use 'latest' for most recent session in workspace)",
+        help=h(
+            "Session ID to continue (use 'latest' for most recent session in workspace)"
+        ),
     ),
     reasoning: bool = typer.Option(
         False,
         "--reasoning",
         is_flag=True,
-        help="Show agent reasoning and thinking process",
+        help=h("Show agent reasoning and thinking process"),
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show detailed tool usage and agent activity"
+        False, "--verbose", "-v", help=h("Show detailed tool usage and agent activity")
     ),
     debug: bool = typer.Option(
-        False, "--debug", "-d", help="Enable debug mode with enhanced error reporting"
+        False,
+        "--debug",
+        "-d",
+        help=h("Enable debug mode with enhanced error reporting"),
     ),
     profile_timings: Optional[bool] = typer.Option(
         None,
         "--profile-timings/--no-profile-timings",
-        help="Enable timing diagnostics for data manager operations",
+        help=h("Enable timing diagnostics for data manager operations"),
     ),
     provider: Optional[str] = typer.Option(
         None,
         "--provider",
         "-p",
-        help="LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, omics-os). Overrides auto-detection.",
+        help=h(
+            "LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, ollama-cloud, omics-os). Overrides auto-detection."
+        ),
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration.",
+        help=h(
+            "Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration."
+        ),
     ),
     no_intro: bool = typer.Option(
         False,
         "--no-intro",
         is_flag=True,
-        help="Disable the Go TUI inline intro animation (useful for automation and PTY capture).",
+        help=h(
+            "Disable the Go TUI inline intro animation (useful for automation and PTY capture)."
+        ),
     ),
     stream: bool = typer.Option(
         True,
         "--stream/--no-stream",
-        help="Enable real-time text streaming (default: on)",
+        help=h("Enable real-time text streaming (default: on)"),
     ),
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode: auto (Go TUI, then classic), go (Go TUI), classic (Rich terminal)",
+        help=h(
+            "UI mode: auto (Go TUI, then classic), go (Go TUI), classic (Rich terminal)"
+        ),
     ),
     classic: bool = typer.Option(
         False,
         "--classic",
         is_flag=True,
-        help="Shorthand for --ui classic (force Rich/Textual UI)",
+        help=h("Shorthand for --ui classic (force Rich/Textual UI)"),
     ),
 ):
     """
@@ -1315,13 +1380,15 @@ def chat(
     )
 
 
-@app.command(name="dashboard")
+@app.command(name="dashboard", help=h("Launch interactive dashboard (Textual UI)."))
 def dashboard_command(
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
+        help=h(
+            "Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        ),
     ),
 ):
     """Launch interactive dashboard (Textual UI)."""
@@ -1342,55 +1409,61 @@ def dashboard_command(
         raise typer.Exit(1)
 
 
-@app.command()
+@app.command(
+    help=h(
+        "Send a single query, or run a local slash command when QUESTION starts with '/'."
+    )
+)
 def query(
     question: str,
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Defaults to ./.lobster_workspace or LOBSTER_WORKSPACE.",
+        help=h(
+            "Workspace directory. Defaults to ./.lobster_workspace or LOBSTER_WORKSPACE."
+        ),
     ),
     session_id: Optional[str] = typer.Option(
         None,
         "--session-id",
         "-s",
-        help="Continue a saved session. Use 'latest' for the most recent one.",
+        help=h("Continue a saved session. Use 'latest' for the most recent one."),
     ),
     reasoning: bool = typer.Option(
-        False, "--reasoning", is_flag=True, help="Show agent reasoning."
+        False, "--reasoning", is_flag=True, help=h("Show agent reasoning.")
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show agent and tool trace details."
+        False, "--verbose", "-v", help=h("Show agent and tool trace details.")
     ),
-    debug: bool = typer.Option(False, "--debug", "-d", help="Enable debug logging."),
+    debug: bool = typer.Option(False, "--debug", "-d", help=h("Enable debug logging.")),
     output: Optional[Path] = typer.Option(
-        None, "--output", "-o", help="Write the final answer to a file."
+        None, "--output", "-o", help=h("Write the final answer to a file.")
     ),
     profile_timings: Optional[bool] = typer.Option(
         None,
         "--profile-timings/--no-profile-timings",
-        help="Show data-manager timing diagnostics.",
+        help=h("Show data-manager timing diagnostics."),
     ),
     provider: Optional[str] = typer.Option(
         None,
         "--provider",
         "-p",
-        help="Provider override. Uses the configured provider when omitted.",
+        help=h("Provider override. Uses the configured provider when omitted."),
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Model override. Uses the configured model when omitted.",
+        help=h("Model override. Uses the configured model when omitted."),
     ),
     stream: bool = typer.Option(
         False,
         "--stream/--no-stream",
-        help="Stream text as it arrives. Disabled automatically in trace mode.",
+        help=h("Stream text as it arrives. Disabled automatically in trace mode."),
     ),
     json_output: bool = typer.Option(
-        False, "--json", "-j", is_flag=True, help="Emit JSON only on stdout."
+        False, "--json", "-j", is_flag=True, help=h("Emit JSON only on stdout.")
     ),
 ):
     """Send a single query, or run a local slash command when QUESTION starts with '/'."""
@@ -1456,7 +1529,9 @@ def _dispatch_command(cmd_str: str, client, output):
     return _impl(cmd_str, client, output)
 
 
-@app.command(name="command")
+@app.command(
+    name="command", help=h("Execute workspace commands without an LLM session.")
+)
 def command_cmd(
     cmd: str = typer.Argument(
         help='Command to execute, e.g. "data", "workspace list", "files"'
@@ -1465,20 +1540,22 @@ def command_cmd(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Default: ./.lobster_workspace",
+        help=h("Workspace directory. Default: ./.lobster_workspace"),
     ),
     session_id: Optional[str] = typer.Option(
         None,
         "--session-id",
         "-s",
-        help="Session ID to load. Use 'latest' for most recent. Defaults to last session if not specified.",
+        help=h(
+            "Session ID to load. Use 'latest' for most recent. Defaults to last session if not specified."
+        ),
     ),
     json_output: bool = typer.Option(
         False,
         "--json",
         "-j",
         is_flag=True,
-        help="Output as JSON for programmatic consumption",
+        help=h("Output as JSON for programmatic consumption"),
     ),
 ):
     """
@@ -1524,14 +1601,17 @@ def command_cmd(
     )
 
 
-@app.command(name="vector-search")
+@app.command(
+    name="vector-search",
+    help=h("Search all ontology collections via semantic vector similarity."),
+)
 def vector_search_cmd(
-    query_text: str = typer.Argument(..., help="Biomedical term to search"),
+    query_text: str = typer.Argument(..., help=h("Biomedical term to search")),
     top_k: Optional[int] = typer.Option(
-        None, "--top-k", "-k", help="Results per collection (default: 5)"
+        None, "--top-k", "-k", help=h("Results per collection (default: 5)")
     ),
     pretty: bool = typer.Option(
-        True, "--pretty/--compact", help="Pretty-print or compact JSON"
+        True, "--pretty/--compact", help=h("Pretty-print or compact JSON")
     ),
 ):
     """
@@ -1556,10 +1636,13 @@ def vector_search_cmd(
     vector_search_cmd_impl(query_text=query_text, top_k=top_k, pretty=pretty)
 
 
-@app.command()
+@app.command(help=h("Start the agent system as an API server (for React UI)."))
 def serve(
     port: int = typer.Option(8000, "--port", "-p"),
-    host: str = typer.Option("0.0.0.0", "--host"),
+    host: str = typer.Option(
+        "0.0.0.0",  # nosec B104 # serve defaults to all interfaces; --host overrides
+        "--host",
+    ),
 ):
     """
     Start the agent system as an API server (for React UI).
@@ -1570,7 +1653,7 @@ def serve(
 
 
 # Config subcommands
-@config_app.command(name="list-models")
+@config_app.command(name="list-models", help=h("List all available model presets."))
 def list_models():
     """List all available model presets."""
     from lobster.cli_internal.commands.light.config_commands import list_models_impl
@@ -1578,7 +1661,9 @@ def list_models():
     list_models_impl()
 
 
-@config_app.command(name="list-profiles")
+@config_app.command(
+    name="list-profiles", help=h("List all available testing profiles.")
+)
 def list_profiles():
     """List all available testing profiles."""
     from lobster.cli_internal.commands.light.config_commands import list_profiles_impl
@@ -1586,13 +1671,15 @@ def list_profiles():
     list_profiles_impl()
 
 
-@config_app.command(name="show")
+@config_app.command(
+    name="show", help=h("Display current configuration including agent composition.")
+)
 def config_show_subcommand(
     workspace: Optional[str] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory to use",
+        help=t("cli.config.workspace"),
     ),
 ):
     """Display current configuration including agent composition."""
@@ -1608,15 +1695,20 @@ def config_show_subcommand(
         raise typer.Exit(1)
 
 
-@config_app.command(name="show-config")
+@config_app.command(
+    name="show-config",
+    help=h(
+        "Show current runtime configuration from ConfigResolver and ProviderRegistry."
+    ),
+)
 def show_config(
     workspace: Optional[Path] = typer.Option(
-        None, "--workspace", "-w", help="Workspace path (default: current directory)"
+        None, "--workspace", "-w", help=h("Workspace path (default: current directory)")
     ),
     show_all: bool = typer.Option(
         False,
         "--show-all",
-        help="Show all configured agents regardless of license tier",
+        help=h("Show all configured agents regardless of license tier"),
     ),
 ):
     """Show current runtime configuration from ConfigResolver and ProviderRegistry."""
@@ -1625,16 +1717,18 @@ def show_config(
     show_config_impl(workspace=workspace, show_all=show_all)
 
 
-@config_app.command(name="test")
+@config_app.command(
+    name="test", help=h("Test LLM provider connectivity and configuration.")
+)
 def test(
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
         "-p",
-        help="Profile to test (optional, auto-detects if not provided)",
+        help=h("Profile to test (optional, auto-detects if not provided)"),
     ),
     agent: Optional[str] = typer.Option(
-        None, "--agent", "-a", help="Specific agent to test"
+        None, "--agent", "-a", help=h("Specific agent to test")
     ),
 ):
     """Test LLM provider connectivity and configuration.
@@ -1647,7 +1741,9 @@ def test(
     test_impl(profile=profile, agent=agent)
 
 
-@config_app.command(name="create-custom")
+@config_app.command(
+    name="create-custom", help=h("Interactive creation of custom configuration.")
+)
 def create_custom():
     """Interactive creation of custom configuration."""
     from lobster.cli_internal.commands.light.config_commands import create_custom_impl
@@ -1655,13 +1751,13 @@ def create_custom():
     create_custom_impl()
 
 
-@config_app.command(name="models")
+@config_app.command(name="models", help=h("Interactive per-agent model configuration."))
 def config_models(
     workspace: Optional[str] = typer.Option(
         None,
         "--workspace",
         "-w",
-        help="Workspace path (default: current directory)",
+        help=h("Workspace path (default: current directory)"),
     ),
 ):
     """Interactive per-agent model configuration."""
@@ -1670,7 +1766,9 @@ def config_models(
     config_models_impl(workspace=workspace)
 
 
-@config_app.command(name="generate-env")
+@config_app.command(
+    name="generate-env", help=h("Generate .env template with all available options.")
+)
 def generate_env():
     """Generate .env template with all available options."""
     from lobster.cli_internal.commands.light.config_commands import generate_env_impl

@@ -15,11 +15,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from lobster.i18n import h, t
+
 logger = logging.getLogger(__name__)
 
 auth_app = typer.Typer(
     name="auth",
-    help="Authenticate with LLM providers (OAuth login/logout)",
+    help=t("light.auth.help"),
     no_args_is_help=True,
 )
 
@@ -33,17 +35,17 @@ OAUTH_PROVIDERS = ["anthropic"]
 def login(
     provider: str = typer.Argument(
         ...,
-        help="Provider to authenticate with (e.g., 'anthropic').",
+        help=h("Provider to authenticate with (e.g., 'anthropic')."),
     ),
     no_browser: bool = typer.Option(
         False,
         "--no-browser",
-        help="Don't auto-open browser; print URL instead.",
+        help=h("Don't auto-open browser; print URL instead."),
     ),
     timeout: int = typer.Option(
         120,
         "--timeout",
-        help="Seconds to wait for browser callback.",
+        help=h("Seconds to wait for browser callback."),
     ),
 ) -> None:
     """Login to an LLM provider via OAuth.
@@ -69,7 +71,7 @@ def login(
 def logout(
     provider: str = typer.Argument(
         ...,
-        help="Provider to log out from (e.g., 'anthropic').",
+        help=h("Provider to log out from (e.g., 'anthropic')."),
     ),
 ) -> None:
     """Remove stored OAuth credentials for a provider."""
@@ -83,7 +85,9 @@ def logout(
         else:
             console.print("[dim]No Anthropic OAuth credentials found.[/dim]")
     else:
-        console.print(f"[red]Unknown provider: {provider}[/red]")
+        console.print(
+            f"[red]{t('light.auth.unknown_provider', provider=provider)}[/red]"
+        )
         raise typer.Exit(1)
 
 
@@ -151,6 +155,7 @@ def status() -> None:
         ("gemini", "GOOGLE_API_KEY"),
         ("openrouter", "OPENROUTER_API_KEY"),
         ("nebius", "NEBIUS_API_KEY"),
+        ("ollama-cloud", "OLLAMA_API_KEY"),
         ("azure", "AZURE_AI_CREDENTIAL"),
     ]
     for name, env_var in _env_providers:

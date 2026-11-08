@@ -18,6 +18,7 @@ def find_tui_binary() -> Optional[str]:
     """Find the lobster-tui binary. Returns absolute path string or None.
 
     Search order:
+      0. Explicit LOBSTER_TUI_BINARY override
       1. Platform wheel: try ``import lobster_ai_tui`` and check its data scripts dir
       2. Development build: lobster-tui/lobster-tui relative to the repo root
          (preferred when running directly from the source checkout)
@@ -26,6 +27,12 @@ def find_tui_binary() -> Optional[str]:
 
     Returns None when nothing is found — callers must fall back gracefully.
     """
+    override = os.environ.get("LOBSTER_TUI_BINARY", "").strip()
+    if override:
+        candidate = Path(override).expanduser()
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate.resolve())
+
     # ------------------------------------------------------------------ #
     # 1. Platform wheel (lobster-ai-tui PyPI package)                     #
     # ------------------------------------------------------------------ #

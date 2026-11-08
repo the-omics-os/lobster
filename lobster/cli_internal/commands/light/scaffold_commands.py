@@ -5,9 +5,11 @@ from typing import Optional
 
 import typer
 
+from lobster.i18n import h, t
+
 scaffold_app = typer.Typer(
     name="scaffold",
-    help="Generate Lobster AI plugin packages",
+    help=t("light.scaffold.help"),
     no_args_is_help=True,
 )
 
@@ -15,28 +17,30 @@ scaffold_app = typer.Typer(
 @scaffold_app.command(name="agent")
 def scaffold_agent_cmd(
     name: str = typer.Option(
-        ..., "--name", help="Agent name in snake_case (e.g., epigenomics_expert)"
+        ..., "--name", help=h("Agent name in snake_case (e.g., epigenomics_expert)")
     ),
     display_name: str = typer.Option(
-        ..., "--display-name", help="Human-readable name (e.g., 'Epigenomics Expert')"
+        ...,
+        "--display-name",
+        help=h("Human-readable name (e.g., 'Epigenomics Expert')"),
     ),
     description: str = typer.Option(
-        ..., "--description", help="Agent capabilities description"
+        ..., "--description", help=h("Agent capabilities description")
     ),
     tier: str = typer.Option(
-        "free", "--tier", hidden=True, help="Deprecated — all agents are open source"
+        "free", "--tier", hidden=True, help=h("Deprecated — all agents are open source")
     ),
     children: Optional[str] = typer.Option(
-        None, "--children", help="Comma-separated child agent names"
+        None, "--children", help=h("Comma-separated child agent names")
     ),
     output_dir: Path = typer.Option(
-        Path("."), "--output-dir", "-o", help="Output directory"
+        Path("."), "--output-dir", "-o", help=h("Output directory")
     ),
     author_name: str = typer.Option(
-        "Lobster AI Community", "--author-name", help="Package author name"
+        "Lobster AI Community", "--author-name", help=h("Package author name")
     ),
     author_email: str = typer.Option(
-        "community@lobsterbio.com", "--author-email", help="Package author email"
+        "community@lobsterbio.com", "--author-email", help=h("Package author email")
     ),
 ):
     """Generate a complete agent plugin package.

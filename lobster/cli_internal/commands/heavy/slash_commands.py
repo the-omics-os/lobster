@@ -14,6 +14,7 @@ import logging
 import os
 import shutil
 import time
+from contextlib import nullcontext
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence
@@ -27,6 +28,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+from lobster.i18n import current_lang, h, t, use_lang, write_workspace_lang
 from lobster.ui import LobsterTheme
 from lobster.ui.components.file_tree import create_file_tree, create_workspace_tree
 from lobster.ui.components.multi_progress import get_multi_progress_manager
@@ -200,6 +202,17 @@ def _is_protocol_output(output: Optional["OutputAdapter"]) -> bool:
     return output is not None and output.__class__.__name__ == "ProtocolOutputAdapter"
 
 
+def _blocks_lang(output: Optional["OutputAdapter"]):
+    """Language context for building and rendering structured blocks.
+
+    JSON output keeps English column names, labels and values whatever the UI
+    language is, so machine consumers see one stable shape.
+    """
+    if output is not None and output.__class__.__name__ == "JsonOutputAdapter":
+        return use_lang("en")
+    return nullcontext()
+
+
 def check_for_missing_slash_command(user_input: str) -> Optional[str]:
     """Check if user input matches a command without the leading slash."""
     if not user_input or user_input.startswith("/"):
@@ -224,7 +237,8 @@ def extract_available_commands() -> Dict[str, str]:
 
     # Static command definitions with descriptions (extracted from help text)
     command_descriptions = {
-        "/help": "Show this help message",
+        "/help": t("slash.help"),
+        "/lang": t("slash.lang"),
         "/session": "Show current session status",
         "/status": "Show subscription tier, packages, and agents",
         "/input-features": "Show input capabilities and navigation features",
@@ -233,9 +247,9 @@ def extract_available_commands() -> Dict[str, str]:
         "/workspace-info": "Show detailed workspace overview",
         "/analysis-dash": "Show analysis monitoring dashboard",
         "/progress": "Show multi-task progress monitor",
-        "/files": "List workspace files",
+        "/files": t("slash.files"),
         "/tree": "Show directory tree view",
-        "/data": "Show current data summary",
+        "/data": t("slash.data"),
         "/metadata": "Show smart metadata overview with stats & next steps",
         "/metadata publications": "Publication queue status breakdown",
         "/metadata samples": "Aggregated sample statistics & disease coverage",
@@ -263,14 +277,14 @@ def extract_available_commands() -> Dict[str, str]:
         "/restore": "Restore previous session datasets",
         "/modalities": "Show detailed modality information",
         "/describe": "Show detailed information about a specific modality",
-        "/plots": "List all generated plots",
-        "/plot": "Open plots directory or specific plot",
+        "/plots": t("slash.plots"),
+        "/plot": t("slash.plot"),
         "/open": "Open file or folder in system default application",
         "/save": "Save current state to workspace (--force to re-save all)",
         "/read": "View file contents (inspection only)",
-        "/export": "Export to ZIP: data + saved figures with HTML views and every recorded PNG; no new PNG is rendered, --no-png only disables generation (--force to re-serialize all)",
+        "/export": t("slash.export"),
         "/reset": "Reset conversation",
-        "/config": "Show current configuration (provider, profile, config files)",
+        "/config": t("slash.config"),
         "/config provider": "List available LLM providers",
         "/config provider <name>": "Switch to specified provider (runtime only)",
         "/config provider <name> --save": "Switch provider and persist to workspace",
@@ -278,8 +292,11 @@ def extract_available_commands() -> Dict[str, str]:
         "/config model <name>": "Switch to specified Ollama model (runtime only)",
         "/config model <name> --save": "Switch Ollama model and persist to workspace",
         "/vector-search": "Search all ontology collections (semantic vector similarity)",
-        "/clear": "Clear screen",
-        "/exit": "Exit the chat",
+        "/clear": t("slash.clear"),
+        "/exit": t("slash.exit"),
+    }
+    command_descriptions = {
+        key: h(value) for key, value in command_descriptions.items()
     }
 
     # Try to extract dynamically as fallback, but use static definitions as primary
@@ -1618,11 +1635,11 @@ def _extract_argument(original_command: str, prefix: str) -> Optional[str]:
 
 def _help_table_columns(*, protocol_friendly: bool = False) -> list[dict[str, object]]:
     if not protocol_friendly:
-        return [{"name": "Command"}, {"name": "Description"}]
+        return [{"name": h("Command")}, {"name": h("Description")}]
 
     return [
-        {"name": "Command", "width": 32, "no_wrap": True, "overflow": "ellipsis"},
-        {"name": "Description", "max_width": 40, "overflow": "fold"},
+        {"name": h("Command"), "width": 32, "no_wrap": True, "overflow": "ellipsis"},
+        {"name": h("Description"), "max_width": 40, "overflow": "fold"},
     ]
 
 
@@ -1630,100 +1647,106 @@ def _build_help_blocks(*, protocol_friendly: bool = False) -> list[OutputBlock]:
     table_columns = _help_table_columns(protocol_friendly=protocol_friendly)
 
     return [
-        section_block(title="Quick Start"),
-        section_block(body="Just ask what you want to do in natural language"),
+        section_block(title=h("Quick Start")),
+        section_block(body=h("Just ask what you want to do in natural language")),
         section_block(
-            body='Example: "analyze my single-cell data" or "find breast cancer datasets"'
+            body=h(
+                'Example: "analyze my single-cell data" or "find breast cancer datasets"'
+            )
         ),
-        section_block(body="Load data: /read <file> (supports *.h5ad, *.csv, etc.)"),
+        section_block(body=h("Load data: /read <file> (supports *.h5ad, *.csv, etc.)")),
         table_block(
-            title="Core Commands",
+            title=h("Core Commands"),
             columns=table_columns,
             rows=[
-                ["/session", "Current session status"],
-                ["/status", "Subscription tier & agents"],
-                ["/data", "Current data summary"],
-                ["/workspace", "Workspace info"],
-                ["/queue", "Queue status & controls"],
-                ["/metadata", "Metadata overview"],
-                ["/config", "Provider/model settings"],
-                ["/plots", "List generated plots"],
-                ["/read <file>", "Load data file"],
-                ["/pipeline export [--replay]", "Export as Jupyter notebook"],
-                ["/tokens", "Token usage & costs"],
-                ["/clear", "Clear screen"],
-                ["/exit", "Exit"],
+                ["/session", h("Current session status")],
+                ["/status", h("Subscription tier & agents")],
+                ["/data", h("Current data summary")],
+                ["/workspace", h("Workspace info")],
+                ["/queue", h("Queue status & controls")],
+                ["/metadata", h("Metadata overview")],
+                ["/config", h("Provider/model settings")],
+                ["/plots", h("List generated plots")],
+                ["/read <file>", h("Load data file")],
+                ["/pipeline export [--replay]", h("Export as Jupyter notebook")],
+                ["/tokens", h("Token usage & costs")],
+                ["/clear", h("Clear screen")],
+                ["/exit", h("Exit")],
             ],
         ),
         table_block(
-            title="Power Commands",
+            title=h("Power Commands"),
             columns=table_columns,
             rows=[
-                ["/workspace list", "List available datasets"],
-                ["/workspace load <name>", "Load data from workspace"],
-                ["/queue clear [download|all]", "Clear queue(s)"],
-                ["/metadata clear [exports|all]", "Clear metadata"],
-                ["/describe <modality>", "Inspect a modality"],
-                ["/save [--force]", "Persist loaded modalities"],
-                ["/restore [pattern]", "Restore datasets from session cache"],
+                ["/workspace list", h("List available datasets")],
+                ["/workspace load <name>", h("Load data from workspace")],
+                ["/queue clear [download|all]", h("Clear queue(s)")],
+                ["/metadata clear [exports|all]", h("Clear metadata")],
+                ["/describe <modality>", h("Inspect a modality")],
+                ["/save [--force]", h("Persist loaded modalities")],
+                ["/restore [pattern]", h("Restore datasets from session cache")],
             ],
         ),
         table_block(
-            title="Admin & UI Commands",
+            title=h("Admin & UI Commands"),
             columns=table_columns,
             rows=[
                 [
                     "/dashboard",
-                    "Classic dashboard; Go mode shows a fallback",
+                    h("Classic dashboard; Go mode shows a fallback"),
                 ],
                 [
                     "/status-panel",
-                    "Status dashboard; Go mode shows /status",
+                    h("Status dashboard; Go mode shows /status"),
                 ],
                 [
                     "/workspace-info",
-                    "Workspace dashboard; Go mode shows /workspace",
+                    h("Workspace dashboard; Go mode shows /workspace"),
                 ],
                 [
                     "/analysis-dash",
-                    "Analysis dashboard; Go mode shows /metadata + /plots",
+                    h("Analysis dashboard; Go mode shows /metadata + /plots"),
                 ],
-                ["/progress", "Progress monitor; Go mode shows a compact summary"],
+                ["/progress", h("Progress monitor; Go mode shows a compact summary")],
             ],
         ),
-        hint_block("Next step: use `/workspace list` or `/read <file>` to begin."),
+        hint_block(h("Next step: use `/workspace list` or `/read <file>` to begin.")),
     ]
 
 
 def _build_query_help_blocks(*, protocol_friendly: bool = False) -> list[OutputBlock]:
     return [
-        section_block(title="Query Mode Help"),
+        section_block(title=h("Query Mode Help")),
         section_block(
-            body="`lobster query` runs one-shot questions and local slash commands without opening the interactive chat."
+            body=h(
+                "`lobster query` runs one-shot questions and local slash commands without opening the interactive chat."
+            )
         ),
         table_block(
-            title="Query-Compatible Commands",
+            title=h("Query-Compatible Commands"),
             columns=_help_table_columns(protocol_friendly=protocol_friendly),
             rows=[
-                ["/help", "Show this query-focused help"],
-                ["/status", "Installation, subscription, and agent summary"],
-                ["/data", "Current data summary"],
-                ["/workspace", "Workspace overview"],
-                ["/workspace list", "List datasets in the workspace"],
-                ["/workspace info <#>", "Show dataset details"],
-                ["/files", "List workspace files"],
-                ["/read <file>", "Inspect a file preview"],
-                ["/plots", "List generated plots"],
-                ["/metadata", "Metadata overview"],
-                ["/queue", "Queue status"],
+                ["/help", h("Show this query-focused help")],
+                ["/status", h("Installation, subscription, and agent summary")],
+                ["/data", h("Current data summary")],
+                ["/workspace", h("Workspace overview")],
+                ["/workspace list", h("List datasets in the workspace")],
+                ["/workspace info <#>", h("Show dataset details")],
+                ["/files", h("List workspace files")],
+                ["/read <file>", h("Inspect a file preview")],
+                ["/plots", h("List generated plots")],
+                ["/metadata", h("Metadata overview")],
+                ["/queue", h("Queue status")],
                 [
                     "/pipeline export",
-                    "Export an analysis notebook when provenance exists",
+                    h("Export an analysis notebook when provenance exists"),
                 ],
             ],
         ),
         hint_block(
-            'Use `lobster command "/help"` or `lobster chat` for the full interactive slash-command catalog.'
+            h(
+                'Use `lobster command "/help"` or `lobster chat` for the full interactive slash-command catalog.'
+            )
         ),
     ]
 
@@ -2001,11 +2024,24 @@ def _execute_command(
 
         return None
 
+    if cmd == "/lang" or cmd.startswith("/lang "):
+        argument = original_command.strip()[len("/lang") :].strip()
+        if not argument:
+            output.print(t("slash.lang.current", lang=current_lang()))
+            return None
+        workspace = getattr(client, "workspace_path", None)
+        target = Path(workspace) if workspace else Path.cwd() / ".lobster_workspace"
+        applied = write_workspace_lang(target, argument)
+        extract_available_commands.cache_clear()
+        output.print(t("slash.lang.set", lang=applied))
+        return f"UI language set to {applied}"
+
     if cmd == "/help":
-        _render_structured_output(
-            output,
-            _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
-        )
+        with _blocks_lang(output):
+            _render_structured_output(
+                output,
+                _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
+            )
 
     elif cmd == "/data":
         return data_summary(client, output)
@@ -2019,14 +2055,15 @@ def _execute_command(
 
     elif cmd == "/status":
         try:
-            _render_structured_output(
-                output,
-                build_status_blocks(
-                    compact=_is_protocol_output(output),
-                    workspace_path=getattr(client, "workspace_path", None),
-                    provider_override=getattr(client, "provider_override", None),
-                ),
-            )
+            with _blocks_lang(output):
+                _render_structured_output(
+                    output,
+                    build_status_blocks(
+                        compact=_is_protocol_output(output),
+                        workspace_path=getattr(client, "workspace_path", None),
+                        provider_override=getattr(client, "provider_override", None),
+                    ),
+                )
         except Exception as e:
             output.print(f"Status info error: {e}", style="error")
 
@@ -2176,14 +2213,15 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                     ),
                 ],
             )
-            _render_structured_output(
-                output,
-                build_status_blocks(
-                    compact=True,
-                    workspace_path=getattr(client, "workspace_path", None),
-                    provider_override=getattr(client, "provider_override", None),
-                ),
-            )
+            with _blocks_lang(output):
+                _render_structured_output(
+                    output,
+                    build_status_blocks(
+                        compact=True,
+                        workspace_path=getattr(client, "workspace_path", None),
+                        provider_override=getattr(client, "provider_override", None),
+                    ),
+                )
             return None
 
         # Show comprehensive system health dashboard (Rich panels)
@@ -3023,10 +3061,11 @@ def _dispatch_command(cmd_str: str, client, output):
     # --- Data & files ---
 
     if base == "help":
-        _render_structured_output(
-            output,
-            _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
-        )
+        with _blocks_lang(output):
+            _render_structured_output(
+                output,
+                _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
+            )
         return None
 
     if base == "data":
@@ -3467,12 +3506,13 @@ def command_cmd_impl(
             runtime_output = output
 
         if base_cmd == "help" and help_profile == "query":
-            _render_structured_output(
-                runtime_output,
-                _build_query_help_blocks(
-                    protocol_friendly=_is_protocol_output(runtime_output)
-                ),
-            )
+            with _blocks_lang(runtime_output):
+                _render_structured_output(
+                    runtime_output,
+                    _build_query_help_blocks(
+                        protocol_friendly=_is_protocol_output(runtime_output)
+                    ),
+                )
             result = None
         else:
             result = _dispatch_command(cmd_str, cmd_client, runtime_output)

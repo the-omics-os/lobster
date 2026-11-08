@@ -47,6 +47,7 @@ _PROVIDER_ENV_KEYS: Dict[str, list[str]] = {
     "openrouter": ["OPENROUTER_API_KEY"],
     "omics-os": ["OMICS_OS_API_KEY"],
     "nebius": ["NEBIUS_API_KEY"],
+    "ollama-cloud": ["OLLAMA_API_KEY"],
 }
 
 # Providers that support the LOBSTER_PROFILE env var
@@ -147,6 +148,10 @@ def apply_tui_init_result(
     elif provider == "openrouter":
         if api_key:
             env_lines.append(f"OPENROUTER_API_KEY={api_key}")
+
+    elif provider == "ollama-cloud":
+        if api_key:
+            env_lines.append(f"OLLAMA_API_KEY={api_key}")
 
     elif provider == "nebius":
         if api_key:
