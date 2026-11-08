@@ -2193,7 +2193,8 @@ LOBSTER_PROFILE=production
 
 # Server configuration
 PORT=8501
-HOST=0.0.0.0
+# Localhost only; use 0.0.0.0 inside a container
+HOST=127.0.0.1
 DEBUG=False
 
 # Data processing

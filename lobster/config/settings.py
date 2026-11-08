@@ -93,9 +93,8 @@ class Settings:
 
         # Web server settings (for 'lobster serve' FastAPI server)
         self.PORT = int(os.environ.get("PORT", "8000"))
-        self.HOST = os.environ.get(
-            "HOST", "0.0.0.0"
-        )  # nosec B104 # container default; override with HOST
+        # Localhost by default; containers set HOST=0.0.0.0 explicitly.
+        self.HOST = os.environ.get("HOST", "127.0.0.1")
         self.DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
         # Data processing settings
