@@ -276,22 +276,9 @@ class ArchiveProcessor:
                 extract_dir.mkdir(exist_ok=True)
 
                 with tarfile.open(tar_file_path, "r") as tar:
-                    # Security check for path traversal
-                    def is_safe_member(member):
-                        member_path = Path(member.name)
-                        try:
-                            target_path = (extract_dir / member_path).resolve()
-                            common_path = Path(
-                                os.path.commonpath([extract_dir.resolve(), target_path])
-                            )
-                            return common_path == extract_dir.resolve()
-                        except (ValueError, RuntimeError):
-                            return False
+                    extracted = _extract_tar_all_or_nothing(tar, extract_dir)
 
-                    safe_members = [m for m in tar.getmembers() if is_safe_member(m)]
-                    tar.extractall(path=extract_dir, members=safe_members)
-
-                logger.debug(f"Extracted {len(safe_members)} files from TAR")
+                logger.debug(f"Extracted {extracted} files from TAR")
 
             # STEP 1: Check for Kallisto/Salmon quantification files in extracted directory
             try:

@@ -111,3 +111,22 @@ def test_unsafe_nested_sample_archive_is_skipped(tmp_path):
     assert result is None
     processor.service.geo_parser.parse_10x_data.assert_not_called()
     assert not any(tmp_path.rglob("nested-escape.txt"))
+
+
+@pytest.mark.parametrize("case", sorted(UNSAFE))
+def test_unsafe_outer_raw_tar_is_refused(tmp_path, case):
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    _write_tar(cache / "GSE1_RAW.tar", UNSAFE[case](tmp_path))
+
+    processor = _processor(cache)
+    with _no_quant_files():
+        result = processor._process_tar_file("https://example.org/x.tar", "GSE1")
+
+    assert result is None
+    # The failed extraction directory is removed, and nothing escaped.
+    assert not (cache / "GSE1_extracted").exists()
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (cache / "escaped.txt").exists()
+    assert not (tmp_path / "abs.txt").exists()
+    processor.service.geo_parser.parse_expression_file.assert_not_called()
