@@ -319,7 +319,7 @@ def build_status_blocks(
             (
                 h("optional"),
                 h("Semantic Search"),
-                f"{vector_cmd} {h('(+ lobster-metadata backend, dev-only)')}",
+                vector_cmd,
             )
         )
     try:

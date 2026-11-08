@@ -841,18 +841,13 @@ def _print_vector_backend_unavailable() -> None:
     """Explain that Smart Standardization backend is unavailable in this install."""
     console.print(
         h(
-            "  [yellow]⚠ Smart Standardization backend requires lobster-metadata (development package).[/yellow]"
+            "  [yellow]⚠ Smart Standardization backend (the lobster-vector package) is not installed.[/yellow]"
         )
     )
     console.print(
         h(
             "  [dim]Install vector dependencies: {_vector_search_install_command}[/dim]"
         ).format(_vector_search_install_command=_vector_search_install_command())
-    )
-    console.print(
-        h(
-            "  [dim]Backend modules are not currently shipped in public lobster-ai releases.[/dim]"
-        )
     )
 
 
@@ -1922,7 +1917,7 @@ def init_impl(
         False,
         "--install-vector-search",
         help=h(
-            "Install Smart Standardization dependencies (backend requires lobster-metadata dev package)"
+            "Install Smart Standardization dependencies (the lobster-vector package)"
         ),
     ),
     skip_extras: bool = typer.Option(

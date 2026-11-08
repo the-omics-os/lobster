@@ -943,7 +943,7 @@ def init(
         False,
         "--install-vector-search",
         help=h(
-            "Install Smart Standardization dependencies (backend requires lobster-metadata dev package)"
+            "Install Smart Standardization dependencies (the lobster-vector package)"
         ),
     ),
     skip_extras: bool = typer.Option(
@@ -1630,8 +1630,7 @@ def vector_search_cmd(
     Queries MONDO (diseases), UBERON (tissues), and Cell Ontology (cell types)
     and returns top N results per collection in JSON.
 
-    Requires vector dependencies and currently a lobster-metadata development install
-    for backend modules.
+    Requires the vector-search extra, which installs the lobster-vector package.
 
     \b
     Examples:

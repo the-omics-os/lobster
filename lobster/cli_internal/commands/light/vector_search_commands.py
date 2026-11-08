@@ -43,8 +43,8 @@ def vector_search_all_collections(
         cmd = get_install_command("vector-search", is_extra=True)
         raise ImportError(
             "Vector search backend is not available in this install.\n"
-            f"Install vector dependencies with: {cmd}\n"
-            "Then install the lobster-metadata development package for the backend modules."
+            f"Install it with: {cmd}\n"
+            "(the vector-search extra installs the lobster-vector package)"
         ) from exc
 
     service = VectorSearchService()
