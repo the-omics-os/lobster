@@ -133,9 +133,6 @@ jobs:
         # Each exclusion below is deliberate — do not drop one without checking:
         #   test_go_tui_launcher_completions.py — needs a built Go binary, which
         #     this job does not produce (it runs in ci-basic.yml's go-tui-verify).
-        #   test_vector_search_commands.py — stale test: it patches the deprecated
-        #     lobster.services.vector.service shim, but vector_search_commands.py
-        #     imports lobster.vector.service, so the patch never takes effect.
         #   TestTTYGuard::test_non_tty_stdin_exits_with_error — passes alone, fails
         #     only after tests/unit/cli/test_command_cmd_impl.py has run in the same
         #     process (leaked global console breaks its capsys assertion).
@@ -156,7 +153,6 @@ jobs:
           tests/unit/agents/test_research_agent.py \
           tests/unit/agents/test_data_expert.py \
           --ignore=tests/unit/cli/test_go_tui_launcher_completions.py \
-          --ignore=tests/unit/cli/test_vector_search_commands.py \
           --deselect "tests/unit/cli/test_init_venv_safety.py::TestTTYGuard::test_non_tty_stdin_exits_with_error" \
           --deselect "tests/unit/core/backends/test_mudata_backend.py::TestMuDataGlobalObservations::test_global_obs_with_different_observation_names" \
           -m "not slow and not real_api" \
