@@ -48,13 +48,16 @@ def _host_header_name(value: str) -> str:
 
 
 def _is_loopback_origin(origin: str) -> bool:
-    """True for ``http(s)://`` origins on a loopback host. ``null`` is not."""
+    """True for ``http(s)://host[:port]`` on a loopback host. ``null`` is not."""
     try:
         parts = urlsplit(origin.strip())
         hostname = parts.hostname
+        parts.port  # raises ValueError for a malformed port
     except ValueError:
         return False
     if parts.scheme not in ("http", "https") or not hostname:
+        return False
+    if parts.path not in ("", "/") or parts.query or parts.fragment:
         return False
     return is_loopback_host(hostname)
 
@@ -110,6 +113,8 @@ def build_serve_app(
             origin = request.headers.get("origin")
             if origin is not None and not _is_loopback_origin(origin):
                 return JSONResponse({"detail": "Invalid origin"}, status_code=403)
+        # Token binds rely on no CORS middleware; adding CORS requires an
+        # Origin check here too.
         if token is not None and not _token_matches(
             request.headers.get("authorization"), token
         ):

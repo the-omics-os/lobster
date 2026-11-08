@@ -266,15 +266,36 @@ def test_loopback_origins_allowed(origin):
 
 @pytest.mark.parametrize(
     "origin",
-    ["https://evil.example", "http://192.168.1.10:8000", "null", "file://", "garbage"],
+    [
+        "https://evil.example",
+        "http://192.168.1.10:8000",
+        "http://localhost.evil.com",
+        "http://127.0.0.1.evil.com",
+        "http://localhost:notaport",
+        "http://localhost/path",
+        "http://localhost?q=1",
+        "http://localhost#frag",
+        "null",
+        "file://",
+        "garbage",
+    ],
 )
 def test_foreign_origins_rejected(origin):
     client = _client("127.0.0.1")
     for response in (
         client.post("/query", json={"question": "hi"}, headers={"Origin": origin}),
         client.get("/status", headers={"Origin": origin}),
+        client.options("/query", headers={"Origin": origin}),
     ):
         assert response.status_code == 403
+
+
+def test_token_bind_does_not_check_origin():
+    # Intended: a browser cannot attach the bearer cross-site without CORS,
+    # which the app does not enable.
+    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    headers = {"Authorization": f"Bearer {TOKEN}", "Origin": "https://evil.example"}
+    assert client.get("/status", headers=headers).status_code == 200
 
 
 # 5. No exception text in 500 responses
