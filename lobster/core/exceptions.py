@@ -142,8 +142,7 @@ class FeatureNotImplementedError(LobsterCoreError):
 
     Distinct from NotImplementedError because:
     - The functionality may already exist in the codebase
-    - A clear workaround or timeline is provided
-    - The feature is on the roadmap
+    - A clear workaround is provided
 
     Attributes:
         message: Human-readable error message
@@ -151,7 +150,6 @@ class FeatureNotImplementedError(LobsterCoreError):
             - explanation: Why this feature is not yet available
             - current_workaround: How to work around the limitation
             - suggestions: List of alternative approaches
-            - estimated_implementation: Development effort required
             - github_issue: Link to tracking issue
 
     Example:
@@ -160,7 +158,6 @@ class FeatureNotImplementedError(LobsterCoreError):
         except FeatureNotImplementedError as e:
             print(f"Feature: {e.message}")
             print(f"Workaround: {e.details['current_workaround']}")
-            print(f"Timeline: {e.details.get('estimated_implementation')}")
     """
 
     pass
