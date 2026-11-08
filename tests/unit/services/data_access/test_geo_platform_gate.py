@@ -6,6 +6,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+# GEOService imports scanpy (the transcriptomics extra); skip, not error, without it.
+pytest.importorskip("scanpy")
+
 from lobster.core.exceptions import UnsupportedPlatformError
 from lobster.core.runtime.data_manager import DataManagerV2
 from lobster.services.data_access.geo.metadata_fetch import MetadataFetcher
