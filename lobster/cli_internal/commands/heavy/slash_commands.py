@@ -3482,10 +3482,26 @@ def metadata_command_impl(
 
     output = ConsoleOutputAdapter(console)
 
+    # Each accepted word and the command it runs; used for both the usage
+    # check and the dispatch below.
+    commands = {
+        None: "overview",
+        "overview": "overview",
+        "publications": "publications",
+        "pub": "publications",
+        "samples": "samples",
+        "sample": "samples",
+        "workspace": "workspace",
+        "ws": "workspace",
+        "exports": "exports",
+        "export": "exports",
+        "list": "list",
+        "clear": "clear",
+    }
+    command = commands.get(subcommand)
+
     # Usage errors exit 2, before the workspace is opened.
-    known = (None, "overview", "publications", "pub", "samples", "sample")
-    known += ("workspace", "ws", "exports", "export", "list", "clear")
-    if subcommand not in known:
+    if command is None:
         output.print(
             h("Unknown subcommand: {value}").format(value=subcommand), style="error"
         )
@@ -3497,7 +3513,7 @@ def metadata_command_impl(
         )
         raise typer.Exit(2)
     # Only `clear` takes a second word.
-    if target is not None and subcommand != "clear":
+    if target is not None and command != "clear":
         output.print(
             h("Unknown subcommand: {value}").format(value=f"{subcommand} {target}"),
             style="error",
@@ -3509,7 +3525,7 @@ def metadata_command_impl(
             style="info",
         )
         raise typer.Exit(2)
-    if subcommand == "clear" and target not in (None, "exports", "all"):
+    if command == "clear" and target not in (None, "exports", "all"):
         output.print(
             h("Unknown subcommand: {value}").format(value=f"clear {target}"),
             style="error",
@@ -3520,7 +3536,7 @@ def metadata_command_impl(
         raise typer.Exit(2)
     # Clearing deletes files, so it needs a person at a terminal to answer the
     # confirmation. Piped input (e.g. `yes |`) is refused before anything runs.
-    if subcommand == "clear" and not sys.stdin.isatty():
+    if command == "clear" and not sys.stdin.isatty():
         output.print(
             h(
                 "lobster metadata clear deletes files and asks for confirmation first. Run it in a terminal."
@@ -3538,17 +3554,17 @@ def metadata_command_impl(
         client = AgentClient(workspace_path=str(workspace_path))
 
         # Route to appropriate command
-        if subcommand in (None, "overview"):
+        if command == "overview":
             metadata_overview(client, output)
-        elif subcommand in ("publications", "pub"):
+        elif command == "publications":
             metadata_publications(client, output, status_filter=status_filter)
-        elif subcommand in ("samples", "sample"):
+        elif command == "samples":
             metadata_samples(client, output)
-        elif subcommand in ("workspace", "ws"):
+        elif command == "workspace":
             metadata_workspace(client, output)
-        elif subcommand in ("exports", "export"):
+        elif command == "exports":
             metadata_exports(client, output)
-        elif subcommand == "list":
+        elif command == "list":
             metadata_list(client, output)
         else:  # clear
             # Each clear previews and asks for confirmation before deleting.
