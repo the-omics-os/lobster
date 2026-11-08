@@ -1,4 +1,4 @@
-"""The server host setting and generated .env templates default to localhost."""
+"""The server host setting and generated .env templates match `lobster serve`."""
 
 import pytest
 
@@ -32,3 +32,5 @@ def test_generated_env_template_uses_localhost(tmp_path, monkeypatch, generator)
     lines = (tmp_path / ".env.template").read_text().splitlines()
     assert "HOST=127.0.0.1" in lines
     assert "HOST=0.0.0.0" not in lines
+    # Matches the `lobster serve` default port.
+    assert "PORT=8000" in lines

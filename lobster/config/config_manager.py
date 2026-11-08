@@ -211,9 +211,8 @@ LOBSTER_PROFILE=production
 # APPLICATION SETTINGS
 # =============================================================================
 
-# Server configuration
-PORT=8501
-# Localhost only; use 0.0.0.0 inside a container
+# Server configuration (reserved; `lobster serve` uses --host/--port)
+PORT=8000
 HOST=127.0.0.1
 DEBUG=False
 
