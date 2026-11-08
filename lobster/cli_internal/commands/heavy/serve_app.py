@@ -1,15 +1,16 @@
 """
 HTTP app behind ``lobster serve``.
 
-Loopback binds accept only loopback Host headers and need no token. Any other
-bind requires a bearer token on every request. Errors never return exception
-text to the caller.
+Loopback binds accept only loopback Host headers and Origins, and need no token
+unless one is configured. Any other bind requires a bearer token on every
+request. Errors never return exception text to the caller.
 """
 
 import hmac
 import ipaddress
 import logging
 from typing import Callable, Optional
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,18 @@ def _host_header_name(value: str) -> str:
     if value.count(":") == 1:
         return value.split(":", 1)[0]
     return value
+
+
+def _is_loopback_origin(origin: str) -> bool:
+    """True for ``http(s)://`` origins on a loopback host. ``null`` is not."""
+    try:
+        parts = urlsplit(origin.strip())
+        hostname = parts.hostname
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not hostname:
+        return False
+    return is_loopback_host(hostname)
 
 
 def _token_matches(header: Optional[str], token: str) -> bool:
@@ -93,7 +106,13 @@ def build_serve_app(
             # Blocks DNS rebinding: a browser page on another name cannot reach us.
             if not is_loopback_host(name):
                 return JSONResponse({"detail": "Invalid host header"}, status_code=400)
-        elif not _token_matches(request.headers.get("authorization"), token):
+            # Blocks cross-site requests from a browser page served elsewhere.
+            origin = request.headers.get("origin")
+            if origin is not None and not _is_loopback_origin(origin):
+                return JSONResponse({"detail": "Invalid origin"}, status_code=403)
+        if token is not None and not _token_matches(
+            request.headers.get("authorization"), token
+        ):
             return JSONResponse(
                 {"detail": "Not authenticated"},
                 status_code=401,

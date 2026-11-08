@@ -182,11 +182,57 @@ def test_loopback_needs_no_token():
     assert _client("127.0.0.1").get("/status").status_code == 200
 
 
+def test_loopback_enforces_a_configured_token():
+    client = _client("127.0.0.1", TOKEN)
+    assert client.get("/status").status_code == 401
+    auth = {"Authorization": f"Bearer {TOKEN}"}
+    assert client.get("/status", headers=auth).status_code == 200
+    # The Host check still applies with a valid token.
+    bad_host = {**auth, "Host": "evil.example"}
+    assert client.get("/status", headers=bad_host).status_code == 400
+
+
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/docs"),
+        ("GET", "/redoc"),
+        ("GET", "/openapi.json"),
+        ("GET", "/no-such-route"),
+        ("OPTIONS", "/query"),
+        ("HEAD", "/status"),
+    ],
+)
+def test_every_route_needs_the_token(method, path):
+    client = _client("0.0.0.0", TOKEN, base_url="http://192.168.1.10:8000")
+    response = client.request(method, path)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_cli_help_does_not_echo_env_token(monkeypatch):
+    from lobster.cli import app
+
+    monkeypatch.setenv("LOBSTER_SERVE_TOKEN", TOKEN)
+    result = CliRunner().invoke(app, ["serve", "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0, result.output
+    assert "LOBSTER_SERVE_TOKEN" in result.output
+    assert TOKEN not in result.output
+
+
 # 4. Host check on loopback binds
 
 
 @pytest.mark.parametrize(
-    "host_header", ["localhost:8000", "127.0.0.1:8000", "[::1]:8000", "localhost"]
+    "host_header",
+    [
+        "localhost:8000",
+        "127.0.0.1:8000",
+        "[::1]:8000",
+        "::1",
+        "LOCALHOST:8000",
+        "localhost",
+    ],
 )
 def test_loopback_host_headers_allowed(host_header):
     response = _client("127.0.0.1").get("/status", headers={"Host": host_header})
@@ -203,6 +249,32 @@ def test_foreign_host_headers_rejected(host_header):
         "/query", json={"question": "hi"}, headers={"Host": host_header}
     )
     assert response.status_code == 400
+    assert client.get("/openapi.json", headers={"Host": host_header}).status_code == 400
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["http://localhost:3000", "http://127.0.0.1:8000", "https://[::1]:5173"],
+)
+def test_loopback_origins_allowed(origin):
+    client = _client("127.0.0.1")
+    response = client.post(
+        "/query", json={"question": "hi"}, headers={"Origin": origin}
+    )
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://evil.example", "http://192.168.1.10:8000", "null", "file://", "garbage"],
+)
+def test_foreign_origins_rejected(origin):
+    client = _client("127.0.0.1")
+    for response in (
+        client.post("/query", json={"question": "hi"}, headers={"Origin": origin}),
+        client.get("/status", headers={"Origin": origin}),
+    ):
+        assert response.status_code == 403
 
 
 # 5. No exception text in 500 responses
@@ -220,3 +292,16 @@ def test_errors_do_not_leak_exception_text(host, token):
         assert response.status_code == 500
         assert response.json() == {"detail": INTERNAL_ERROR_DETAIL}
         assert LEAK not in response.text
+
+
+def test_errors_are_logged(caplog):
+    client = _client("127.0.0.1", factory=FailingClient)
+    with caplog.at_level("ERROR", logger=serve_app.__name__):
+        client.post("/query", json={"question": "hi"})
+        client.get("/status")
+    failures = [r for r in caplog.records if r.name == serve_app.__name__]
+    assert [r.getMessage() for r in failures] == [
+        "lobster serve: /query failed",
+        "lobster serve: /status failed",
+    ]
+    assert all(LEAK in str(r.exc_info[1]) for r in failures)

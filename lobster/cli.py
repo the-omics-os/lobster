@@ -1660,7 +1660,7 @@ def serve(
         None,
         "--token",
         envvar="LOBSTER_SERVE_TOKEN",
-        help=h("Bearer token required when --host is not localhost."),
+        help=h("Bearer token. Prefer LOBSTER_SERVE_TOKEN: --token shows in ps."),
     ),
 ):
     from lobster.cli_internal.commands.heavy.slash_commands import serve_impl
