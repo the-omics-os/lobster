@@ -32,7 +32,7 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://www.omics-os.com"
-"Documentation" = "https://docs.omics-os.com"
+"Documentation" = "https://docs.omics-os.com/docs"
 "Source Code" = "https://github.com/the-omics-os/lobster"
 
 [project.entry-points."lobster.agents"]

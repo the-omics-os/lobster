@@ -43,7 +43,7 @@ full = ["lobster-vector[chromadb,openai,local,cohere,graph]"]
 
 [project.urls]
 Homepage = "https://omics-os.com"
-Documentation = "https://docs.omics-os.com"
+Documentation = "https://docs.omics-os.com/docs"
 Repository = "https://github.com/the-omics-os/lobster"
 
 [tool.setuptools]
