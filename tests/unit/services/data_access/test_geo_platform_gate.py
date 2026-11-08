@@ -120,3 +120,21 @@ def test_sequencing_platform_is_unchanged(geo_service):
         ok, _ = geo_service._check_platform_compatibility("GSE1", metadata)
     assert ok is True
     llm.detect_modality.assert_called_once()
+
+
+def test_oligo_title_keyword_refuses_without_technology(geo_service):
+    with pytest.raises(UnsupportedPlatformError):
+        geo_service._check_platform_compatibility(
+            "GSE1", _metadata("GPL3255", "VUMC MACF human 19K oligo v33", "")
+        )
+
+
+@pytest.mark.parametrize(
+    "title", ["oligodendrocyte", "oligodendroglioma", "oligo-dT primed RNA-seq"]
+)
+def test_oligo_is_matched_as_a_word(geo_service, title):
+    metadata = _metadata("GPL99999", title, "")
+    with patch.object(geo_service, "_data_expert_assistant", create=True) as llm:
+        llm.detect_modality.return_value = _supported_rna()
+        ok, _ = geo_service._check_platform_compatibility("GSE1", metadata)
+    assert ok is True

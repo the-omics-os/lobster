@@ -8,6 +8,7 @@ Contains all shared constants used across the GEO service modules:
 - Keyword patterns for platform detection
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -148,9 +149,13 @@ UNSUPPORTED_KEYWORDS = [
     "snp chip",
     "exon array",
     "gene chip",
-    "oligo",  # e.g. "VUMC MACF human 19K oligo v33"
     "nimblegen",
 ]
+
+# Matched against the lowercased title as words, not substrings: "oligo" must
+# hit "VUMC MACF human 19K oligo v33" but not "oligodendrocyte" or
+# "oligo-dT primed RNA-seq".
+UNSUPPORTED_TITLE_PATTERNS = [re.compile(r"\boligo\b(?!-)")]
 
 SUPPORTED_KEYWORDS = [
     "rna-seq",

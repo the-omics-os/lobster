@@ -34,6 +34,7 @@ from lobster.services.data_access.geo.constants import (
     PLATFORM_REGISTRY,
     SUPPORTED_KEYWORDS,
     UNSUPPORTED_KEYWORDS,
+    UNSUPPORTED_TITLE_PATTERNS,
     PlatformCompatibility,
 )
 from lobster.services.data_access.geo.soft_download import pre_download_soft_file
@@ -1008,6 +1009,7 @@ class MetadataFetcher:
                 # Unknown platform - use keyword matching
                 if (
                     any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS)
+                    or any(p.search(platform_title) for p in UNSUPPORTED_TITLE_PATTERNS)
                     or platform_technology in ARRAY_TECHNOLOGIES
                 ):
                     unsupported_platforms.append((platform_id, platform_info))
