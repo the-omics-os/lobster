@@ -5,7 +5,7 @@ This module handles downloading and parsing data from the Gene Expression Omnibu
 database, providing structured access to gene expression datasets.
 """
 
-import ftplib
+import ftplib  # nosec B402 # GEO serves files from the NCBI FTP site
 import hashlib
 import random
 import re
@@ -615,7 +615,7 @@ class GEODownloadManager:
         Returns:
             str: Hexadecimal MD5 checksum
         """
-        md5 = hashlib.md5()
+        md5 = hashlib.md5(usedforsecurity=False)  # integrity check only
         with open(file_path, "rb") as f:
             # Read in 8KB chunks for memory efficiency
             for chunk in iter(lambda: f.read(8192), b""):
@@ -718,7 +718,9 @@ class GEODownloadManager:
                 # Jitter prevents synchronized retry storms (thundering herd problem)
                 if attempt > 1:
                     base_delay = 2**attempt
-                    jitter = base_delay * 0.2 * (2 * random.random() - 1)  # ±20%
+                    jitter = (
+                        base_delay * 0.2 * (2 * random.random() - 1)  # nosec B311
+                    )  # ±20% retry jitter, not security
                     wait_time = base_delay + jitter
                     logger.info(
                         f"Retry attempt {attempt}/{max_retries} after {wait_time:.1f}s delay "
@@ -727,7 +729,7 @@ class GEODownloadManager:
                     time.sleep(wait_time)
 
                 # Connect to FTP server
-                ftp = ftplib.FTP()
+                ftp = ftplib.FTP()  # nosec B321 # NCBI FTP site
                 ftp.connect(hostname, parsed_url.port or 21, timeout=30)
                 ftp.login(username, password)
 
