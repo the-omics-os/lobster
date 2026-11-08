@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -288,6 +289,24 @@ func TestRenderHelpUsesCompactBulletLayout(t *testing.T) {
 	}
 	if !strings.Contains(content, "/workspace list") {
 		t.Fatalf("expected compact help to include workflow commands, got %q", content)
+	}
+}
+
+func TestRenderHelpIsChineseInChineseUI(t *testing.T) {
+	i18n.Set("zh")
+	defer i18n.Set("en")
+	m := newTestModel()
+
+	m.renderHelp()
+
+	content := m.messages[len(m.messages)-1].Content()
+	for _, english := range []string{"Quick Help", "Workflow", "Controls", "full slash-command catalog"} {
+		if strings.Contains(content, english) {
+			t.Fatalf("English %q left in Chinese quick help: %q", english, content)
+		}
+	}
+	if !strings.Contains(content, "快速帮助") || !strings.Contains(content, "/workspace list") {
+		t.Fatalf("expected Chinese quick help with commands, got %q", content)
 	}
 }
 

@@ -818,7 +818,7 @@
   "[green]✓ Docling installed[/green]": "[green]✓ Docling 已安装[/green]",
   "[dim]Installing Smart Standardization deps...[/dim]": "[dim]正在安装智能标准化依赖...[/dim]",
   "\n[bold]uv tool command:[/bold] {join}": "\n[bold]uv tool 命令：[/bold] {join}",
-  "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\nLet's set up your [cyan]global[/cyan] provider defaults.\nConfig: [cyan]{config_path}[/cyan]\nCredentials: [cyan]{creds_path}[/cyan]\n\n[dim]These defaults apply to all workspaces without their own config.[/dim]": "[bold white]🦞 欢迎使用 Lobster AI！[/bold white]\n\n我们来设置你的 [cyan]全局[/cyan] 模型服务默认值。\n配置：[cyan]{config_path}[/cyan]\n凭据：[cyan]{creds_path}[/cyan]\n\n[dim]这些默认值适用于所有没有自己配置的工作区。[/dim]",
+  "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\nLet's set up your [cyan]global[/cyan] provider defaults.\nConfig: [cyan]{config_path}[/cyan]\nCredentials: [cyan]{creds_path}[/cyan]\n\n[dim]These defaults apply to all workspaces without their own config.[/dim]": "[bold white]🦞 欢迎使用 Lobster AI！[/bold white]\n\n我们来设置你的[cyan]全局[/cyan]模型服务默认值。\n配置：[cyan]{config_path}[/cyan]\n凭据：[cyan]{creds_path}[/cyan]\n\n[dim]这些默认值适用于所有没有自己配置的工作区。[/dim]",
   "[red]❌ API key cannot be empty[/red]": "[red]❌ API 密钥不能为空[/red]",
   "\n[bold white]🔑 AWS Bedrock Configuration[/bold white]": "\n[bold white]🔑 AWS Bedrock 配置[/bold white]",
   "You'll need AWS access key and secret key with Bedrock permissions.\n": "你需要一对具有 Bedrock 权限的 AWS 访问密钥和私有密钥。\n",
@@ -1978,5 +1978,6 @@
   "Install completion for the current shell.": "为当前 shell 安装命令补全。",
   "Show completion for the current shell, to copy it or customize the installation.": "显示当前 shell 的命令补全脚本，可复制或自行安装。",
   "Install completion for the specified shell.": "为指定的 shell 安装命令补全。",
-  "Show completion for the specified shell, to copy it or customize the installation.": "显示指定 shell 的命令补全脚本，可复制或自行安装。"
+  "Show completion for the specified shell, to copy it or customize the installation.": "显示指定 shell 的命令补全脚本，可复制或自行安装。",
+  "Download from https://ollama.com/download": "从 https://ollama.com/download 下载"
 }

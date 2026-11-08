@@ -3098,7 +3098,7 @@ def init_impl(
                 )
                 console.print(
                     h("  • Windows: {install_instructions}").format(
-                        install_instructions=install_instructions["windows"]
+                        install_instructions=h(install_instructions["windows"])
                     )
                 )
                 console.print()
