@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
 func init() {
@@ -96,11 +97,11 @@ func (c *ConfirmComponent) View(width, height int) string {
 
 	var yesBtn, noBtn string
 	if c.selected {
-		yesBtn = activeBtn.Render("Yes")
-		noBtn = inactiveBtn.Render("No")
+		yesBtn = activeBtn.Render(i18n.P("Yes"))
+		noBtn = inactiveBtn.Render(i18n.P("No"))
 	} else {
-		yesBtn = inactiveBtn.Render("Yes")
-		noBtn = activeBtn.Render("No")
+		yesBtn = inactiveBtn.Render(i18n.P("Yes"))
+		noBtn = activeBtn.Render(i18n.P("No"))
 	}
 
 	buttons := lipgloss.JoinHorizontal(lipgloss.Center, yesBtn, "  ", noBtn)
@@ -125,10 +126,10 @@ func (c *ConfirmComponent) Mode() string     { return "overlay" }
 
 func (c *ConfirmComponent) KeyBindings() []key.Binding {
 	return []key.Binding{
-		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", "choose")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
-		key.NewBinding(key.WithKeys("y", "n"), key.WithHelp("y/n", "direct")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("←/→", i18n.P("choose"))),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", i18n.P("confirm"))),
+		key.NewBinding(key.WithKeys("y", "n"), key.WithHelp("y/n", i18n.P("direct"))),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", i18n.P("cancel"))),
 	}
 }
 

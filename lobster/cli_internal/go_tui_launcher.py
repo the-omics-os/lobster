@@ -48,6 +48,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
     format_startup_diagnostic_text,
 )
+from lobster.i18n import h
 
 logger = logging.getLogger(__name__)
 
@@ -383,23 +384,29 @@ def _friendly_error(raw: str) -> tuple:
         return ("Omics-OS Cloud", msg[msg.index(cloud_refusal) :])
     if "security token" in msg or "UnrecognizedClientException" in msg:
         return (
-            "Provider Error",
-            "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini",
+            h("Provider Error"),
+            h(
+                "AWS credentials invalid or expired. Run: aws configure\nOr switch provider: lobster config --provider gemini"
+            ),
         )
     if "ConverseStream" in msg or "InvokeModel" in msg:
         return (
-            "Provider Error",
-            "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini",
+            h("Provider Error"),
+            h(
+                "AWS Bedrock access denied. Check IAM permissions or switch provider:\n  lobster config --provider gemini"
+            ),
         )
     if "not authorized" in msg.lower() and "bedrock" in msg.lower():
         return (
-            "Provider Error",
-            "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini",
+            h("Provider Error"),
+            h(
+                "AWS Bedrock not authorized. Switch provider: lobster config --provider gemini"
+            ),
         )
     if "rate limit" in msg.lower() or "429" in msg:
         return (
-            "Rate Limited",
-            "Rate limited by the LLM provider. Wait a moment and try again.",
+            h("Rate Limited"),
+            h("Rate limited by the LLM provider. Wait a moment and try again."),
         )
     if (
         "Could not connect" in msg
@@ -407,22 +414,22 @@ def _friendly_error(raw: str) -> tuple:
         or "ConnectionRefused" in msg
     ):
         return (
-            "Connection Error",
-            "Cannot reach the LLM provider. Check your network connection.",
+            h("Connection Error"),
+            h("Cannot reach the LLM provider. Check your network connection."),
         )
     if "timeout" in msg.lower() or "timed out" in msg.lower():
-        return ("Timeout", "Request timed out. Check your network connection.")
+        return (h("Timeout"), h("Request timed out. Check your network connection."))
     if "quota" in msg.lower() or "insufficient_quota" in msg:
         return (
-            "Quota Exceeded",
-            "LLM provider quota exceeded. Check your billing or switch provider.",
+            h("Quota Exceeded"),
+            h("LLM provider quota exceeded. Check your billing or switch provider."),
         )
     if "invalid api key" in msg.lower() or "invalid_api_key" in msg.lower():
         return (
-            "Auth Error",
-            "Invalid API key. Run: lobster config --provider <provider>",
+            h("Auth Error"),
+            h("Invalid API key. Run: lobster config --provider <provider>"),
         )
-    return ("Error", msg)
+    return (h("Error"), msg)
 
 
 def _normalize_tool_payload(payload: dict) -> dict:
@@ -448,9 +455,11 @@ def _format_usage(client: Any) -> str:
     """Format token/cost usage from the client's tracker."""
     try:
         tracker = client.token_tracker
-        return f"Tokens: {tracker.total_tokens:,} | Cost: ${tracker.total_cost:.4f}"
+        return h("Tokens: {tokens} | Cost: ${cost}").format(
+            tokens=f"{tracker.total_tokens:,}", cost=f"{tracker.total_cost:.4f}"
+        )
     except Exception:
-        return "Ready"
+        return h("Ready")
 
 
 def _format_context_compaction_notice(event: dict) -> str:
@@ -460,12 +469,12 @@ def _format_context_compaction_notice(event: dict) -> str:
     budget = event.get("budget_tokens")
 
     if all(isinstance(v, int) for v in (before, after, budget)):
-        return (
-            f"Context compacted: {before}->{after} messages (budget {budget} tokens).\n"
+        return h(
+            "Context compacted: {before}->{after} messages (budget {budget} tokens).\n"
             "Full delegated outputs remain available via store keys and retrieve_agent_result."
-        )
+        ).format(before=before, after=after, budget=budget)
 
-    return (
+    return h(
         "Context compacted to stay within model budget.\n"
         "Full delegated outputs remain available via store keys and retrieve_agent_result."
     )
@@ -535,7 +544,7 @@ def _emit_startup_diagnostic(
             "message": format_startup_diagnostic_text(diagnostic),
         },
     )
-    bridge.send("status", {"text": "Initialization failed"})
+    bridge.send("status", {"text": h("Initialization failed")})
 
 
 def _await_startup_diagnostic_ack(bridge: _LightBridge) -> None:
@@ -543,8 +552,8 @@ def _await_startup_diagnostic_ack(bridge: _LightBridge) -> None:
     bridge.send(
         "confirm",
         {
-            "title": "Startup failed",
-            "message": "Press Enter to exit.",
+            "title": h("Startup failed"),
+            "message": h("Press Enter to exit."),
             "default": True,
         },
         msg_id=_STARTUP_DIAGNOSTIC_CONFIRM_ID,
@@ -626,11 +635,15 @@ def _build_go_tui_exit_footer_lines(client: Any) -> List[str]:
 
     session = str(getattr(client, "session_id", "") or "").strip()
     if session:
-        lines.append(f"Session: {session} (use --session-id latest to continue)")
+        lines.append(
+            h("Session: {session} (use --session-id latest to continue)").format(
+                session=session
+            )
+        )
 
-    lines.append(f"Feedback: {_FEEDBACK_URL}")
-    lines.append(f"Issues: {_ISSUES_URL}")
-    lines.append(f"Contact: {_SUPPORT_EMAIL}")
+    lines.append(h("Feedback: {url}").format(url=_FEEDBACK_URL))
+    lines.append(h("Issues: {url}").format(url=_ISSUES_URL))
+    lines.append(h("Contact: {email}").format(email=_SUPPORT_EMAIL))
 
     provider_name = _resolve_active_provider_name(client)
     model_name = str(
@@ -642,16 +655,16 @@ def _build_go_tui_exit_footer_lines(client: Any) -> List[str]:
     if model_name:
         runtime_parts.append(f"model={model_name}")
     if runtime_parts:
-        lines.append(f"Runtime: {' '.join(runtime_parts)}")
+        lines.append(h("Runtime: {parts}").format(parts=" ".join(runtime_parts)))
 
     token_summary = _safe_minimal_token_summary(client)
     if token_summary:
         lines.append(token_summary)
 
-    lines.append("Next steps:")
-    lines.append("  Resume: lobster chat --ui go --session-id latest")
-    lines.append("  New chat: lobster chat --ui go")
-    lines.append("  Help: lobster --help")
+    lines.append(h("Next steps:"))
+    lines.append(h("  Resume: lobster chat --ui go --session-id latest"))
+    lines.append(h("  New chat: lobster chat --ui go"))
+    lines.append(h("  Help: lobster --help"))
     return lines
 
 
@@ -866,14 +879,21 @@ def _maybe_restore_go_session_transcript(
         messages_loaded = load_result.get("messages_loaded", 0)
         if messages_loaded:
             bridge.send(
-                "status", {"text": f"Loaded {messages_loaded} previous messages"}
+                "status",
+                {
+                    "text": h("Loaded {count} previous messages").format(
+                        count=messages_loaded
+                    )
+                },
             )
     except Exception as exc:
         bridge.send(
             "alert",
             {
                 "level": "warning",
-                "message": f"Failed to restore session transcript: {exc}",
+                "message": h("Failed to restore session transcript: {error}").format(
+                    error=exc
+                ),
             },
         )
 
@@ -967,7 +987,10 @@ def _settle_cancelled(
 ) -> None:
     if _settle_turn(bridge, turn, "cancelled"):
         duration = time.time() - query_start
-        bridge.send("status", {"text": f"Cancelled after {duration:.1f}s"})
+        bridge.send(
+            "status",
+            {"text": h("Cancelled after {seconds}s").format(seconds=f"{duration:.1f}")},
+        )
     bridge.send("spinner", {"active": False})
 
 
@@ -992,7 +1015,7 @@ def _settle_unfinished_stream(
     if not turn.saw_error:
         bridge.send(
             "alert",
-            {"level": "warning", "message": "The response ended unexpectedly."},
+            {"level": "warning", "message": h("The response ended unexpectedly.")},
         )
     bridge.send("spinner", {"active": False})
     _settle_turn(bridge, turn, "error")
@@ -1068,14 +1091,14 @@ def _handle_user_query(
                 return
 
             # Resume the graph with the user's response.
-            bridge.send("spinner", {"active": True, "label": "resuming"})
+            bridge.send("spinner", {"active": True, "label": h("resuming")})
             stream_source = client.resume_from_interrupt(
                 response, stream=True, cancel_event=cancel_event
             )
             # Continue the while loop to process the resumed stream.
 
     except KeyboardInterrupt:
-        bridge.send("alert", {"level": "warning", "message": "Query interrupted"})
+        bridge.send("alert", {"level": "warning", "message": h("Query interrupted")})
         bridge.send("spinner", {"active": False})
         _settle_turn(bridge, turn, "cancelled")
     except Exception as exc:
@@ -1173,7 +1196,7 @@ def _forward_stream_event(
             _settle_turn(bridge, turn, "")
         duration = time.time() - query_start
         status_parts = [_format_usage(client)]
-        status_parts.append(f"Duration: {duration:.1f}s")
+        status_parts.append(h("Duration: {seconds}s").format(seconds=f"{duration:.1f}"))
         bridge.send("status", {"text": " · ".join(status_parts)})
         bridge.send("spinner", {"active": False})
     elif etype == "context_compaction":
@@ -1194,7 +1217,7 @@ def _forward_stream_event(
                 "alert",
                 {
                     "level": "warning",
-                    "title": "Rate Limited",
+                    "title": h("Rate Limited"),
                     "message": friendly,
                 },
             )
@@ -1227,7 +1250,7 @@ def _handle_slash_command(
         full_cmd = f"{full_cmd} {args}"
 
     # Show spinner while heavy imports load (~1-2s first time).
-    bridge.send("spinner", {"active": True, "label": "running command"})
+    bridge.send("spinner", {"active": True, "label": h("running command")})
 
     try:
         from lobster.cli_internal.commands.output_adapter import ProtocolOutputAdapter
@@ -1401,7 +1424,7 @@ def launch_go_tui_chat(
         # -----------------------------------------------------------------
         # 3. Tell the TUI to show a loading spinner
         # -----------------------------------------------------------------
-        bridge.send("spinner", {"active": True, "label": "Initializing agents"})
+        bridge.send("spinner", {"active": True, "label": h("Initializing agents")})
 
         # -----------------------------------------------------------------
         # 4. Start heartbeat thread
@@ -1495,7 +1518,7 @@ def launch_go_tui_chat(
 
         bridge.send("ready", {})
         if not inline_mode:
-            bridge.send("status", {"text": "Ready"})
+            bridge.send("status", {"text": h("Ready")})
 
         # -----------------------------------------------------------------
         # 8. Enter event loop

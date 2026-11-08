@@ -23,7 +23,7 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
     table_block,
 )
-from lobster.i18n import t
+from lobster.i18n import h, t
 
 logger = logging.getLogger(__name__)
 
@@ -95,18 +95,18 @@ def _print_config_command_reference(
     """Render a structured config command reference that works in both Rich and Go mode."""
     output.print_table(
         {
-            "title": "💡 Config Commands",
+            "title": h("💡 Config Commands"),
             "width": table_width,
             "columns": [
-                {"name": "Area", "style": "cyan", "width": 12},
+                {"name": h("Area"), "style": "cyan", "width": 12},
                 {
-                    "name": "Command",
+                    "name": h("Command"),
                     "style": "white",
                     "width": 34,
                     "overflow": "fold",
                 },
                 {
-                    "name": "Purpose",
+                    "name": h("Purpose"),
                     "style": "dim",
                     "width": 46,
                     "overflow": "fold",
@@ -114,39 +114,39 @@ def _print_config_command_reference(
             ],
             "rows": [
                 [
-                    "Provider",
+                    h("Provider"),
                     "/config provider",
-                    "List providers and show the active runtime provider.",
+                    h("List providers and show the active runtime provider."),
                 ],
                 [
-                    "Provider",
+                    h("Provider"),
                     "/config provider <name>",
-                    "Switch provider for the current session only.",
+                    h("Switch provider for the current session only."),
                 ],
                 [
-                    "Provider",
+                    h("Provider"),
                     "/config provider <name> --save",
-                    "Switch provider and persist it to this workspace.",
+                    h("Switch provider and persist it to this workspace."),
                 ],
                 [
-                    "Model",
+                    h("Model"),
                     "/config model",
-                    "List models available for the active provider.",
+                    h("List models available for the active provider."),
                 ],
                 [
-                    "Model",
+                    h("Model"),
                     "/config model <name>",
-                    "Switch model for the current session only.",
+                    h("Switch model for the current session only."),
                 ],
                 [
-                    "Model",
+                    h("Model"),
                     "/config model <name> --save",
-                    "Switch model and persist it to this workspace.",
+                    h("Switch model and persist it to this workspace."),
                 ],
                 [
-                    "Display",
+                    h("Display"),
                     "/config or /config show",
-                    "Show the full configuration summary.",
+                    h("Show the full configuration summary."),
                 ],
             ],
         }
@@ -159,17 +159,17 @@ def _print_config_model_command_reference(
     """Render focused command help for `/config model` using structured output."""
     output.print_table(
         {
-            "title": "💡 Model Commands",
+            "title": h("💡 Model Commands"),
             "width": table_width,
             "columns": [
                 {
-                    "name": "Command",
+                    "name": h("Command"),
                     "style": "white",
                     "width": 34,
                     "overflow": "fold",
                 },
                 {
-                    "name": "Purpose",
+                    "name": h("Purpose"),
                     "style": "dim",
                     "width": 62,
                     "overflow": "fold",
@@ -178,23 +178,44 @@ def _print_config_model_command_reference(
             "rows": [
                 [
                     "/config model <name>",
-                    "Switch the active model for the current session only.",
+                    h("Switch the active model for the current session only."),
                 ],
                 [
                     "/config model <name> --save",
-                    "Switch the active model and persist it to this workspace.",
+                    h("Switch the active model and persist it to this workspace."),
                 ],
                 [
                     "/config provider",
-                    "List providers and confirm which model catalog is active.",
+                    h("List providers and confirm which model catalog is active."),
                 ],
                 [
                     "/config provider <name>",
-                    "Change providers first when you need a different model catalog.",
+                    h(
+                        "Change providers first when you need a different model catalog."
+                    ),
                 ],
             ],
         }
     )
+
+
+def _source_label(source: str) -> str:
+    """Display text for a config source. The raw English value stays in JSON."""
+    prefixes = (
+        ("runtime flag", h("runtime flag")),
+        ("workspace config", h("workspace config")),
+        ("global user config", h("global user config")),
+        ("global provider", h("global provider")),
+        ("provider default", h("provider default")),
+        ("profile config", h("profile config")),
+        ("Explicit agent list", h("Explicit agent list")),
+        ("Defaults", h("Defaults")),
+        ("Preset:", h("Preset:")),
+    )
+    for english, label in prefixes:
+        if source.startswith(english):
+            return label + source[len(english) :]
+    return source
 
 
 def _truncate_middle(text: str, max_length: int) -> str:
@@ -282,9 +303,9 @@ def _build_agent_hierarchy(output: OutputAdapter, current_tier: str) -> None:
     if not available_agents:
         return
 
-    output.print("\n[bold cyan]🔀 Agent Hierarchy[/bold cyan]")
+    output.print(h("\n[bold cyan]🔀 Agent Hierarchy[/bold cyan]"))
     output.print("[dim]" + "─" * 96 + "[/dim]")  # Match table width (100 - borders)
-    output.print("[bold white]supervisor[/bold white] [dim](orchestrator)[/dim]")
+    output.print(h("[bold white]supervisor[/bold white] [dim](orchestrator)[/dim]"))
 
     for i, agent_name in enumerate(available_agents):
         config = AGENT_REGISTRY[agent_name]
@@ -339,9 +360,13 @@ def _build_agent_composition(
     )
 
     # Display configuration source
-    output.print("\n[bold cyan]📦 Agent Composition[/bold cyan]")
+    output.print(h("\n[bold cyan]📦 Agent Composition[/bold cyan]"))
     output.print("[dim]" + "-" * 96 + "[/dim]")
-    output.print(f"  Configuration: [bold cyan]{config_source}[/bold cyan]")
+    output.print(
+        h("  Configuration: [bold cyan]{config_source}[/bold cyan]").format(
+            config_source=_source_label(config_source)
+        )
+    )
     if config_detail:
         output.print(f"  [dim]{config_detail}[/dim]")
     output.print("")
@@ -351,9 +376,9 @@ def _build_agent_composition(
         "title": None,  # No title, we already have the section header
         "width": table_width,
         "columns": [
-            {"name": "Agent", "style": "cyan"},
-            {"name": "Status", "style": "white"},
-            {"name": "Tier", "style": "yellow"},
+            {"name": h("Agent"), "style": "cyan"},
+            {"name": h("Status"), "style": "white"},
+            {"name": h("Tier"), "style": "yellow"},
         ],
         "rows": [],
     }
@@ -374,7 +399,7 @@ def _build_agent_composition(
             agent_table_data["rows"].append(
                 [
                     f"[cyan]{display_name}[/cyan]",
-                    "[green]Installed[/green]",
+                    f"[green]{h('Installed')}[/green]",
                     f"[yellow]{tier_display}[/yellow]",
                 ]
             )
@@ -382,12 +407,16 @@ def _build_agent_composition(
             # Agent is missing
             missing_agents.append(agent_name)
             agent_table_data["rows"].append(
-                [f"[dim]{agent_name}[/dim]", "[red]Missing[/red]", "[dim]-[/dim]"]
+                [
+                    f"[dim]{agent_name}[/dim]",
+                    f"[red]{h('Missing')}[/red]",
+                    "[dim]-[/dim]",
+                ]
             )
 
     if not display_agents:
         output.print(
-            "[dim]No agents are configured or discoverable in this workspace.[/dim]"
+            h("[dim]No agents are configured or discoverable in this workspace.[/dim]")
         )
         return config_source, 0, 0
 
@@ -397,19 +426,23 @@ def _build_agent_composition(
     total_count = len(display_agents)
     if installed_count == total_count:
         output.print(
-            f"\n[green]✓ {installed_count} of {total_count} agents installed and ready[/green]"
+            h(
+                "\n[green]✓ {installed_count} of {total_count} agents installed and ready[/green]"
+            ).format(installed_count=installed_count, total_count=total_count)
         )
     else:
         output.print(
-            f"\n[yellow]⚠ {installed_count} of {total_count} agents installed[/yellow]"
+            h(
+                "\n[yellow]⚠ {installed_count} of {total_count} agents installed[/yellow]"
+            ).format(installed_count=installed_count, total_count=total_count)
         )
 
         # Helpful hint for missing agents
         if missing_agents:
-            output.print("\n[dim]To install missing agents:[/dim]")
+            output.print(h("\n[dim]To install missing agents:[/dim]"))
             output.print("  [white]lobster agents install <package>[/white]")
             output.print(
-                "[dim]Run 'lobster agents list' to see available packages[/dim]"
+                h("[dim]Run 'lobster agents list' to see available packages[/dim]")
             )
 
     return config_source, installed_count, total_count
@@ -465,16 +498,16 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     TABLE_WIDTH = 100
 
     config_table_data = {
-        "title": "⚙️  Current Configuration",
+        "title": h("⚙️  Current Configuration"),
         "width": TABLE_WIDTH,
         "columns": [
-            {"name": "Setting", "style": "cyan"},
-            {"name": "Value", "style": "white"},
-            {"name": "Source", "style": "yellow"},
+            {"name": h("Setting"), "style": "cyan"},
+            {"name": h("Value"), "style": "white"},
+            {"name": h("Source"), "style": "yellow"},
         ],
         "rows": [
-            ["Provider", f"[bold]{provider}[/bold]", p_source],
-            ["Profile", f"[bold]{profile}[/bold]", pf_source],
+            [h("Provider"), f"[bold]{provider}[/bold]", _source_label(p_source)],
+            [h("Profile"), f"[bold]{profile}[/bold]", _source_label(pf_source)],
         ],
     }
 
@@ -484,34 +517,34 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     # Table 2: Config Files Status
     # ========================================================================
     workspace_status = (
-        "[green]✓ Exists[/green]"
+        h("[green]✓ Exists[/green]")
         if workspace_config_exists
-        else "[grey50]✗ Not found[/grey50]"
+        else h("[grey50]✗ Not found[/grey50]")
     )
     workspace_path_str = str(Path(client.workspace_path) / "provider_config.json")
 
     global_status = (
-        "[green]✓ Exists[/green]"
+        h("[green]✓ Exists[/green]")
         if global_config_exists
-        else "[grey50]✗ Not found[/grey50]"
+        else h("[grey50]✗ Not found[/grey50]")
     )
     global_path_str = str(global_config_path)
 
     status_table_data = {
-        "title": "📁 Configuration Files",
+        "title": h("📁 Configuration Files"),
         "width": TABLE_WIDTH,
         "columns": [
-            {"name": "Location", "style": "cyan"},
-            {"name": "Status", "style": "white"},
-            {"name": "Path", "style": "dim", "overflow": "ellipsis"},
+            {"name": h("Location"), "style": "cyan"},
+            {"name": h("Status"), "style": "white"},
+            {"name": h("Path"), "style": "dim", "overflow": "ellipsis"},
         ],
         "rows": [
             [
-                "Workspace Config",
+                h("Workspace Config"),
                 workspace_status,
                 _truncate_middle(workspace_path_str, 56),
             ],
-            ["Global Config", global_status, _truncate_middle(global_path_str, 56)],
+            [h("Global Config"), global_status, _truncate_middle(global_path_str, 56)],
         ],
     }
 
@@ -525,13 +558,13 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     provider_obj = get_provider(provider)
 
     agent_table_data = {
-        "title": "🤖 Agent Model Assignments",
+        "title": h("🤖 Agent Model Assignments"),
         "width": TABLE_WIDTH,
         "columns": [
-            {"name": "Model", "style": "yellow", "width": 28},
-            {"name": "Source", "style": "dim", "width": 26},
+            {"name": h("Model"), "style": "yellow", "width": 28},
+            {"name": h("Source"), "style": "dim", "width": 26},
             {"name": "#", "style": "white", "width": 4},
-            {"name": "Examples", "style": "cyan", "overflow": "fold"},
+            {"name": h("Examples"), "style": "cyan", "overflow": "fold"},
         ],
         "rows": [],
     }
@@ -575,7 +608,7 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         agent_table_data["rows"].append(
             [
                 _truncate_middle(model_id, 28),
-                _truncate_middle(model_source, 26),
+                _truncate_middle(_source_label(model_source), 26),
                 str(len(sorted_names)),
                 _summarize_names(sorted_names),
             ]
@@ -592,7 +625,10 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
                     output,
                     [
                         hint_block(
-                            f"... and {len(agent_table_data['rows']) - len(agent_preview_rows)} more model groups"
+                            h("... and {count} more model groups").format(
+                                count=len(agent_table_data["rows"])
+                                - len(agent_preview_rows)
+                            )
                         )
                     ],
                 )
@@ -600,13 +636,17 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             _print_table_or_empty(
                 output,
                 agent_table_data,
-                "No agent-specific model resolution data is available for the current configuration.",
+                h(
+                    "No agent-specific model resolution data is available for the current configuration."
+                ),
             )
     else:
         _print_table_or_empty(
             output,
             agent_table_data,
-            "No agent-specific model resolution data is available for the current configuration.",
+            h(
+                "No agent-specific model resolution data is available for the current configuration."
+            ),
         )
 
     workspace_path = Path(client.workspace_path)
@@ -619,21 +659,23 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
     ) = _resolve_agent_composition_summary(workspace_path)
 
     summary_rows = [
-        ["Tier", current_tier.capitalize()],
-        ["Config source", composition_source],
-        ["Configured agents", str(total_count)],
-        ["Installed agents", f"{installed_count}/{total_count}"],
-        ["Distinct model configs", str(len(model_groups))],
+        [h("Tier"), current_tier.capitalize()],
+        [h("Config source"), composition_source],
+        [h("Configured agents"), str(total_count)],
+        [h("Installed agents"), f"{installed_count}/{total_count}"],
+        [h("Distinct model configs"), str(len(model_groups))],
     ]
     if composition_detail:
-        summary_rows.append(["Config detail", composition_detail])
+        summary_rows.append([h("Config detail"), composition_detail])
 
     _render_blocks(
         output,
         [
-            kv_block(summary_rows, title="Agent Configuration Summary"),
+            kv_block(summary_rows, title=h("Agent Configuration Summary")),
             hint_block(
-                "Use /status for the full agent roster and /config model for provider model catalogs."
+                h(
+                    "Use /status for the full agent roster and /config model for provider model catalogs."
+                )
             ),
         ],
     )
@@ -643,7 +685,9 @@ def config_show(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             output,
             [
                 hint_block(
-                    "Use /config provider and /config model for focused follow-up commands."
+                    h(
+                        "Use /config provider and /config model for focused follow-up commands."
+                    )
                 )
             ],
         )
@@ -687,7 +731,9 @@ def config_provider_list(client: "AgentClient", output: OutputAdapter) -> Option
     for provider_obj in all_providers:
         provider_name = provider_obj.name
         configured = (
-            "Configured" if provider_name in available_providers else "Not configured"
+            h("Configured")
+            if provider_name in available_providers
+            else h("Not configured")
         )
         active = "●" if provider_name == current_provider else ""
         rows.append([provider_obj.display_name, configured, active])
@@ -696,25 +742,27 @@ def config_provider_list(client: "AgentClient", output: OutputAdapter) -> Option
 
     blocks: list[OutputBlock] = [
         table_block(
-            title="LLM Providers",
+            title=h("LLM Providers"),
             columns=[
-                {"name": "Provider"},
-                {"name": "Status"},
-                {"name": "Active"},
+                {"name": h("Provider")},
+                {"name": h("Status")},
+                {"name": h("Active")},
             ],
             rows=rows,
         ),
         list_block(
             [
-                "/config provider <name> - Switch to specified provider (runtime)",
-                "/config provider <name> --save - Switch and persist to workspace",
+                h("/config provider <name> - Switch to specified provider (runtime)"),
+                h("/config provider <name> --save - Switch and persist to workspace"),
             ],
-            title="Usage",
+            title=h("Usage"),
         ),
-        hint_block(f"Available providers: {provider_names}"),
+        hint_block(h("Available providers: {names}").format(names=provider_names)),
     ]
     if current_provider:
-        blocks.append(hint_block(f"Current provider: {current_provider}"))
+        blocks.append(
+            hint_block(h("Current provider: {name}").format(name=current_provider))
+        )
     _render_blocks(output, blocks)
 
     return f"Listed providers (current: {current_provider})"
@@ -739,18 +787,22 @@ def config_provider_switch(
 
     if save:
         output.print(
-            f"[yellow]Switching to {new_provider} provider and saving to workspace...[/yellow]"
+            h(
+                "[yellow]Switching to {name} provider and saving to workspace...[/yellow]"
+            ).format(name=new_provider)
         )
     else:
         output.print(
-            f"[yellow]Switching to {new_provider} provider (runtime only)...[/yellow]"
+            h("[yellow]Switching to {name} provider (runtime only)...[/yellow]").format(
+                name=new_provider
+            )
         )
 
     # Switch runtime first
     result = client.switch_provider(new_provider)
 
     if not result["success"]:
-        error_msg = result.get("error", "Unknown error")
+        error_msg = result.get("error", h("Unknown error"))
         hint = result.get("hint", "")
         output.print(f"[red]✗ {error_msg}[/red]")
         if hint:
@@ -759,13 +811,17 @@ def config_provider_switch(
 
     # Success message
     output.print(
-        f"[green]✓ Successfully switched to {result['provider']} provider[/green]"
+        h("[green]✓ Successfully switched to {name} provider[/green]").format(
+            name=result["provider"]
+        )
     )
 
     # If not saving, show hint about persisting
     if not save:
         output.print(
-            f"[dim]💡 Use [white]/config provider {new_provider} --save[/white] to persist this change[/dim]"
+            h(
+                "[dim]💡 Use [white]/config provider {name} --save[/white] to persist this change[/dim]"
+            ).format(name=new_provider)
         )
         return f"Switched to {result['provider']} provider (runtime only)"
 
@@ -779,17 +835,25 @@ def config_provider_switch(
         config.save(workspace_path)
 
         output.print(
-            f"[green]✓ Saved to workspace config: {workspace_path / 'provider_config.json'}[/green]"
+            h("[green]✓ Saved to workspace config: {path}[/green]").format(
+                path=workspace_path / "provider_config.json"
+            )
         )
         output.print(
-            "[dim]This provider will be used for all future sessions in this workspace.[/dim]"
+            h(
+                "[dim]This provider will be used for all future sessions in this workspace.[/dim]"
+            )
         )
 
         return f"Switched to {result['provider']} provider and saved to workspace"
 
     except Exception as e:
-        output.print(f"[red]✗ Failed to save workspace config: {str(e)}[/red]")
-        output.print("[dim]Check workspace directory permissions[/dim]")
+        output.print(
+            h("[red]✗ Failed to save workspace config: {error}[/red]").format(
+                error=str(e)
+            )
+        )
+        output.print(h("[dim]Check workspace directory permissions[/dim]"))
         return None
 
 
@@ -827,7 +891,9 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                 output,
                 [
                     alert_block(
-                        f"Provider '{current_provider}' not registered",
+                        h("Provider '{name}' not registered").format(
+                            name=current_provider
+                        ),
                         level="error",
                     )
                 ],
@@ -847,18 +913,18 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
 
         blocks: list[OutputBlock] = [
             table_block(
-                title="Active Model Selection",
+                title=h("Active Model Selection"),
                 width=table_width,
                 columns=[
-                    {"name": "Setting", "style": "cyan", "width": 16},
-                    {"name": "Value", "style": "white", "width": 36},
-                    {"name": "Source", "style": "yellow", "overflow": "fold"},
+                    {"name": h("Setting"), "style": "cyan", "width": 16},
+                    {"name": h("Value"), "style": "white", "width": 36},
+                    {"name": h("Source"), "style": "yellow", "overflow": "fold"},
                 ],
                 rows=[
-                    ["Provider", current_provider, provider_source],
+                    [h("Provider"), current_provider, provider_source],
                     [
-                        "Current model",
-                        current_model or "Provider default",
+                        h("Current model"),
+                        current_model or h("Provider default"),
                         model_source,
                     ],
                 ],
@@ -870,8 +936,8 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
             if not provider_obj.is_available():
                 blocks.extend(
                     [
-                        alert_block("Ollama server not accessible", level="error"),
-                        hint_block("Make sure Ollama is running: 'ollama serve'"),
+                        alert_block(h("Ollama server not accessible"), level="error"),
+                        hint_block(h("Make sure Ollama is running: 'ollama serve'")),
                     ]
                 )
                 _render_blocks(output, blocks)
@@ -882,16 +948,18 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         from lobster.config.constants import PROVIDER_ICONS
 
         icon = PROVIDER_ICONS.get(current_provider, "🤖")
-        title = f"{icon} Available {provider_display_name} Models"
+        title = h("{icon} Available {name} Models").format(
+            icon=icon, name=provider_display_name
+        )
 
         model_rows = []
 
         if not models:
-            empty_message = (
-                f"No models are currently available for {provider_display_name}."
+            empty_message = h("No models are currently available for {name}.").format(
+                name=provider_display_name
             )
             if current_provider == "ollama":
-                empty_message = (
+                empty_message = h(
                     "No Ollama models are installed for the active provider."
                 )
             blocks.extend(
@@ -902,21 +970,23 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
             )
             if current_provider == "ollama":
                 blocks.append(
-                    hint_block("Install one first, for example: ollama pull llama3.2")
+                    hint_block(
+                        h("Install one first, for example: ollama pull llama3.2")
+                    )
                 )
             blocks.append(
                 table_block(
-                    title="Model Commands",
+                    title=h("Model Commands"),
                     width=table_width,
                     columns=[
                         {
-                            "name": "Command",
+                            "name": h("Command"),
                             "style": "white",
                             "width": 34,
                             "overflow": "fold",
                         },
                         {
-                            "name": "Purpose",
+                            "name": h("Purpose"),
                             "style": "dim",
                             "width": 62,
                             "overflow": "fold",
@@ -925,19 +995,25 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                     rows=[
                         [
                             "/config model <name>",
-                            "Switch the active model for the current session only.",
+                            h("Switch the active model for the current session only."),
                         ],
                         [
                             "/config model <name> --save",
-                            "Switch the active model and persist it to this workspace.",
+                            h(
+                                "Switch the active model and persist it to this workspace."
+                            ),
                         ],
                         [
                             "/config provider",
-                            "List providers and confirm which model catalog is active.",
+                            h(
+                                "List providers and confirm which model catalog is active."
+                            ),
                         ],
                         [
                             "/config provider <name>",
-                            "Change providers first when you need a different model catalog.",
+                            h(
+                                "Change providers first when you need a different model catalog."
+                            ),
                         ],
                     ],
                 )
@@ -948,9 +1024,9 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         for model in models:
             status_parts = []
             if model.name == current_model:
-                status_parts.append("Current")
+                status_parts.append(h("Current"))
             if model.is_default:
-                status_parts.append("Default")
+                status_parts.append(h("Default"))
             model_rows.append(
                 [
                     model.name,
@@ -966,25 +1042,29 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                     title=title,
                     width=table_width,
                     columns=[
-                        {"name": "Model", "style": "yellow", "width": 24},
-                        {"name": "Display Name", "style": "cyan", "width": 26},
-                        {"name": "Status", "style": "green", "width": 18},
-                        {"name": "Description", "style": "white", "overflow": "fold"},
+                        {"name": h("Model"), "style": "yellow", "width": 24},
+                        {"name": h("Display Name"), "style": "cyan", "width": 26},
+                        {"name": h("Status"), "style": "green", "width": 18},
+                        {
+                            "name": h("Description"),
+                            "style": "white",
+                            "overflow": "fold",
+                        },
                     ],
                     rows=model_rows,
                 ),
                 table_block(
-                    title="Model Commands",
+                    title=h("Model Commands"),
                     width=table_width,
                     columns=[
                         {
-                            "name": "Command",
+                            "name": h("Command"),
                             "style": "white",
                             "width": 34,
                             "overflow": "fold",
                         },
                         {
-                            "name": "Purpose",
+                            "name": h("Purpose"),
                             "style": "dim",
                             "width": 62,
                             "overflow": "fold",
@@ -993,19 +1073,25 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
                     rows=[
                         [
                             "/config model <name>",
-                            "Switch the active model for the current session only.",
+                            h("Switch the active model for the current session only."),
                         ],
                         [
                             "/config model <name> --save",
-                            "Switch the active model and persist it to this workspace.",
+                            h(
+                                "Switch the active model and persist it to this workspace."
+                            ),
                         ],
                         [
                             "/config provider",
-                            "List providers and confirm which model catalog is active.",
+                            h(
+                                "List providers and confirm which model catalog is active."
+                            ),
                         ],
                         [
                             "/config provider <name>",
-                            "Change providers first when you need a different model catalog.",
+                            h(
+                                "Change providers first when you need a different model catalog."
+                            ),
                         ],
                     ],
                 ),
@@ -1019,8 +1105,13 @@ def config_model_list(client: "AgentClient", output: OutputAdapter) -> Optional[
         _render_blocks(
             output,
             [
-                alert_block(f"Failed to list models: {str(e)}", level="error"),
-                hint_block("Use /config provider to confirm the active backend first."),
+                alert_block(
+                    h("Failed to list models: {error}").format(error=str(e)),
+                    level="error",
+                ),
+                hint_block(
+                    h("Use /config provider to confirm the active backend first.")
+                ),
             ],
         )
         return None
@@ -1055,14 +1146,20 @@ def config_model_switch(
     try:
         provider_obj = get_provider(current_provider)
         if not provider_obj:
-            output.print(f"[red]✗ Provider '{current_provider}' not registered[/red]")
+            output.print(
+                h("[red]✗ Provider '{name}' not registered[/red]").format(
+                    name=current_provider
+                )
+            )
             return None
 
         # For Ollama, check server availability
         if current_provider == "ollama":
             if not provider_obj.is_available():
-                output.print("[red]✗ Ollama server not accessible[/red]")
-                output.print("[dim]Make sure Ollama is running: 'ollama serve'[/dim]")
+                output.print(h("[red]✗ Ollama server not accessible[/red]"))
+                output.print(
+                    h("[dim]Make sure Ollama is running: 'ollama serve'[/dim]")
+                )
                 return None
 
         # Validate model
@@ -1071,11 +1168,15 @@ def config_model_switch(
             available = ", ".join(model_names[:5])
             if len(model_names) > 5:
                 available += ", ..."
-            hint = f"Available models: {available}"
+            hint = h("Available models: {models}").format(models=available)
             if current_provider == "ollama":
-                hint += f"\nInstall with: ollama pull {model_name}"
+                hint += h("\nInstall with: ollama pull {model}").format(
+                    model=model_name
+                )
             output.print(
-                f"[red]✗ Model '{model_name}' not valid for {current_provider}[/red]"
+                h("[red]✗ Model '{model}' not valid for {name}[/red]").format(
+                    model=model_name, name=current_provider
+                )
             )
             output.print(f"[dim]{hint}[/dim]")
             return None
@@ -1087,36 +1188,52 @@ def config_model_switch(
             config.set_model_for_provider(current_provider, model_name)
             config.save(workspace_path)
         except Exception as e:
-            output.print(f"[red]✗ Failed to save model config: {e}[/red]")
+            output.print(
+                h("[red]✗ Failed to save model config: {error}[/red]").format(error=e)
+            )
             return None
 
         # Update client's model override so the live TUI footer reflects the change
         if hasattr(client, "model_override"):
             client.model_override = model_name
 
-        output.print(f"[green]✓ Switched to model: {model_name}[/green]")
-        output.print(f"[dim]Provider: {current_provider}[/dim]")
+        output.print(
+            h("[green]✓ Switched to model: {model}[/green]").format(model=model_name)
+        )
+        output.print(h("[dim]Provider: {name}[/dim]").format(name=current_provider))
 
         if not save:
             output.print(
-                f"[dim]Saved to workspace config ({current_provider}_model)[/dim]"
+                h("[dim]Saved to workspace config ({name}_model)[/dim]").format(
+                    name=current_provider
+                )
             )
             return f"Switched to model {model_name}"
 
         # --save flag: already persisted above, just confirm
         output.print(
-            f"[green]✓ Saved to workspace config ({current_provider}_model)[/green]"
+            h("[green]✓ Saved to workspace config ({name}_model)[/green]").format(
+                name=current_provider
+            )
         )
-        output.print(f"[dim]Config file: {workspace_path}/provider_config.json[/dim]")
         output.print(
-            f"\n[dim]This model will be used for {current_provider} in this workspace[/dim]"
+            h("[dim]Config file: {path}/provider_config.json[/dim]").format(
+                path=workspace_path
+            )
+        )
+        output.print(
+            h(
+                "\n[dim]This model will be used for {name} in this workspace[/dim]"
+            ).format(name=current_provider)
         )
 
         return f"Switched to model {model_name} and saved to workspace"
 
     except Exception as e:
-        output.print(f"[red]✗ Failed to switch model: {str(e)}[/red]")
-        output.print("[dim]Check provider configuration[/dim]")
+        output.print(
+            h("[red]✗ Failed to switch model: {error}[/red]").format(error=str(e))
+        )
+        output.print(h("[dim]Check provider configuration[/dim]"))
         return None
 
 
@@ -1196,7 +1313,7 @@ def config_test_impl(output_json: bool = False):
         console.print()
         console.print(
             Panel.fit(
-                f"[bold {LobsterTheme.PRIMARY_ORANGE}]🔍 Configuration Test[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+                f"[bold {LobsterTheme.PRIMARY_ORANGE}]{h('🔍 Configuration Test')}[/bold {LobsterTheme.PRIMARY_ORANGE}]",
                 border_style=LobsterTheme.PRIMARY_ORANGE,
                 padding=(0, 2),
             )
@@ -1204,14 +1321,20 @@ def config_test_impl(output_json: bool = False):
         console.print()
         if credential_source == "environment variables":
             console.print(
-                "[yellow]No .env or global credentials found — testing environment variables[/yellow]"
+                h(
+                    "[yellow]No .env or global credentials found — testing environment variables[/yellow]"
+                )
             )
         else:
-            console.print(f"[green]✅ Credentials source:[/green] {credential_source}")
+            console.print(
+                h("[green]✅ Credentials source:[/green] {source}").format(
+                    source=credential_source
+                )
+            )
         console.print()
 
     # Test LLM Provider
-    log("Testing LLM Provider...", "bold")
+    log(h("Testing LLM Provider..."), "bold")
     try:
         from lobster.config.llm_factory import LLMFactory
 
@@ -1222,16 +1345,19 @@ def config_test_impl(output_json: bool = False):
             test_results["checks"]["llm_provider"][
                 "hint"
             ] = "Set ANTHROPIC_API_KEY, AWS_BEDROCK_ACCESS_KEY, or run Ollama"
-            log("❌ No LLM provider configured", "red")
+            log(h("❌ No LLM provider configured"), "red")
         else:
             # provider is a string, not an enum
             test_results["checks"]["llm_provider"]["provider"] = provider
-            log(f"  Detected provider: {provider}", "yellow")
+            log(h("  Detected provider: {name}").format(name=provider), "yellow")
 
             # Provider-specific pre-checks for Ollama
             if provider == "ollama":
                 ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-                log(f"  Checking Ollama server at {ollama_url}...", "yellow")
+                log(
+                    h("  Checking Ollama server at {url}...").format(url=ollama_url),
+                    "yellow",
+                )
                 try:
                     import requests
 
@@ -1248,10 +1374,15 @@ def config_test_impl(output_json: bool = False):
                         test_results["checks"]["llm_provider"][
                             "hint"
                         ] = "Run: ollama pull llama3.2:3b"
-                        log("❌ Ollama: No models installed", "red")
+                        log(h("❌ Ollama: No models installed"), "red")
                         provider = None
                     else:
-                        log(f"  Ollama server: Running ({len(models)} models)", "green")
+                        log(
+                            h("  Ollama server: Running ({count} models)").format(
+                                count=len(models)
+                            ),
+                            "green",
+                        )
                 except requests.exceptions.ConnectionError:
                     test_results["checks"]["llm_provider"][
                         "message"
@@ -1259,13 +1390,13 @@ def config_test_impl(output_json: bool = False):
                     test_results["checks"]["llm_provider"][
                         "hint"
                     ] = "Start Ollama: ollama serve"
-                    log("❌ Ollama server not accessible", "red")
+                    log(h("❌ Ollama server not accessible"), "red")
                     provider = None
                 except Exception as e:
                     test_results["checks"]["llm_provider"][
                         "message"
                     ] = f"Ollama error: {str(e)[:60]}"
-                    log(f"❌ Ollama check failed: {e}", "red")
+                    log(h("❌ Ollama check failed: {error}").format(error=e), "red")
                     provider = None
 
             # Test LLM connectivity
@@ -1287,12 +1418,12 @@ def config_test_impl(output_json: bool = False):
                     test_llm = LLMFactory.create_llm(
                         test_config, "config_test", workspace_path=workspace_path
                     )
-                    log("  Testing API connectivity...", "yellow")
+                    log(h("  Testing API connectivity..."), "yellow")
                     test_llm.invoke("Reply with just 'ok'")
 
                     test_results["checks"]["llm_provider"]["status"] = "pass"
                     test_results["checks"]["llm_provider"]["message"] = "Connected"
-                    log(f"✅ {provider} API: Connected", "green")
+                    log(h("✅ {name} API: Connected").format(name=provider), "green")
                 except Exception as e:
                     error_msg = str(e)
                     if (
@@ -1312,41 +1443,48 @@ def config_test_impl(output_json: bool = False):
 
                     test_results["checks"]["llm_provider"]["message"] = error_msg[:100]
                     test_results["checks"]["llm_provider"]["hint"] = hint
-                    log(f"❌ {provider} API: {error_msg[:60]}", "red")
+                    log(
+                        h("❌ {name} API: {error}").format(
+                            name=provider, error=error_msg[:60]
+                        ),
+                        "red",
+                    )
     except Exception as e:
         test_results["checks"]["llm_provider"]["message"] = str(e)[:100]
-        log(f"❌ LLM Provider test failed: {e}", "red")
+        log(h("❌ LLM Provider test failed: {error}").format(error=e), "red")
 
     if not output_json:
         console.print()
 
     # Test NCBI API
-    log("Testing NCBI API...", "bold")
+    log(h("Testing NCBI API..."), "bold")
     ncbi_key = os.environ.get("NCBI_API_KEY")
     test_results["checks"]["ncbi_api"]["has_key"] = bool(ncbi_key)
 
     if ncbi_key or os.environ.get("NCBI_EMAIL"):
-        log("  Testing NCBI E-utilities...", "yellow")
+        log(h("  Testing NCBI E-utilities..."), "yellow")
         status, message = _check_ncbi_eutils(ncbi_key)
         test_results["checks"]["ncbi_api"]["status"] = status
         test_results["checks"]["ncbi_api"]["message"] = message
         if status == "pass":
             log(
-                f"✅ NCBI API: Connected {'(with API key)' if ncbi_key else ''}",
+                h("✅ NCBI API: Connected {suffix}").format(
+                    suffix=h("(with API key)") if ncbi_key else ""
+                ),
                 "green",
             )
         else:
-            log(f"❌ NCBI API: {message}", "red")
+            log(h("❌ NCBI API: {message}").format(message=message), "red")
     else:
         test_results["checks"]["ncbi_api"]["status"] = "skip"
         test_results["checks"]["ncbi_api"]["message"] = "Not configured (optional)"
-        log("⊘ NCBI API: Not configured (optional)", "dim")
+        log(h("⊘ NCBI API: Not configured (optional)"), "dim")
 
     if not output_json:
         console.print()
 
     # Test Workspace
-    log("Testing Workspace...", "bold")
+    log(h("Testing Workspace..."), "bold")
     try:
         from lobster.core.workspace import resolve_workspace
 
@@ -1359,17 +1497,17 @@ def config_test_impl(output_json: bool = False):
             test_file.unlink()
             test_results["checks"]["workspace"]["status"] = "pass"
             test_results["checks"]["workspace"]["message"] = "Writable"
-            log("✅ Workspace: Writable", "green")
-            log(f"  Path: {workspace_path}", "dim")
+            log(h("✅ Workspace: Writable"), "green")
+            log(h("  Path: {path}").format(path=workspace_path), "dim")
         except PermissionError:
             test_results["checks"]["workspace"]["message"] = "Permission denied"
-            log("❌ Workspace: Permission denied", "red")
+            log(h("❌ Workspace: Permission denied"), "red")
         except Exception as e:
             test_results["checks"]["workspace"]["message"] = str(e)[:60]
-            log(f"❌ Workspace: {e}", "red")
+            log(h("❌ Workspace: {error}").format(error=e), "red")
     except Exception as e:
         test_results["checks"]["workspace"]["message"] = str(e)[:60]
-        log(f"❌ Workspace setup failed: {e}", "red")
+        log(h("❌ Workspace setup failed: {error}").format(error=e), "red")
 
     # Determine overall validity
     test_results["valid"] = test_results["checks"]["llm_provider"]["status"] == "pass"
@@ -1381,10 +1519,10 @@ def config_test_impl(output_json: bool = False):
         console.print()
 
         # Summary table
-        table = Table(title="Configuration Test Summary", box=box.ROUNDED)
-        table.add_column("Service", style="cyan", no_wrap=True)
-        table.add_column("Status", style="bold", no_wrap=True)
-        table.add_column("Details", style="dim")
+        table = Table(title=h("Configuration Test Summary"), box=box.ROUNDED)
+        table.add_column(h("Service"), style="cyan", no_wrap=True)
+        table.add_column(h("Status"), style="bold", no_wrap=True)
+        table.add_column(h("Details"), style="dim")
 
         for check_name, check_data in test_results["checks"].items():
             status = check_data["status"]
@@ -1407,9 +1545,11 @@ def config_test_impl(output_json: bool = False):
         if test_results["valid"]:
             console.print(
                 Panel.fit(
-                    "[bold green]✅ Configuration Valid[/bold green]\n\n"
-                    "All required services are accessible.\n"
-                    f"You can now run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+                    h("[bold green]✅ Configuration Valid[/bold green]\n\n")
+                    + h("All required services are accessible.\n")
+                    + h(
+                        "You can now run: [bold {color}]lobster chat[/bold {color}]"
+                    ).format(color=LobsterTheme.PRIMARY_ORANGE),
                     border_style="green",
                     padding=(1, 2),
                 )
@@ -1417,9 +1557,11 @@ def config_test_impl(output_json: bool = False):
         else:
             console.print(
                 Panel.fit(
-                    "[bold red]❌ Configuration Issues Detected[/bold red]\n\n"
-                    "Please check your API keys.\n"
-                    f"Run: [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init[/bold {LobsterTheme.PRIMARY_ORANGE}] to reconfigure",
+                    h("[bold red]❌ Configuration Issues Detected[/bold red]\n\n")
+                    + h("Please check your API keys.\n")
+                    + h(
+                        "Run: [bold {color}]lobster init[/bold {color}] to reconfigure"
+                    ).format(color=LobsterTheme.PRIMARY_ORANGE),
                     border_style="red",
                     padding=(1, 2),
                 )
@@ -1439,20 +1581,20 @@ def list_models_impl():
 
     console = get_console_manager().console
 
-    console.print("\n[cyan]Available Models[/cyan]")
+    console.print(h("\n[cyan]Available Models[/cyan]"))
 
     table = Table(
         box=box.ROUNDED,
         border_style="cyan",
-        title="Available Models (by provider)",
+        title=h("Available Models (by provider)"),
         title_style="bold cyan",
     )
 
-    table.add_column("Provider", style="bold white")
-    table.add_column("Model ID", style="yellow")
-    table.add_column("Display Name", style="white")
-    table.add_column("Input $/M", style="cyan", justify="right")
-    table.add_column("Output $/M", style="cyan", justify="right")
+    table.add_column(h("Provider"), style="bold white")
+    table.add_column(h("Model ID"), style="yellow")
+    table.add_column(h("Display Name"), style="white")
+    table.add_column(h("Input $/M"), style="cyan", justify="right")
+    table.add_column(h("Output $/M"), style="cyan", justify="right")
 
     all_models = ProviderRegistry.get_all_models_with_pricing()
     cloud_provider = ProviderRegistry.get("ollama-cloud")
@@ -1472,12 +1614,12 @@ def list_models_impl():
             (
                 f"${info['input_per_million']:.2f}"
                 if info.get("input_per_million") is not None
-                else "unknown"
+                else h("unknown")
             ),
             (
                 f"${info['output_per_million']:.2f}"
                 if info.get("output_per_million") is not None
-                else "unknown"
+                else h("unknown")
             ),
         )
 
@@ -1494,13 +1636,13 @@ def list_profiles_impl():
     profiles = ["development", "production", "performance", "max"]
     current = get_current_profile()
 
-    console.print("\n[cyan]Available Profiles[/cyan]")
+    console.print(h("\n[cyan]Available Profiles[/cyan]"))
     for name in profiles:
-        marker = " [green](active)[/green]" if name == current else ""
+        marker = f" [green]{h('(active)')}[/green]" if name == current else ""
         console.print(f"   {name}{marker}")
     console.print()
     console.print(
-        "[dim]Switch profile: lobster config provider --profile <name> --save[/dim]"
+        h("[dim]Switch profile: lobster config provider --profile <name> --save[/dim]")
     )
 
 
@@ -1547,101 +1689,147 @@ def show_config_impl(workspace=None, show_all: bool = False):
     console.print()
 
     # Section 1: License & Workspace
-    console.print("[bold cyan]📍 Environment[/bold cyan]")
-    console.print(f"   Workspace: [yellow]{workspace_path}[/yellow]")
+    console.print(h("[bold cyan]📍 Environment[/bold cyan]"))
     console.print(
-        f"   License Tier: [green]{get_tier_display_name(current_tier)}[/green]"
+        h("   Workspace: [yellow]{path}[/yellow]").format(path=workspace_path)
+    )
+    console.print(
+        h("   License Tier: [green]{tier}[/green]").format(
+            tier=get_tier_display_name(current_tier)
+        )
     )
     console.print()
 
     # Section 2: Provider Configuration
-    console.print("[bold cyan]🔌 Provider Configuration[/bold cyan]")
+    console.print(h("[bold cyan]🔌 Provider Configuration[/bold cyan]"))
 
     try:
         provider_name, provider_source = resolver.resolve_provider()
         provider_obj = get_provider(provider_name)
 
         console.print(
-            f"   Active Provider: [green]{provider_obj.display_name if provider_obj else provider_name}[/green]"
+            h("   Active Provider: [green]{name}[/green]").format(
+                name=provider_obj.display_name if provider_obj else provider_name
+            )
         )
-        console.print(f"   Source: [dim]{provider_source}[/dim]")
+        console.print(
+            h("   Source: [dim]{source}[/dim]").format(source=provider_source)
+        )
 
         if provider_obj:
             # Show provider-specific information
             default_model = provider_obj.get_default_model()
-            console.print(f"   Default Model: [yellow]{default_model}[/yellow]")
+            console.print(
+                h("   Default Model: [yellow]{model}[/yellow]").format(
+                    model=default_model
+                )
+            )
 
             # Show available models for this provider
             models = provider_obj.list_models()
             if models:
-                console.print(f"   Available Models: [dim]{len(models)} model(s)[/dim]")
+                console.print(
+                    h("   Available Models: [dim]{count} model(s)[/dim]").format(
+                        count=len(models)
+                    )
+                )
 
     except ConfigurationError as e:
-        console.print("   [red]✗ No provider configured[/red]")
-        console.print(f"   [dim]Error: {str(e)}[/dim]")
+        console.print(h("   [red]✗ No provider configured[/red]"))
+        console.print(h("   [dim]Error: {error}[/dim]").format(error=str(e)))
         console.print(
-            "   [yellow]💡 Run 'lobster init' to configure a provider[/yellow]"
+            h("   [yellow]💡 Run 'lobster init' to configure a provider[/yellow]")
         )
 
     console.print()
 
     # Section 3: Profile Configuration
-    console.print("[bold cyan]⚙️  Profile Configuration[/bold cyan]")
+    console.print(h("[bold cyan]⚙️  Profile Configuration[/bold cyan]"))
 
     try:
         profile, profile_source = resolver.resolve_profile()
-        console.print(f"   Active Profile: [green]{profile}[/green]")
-        console.print(f"   Source: [dim]{profile_source}[/dim]")
+        console.print(
+            h("   Active Profile: [green]{name}[/green]").format(name=profile)
+        )
+        console.print(h("   Source: [dim]{source}[/dim]").format(source=profile_source))
     except Exception:
         console.print(
-            "   Active Profile: [yellow]production[/yellow] [dim](default)[/dim]"
+            h("   Active Profile: [yellow]production[/yellow] [dim](default)[/dim]")
         )
 
     console.print()
 
     # Section 4: Configuration Files
-    console.print("[bold cyan]📁 Configuration Files[/bold cyan]")
+    console.print(h("[bold cyan]📁 Configuration Files[/bold cyan]"))
 
     # Workspace config
     workspace_config_path = workspace_path / "provider_config.json"
     if workspace_config_path.exists():
-        console.print(f"   [green]✓[/green] Workspace: {workspace_config_path}")
+        console.print(
+            h("   [green]✓[/green] Workspace: {path}").format(
+                path=workspace_config_path
+            )
+        )
         try:
             ws_config = WorkspaceProviderConfig.load(workspace_path)
             if ws_config.global_provider:
                 console.print(
-                    f"      Provider: [yellow]{ws_config.global_provider}[/yellow]"
+                    h("      Provider: [yellow]{name}[/yellow]").format(
+                        name=ws_config.global_provider
+                    )
                 )
             if ws_config.profile:
-                console.print(f"      Profile: [yellow]{ws_config.profile}[/yellow]")
+                console.print(
+                    h("      Profile: [yellow]{name}[/yellow]").format(
+                        name=ws_config.profile
+                    )
+                )
         except Exception as e:
-            console.print(f"      [dim]Could not read: {str(e)}[/dim]")
+            console.print(
+                h("      [dim]Could not read: {error}[/dim]").format(error=str(e))
+            )
     else:
-        console.print(f"   [dim]○ Workspace: {workspace_config_path} (not found)[/dim]")
+        console.print(
+            h("   [dim]○ Workspace: {path} (not found)[/dim]").format(
+                path=workspace_config_path
+            )
+        )
 
     # Global config
     global_config_path = GlobalProviderConfig.get_config_path()
     if global_config_path.exists():
-        console.print(f"   [green]✓[/green] Global: {global_config_path}")
+        console.print(
+            h("   [green]✓[/green] Global: {path}").format(path=global_config_path)
+        )
         try:
             global_config = GlobalProviderConfig.load()
             if global_config.default_provider:
                 console.print(
-                    f"      Provider: [yellow]{global_config.default_provider}[/yellow]"
+                    h("      Provider: [yellow]{name}[/yellow]").format(
+                        name=global_config.default_provider
+                    )
                 )
             if global_config.default_profile:
                 console.print(
-                    f"      Profile: [yellow]{global_config.default_profile}[/yellow]"
+                    h("      Profile: [yellow]{name}[/yellow]").format(
+                        name=global_config.default_profile
+                    )
                 )
         except Exception as e:
-            console.print(f"      [dim]Could not read: {str(e)}[/dim]")
+            console.print(
+                h("      [dim]Could not read: {error}[/dim]").format(error=str(e))
+            )
     else:
-        console.print(f"   [dim]○ Global: {global_config_path} (not found)[/dim]")
+        console.print(
+            h("   [dim]○ Global: {path} (not found)[/dim]").format(
+                path=global_config_path
+            )
+        )
 
     console.print()
 
     # Section 5: Per-Agent Configuration
-    console.print("[bold cyan]🤖 Agent Configuration[/bold cyan]")
+    console.print(h("[bold cyan]🤖 Agent Configuration[/bold cyan]"))
     console.print()
 
     # Get agent configurations from settings (for temperature/thinking)
@@ -1701,10 +1889,14 @@ def show_config_impl(workspace=None, show_all: bool = False):
                 f"   [bold white]{agent_cfg.display_name}[/bold white] ([dim]{agent_name}[/dim])"
             )
             console.print(
-                f"      Model: [yellow]{model_id}[/yellow] [dim](from {model_source})[/dim]"
+                h(
+                    "      Model: [yellow]{model}[/yellow] [dim](from {source})[/dim]"
+                ).format(model=model_id, source=model_source)
             )
             console.print(
-                f"      Temperature: [cyan]{model_params.get('temperature', 1.0)}[/cyan]"
+                h("      Temperature: [cyan]{value}[/cyan]").format(
+                    value=model_params.get("temperature", 1.0)
+                )
             )
 
             # Show thinking configuration if present
@@ -1713,14 +1905,18 @@ def show_config_impl(workspace=None, show_all: bool = False):
                 thinking = additional_fields["thinking"]
                 budget = thinking.get("budget_tokens", "unknown")
                 console.print(
-                    f"      [dim]🧠 Thinking: Enabled (Budget: {budget} tokens)[/dim]"
+                    h(
+                        "      [dim]🧠 Thinking: Enabled (Budget: {budget} tokens)[/dim]"
+                    ).format(budget=budget)
                 )
 
             console.print()
 
         except Exception as e:
             console.print(
-                f"   [bold white]{agent_cfg.display_name}[/bold white]: [red]Error - {str(e)}[/red]"
+                h(
+                    "   [bold white]{name}[/bold white]: [red]Error - {error}[/red]"
+                ).format(name=agent_cfg.display_name, error=str(e))
             )
             console.print()
 
@@ -1728,11 +1924,17 @@ def show_config_impl(workspace=None, show_all: bool = False):
     if filtered_count > 0 and not show_all:
         console.print(f"[dim]{'─' * 60}[/dim]")
         console.print(
-            f"[cyan]📊 Summary:[/cyan] Showing {displayed_count} agents available for [green]{current_tier}[/green] tier"
+            h(
+                "[cyan]📊 Summary:[/cyan] Showing {shown} agents available for [green]{tier}[/green] tier"
+            ).format(shown=displayed_count, tier=current_tier)
         )
-        console.print(f"   [dim]({filtered_count} premium agents hidden)[/dim]")
         console.print(
-            "   [yellow]💡 Use '--show-all' to see all configured agents[/yellow]"
+            h("   [dim]({count} premium agents hidden)[/dim]").format(
+                count=filtered_count
+            )
+        )
+        console.print(
+            h("   [yellow]💡 Use '--show-all' to see all configured agents[/yellow]")
         )
 
     console.print()
@@ -1760,7 +1962,7 @@ def test_impl(profile=None, agent=None):
         console.print()
         console.print(
             Panel.fit(
-                f"[bold {LobsterTheme.PRIMARY_ORANGE}]🔍 Testing LLM Provider[/bold {LobsterTheme.PRIMARY_ORANGE}]",
+                f"[bold {LobsterTheme.PRIMARY_ORANGE}]{h('🔍 Testing LLM Provider')}[/bold {LobsterTheme.PRIMARY_ORANGE}]",
                 border_style=LobsterTheme.PRIMARY_ORANGE,
                 padding=(0, 2),
             )
@@ -1795,11 +1997,13 @@ def test_impl(profile=None, agent=None):
                 raise typer.Exit(1)
 
             # provider is a string, not an enum
-            console.print(f"[cyan]Detected provider:[/cyan] {provider}")
+            console.print(
+                h("[cyan]Detected provider:[/cyan] {name}").format(name=provider)
+            )
             console.print()
 
             # Test provider connectivity
-            console.print("[yellow]Testing API connectivity...[/yellow]")
+            console.print(h("[yellow]Testing API connectivity...[/yellow]"))
 
             try:
                 # Get provider object and create model directly (bypass ConfigResolver)
@@ -1823,11 +2027,15 @@ def test_impl(profile=None, agent=None):
                 console.print()
                 console.print(
                     Panel.fit(
-                        f"[bold green]✅ Provider Test Successful[/bold green]\n\n"
-                        f"Provider: [cyan]{provider}[/cyan]\n"
-                        f"Status: [green]Connected[/green]\n\n"
-                        f"Your {provider} provider is working correctly.\n"
-                        f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!",
+                        h("[bold green]✅ Provider Test Successful[/bold green]\n\n")
+                        + h("Provider: [cyan]{name}[/cyan]\n").format(name=provider)
+                        + h("Status: [green]Connected[/green]\n\n")
+                        + h("Your {name} provider is working correctly.\n").format(
+                            name=provider
+                        )
+                        + h(
+                            "Run [bold {color}]lobster chat[/bold {color}] to start analyzing!"
+                        ).format(color=LobsterTheme.PRIMARY_ORANGE),
                         border_style="green",
                         padding=(1, 2),
                     )
@@ -1839,11 +2047,15 @@ def test_impl(profile=None, agent=None):
                 console.print()
                 console.print(
                     Panel.fit(
-                        f"[bold red]❌ Provider Test Failed[/bold red]\n\n"
-                        f"Provider: [cyan]{provider}[/cyan]\n"
-                        f"Error: [red]{error_msg[:100]}[/red]\n\n"
-                        f"[yellow]💡 Check your API keys in .env file[/yellow]\n"
-                        f"Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster init --force[/bold {LobsterTheme.PRIMARY_ORANGE}] to reconfigure",
+                        h("[bold red]❌ Provider Test Failed[/bold red]\n\n")
+                        + h("Provider: [cyan]{name}[/cyan]\n").format(name=provider)
+                        + h("Error: [red]{error}[/red]\n\n").format(
+                            error=error_msg[:100]
+                        )
+                        + h("[yellow]💡 Check your API keys in .env file[/yellow]\n")
+                        + h(
+                            "Run [bold {color}]lobster init --force[/bold {color}] to reconfigure"
+                        ).format(color=LobsterTheme.PRIMARY_ORANGE),
                         border_style="red",
                         padding=(1, 2),
                     )
@@ -1851,7 +2063,7 @@ def test_impl(profile=None, agent=None):
                 raise typer.Exit(1)
 
         except Exception as e:
-            console.print(f"[red]❌ Error: {str(e)}[/red]")
+            console.print(h("[red]❌ Error: {error}[/red]").format(error=str(e)))
             raise typer.Exit(1)
 
     # Profile-based testing: test agent LLM params resolution
@@ -1865,14 +2077,26 @@ def test_impl(profile=None, agent=None):
         if agent:
             if agent in agents:
                 params = get_agent_params(agent)
-                console.print(f"\n[green]Agent '{agent}' configuration valid[/green]")
-                console.print(f"   Temperature: {params.get('temperature', 1.0)}")
+                console.print(
+                    h("\n[green]Agent '{name}' configuration valid[/green]").format(
+                        name=agent
+                    )
+                )
+                console.print(
+                    h("   Temperature: {value}").format(
+                        value=params.get("temperature", 1.0)
+                    )
+                )
             else:
-                console.print(f"\n[red]Agent '{agent}' not installed[/red]")
+                console.print(
+                    h("\n[red]Agent '{name}' not installed[/red]").format(name=agent)
+                )
                 return False
         else:
             console.print(
-                f"\n[yellow]Testing {len(agents)} installed agents...[/yellow]"
+                h("\n[yellow]Testing {count} installed agents...[/yellow]").format(
+                    count=len(agents)
+                )
             )
             all_valid = True
 
@@ -1880,25 +2104,35 @@ def test_impl(profile=None, agent=None):
                 try:
                     params = get_agent_params(agent_name)
                     console.print(
-                        f"   [green]{agent_name}: temp={params.get('temperature', 1.0)}[/green]"
+                        h("   [green]{name}: temp={value}[/green]").format(
+                            name=agent_name, value=params.get("temperature", 1.0)
+                        )
                     )
                 except Exception as e:
-                    console.print(f"   [red]{agent_name}: {str(e)}[/red]")
+                    console.print(
+                        h("   [red]{name}: {error}[/red]").format(
+                            name=agent_name, error=str(e)
+                        )
+                    )
                     all_valid = False
 
             if all_valid:
                 console.print(
-                    f"\n[green]All {len(agents)} agents configured correctly[/green]"
+                    h(
+                        "\n[green]All {count} agents configured correctly[/green]"
+                    ).format(count=len(agents))
                 )
             else:
                 console.print(
-                    "\n[yellow]Some agents have configuration issues[/yellow]"
+                    h("\n[yellow]Some agents have configuration issues[/yellow]")
                 )
 
         return True
 
     except Exception as e:
-        console.print(f"\n[red]Error testing configuration: {str(e)}[/red]")
+        console.print(
+            h("\n[red]Error testing configuration: {error}[/red]").format(error=str(e))
+        )
         return False
 
 
@@ -1908,9 +2142,11 @@ def create_custom_impl():
 
     console = get_console_manager().console
     console.print(
-        "\n[yellow]This command has been replaced by 'lobster config models'.[/yellow]"
+        h(
+            "\n[yellow]This command has been replaced by 'lobster config models'.[/yellow]"
+        )
     )
-    console.print("[dim]Run: lobster config models[/dim]")
+    console.print(h("[dim]Run: lobster config models[/dim]"))
 
 
 def generate_env_impl():
@@ -1985,8 +2221,10 @@ LOBSTER_CACHE_DIR=data/cache
     with open(".env.template", "w") as f:
         f.write(template)
 
-    console.print("[green]✅ Environment template saved to: .env.template[/green]")
-    console.print("[yellow]Copy this file to .env and configure your API keys[/yellow]")
+    console.print(h("[green]✅ Environment template saved to: .env.template[/green]"))
+    console.print(
+        h("[yellow]Copy this file to .env and configure your API keys[/yellow]")
+    )
 
 
 def config_models_impl(workspace=None):
@@ -2028,7 +2266,9 @@ def config_models_impl(workspace=None):
     available_models = provider_obj.list_models()
     if not available_models:
         console.print(
-            f"[yellow]No models available for provider '{provider_name}'.[/yellow]"
+            h("[yellow]No models available for provider '{name}'.[/yellow]").format(
+                name=provider_name
+            )
         )
         return
 
@@ -2044,22 +2284,22 @@ def config_models_impl(workspace=None):
         if current_override:
             label += f"  [{current_override}]"
         else:
-            label += "  (default)"
+            label += f"  {h('(default)')}"
         agent_choices.append((agent_name, label))
 
     if not agent_choices:
-        console.print("[yellow]No agents installed.[/yellow]")
+        console.print(h("[yellow]No agents installed.[/yellow]"))
         return
 
     # Step 1: Select agent
     selected_agent = radiolist_dialog(
-        title="Lobster AI — Per-Agent Model Configuration",
-        text="Select an agent to configure (arrow keys + Enter):",
+        title=h("Lobster AI — Per-Agent Model Configuration"),
+        text=h("Select an agent to configure (arrow keys + Enter):"),
         values=agent_choices,
     ).run()
 
     if selected_agent is None:
-        console.print("[dim]Cancelled.[/dim]")
+        console.print(h("[dim]Cancelled.[/dim]"))
         return
 
     # Step 2: Select model
@@ -2068,25 +2308,30 @@ def config_models_impl(workspace=None):
 
     # Add "use default" option first
     default_model = provider_obj.get_default_model()
-    default_label = f"(use provider default: {default_model})"
+    default_label = h("(use provider default: {model})").format(model=default_model)
     model_choices.append(("__default__", default_label))
 
     for model in available_models:
         cost_info = ""
         if model.input_cost_per_million and model.output_cost_per_million:
-            cost_info = f"  (${model.input_cost_per_million:.1f}/${model.output_cost_per_million:.1f} per M)"
+            cost_info = h("  (${input}/${output} per M)").format(
+                input=f"{model.input_cost_per_million:.1f}",
+                output=f"{model.output_cost_per_million:.1f}",
+            )
         marker = " *" if model.name == current_override else ""
         label = f"{model.display_name}{cost_info}{marker}"
         model_choices.append((model.name, label))
 
     selected_model = radiolist_dialog(
-        title=f"Select model for {selected_agent}",
-        text=f"Current: {current_override or '(default)'}\nProvider: {provider_name}",
+        title=h("Select model for {name}").format(name=selected_agent),
+        text=h("Current: {current}\nProvider: {provider}").format(
+            current=current_override or h("(default)"), provider=provider_name
+        ),
         values=model_choices,
     ).run()
 
     if selected_model is None:
-        console.print("[dim]Cancelled.[/dim]")
+        console.print(h("[dim]Cancelled.[/dim]"))
         return
 
     # Step 3: Apply and save
@@ -2096,15 +2341,27 @@ def config_models_impl(workspace=None):
             del ws_config.per_agent_models[selected_agent]
             ws_config.save(workspace_path)
             console.print(
-                f"[green]Removed model override for {selected_agent} (now uses default: {default_model})[/green]"
+                h(
+                    "[green]Removed model override for {name} (now uses default: {model})[/green]"
+                ).format(name=selected_agent, model=default_model)
             )
         else:
             console.print(
-                f"[dim]{selected_agent} already uses the default model.[/dim]"
+                h("[dim]{name} already uses the default model.[/dim]").format(
+                    name=selected_agent
+                )
             )
     else:
         ws_config.per_agent_models[selected_agent] = selected_model
         ws_config.save(workspace_path)
-        console.print(f"[green]Set {selected_agent} → {selected_model}[/green]")
+        console.print(
+            h("[green]Set {name} → {model}[/green]").format(
+                name=selected_agent, model=selected_model
+            )
+        )
 
-    console.print(f"[dim]Saved to: {workspace_path / 'provider_config.json'}[/dim]")
+    console.print(
+        h("[dim]Saved to: {path}[/dim]").format(
+            path=workspace_path / "provider_config.json"
+        )
+    )

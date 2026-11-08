@@ -25,38 +25,42 @@ type commandDef struct {
 
 // topLevelCommands are the commands shown when the user types "/".
 // Order: most-used first for discovery, then alphabetical.
-var topLevelCommands = []commandDef{
-	{"/data", i18n.T("tui.complete.data")},
-	{"/help", i18n.T("tui.complete.help")},
-	{"/input-features", i18n.P("Show input capabilities")},
-	{"/read", i18n.T("tui.complete.read")},
-	{"/workspace", i18n.P("Workspace info & management")},
-	{"/plots", i18n.T("tui.complete.plots")},
-	{"/tokens", i18n.P("Token usage & costs")},
-	{"/session", i18n.P("Current session status")},
-	{"/status", i18n.P("Subscription tier & agents")},
-	{"/status-panel", i18n.P("System status dashboard")},
-	{"/workspace-info", i18n.P("Workspace overview dashboard")},
-	{"/analysis-dash", i18n.P("Analysis dashboard")},
-	{"/progress", i18n.P("Progress monitor")},
-	{"/pipeline", i18n.P("Pipeline operations")},
-	{"/config", i18n.P("Configuration settings")},
-	{"/queue", i18n.P("Download queue management")},
-	{"/metadata", i18n.P("Metadata overview")},
-	{"/modalities", i18n.P("Detailed modality info")},
-	{"/describe", i18n.P("Describe a specific modality")},
-	{"/export", i18n.P("Export to ZIP")},
-	{"/save", i18n.P("Save state to workspace")},
-	{"/files", i18n.T("tui.complete.files")},
-	{"/tree", i18n.P("Directory tree view")},
-	{"/plot", i18n.P("Open plot file")},
-	{"/open", i18n.P("Open file in system app")},
-	{"/restore", i18n.P("Restore previous datasets")},
-	{"/vector-search", i18n.P("Search ontology collections")},
-	{"/reset", i18n.P("Reset conversation")},
-	{"/clear", i18n.P("Clear screen")},
-	{"/dashboard", i18n.P("Open classic dashboard")},
-	{"/exit", i18n.P("Exit")},
+// It is a function so descriptions follow runtime language changes.
+func topLevelCommands() []commandDef {
+	return []commandDef{
+		{"/data", i18n.T("tui.complete.data")},
+		{"/help", i18n.T("tui.complete.help")},
+		{"/input-features", i18n.P("Show input capabilities")},
+		{"/read", i18n.T("tui.complete.read")},
+		{"/workspace", i18n.P("Workspace info & management")},
+		{"/plots", i18n.T("tui.complete.plots")},
+		{"/tokens", i18n.P("Token usage & costs")},
+		{"/session", i18n.P("Current session status")},
+		{"/status", i18n.P("Subscription tier & agents")},
+		{"/status-panel", i18n.P("System status dashboard")},
+		{"/workspace-info", i18n.P("Workspace overview dashboard")},
+		{"/analysis-dash", i18n.P("Analysis dashboard")},
+		{"/progress", i18n.P("Progress monitor")},
+		{"/pipeline", i18n.P("Pipeline operations")},
+		{"/config", i18n.P("Configuration settings")},
+		{"/queue", i18n.P("Download queue management")},
+		{"/metadata", i18n.P("Metadata overview")},
+		{"/modalities", i18n.P("Detailed modality info")},
+		{"/describe", i18n.P("Describe a specific modality")},
+		{"/export", i18n.P("Export to ZIP")},
+		{"/save", i18n.P("Save state to workspace")},
+		{"/files", i18n.T("tui.complete.files")},
+		{"/tree", i18n.P("Directory tree view")},
+		{"/plot", i18n.P("Open plot file")},
+		{"/open", i18n.P("Open file in system app")},
+		{"/restore", i18n.P("Restore previous datasets")},
+		{"/vector-search", i18n.P("Search ontology collections")},
+		{"/reset", i18n.P("Reset conversation")},
+		{"/clear", i18n.P("Clear screen")},
+		{"/dashboard", i18n.P("Open classic dashboard")},
+		{"/lang", i18n.P("Switch UI language (en, zh)")},
+		{"/exit", i18n.P("Exit")},
+	}
 }
 
 // subcommands maps parent commands to their subcommand completions.
@@ -149,7 +153,7 @@ func (m *Model) buildSuggestions(input string) []string {
 func matchTopLevel(prefix string) []string {
 	prefix = strings.ToLower(prefix)
 	var matches []string
-	for _, c := range topLevelCommands {
+	for _, c := range topLevelCommands() {
 		if strings.HasPrefix(strings.ToLower(c.cmd), prefix) {
 			matches = append(matches, c.cmd)
 		}

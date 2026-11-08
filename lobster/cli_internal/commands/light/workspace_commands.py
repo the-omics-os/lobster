@@ -21,6 +21,7 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
     table_block,
 )
+from lobster.i18n import h
 
 
 def truncate_middle(text: str, max_length: int = 60) -> str:
@@ -55,7 +56,7 @@ def _build_workspace_list_blocks(
 ) -> list[OutputBlock]:
     rows = []
     for idx, (name, info) in enumerate(sorted(available.items()), start=1):
-        status = "Loaded" if name in loaded else "Available"
+        status = h("Loaded") if name in loaded else h("Available")
         size = f"{info['size_mb']:.1f} MB"
         shape = (
             f"{info['shape'][0]:,} × {info['shape'][1]:,}" if info["shape"] else "N/A"
@@ -74,18 +75,18 @@ def _build_workspace_list_blocks(
 
     return [
         table_block(
-            title="Available Datasets",
+            title=h("Available Datasets"),
             columns=[
                 {"name": "#", "style": "dim", "width": 4},
-                {"name": "Status", "style": "green", "width": 10},
-                {"name": "Name", "style": "bold", "no_wrap": False},
-                {"name": "Size", "style": "cyan", "width": 10},
-                {"name": "Shape", "style": "white", "width": 15},
-                {"name": "Modified", "style": "dim", "width": 12},
+                {"name": h("Status"), "style": "green", "width": 10},
+                {"name": h("Name"), "style": "bold", "no_wrap": False},
+                {"name": h("Size"), "style": "cyan", "width": 10},
+                {"name": h("Shape"), "style": "white", "width": 15},
+                {"name": h("Modified"), "style": "dim", "width": 12},
             ],
             rows=rows,
         ),
-        hint_block("Use '/workspace info <#>' to see full details."),
+        hint_block(h("Use '/workspace info <#>' to see full details.")),
     ]
 
 
@@ -96,20 +97,22 @@ def _build_workspace_info_blocks(
     blocks: list[OutputBlock] = []
     for name, info in matched_datasets:
         rows = [
-            ["Name", name],
-            ["Status", "Loaded" if name in loaded else "Not Loaded"],
-            ["Path", info["path"]],
-            ["Size", f"{info['size_mb']:.2f} MB"],
+            [h("Name"), name],
+            [h("Status"), h("Loaded") if name in loaded else h("Not Loaded")],
+            [h("Path"), info["path"]],
+            [h("Size"), f"{info['size_mb']:.2f} MB"],
             [
-                "Shape",
+                h("Shape"),
                 (
-                    f"{info['shape'][0]:,} observations × {info['shape'][1]:,} variables"
+                    h("{obs} observations × {vars} variables").format(
+                        obs=f"{info['shape'][0]:,}", vars=f"{info['shape'][1]:,}"
+                    )
                     if info["shape"]
                     else "N/A"
                 ),
             ],
-            ["Type", info["type"]],
-            ["Modified", info["modified"]],
+            [h("Type"), info["type"]],
+            [h("Modified"), info["modified"]],
         ]
 
         if "_" in name:
@@ -132,14 +135,14 @@ def _build_workspace_info_blocks(
                 )
             ]
             if possible_stages:
-                rows.append(["Processing Stages", " -> ".join(possible_stages)])
+                rows.append([h("Processing Stages"), " -> ".join(possible_stages)])
 
         blocks.append(
             table_block(
-                title=f"Dataset: {name}",
+                title=h("Dataset: {name}").format(name=name),
                 columns=[
-                    {"name": "Property", "style": "bold cyan"},
-                    {"name": "Value", "style": "white"},
+                    {"name": h("Property"), "style": "bold cyan"},
+                    {"name": h("Value"), "style": "white"},
                 ],
                 rows=rows,
             )
@@ -159,28 +162,30 @@ def _build_workspace_status_blocks(
     workspace_path = workspace_status_dict.get("workspace_path", "N/A")
     modalities_count = workspace_status_dict.get("modalities_loaded", 0)
     provenance = (
-        "Enabled" if workspace_status_dict.get("provenance_enabled") else "Disabled"
+        h("Enabled")
+        if workspace_status_dict.get("provenance_enabled")
+        else h("Disabled")
     )
     mudata = (
-        "Available"
+        h("Available")
         if workspace_status_dict.get("mudata_available")
-        else "Not installed"
+        else h("Not installed")
     )
 
     blocks: list[OutputBlock] = [
-        section_block(title="Workspace Status"),
+        section_block(title=h("Workspace Status")),
         table_block(
-            title="Summary",
-            columns=[{"name": "Field"}, {"name": "Value"}],
+            title=h("Summary"),
+            columns=[{"name": h("Field")}, {"name": h("Value")}],
             rows=[
-                ["Workspace", workspace_path],
+                [h("Workspace"), workspace_path],
                 *(
-                    [["Datasets Available", str(available_dataset_count)]]
+                    [[h("Datasets Available"), str(available_dataset_count)]]
                     if available_dataset_count is not None
                     else []
                 ),
-                ["Modalities Loaded", str(modalities_count)],
-                ["Provenance", provenance],
+                [h("Modalities Loaded"), str(modalities_count)],
+                [h("Provenance"), provenance],
                 ["MuData", mudata],
             ],
         ),
@@ -201,7 +206,7 @@ def _build_workspace_status_blocks(
             file_count, size_str, exists = _get_directory_stats(path)
             display_path = truncate_middle(path, 45)
             if not exists:
-                display_path = f"{display_path} (not created)"
+                display_path = h("{path} (not created)").format(path=display_path)
             dir_rows.append(
                 [
                     dir_icons.get(dir_type, dir_type.replace("_", " ").title()),
@@ -222,17 +227,17 @@ def _build_workspace_status_blocks(
             compact_dir_rows = compact_dir_rows[:4]
             blocks.append(
                 table_block(
-                    title="Directories",
+                    title=h("Directories"),
                     columns=[
-                        {"name": "Directory", "style": "bold white"},
+                        {"name": h("Directory"), "style": "bold white"},
                         {
-                            "name": "Files",
+                            "name": h("Files"),
                             "style": "cyan",
                             "justify": "right",
                             "width": 8,
                         },
                         {
-                            "name": "Size",
+                            "name": h("Size"),
                             "style": "green",
                             "justify": "right",
                             "width": 10,
@@ -244,18 +249,20 @@ def _build_workspace_status_blocks(
             if len(dir_rows) > len(compact_dir_rows):
                 blocks.append(
                     hint_block(
-                        f"... and {len(dir_rows) - len(compact_dir_rows)} more workspace directories"
+                        h("... and {count} more workspace directories").format(
+                            count=len(dir_rows) - len(compact_dir_rows)
+                        )
                     )
                 )
         else:
             blocks.append(
                 table_block(
-                    title="Directories",
+                    title=h("Directories"),
                     columns=[
-                        {"name": "Directory", "style": "bold white"},
-                        {"name": "Files", "style": "cyan", "justify": "right"},
-                        {"name": "Size", "style": "green", "justify": "right"},
-                        {"name": "Path", "style": "grey70"},
+                        {"name": h("Directory"), "style": "bold white"},
+                        {"name": h("Files"), "style": "cyan", "justify": "right"},
+                        {"name": h("Size"), "style": "green", "justify": "right"},
+                        {"name": h("Path"), "style": "grey70"},
                     ],
                     rows=dir_rows,
                 )
@@ -267,19 +274,25 @@ def _build_workspace_status_blocks(
         blocks.append(
             list_block(
                 visible_modalities,
-                title="Active Modalities" if compact else "Loaded Modalities",
+                title=h("Active Modalities") if compact else h("Loaded Modalities"),
             )
         )
         if len(modality_names) > max_visible_modalities:
             remaining = len(modality_names) - max_visible_modalities
-            blocks.append(hint_block(f"... and {remaining} more loaded modalities"))
+            blocks.append(
+                hint_block(
+                    h("... and {count} more loaded modalities").format(count=remaining)
+                )
+            )
     else:
-        blocks.append(hint_block("No modalities currently loaded"))
+        blocks.append(hint_block(h("No modalities currently loaded")))
 
     if compact:
         blocks.append(
             hint_block(
-                "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details."
+                h(
+                    "Use `/workspace list` for dataset inventory and `/workspace info <#>` for file details."
+                )
             )
         )
         return blocks
@@ -288,27 +301,31 @@ def _build_workspace_status_blocks(
     adapters = workspace_status_dict.get("registered_adapters", [])
     blocks.append(
         table_block(
-            title="System Capabilities",
-            columns=[{"name": "Field"}, {"name": "Value"}],
+            title=h("System Capabilities"),
+            columns=[{"name": h("Field")}, {"name": h("Value")}],
             rows=[
-                ["Backends", ", ".join(backends) if backends else "None"],
-                ["Adapters", ", ".join(adapters[:5]) if adapters else "None"],
+                [h("Backends"), ", ".join(backends) if backends else h("None")],
+                [h("Adapters"), ", ".join(adapters[:5]) if adapters else h("None")],
             ],
         )
     )
     if len(adapters) > 5:
-        blocks.append(hint_block(f"... and {len(adapters) - 5} more adapters"))
+        blocks.append(
+            hint_block(
+                h("... and {count} more adapters").format(count=len(adapters) - 5)
+            )
+        )
 
     if modality_detail_rows:
-        blocks.append(section_block(title="Modality Details"))
+        blocks.append(section_block(title=h("Modality Details")))
         visible_detail_rows = modality_detail_rows[:max_detail_tables]
         for modality_name, rows in visible_detail_rows:
             blocks.append(
                 table_block(
                     title=modality_name,
                     columns=[
-                        {"name": "Property", "style": "bold grey93"},
-                        {"name": "Value", "style": "white"},
+                        {"name": h("Property"), "style": "bold grey93"},
+                        {"name": h("Value"), "style": "white"},
                     ],
                     rows=rows,
                 )
@@ -317,8 +334,9 @@ def _build_workspace_status_blocks(
             total = len(modality_detail_rows)
             blocks.append(
                 hint_block(
-                    f"Showing {max_detail_tables} of {total} modalities. "
-                    "Use `/describe <modality>` or `/workspace info <name>` for the rest."
+                    h(
+                        "Showing {shown} of {total} modalities. Use `/describe <modality>` or `/workspace info <name>` for the rest."
+                    ).format(shown=max_detail_tables, total=total)
                 )
             )
 
@@ -333,29 +351,35 @@ def _build_workspace_load_result_blocks(result: dict) -> list[OutputBlock]:
     if restored:
         blocks: list[OutputBlock] = [
             section_block(
-                body=f"Loaded {len(restored)} datasets ({total_size_mb:.1f} MB)"
+                body=h("Loaded {count} datasets ({size} MB)").format(
+                    count=len(restored), size=f"{total_size_mb:.1f}"
+                )
             ),
-            list_block(restored, title="Loaded Datasets"),
+            list_block(restored, title=h("Loaded Datasets")),
         ]
         if skipped:
             blocks.extend(
                 [
                     hint_block(
-                        f"Skipped {len(skipped)} dataset(s) that were already loaded or unavailable."
+                        h(
+                            "Skipped {count} dataset(s) that were already loaded or unavailable."
+                        ).format(count=len(skipped))
                     ),
-                    list_block(skipped, title="Skipped Datasets"),
+                    list_block(skipped, title=h("Skipped Datasets")),
                 ]
             )
         return blocks
 
-    blocks = [alert_block("No datasets loaded", level="warning")]
+    blocks = [alert_block(h("No datasets loaded"), level="warning")]
     if skipped:
         blocks.extend(
             [
                 hint_block(
-                    f"Skipped {len(skipped)} dataset(s) that were already loaded or unavailable."
+                    h(
+                        "Skipped {count} dataset(s) that were already loaded or unavailable."
+                    ).format(count=len(skipped))
                 ),
-                list_block(skipped, title="Skipped Datasets"),
+                list_block(skipped, title=h("Skipped Datasets")),
             ]
         )
     return blocks
@@ -393,14 +417,20 @@ def workspace_list(
         workspace_path = client.data_manager.workspace_path
         data_dir = workspace_path / "data"
         blocks: list[OutputBlock] = [
-            alert_block("No datasets found in workspace", level="warning"),
-            section_block(body=f"Workspace: {workspace_path}"),
-            section_block(body=f"Data directory: {data_dir}"),
+            alert_block(h("No datasets found in workspace"), level="warning"),
+            section_block(body=h("Workspace: {path}").format(path=workspace_path)),
+            section_block(body=h("Data directory: {path}").format(path=data_dir)),
         ]
 
         if not data_dir.exists():
-            blocks.append(alert_block("Data directory does not exist", level="error"))
-            blocks.append(section_block(body=f"Create it with: mkdir -p {data_dir}"))
+            blocks.append(
+                alert_block(h("Data directory does not exist"), level="error")
+            )
+            blocks.append(
+                section_block(
+                    body=h("Create it with: mkdir -p {path}").format(path=data_dir)
+                )
+            )
         else:
             # Check what files are actually in the data directory
             files = list(data_dir.glob("*"))
@@ -408,20 +438,27 @@ def workspace_list(
                 blocks.append(
                     section_block(
                         body=(
-                            f"Found {len(files)} files in data directory, but none are "
-                            "supported datasets (.h5ad)."
+                            h(
+                                "Found {count} files in data directory, but none are supported datasets (.h5ad)."
+                            ).format(count=len(files))
                         )
                     )
                 )
                 blocks.append(
-                    list_block([f.name for f in files[:5]], title="Files found")
+                    list_block([f.name for f in files[:5]], title=h("Files found"))
                 )
                 if len(files) > 5:
-                    blocks.append(hint_block(f"... and {len(files) - 5} more"))
+                    blocks.append(
+                        hint_block(
+                            h("... and {count} more").format(count=len(files) - 5)
+                        )
+                    )
             else:
                 blocks.append(
                     section_block(
-                        body=f"Add .h5ad files to {data_dir} to see them here."
+                        body=h("Add .h5ad files to {path} to see them here.").format(
+                            path=data_dir
+                        )
                     )
                 )
 
@@ -449,9 +486,11 @@ def workspace_info(
         _render_blocks(
             output,
             [
-                alert_block("Usage: /workspace info <#|pattern>", level="error"),
+                alert_block(h("Usage: /workspace info <#|pattern>"), level="error"),
                 hint_block(
-                    "Examples: /workspace info 1, /workspace info gse12345, /workspace info *clustered*"
+                    h(
+                        "Examples: /workspace info 1, /workspace info gse12345, /workspace info *clustered*"
+                    )
                 ),
             ],
         )
@@ -471,7 +510,7 @@ def workspace_info(
     if not available:
         _render_blocks(
             output,
-            [alert_block("No datasets found in workspace", level="warning")],
+            [alert_block(h("No datasets found in workspace"), level="warning")],
         )
         return None
 
@@ -491,7 +530,9 @@ def workspace_info(
                 output,
                 [
                     alert_block(
-                        f"Index {idx} out of range (1-{len(sorted_names)})",
+                        h("Index {idx} out of range (1-{max})").format(
+                            idx=idx, max=len(sorted_names)
+                        ),
                         level="error",
                     )
                 ],
@@ -508,7 +549,9 @@ def workspace_info(
                 output,
                 [
                     alert_block(
-                        f"No datasets match pattern: {selector}",
+                        h("No datasets match pattern: {selector}").format(
+                            selector=selector
+                        ),
                         level="warning",
                     )
                 ],
@@ -543,9 +586,13 @@ def workspace_load(
         _render_blocks(
             output,
             [
-                alert_block("Usage: /workspace load <#|pattern|file>", level="error"),
+                alert_block(
+                    h("Usage: /workspace load <#|pattern|file>"), level="error"
+                ),
                 hint_block(
-                    "Examples: /workspace load 1, /workspace load recent, /workspace load data.h5ad"
+                    h(
+                        "Examples: /workspace load 1, /workspace load recent, /workspace load data.h5ad"
+                    )
                 ),
             ],
         )
@@ -565,7 +612,12 @@ def workspace_load(
     if not resolved.is_safe:
         _render_blocks(
             output,
-            [alert_block(f"Security error: {resolved.error}", level="error")],
+            [
+                alert_block(
+                    h("Security error: {error}").format(error=resolved.error),
+                    level="error",
+                )
+            ],
         )
         return None
 
@@ -575,7 +627,13 @@ def workspace_load(
         # Load file directly into workspace
         _render_blocks(
             output,
-            [section_block(body=f"Loading file into workspace: {file_path.name}")],
+            [
+                section_block(
+                    body=h("Loading file into workspace: {name}").format(
+                        name=file_path.name
+                    )
+                )
+            ],
         )
 
         try:
@@ -587,8 +645,11 @@ def workspace_load(
                     [
                         section_block(
                             body=(
-                                f"Loaded '{result['modality_name']}' "
-                                f"({result['data_shape'][0]:,} × {result['data_shape'][1]:,})"
+                                h("Loaded '{name}' ({rows} × {cols})").format(
+                                    name=result["modality_name"],
+                                    rows=f"{result['data_shape'][0]:,}",
+                                    cols=f"{result['data_shape'][1]:,}",
+                                )
                             )
                         )
                     ],
@@ -603,7 +664,12 @@ def workspace_load(
         except Exception as e:
             _render_blocks(
                 output,
-                [alert_block(f"Failed to load file: {str(e)}", level="error")],
+                [
+                    alert_block(
+                        h("Failed to load file: {error}").format(error=str(e)),
+                        level="error",
+                    )
+                ],
             )
             return None
 
@@ -620,9 +686,11 @@ def workspace_load(
         _render_blocks(
             output,
             [
-                alert_block("No datasets found in workspace", level="warning"),
+                alert_block(h("No datasets found in workspace"), level="warning"),
                 hint_block(
-                    f"Tip: If '{selector}' is a file, ensure the path is correct."
+                    h(
+                        "Tip: If '{selector}' is a file, ensure the path is correct."
+                    ).format(selector=selector)
                 ),
             ],
         )
@@ -638,7 +706,11 @@ def workspace_load(
 
             _render_blocks(
                 output,
-                [section_block(body=f"Loading dataset: {dataset_name}...")],
+                [
+                    section_block(
+                        body=h("Loading dataset: {name}...").format(name=dataset_name)
+                    )
+                ],
             )
 
             # Load single dataset directly
@@ -650,8 +722,10 @@ def workspace_load(
                     [
                         section_block(
                             body=(
-                                f"Loaded dataset: {dataset_name} "
-                                f"({available[dataset_name]['size_mb']:.1f} MB)"
+                                h("Loaded dataset: {name} ({size} MB)").format(
+                                    name=dataset_name,
+                                    size=f"{available[dataset_name]['size_mb']:.1f}",
+                                )
                             )
                         )
                     ],
@@ -659,14 +733,22 @@ def workspace_load(
                 return "Loaded dataset from workspace"
             _render_blocks(
                 output,
-                [alert_block(f"Failed to load dataset: {dataset_name}", level="error")],
+                [
+                    alert_block(
+                        h("Failed to load dataset: {name}").format(name=dataset_name),
+                        level="error",
+                    )
+                ],
             )
             return None
         _render_blocks(
             output,
             [
                 alert_block(
-                    f"Index {idx} out of range (1-{len(sorted_names)})", level="error"
+                    h("Index {idx} out of range (1-{max})").format(
+                        idx=idx, max=len(sorted_names)
+                    ),
+                    level="error",
                 )
             ],
         )
@@ -674,7 +756,13 @@ def workspace_load(
     # Pattern-based loading (potentially multiple datasets)
     _render_blocks(
         output,
-        [section_block(body=f"Loading workspace datasets (pattern: {selector})...")],
+        [
+            section_block(
+                body=h("Loading workspace datasets (pattern: {selector})...").format(
+                    selector=selector
+                )
+            )
+        ],
     )
 
     # Note: Progress bar creation is CLI-specific, so we skip it here
@@ -710,18 +798,20 @@ def workspace_remove(
         _render_blocks(
             output,
             [
-                alert_block("Usage: /workspace remove <#|pattern|name>", level="error"),
+                alert_block(
+                    h("Usage: /workspace remove <#|pattern|name>"), level="error"
+                ),
                 list_block(
                     [
-                        "/workspace remove 1 - Remove by index",
-                        "/workspace remove * - Remove all modalities",
-                        "/workspace remove *clustered* - Remove matching pattern",
-                        "/workspace remove geo_gse12345 - Remove by exact name",
+                        h("/workspace remove 1 - Remove by index"),
+                        h("/workspace remove * - Remove all modalities"),
+                        h("/workspace remove *clustered* - Remove matching pattern"),
+                        h("/workspace remove geo_gse12345 - Remove by exact name"),
                     ],
-                    title="Examples",
+                    title=h("Examples"),
                 ),
                 hint_block(
-                    "Tip: Use '/modalities' to see loaded modalities with indexes"
+                    h("Tip: Use '/modalities' to see loaded modalities with indexes")
                 ),
             ],
         )
@@ -733,7 +823,7 @@ def workspace_remove(
             output,
             [
                 alert_block(
-                    "Modality management not available in this client",
+                    h("Modality management not available in this client"),
                     level="error",
                 )
             ],
@@ -745,7 +835,7 @@ def workspace_remove(
     if not available_modalities:
         _render_blocks(
             output,
-            [alert_block("No modalities currently loaded", level="warning")],
+            [alert_block(h("No modalities currently loaded"), level="warning")],
         )
         return None
 
@@ -763,12 +853,16 @@ def workspace_remove(
                 output,
                 [
                     alert_block(
-                        f"Index {idx} out of range (1-{len(sorted_modalities)})",
+                        h("Index {idx} out of range (1-{max})").format(
+                            idx=idx, max=len(sorted_modalities)
+                        ),
                         level="error",
                     ),
                     list_block(
                         sorted_modalities,
-                        title=f"Available modalities ({len(available_modalities)})",
+                        title=h("Available modalities ({count})").format(
+                            count=len(available_modalities)
+                        ),
                         ordered=True,
                     ),
                 ],
@@ -785,12 +879,16 @@ def workspace_remove(
                 output,
                 [
                     alert_block(
-                        f"No modalities match pattern: {selector}",
+                        h("No modalities match pattern: {selector}").format(
+                            selector=selector
+                        ),
                         level="warning",
                     ),
                     list_block(
                         sorted_modalities,
-                        title=f"Available modalities ({len(available_modalities)})",
+                        title=h("Available modalities ({count})").format(
+                            count=len(available_modalities)
+                        ),
                         ordered=True,
                     ),
                 ],
@@ -804,10 +902,15 @@ def workspace_remove(
             _render_blocks(
                 output,
                 [
-                    alert_block(f"Modality '{selector}' not found", level="error"),
+                    alert_block(
+                        h("Modality '{selector}' not found").format(selector=selector),
+                        level="error",
+                    ),
                     list_block(
                         sorted_modalities,
-                        title=f"Available modalities ({len(available_modalities)})",
+                        title=h("Available modalities ({count})").format(
+                            count=len(available_modalities)
+                        ),
                         ordered=True,
                     ),
                 ],
@@ -820,7 +923,9 @@ def workspace_remove(
             output,
             [
                 alert_block(
-                    f"About to remove {len(modalities_to_remove)} modalities:",
+                    h("About to remove {count} modalities:").format(
+                        count=len(modalities_to_remove)
+                    ),
                     level="warning",
                 ),
                 list_block(modalities_to_remove),
@@ -855,7 +960,13 @@ def workspace_remove(
                 # Display success message
                 _render_blocks(
                     output,
-                    [section_block(body=f"Removed: {stats['removed_modality']}")],
+                    [
+                        section_block(
+                            body=h("Removed: {name}").format(
+                                name=stats["removed_modality"]
+                            )
+                        )
+                    ],
                 )
                 if len(modalities_to_remove) == 1:
                     # Show detailed info only for single removal
@@ -863,7 +974,10 @@ def workspace_remove(
                         output,
                         [
                             hint_block(
-                                f"Shape: {stats['shape']['n_obs']} obs × {stats['shape']['n_vars']} vars"
+                                h("Shape: {n_obs} obs × {n_vars} vars").format(
+                                    n_obs=stats["shape"]["n_obs"],
+                                    n_vars=stats["shape"]["n_vars"],
+                                )
                             )
                         ],
                     )
@@ -871,7 +985,12 @@ def workspace_remove(
             else:
                 _render_blocks(
                     output,
-                    [alert_block(f"Failed to remove: {modality_name}", level="error")],
+                    [
+                        alert_block(
+                            h("Failed to remove: {name}").format(name=modality_name),
+                            level="error",
+                        )
+                    ],
                 )
                 failed_count += 1
 
@@ -882,7 +1001,13 @@ def workspace_remove(
                 output,
                 [
                     hint_block(
-                        f"Summary: {removed_count} removed, {failed_count} failed, {len(remaining)} remaining"
+                        h(
+                            "Summary: {removed} removed, {failed} failed, {remaining} remaining"
+                        ).format(
+                            removed=removed_count,
+                            failed=failed_count,
+                            remaining=len(remaining),
+                        )
                     )
                 ],
             )
@@ -897,7 +1022,12 @@ def workspace_remove(
     except Exception as e:
         _render_blocks(
             output,
-            [alert_block(f"Error removing modality: {str(e)}", level="error")],
+            [
+                alert_block(
+                    h("Error removing modality: {error}").format(error=str(e)),
+                    level="error",
+                )
+            ],
         )
         return None
 
@@ -970,30 +1100,36 @@ def workspace_status(
             for modality_name in modalities:
                 try:
                     adata = client.data_manager.get_modality(modality_name)
-                    rows = [["Shape", f"{adata.n_obs:,} obs × {adata.n_vars:,} vars"]]
+                    rows = [
+                        [h("Shape"), f"{adata.n_obs:,} obs × {adata.n_vars:,} vars"]
+                    ]
 
                     # Show obs columns
                     obs_cols = list(adata.obs.columns)
                     if obs_cols:
                         cols_preview = ", ".join(obs_cols[:5])
                         if len(obs_cols) > 5:
-                            cols_preview += f" ... (+{len(obs_cols) - 5} more)"
-                        rows.append(["Obs Columns", cols_preview])
+                            cols_preview += " " + h("... (+{count} more)").format(
+                                count=len(obs_cols) - 5
+                            )
+                        rows.append([h("Obs Columns"), cols_preview])
 
                     # Show var columns
                     var_cols = list(adata.var.columns)
                     if var_cols:
                         var_preview = ", ".join(var_cols[:5])
                         if len(var_cols) > 5:
-                            var_preview += f" ... (+{len(var_cols) - 5} more)"
-                        rows.append(["Var Columns", var_preview])
+                            var_preview += " " + h("... (+{count} more)").format(
+                                count=len(var_cols) - 5
+                            )
+                        rows.append([h("Var Columns"), var_preview])
 
                     # Show layers
                     from lobster.core.utils.layer_keys import layer_names
 
                     layers = layer_names(adata)
                     if layers:
-                        rows.append(["Layers", ", ".join(layers)])
+                        rows.append([h("Layers"), ", ".join(layers)])
 
                     # Show obsm
                     if adata.obsm:
@@ -1010,12 +1146,19 @@ def workspace_status(
                         uns_keys = list(adata.uns.keys())[:5]
                         uns_str = ", ".join(uns_keys)
                         if len(adata.uns) > 5:
-                            uns_str += f" ... (+{len(adata.uns) - 5} more)"
-                        rows.append(["Uns Keys", uns_str])
+                            uns_str += " " + h("... (+{count} more)").format(
+                                count=len(adata.uns) - 5
+                            )
+                        rows.append([h("Uns Keys"), uns_str])
 
                     modality_detail_rows.append((modality_name, rows))
                 except Exception as e:
-                    output.print(f"Error accessing {modality_name}: {e}", style="error")
+                    output.print(
+                        h("Error accessing {name}: {error}").format(
+                            name=modality_name, error=e
+                        ),
+                        style="error",
+                    )
 
     _render_blocks(
         output,

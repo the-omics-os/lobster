@@ -42,6 +42,7 @@ from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
     render_startup_diagnostic_rich,
 )
+from lobster.i18n import h
 from lobster.ui import setup_logging
 from lobster.ui.console_manager import get_console_manager
 from lobster.utils.callbacks import TerminalCallbackHandler
@@ -169,7 +170,9 @@ def get_user_input_with_editing(prompt_text: str, client=None) -> str:
         raise KeyboardInterrupt
     except Exception as e:
         # Fallback on any other error (e.g., prompt_toolkit issues)
-        console.print(f"[dim red]Input error, using fallback: {e}[/dim red]")
+        console.print(
+            h("[dim red]Input error, using fallback: {error}[/dim red]").format(error=e)
+        )
         try:
             user_input = console_manager.console.input(
                 prompt=prompt_text, markup=True, emoji=True
@@ -216,7 +219,11 @@ def execute_shell_command(command: str) -> bool:
                 console.print(f"[grey74]{current_directory}[/grey74]")
                 return True
             else:
-                console.print(f"[red]cd: no such file or directory: {target}[/red]")
+                console.print(
+                    h("[red]cd: no such file or directory: {target}[/red]").format(
+                        target=target
+                    )
+                )
                 return True  # We handled it, even if it failed
 
         elif cmd == "pwd":
@@ -244,22 +251,26 @@ def execute_shell_command(command: str) -> bool:
                 items = list(target_dir.iterdir())
                 if not items:
                     console.print(
-                        f"[grey50]Empty directory: {show_path or str(target_dir)}[/grey50]"
+                        h("[grey50]Empty directory: {path}[/grey50]").format(
+                            path=show_path or str(target_dir)
+                        )
                     )
                     return True
 
                 # Create a structured table for ls output
                 table = Table(
-                    title=f"📁 Directory Contents: {show_path or target_dir.name}",
+                    title=h("📁 Directory Contents: {path}").format(
+                        path=show_path or target_dir.name
+                    ),
                     box=box.SIMPLE,
                     border_style="blue",
                     show_header=True,
                     title_style="bold blue",
                 )
-                table.add_column("Name", style="white", min_width=20)
-                table.add_column("Type", style="cyan", width=10)
-                table.add_column("Size", style="grey74", width=10)
-                table.add_column("Modified", style="grey50", width=16)
+                table.add_column(h("Name"), style="white", min_width=20)
+                table.add_column(h("Type"), style="cyan", width=10)
+                table.add_column(h("Size"), style="grey74", width=10)
+                table.add_column(h("Modified"), style="grey50", width=16)
 
                 # Sort: directories first, then files
                 dirs = [item for item in items if item.is_dir()]
@@ -306,19 +317,23 @@ def execute_shell_command(command: str) -> bool:
 
                 console.print(table)
                 console.print(
-                    f"\n[grey50]Total: {len(dirs)} directories, {len(files)} files[/grey50]"
+                    h(
+                        "\n[grey50]Total: {dirs} directories, {files} files[/grey50]"
+                    ).format(dirs=len(dirs), files=len(files))
                 )
                 return True
             else:
                 console.print(
-                    f"[red]ls: cannot access '{parts[1] if len(parts) > 1 else target_dir}': No such file or directory[/red]"
+                    h(
+                        "[red]ls: cannot access '{path}': No such file or directory[/red]"
+                    ).format(path=parts[1] if len(parts) > 1 else target_dir)
                 )
                 return True
 
         elif cmd == "cat":
             # Enhanced cat command with syntax highlighting
             if len(parts) < 2:
-                console.print("[red]cat: missing file argument[/red]")
+                console.print(h("[red]cat: missing file argument[/red]"))
                 return True
 
             file_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -373,27 +388,39 @@ def execute_shell_command(command: str) -> bool:
                         )
                     else:
                         console.print(
-                            f"[grey50]📄 {file_path.name} (empty file)[/grey50]"
+                            h("[grey50]📄 {name} (empty file)[/grey50]").format(
+                                name=file_path.name
+                            )
                         )
                 else:
                     console.print(
-                        f"[red]cat: {file_path}: No such file or directory[/red]"
+                        h("[red]cat: {path}: No such file or directory[/red]").format(
+                            path=file_path
+                        )
                     )
             except PermissionError:
-                console.print(f"[red]cat: {file_path}: Permission denied[/red]")
+                console.print(
+                    h("[red]cat: {path}: Permission denied[/red]").format(
+                        path=file_path
+                    )
+                )
             except UnicodeDecodeError:
                 console.print(
-                    f"[red]cat: {file_path}: Binary file (cannot display)[/red]"
+                    h("[red]cat: {path}: Binary file (cannot display)[/red]").format(
+                        path=file_path
+                    )
                 )
             except Exception as e:
-                console.print(f"[red]cat: {file_path}: {e}[/red]")
+                console.print(
+                    h("[red]cat: {path}: {error}[/red]").format(path=file_path, error=e)
+                )
 
             return True
 
         elif cmd == "open":
             # Handle open command to open files or folders
             if len(parts) < 2:
-                console.print("[red]open: missing file or folder argument[/red]")
+                console.print(h("[red]open: missing file or folder argument[/red]"))
                 return True
 
             file_or_folder = " ".join(parts[1:])  # Handle paths with spaces
@@ -408,7 +435,9 @@ def execute_shell_command(command: str) -> bool:
 
             if not target_path.exists():
                 console.print(
-                    f"[red]open: '{file_or_folder}': No such file or directory[/red]"
+                    h("[red]open: '{path}': No such file or directory[/red]").format(
+                        path=file_or_folder
+                    )
                 )
                 return True
 
@@ -422,14 +451,14 @@ def execute_shell_command(command: str) -> bool:
                 else:
                     console.print(f"[green]📄 {message}[/green]")
             else:
-                console.print(f"[red]open: {message}[/red]")
+                console.print(h("[red]open: {message}[/red]").format(message=message))
 
             return True
 
         elif cmd == "mkdir":
             # Create directory using pathlib (safe, no shell injection)
             if len(parts) < 2:
-                console.print("[red]mkdir: missing operand[/red]")
+                console.print(h("[red]mkdir: missing operand[/red]"))
                 return True
 
             dir_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -441,20 +470,26 @@ def execute_shell_command(command: str) -> bool:
 
             try:
                 target_dir.mkdir(parents=True, exist_ok=False)
-                console.print(f"[green]📁 Created directory: {parts[1]}[/green]")
+                console.print(
+                    h("[green]📁 Created directory: {name}[/green]").format(
+                        name=parts[1]
+                    )
+                )
             except FileExistsError:
                 console.print(
-                    f"[red]mkdir: cannot create directory '{parts[1]}': File exists[/red]"
+                    h(
+                        "[red]mkdir: cannot create directory '{name}': File exists[/red]"
+                    ).format(name=parts[1])
                 )
             except Exception as e:
-                console.print(f"[red]mkdir: {e}[/red]")
+                console.print(h("[red]mkdir: {error}[/red]").format(error=e))
 
             return True
 
         elif cmd == "touch":
             # Create file using pathlib (safe, no shell injection)
             if len(parts) < 2:
-                console.print("[red]touch: missing file operand[/red]")
+                console.print(h("[red]touch: missing file operand[/red]"))
                 return True
 
             file_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -466,16 +501,18 @@ def execute_shell_command(command: str) -> bool:
 
             try:
                 target_file.touch()
-                console.print(f"[green]📄 Created file: {parts[1]}[/green]")
+                console.print(
+                    h("[green]📄 Created file: {name}[/green]").format(name=parts[1])
+                )
             except Exception as e:
-                console.print(f"[red]touch: {e}[/red]")
+                console.print(h("[red]touch: {error}[/red]").format(error=e))
 
             return True
 
         elif cmd == "cp":
             # Copy file using shutil (safe, no shell injection)
             if len(parts) < 3:
-                console.print("[red]cp: missing file operand[/red]")
+                console.print(h("[red]cp: missing file operand[/red]"))
                 return True
 
             src = parts[1]
@@ -492,16 +529,20 @@ def execute_shell_command(command: str) -> bool:
                     shutil.copytree(src_path, dst_path)
                 else:
                     shutil.copy2(src_path, dst_path)
-                console.print(f"[green]📋 Copied: {parts[1]} → {parts[2]}[/green]")
+                console.print(
+                    h("[green]📋 Copied: {src} → {dst}[/green]").format(
+                        src=parts[1], dst=parts[2]
+                    )
+                )
             except Exception as e:
-                console.print(f"[red]cp: {e}[/red]")
+                console.print(h("[red]cp: {error}[/red]").format(error=e))
 
             return True
 
         elif cmd == "mv":
             # Move file using shutil (safe, no shell injection)
             if len(parts) < 3:
-                console.print("[red]mv: missing file operand[/red]")
+                console.print(h("[red]mv: missing file operand[/red]"))
                 return True
 
             src = parts[1]
@@ -515,16 +556,20 @@ def execute_shell_command(command: str) -> bool:
 
             try:
                 shutil.move(str(src_path), str(dst_path))
-                console.print(f"[green]📦 Moved: {parts[1]} → {parts[2]}[/green]")
+                console.print(
+                    h("[green]📦 Moved: {src} → {dst}[/green]").format(
+                        src=parts[1], dst=parts[2]
+                    )
+                )
             except Exception as e:
-                console.print(f"[red]mv: {e}[/red]")
+                console.print(h("[red]mv: {error}[/red]").format(error=e))
 
             return True
 
         elif cmd == "rm":
             # Remove file using pathlib (safe, no shell injection)
             if len(parts) < 2:
-                console.print("[red]rm: missing operand[/red]")
+                console.print(h("[red]rm: missing operand[/red]"))
                 return True
 
             file_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -540,21 +585,29 @@ def execute_shell_command(command: str) -> bool:
                     if "-r" in parts or "-rf" in parts:
                         shutil.rmtree(target_path)
                         console.print(
-                            f"[green]🗑️  Removed directory: {parts[1]}[/green]"
+                            h("[green]🗑️  Removed directory: {name}[/green]").format(
+                                name=parts[1]
+                            )
                         )
                     else:
                         console.print(
-                            f"[red]rm: cannot remove '{parts[1]}': Is a directory (use -r to remove directories)[/red]"
+                            h(
+                                "[red]rm: cannot remove '{name}': Is a directory (use -r to remove directories)[/red]"
+                            ).format(name=parts[1])
                         )
                 else:
                     target_path.unlink()
-                    console.print(f"[green]🗑️  Removed: {parts[1]}[/green]")
+                    console.print(
+                        h("[green]🗑️  Removed: {name}[/green]").format(name=parts[1])
+                    )
             except FileNotFoundError:
                 console.print(
-                    f"[red]rm: cannot remove '{parts[1]}': No such file or directory[/red]"
+                    h(
+                        "[red]rm: cannot remove '{name}': No such file or directory[/red]"
+                    ).format(name=parts[1])
                 )
             except Exception as e:
-                console.print(f"[red]rm: {e}[/red]")
+                console.print(h("[red]rm: {error}[/red]").format(error=e))
 
             return True
 
@@ -563,7 +616,7 @@ def execute_shell_command(command: str) -> bool:
             return False
 
     except Exception as e:
-        console.print(f"[red]Error executing command: {e}[/red]")
+        console.print(h("[red]Error executing command: {error}[/red]").format(error=e))
         return True  # We handled it, even if it failed
 
 
@@ -688,19 +741,39 @@ def _show_workspace_prompt(client):
 
         # Line 1: Application status
         console.print(
-            f"  [{tier_color}]●[/] lobster v{__version__} [{tier_color}]{tier}[/] [dim]│[/] {agent_count} agents{semantic_badge} [dim]│ local │[/] [dim italic]/help[/]"
+            h(
+                "  [{tier_color}]●[/] lobster v{version} [{tier_color}]{tier}[/] [dim]│[/] {agent_count} agents{semantic_badge} [dim]│ local │[/] [dim italic]/help[/]"
+            ).format(
+                tier_color=tier_color,
+                version=__version__,
+                tier=tier,
+                agent_count=agent_count,
+                semantic_badge=semantic_badge,
+            )
         )
 
         # Line 2-4: System resources (stacked for clarity)
-        console.print(f"[dim]  └─ Compute:[/] {ram_gb}GB RAM [dim]│[/] {gpu_label}")
         console.print(
-            f"[dim]     Storage:[/] {disk_free_gb}GB free [dim](workspace)[/]"
+            h("[dim]  └─ Compute:[/] {ram_gb}GB RAM [dim]│[/] {gpu_label}").format(
+                ram_gb=ram_gb, gpu_label=gpu_label
+            )
         )
-        console.print(f"[dim]     Provider:[/] {provider_display}")
+        console.print(
+            h("[dim]     Storage:[/] {disk_free_gb}GB free [dim](workspace)[/]").format(
+                disk_free_gb=disk_free_gb
+            )
+        )
+        console.print(
+            h("[dim]     Provider:[/] {provider_display}").format(
+                provider_display=provider_display
+            )
+        )
         console.print()
     except Exception as e:
         # Fallback to basic prompt if system info fails
-        console.print(f"[dim red]Error loading system info: {e}[/dim red]")
+        console.print(
+            h("[dim red]Error loading system info: {error}[/dim red]").format(error=e)
+        )
         console.print(f"  [green]●[/] lobster v{__version__}")
         console.print()
 
@@ -826,47 +899,58 @@ def chat_impl(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
+        help=h(
+            "Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        ),
     ),
     session_id: Optional[str] = typer.Option(
         None,
         "--session-id",
         "-s",
-        help="Session ID to continue (use 'latest' for most recent session in workspace)",
+        help=h(
+            "Session ID to continue (use 'latest' for most recent session in workspace)"
+        ),
     ),
     reasoning: bool = typer.Option(
         False,
         "--reasoning",
         is_flag=True,
-        help="Show agent reasoning and thinking process",
+        help=h("Show agent reasoning and thinking process"),
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show detailed tool usage and agent activity"
+        False, "--verbose", "-v", help=h("Show detailed tool usage and agent activity")
     ),
     debug: bool = typer.Option(
-        False, "--debug", "-d", help="Enable debug mode with enhanced error reporting"
+        False,
+        "--debug",
+        "-d",
+        help=h("Enable debug mode with enhanced error reporting"),
     ),
     profile_timings: Optional[bool] = typer.Option(
         None,
         "--profile-timings/--no-profile-timings",
-        help="Enable timing diagnostics for data manager operations",
+        help=h("Enable timing diagnostics for data manager operations"),
     ),
     provider: Optional[str] = typer.Option(
         None,
         "--provider",
         "-p",
-        help="LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, ollama-cloud, omics-os). Overrides auto-detection.",
+        help=h(
+            "LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, ollama-cloud, omics-os). Overrides auto-detection."
+        ),
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration.",
+        help=h(
+            "Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration."
+        ),
     ),
     stream: bool = typer.Option(
         True,
         "--stream/--no-stream",
-        help="Enable real-time text streaming (default: on)",
+        help=h("Enable real-time text streaming (default: on)"),
     ),
 ):
     """
@@ -932,17 +1016,29 @@ def chat_impl(
         if session_id == "latest":
             if found_existing_session and session_id_for_client:
                 console.print(
-                    f"[cyan]📂 Loading latest session: {session_id_for_client}[/cyan]"
+                    h("[cyan]📂 Loading latest session: {session}[/cyan]").format(
+                        session=session_id_for_client
+                    )
                 )
             else:
                 console.print(
-                    "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                    h(
+                        "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                    )
                 )
                 session_id_for_client = None
         elif found_existing_session and session_id_for_client:
-            console.print(f"[cyan]📂 Loading session: {session_id_for_client}[/cyan]")
+            console.print(
+                h("[cyan]📂 Loading session: {session}[/cyan]").format(
+                    session=session_id_for_client
+                )
+            )
         else:
-            console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
+            console.print(
+                h("[cyan]📂 Creating new session: {session}[/cyan]").format(
+                    session=session_id
+                )
+            )
 
     # Show DNA animation (starts instantly thanks to lazy imports)
     display_welcome()
@@ -975,7 +1071,9 @@ def chat_impl(
     except (SystemExit, typer.Exit):
         raise  # Already handled with clean message
     except Exception as e:
-        console.print(f"\n[red]✗[/red] init failed: {str(e)[:80]}")
+        console.print(
+            h("\n[red]✗[/red] init failed: {error}").format(error=str(e)[:80])
+        )
         raise
 
     # Load session if found
@@ -983,17 +1081,21 @@ def chat_impl(
         try:
             load_result = client.load_session(session_file_to_load)
             console.print(
-                f"[green]✓ Loaded {load_result['messages_loaded']} "
-                f"previous messages[/green]"
+                h("[green]✓ Loaded {count} previous messages[/green]").format(
+                    count=load_result["messages_loaded"]
+                )
             )
             if load_result.get("original_session_id"):
                 console.print(
-                    f"[dim]  Original session: "
-                    f"{load_result['original_session_id']}[/dim]"
+                    h("[dim]  Original session: {session}[/dim]").format(
+                        session=load_result["original_session_id"]
+                    )
                 )
         except Exception as e:
-            console.print(f"[red]❌ Failed to load session: {e}[/red]")
-            console.print("[yellow]   Starting fresh session instead[/yellow]")
+            console.print(
+                h("[red]❌ Failed to load session: {error}[/red]").format(error=e)
+            )
+            console.print(h("[yellow]   Starting fresh session instead[/yellow]"))
 
     # Show compact session status
     _show_workspace_prompt(client)
@@ -1054,7 +1156,9 @@ def chat_impl(
             potential_command = check_for_missing_slash_command(user_input)
             if potential_command:
                 if Confirm.ask(
-                    f"[yellow]Did you mean '{potential_command}'?[/yellow]",
+                    h("[yellow]Did you mean '{command}'?[/yellow]").format(
+                        command=potential_command
+                    ),
                     default=True,
                 ):
                     # Replace first word with the slash command
@@ -1109,7 +1213,9 @@ def chat_impl(
             # Plots indicator (for both streaming and non-streaming)
             if result.get("success") and result.get("plots"):
                 console.print(
-                    f"[dim #e45c47]◆ {len(result['plots'])} plot(s)[/dim #e45c47]"
+                    h("[dim #e45c47]◆ {count} plot(s)[/dim #e45c47]").format(
+                        count=len(result["plots"])
+                    )
                 )
 
             if not result.get("success"):
@@ -1118,7 +1224,7 @@ def chat_impl(
             _maybe_print_timings(client, "Chat Query")
 
         except KeyboardInterrupt:
-            if Confirm.ask("\n[dim]exit?[/dim]"):
+            if Confirm.ask(h("\n[dim]exit?[/dim]")):
                 if hasattr(client, "_save_session_json"):
                     try:
                         client._save_session_json()
@@ -1133,10 +1239,10 @@ def chat_impl(
                 )
 
                 console.print(
-                    "[dim]◆ feedback: [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]"
+                    f"[dim]{h('◆ feedback:')} [link=https://forms.cloud.microsoft/e/AkNk8J8nE8]forms.cloud.microsoft/e/AkNk8J8nE8[/link][/dim]"
                 )
                 console.print(
-                    "[dim]◆ issues: [link=https://github.com/the-omics-os/lobster/issues]github.com/the-omics-os/lobster/issues[/link][/dim]"
+                    f"[dim]{h('◆ issues:')} [link=https://github.com/the-omics-os/lobster/issues]github.com/the-omics-os/lobster/issues[/link][/dim]"
                 )
 
                 # Display session token usage summary

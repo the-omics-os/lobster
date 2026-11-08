@@ -17,6 +17,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
 func init() {
@@ -48,7 +49,7 @@ func (c *CellTypeSelectorComponent) Init(data json.RawMessage) error {
 	c.inputs = make([]textinput.Model, len(d.Clusters))
 	for i, cl := range d.Clusters {
 		ti := textinput.New()
-		ti.Placeholder = "cell type..."
+		ti.Placeholder = i18n.P("cell type...")
 		ti.CharLimit = 128
 		ti.SetWidth(30)
 		if cl.Label != "" {
@@ -275,25 +276,25 @@ func (c *CellTypeSelectorComponent) View(width, height int) string {
 			hStyle = selectedStyle
 		}
 		header := hStyle.Render(fmt.Sprintf(
-			"%sCluster %d (%d cells)",
+			i18n.P("%sCluster %d (%d cells)"),
 			prefix, cl.ID, cl.Size,
 		))
 
 		// Markers line.
 		markersStr := markerStyle.Render(
-			fmt.Sprintf("  Markers: %s", strings.Join(cl.Markers, ", ")),
+			fmt.Sprintf(i18n.P("  Markers: %s"), strings.Join(cl.Markers, ", ")),
 		)
 
 		// Label input line.
 		var labelLine string
 		if isEditing {
-			labelLine = headerStyle.Render("  Label: ") + c.inputs[i].View()
+			labelLine = headerStyle.Render("  "+i18n.P("Label:")+" ") + c.inputs[i].View()
 		} else {
 			val := c.inputs[i].Value()
 			if val == "" {
-				labelLine = dimStyle.Render("  Label: [empty]")
+				labelLine = dimStyle.Render("  " + i18n.P("Label:") + " " + i18n.P("[empty]"))
 			} else {
-				labelLine = dimStyle.Render("  Label: ") + normalStyle.Render(val)
+				labelLine = dimStyle.Render("  "+i18n.P("Label:")+" ") + normalStyle.Render(val)
 			}
 		}
 
@@ -333,11 +334,11 @@ func (c *CellTypeSelectorComponent) Mode() string     { return "overlay" }
 
 func (c *CellTypeSelectorComponent) KeyBindings() []key.Binding {
 	return []key.Binding{
-		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("^/v", "navigate")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit")),
-		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "accept+next")),
-		key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("C-s", "submit all")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel/exit edit")),
+		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("^/v", i18n.P("navigate"))),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", i18n.P("edit"))),
+		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", i18n.P("accept+next"))),
+		key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("C-s", i18n.P("submit all"))),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", i18n.P("cancel/exit edit"))),
 	}
 }
 

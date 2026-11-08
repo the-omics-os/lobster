@@ -27,6 +27,7 @@ from lobster.cli_internal.startup_diagnostics import (
     format_startup_diagnostic_text,
     render_startup_diagnostic_rich,
 )
+from lobster.i18n import h
 from lobster.ui import LobsterTheme
 from lobster.ui.console_manager import get_console_manager
 
@@ -188,7 +189,7 @@ def _render_human_query_result(
         footer_parts.append(f"session={session}")
     if usage_summary and "\n" not in usage_summary:
         footer_parts.append(usage_summary)
-    footer_parts.append("continue with --session-id latest")
+    footer_parts.append(h("continue with --session-id latest"))
 
     console.print()
     console.print(
@@ -220,55 +221,65 @@ def query_impl(
         None,
         "--workspace",
         "-w",
-        help="Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace",
+        help=h(
+            "Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        ),
     ),
     session_id: Optional[str] = typer.Option(
         None,
         "--session-id",
         "-s",
-        help="Session ID to continue (use 'latest' for most recent session in workspace)",
+        help=h(
+            "Session ID to continue (use 'latest' for most recent session in workspace)"
+        ),
     ),
     reasoning: bool = typer.Option(
         False,
         "--reasoning",
         is_flag=True,
-        help="Show agent reasoning and thinking process",
+        help=h("Show agent reasoning and thinking process"),
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Show detailed tool usage and agent activity"
+        False, "--verbose", "-v", help=h("Show detailed tool usage and agent activity")
     ),
     debug: bool = typer.Option(
-        False, "--debug", "-d", help="Enable debug mode with detailed logging"
+        False, "--debug", "-d", help=h("Enable debug mode with detailed logging")
     ),
     output: Optional[Path] = typer.Option(None, "--output", "-o"),
     profile_timings: Optional[bool] = typer.Option(
         None,
         "--profile-timings/--no-profile-timings",
-        help="Enable timing diagnostics for data manager operations",
+        help=h("Enable timing diagnostics for data manager operations"),
     ),
     provider: Optional[str] = typer.Option(
         None,
         "--provider",
         "-p",
-        help="LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, ollama-cloud, omics-os). Overrides auto-detection.",
+        help=h(
+            "LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, ollama-cloud, omics-os). Overrides auto-detection."
+        ),
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration.",
+        help=h(
+            "Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration."
+        ),
     ),
     stream: bool = typer.Option(
         False,
         "--stream/--no-stream",
-        help="Enable real-time text streaming (default: off for query mode)",
+        help=h("Enable real-time text streaming (default: off for query mode)"),
     ),
     json_output: bool = typer.Option(
         False,
         "--json",
         "-j",
         is_flag=True,
-        help="Output result as JSON for programmatic consumption. Suppresses all Rich formatting.",
+        help=h(
+            "Output result as JSON for programmatic consumption. Suppresses all Rich formatting."
+        ),
     ),
 ):
     """
@@ -340,21 +351,31 @@ def query_impl(
         if session_id == "latest":
             if found_existing_session and session_id_for_client and not json_output:
                 console.print(
-                    f"[cyan]📂 Loading latest session: {session_id_for_client}[/cyan]"
+                    h("[cyan]📂 Loading latest session: {sid}[/cyan]").format(
+                        sid=session_id_for_client
+                    )
                 )
             elif not found_existing_session and not json_output:
                 console.print(
-                    "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                    h(
+                        "[yellow]⚠️  No previous sessions found - creating new session[/yellow]"
+                    )
                 )
                 session_id_for_client = None
         elif found_existing_session:
             if session_id_for_client and not json_output:
                 console.print(
-                    f"[cyan]📂 Loading session: {session_id_for_client}[/cyan]"
+                    h("[cyan]📂 Loading session: {sid}[/cyan]").format(
+                        sid=session_id_for_client
+                    )
                 )
         else:
             if not json_output:
-                console.print(f"[cyan]📂 Creating new session: {session_id}[/cyan]")
+                console.print(
+                    h("[cyan]📂 Creating new session: {sid}[/cyan]").format(
+                        sid=session_id
+                    )
+                )
 
     # Initialize client with custom session_id if new session
     # Non-interactive: excludes ask_user tool and adjusts supervisor prompt
@@ -376,18 +397,22 @@ def query_impl(
             load_result = client.load_session(session_file_to_load)
             if not json_output:
                 console.print(
-                    f"[green]✓ Loaded {load_result['messages_loaded']} "
-                    f"previous messages[/green]"
+                    h("[green]✓ Loaded {n} previous messages[/green]").format(
+                        n=load_result["messages_loaded"]
+                    )
                 )
                 if load_result.get("original_session_id"):
                     console.print(
-                        f"[dim]  Original session: "
-                        f"{load_result['original_session_id']}[/dim]"
+                        h("[dim]  Original session: {sid}[/dim]").format(
+                            sid=load_result["original_session_id"]
+                        )
                     )
         except Exception as e:
             if not json_output:
-                console.print(f"[red]❌ Failed to load session: {e}[/red]")
-                console.print("[yellow]   Creating new session instead[/yellow]")
+                console.print(
+                    h("[red]❌ Failed to load session: {e}[/red]").format(e=e)
+                )
+                console.print(h("[yellow]   Creating new session instead[/yellow]"))
 
     # Process query
     if json_output:
@@ -401,16 +426,18 @@ def query_impl(
         if use_streaming:
             result = _display_streaming_response(client, question, console)
         elif should_show_progress(client):
-            with console.status("[red]🦞 Processing query...[/red]"):
+            with console.status(h("[red]🦞 Processing query...[/red]")):
                 result = client.query(question)
         else:
             if trace_mode:
                 if stream:
                     console.print(
-                        "[dim]◀ Lobster  Trace mode active; final answer renders on completion.[/dim]"
+                        h(
+                            "[dim]◀ Lobster  Trace mode active; final answer renders on completion.[/dim]"
+                        )
                     )
                 else:
-                    console.print("[dim]◀ Lobster  Working…[/dim]")
+                    console.print(h("[dim]◀ Lobster  Working…[/dim]"))
             result = client.query(question)
 
     # JSON output mode: emit structured JSON and exit
@@ -448,7 +475,9 @@ def query_impl(
         if output:
             output.write_text(result["response"])
             console.print(
-                f"[bold red]✓[/bold red] [white]Response saved to:[/white] [grey74]{output}[/grey74]"
+                h(
+                    "[bold red]✓[/bold red] [white]Response saved to:[/white] [grey74]{path}[/grey74]"
+                ).format(path=output)
             )
         else:
             _render_human_query_result(
@@ -465,20 +494,24 @@ def query_impl(
 
             console.print(
                 Panel(
-                    "[bold]Too many API requests in a short window.[/bold]\n\n"
-                    "This can happen when multiple browser tabs are open on app.omics-os.com "
-                    "(each tab polls the API).\n\n"
-                    "[bold]What to do:[/bold]\n"
-                    "  \u2022 Wait 10-15 seconds and retry\n"
-                    "  \u2022 Close extra browser tabs on app.omics-os.com\n"
-                    "  \u2022 Run: [bold]lobster cloud status[/bold]",
-                    title="\U0001f6ab Rate Limited",
+                    h(
+                        "[bold]Too many API requests in a short window.[/bold]\n\n"
+                        "This can happen when multiple browser tabs are open on app.omics-os.com "
+                        "(each tab polls the API).\n\n"
+                        "[bold]What to do:[/bold]\n"
+                        "  \u2022 Wait 10-15 seconds and retry\n"
+                        "  \u2022 Close extra browser tabs on app.omics-os.com\n"
+                        "  \u2022 Run: [bold]lobster cloud status[/bold]"
+                    ),
+                    title=h("\U0001f6ab Rate Limited"),
                     border_style="yellow",
                 )
             )
         else:
             console.print(
-                f"[bold red on white] \u26a0\ufe0f  Error [/bold red on white] [red]{error_msg}[/red]"
+                h(
+                    "[bold red on white] \u26a0\ufe0f  Error [/bold red on white] [red]{error}[/red]"
+                ).format(error=error_msg)
             )
 
     _maybe_print_timings(client, "Query")

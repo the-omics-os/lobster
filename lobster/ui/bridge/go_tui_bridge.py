@@ -283,10 +283,15 @@ def run_init_wizard(
     cmd = [binary_path, "init", "--result-file", result_path]
     if theme:
         cmd.extend(["--theme", theme])
-    from lobster.i18n import current_lang
+    from lobster.i18n import current_lang, language_was_explicit
 
     child_env = os.environ.copy()
     child_env["LOBSTER_LANG"] = current_lang()
+    # Ask for the language first unless the user already chose it (--lang or env).
+    # Older binaries ignore this variable.
+    child_env.pop("LOBSTER_INIT_ASK_LANG", None)
+    if not language_was_explicit():
+        child_env["LOBSTER_INIT_ASK_LANG"] = "1"
     try:
         proc = subprocess.run(  # nosec B603 # fixed argv, no shell
             cmd,
