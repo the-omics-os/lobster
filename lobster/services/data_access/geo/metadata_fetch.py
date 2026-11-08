@@ -665,9 +665,9 @@ class MetadataFetcher:
                 platforms[gpl_id] = {
                     "title": f"Platform {gpl_id}",
                     "organism": platform_organism,
-                    "technology": (
-                        platform_tech if platform_tech else "high throughput sequencing"
-                    ),
+                    # Left empty when Entrez gives none: the platform gate
+                    # treats a sequencing technology as decisive.
+                    "technology": platform_tech,
                     "_note": "Platform details from Entrez are limited. Full details available on GEO website.",
                 }
 

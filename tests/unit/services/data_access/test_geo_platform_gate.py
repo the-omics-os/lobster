@@ -8,6 +8,7 @@ import pytest
 
 from lobster.core.exceptions import UnsupportedPlatformError
 from lobster.core.runtime.data_manager import DataManagerV2
+from lobster.services.data_access.geo.metadata_fetch import MetadataFetcher
 from lobster.services.data_access.geo_service import GEOService
 
 
@@ -157,3 +158,22 @@ def test_unrecognised_technology_falls_back_to_title_keywords(geo_service):
     )
     with pytest.raises(UnsupportedPlatformError):
         geo_service._check_platform_compatibility("GSE1", metadata)
+
+
+def test_entrez_platforms_do_not_invent_a_technology():
+    platforms = MetadataFetcher(Mock())._extract_platform_info_from_entrez(
+        {"taxon": "Homo sapiens", "ptechtype": ""}, ["GPL570", "GPL99999"]
+    )
+    assert {p["technology"] for p in platforms.values()} == {""}
+
+
+def test_entrez_style_array_series_is_not_waved_through_as_mixed(geo_service):
+    # A registered array plus an unregistered GPL, both from Entrez metadata
+    # with no technology: must stay refused, not become a "mixed" series.
+    platforms = MetadataFetcher(Mock())._extract_platform_info_from_entrez(
+        {"taxon": "Homo sapiens", "ptechtype": ""}, ["GPL570", "GPL99999"]
+    )
+    metadata = {"title": "test series", "platforms": platforms, "samples": {}}
+    with patch.object(geo_service, "_data_expert_assistant", create=True):
+        with pytest.raises(UnsupportedPlatformError):
+            geo_service._check_platform_compatibility("GSE1", metadata)
