@@ -259,9 +259,14 @@ class MetaboLightsDownloadService(IDownloadService):
             logger.info(f"Selected {len(selected_files)} file(s) to download")
 
             # Step 4: Download files
-            download_dir = (
-                self.data_manager.workspace_dir / "downloads" / dataset_id.lower()
-            )
+            workspace_path = getattr(
+                self.data_manager, "workspace_path", None
+            ) or getattr(self.data_manager, "workspace_dir", None)
+            if workspace_path is None:
+                raise AttributeError(
+                    "Data manager must expose workspace_path or workspace_dir"
+                )
+            download_dir = Path(workspace_path) / "downloads" / dataset_id.lower()
             download_dir.mkdir(parents=True, exist_ok=True)
 
             local_files = []

@@ -207,7 +207,14 @@ class MassIVEDownloadService(IDownloadService):
 
             # Step 5: Download files
             local_files = []
-            download_dir = self.data_manager.workspace_dir / "downloads" / dataset_id
+            workspace_path = getattr(
+                self.data_manager, "workspace_path", None
+            ) or getattr(self.data_manager, "workspace_dir", None)
+            if workspace_path is None:
+                raise AttributeError(
+                    "Data manager must expose workspace_path or workspace_dir"
+                )
+            download_dir = Path(workspace_path) / "downloads" / dataset_id
             download_dir.mkdir(parents=True, exist_ok=True)
 
             for file_info in selected_files[:5]:  # Limit to 5 files

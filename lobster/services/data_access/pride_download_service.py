@@ -216,7 +216,14 @@ class PRIDEDownloadService(IDownloadService):
 
             # Step 4: Download files via FTP
             local_files = []
-            download_dir = self.data_manager.workspace_dir / "downloads" / dataset_id
+            workspace_path = getattr(
+                self.data_manager, "workspace_path", None
+            ) or getattr(self.data_manager, "workspace_dir", None)
+            if workspace_path is None:
+                raise AttributeError(
+                    "Data manager must expose workspace_path or workspace_dir"
+                )
+            download_dir = Path(workspace_path) / "downloads" / dataset_id
             download_dir.mkdir(parents=True, exist_ok=True)
 
             for file_info in selected_files:
