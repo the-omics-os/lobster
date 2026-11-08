@@ -170,47 +170,47 @@ var providerModels = map[string][]struct {
 	IsDefault   bool
 }{
 	providerAnthropic: {
-		{Name: "claude-sonnet-5-5", Description: "Claude Sonnet 5.5 — best balance of capability, speed & cost", IsDefault: true},
-		{Name: "claude-haiku-5-5", Description: "Claude Haiku 5.5 — fast and low-cost"},
-		{Name: "claude-opus-5-5", Description: "Claude Opus 5.5 — most capable, complex reasoning"},
-		{Name: "claude-sonnet-4-20250514", Description: "Claude Sonnet 4 — previous generation"},
+		{Name: "claude-sonnet-5-5", Description: i18n.P("Claude Sonnet 5.5 — best balance of capability, speed & cost"), IsDefault: true},
+		{Name: "claude-haiku-5-5", Description: i18n.P("Claude Haiku 5.5 — fast and low-cost")},
+		{Name: "claude-opus-5-5", Description: i18n.P("Claude Opus 5.5 — most capable, complex reasoning")},
+		{Name: "claude-sonnet-4-20250514", Description: i18n.P("Claude Sonnet 4 — previous generation")},
 	},
 	providerBedrock: {
-		{Name: "global.anthropic.claude-sonnet-5-5", Description: "Claude Sonnet 5.5 — best balance of capability, speed & cost", IsDefault: true},
-		{Name: "global.anthropic.claude-haiku-5-5", Description: "Claude Haiku 5.5 — fast and low-cost"},
-		{Name: "global.anthropic.claude-opus-5-5", Description: "Claude Opus 5.5 — most capable"},
-		{Name: "global.openai.gpt-6.1-sol", Description: "GPT-6.1 Sol on Bedrock"},
-		{Name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", Description: "Claude Sonnet 4.5 — previous generation"},
+		{Name: "global.anthropic.claude-sonnet-5-5", Description: i18n.P("Claude Sonnet 5.5 — best balance of capability, speed & cost"), IsDefault: true},
+		{Name: "global.anthropic.claude-haiku-5-5", Description: i18n.P("Claude Haiku 5.5 — fast and low-cost")},
+		{Name: "global.anthropic.claude-opus-5-5", Description: i18n.P("Claude Opus 5.5 — most capable")},
+		{Name: "global.openai.gpt-6.1-sol", Description: i18n.P("GPT-6.1 Sol on Bedrock")},
+		{Name: "us.anthropic.claude-sonnet-4-5-20250929-v1:0", Description: i18n.P("Claude Sonnet 4.5 — previous generation")},
 	},
 	providerOpenAI: {
-		{Name: "gpt-6.1-sol", Description: "GPT-6.1 Sol — newest GPT model", IsDefault: true},
-		{Name: "gpt-6-luna", Description: "GPT-6 Luna — fast and low-cost"},
-		{Name: "gpt-6-astra", Description: "GPT-6 Astra — most capable GPT model"},
-		{Name: "gpt-4o", Description: "GPT-4o — previous generation"},
+		{Name: "gpt-6.1-sol", Description: i18n.P("GPT-6.1 Sol — newest GPT model"), IsDefault: true},
+		{Name: "gpt-6-luna", Description: i18n.P("GPT-6 Luna — fast and low-cost")},
+		{Name: "gpt-6-astra", Description: i18n.P("GPT-6 Astra — most capable GPT model")},
+		{Name: "gpt-4o", Description: i18n.P("GPT-4o — previous generation")},
 	},
 	providerGemini: {
-		{Name: "gemini-3-pro-preview", Description: "Gemini 3 Pro — best balance of speed & capability", IsDefault: true},
-		{Name: "gemini-3-flash-preview", Description: "Gemini 3 Flash — fastest, free tier available"},
+		{Name: "gemini-3-pro-preview", Description: i18n.P("Gemini 3 Pro — best balance of speed & capability"), IsDefault: true},
+		{Name: "gemini-3-flash-preview", Description: i18n.P("Gemini 3 Flash — fastest, free tier available")},
 	},
 	providerAzure: {
-		{Name: "gpt-4o", Description: "GPT-4o via Azure AI Foundry", IsDefault: true},
-		{Name: "deepseek-r1", Description: "DeepSeek R1 reasoning model"},
-		{Name: "phi-4", Description: "Microsoft Phi-4 small language model"},
+		{Name: "gpt-4o", Description: i18n.P("GPT-4o via Azure AI Foundry"), IsDefault: true},
+		{Name: "deepseek-r1", Description: i18n.P("DeepSeek R1 reasoning model")},
+		{Name: "phi-4", Description: i18n.P("Microsoft Phi-4 small language model")},
 	},
 	providerOpenRouter: {
-		{Name: "anthropic/claude-sonnet-4-5", Description: "Claude Sonnet 4.5 via OpenRouter", IsDefault: true},
-		{Name: "openai/gpt-4o", Description: "GPT-4o via OpenRouter"},
-		{Name: "google/gemini-3-pro-preview", Description: "Gemini 3 Pro via OpenRouter"},
+		{Name: "anthropic/claude-sonnet-4-5", Description: i18n.P("Claude Sonnet 4.5 via OpenRouter"), IsDefault: true},
+		{Name: "openai/gpt-4o", Description: i18n.P("GPT-4o via OpenRouter")},
+		{Name: "google/gemini-3-pro-preview", Description: i18n.P("Gemini 3 Pro via OpenRouter")},
 	},
 	providerOllamaCloud: {
-		{Name: "glm-5.2", Description: "Hosted model, pricing varies by subscription", IsDefault: true},
-		{Name: "gpt-oss:120b", Description: "Hosted GPT-OSS 120B"},
-		{Name: "gpt-oss:20b", Description: "Hosted GPT-OSS 20B"},
+		{Name: "glm-5.2", Description: i18n.P("Hosted model, pricing varies by subscription"), IsDefault: true},
+		{Name: "gpt-oss:120b", Description: i18n.P("Hosted GPT-OSS 120B")},
+		{Name: "gpt-oss:20b", Description: i18n.P("Hosted GPT-OSS 20B")},
 	},
 	providerNebius: {
-		{Name: "Qwen/Qwen3-30B-A3B-Instruct-2507", Description: "Qwen3 30B A3B — versatile, 262k context", IsDefault: true},
-		{Name: "Qwen/Qwen3-235B-A22B-Instruct-2507", Description: "Qwen3 235B — flagship general reasoning"},
-		{Name: "deepseek-ai/DeepSeek-V4-Pro", Description: "DeepSeek V4 Pro — advanced reasoning, 1M context"},
+		{Name: "Qwen/Qwen3-30B-A3B-Instruct-2507", Description: i18n.P("Qwen3 30B A3B — versatile, 262k context"), IsDefault: true},
+		{Name: "Qwen/Qwen3-235B-A22B-Instruct-2507", Description: i18n.P("Qwen3 235B — flagship general reasoning")},
+		{Name: "deepseek-ai/DeepSeek-V4-Pro", Description: i18n.P("DeepSeek V4 Pro — advanced reasoning, 1M context")},
 	},
 }
 
@@ -330,7 +330,7 @@ func (m multiSelectModel) View(th *lobsterTheme.Theme) string {
 		sb.WriteString(cursor + checkbox + style.Render(item.label) + "\n")
 	}
 
-	sb.WriteString("\n" + descStyle.Render("space: toggle  enter: confirm  esc: cancel"))
+	sb.WriteString("\n" + descStyle.Render(i18n.P("space: toggle  enter: confirm  esc: cancel")))
 	return sb.String()
 }
 
@@ -454,17 +454,17 @@ func (m confirmModel) View(th *lobsterTheme.Theme) string {
 	}
 	sb.WriteString("\n")
 
-	yes := inactiveStyle.Render("Yes")
-	no := inactiveStyle.Render("No")
+	yes := inactiveStyle.Render(i18n.P("Yes"))
+	no := inactiveStyle.Render(i18n.P("No"))
 	if m.value {
-		yes = activeStyle.Render("> Yes")
-		no = inactiveStyle.Render("  No")
+		yes = activeStyle.Render("> " + i18n.P("Yes"))
+		no = inactiveStyle.Render("  " + i18n.P("No"))
 	} else {
-		yes = inactiveStyle.Render("  Yes")
-		no = activeStyle.Render("> No")
+		yes = inactiveStyle.Render("  " + i18n.P("Yes"))
+		no = activeStyle.Render("> " + i18n.P("No"))
 	}
 	sb.WriteString(yes + "  " + no + "\n")
-	sb.WriteString("\n" + descStyle.Render("y/n: choose  enter: confirm  esc: back"))
+	sb.WriteString("\n" + descStyle.Render(i18n.P("y/n: choose  enter: confirm  esc: back")))
 	return sb.String()
 }
 
@@ -544,13 +544,13 @@ func NewWizardModel(themeName string, resultPath string) WizardModel {
 	items := make([]multiSelectItem, 0, len(initAgentPackages))
 	for _, pkg := range initAgentPackages {
 		agentCount := len(pkg.Agents)
-		agentLabel := "agents"
+		agentLabel := i18n.P("agents")
 		if agentCount == 1 {
-			agentLabel = "agent"
+			agentLabel = i18n.P("agent")
 		}
 		label := fmt.Sprintf("%-24s %s (%d %s)", pkg.Name, pkg.Description, agentCount, agentLabel)
 		if pkg.Experimental {
-			label = label + warningStyle.Render(" [experimental]")
+			label = label + warningStyle.Render(i18n.P(" [experimental]"))
 		}
 		items = append(items, multiSelectItem{
 			label:    label,
@@ -764,7 +764,7 @@ func (m *WizardModel) initAPIKeyStep() {
 
 	case providerOllamaCloud:
 		ti := textinput.New()
-		ti.Placeholder = "API key from ollama.com/settings/keys"
+		ti.Placeholder = i18n.P("API key from ollama.com/settings/keys")
 		ti.EchoMode = textinput.EchoPassword
 		ti.Focus()
 		m.apiKeyInputs = []textinput.Model{ti}
@@ -780,7 +780,7 @@ func (m *WizardModel) initAPIKeyStep() {
 
 	case providerOmicsOS:
 		ti := textinput.New()
-		ti.Placeholder = "Paste your API key from app.omics-os.com/account"
+		ti.Placeholder = i18n.P("Paste your API key from app.omics-os.com/account")
 		ti.EchoMode = textinput.EchoPassword
 		ti.Focus()
 		m.apiKeyInputs = []textinput.Model{ti}
@@ -809,7 +809,7 @@ func (m WizardModel) updateAPIKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			close(m.oauthCancel)
 			// Save credentials now (after UI accepts, not inside tea.Cmd).
 			if err := saveOAuthCredentials(msg); err != nil {
-				m.oauthLastError = "Failed to save credentials: " + err.Error()
+				m.oauthLastError = i18n.P("Failed to save credentials: ") + err.Error()
 				if len(m.apiKeyInputs) > 0 {
 					m.apiKeyInputs[m.apiKeyFocusIdx].Focus()
 				}
@@ -858,7 +858,7 @@ func (m WizardModel) updateAPIKey(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The local Python gateway uses an API key. Empty input must not
 			// start the separate npm client's device-login workflow.
 			if m.result.Provider == providerOmicsOS && strings.TrimSpace(m.result.APIKey) == "" {
-				m.oauthLastError = "Omics-OS Cloud API key is required"
+				m.oauthLastError = i18n.P("Omics-OS Cloud API key is required")
 				return m, textinput.Blink
 			}
 			m.oauthLastError = ""
@@ -1061,10 +1061,10 @@ func (m WizardModel) viewModelSelect() string {
 		titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
 		descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
 		var sb strings.Builder
-		sb.WriteString(titleStyle.Render("Custom Model ID") + "\n")
-		sb.WriteString(descStyle.Render("Enter the model ID exactly as your provider expects it.") + "\n\n")
+		sb.WriteString(titleStyle.Render(i18n.P("Custom Model ID")) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P("Enter the model ID exactly as your provider expects it.")) + "\n\n")
 		sb.WriteString(m.modelCustom.View() + "\n")
-		sb.WriteString("\n" + descStyle.Render("enter: confirm  esc: back"))
+		sb.WriteString("\n" + descStyle.Render(i18n.P("enter: confirm  esc: back")))
 		return sb.String()
 	}
 	return m.modelSelect.View(m.theme)
@@ -1076,13 +1076,13 @@ func (m WizardModel) viewAPIKey() string {
 		descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
 		accentStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Accent2)
 		var sb strings.Builder
-		sb.WriteString(titleStyle.Render("Omics-OS Cloud Login") + "\n\n")
-		sb.WriteString(accentStyle.Render("◐") + " Waiting for browser login...\n\n")
+		sb.WriteString(titleStyle.Render(i18n.P("Omics-OS Cloud Login")) + "\n\n")
+		sb.WriteString(accentStyle.Render("◐") + " " + i18n.P("Waiting for browser login...") + "\n\n")
 		if m.oauthAuthURL != "" {
-			sb.WriteString(descStyle.Render("If the browser didn't open, visit:") + "\n")
+			sb.WriteString(descStyle.Render(i18n.P("If the browser didn't open, visit:")) + "\n")
 			sb.WriteString(descStyle.Render(m.oauthAuthURL) + "\n\n")
 		}
-		sb.WriteString(descStyle.Render("esc: cancel"))
+		sb.WriteString(descStyle.Render(i18n.P("esc: cancel")))
 		return sb.String()
 	}
 
@@ -1091,10 +1091,10 @@ func (m WizardModel) viewAPIKey() string {
 			titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
 			descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
 			var sb strings.Builder
-			sb.WriteString(titleStyle.Render("Custom Ollama Model") + "\n")
-			sb.WriteString(descStyle.Render("Type the model name exactly as it appears in `ollama list` or `ollama pull`.") + "\n\n")
+			sb.WriteString(titleStyle.Render(i18n.P("Custom Ollama Model")) + "\n")
+			sb.WriteString(descStyle.Render(i18n.P("Type the model name exactly as it appears in `ollama list` or `ollama pull`.")) + "\n\n")
 			sb.WriteString(m.ollamaCustom.View() + "\n")
-			sb.WriteString("\n" + descStyle.Render("enter: confirm  esc: back"))
+			sb.WriteString("\n" + descStyle.Render(i18n.P("enter: confirm  esc: back")))
 			return sb.String()
 		}
 		return m.ollamaSelect.View(m.theme)
@@ -1106,13 +1106,13 @@ func (m WizardModel) viewAPIKey() string {
 	focusIndicator := lipgloss.NewStyle().Foreground(m.theme.Colors.Success)
 
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render("API Keys") + "\n")
+	sb.WriteString(titleStyle.Render(i18n.P("API Keys")) + "\n")
 
 	if m.result.Provider == providerOmicsOS {
-		sb.WriteString(descStyle.Render("Create an API key at https://app.omics-os.com/account") + "\n")
-		sb.WriteString(descStyle.Render("Alternative npm Cloud client: npm i -g @omicsos/lobster && lobster cloud login --device") + "\n")
-		sb.WriteString(descStyle.Render("With both CLIs installed: lobster-cli cloud login --device (npm client)") + "\n")
-		sb.WriteString(descStyle.Render("Python uses OMICS_OS_API_KEY; configure it separately. The key is saved, not checked.") + "\n")
+		sb.WriteString(descStyle.Render(i18n.P("Create an API key at https://app.omics-os.com/account")) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P("Alternative npm Cloud client: npm i -g @omicsos/lobster && lobster cloud login --device")) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P("With both CLIs installed: lobster-cli cloud login --device (npm client)")) + "\n")
+		sb.WriteString(descStyle.Render(i18n.P("Python uses OMICS_OS_API_KEY; configure it separately. The key is saved, not checked.")) + "\n")
 		if m.oauthLastError != "" {
 			warnStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Warning)
 			sb.WriteString(warnStyle.Render(m.oauthLastError) + "\n")
@@ -1125,11 +1125,11 @@ func (m WizardModel) viewAPIKey() string {
 		if i == m.apiKeyFocusIdx {
 			indicator = focusIndicator.Render("> ")
 		}
-		sb.WriteString(indicator + labelStyle.Render(label) + "\n")
+		sb.WriteString(indicator + labelStyle.Render(i18n.P(label)) + "\n")
 		sb.WriteString("  " + m.apiKeyInputs[i].View() + "\n\n")
 	}
 
-	sb.WriteString(descStyle.Render("enter: confirm  tab: next field  esc: back"))
+	sb.WriteString(descStyle.Render(i18n.P("enter: confirm  tab: next field  esc: back")))
 	return sb.String()
 }
 
@@ -1189,9 +1189,9 @@ func (m *WizardModel) initOptionalKeys() {
 	selectedPackages := m.agentSelect.Selected()
 	selectedAgents := expandSelectedPackages(selectedPackages)
 	beneficiaries := getSmartStandardizationBeneficiaries(selectedAgents)
-	desc := "Map biomedical terms to ontology concepts with OpenAI embeddings + ChromaDB."
+	desc := i18n.P("Map biomedical terms to ontology concepts with OpenAI embeddings + ChromaDB.")
 	if len(beneficiaries) > 0 {
-		desc = desc + " Helpful for " + strings.Join(beneficiaries, ", ") + "."
+		desc = desc + fmt.Sprintf(i18n.P(" Helpful for %s."), strings.Join(beneficiaries, ", "))
 	}
 	m.smartStdConfirm = confirmModel{
 		title:       "Smart Standardization",
@@ -1364,10 +1364,10 @@ func (m WizardModel) viewTextInput(title, desc string, ti textinput.Model) strin
 	titleStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.Primary).Bold(true)
 	descStyle := lipgloss.NewStyle().Foreground(m.theme.Colors.TextMuted)
 	var sb strings.Builder
-	sb.WriteString(titleStyle.Render(title) + "\n")
-	sb.WriteString(descStyle.Render(desc) + "\n\n")
+	sb.WriteString(titleStyle.Render(i18n.P(title)) + "\n")
+	sb.WriteString(descStyle.Render(i18n.P(desc)) + "\n\n")
 	sb.WriteString(ti.View() + "\n")
-	sb.WriteString("\n" + descStyle.Render("enter: confirm  esc: back"))
+	sb.WriteString("\n" + descStyle.Render(i18n.P("enter: confirm  esc: back")))
 	return sb.String()
 }
 
@@ -1474,7 +1474,7 @@ func getSmartStandardizationBeneficiaries(selectedAgents []string) []string {
 	for _, agent := range selectedAgents {
 		label, ok := smartStandardizationAgentLabels[agent]
 		if ok {
-			beneficiaries = append(beneficiaries, label)
+			beneficiaries = append(beneficiaries, i18n.P(label))
 		}
 	}
 	return beneficiaries
@@ -1528,7 +1528,7 @@ func buildOllamaSelectItems(status ollamaStatus) []singleSelectItem {
 			continue
 		}
 		items = append(items, singleSelectItem{
-			label: fmt.Sprintf("%-20s detected locally", model),
+			label: fmt.Sprintf(i18n.P("%-20s detected locally"), model),
 			value: model,
 		})
 		seen[model] = true
@@ -1568,9 +1568,9 @@ func buildOllamaModelDescription(status ollamaStatus) string {
 	case !status.Running:
 		return "Ollama is installed but not running. Start it with `ollama serve`. You can still save a preferred model now."
 	case len(status.Models) > 0 && status.Version != "":
-		return fmt.Sprintf("Detected %d local model(s) on Ollama %s. Local models appear first, followed by curated defaults.", len(status.Models), status.Version)
+		return fmt.Sprintf(i18n.P("Detected %d local model(s) on Ollama %s. Local models appear first, followed by curated defaults."), len(status.Models), status.Version)
 	case len(status.Models) > 0:
-		return fmt.Sprintf("Detected %d local model(s). Local models appear first, followed by curated defaults.", len(status.Models))
+		return fmt.Sprintf(i18n.P("Detected %d local model(s). Local models appear first, followed by curated defaults."), len(status.Models))
 	default:
 		return "No local models were detected yet. Curated models are listed first, plus an option to type another model."
 	}

@@ -15,6 +15,7 @@ from typing import Optional, Tuple
 
 from packaging import version as pkg_version
 
+from lobster.i18n import h
 from lobster.version import __version__
 
 logger = logging.getLogger(__name__)
@@ -185,11 +186,10 @@ def get_update_message(latest_version: str) -> str:
     except Exception:
         update_cmd = "uv pip install --upgrade lobster-ai"
 
-    return (
-        f"A new version of lobster-ai is available: {latest_version} "
-        f"(current: {__version__})\n"
-        f"Update with: lobster upgrade  (or: {update_cmd})"
-    )
+    return h(
+        "A new version of lobster-ai is available: {latest} (current: {current})\n"
+        "Update with: lobster upgrade  (or: {cmd})"
+    ).format(latest=latest_version, current=__version__, cmd=update_cmd)
 
 
 def maybe_show_update_notification(console) -> None:

@@ -18,6 +18,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from lobster.config import provider_setup
+from lobster.i18n import h
 from lobster.ui import LobsterTheme
 from lobster.ui.console_manager import get_console_manager
 
@@ -76,35 +77,35 @@ def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
 AVAILABLE_AGENT_PACKAGES = [
     (
         "lobster-research",
-        "Literature search & data discovery",
+        h("Literature search & data discovery"),
         ["research_agent", "data_expert_agent"],
         True,
         False,
     ),
     (
         "lobster-transcriptomics",
-        "Single-cell & bulk RNA-seq analysis",
+        h("Single-cell & bulk RNA-seq analysis"),
         ["transcriptomics_expert", "annotation_expert", "de_analysis_expert"],
         True,
         False,
     ),
     (
         "lobster-visualization",
-        "Data visualization & plotting",
+        h("Data visualization & plotting"),
         ["visualization_expert_agent"],
         True,
         False,
     ),
     (
         "lobster-genomics",
-        "Genomics/DNA analysis (VCF, GWAS, clinical variants)",
+        h("Genomics/DNA analysis (VCF, GWAS, clinical variants)"),
         ["genomics_expert", "variant_analysis_expert"],
         True,
         False,
     ),
     (
         "lobster-proteomics",
-        "Mass spec & affinity proteomics analysis",
+        h("Mass spec & affinity proteomics analysis"),
         [
             "proteomics_expert",
             "proteomics_de_analysis_expert",
@@ -115,14 +116,14 @@ AVAILABLE_AGENT_PACKAGES = [
     ),
     (
         "lobster-metabolomics",
-        "LC-MS, GC-MS, and NMR metabolomics analysis",
+        h("LC-MS, GC-MS, and NMR metabolomics analysis"),
         ["metabolomics_expert"],
         True,
         False,
     ),
     (
         "lobster-ml",
-        "Machine learning, feature selection, and survival analysis",
+        h("Machine learning, feature selection, and survival analysis"),
         [
             "machine_learning_expert",
             "feature_selection_expert",
@@ -133,7 +134,7 @@ AVAILABLE_AGENT_PACKAGES = [
     ),
     (
         "lobster-drug-discovery",
-        "Drug discovery, cheminformatics, and translational strategy",
+        h("Drug discovery, cheminformatics, and translational strategy"),
         [
             "drug_discovery_expert",
             "cheminformatics_expert",
@@ -145,14 +146,14 @@ AVAILABLE_AGENT_PACKAGES = [
     ),
     (
         "lobster-metadata",
-        "Metadata filtering & standardization",
+        h("Metadata filtering & standardization"),
         ["metadata_assistant"],
         True,
         True,
     ),
     (
         "lobster-structural-viz",
-        "Protein structure visualization (PyMOL, PDB)",
+        h("Protein structure visualization (PyMOL, PDB)"),
         ["protein_structure_visualization_expert"],
         True,
         True,
@@ -227,12 +228,15 @@ def _display_agent_selection_list(
     enabled_set = enabled_set or set()
 
     table = Table(
-        title="Available Agents", box=box.ROUNDED, show_header=True, header_style="bold"
+        title=h("Available Agents"),
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold",
     )
     table.add_column("#", style="cyan", width=4)
-    table.add_column("Name", style="white")
-    table.add_column("Description", style="dim")
-    table.add_column("Tier", style="yellow")
+    table.add_column(h("Name"), style="white")
+    table.add_column(h("Description"), style="dim")
+    table.add_column(h("Tier"), style="yellow")
 
     # Sort agents alphabetically
     sorted_agents = sorted(agents_dict.keys())
@@ -261,16 +265,16 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
 
     # Build table showing available packages
     table = Table(
-        title="Available Agent Packages",
+        title=h("Available Agent Packages"),
         box=box.ROUNDED,
         show_header=True,
         header_style="bold",
     )
     table.add_column("#", style="cyan", width=3)
-    table.add_column("Package", style="white")
-    table.add_column("Description", style="dim")
-    table.add_column("Agents", style="yellow")
-    table.add_column("Status", style="green", width=12)
+    table.add_column(h("Package"), style="white")
+    table.add_column(h("Description"), style="dim")
+    table.add_column(h("Agents"), style="yellow")
+    table.add_column(h("Status"), style="green", width=12)
 
     for i, (pkg_name, desc, agents, published, experimental) in enumerate(
         AVAILABLE_AGENT_PACKAGES, 1
@@ -278,11 +282,11 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
         # Check if this package's agents are installed
         is_installed = any(a in installed_agent_names for a in agents)
         if is_installed:
-            status = "[green]installed[/green]"
+            status = h("[green]installed[/green]")
         elif not published:
-            status = "[dim]coming soon[/dim]"
+            status = h("[dim]coming soon[/dim]")
         elif experimental:
-            status = "[yellow]experimental[/yellow]"
+            status = h("[yellow]experimental[/yellow]")
         else:
             status = ""
         agents_str = ", ".join(agents[:2])  # Show first 2 agents
@@ -293,12 +297,12 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
     console.print(table)
 
     console.print(
-        "\n[bold white]Select packages to install (comma-separated):[/bold white]"
+        h("\n[bold white]Select packages to install (comma-separated):[/bold white]")
     )
-    console.print("[dim]Example: 1,2,3 or 1-4 or 'all' for all packages[/dim]")
-    console.print("[dim]Already installed packages will be skipped[/dim]")
+    console.print(h("[dim]Example: 1,2,3 or 1-4 or 'all' for all packages[/dim]"))
+    console.print(h("[dim]Already installed packages will be skipped[/dim]"))
 
-    selection = Prompt.ask("[bold white]Selection[/bold white]", default="all")
+    selection = Prompt.ask(h("[bold white]Selection[/bold white]"), default="all")
 
     # Parse selection
     selected_indices = set()
@@ -345,17 +349,23 @@ def _prompt_manual_agent_selection(workspace_path: Path) -> list[str]:
         from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
         console.print(
-            f"\n[dim]Installing {len(packages_to_install)} package(s)...[/dim]"
+            h("\n[dim]Installing {len} package(s)...[/dim]").format(
+                len=len(packages_to_install)
+            )
         )
         for pkg in packages_to_install:
-            console.print(f"  [dim]Installing {pkg}...[/dim]")
+            console.print(h("  [dim]Installing {pkg}...[/dim]").format(pkg=pkg))
             success, msg = _uv_pip_install(pkg)
             if success:
                 console.print(f"  [green]✓[/green] {pkg}")
             else:
-                console.print(f"  [yellow]⚠[/yellow] {pkg} failed: {msg[:50]}")
+                console.print(
+                    h("  [yellow]⚠[/yellow] {pkg} failed: {msg}").format(
+                        pkg=pkg, msg=msg[:50]
+                    )
+                )
     elif selected_indices:
-        console.print("[dim]All selected packages already installed[/dim]")
+        console.print(h("[dim]All selected packages already installed[/dim]"))
 
     return list(dict.fromkeys(all_agents))  # Remove duplicates preserving order
 
@@ -367,21 +377,29 @@ def _prompt_automatic_agent_selection(workspace_path: Path) -> list[str]:
 
     console = Console()
 
-    console.print("\n[bold white]Describe your workflow and data types:[/bold white]")
     console.print(
-        "[dim]Example: I have single-cell RNA-seq data and want to identify cell types and run differential expression[/dim]"
+        h("\n[bold white]Describe your workflow and data types:[/bold white]")
+    )
+    console.print(
+        h(
+            "[dim]Example: I have single-cell RNA-seq data and want to identify cell types and run differential expression[/dim]"
+        )
     )
 
-    description = Prompt.ask("[bold white]Workflow description[/bold white]")
+    description = Prompt.ask(h("[bold white]Workflow description[/bold white]"))
 
     if not description.strip():
         console.print(
-            "[yellow]No description provided. Falling back to manual selection.[/yellow]"
+            h(
+                "[yellow]No description provided. Falling back to manual selection.[/yellow]"
+            )
         )
         return _prompt_manual_agent_selection(workspace_path)
 
     # Call Omics-OS endpoint
-    console.print("\n[dim]Contacting Omics-OS service for agent suggestions...[/dim]")
+    console.print(
+        h("\n[dim]Contacting Omics-OS service for agent suggestions...[/dim]")
+    )
 
     try:
         from lobster.config.agent_config_endpoint import suggest_agents
@@ -392,7 +410,9 @@ def _prompt_automatic_agent_selection(workspace_path: Path) -> list[str]:
 
     if result is None:
         console.print(
-            "[yellow]Can't reach Omics-OS service. Falling back to manual selection.[/yellow]"
+            h(
+                "[yellow]Can't reach Omics-OS service. Falling back to manual selection.[/yellow]"
+            )
         )
         return _prompt_manual_agent_selection(workspace_path)
 
@@ -402,11 +422,11 @@ def _prompt_automatic_agent_selection(workspace_path: Path) -> list[str]:
 
     if not suggested_agents:
         console.print(
-            "[yellow]No agents suggested. Falling back to manual selection.[/yellow]"
+            h("[yellow]No agents suggested. Falling back to manual selection.[/yellow]")
         )
         return _prompt_manual_agent_selection(workspace_path)
 
-    console.print("\n[bold green]Suggested agents:[/bold green]")
+    console.print(h("\n[bold green]Suggested agents:[/bold green]"))
     for agent in suggested_agents:
         reason = reasoning.get(agent, "")
         console.print(f"  [cyan]v[/cyan] {agent}")
@@ -415,9 +435,9 @@ def _prompt_automatic_agent_selection(workspace_path: Path) -> list[str]:
 
     # Allow user to modify
     if not Confirm.ask(
-        "\n[bold white]Accept these suggestions?[/bold white]", default=True
+        h("\n[bold white]Accept these suggestions?[/bold white]"), default=True
     ):
-        console.print("[dim]Opening manual selection to modify...[/dim]")
+        console.print(h("[dim]Opening manual selection to modify...[/dim]"))
         return _prompt_manual_agent_selection(workspace_path)
 
     return suggested_agents
@@ -458,11 +478,13 @@ def _check_and_prompt_install_packages(
     # In uv tool env, defer installation — return full list for handoff
     if is_uv_tool_env():
         console.print(
-            "\n[dim]  Agent packages will be added via uv tool install after setup completes.[/dim]"
+            h(
+                "\n[dim]  Agent packages will be added via uv tool install after setup completes.[/dim]"
+            )
         )
         return normalized_agents
 
-    console.print("\n[yellow]These agent packages are not installed:[/yellow]")
+    console.print(h("\n[yellow]These agent packages are not installed:[/yellow]"))
 
     # Map agents to packages using centralized mapping
     from lobster.core.component_registry import AGENT_TO_PACKAGE
@@ -482,14 +504,14 @@ def _check_and_prompt_install_packages(
         console.print(f"  [dim]- {agent}[/dim]")
 
     if packages_to_install:
-        console.print("\n[bold white]Install these packages?[/bold white]")
+        console.print(h("\n[bold white]Install these packages?[/bold white]"))
         for pkg in sorted(packages_to_install):
             console.print(f"  [cyan]{pkg}[/cyan]")
 
         should_install = auto_install_missing
         if prompt_for_install and not auto_install_missing:
             should_install = Confirm.ask(
-                "\n[bold white]Install now?[/bold white]", default=True
+                h("\n[bold white]Install now?[/bold white]"), default=True
             )
 
         if should_install:
@@ -498,26 +520,29 @@ def _check_and_prompt_install_packages(
             )
 
             for pkg in sorted(packages_to_install):
-                console.print(f"[dim]Installing {pkg}...[/dim]")
+                console.print(h("[dim]Installing {pkg}...[/dim]").format(pkg=pkg))
                 success, msg = _uv_pip_install(pkg)
                 if success:
-                    console.print(f"[green]v[/green] {pkg} installed")
+                    console.print(h("[green]v[/green] {pkg} installed").format(pkg=pkg))
                     confirmed_names.update(packages_to_install[pkg])
                 else:
                     console.print(
-                        f"[yellow]Warning: Failed to install {pkg}: {msg}[/yellow]"
+                        h(
+                            "[yellow]Warning: Failed to install {pkg}: {msg}[/yellow]"
+                        ).format(pkg=pkg, msg=msg)
                     )
         elif prompt_for_install:
-            console.print("[dim]Skipping package installation for now[/dim]")
+            console.print(h("[dim]Skipping package installation for now[/dim]"))
         else:
             console.print(
-                "[dim]Skipping package installation in non-interactive mode[/dim]"
+                h("[dim]Skipping package installation in non-interactive mode[/dim]")
             )
 
     unresolved = [agent for agent in normalized_agents if agent not in confirmed_names]
     if unresolved:
         console.print(
-            "\n[yellow]Skipping uninstalled agents:[/yellow] " + ", ".join(unresolved)
+            h("\n[yellow]Skipping uninstalled agents:[/yellow] ")
+            + ", ".join(unresolved)
         )
 
     # Avoid immediate same-process registry reload here. In development installs we
@@ -556,16 +581,22 @@ def _perform_agent_selection_non_interactive(
     # Priority: preset > agents > auto_agents
     if preset_flag:
         if not is_valid_preset(preset_flag):
-            console.print(f"[red]Invalid preset: {preset_flag}[/red]")
             console.print(
-                "[dim]Valid presets: scrna-basic, scrna-full, multiomics-full[/dim]"
+                h("[red]Invalid preset: {preset_flag}[/red]").format(
+                    preset_flag=preset_flag
+                )
+            )
+            console.print(
+                h("[dim]Valid presets: scrna-basic, scrna-full, multiomics-full[/dim]")
             )
             raise typer.Exit(1)
 
         expanded = expand_preset(preset_flag)
         expanded = _filter_unpublished_preset_agents(expanded, console, preset_flag)
         console.print(
-            f"[green]v[/green] Using preset: {preset_flag} ({len(expanded)} agents)"
+            h("[green]v[/green] Using preset: {preset_flag} ({len} agents)").format(
+                preset_flag=preset_flag, len=len(expanded)
+            )
         )
         return expanded, preset_flag
 
@@ -573,20 +604,24 @@ def _perform_agent_selection_non_interactive(
         # Parse comma-separated list
         agents = [a.strip() for a in agents_flag.split(",") if a.strip()]
         if not agents:
-            console.print("[red]No agents specified in --agents flag[/red]")
+            console.print(h("[red]No agents specified in --agents flag[/red]"))
             raise typer.Exit(1)
 
         console.print(
-            f"[green]v[/green] Enabling {len(agents)} agent(s): {', '.join(agents)}"
+            h("[green]v[/green] Enabling {len} agent(s): {join}").format(
+                len=len(agents), join=", ".join(agents)
+            )
         )
         return agents, None
 
     elif auto_agents_flag:
         if not agents_description_flag:
-            console.print("[red]--auto-agents requires --agents-description[/red]")
+            console.print(h("[red]--auto-agents requires --agents-description[/red]"))
             raise typer.Exit(1)
 
-        console.print("[dim]Contacting Omics-OS service for agent suggestions...[/dim]")
+        console.print(
+            h("[dim]Contacting Omics-OS service for agent suggestions...[/dim]")
+        )
 
         try:
             from lobster.config.agent_config_endpoint import suggest_agents
@@ -596,21 +631,27 @@ def _perform_agent_selection_non_interactive(
             result = None
 
         if result is None:
-            console.print("[yellow]Can't reach Omics-OS service.[/yellow]")
+            console.print(h("[yellow]Can't reach Omics-OS service.[/yellow]"))
             console.print(
-                "[yellow]Use --agents or --preset instead for non-interactive mode.[/yellow]"
+                h(
+                    "[yellow]Use --agents or --preset instead for non-interactive mode.[/yellow]"
+                )
             )
             raise typer.Exit(1)
 
         suggested = result.get("agents", [])
         if not suggested:
             console.print(
-                "[yellow]No agents suggested. Use --agents or --preset instead.[/yellow]"
+                h(
+                    "[yellow]No agents suggested. Use --agents or --preset instead.[/yellow]"
+                )
             )
             raise typer.Exit(1)
 
         console.print(
-            f"[green]v[/green] Auto-selected {len(suggested)} agents: {', '.join(suggested)}"
+            h("[green]v[/green] Auto-selected {len} agents: {join}").format(
+                len=len(suggested), join=", ".join(suggested)
+            )
         )
         return suggested, None
 
@@ -618,7 +659,9 @@ def _perform_agent_selection_non_interactive(
     agents_dict = _get_installed_agents()
     all_agents = list(agents_dict.keys())
     console.print(
-        f"[dim]Using all {len(all_agents)} installed agents (no agent selection flags provided)[/dim]"
+        h(
+            "[dim]Using all {len} installed agents (no agent selection flags provided)[/dim]"
+        ).format(len=len(all_agents))
     )
     return all_agents, None
 
@@ -648,11 +691,14 @@ def _filter_unpublished_preset_agents(
 
     if skipped:
         console.print(
-            "[yellow]⚠️  Preset includes agents not published on public PyPI; "
-            f"skipping for this install surface: {', '.join(skipped)}[/yellow]"
+            h(
+                "[yellow]⚠️  Preset includes agents not published on public PyPI; skipping for this install surface: {join}[/yellow]"
+            ).format(join=", ".join(skipped))
         )
         console.print(
-            f"[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
+            h(
+                "[dim]Preset '{preset_name}' will be saved as explicit agents instead.[/dim]"
+            ).format(preset_name=preset_name)
         )
 
     return filtered
@@ -736,9 +782,9 @@ def _print_deferred_agent_install(selected_agents: list[str]) -> None:
     else:
         command = ["uv", "pip", "install", *packages]
     console.print(
-        "Selected agents recorded; --skip-extras prevented package installation."
+        h("Selected agents recorded; --skip-extras prevented package installation.")
     )
-    console.print("Install later: " + shlex.join(command), markup=False)
+    console.print(h("Install later: ") + shlex.join(command), markup=False)
 
 
 def _perform_agent_selection_interactive(
@@ -749,8 +795,8 @@ def _perform_agent_selection_interactive(
 
     console = Console()
 
-    console.print("\n[bold white]Agent Selection[/bold white]")
-    console.print("Select which agents to enable for your workspace:")
+    console.print(h("\n[bold white]Agent Selection[/bold white]"))
+    console.print(h("Select which agents to enable for your workspace:"))
     console.print()
 
     selected = _prompt_manual_agent_selection(workspace_path)
@@ -760,16 +806,18 @@ def _perform_agent_selection_interactive(
             _print_deferred_agent_install(selected)
         else:
             selected = _check_and_prompt_install_packages(selected, workspace_path)
-        console.print(f"\n[green]v[/green] {len(selected)} agent(s) configured")
+        console.print(
+            h("\n[green]v[/green] {len} agent(s) configured").format(len=len(selected))
+        )
 
     return selected, None
 
 
 _SMART_STD_AGENT_DISPLAY = {
-    "metadata_assistant": "Metadata Assistant",
-    "transcriptomics_expert": "Transcriptomics Expert",
-    "annotation_expert": "Annotation Expert",
-    "proteomics_expert": "Proteomics Expert",
+    "metadata_assistant": h("Metadata Assistant"),
+    "transcriptomics_expert": h("Transcriptomics Expert"),
+    "annotation_expert": h("Annotation Expert"),
+    "proteomics_expert": h("Proteomics Expert"),
 }
 
 
@@ -792,13 +840,19 @@ def _is_vector_search_backend_available() -> bool:
 def _print_vector_backend_unavailable() -> None:
     """Explain that Smart Standardization backend is unavailable in this install."""
     console.print(
-        "  [yellow]⚠ Smart Standardization backend requires lobster-metadata (development package).[/yellow]"
+        h(
+            "  [yellow]⚠ Smart Standardization backend requires lobster-metadata (development package).[/yellow]"
+        )
     )
     console.print(
-        f"  [dim]Install vector dependencies: {_vector_search_install_command()}[/dim]"
+        h(
+            "  [dim]Install vector dependencies: {_vector_search_install_command}[/dim]"
+        ).format(_vector_search_install_command=_vector_search_install_command())
     )
     console.print(
-        "  [dim]Backend modules are not currently shipped in public lobster-ai releases.[/dim]"
+        h(
+            "  [dim]Backend modules are not currently shipped in public lobster-ai releases.[/dim]"
+        )
     )
 
 
@@ -819,27 +873,33 @@ def _install_smart_standardization_dependencies() -> None:
         _print_vector_backend_unavailable()
         return
 
-    console.print("\n  [dim]Installing Smart Standardization dependencies...[/dim]")
+    console.print(h("\n  [dim]Installing Smart Standardization dependencies...[/dim]"))
     from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
     s1, _ = _uv_pip_install("chromadb>=1.0.0")
     s2, _ = _uv_pip_install("openai>=1.0.0")
     if s1 and s2:
-        console.print("  [green]✓[/green] Dependencies installed")
+        console.print(h("  [green]✓[/green] Dependencies installed"))
     else:
         console.print(
-            f"  [yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]"
+            h(
+                "  [yellow]⚠ Install manually: {_vector_search_install_command}[/yellow]"
+            ).format(_vector_search_install_command=_vector_search_install_command())
         )
         return
 
     console.print(
-        "\n  [dim]Downloading ontology databases (MONDO, UBERON, Cell Ontology)...[/dim]"
+        h(
+            "\n  [dim]Downloading ontology databases (MONDO, UBERON, Cell Ontology)...[/dim]"
+        )
     )
     if _download_ontology_databases():
-        console.print("  [green]✓[/green] Ontology databases ready")
+        console.print(h("  [green]✓[/green] Ontology databases ready"))
     else:
         console.print(
-            "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
+            h(
+                "  [yellow]⚠ Some databases failed to download. They will be auto-downloaded on first use.[/yellow]"
+            )
         )
 
 
@@ -864,14 +924,18 @@ def _repair_skipped_secret_permissions(path: Path) -> None:
             return
         os.fchmod(fd, 0o600)
         console.print(
-            f"tightened permissions on {path} to 0600", markup=False, soft_wrap=True
+            h("tightened permissions on {path} to 0600").format(path=path),
+            markup=False,
+            soft_wrap=True,
         )
     except FileNotFoundError:
         return  # No existing secret to repair; no misleading chmod command.
     except OSError:
         command = shlex.join(["chmod", "600", str(path)])
         console.print(
-            f"Warning: could not tighten secret file permissions; run {command}",
+            h(
+                "Warning: could not tighten secret file permissions; run {command}"
+            ).format(command=command),
             markup=False,
             soft_wrap=True,
         )
@@ -959,7 +1023,9 @@ def _create_workspace_config(config_dict: Dict[str, Any], workspace_path: Path) 
         # Preserve legacy best-effort behaviour for other providers.
         logger.warning(f"Failed to create workspace config: {e}")
         console.print(
-            f"[dim yellow]⚠️  Note: Workspace config creation skipped ({e})[/dim yellow]"
+            h(
+                "[dim yellow]⚠️  Note: Workspace config creation skipped ({e})[/dim yellow]"
+            ).format(e=e)
         )
 
 
@@ -1102,14 +1168,14 @@ def _uv_tool_env_handoff(
 
     console.print()
     console.print(
-        "[bold white]Package installation needed[/bold white]\n"
-        "  Your Lobster is installed via [cyan]uv tool[/cyan], so packages must\n"
-        "  be added through [cyan]uv tool install[/cyan] rather than pip.\n"
+        h(
+            "[bold white]Package installation needed[/bold white]\n  Your Lobster is installed via [cyan]uv tool[/cyan], so packages must\n  be added through [cyan]uv tool install[/cyan] rather than pip.\n"
+        )
     )
     console.print(f"  {cmd_str}\n", markup=False)
 
-    if Confirm.ask("  Run this now?", default=True):
-        console.print("[dim]  Running uv tool install...[/dim]")
+    if Confirm.ask(h("  Run this now?"), default=True):
+        console.print(h("[dim]  Running uv tool install...[/dim]"))
         # ── CRITICAL: venv-safe subprocess execution ──────────────────
         # After `uv tool install` completes, the venv on disk is replaced
         # while this process still has OLD modules loaded in memory.
@@ -1136,22 +1202,27 @@ def _uv_tool_env_handoff(
 
         if result.returncode == 0:
             if _use_color:
-                print("  \033[32m✓ Packages installed successfully.\033[0m")
+                print(
+                    "  \033[32m" + h("✓ Packages installed successfully.") + "\033[0m"
+                )
             else:
-                print("  ✓ Packages installed successfully.")
-            print("  Restart lobster to use the new packages.")
+                print(h("  ✓ Packages installed successfully."))
+            print(h("  Restart lobster to use the new packages."))
             sys.stdout.flush()
             _os._exit(0)
         else:
             if _use_color:
-                print("  \033[31m✗ Installation failed.\033[0m")
+                print("  \033[31m" + h("✗ Installation failed.") + "\033[0m")
             else:
-                print("  ✗ Installation failed.")
-            print(f"  Run manually: {cmd_str}")
+                print(h("  ✗ Installation failed."))
+            print(h("  Run manually: {cmd_str}").format(cmd_str=cmd_str))
             sys.stdout.flush()
             _os._exit(result.returncode)
     else:
-        console.print(f"  Run manually when ready:\n  {cmd_str}\n", markup=False)
+        console.print(
+            h("  Run manually when ready:\n  {cmd_str}\n").format(cmd_str=cmd_str),
+            markup=False,
+        )
 
 
 def _ensure_provider_installed(provider_name: str) -> bool:
@@ -1176,18 +1247,24 @@ def _ensure_provider_installed(provider_name: str) -> bool:
     except ImportError:
         pass
 
-    console.print(f"\n  [dim]Installing {pkg}...[/dim]")
+    console.print(h("\n  [dim]Installing {pkg}...[/dim]").format(pkg=pkg))
     from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
     success, msg = _uv_pip_install(pkg)
     if success:
-        console.print(f"  [green]✓[/green] {pkg} installed")
+        console.print(h("  [green]✓[/green] {pkg} installed").format(pkg=pkg))
         return True
     else:
         from lobster.core.component_registry import get_install_command
 
-        console.print(f"  [yellow]⚠ Could not auto-install {pkg}[/yellow]")
-        console.print(f"  [dim]Run manually: {get_install_command(pkg)}[/dim]")
+        console.print(
+            h("  [yellow]⚠ Could not auto-install {pkg}[/yellow]").format(pkg=pkg)
+        )
+        console.print(
+            h("  [dim]Run manually: {get_install_command}[/dim]").format(
+                get_install_command=get_install_command(pkg)
+            )
+        )
         return False
 
 
@@ -1200,23 +1277,23 @@ def _prompt_docling_install() -> None:
     except ImportError:
         pass
 
-    console.print("\n[bold white]📄 Document Intelligence (Optional)[/bold white]")
+    console.print(h("\n[bold white]📄 Document Intelligence (Optional)[/bold white]"))
     console.print(
-        "  [dim]Structured extraction from scientific PDFs and web pages.[/dim]"
+        h("  [dim]Structured extraction from scientific PDFs and web pages.[/dim]")
     )
-    console.print("  [dim]Requires ~700 MB additional download.[/dim]\n")
-    console.print("    [cyan]1[/cyan] - Yes, install Docling")
-    console.print("    [cyan]2[/cyan] - No, skip for now")
+    console.print(h("  [dim]Requires ~700 MB additional download.[/dim]\n"))
+    console.print(h("    [cyan]1[/cyan] - Yes, install Docling"))
+    console.print(h("    [cyan]2[/cyan] - No, skip for now"))
     console.print()
 
     choice = Prompt.ask(
-        "  Will you analyze PDF publications?",
+        h("  Will you analyze PDF publications?"),
         choices=["1", "2"],
         default="2",
     )
 
     if choice == "1":
-        console.print("  [dim]Installing docling (this may take a moment)...[/dim]")
+        console.print(h("  [dim]Installing docling (this may take a moment)...[/dim]"))
         from rich.markup import escape as rich_escape
 
         from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
@@ -1225,17 +1302,25 @@ def _prompt_docling_install() -> None:
         s1, _ = _uv_pip_install("docling>=2.60.0")
         s2, _ = _uv_pip_install("docling-core>=2.50.0")
         if s1 and s2:
-            console.print("  [green]✓[/green] Docling installed")
+            console.print(h("  [green]✓[/green] Docling installed"))
         else:
             docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
-            console.print(f"  [yellow]⚠ Install manually: {docling_cmd}[/yellow]")
+            console.print(
+                h("  [yellow]⚠ Install manually: {docling_cmd}[/yellow]").format(
+                    docling_cmd=docling_cmd
+                )
+            )
     else:
         from rich.markup import escape as rich_escape
 
         from lobster.core.component_registry import get_install_command
 
         docling_cmd = rich_escape(get_install_command("docling", is_extra=True))
-        console.print(f"  [dim]Skipped. Install later: {docling_cmd}[/dim]")
+        console.print(
+            h("  [dim]Skipped. Install later: {docling_cmd}[/dim]").format(
+                docling_cmd=docling_cmd
+            )
+        )
 
 
 def _postprocess_tui_init_result(
@@ -1262,7 +1347,7 @@ def _postprocess_tui_init_result(
         )
 
         if not api_key:
-            console.print("[red]Omics-OS Cloud API key is required.[/red]")
+            console.print(h("[red]Omics-OS Cloud API key is required.[/red]"))
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
             raise typer.Exit(1)
         normalized_result["api_key"] = api_key
@@ -1328,7 +1413,7 @@ def _validate_oauth_credentials() -> None:
         token = get_api_key()
         if not token:
             console.print(
-                "[yellow]OAuth tokens found but could not be loaded.[/yellow]"
+                h("[yellow]OAuth tokens found but could not be loaded.[/yellow]")
             )
             return
 
@@ -1343,8 +1428,9 @@ def _validate_oauth_credentials() -> None:
         )
         if data is None:
             console.print(
-                "[yellow]Token validation failed. "
-                "Run 'lobster cloud login' to re-authenticate.[/yellow]"
+                h(
+                    "[yellow]Token validation failed. Run 'lobster cloud login' to re-authenticate.[/yellow]"
+                )
             )
             return
 
@@ -1360,13 +1446,18 @@ def _validate_oauth_credentials() -> None:
 
         email = data.get("email", "")
         tier = data.get("tier", "free")
-        console.print(f"[green]Authenticated as {email} (tier: {tier})[/green]")
+        console.print(
+            h("[green]Authenticated as {email} (tier: {tier})[/green]").format(
+                email=email, tier=tier
+            )
+        )
 
     except Exception as exc:
         logger.debug(f"OAuth validation failed: {exc}")
         console.print(
-            "[yellow]Could not validate OAuth tokens. "
-            "Run 'lobster cloud login' if issues persist.[/yellow]"
+            h(
+                "[yellow]Could not validate OAuth tokens. Run 'lobster cloud login' if issues persist.[/yellow]"
+            )
         )
 
 
@@ -1386,7 +1477,9 @@ def _download_ontology_databases() -> bool:
         )
     except ImportError:
         console.print(
-            "  [yellow]⚠ Vector backend not available. Skipping ontology download.[/yellow]"
+            h(
+                "  [yellow]⚠ Vector backend not available. Skipping ontology download.[/yellow]"
+            )
         )
         return False
 
@@ -1400,7 +1493,11 @@ def _download_ontology_databases() -> bool:
                 success_count += 1
                 console.print(f"  [green]✓[/green] {collection_name}")
             else:
-                console.print(f"  [yellow]⚠[/yellow] {collection_name} (skipped)")
+                console.print(
+                    h("  [yellow]⚠[/yellow] {collection_name} (skipped)").format(
+                        collection_name=collection_name
+                    )
+                )
         except Exception as exc:
             console.print(f"  [yellow]⚠[/yellow] {collection_name}: {exc}")
 
@@ -1435,38 +1532,50 @@ def _prompt_smart_standardization(
     import os
 
     if not _is_vector_search_backend_available():
-        console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
+        console.print(h("\n[bold white]Smart Standardization (Optional)[/bold white]"))
         _print_vector_backend_unavailable()
         return []
 
     benefiting = _get_smart_standardization_beneficiaries(selected_agents)
 
-    console.print("\n[bold white]Smart Standardization (Optional)[/bold white]")
+    console.print(h("\n[bold white]Smart Standardization (Optional)[/bold white]"))
     console.print(
-        "  [dim]Map biomedical terms to ontology concepts (diseases, tissues, cell types).[/dim]"
+        h(
+            "  [dim]Map biomedical terms to ontology concepts (diseases, tissues, cell types).[/dim]"
+        )
     )
     console.print(
-        "  [dim]Uses OpenAI text-embedding-3-small (~$0.002 per 1,000 queries).[/dim]"
+        h(
+            "  [dim]Uses OpenAI text-embedding-3-small (~$0.002 per 1,000 queries).[/dim]"
+        )
     )
     if benefiting:
         agents_str = ", ".join(benefiting)
-        console.print(f"  [dim]Your selected agents that benefit: {agents_str}[/dim]")
+        console.print(
+            h("  [dim]Your selected agents that benefit: {agents_str}[/dim]").format(
+                agents_str=agents_str
+            )
+        )
     console.print()
     console.print(
-        "    [cyan]1[/cyan] - Yes, set up locally (OpenAI key + ChromaDB + ontology download)"
+        h(
+            "    [cyan]1[/cyan] - Yes, set up locally (OpenAI key + ChromaDB + ontology download)"
+        )
     )
-    console.print("    [cyan]2[/cyan] - Skip for now")
+    console.print(h("    [cyan]2[/cyan] - Skip for now"))
     console.print()
 
     choice = Prompt.ask(
-        "  Enable Smart Standardization?",
+        h("  Enable Smart Standardization?"),
         choices=["1", "2"],
         default="2",
     )
 
     if choice != "1":
         console.print(
-            f"  [dim]Skipped. Enable later: {_vector_search_install_command()} && lobster init --force[/dim]"
+            h(
+                "  [dim]Skipped. Enable later: {_vector_search_install_command} && lobster init --force[/dim]"
+            ).format(_vector_search_install_command=_vector_search_install_command())
         )
         return []
 
@@ -1476,21 +1585,25 @@ def _prompt_smart_standardization(
     existing_key = os.environ.get("OPENAI_API_KEY", "")
     if existing_key:
         console.print(
-            f"  [green]✓[/green] OPENAI_API_KEY detected (sk-...{existing_key[-4:]})"
+            h(
+                "  [green]✓[/green] OPENAI_API_KEY detected (sk-...{existing_key})"
+            ).format(existing_key=existing_key[-4:])
         )
         env_lines.append(f"OPENAI_API_KEY={existing_key}")
     else:
         openai_key = Prompt.ask(
-            "  [bold white]Enter your OpenAI API key[/bold white]",
+            h("  [bold white]Enter your OpenAI API key[/bold white]"),
             password=True,
         )
         openai_key = openai_key.strip()
         if openai_key:
             env_lines.append(f"OPENAI_API_KEY={openai_key}")
-            console.print("  [green]✓[/green] OpenAI API key configured")
+            console.print(h("  [green]✓[/green] OpenAI API key configured"))
         else:
             console.print(
-                "  [yellow]⚠ No API key provided. Smart Standardization requires an OpenAI key.[/yellow]"
+                h(
+                    "  [yellow]⚠ No API key provided. Smart Standardization requires an OpenAI key.[/yellow]"
+                )
             )
             return []
 
@@ -1522,7 +1635,7 @@ def _install_extended_data() -> None:
             missing.append(pip_name)
 
     if missing:
-        console.print("\n  [dim]Installing data access packages...[/dim]")
+        console.print(h("\n  [dim]Installing data access packages...[/dim]"))
         for pkg in missing:
             success, _ = _uv_pip_install(pkg)
             if success:
@@ -1547,9 +1660,12 @@ def _resolve_workspace_or_exit(create: bool = True) -> Path:
             Path.cwd() / ".lobster_workspace"
         )
         console.print(
-            f"[red]Error:[/red] cannot create the workspace at "
-            f"{_markup_escape(configured)} ({_markup_escape(exc.strerror or str(exc))}). "
-            "Fix the path or unset LOBSTER_WORKSPACE."
+            h(
+                "[red]Error:[/red] cannot create the workspace at {_markup_escape} ({_markup_escape3}). Fix the path or unset LOBSTER_WORKSPACE."
+            ).format(
+                _markup_escape=_markup_escape(configured),
+                _markup_escape3=_markup_escape(exc.strerror or str(exc)),
+            )
         )
         raise typer.Exit(1)
 
@@ -1597,10 +1713,10 @@ def _ensure_tui_installed() -> None:
 
     from lobster.cli_internal.commands.light.agent_commands import _uv_pip_install
 
-    console.print("  [dim]Installing TUI support...[/dim]")
+    console.print(h("  [dim]Installing TUI support...[/dim]"))
     success, _ = _uv_pip_install("textual>=6.7.1")
     if success:
-        console.print("  [green]✓[/green] textual installed")
+        console.print(h("  [green]✓[/green] textual installed"))
 
 
 def init_impl(
@@ -1608,148 +1724,162 @@ def init_impl(
         False,
         "--global",
         "-g",
-        help="Save configuration globally (~/.config/lobster/) for all workspaces",
+        help=h("Save configuration globally (~/.config/lobster/) for all workspaces"),
     ),
     force: bool = typer.Option(
-        False, "--force", "-f", help="Overwrite existing configuration"
+        False, "--force", "-f", help=h("Overwrite existing configuration")
     ),
     non_interactive: bool = typer.Option(
         False,
         "--non-interactive",
-        help="Non-interactive mode for CI/CD (requires API key flags)",
+        help=h("Non-interactive mode for CI/CD (requires API key flags)"),
     ),
     use_omics_os: bool = False,
     omics_os_key: Optional[str] = None,
     anthropic_key: Optional[str] = typer.Option(
-        None, "--anthropic-key", help="Claude API key (non-interactive mode)"
+        None, "--anthropic-key", help=h("Claude API key (non-interactive mode)")
     ),
     bedrock_access_key: Optional[str] = typer.Option(
         None,
         "--bedrock-access-key",
-        help="AWS Bedrock access key (non-interactive mode)",
+        help=h("AWS Bedrock access key (non-interactive mode)"),
     ),
     bedrock_secret_key: Optional[str] = typer.Option(
         None,
         "--bedrock-secret-key",
-        help="AWS Bedrock secret key (non-interactive mode)",
+        help=h("AWS Bedrock secret key (non-interactive mode)"),
     ),
     use_ollama: bool = typer.Option(
         False,
         "--use-ollama",
-        help="Use Ollama (local LLM) provider (non-interactive mode)",
+        help=h("Use Ollama (local LLM) provider (non-interactive mode)"),
     ),
     ollama_model: Optional[str] = typer.Option(
         None,
         "--ollama-model",
-        help=f"Ollama model name (default: {provider_setup.DEFAULT_OLLAMA_MODEL}, non-interactive mode)",
+        help=h(
+            "Ollama model name (default: {DEFAULT_OLLAMA_MODEL}, non-interactive mode)"
+        ).format(DEFAULT_OLLAMA_MODEL=provider_setup.DEFAULT_OLLAMA_MODEL),
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Default model ID for the selected provider (e.g., claude-sonnet-4-20250514, gpt-4o). Saved to workspace config.",
+        help=h(
+            "Default model ID for the selected provider (e.g., claude-sonnet-4-20250514, gpt-4o). Saved to workspace config."
+        ),
     ),
     gemini_key: Optional[str] = typer.Option(
-        None, "--gemini-key", help="Google API key (non-interactive mode)"
+        None, "--gemini-key", help=h("Google API key (non-interactive mode)")
     ),
     openai_key: Optional[str] = typer.Option(
-        None, "--openai-key", help="OpenAI API key (non-interactive mode)"
+        None, "--openai-key", help=h("OpenAI API key (non-interactive mode)")
     ),
     openrouter_key: Optional[str] = typer.Option(
-        None, "--openrouter-key", help="OpenRouter API key (non-interactive mode)"
+        None, "--openrouter-key", help=h("OpenRouter API key (non-interactive mode)")
     ),
     nebius_key: Optional[str] = typer.Option(
-        None, "--nebius-key", help="Nebius AI Studio API key (non-interactive mode)"
+        None, "--nebius-key", help=h("Nebius AI Studio API key (non-interactive mode)")
     ),
     ollama_cloud_key: Optional[str] = typer.Option(
-        None, "--ollama-cloud-key", help="Ollama Cloud API key (non-interactive mode)"
+        None,
+        "--ollama-cloud-key",
+        help=h("Ollama Cloud API key (non-interactive mode)"),
     ),
     azure_endpoint: Optional[str] = typer.Option(
-        None, "--azure-endpoint", help="Azure AI endpoint URL (non-interactive mode)"
+        None, "--azure-endpoint", help=h("Azure AI endpoint URL (non-interactive mode)")
     ),
     azure_credential: Optional[str] = typer.Option(
         None,
         "--azure-credential",
-        help="Azure AI API credential (non-interactive mode)",
+        help=h("Azure AI API credential (non-interactive mode)"),
     ),
     profile: Optional[str] = typer.Option(
         None,
         "--profile",
-        help="Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers.",
+        help=h(
+            "Agent profile (development, production, performance, max). Only for Anthropic/Bedrock providers."
+        ),
     ),
     ncbi_key: Optional[str] = typer.Option(
-        None, "--ncbi-key", help="NCBI API key (optional, non-interactive mode)"
+        None, "--ncbi-key", help=h("NCBI API key (optional, non-interactive mode)")
     ),
     cloud_key: Optional[str] = typer.Option(
         None,
         "--cloud-key",
-        help="Lobster Cloud API key (optional, enables premium tier)",
+        help=h("Lobster Cloud API key (optional, enables premium tier)"),
     ),
     cloud_endpoint: Optional[str] = typer.Option(
         None,
         "--cloud-endpoint",
-        help="Custom cloud endpoint URL (optional)",
+        help=h("Custom cloud endpoint URL (optional)"),
     ),
     skip_ssl_test: bool = typer.Option(
         False,
         "--skip-ssl-test",
-        help="Skip SSL connectivity test during init",
+        help=h("Skip SSL connectivity test during init"),
     ),
     ssl_verify: Optional[bool] = typer.Option(
         None,
         "--ssl-verify/--no-ssl-verify",
-        help="Enable/disable SSL verification (non-interactive mode)",
+        help=h("Enable/disable SSL verification (non-interactive mode)"),
     ),
     ssl_cert_path: Optional[str] = typer.Option(
         None,
         "--ssl-cert-path",
-        help="Path to custom CA certificate bundle",
+        help=h("Path to custom CA certificate bundle"),
     ),
     # Agent selection parameters (CLI-01, CLI-02, CONF-07, CONF-08)
     agents: Optional[str] = typer.Option(
         None,
         "--agents",
-        help="Comma-separated list of agents to enable (non-interactive mode)",
+        help=h("Comma-separated list of agents to enable (non-interactive mode)"),
     ),
     preset: Optional[str] = typer.Option(
         None,
         "--preset",
-        help="Agent preset name (scrna-basic, scrna-full, multiomics-full)",
+        help=h("Agent preset name (scrna-basic, scrna-full, multiomics-full)"),
     ),
     auto_agents: bool = typer.Option(
         False,
         "--auto-agents",
-        help="Use LLM to suggest agents based on description (requires --agents-description)",
+        help=h(
+            "Use LLM to suggest agents based on description (requires --agents-description)"
+        ),
     ),
     agents_description: Optional[str] = typer.Option(
         None,
         "--agents-description",
-        help="Workflow description for LLM agent suggestion (with --auto-agents)",
+        help=h("Workflow description for LLM agent suggestion (with --auto-agents)"),
     ),
     skip_docling: bool = typer.Option(
         False,
         "--skip-docling",
-        help="Skip docling installation prompt (non-interactive mode)",
+        help=h("Skip docling installation prompt (non-interactive mode)"),
     ),
     install_docling: bool = typer.Option(
         False,
         "--install-docling",
-        help="Install docling for PDF intelligence (non-interactive mode)",
+        help=h("Install docling for PDF intelligence (non-interactive mode)"),
     ),
     install_vector_search: bool = typer.Option(
         False,
         "--install-vector-search",
-        help="Install Smart Standardization dependencies (backend requires lobster-metadata dev package)",
+        help=h(
+            "Install Smart Standardization dependencies (backend requires lobster-metadata dev package)"
+        ),
     ),
     skip_extras: bool = typer.Option(
         False,
         "--skip-extras",
-        help="Skip optional package installation (provider, TUI, extended-data)",
+        help=h("Skip optional package installation (provider, TUI, extended-data)"),
     ),
     ui_mode: str = typer.Option(
         "auto",
         "--ui",
-        help="UI mode: auto (Go TUI, then questionary, classic), go (Go TUI), classic (Rich prompts)",
+        help=h(
+            "UI mode: auto (Go TUI, then questionary, classic), go (Go TUI), classic (Rich prompts)"
+        ),
     ),
 ):
     """
@@ -1811,7 +1941,9 @@ def init_impl(
 
     if ui_mode not in ("auto", "go", "classic"):
         console.print(
-            f"[red]Error:[/red] Invalid --ui value '{ui_mode}'. Must be one of: auto, go, classic"
+            h(
+                "[red]Error:[/red] Invalid --ui value '{ui_mode}'. Must be one of: auto, go, classic"
+            ).format(ui_mode=ui_mode)
         )
         raise typer.Exit(1)
 
@@ -1869,7 +2001,9 @@ def init_impl(
                         break
         if not cloud_api_key or not cloud_api_key.strip():
             console.print(
-                "[red]Omics-OS Cloud API key is required: supply --omics-os-key or OMICS_OS_API_KEY.[/red]"
+                h(
+                    "[red]Omics-OS Cloud API key is required: supply --omics-os-key or OMICS_OS_API_KEY.[/red]"
+                )
             )
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
             raise typer.Exit(1)
@@ -1937,23 +2071,41 @@ def init_impl(
                 and existing_key.strip()
             ):
                 console.print(
-                    "already configured for Omics-OS Cloud (account access not checked)."
+                    h(
+                        "already configured for Omics-OS Cloud (account access not checked)."
+                    )
                 )
                 raise typer.Exit(0)
             console.print(
-                f"Existing configuration found at {config_path if global_config else (workspace_provider_path if workspace_provider_path.exists() else env_path)}; "
-                "rerun with --force to replace it (a backup is kept)."
+                h(
+                    "Existing configuration found at {v1}; rerun with --force to replace it (a backup is kept)."
+                ).format(
+                    v1=(
+                        config_path
+                        if global_config
+                        else (
+                            workspace_provider_path
+                            if workspace_provider_path.exists()
+                            else env_path
+                        )
+                    )
+                )
             )
             raise typer.Exit(1)
         console.print()
         if global_config:
             console.print(
                 Panel.fit(
-                    "[bold yellow]⚠️  Global Configuration Already Exists[/bold yellow]\n\n"
-                    f"A global config already exists at:\n[cyan]{config_path}[/cyan]\n\n"
-                    "To reconfigure, use:\n"
-                    f"[bold {LobsterTheme.PRIMARY_ORANGE}]lobster init --global --force[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
-                    "Or edit the file manually.",
+                    h(
+                        "[bold yellow]⚠️  Global Configuration Already Exists[/bold yellow]\n\n"
+                        "A global config already exists at:\n[cyan]{config_path}[/cyan]\n\n"
+                        "To reconfigure, use:\n"
+                        "[bold {PRIMARY_ORANGE}]lobster init --global --force[/bold {PRIMARY_ORANGE}]\n\n"
+                        "Or edit the file manually."
+                    ).format(
+                        config_path=config_path,
+                        PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE,
+                    ),
                     border_style="yellow",
                     padding=(1, 2),
                 )
@@ -1962,18 +2114,27 @@ def init_impl(
             _existing_path = env_path if env_path.exists() else workspace_provider_path
             console.print(
                 Panel.fit(
-                    "[bold yellow]⚠️  Configuration Already Exists[/bold yellow]\n\n"
-                    f"A configuration file already exists at:\n[cyan]{_markup_escape(str(_existing_path))}[/cyan]\n\n"
-                    "To reconfigure, use:\n"
-                    f"[bold {LobsterTheme.PRIMARY_ORANGE}]lobster init --force[/bold {LobsterTheme.PRIMARY_ORANGE}]\n\n"
-                    "Or edit the file manually.",
+                    h(
+                        "[bold yellow]⚠️  Configuration Already Exists[/bold yellow]\n\n"
+                        "A configuration file already exists at:\n[cyan]{existing_path}[/cyan]\n\n"
+                        "To reconfigure, use:\n"
+                        "[bold {PRIMARY_ORANGE}]lobster init --force[/bold {PRIMARY_ORANGE}]\n\n"
+                        "Or edit the file manually."
+                    ).format(
+                        existing_path=_markup_escape(str(_existing_path)),
+                        PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE,
+                    ),
                     border_style="yellow",
                     padding=(1, 2),
                 )
             )
         console.print()
         console.print(
-            f"[dim]Configuration file: {_markup_escape(str(config_path if global_config else _existing_path))}[/dim]"
+            h("[dim]Configuration file: {_markup_escape}[/dim]").format(
+                _markup_escape=_markup_escape(
+                    str(config_path if global_config else _existing_path)
+                )
+            )
         )
         raise typer.Exit(0)
 
@@ -1996,14 +2157,16 @@ def init_impl(
                 )
                 if not non_interactive:
                     console.print(
-                        "[yellow]⚠️  Existing config will be backed up to:[/yellow]"
+                        h("[yellow]⚠️  Existing config will be backed up to:[/yellow]")
                     )
                     console.print(f"[yellow]   {destination}[/yellow]")
                 _backup_init_file(backup_source, destination)
                 if backup_path is None:
                     backup_path = destination
         except Exception as e:
-            console.print(f"[red]❌ Failed to create backup: {str(e)}[/red]")
+            console.print(
+                h("[red]❌ Failed to create backup: {str}[/red]").format(str=str(e))
+            )
             raise typer.Exit(1)
 
     # Non-interactive mode: validate and create .env from parameters
@@ -2057,7 +2220,7 @@ def init_impl(
         has_openai = openai_key is not None
         has_openrouter = openrouter_key is not None
         if ollama_cloud_key is not None and not ollama_cloud_key.strip():
-            console.print("[red]Ollama Cloud API key cannot be empty[/red]")
+            console.print(h("[red]Ollama Cloud API key cannot be empty[/red]"))
             raise typer.Exit(1)
         has_ollama_cloud = ollama_cloud_key is not None
         has_nebius = nebius_key is not None
@@ -2078,20 +2241,24 @@ def init_impl(
         if cloud_selected:
             valid = True
         if not valid:
-            console.print(f"[red]❌ Error: {error_msg}[/red]")
-            console.print()
-            console.print("You must provide one of:")
-            console.print("  • Claude API: --anthropic-key=xxx")
             console.print(
-                "  • AWS Bedrock: --bedrock-access-key=xxx --bedrock-secret-key=xxx"
+                h("[red]❌ Error: {error_msg}[/red]").format(error_msg=error_msg)
             )
-            console.print("  • Ollama (Local): --use-ollama")
-            console.print("  • Google Gemini: --gemini-key=xxx")
-            console.print("  • OpenAI: --openai-key=xxx")
-            console.print("  • OpenRouter: --openrouter-key=xxx")
-            console.print("  • Nebius AI Studio: --nebius-key=xxx")
-            console.print("  • Ollama Cloud: --ollama-cloud-key=xxx")
-            console.print("  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx")
+            console.print()
+            console.print(h("You must provide one of:"))
+            console.print(h("  • Claude API: --anthropic-key=xxx"))
+            console.print(
+                h("  • AWS Bedrock: --bedrock-access-key=xxx --bedrock-secret-key=xxx")
+            )
+            console.print(h("  • Ollama (Local): --use-ollama"))
+            console.print(h("  • Google Gemini: --gemini-key=xxx"))
+            console.print(h("  • OpenAI: --openai-key=xxx"))
+            console.print(h("  • OpenRouter: --openrouter-key=xxx"))
+            console.print(h("  • Nebius AI Studio: --nebius-key=xxx"))
+            console.print(h("  • Ollama Cloud: --ollama-cloud-key=xxx"))
+            console.print(
+                h("  • Azure AI: --azure-endpoint=xxx --azure-credential=xxx")
+            )
             raise typer.Exit(1)
 
         # Warn if multiple providers
@@ -2107,10 +2274,16 @@ def init_impl(
             has_azure=has_azure,
         )
         if priority_warning:
-            console.print(f"[yellow]⚠️  Warning: {priority_warning}[/yellow]")
+            console.print(
+                h("[yellow]⚠️  Warning: {priority_warning}[/yellow]").format(
+                    priority_warning=priority_warning
+                )
+            )
         if (use_omics_os or omics_os_key is not None) and not cloud_selected:
             console.print(
-                "[yellow]Warning: an explicit provider takes priority over Omics-OS Cloud.[/yellow]"
+                h(
+                    "[yellow]Warning: an explicit provider takes priority over Omics-OS Cloud.[/yellow]"
+                )
             )
 
         # Validate profile parameter (only relevant for Anthropic/Bedrock)
@@ -2125,23 +2298,32 @@ def init_impl(
         if profile:
             # Profile provided - validate it
             if profile not in valid_profiles:
-                console.print(f"[red]❌ Error: Invalid profile '{profile}'[/red]")
-                console.print(f"Valid profiles: {', '.join(VALID_PROFILES)}")
+                console.print(
+                    h("[red]❌ Error: Invalid profile '{profile}'[/red]").format(
+                        profile=profile
+                    )
+                )
+                console.print(
+                    h("Valid profiles: {join}").format(join=", ".join(VALID_PROFILES))
+                )
                 raise typer.Exit(1)
 
             # Resolve deprecated aliases
             if profile in DEPRECATED_PROFILE_ALIASES:
                 new_name = DEPRECATED_PROFILE_ALIASES[profile]
                 console.print(
-                    f"[yellow]⚠️  Profile '{profile}' is deprecated, "
-                    f"using '{new_name}' instead.[/yellow]"
+                    h(
+                        "[yellow]⚠️  Profile '{profile}' is deprecated, using '{new_name}' instead.[/yellow]"
+                    ).format(profile=profile, new_name=new_name)
                 )
                 profile = new_name
 
             # Warn if profile used with Ollama (it will be ignored)
             if has_ollama and not has_anthropic and not has_bedrock:
                 console.print(
-                    "[yellow]⚠️  Warning: --profile ignored for Ollama (uses local models)[/yellow]"
+                    h(
+                        "[yellow]⚠️  Warning: --profile ignored for Ollama (uses local models)[/yellow]"
+                    )
                 )
             else:
                 selected_profile = profile
@@ -2178,35 +2360,37 @@ def init_impl(
                 config_dict["provider"] = "ollama"
                 if ollama_model:
                     config_dict["ollama_model"] = ollama_model
-                console.print("[green]✓ Ollama provider configured[/green]")
+                console.print(h("[green]✓ Ollama provider configured[/green]"))
         elif has_gemini:
             config = provider_setup.create_gemini_config(gemini_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "gemini"
-                console.print("[green]✓ Gemini provider configured[/green]")
+                console.print(h("[green]✓ Gemini provider configured[/green]"))
         elif has_openai:
             config = provider_setup.create_openai_config(openai_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openai"
-                console.print("[green]✓ OpenAI provider configured[/green]")
+                console.print(h("[green]✓ OpenAI provider configured[/green]"))
         elif has_openrouter:
             config = provider_setup.create_openrouter_config(openrouter_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openrouter"
-                console.print("[green]✓ OpenRouter provider configured[/green]")
+                console.print(h("[green]✓ OpenRouter provider configured[/green]"))
         elif has_nebius:
             config = provider_setup.create_nebius_config(nebius_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "nebius"
-                console.print("[green]✓ Nebius AI Studio provider configured[/green]")
+                console.print(
+                    h("[green]✓ Nebius AI Studio provider configured[/green]")
+                )
         elif has_azure:
             config = provider_setup.create_azure_config(
                 azure_endpoint, azure_credential
@@ -2215,14 +2399,14 @@ def init_impl(
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "azure"
-                console.print("[green]✓ Azure AI provider configured[/green]")
+                console.print(h("[green]✓ Azure AI provider configured[/green]"))
         elif has_ollama_cloud:
             config = provider_setup.create_ollama_cloud_config(ollama_cloud_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "ollama-cloud"
-                console.print("[green]✓ Ollama Cloud provider configured[/green]")
+                console.print(h("[green]✓ Ollama Cloud provider configured[/green]"))
 
         # Write profile configuration (only for Anthropic/Bedrock)
         if selected_profile:
@@ -2230,7 +2414,11 @@ def init_impl(
             env_lines.append("# Determines which Claude models are used for analysis")
             env_lines.append(f"LOBSTER_PROFILE={selected_profile}")
             config_dict["profile"] = selected_profile
-            console.print(f"[green]✓ Profile set to: {selected_profile}[/green]")
+            console.print(
+                h("[green]✓ Profile set to: {selected_profile}[/green]").format(
+                    selected_profile=selected_profile
+                )
+            )
 
         # Save model override (--model flag or --ollama-model for Ollama)
         # Guard: model may be a typer.OptionInfo if init_impl is called directly
@@ -2239,7 +2427,11 @@ def init_impl(
         effective_model = _model_str or (_ollama_model_str if has_ollama else None)
         if effective_model:
             config_dict["model_id"] = effective_model
-            console.print(f"[green]✓ Default model: {effective_model}[/green]")
+            console.print(
+                h("[green]✓ Default model: {effective_model}[/green]").format(
+                    effective_model=effective_model
+                )
+            )
 
         if ncbi_key:
             env_lines.append("\n# Optional: Enhanced literature search")
@@ -2251,7 +2443,7 @@ def init_impl(
             if cloud_endpoint:
                 env_lines.append(f"LOBSTER_ENDPOINT={cloud_endpoint.strip()}")
             console.print(
-                "[green]✓ Cloud API key configured (premium tier enabled)[/green]"
+                h("[green]✓ Cloud API key configured (premium tier enabled)[/green]")
             )
 
         # Handle SSL configuration from flags
@@ -2260,41 +2452,61 @@ def init_impl(
             if ssl_verify is False:
                 env_lines.append("LOBSTER_SSL_VERIFY=false")
                 console.print(
-                    "[yellow]⚠️  SSL verification disabled (--no-ssl-verify)[/yellow]"
+                    h(
+                        "[yellow]⚠️  SSL verification disabled (--no-ssl-verify)[/yellow]"
+                    )
                 )
             if ssl_cert_path:
                 env_lines.append(f"LOBSTER_SSL_CERT_PATH={ssl_cert_path}")
-                console.print(f"[green]✓ SSL cert path: {ssl_cert_path}[/green]")
+                console.print(
+                    h("[green]✓ SSL cert path: {ssl_cert_path}[/green]").format(
+                        ssl_cert_path=ssl_cert_path
+                    )
+                )
 
         # Test SSL connectivity (non-interactive)
         if not skip_ssl_test and ssl_verify is not False:
             from lobster.config.ssl_setup import test_ssl_connectivity
 
-            console.print("\n[dim]Testing connectivity to NCBI databases...[/dim]")
+            console.print(h("\n[dim]Testing connectivity to NCBI databases...[/dim]"))
             success, is_ssl_error, error_msg = test_ssl_connectivity(timeout=10)
 
             if is_ssl_error:
-                console.print("\n[yellow]⚠️  SSL Certificate Issue Detected[/yellow]")
-                console.print(f"[dim]Error: {error_msg[:80]}...[/dim]\n")
                 console.print(
-                    "[yellow]To fix this in non-interactive mode, use one of:[/yellow]"
+                    h("\n[yellow]⚠️  SSL Certificate Issue Detected[/yellow]")
                 )
                 console.print(
-                    "  --no-ssl-verify           # Disable SSL (testing only)"
+                    h("[dim]Error: {error_msg}...[/dim]\n").format(
+                        error_msg=error_msg[:80]
+                    )
                 )
-                console.print("  --ssl-cert-path=/path/to/ca.pem  # Use corporate CA")
+                console.print(
+                    h(
+                        "[yellow]To fix this in non-interactive mode, use one of:[/yellow]"
+                    )
+                )
+                console.print(
+                    h("  --no-ssl-verify           # Disable SSL (testing only)")
+                )
+                console.print(
+                    h("  --ssl-cert-path=/path/to/ca.pem  # Use corporate CA")
+                )
                 console.print()
                 console.print(
-                    "[dim]Continuing with setup - you may encounter errors later.[/dim]"
+                    h(
+                        "[dim]Continuing with setup - you may encounter errors later.[/dim]"
+                    )
                 )
             elif success:
-                console.print("[green]✓ NCBI connectivity: OK[/green]")
+                console.print(h("[green]✓ NCBI connectivity: OK[/green]"))
             else:
                 # Non-SSL network error
                 console.print(
-                    f"[yellow]⚠️  Network test failed: {error_msg[:60]}[/yellow]"
+                    h("[yellow]⚠️  Network test failed: {error_msg}[/yellow]").format(
+                        error_msg=error_msg[:60]
+                    )
                 )
-                console.print("[dim]You can still continue (may work later)[/dim]")
+                console.print(h("[dim]You can still continue (may work later)[/dim]"))
 
         # === NON-INTERACTIVE: Optional package installation ===
         if not skip_extras and not _in_uv_tool_ni:
@@ -2321,7 +2533,7 @@ def init_impl(
 
             # Install docling if requested
             if install_docling:
-                console.print("[dim]Installing docling...[/dim]")
+                console.print(h("[dim]Installing docling...[/dim]"))
                 from lobster.cli_internal.commands.light.agent_commands import (
                     _uv_pip_install,
                 )
@@ -2329,7 +2541,7 @@ def init_impl(
                 s1, _ = _uv_pip_install("docling>=2.60.0")
                 s2, _ = _uv_pip_install("docling-core>=2.50.0")
                 if s1 and s2:
-                    console.print("[green]✓ Docling installed[/green]")
+                    console.print(h("[green]✓ Docling installed[/green]"))
                 else:
                     from rich.markup import escape as rich_escape
 
@@ -2339,7 +2551,9 @@ def init_impl(
                         get_install_command("docling", is_extra=True)
                     )
                     console.print(
-                        f"[yellow]⚠ Docling install failed. Run: {docling_cmd}[/yellow]"
+                        h(
+                            "[yellow]⚠ Docling install failed. Run: {docling_cmd}[/yellow]"
+                        ).format(docling_cmd=docling_cmd)
                     )
 
             # Install vector search if requested (Smart Standardization — OpenAI)
@@ -2347,7 +2561,9 @@ def init_impl(
                 if not _is_vector_search_backend_available():
                     _print_vector_backend_unavailable()
                 else:
-                    console.print("[dim]Installing Smart Standardization deps...[/dim]")
+                    console.print(
+                        h("[dim]Installing Smart Standardization deps...[/dim]")
+                    )
                     from lobster.cli_internal.commands.light.agent_commands import (
                         _uv_pip_install,
                     )
@@ -2356,12 +2572,16 @@ def init_impl(
                     s2, _ = _uv_pip_install("openai>=1.0.0")
                     if s1 and s2:
                         console.print(
-                            "[green]✓ Smart Standardization installed[/green]"
+                            h("[green]✓ Smart Standardization installed[/green]")
                         )
                         env_lines.append("LOBSTER_EMBEDDING_PROVIDER=openai")
                     else:
                         console.print(
-                            f"[yellow]⚠ Install manually: {_vector_search_install_command()}[/yellow]"
+                            h(
+                                "[yellow]⚠ Install manually: {_vector_search_install_command}[/yellow]"
+                            ).format(
+                                _vector_search_install_command=_vector_search_install_command()
+                            )
                         )
 
             # Extended data + TUI (silent)
@@ -2401,20 +2621,32 @@ def init_impl(
                 if credentials:
                     credentials_path = save_global_credentials(credentials)
 
-                console.print("[green]✅ Global configuration saved:[/green]")
-                console.print(f"  • Config: {global_config_path}")
+                console.print(h("[green]✅ Global configuration saved:[/green]"))
+                console.print(
+                    h("  • Config: {global_config_path}").format(
+                        global_config_path=global_config_path
+                    )
+                )
                 if credentials_path:
                     console.print(
-                        f"  • Credentials: {credentials_path} [dim](mode: 0o600)[/dim]"
+                        h(
+                            "  • Credentials: {credentials_path} [dim](mode: 0o600)[/dim]"
+                        ).format(credentials_path=credentials_path)
                     )
                 if backup_path:
-                    console.print(f"  • Backup: {backup_path}")
+                    console.print(
+                        h("  • Backup: {backup_path}").format(backup_path=backup_path)
+                    )
             except Exception as e:
                 if config_dict.get("provider") == "omics-os":
                     from lobster.config.cloud_setup import fail_cloud_setup_write
 
                     fail_cloud_setup_write(e)
-                console.print(f"[red]❌ Failed to write global config: {str(e)}[/red]")
+                console.print(
+                    h("[red]❌ Failed to write global config: {str}[/red]").format(
+                        str=str(e)
+                    )
+                )
                 raise typer.Exit(1)
         else:
             # Workspace mode: write both .env and workspace config
@@ -2429,7 +2661,11 @@ def init_impl(
                     from lobster.config.cloud_setup import fail_cloud_setup_write
 
                     fail_cloud_setup_write(e)
-                console.print(f"[red]❌ Failed to write .env file: {str(e)}[/red]")
+                console.print(
+                    h("[red]❌ Failed to write .env file: {str}[/red]").format(
+                        str=str(e)
+                    )
+                )
                 raise typer.Exit(1)
 
             # Create workspace config from structured config_dict
@@ -2470,7 +2706,9 @@ def init_impl(
                 locals().get("installed_agents"),
                 include_vector_search=install_vector_search,
             )
-            console.print(f"\n[bold]uv tool command:[/bold] {' '.join(cmd)}")
+            console.print(
+                h("\n[bold]uv tool command:[/bold] {join}").format(join=" ".join(cmd))
+            )
 
         if cloud_selected:
             from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
@@ -2487,8 +2725,9 @@ def init_impl(
 
     if not non_interactive and not _sys.stdin.isatty():
         console.print(
-            "[yellow]Cannot run interactive setup — stdin is not a terminal.[/yellow]\n"
-            "Run [bold]lobster init --global[/bold] manually in your terminal to configure."
+            h(
+                "[yellow]Cannot run interactive setup — stdin is not a terminal.[/yellow]\nRun [bold]lobster init --global[/bold] manually in your terminal to configure."
+            )
         )
         raise typer.Exit(1)
 
@@ -2547,21 +2786,30 @@ def init_impl(
                         raise
                     except Exception as _go_exc:
                         if ui_mode == "go":
-                            console.print(f"[red]Go TUI init failed: {_go_exc}[/red]")
+                            console.print(
+                                h("[red]Go TUI init failed: {_go_exc}[/red]").format(
+                                    _go_exc=_go_exc
+                                )
+                            )
                             raise typer.Exit(1)
                         console.print(
-                            f"[dim]Go TUI unavailable ({_go_exc}), falling back.[/dim]"
+                            h(
+                                "[dim]Go TUI unavailable ({_go_exc}), falling back.[/dim]"
+                            ).format(_go_exc=_go_exc)
                         )
                 elif ui_mode == "go":
                     # --ui go was explicitly requested but binary not found
                     console.print(
-                        "[red]lobster-tui binary not found. "
-                        "Install it or use --ui classic.[/red]"
+                        h(
+                            "[red]lobster-tui binary not found. Install it or use --ui classic.[/red]"
+                        )
                     )
                     raise typer.Exit(1)
             except ImportError as _ie:
                 console.print(
-                    f"[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]"
+                    h(
+                        "[dim]Go TUI bridge unavailable ({_ie}), falling back.[/dim]"
+                    ).format(_ie=_ie)
                 )
 
         # ---- Try questionary fallback (auto mode only, when Go TUI was unavailable) ----
@@ -2607,7 +2855,9 @@ def init_impl(
                 pass
             except Exception as _q_exc:
                 console.print(
-                    f"[dim]Questionary wizard failed ({_q_exc}), falling back to classic mode.[/dim]"
+                    h(
+                        "[dim]Questionary wizard failed ({_q_exc}), falling back to classic mode.[/dim]"
+                    ).format(_q_exc=_q_exc)
                 )
 
         if _tui_handled:
@@ -2621,11 +2871,13 @@ def init_impl(
         creds_path = get_global_credentials_path()
         console.print(
             Panel.fit(
-                "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
-                "Let's set up your [cyan]global[/cyan] provider defaults.\n"
-                f"Config: [cyan]{config_path}[/cyan]\n"
-                f"Credentials: [cyan]{creds_path}[/cyan]\n\n"
-                "[dim]These defaults apply to all workspaces without their own config.[/dim]",
+                h(
+                    "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
+                    "Let's set up your [cyan]global[/cyan] provider defaults.\n"
+                    "Config: [cyan]{config_path}[/cyan]\n"
+                    "Credentials: [cyan]{creds_path}[/cyan]\n\n"
+                    "[dim]These defaults apply to all workspaces without their own config.[/dim]"
+                ).format(config_path=config_path, creds_path=creds_path),
                 border_style="bright_blue",
                 padding=(1, 2),
             )
@@ -2633,9 +2885,11 @@ def init_impl(
     else:
         console.print(
             Panel.fit(
-                "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
-                "Let's set up your API keys.\n"
-                "This wizard will create a [cyan].env[/cyan] file in your current directory.",
+                h(
+                    "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
+                    "Let's set up your API keys.\n"
+                    "This wizard will create a [cyan].env[/cyan] file in your current directory."
+                ),
                 border_style="bright_blue",
                 padding=(1, 2),
             )
@@ -2648,8 +2902,9 @@ def init_impl(
     _in_uv_tool = _is_uv_tool_env()
     if _in_uv_tool:
         console.print(
-            "[dim]  Detected uv tool installation. API keys will be configured here;"
-            "\n  any new packages will be installed after setup completes.[/dim]\n"
+            h(
+                "[dim]  Detected uv tool installation. API keys will be configured here;\n  any new packages will be installed after setup completes.[/dim]\n"
+            )
         )
 
     workspace_path = _resolve_workspace_or_exit()
@@ -2665,25 +2920,24 @@ def init_impl(
         # ================================================================== #
         # Step 1 — Provider selection (unified list)                          #
         # ================================================================== #
-        console.print("[bold white]Select your LLM provider:[/bold white]")
-        from lobster.i18n import h
+        console.print(h("[bold white]Select your LLM provider:[/bold white]"))
 
         provider_menu = [
-            "Omics-OS Cloud          — Free Omics-OS Cloud LLMs",
-            "Claude API (Anthropic)  — direct access to Claude models",
-            "AWS Bedrock             — production, enterprise",
-            "Ollama (local)          — privacy, zero cost, offline",
-            "Google Gemini           — Gemini models",
-            "Azure AI                — enterprise Azure deployments",
-            "OpenAI                  — GPT models",
-            "OpenRouter              — 600+ models via one API key",
-            "Nebius AI Studio        — open-weight models",
-            "Ollama Cloud            — hosted models, requires API key",
+            h("Omics-OS Cloud          — Free Omics-OS Cloud LLMs"),
+            h("Claude API (Anthropic)  — direct access to Claude models"),
+            h("AWS Bedrock             — production, enterprise"),
+            h("Ollama (local)          — privacy, zero cost, offline"),
+            h("Google Gemini           — Gemini models"),
+            h("Azure AI                — enterprise Azure deployments"),
+            h("OpenAI                  — GPT models"),
+            h("OpenRouter              — 600+ models via one API key"),
+            h("Nebius AI Studio        — open-weight models"),
+            h("Ollama Cloud            — hosted models, requires API key"),
         ]
         for _n, _label in enumerate(provider_menu, start=1):
-            console.print(f"  [cyan]{_n:>2}[/cyan] - {h(_label)}")
+            console.print(f"  [cyan]{_n:>2}[/cyan] - {_label}")
         provider = Prompt.ask(
-            "[bold white]Choose provider[/bold white]",
+            h("[bold white]Choose provider[/bold white]"),
             choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
             default="1",
         )
@@ -2713,7 +2967,7 @@ def init_impl(
 
             console.print(OMICS_OS_AUTH_GUIDANCE, markup=False)
             api_key = Prompt.ask(
-                "[bold white]Enter your Omics-OS API key[/bold white]",
+                h("[bold white]Enter your Omics-OS API key[/bold white]"),
                 password=True,
                 default="",
             )
@@ -2726,32 +2980,36 @@ def init_impl(
             config_dict["provider"] = "omics-os"
 
         elif provider_name == "anthropic":
-            console.print("\n[bold white]🔑 Claude API Configuration[/bold white]")
+            console.print(h("\n[bold white]🔑 Claude API Configuration[/bold white]"))
             console.print(
-                "Get your API key from: [link]https://console.anthropic.com/[/link]\n"
+                h(
+                    "Get your API key from: [link]https://console.anthropic.com/[/link]\n"
+                )
             )
             api_key = Prompt.ask(
-                "[bold white]Enter your Claude API key[/bold white]", password=True
+                h("[bold white]Enter your Claude API key[/bold white]"), password=True
             )
             if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
+                console.print(h("[red]❌ API key cannot be empty[/red]"))
                 raise typer.Exit(1)
             env_lines.append(f"ANTHROPIC_API_KEY={api_key.strip()}")
             config_dict["provider"] = "anthropic"
 
         elif provider_name == "bedrock":
-            console.print("\n[bold white]🔑 AWS Bedrock Configuration[/bold white]")
+            console.print(h("\n[bold white]🔑 AWS Bedrock Configuration[/bold white]"))
             console.print(
-                "You'll need AWS access key and secret key with Bedrock permissions.\n"
+                h(
+                    "You'll need AWS access key and secret key with Bedrock permissions.\n"
+                )
             )
             access_key = Prompt.ask(
-                "[bold white]Enter your AWS access key[/bold white]", password=True
+                h("[bold white]Enter your AWS access key[/bold white]"), password=True
             )
             secret_key = Prompt.ask(
-                "[bold white]Enter your AWS secret key[/bold white]", password=True
+                h("[bold white]Enter your AWS secret key[/bold white]"), password=True
             )
             if not access_key.strip() or not secret_key.strip():
-                console.print("[red]❌ AWS credentials cannot be empty[/red]")
+                console.print(h("[red]❌ AWS credentials cannot be empty[/red]"))
                 raise typer.Exit(1)
             env_lines.append(f"AWS_BEDROCK_ACCESS_KEY={access_key.strip()}")
             env_lines.append(f"AWS_BEDROCK_SECRET_ACCESS_KEY={secret_key.strip()}")
@@ -2759,53 +3017,71 @@ def init_impl(
 
         elif provider_name == "ollama":
             console.print(
-                "\n[bold white]🏠 Ollama (Local LLM) Configuration[/bold white]"
+                h("\n[bold white]🏠 Ollama (Local LLM) Configuration[/bold white]")
             )
-            console.print("Ollama runs models locally - no API keys needed!\n")
+            console.print(h("Ollama runs models locally - no API keys needed!\n"))
             ollama_status = provider_setup.get_ollama_status()
 
             if not ollama_status.installed:
                 console.print(
-                    "[yellow]⚠️  Ollama is not installed on this system.[/yellow]"
+                    h("[yellow]⚠️  Ollama is not installed on this system.[/yellow]")
                 )
                 install_instructions = provider_setup.get_ollama_install_instructions()
-                console.print(f"  • macOS/Linux: {install_instructions['macos_linux']}")
-                console.print(f"  • Windows: {install_instructions['windows']}")
+                console.print(
+                    h("  • macOS/Linux: {install_instructions}").format(
+                        install_instructions=install_instructions["macos_linux"]
+                    )
+                )
+                console.print(
+                    h("  • Windows: {install_instructions}").format(
+                        install_instructions=install_instructions["windows"]
+                    )
+                )
                 console.print()
                 install_later = Confirm.ask(
-                    "Configure for Ollama anyway? (you can install it later)",
+                    h("Configure for Ollama anyway? (you can install it later)"),
                     default=True,
                 )
                 if not install_later:
                     console.print(
-                        "[yellow]Please install Ollama first, then run 'lobster init' again[/yellow]"
+                        h(
+                            "[yellow]Please install Ollama first, then run 'lobster init' again[/yellow]"
+                        )
                     )
                     raise typer.Exit(0)
 
             model_name = None
             if ollama_status.running and ollama_status.models:
-                console.print("[green]✓ Ollama is installed and running[/green]")
-                console.print("\n[bold white]Available models:[/bold white]")
+                console.print(h("[green]✓ Ollama is installed and running[/green]"))
+                console.print(h("\n[bold white]Available models:[/bold white]"))
                 for m in ollama_status.models[:5]:
                     console.print(f"  • {m}")
                 if len(ollama_status.models) > 5:
-                    console.print(f"  ... and {len(ollama_status.models) - 5} more")
+                    console.print(
+                        h("  ... and {v1} more").format(
+                            v1=len(ollama_status.models) - 5
+                        )
+                    )
                 console.print()
                 use_custom = Confirm.ask(
-                    f"Specify a model? (default: {provider_setup.DEFAULT_OLLAMA_MODEL})",
+                    h("Specify a model? (default: {DEFAULT_OLLAMA_MODEL})").format(
+                        DEFAULT_OLLAMA_MODEL=provider_setup.DEFAULT_OLLAMA_MODEL
+                    ),
                     default=False,
                 )
                 if use_custom:
                     model_name = Prompt.ask(
-                        "[bold white]Enter model name[/bold white]",
+                        h("[bold white]Enter model name[/bold white]"),
                         default=provider_setup.DEFAULT_OLLAMA_MODEL,
                     )
             else:
                 if ollama_status.installed:
-                    console.print("[green]✓ Ollama is installed[/green]")
+                    console.print(h("[green]✓ Ollama is installed[/green]"))
                     if not ollama_status.running:
                         console.print(
-                            "[yellow]⚠️  Ollama server is not running. Start with: ollama serve[/yellow]"
+                            h(
+                                "[yellow]⚠️  Ollama server is not running. Start with: ollama serve[/yellow]"
+                            )
                         )
 
             config = provider_setup.create_ollama_config(model_name=model_name)
@@ -2814,40 +3090,46 @@ def init_impl(
             config_dict["provider"] = "ollama"
             if model_name:
                 config_dict["ollama_model"] = model_name
-            console.print("[green]✓ Ollama provider configured[/green]")
+            console.print(h("[green]✓ Ollama provider configured[/green]"))
 
         elif provider_name == "gemini":
-            console.print("\n[bold white]🔑 Google Gemini Configuration[/bold white]")
             console.print(
-                "Get your API key from: [link]https://aistudio.google.com/apikey[/link]\n"
+                h("\n[bold white]🔑 Google Gemini Configuration[/bold white]")
+            )
+            console.print(
+                h(
+                    "Get your API key from: [link]https://aistudio.google.com/apikey[/link]\n"
+                )
             )
             api_key = Prompt.ask(
-                "[bold white]Enter your Google API key[/bold white]", password=True
+                h("[bold white]Enter your Google API key[/bold white]"), password=True
             )
             if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
+                console.print(h("[red]❌ API key cannot be empty[/red]"))
                 raise typer.Exit(1)
             config = provider_setup.create_gemini_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "gemini"
-                console.print("[green]✓ Gemini provider configured[/green]")
+                console.print(h("[green]✓ Gemini provider configured[/green]"))
 
         elif provider_name == "azure":
-            console.print("\n[bold white]🔑 Azure AI Configuration[/bold white]")
-            console.print("You'll need Azure AI Foundry endpoint and API credential.\n")
+            console.print(h("\n[bold white]🔑 Azure AI Configuration[/bold white]"))
+            console.print(
+                h("You'll need Azure AI Foundry endpoint and API credential.\n")
+            )
             endpoint = Prompt.ask(
-                "[bold white]Enter your Azure AI endpoint[/bold white]",
+                h("[bold white]Enter your Azure AI endpoint[/bold white]"),
                 default="https://your-project.inference.ai.azure.com/",
             )
             credential = Prompt.ask(
-                "[bold white]Enter your Azure API credential[/bold white]",
+                h("[bold white]Enter your Azure API credential[/bold white]"),
                 password=True,
             )
             if not endpoint.strip() or not credential.strip():
                 console.print(
-                    "[red]❌ Azure endpoint and credential cannot be empty[/red]"
+                    h("[red]❌ Azure endpoint and credential cannot be empty[/red]")
                 )
                 raise typer.Exit(1)
             config = provider_setup.create_azure_config(endpoint, credential)
@@ -2855,91 +3137,114 @@ def init_impl(
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "azure"
-                console.print("[green]✓ Azure AI provider configured[/green]")
+                console.print(h("[green]✓ Azure AI provider configured[/green]"))
             else:
-                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                console.print(
+                    h("[red]❌ Configuration failed: {message}[/red]").format(
+                        message=config.message
+                    )
+                )
                 raise typer.Exit(1)
 
         elif provider_name == "openai":
-            console.print("\n[bold white]🔑 OpenAI Configuration[/bold white]")
+            console.print(h("\n[bold white]🔑 OpenAI Configuration[/bold white]"))
             console.print(
-                "Get your API key from: [link]https://platform.openai.com/api-keys[/link]\n"
+                h(
+                    "Get your API key from: [link]https://platform.openai.com/api-keys[/link]\n"
+                )
             )
             api_key = Prompt.ask(
-                "[bold white]Enter your OpenAI API key[/bold white]", password=True
+                h("[bold white]Enter your OpenAI API key[/bold white]"), password=True
             )
             if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
+                console.print(h("[red]❌ API key cannot be empty[/red]"))
                 raise typer.Exit(1)
             config = provider_setup.create_openai_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openai"
-                console.print("[green]✓ OpenAI provider configured[/green]")
+                console.print(h("[green]✓ OpenAI provider configured[/green]"))
 
         elif provider_name == "openrouter":
-            console.print("\n[bold white]🔀 OpenRouter Configuration[/bold white]")
+            console.print(h("\n[bold white]🔀 OpenRouter Configuration[/bold white]"))
             console.print(
-                "Get your API key from: [link]https://openrouter.ai/keys[/link]\n"
+                h("Get your API key from: [link]https://openrouter.ai/keys[/link]\n")
             )
             api_key = Prompt.ask(
-                "[bold white]Enter your OpenRouter API key[/bold white]", password=True
+                h("[bold white]Enter your OpenRouter API key[/bold white]"),
+                password=True,
             )
             if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
+                console.print(h("[red]❌ API key cannot be empty[/red]"))
                 raise typer.Exit(1)
             config = provider_setup.create_openrouter_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "openrouter"
-                console.print("[green]✓ OpenRouter provider configured[/green]")
+                console.print(h("[green]✓ OpenRouter provider configured[/green]"))
             else:
-                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                console.print(
+                    h("[red]❌ Configuration failed: {message}[/red]").format(
+                        message=config.message
+                    )
+                )
                 raise typer.Exit(1)
 
         elif provider_name == "nebius":
             console.print(
-                "\n[bold white]🧬 Nebius AI Studio Configuration[/bold white]"
+                h("\n[bold white]🧬 Nebius AI Studio Configuration[/bold white]")
             )
-            console.print("Get your API key from: [link]https://nebius.com[/link]\n")
+            console.print(h("Get your API key from: [link]https://nebius.com[/link]\n"))
             api_key = Prompt.ask(
-                "[bold white]Enter your Nebius API key[/bold white]", password=True
+                h("[bold white]Enter your Nebius API key[/bold white]"), password=True
             )
             if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
+                console.print(h("[red]❌ API key cannot be empty[/red]"))
                 raise typer.Exit(1)
             config = provider_setup.create_nebius_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "nebius"
-                console.print("[green]✓ Nebius AI Studio provider configured[/green]")
+                console.print(
+                    h("[green]✓ Nebius AI Studio provider configured[/green]")
+                )
             else:
-                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                console.print(
+                    h("[red]❌ Configuration failed: {message}[/red]").format(
+                        message=config.message
+                    )
+                )
                 raise typer.Exit(1)
 
         elif provider_name == "ollama-cloud":
-            console.print("\n[bold white]🧬 Ollama Cloud Configuration[/bold white]")
+            console.print(h("\n[bold white]🧬 Ollama Cloud Configuration[/bold white]"))
             console.print(
-                "Get your API key from: [link]https://ollama.com/settings/keys[/link]\n"
+                h(
+                    "Get your API key from: [link]https://ollama.com/settings/keys[/link]\n"
+                )
             )
             api_key = Prompt.ask(
-                "[bold white]Enter your Ollama Cloud API key[/bold white]",
+                h("[bold white]Enter your Ollama Cloud API key[/bold white]"),
                 password=True,
             )
             if not api_key.strip():
-                console.print("[red]❌ API key cannot be empty[/red]")
+                console.print(h("[red]❌ API key cannot be empty[/red]"))
                 raise typer.Exit(1)
             config = provider_setup.create_ollama_cloud_config(api_key)
             if config.success:
                 for key, value in config.env_vars.items():
                     env_lines.append(f"{key}={value}")
                 config_dict["provider"] = "ollama-cloud"
-                console.print("[green]✓ Ollama Cloud provider configured[/green]")
+                console.print(h("[green]✓ Ollama Cloud provider configured[/green]"))
             else:
-                console.print(f"[red]❌ Configuration failed: {config.message}[/red]")
+                console.print(
+                    h("[red]❌ Configuration failed: {message}[/red]").format(
+                        message=config.message
+                    )
+                )
                 raise typer.Exit(1)
 
         # Auto-install provider package if missing
@@ -2954,25 +3259,33 @@ def init_impl(
         # Step 3 — Profile selection (Anthropic / Bedrock only)               #
         # ================================================================== #
         if provider_name in ("anthropic", "bedrock"):
-            console.print("\n[bold white]⚙️  Agent Configuration Profile[/bold white]")
-            console.print("Choose which Claude models to use for analysis:")
+            console.print(
+                h("\n[bold white]⚙️  Agent Configuration Profile[/bold white]")
+            )
+            console.print(h("Choose which Claude models to use for analysis:"))
             console.print()
             console.print(
-                "  [cyan]1[/cyan] - Development  (Sonnet 4 - fastest, most affordable)"
+                h(
+                    "  [cyan]1[/cyan] - Development  (Sonnet 4 - fastest, most affordable)"
+                )
             )
             console.print(
-                "  [cyan]2[/cyan] - Production   (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]"
+                h(
+                    "  [cyan]2[/cyan] - Production   (Sonnet 4 + Sonnet 4.5 supervisor) [recommended]"
+                )
             )
             console.print(
-                "  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality)"
+                h("  [cyan]3[/cyan] - Performance  (Sonnet 4.5 - highest quality)")
             )
             console.print(
-                "  [cyan]4[/cyan] - Max          (Opus 4.5 supervisor - most capable, most expensive)"
+                h(
+                    "  [cyan]4[/cyan] - Max          (Opus 4.5 supervisor - most capable, most expensive)"
+                )
             )
             console.print()
 
             profile_choice = Prompt.ask(
-                "[bold white]Choose profile[/bold white]",
+                h("[bold white]Choose profile[/bold white]"),
                 choices=["1", "2", "3", "4"],
                 default="2",
             )
@@ -2989,7 +3302,11 @@ def init_impl(
             env_lines.append("# Determines which Claude models are used for analysis")
             env_lines.append(f"LOBSTER_PROFILE={profile_to_write}")
             config_dict["profile"] = profile_to_write
-            console.print(f"[green]✓ Profile set to: {profile_to_write}[/green]")
+            console.print(
+                h("[green]✓ Profile set to: {profile_to_write}[/green]").format(
+                    profile_to_write=profile_to_write
+                )
+            )
 
         # ================================================================== #
         # Step 4 — Agent selection                                            #
@@ -3005,36 +3322,36 @@ def init_impl(
         # Step 5 — Optional NCBI key (single)                                #
         # ================================================================== #
         add_ncbi = Confirm.ask(
-            "Add an NCBI API key? (enhances literature search, optional)",
+            h("Add an NCBI API key? (enhances literature search, optional)"),
             default=False,
         )
 
         if add_ncbi:
             ncbi_key_val = Prompt.ask(
-                "[bold white]Enter your NCBI API key[/bold white]", password=True
+                h("[bold white]Enter your NCBI API key[/bold white]"), password=True
             )
             if ncbi_key_val.strip():
                 env_lines.append("\n# NCBI API key for literature search")
                 env_lines.append(f"NCBI_API_KEY={ncbi_key_val.strip()}")
-                console.print("[green]✓ NCBI API key configured[/green]")
+                console.print(h("[green]✓ NCBI API key configured[/green]"))
 
         # ================================================================== #
         # Step 6 — Optional Cloud key (skip if Omics-OS)                      #
         # ================================================================== #
         if provider_name != "omics-os":
             add_cloud = Confirm.ask(
-                "Add an Omics-OS Cloud API key? (enables premium tier, optional)",
+                h("Add an Omics-OS Cloud API key? (enables premium tier, optional)"),
                 default=False,
             )
             if add_cloud:
                 cloud_key_val = Prompt.ask(
-                    "[bold white]Enter your Omics-OS Cloud API key[/bold white]",
+                    h("[bold white]Enter your Omics-OS Cloud API key[/bold white]"),
                     password=True,
                 )
                 if cloud_key_val.strip():
                     env_lines.append("\n# Lobster Cloud configuration")
                     env_lines.append(f"LOBSTER_CLOUD_KEY={cloud_key_val.strip()}")
-                    console.print("[green]✓ Cloud API key configured[/green]")
+                    console.print(h("[green]✓ Cloud API key configured[/green]"))
 
         # ================================================================== #
         # Step 7 — Smart Standardization (if not uv tool env)                 #
@@ -3075,21 +3392,33 @@ def init_impl(
                 if credentials:
                     credentials_path = save_global_credentials(credentials)
 
-                success_message = (
+                success_message = h(
                     "[bold green]✅ Global configuration saved![/bold green]\n\n"
                 )
-                success_message += f"Config: [cyan]{global_config_path}[/cyan]\n"
+                success_message += h("Config: [cyan]{path}[/cyan]\n").format(
+                    path=global_config_path
+                )
                 if credentials_path:
-                    success_message += f"Credentials: [cyan]{credentials_path}[/cyan] [dim](secure: mode 0o600)[/dim]\n"
+                    success_message += h(
+                        "Credentials: [cyan]{path}[/cyan] [dim](secure: mode 0o600)[/dim]\n"
+                    ).format(path=credentials_path)
                 if backup_path:
-                    success_message += f"Backup: [cyan]{backup_path}[/cyan]\n"
-                success_message += f"\n[bold white]Next step:[/bold white] Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!"
+                    success_message += h("Backup: [cyan]{path}[/cyan]\n").format(
+                        path=backup_path
+                    )
+                success_message += h(
+                    "\n[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
+                ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
             except Exception as e:
                 if config_dict.get("provider") == "omics-os":
                     from lobster.config.cloud_setup import fail_cloud_setup_write
 
                     fail_cloud_setup_write(e)
-                console.print(f"[red]❌ Failed to write global config: {str(e)}[/red]")
+                console.print(
+                    h("[red]❌ Failed to write global config: {str}[/red]").format(
+                        str=str(e)
+                    )
+                )
                 raise typer.Exit(1)
         else:
             try:
@@ -3107,16 +3436,22 @@ def init_impl(
 
             _create_workspace_config(config_dict, workspace_path)
 
-            success_message = "[bold green]✅ Configuration saved![/bold green]\n\n"
-            success_message += f"Environment: [cyan]{env_path}[/cyan]\n"
-            success_message += (
-                f"Workspace:   [cyan]{workspace_path / 'provider_config.json'}[/cyan]\n"
+            success_message = h("[bold green]✅ Configuration saved![/bold green]\n\n")
+            success_message += h("Environment: [cyan]{path}[/cyan]\n").format(
+                path=env_path
+            )
+            success_message += h("Workspace:   [cyan]{path}[/cyan]\n").format(
+                path=workspace_path / "provider_config.json"
             )
             if backup_path:
-                success_message += f"Backup: [cyan]{backup_path}[/cyan]\n\n"
+                success_message += h("Backup: [cyan]{path}[/cyan]\n\n").format(
+                    path=backup_path
+                )
             else:
                 success_message += "\n"
-            success_message += f"[bold white]Next step:[/bold white] Run [bold {LobsterTheme.PRIMARY_ORANGE}]lobster chat[/bold {LobsterTheme.PRIMARY_ORANGE}] to start analyzing!"
+            success_message += h(
+                "[bold white]Next step:[/bold white] Run [bold {PRIMARY_ORANGE}]lobster chat[/bold {PRIMARY_ORANGE}] to start analyzing!"
+            ).format(PRIMARY_ORANGE=LobsterTheme.PRIMARY_ORANGE)
 
         if config_dict.get("provider") == "omics-os":
             console.print(OMICS_OS_KEY_NOT_VERIFIED)
@@ -3131,7 +3466,9 @@ def init_impl(
                     import chromadb  # noqa: F401
                 except ImportError:
                     _vs_choice = Prompt.ask(
-                        "\n  Include Smart Standardization (ontology matching, OpenAI embeddings)?",
+                        h(
+                            "\n  Include Smart Standardization (ontology matching, OpenAI embeddings)?"
+                        ),
                         choices=["y", "n"],
                         default="n",
                     )
@@ -3147,8 +3484,10 @@ def init_impl(
             )
 
     except KeyboardInterrupt:
-        console.print("\n[yellow]⚠️  Configuration cancelled[/yellow]")
+        console.print(h("\n[yellow]⚠️  Configuration cancelled[/yellow]"))
         raise typer.Exit(1)
     except Exception as e:
-        console.print(f"\n[red]❌ Configuration failed: {str(e)}[/red]")
+        console.print(
+            h("\n[red]❌ Configuration failed: {str}[/red]").format(str=str(e))
+        )
         raise typer.Exit(1)

@@ -48,7 +48,7 @@ func renderHeader(m Model) string {
 		if version == "" {
 			version = "unknown"
 		}
-		left := m.styles.Header.Render("● lobster v" + version + " free │ semantic │ local │ /help")
+		left := m.styles.Header.Render("● lobster v" + version + " │ /help")
 
 		if m.sessionID == "" {
 			return lipgloss.NewStyle().Width(m.width).MaxWidth(m.width).Render(left)
@@ -111,7 +111,7 @@ func renderRuntimeSummary(m Model) string {
 		return ""
 	}
 
-	ram := "N/A"
+	ram := i18n.P("N/A")
 	if m.totalRAMGB > 0 {
 		ram = fmt.Sprintf("%dGB RAM", m.totalRAMGB)
 	}
@@ -120,9 +120,9 @@ func renderRuntimeSummary(m Model) string {
 		compute = "CPU"
 	}
 
-	storage := "N/A"
+	storage := i18n.P("N/A")
 	if m.freeStorageGB >= 0 {
-		storage = fmt.Sprintf("%dGB free", m.freeStorageGB)
+		storage = fmt.Sprintf(i18n.P("%dGB free"), m.freeStorageGB)
 	}
 
 	provider := m.provider
@@ -131,14 +131,14 @@ func renderRuntimeSummary(m Model) string {
 	}
 	icon := providerIcon(provider)
 
-	providerLine := "   Provider: " + icon + " " + provider
+	providerLine := "   " + i18n.P("Provider:") + " " + icon + " " + provider
 	if m.modelID != "" {
 		providerLine += "  ·  " + m.modelID
 	}
 
 	lines := []string{
-		m.styles.Muted.Render("└─ Compute: " + ram + " │ " + compute),
-		m.styles.Dimmed.Render("   Storage: " + storage + " (workspace)"),
+		m.styles.Muted.Render("└─ " + i18n.P("Compute:") + " " + ram + " │ " + compute),
+		m.styles.Dimmed.Render("   " + i18n.P("Storage:") + " " + storage + " " + i18n.P("(workspace)")),
 		m.styles.Muted.Render(providerLine),
 	}
 	return strings.Join(lines, "\n")
@@ -398,11 +398,11 @@ func renderMessageUncached(msg ChatMessage, styles theme.Styles, width int, mdRe
 	switch msg.Role {
 	case "user":
 		body := renderBlocksOrContent(msg, styles, contentWidth, nil)
-		header := styles.UserName.Render("You")
+		header := styles.UserName.Render(i18n.P("You"))
 		return styles.UserMessage.MaxWidth(messageWidth).Render(header + "\n" + body)
 
 	case "assistant":
-		agent := "Supervisor"
+		agent := i18n.P("Supervisor")
 		if msg.Agent != "" {
 			agent = msg.Agent
 		}
@@ -465,7 +465,7 @@ func renderInlineMessage(msg ChatMessage, styles theme.Styles, width int, mdRend
 
 	switch msg.Role {
 	case "user":
-		return renderPrefixedBlock("You", msg.Content(), styles.UserName, lipgloss.NewStyle(), contentWidth)
+		return renderPrefixedBlock(i18n.P("You"), msg.Content(), styles.UserName, lipgloss.NewStyle(), contentWidth)
 	case "assistant":
 		body := renderBlocksOrContent(msg, styles, contentWidth, mdRenderer)
 		body = trimSharedLeftPadding(body, 2)
@@ -534,7 +534,7 @@ func trimSharedLeftPadding(text string, maxTrim int) string {
 func renderPrefixedBlock(label, body string, labelStyle, bodyStyle lipgloss.Style, width int) string {
 	label = strings.TrimSpace(label)
 	if label == "" {
-		label = "Assistant"
+		label = i18n.P("Assistant")
 	}
 	prefixRaw := label + ":"
 	prefix := labelStyle.Render(prefixRaw)
@@ -620,7 +620,7 @@ func renderToolFeed(feed []ToolFeedEntry, styles theme.Styles, width int, inline
 
 	if inline {
 		lines := make([]string, 0, len(feed)+1)
-		lines = append(lines, styles.Dimmed.Render("Tools"))
+		lines = append(lines, styles.Dimmed.Render(i18n.P("Tools")))
 		for _, entry := range feed {
 			icon := "·"
 			switch entry.Event {
@@ -641,7 +641,7 @@ func renderToolFeed(feed []ToolFeedEntry, styles theme.Styles, width int, inline
 	}
 
 	lines := make([]string, 0, len(feed)+1)
-	lines = append(lines, lipgloss.NewStyle().Width(contentWidth).Render(sectionIndent+styles.Dimmed.Render("Tools")))
+	lines = append(lines, lipgloss.NewStyle().Width(contentWidth).Render(sectionIndent+styles.Dimmed.Render(i18n.P("Tools"))))
 	for _, entry := range feed {
 		var icon string
 		var style lipgloss.Style
@@ -651,7 +651,7 @@ func renderToolFeed(feed []ToolFeedEntry, styles theme.Styles, width int, inline
 		case "start":
 			icon = "●"
 			style = styles.ToolRunning
-			suffix = "(running)"
+			suffix = i18n.P("(running)")
 		case "finish":
 			icon = "✓"
 			style = styles.ToolSuccess
@@ -659,7 +659,7 @@ func renderToolFeed(feed []ToolFeedEntry, styles theme.Styles, width int, inline
 		case "error":
 			icon = "✗"
 			style = styles.ToolError
-			suffix = "(error)"
+			suffix = i18n.P("(error)")
 		default:
 			icon = "·"
 			style = styles.ToolExecution
@@ -697,7 +697,7 @@ func renderProgressBar(label string, current, total, width int, styles theme.Sty
 	contentWidth := clampRenderWidth(width, 4)
 	label = strings.TrimSpace(label)
 	if label == "" {
-		label = "Progress"
+		label = i18n.P("Progress")
 	}
 
 	var pct int
@@ -737,7 +737,7 @@ func renderConfirmPrompt(p *protocol.ConfirmPayload, styles theme.Styles, width 
 		lines = append(lines, "  "+styles.Bold.Render(title))
 	}
 	if msg == "" {
-		msg = "Confirm?"
+		msg = i18n.P("Confirm?")
 	}
 	prompt := "  " + styles.Bold.Render("?") + " " + msg + "  " + styles.Dimmed.Render(hint)
 	lines = append(lines, prompt)
@@ -747,7 +747,7 @@ func renderConfirmPrompt(p *protocol.ConfirmPayload, styles theme.Styles, width 
 // renderStatusBar renders the bottom status bar spanning the full terminal width.
 func renderStatusBar(text string, styles theme.Styles, width int) string {
 	if text == "" {
-		text = "ready"
+		text = i18n.P("ready")
 	}
 	return styles.StatusBar.Width(width).Render(text)
 }
@@ -768,13 +768,13 @@ func renderInlineAlert(level string, message string, styles theme.Styles, width 
 func alertStyleParts(level string, styles theme.Styles) (lipgloss.Style, string, string) {
 	switch level {
 	case "error":
-		return styles.AlertError, "✖", "ERROR"
+		return styles.AlertError, "✖", i18n.P("ERROR")
 	case "warning":
-		return styles.AlertWarning, "⚠", "WARNING"
+		return styles.AlertWarning, "⚠", i18n.P("WARNING")
 	case "success":
-		return styles.AlertSuccess, "✓", "SUCCESS"
+		return styles.AlertSuccess, "✓", i18n.P("SUCCESS")
 	default:
-		return styles.AlertInfo, "ℹ", "INFO"
+		return styles.AlertInfo, "ℹ", i18n.P("INFO")
 	}
 }
 

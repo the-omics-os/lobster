@@ -90,7 +90,7 @@ def is_editable_install() -> bool:
         return False
 
 
-_EDITABLE_NOTE = (
+_EDITABLE_NOTE = h(
     "This is an editable development install; "
     "update it with git pull and reinstall instead."
 )
@@ -112,7 +112,7 @@ def detect_upgrade_plan() -> UpgradePlan:
             base_pkg = cmd[3]
         if uv_path is None:
             return _manual_plan(
-                "Running from a uv tool environment but `uv` is not on PATH.",
+                h("Running from a uv tool environment but `uv` is not on PATH."),
                 suggestion=f"uv tool install --upgrade {base_pkg}",
             )
         # Plain `uv tool install` is a no-op on installed tools; --upgrade
@@ -121,7 +121,7 @@ def detect_upgrade_plan() -> UpgradePlan:
             cmd.insert(3, "--upgrade")
             return UpgradePlan(method="uv-tool", command=cmd, display=" ".join(cmd))
         return _manual_plan(
-            "Could not build a uv tool upgrade command from the install receipt."
+            h("Could not build a uv tool upgrade command from the install receipt.")
         )
 
     if _is_virtualenv():
@@ -140,8 +140,10 @@ def detect_upgrade_plan() -> UpgradePlan:
         return UpgradePlan(method="pip", command=cmd, display=" ".join(cmd))
 
     return _manual_plan(
-        "Could not determine how lobster-ai was installed "
-        "(no uv tool receipt, no virtualenv)."
+        h(
+            "Could not determine how lobster-ai was installed "
+            "(no uv tool receipt, no virtualenv)."
+        )
     )
 
 
@@ -171,7 +173,9 @@ def run_upgrade(console: "Console", dry_run: bool = False) -> int:
     if not plan.supported:
         console.print(f"[yellow]⚠[/yellow] {plan.reason}")
         console.print(
-            f"  Update manually with: [bold white]{plan.display}[/bold white]"
+            h("  Update manually with: [bold white]{display}[/bold white]").format(
+                display=plan.display
+            )
         )
         return 1
 
@@ -184,8 +188,12 @@ def run_upgrade(console: "Console", dry_run: bool = False) -> int:
     result = subprocess.run(plan.command)  # nosec B603 # fixed argv, no shell
 
     if result.returncode != 0:
-        console.print(f"[red]✗[/red] Upgrade failed (exit code {result.returncode}).")
-        console.print("  You can retry `lobster upgrade` or update manually:")
+        console.print(
+            h("[red]✗[/red] Upgrade failed (exit code {code}).").format(
+                code=result.returncode
+            )
+        )
+        console.print(h("  You can retry `lobster upgrade` or update manually:"))
         console.print(f"  [bold white]{plan.display}[/bold white]")
         return result.returncode or 1
 

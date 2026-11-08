@@ -54,7 +54,7 @@
   "slash.exit": "Exit the chat",
   "slash.lang": "Set the UI language (en, zh) for this session and the next launch",
   "slash.lang.current": "UI language: {lang}",
-  "slash.lang.set": "UI language set to {lang}. The terminal screen uses it on the next launch.",
+  "slash.lang.set": "UI language set to {lang}. Agent replies switch on the next launch.",
   "slash.lang.usage": "Usage: /lang zh",
   "wizard.pkg.research": "Literature search & data discovery",
   "wizard.pkg.transcriptomics": "Single-cell & bulk RNA-seq analysis",

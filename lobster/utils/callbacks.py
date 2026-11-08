@@ -23,6 +23,7 @@ from rich.table import Table
 from rich.tree import Tree
 
 from lobster.config.agent_registry import get_all_agent_names
+from lobster.i18n import h
 from lobster.utils.error_handlers import ErrorGuidance, get_error_registry
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ class TerminalCallbackHandler(BaseCallbackHandler):
         if event.type == EventType.AGENT_START:
             if self.use_panels:
                 panel = Panel(
-                    "[cyan]Starting analysis...[/cyan]",
+                    h("[cyan]Starting analysis...[/cyan]"),
                     title=f"🤖 {agent_display}",
                     border_style="cyan",
                     box=box.ROUNDED,
@@ -193,7 +194,9 @@ class TerminalCallbackHandler(BaseCallbackHandler):
             if event.duration:
                 duration_str = f" [{self._format_duration(event.duration)}]"
             self.console.print(
-                f"[green]   ✓ {agent_display} complete{duration_str}[/green]"
+                h("[green]   ✓ {agent} complete{duration}[/green]").format(
+                    agent=agent_display, duration=duration_str
+                )
             )
             self._mark_displayed(EventType.AGENT_COMPLETE)
 
@@ -201,12 +204,16 @@ class TerminalCallbackHandler(BaseCallbackHandler):
             from_agent = event.metadata.get("from", "Unknown")
             to_agent = event.metadata.get("to", "Unknown")
             self.console.print(
-                f"[cyan]🔄 Handoff: {self._format_agent_name(from_agent)} "
-                f"→ {self._format_agent_name(to_agent)}[/cyan]"
+                h("[cyan]🔄 Handoff: {src} → {dst}[/cyan]").format(
+                    src=self._format_agent_name(from_agent),
+                    dst=self._format_agent_name(to_agent),
+                )
             )
             if event.content:
                 self.console.print(
-                    f"[dim]   Task: {self._truncate_content(event.content)}[/dim]"
+                    h("[dim]   Task: {task}[/dim]").format(
+                        task=self._truncate_content(event.content)
+                    )
                 )
             self._mark_displayed(EventType.HANDOFF)
 
@@ -223,21 +230,27 @@ class TerminalCallbackHandler(BaseCallbackHandler):
             self._mark_displayed(EventType.TOOL_START)
             if self.verbose and event.content:
                 self.console.print(
-                    f"[dim]      Input: {self._truncate_content(event.content)}[/dim]"
+                    h("[dim]      Input: {content}[/dim]").format(
+                        content=self._truncate_content(event.content)
+                    )
                 )
 
         elif event.type == EventType.TOOL_COMPLETE:
             # Silent completion - only show start
             if self.verbose and event.content:
                 self.console.print(
-                    f"[dim]      Result: {self._truncate_content(event.content)}[/dim]"
+                    h("[dim]      Result: {content}[/dim]").format(
+                        content=self._truncate_content(event.content)
+                    )
                 )
                 self._mark_displayed(EventType.TOOL_COMPLETE)
 
         elif event.type == EventType.TOOL_ERROR:
             if self.verbose:
                 self.console.print(
-                    f"[red]      ✗ {tool_name} failed: {event.content}[/red]"
+                    h("[red]      ✗ {tool} failed: {error}[/red]").format(
+                        tool=tool_name, error=event.content
+                    )
                 )
                 self._mark_displayed(EventType.TOOL_ERROR)
 
@@ -637,11 +650,11 @@ class TerminalCallbackHandler(BaseCallbackHandler):
             return
 
         # Create summary table
-        table = Table(title="Execution Summary", box=box.ROUNDED)
-        table.add_column("Agent", style="cyan")
-        table.add_column("Actions", style="yellow")
-        table.add_column("Tools Used", style="magenta")
-        table.add_column("Total Time", style="green")
+        table = Table(title=h("Execution Summary"), box=box.ROUNDED)
+        table.add_column(h("Agent"), style="cyan")
+        table.add_column(h("Actions"), style="yellow")
+        table.add_column(h("Tools Used"), style="magenta")
+        table.add_column(h("Total Time"), style="green")
 
         # Aggregate data
         agent_stats = {}
@@ -744,7 +757,9 @@ class SimpleTerminalCallback(TerminalCallbackHandler):
         event = AgentEvent(type=EventType.AGENT_START, agent_name=agent_name)
         self.events.append(event)
         formatted = self._format_agent_name(agent_name)
-        self.console.print(f"\n[cyan]🤖 {formatted} is thinking...[/cyan]")
+        self.console.print(
+            h("\n[cyan]🤖 {agent} is thinking...[/cyan]").format(agent=formatted)
+        )
 
     def on_agent_reasoning(self, reasoning: str):
         """Display agent reasoning."""

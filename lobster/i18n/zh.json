@@ -54,7 +54,7 @@
   "slash.exit": "退出对话",
   "slash.lang": "设置界面语言（en 或 zh），本次和下次启动都生效",
   "slash.lang.current": "当前界面语言：{lang}",
-  "slash.lang.set": "界面语言已设为 {lang}。终端界面在下次启动时使用。",
+  "slash.lang.set": "界面语言已设为 {lang}。智能体回复将在下次启动时切换。",
   "slash.lang.usage": "用法：/lang zh",
   "wizard.pkg.research": "文献检索和数据查找",
   "wizard.pkg.transcriptomics": "单细胞和批量 RNA-seq 分析",

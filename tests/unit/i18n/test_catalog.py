@@ -23,6 +23,9 @@ from lobster.i18n import (
 )
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from literal_scan import iter_calls  # noqa: E402
+
 EN_SENTENCE = "Multi-Agent Bioinformatics Analysis System"
 ZH_SENTENCE = "用对话做生物信息分析"
 KEY_CALL = re.compile(r"""\bt\(\s*['"]([^'"]+)['"]""")
@@ -126,7 +129,7 @@ def test_help_phrases_cover_every_h_call():
     )
     used = set()
     for path in files:
-        used.update(re.findall(r'\bh\("([^"]*)"\)', path.read_text(encoding="utf-8")))
+        used.update(text for _line, _name, text in iter_calls(path, {"h"}))
     missing = sorted(used - set(phrases))
     assert not missing, missing
     resolve_lang(["lobster", "--lang", "zh"])

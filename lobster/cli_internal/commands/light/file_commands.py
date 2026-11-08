@@ -26,6 +26,7 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
 )
 from lobster.cli_internal.utils.path_resolution import PathResolver
+from lobster.i18n import h
 
 # NOTE: component_registry is imported lazily in archive_queue() to avoid
 # triggering heavy dependency loads (pandas/numpy) at module import time.
@@ -38,11 +39,13 @@ _MAX_TEXT_PREVIEW_CHARS = 20_000
 def build_read_usage_blocks() -> list[OutputBlock]:
     return [
         section_block(
-            body="/read views file contents without loading data into memory."
+            body=h("/read views file contents without loading data into memory.")
         ),
-        section_block(body="Usage: /read <filename>"),
-        hint_block("Examples: /read my_data.h5ad, /read config.yaml, /read data/*.csv"),
-        hint_block("To load data for analysis, use /workspace load <name>."),
+        section_block(body=h("Usage: /read <filename>")),
+        hint_block(
+            h("Examples: /read my_data.h5ad, /read config.yaml, /read data/*.csv")
+        ),
+        hint_block(h("To load data for analysis, use /workspace load <name>.")),
     ]
 
 
@@ -104,9 +107,9 @@ def file_read(
     if not filename:
         output.render_blocks(
             [
-                alert_block("Usage: /read <file|pattern>", level="warning"),
-                section_block(body="View file contents (text files only)."),
-                hint_block("Use /workspace load <file> to load data files."),
+                alert_block(h("Usage: /read <file|pattern>"), level="warning"),
+                section_block(body=h("View file contents (text files only).")),
+                hint_block(h("Use /workspace load <file> to load data files.")),
             ]
         )
         return None
@@ -129,7 +132,12 @@ def file_read(
         if not resolved.is_safe:
             _render_blocks(
                 output,
-                [alert_block(f"Security error: {resolved.error}", level="error")],
+                [
+                    alert_block(
+                        h("Security error: {error}").format(error=resolved.error),
+                        level="error",
+                    )
+                ],
             )
             return None
 
@@ -159,10 +167,14 @@ def file_read(
                 output,
                 [
                     alert_block(
-                        f"No files found matching pattern: {filename}",
+                        h("No files found matching pattern: {pattern}").format(
+                            pattern=filename
+                        ),
                         level="error",
                     ),
-                    section_block(body=f"Searched in: {current_directory}"),
+                    section_block(
+                        body=h("Searched in: {path}").format(path=current_directory)
+                    ),
                 ],
             )
             return None
@@ -173,7 +185,9 @@ def file_read(
         matching_files.sort()
         blocks: list[OutputBlock] = [
             section_block(
-                body=f"Found {total_count} files matching '{filename}', displaying first 10."
+                body=h(
+                    "Found {count} files matching '{filename}', displaying first 10."
+                ).format(count=total_count, filename=filename)
             )
         ]
 
@@ -191,8 +205,12 @@ def file_read(
                         blocks.append(
                             alert_block(
                                 (
-                                    f"{match_file.name} is too large to display "
-                                    f"({file_size / 1_000_000:.1f}MB, limit: 10MB)."
+                                    h(
+                                        "{name} is too large to display ({size}MB, limit: 10MB)."
+                                    ).format(
+                                        name=match_file.name,
+                                        size=f"{file_size / 1_000_000:.1f}",
+                                    )
                                 ),
                                 level="warning",
                             )
@@ -229,7 +247,9 @@ def file_read(
                     blocks.extend(
                         [
                             section_block(
-                                body=f"{match_file.name} ({len(lines)} lines)"
+                                body=h("{name} ({count} lines)").format(
+                                    name=match_file.name, count=len(lines)
+                                )
                             ),
                             code_block(content, language=language),
                         ]
@@ -238,16 +258,26 @@ def file_read(
                 except Exception as e:
                     blocks.append(
                         alert_block(
-                            f"Could not read {match_file.name}: {e}",
+                            h("Could not read {name}: {error}").format(
+                                name=match_file.name, error=e
+                            ),
                             level="warning",
                         )
                     )
             else:
-                blocks.append(hint_block(f"{match_file.name} (binary file - skipped)"))
+                blocks.append(
+                    hint_block(
+                        h("{name} (binary file - skipped)").format(name=match_file.name)
+                    )
+                )
 
         if total_count > 10:
             blocks.append(
-                hint_block(f"... and {total_count - 10} more files (not loaded)")
+                hint_block(
+                    h("... and {count} more files (not loaded)").format(
+                        count=total_count - 10
+                    )
+                )
             )
 
         _render_blocks(output, blocks)
@@ -263,7 +293,7 @@ def file_read(
             if "searched_paths" in file_info:
                 blocks.extend(
                     [
-                        section_block(body="Searched in:"),
+                        section_block(body=h("Searched in:")),
                         list_block(
                             [str(path) for path in file_info["searched_paths"][:5]]
                         ),
@@ -283,11 +313,11 @@ def file_read(
         [
             kv_block(
                 [
-                    ("Name", file_path.name),
-                    ("Path", str(file_path)),
-                    ("Type", file_description),
+                    (h("Name"), file_path.name),
+                    (h("Path"), str(file_path)),
+                    (h("Type"), file_description),
                 ],
-                title="File",
+                title=h("File"),
             )
         ]
     )
@@ -326,7 +356,9 @@ def file_read(
             # Display using code block
             output.render_blocks(
                 [
-                    section_block(body=f"Contents: {file_path.name}"),
+                    section_block(
+                        body=h("Contents: {name}").format(name=file_path.name)
+                    ),
                     code_block(preview, language=language),
                 ]
             )
@@ -334,7 +366,9 @@ def file_read(
                 output.render_blocks(
                     [
                         hint_block(
-                            f"Preview truncated for chat. Use `/open {file_path.name}` for the full file."
+                            h(
+                                "Preview truncated for chat. Use `/open {name}` for the full file."
+                            ).format(name=file_path.name)
                         )
                     ]
                 )
@@ -346,7 +380,7 @@ def file_read(
                 output,
                 [
                     alert_block(
-                        "File appears to be binary despite its extension.",
+                        h("File appears to be binary despite its extension."),
                         level="warning",
                     )
                 ],
@@ -355,7 +389,11 @@ def file_read(
         except Exception as e:
             _render_blocks(
                 output,
-                [alert_block(f"Error reading file: {e}", level="error")],
+                [
+                    alert_block(
+                        h("Error reading file: {error}").format(error=e), level="error"
+                    )
+                ],
             )
             return f"Error reading file '{filename}': {str(e)}"
 
@@ -376,13 +414,13 @@ def file_read(
             [
                 kv_block(
                     [
-                        ("Name", file_path.name),
-                        ("Path", str(file_path)),
-                        ("Type", file_description),
-                        ("Category", file_category),
-                        ("Size", size_str),
+                        (h("Name"), file_path.name),
+                        (h("Path"), str(file_path)),
+                        (h("Type"), file_description),
+                        (h("Category"), file_category),
+                        (h("Size"), size_str),
                     ],
-                    title="File Info",
+                    title=h("File Info"),
                 )
             ]
         )
@@ -392,10 +430,14 @@ def file_read(
             output.render_blocks(
                 [
                     section_block(
-                        body=f"This is a bioinformatics data file ({file_description})."
+                        body=h("This is a bioinformatics data file ({desc}).").format(
+                            desc=file_description
+                        )
                     ),
                     hint_block(
-                        f"To load it into the workspace: /workspace load {filename}"
+                        h(
+                            "To load it into the workspace: /workspace load {filename}"
+                        ).format(filename=filename)
                     ),
                 ]
             )
@@ -403,10 +445,14 @@ def file_read(
             output.render_blocks(
                 [
                     section_block(
-                        body=f"This is a tabular data file ({file_description})."
+                        body=h("This is a tabular data file ({desc}).").format(
+                            desc=file_description
+                        )
                     ),
                     hint_block(
-                        f"To load it into the workspace: /workspace load {filename}"
+                        h(
+                            "To load it into the workspace: /workspace load {filename}"
+                        ).format(filename=filename)
                     ),
                 ]
             )
@@ -414,22 +460,30 @@ def file_read(
             output.render_blocks(
                 [
                     section_block(
-                        body=f"This is an archive file ({file_description})."
+                        body=h("This is an archive file ({desc}).").format(
+                            desc=file_description
+                        )
                     ),
-                    hint_block(f"To extract and load it: /workspace load {filename}"),
+                    hint_block(
+                        h("To extract and load it: /workspace load {filename}").format(
+                            filename=filename
+                        )
+                    ),
                 ]
             )
         elif file_category == "image":
             output.render_blocks(
                 [
                     section_block(
-                        body="This is an image file. Use your system image viewer to open it."
+                        body=h(
+                            "This is an image file. Use your system image viewer to open it."
+                        )
                     )
                 ]
             )
         else:
             output.render_blocks(
-                [section_block(body="Binary file - use external tools to view it.")]
+                [section_block(body=h("Binary file - use external tools to view it."))]
             )
 
         return f"Inspected file '{filename}' ({file_description}, {size_str}) - use /workspace load to load data files"
@@ -478,11 +532,15 @@ def archive_queue(
     # Check if extraction cache is available (premium feature)
     if ExtractionCacheManager is None:
         output.print(
-            "[yellow]Archive caching is a premium feature not available in this distribution.[/yellow]",
+            h(
+                "[yellow]Archive caching is a premium feature not available in this distribution.[/yellow]"
+            ),
             style="warning",
         )
         output.print(
-            "[dim]Use extract_and_load_archive() to load entire archives instead.[/dim]",
+            h(
+                "[dim]Use extract_and_load_archive() to load entire archives instead.[/dim]"
+            ),
             style="info",
         )
         return None
@@ -492,9 +550,9 @@ def archive_queue(
     recent_caches = cache_manager.list_all_caches()
 
     if not recent_caches:
-        output.print("[red]❌ No cached archives found[/red]", style="error")
+        output.print(f"[red]❌ {h('No cached archives found')}[/red]", style="error")
         output.print(
-            "[yellow]💡 Run /read <archive.tar> first to inspect an archive[/yellow]",
+            f"[yellow]💡 {h('Run /read <archive.tar> first to inspect an archive')}[/yellow]",
             style="warning",
         )
         return None
@@ -505,13 +563,15 @@ def archive_queue(
     else:
         # Multiple caches available - show list and use most recent
         output.print(
-            f"\n[cyan]📦 Found {len(recent_caches)} cached archives (using most recent):[/cyan]",
+            f"\n[cyan]📦 {h('Found {count} cached archives (using most recent):').format(count=len(recent_caches))}[/cyan]",
             style="info",
         )
         for i, cache in enumerate(recent_caches[:3], 1):
             age_hours = (time.time() - cache.get("timestamp", 0)) / 3600
             output.print(
-                f"  {i}. {cache['cache_id']} ({age_hours:.1f}h ago)", style="info"
+                f"  {i}. {cache['cache_id']} "
+                + h("({hours}h ago)").format(hours=f"{age_hours:.1f}"),
+                style="info",
             )
         cache_id = recent_caches[0]["cache_id"]  # Most recent
 
@@ -519,30 +579,36 @@ def archive_queue(
     cache_info = cache_manager.get_cache_info(cache_id)
     if not cache_info:
         output.print(
-            f"[red]❌ Cache {cache_id} metadata not found[/red]", style="error"
+            f"[red]❌ {h('Cache {cache_id} metadata not found').format(cache_id=cache_id)}[/red]",
+            style="error",
         )
         return None
 
     nested_info = cache_info.get("nested_info")
     if not nested_info:
         output.print(
-            f"[red]❌ Cache {cache_id} missing nested structure info[/red]",
+            f"[red]❌ {h('Cache {cache_id} missing nested structure info').format(cache_id=cache_id)}[/red]",
             style="error",
         )
         return None
 
     if subcommand == "list":
         # Show detailed list of all nested samples
-        output.print("\n[bold white]📋 Archive Contents:[/bold white]", style="info")
-        output.print(f"[dim]Cache ID: {cache_id}[/dim]\n", style="info")
+        output.print(
+            f"\n[bold white]📋 {h('Archive Contents:')}[/bold white]", style="info"
+        )
+        output.print(
+            f"[dim]{h('Cache ID: {cache_id}').format(cache_id=cache_id)}[/dim]\n",
+            style="info",
+        )
 
         samples_table_data = {
-            "title": "All Samples",
+            "title": h("All Samples"),
             "columns": [
                 {"name": "GSM ID", "style": "bold orange1"},
-                {"name": "Condition", "style": "white"},
-                {"name": "Number", "style": "grey70"},
-                {"name": "Filename", "style": "dim"},
+                {"name": h("Condition"), "style": "white"},
+                {"name": h("Number"), "style": "grey70"},
+                {"name": h("Filename"), "style": "dim"},
             ],
             "rows": [],
         }
@@ -563,13 +629,15 @@ def archive_queue(
 
     elif subcommand == "groups":
         # Show condition groups summary (nested_info already loaded above)
-        output.print("\n[bold white]📂 Condition Groups:[/bold white]\n", style="info")
+        output.print(
+            f"\n[bold white]📂 {h('Condition Groups:')}[/bold white]\n", style="info"
+        )
 
         groups_table_data = {
             "title": None,
             "columns": [
-                {"name": "Condition", "style": "bold orange1"},
-                {"name": "Sample Count", "style": "white"},
+                {"name": h("Condition"), "style": "bold orange1"},
+                {"name": h("Sample Count"), "style": "white"},
                 {"name": "GSM IDs", "style": "grey70"},
             ],
             "rows": [],
@@ -592,10 +660,10 @@ def archive_queue(
         # Load samples by pattern
         if not args:
             output.print(
-                "[yellow]Usage: /archive load <pattern|GSM_ID|condition>[/yellow]",
+                f"[yellow]{h('Usage: /archive load <pattern|GSM_ID|condition>')}[/yellow]",
                 style="warning",
             )
-            output.print("[dim]Examples:[/dim]", style="info")
+            output.print(f"[dim]{h('Examples:')}[/dim]", style="info")
             output.print("[dim]  /archive load GSM4710689[/dim]", style="info")
             output.print("[dim]  /archive load TISSUE[/dim]", style="info")
             output.print("[dim]  /archive load PDAC_* --limit 3[/dim]", style="info")
@@ -611,13 +679,15 @@ def archive_queue(
             try:
                 limit = int(limit_str.strip())
             except ValueError:
-                output.print("[red]❌ Invalid limit value[/red]", style="error")
+                output.print(f"[red]❌ {h('Invalid limit value')}[/red]", style="error")
                 return None
         else:
             pattern = pattern_arg
 
         output.print(
-            f"[cyan]🔄 Loading samples matching '[bold]{pattern}[/bold]'...[/cyan]",
+            h(
+                "[cyan]🔄 Loading samples matching '[bold]{pattern}[/bold]'...[/cyan]"
+            ).format(pattern=pattern),
             style="info",
         )
 
@@ -637,70 +707,108 @@ def archive_queue(
                     merged_adata = client.data_manager.get_modality(merged_name)
 
                     # Create prominent merged dataset panel info
-                    merged_info = f"""[bold white]Merged Dataset:[/bold white] [orange1]{merged_name}[/orange1]
-
-[white]Shape:[/white] [cyan]{merged_adata.n_obs:,} cells × {merged_adata.n_vars:,} genes[/cyan]
-[white]Batches:[/white] [cyan]{result["loaded_count"]} samples merged[/cyan]
-[white]Batch key:[/white] [cyan]sample_id[/cyan]
-
-[bold white]🎯 Ready for Analysis![/bold white]
-[grey70]  • Say: "Show me a UMAP of this dataset"[/grey70]
-[grey70]  • Say: "Perform quality control"[/grey70]
-[grey70]  • Or use: /data to inspect the dataset[/grey70]"""
+                    merged_info = "\n".join(
+                        [
+                            h(
+                                "[bold white]Merged Dataset:[/bold white] [orange1]{name}[/orange1]"
+                            ).format(name=merged_name),
+                            "",
+                            h(
+                                "[white]Shape:[/white] [cyan]{cells} cells × {genes} genes[/cyan]"
+                            ).format(
+                                cells=f"{merged_adata.n_obs:,}",
+                                genes=f"{merged_adata.n_vars:,}",
+                            ),
+                            h(
+                                "[white]Batches:[/white] [cyan]{count} samples merged[/cyan]"
+                            ).format(count=result["loaded_count"]),
+                            "[white]"
+                            + h("Batch key:")
+                            + "[/white] [cyan]sample_id[/cyan]",
+                            "",
+                            "[bold white]"
+                            + h("🎯 Ready for Analysis!")
+                            + "[/bold white]",
+                            h(
+                                '[grey70]  • Say: "Show me a UMAP of this dataset"[/grey70]'
+                            ),
+                            h('[grey70]  • Say: "Perform quality control"[/grey70]'),
+                            h(
+                                "[grey70]  • Or use: /data to inspect the dataset[/grey70]"
+                            ),
+                        ]
+                    )
 
                     output.print(
-                        f"\n[bold green]✨ Auto-Merged Dataset[/bold green]\n{merged_info}",
+                        f"\n[bold green]✨ {h('Auto-Merged Dataset')}[/bold green]\n{merged_info}",
                         style="success",
                     )
 
                 except Exception as e:
                     output.print(
-                        f"\n[yellow]⚠️  Could not display merged dataset details: {e}[/yellow]",
+                        f"\n[yellow]⚠️  {h('Could not display merged dataset details: {error}').format(error=e)}[/yellow]",
                         style="warning",
                     )
 
                 # Show individual modalities in collapsed format
                 output.print(
-                    f"\n[dim]Individual modalities (merged into '{merged_name}'):[/dim]",
+                    "\n"
+                    + h(
+                        "[dim]Individual modalities (merged into '{name}'):[/dim]"
+                    ).format(name=merged_name),
                     style="info",
                 )
                 for i, modality in enumerate(result["modalities"][:5], 1):
                     output.print(f"  [dim]{i}. {modality}[/dim]", style="info")
                 if len(result["modalities"]) > 5:
                     output.print(
-                        f"  [dim]... and {len(result['modalities']) - 5} more[/dim]",
+                        "  "
+                        + h("[dim]... and {count} more[/dim]").format(
+                            count=len(result["modalities"]) - 5
+                        ),
                         style="info",
                     )
 
             else:
                 # Single sample or no auto-concatenation
                 output.print(
-                    "\n[bold white]Loaded Modalities:[/bold white]", style="info"
+                    f"\n{h('[bold white]Loaded Modalities:[/bold white]')}",
+                    style="info",
                 )
                 for modality in result["modalities"]:
                     output.print(f"  • [cyan]{modality}[/cyan]", style="info")
 
                 # Suggest next steps
-                output.print("\n[bold white]🎯 Next Steps:[/bold white]", style="info")
                 output.print(
-                    "[grey70]  • Use /data to inspect the dataset[/grey70]",
+                    f"\n[bold white]🎯 {h('Next Steps:')}[/bold white]", style="info"
+                )
+                output.print(
+                    h("[grey70]  • Use /data to inspect the dataset[/grey70]"),
                     style="info",
                 )
                 output.print(
-                    "[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]",
+                    h(
+                        "[grey70]  • Say: 'Analyze this dataset' for natural language analysis[/grey70]"
+                    ),
                     style="info",
                 )
 
             if result["failed"]:
                 output.print(
-                    f"\n[yellow]⚠️  Failed to load {len(result['failed'])} samples:[/yellow]",
+                    "\n"
+                    + h("[yellow]⚠️  Failed to load {count} samples:[/yellow]").format(
+                        count=len(result["failed"])
+                    ),
                     style="warning",
                 )
                 for failed in result["failed"][:5]:
                     output.print(f"  • [dim]{failed}[/dim]", style="info")
                 if len(result["failed"]) > 5:
                     output.print(
-                        f"  • [dim]... and {len(result['failed']) - 5} more[/dim]",
+                        "  • "
+                        + h("[dim]... and {count} more[/dim]").format(
+                            count=len(result["failed"]) - 5
+                        ),
                         style="info",
                     )
 
@@ -724,10 +832,13 @@ def archive_queue(
         all_caches = cache_manager.list_all_caches()
 
         output.print(
-            "\n[bold white]📊 Extraction Cache Status:[/bold white]\n", style="info"
+            f"\n[bold white]📊 {h('Extraction Cache Status:')}[/bold white]\n",
+            style="info",
         )
         output.print(
-            f"[white]Total cached extractions: [yellow]{len(all_caches)}[/yellow][/white]",
+            h(
+                "[white]Total cached extractions: [yellow]{count}[/yellow][/white]"
+            ).format(count=len(all_caches)),
             style="info",
         )
 
@@ -735,10 +846,10 @@ def archive_queue(
             cache_table_data = {
                 "title": None,
                 "columns": [
-                    {"name": "Cache ID", "style": "bold orange1"},
-                    {"name": "Archive", "style": "white"},
-                    {"name": "Samples", "style": "yellow"},
-                    {"name": "Extracted At", "style": "dim"},
+                    {"name": h("Cache ID"), "style": "bold orange1"},
+                    {"name": h("Archive"), "style": "white"},
+                    {"name": h("Samples"), "style": "yellow"},
+                    {"name": h("Extracted At"), "style": "dim"},
                 ],
                 "rows": [],
             }
@@ -763,47 +874,56 @@ def archive_queue(
         cache_manager = ExtractionCacheManager(client.workspace_path)
 
         output.print(
-            "[cyan]🧹 Cleaning up old cached extractions...[/cyan]", style="info"
+            f"[cyan]🧹 {h('Cleaning up old cached extractions...')}[/cyan]",
+            style="info",
         )
         removed_count = cache_manager.cleanup_old_caches(max_age_days=7)
 
         output.print(
-            f"[green]✓ Removed {removed_count} old cache(s)[/green]", style="success"
+            h("[green]✓ Removed {count} old cache(s)[/green]").format(
+                count=removed_count
+            ),
+            style="success",
         )
         return f"Cleaned up {removed_count} old cached extractions"
 
     else:
         # Show help
-        output.print("\n[bold white]📦 /archive Commands:[/bold white]\n", style="info")
         output.print(
-            "[orange1]/archive list[/orange1]             - List all samples in inspected archive",
+            f"\n[bold white]📦 {h('/archive Commands:')}[/bold white]\n", style="info"
+        )
+        output.print(
+            f"[orange1]/archive list[/orange1]             - {h('List all samples in inspected archive')}",
             style="info",
         )
         output.print(
-            "[orange1]/archive groups[/orange1]           - Show condition groups",
+            f"[orange1]/archive groups[/orange1]           - {h('Show condition groups')}",
             style="info",
         )
         output.print(
-            "[orange1]/archive load <pattern>[/orange1]   - Load samples by pattern",
+            f"[orange1]/archive load <pattern>[/orange1]   - {h('Load samples by pattern')}",
             style="info",
         )
         output.print(
-            "[orange1]/archive status[/orange1]           - Show extraction cache status",
+            f"[orange1]/archive status[/orange1]           - {h('Show extraction cache status')}",
             style="info",
         )
         output.print(
-            "[orange1]/archive cleanup[/orange1]          - Clear old cached extractions\n",
+            f"[orange1]/archive cleanup[/orange1]          - {h('Clear old cached extractions')}\n",
             style="info",
         )
 
-        output.print("[bold white]Loading Patterns:[/bold white]", style="info")
+        output.print(f"[bold white]{h('Loading Patterns:')}[/bold white]", style="info")
         output.print("[grey70]• GSM ID:[/grey70]        GSM4710689", style="info")
         output.print(
-            "[grey70]• Condition:[/grey70]     TISSUE, PDAC_TISSUE", style="info"
+            f"[grey70]• {h('Condition:')}[/grey70]     TISSUE, PDAC_TISSUE",
+            style="info",
         )
         output.print(
-            "[grey70]• Glob:[/grey70]          PDAC_*, *_TISSUE_*", style="info"
+            f"[grey70]• {h('Glob:')}[/grey70]          PDAC_*, *_TISSUE_*", style="info"
         )
-        output.print("[grey70]• With limit:[/grey70]    TISSUE --limit 3", style="info")
+        output.print(
+            f"[grey70]• {h('With limit:')}[/grey70]    TISSUE --limit 3", style="info"
+        )
 
         return None

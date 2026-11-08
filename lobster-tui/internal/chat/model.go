@@ -35,6 +35,7 @@ import (
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/qcdash"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/textinput"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/threshold"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 	"github.com/the-omics-os/lobster-tui/internal/theme"
 )
@@ -83,15 +84,18 @@ const completionRequestTimeout = 700 * time.Millisecond
 const localExitConfirmID = "__local_exit__"
 
 // loadingTips are shown during init to keep users engaged.
-var loadingTips = []string{
-	"Lobster AI has 22 specialist agents across 10 domains",
-	"Try /help for available commands",
-	"Use /data to inspect loaded modalities",
-	"Sessions auto-save — use --session-id latest to resume",
-	"Supports scRNA-seq, bulk RNA, proteomics, genomics, metabolomics",
-	"Agent transitions show which specialist is working",
-	"Press Ctrl+C to exit cleanly at any time",
-	"Export reproducible Jupyter notebooks with /pipeline export",
+// It is a function so tips follow runtime language changes.
+func loadingTips() []string {
+	return []string{
+		i18n.P("Lobster AI has 22 specialist agents across 10 domains"),
+		i18n.P("Try /help for available commands"),
+		i18n.P("Use /data to inspect loaded modalities"),
+		i18n.P("Sessions auto-save — use --session-id latest to resume"),
+		i18n.P("Supports scRNA-seq, bulk RNA, proteomics, genomics, metabolomics"),
+		i18n.P("Agent transitions show which specialist is working"),
+		i18n.P("Press Ctrl+C to exit cleanly at any time"),
+		i18n.P("Export reproducible Jupyter notebooks with /pipeline export"),
+	}
 }
 
 // spinnerTick fires periodically to advance the spinner animation frame.
@@ -313,7 +317,7 @@ func NewModel(handler *protocol.Handler, styles theme.Styles, width, height int,
 	if inline {
 		ti.Placeholder = ""
 	} else {
-		ti.Placeholder = "Initializing..."
+		ti.Placeholder = i18n.P("Initializing...")
 	}
 	ti.Focus()
 	ti.CharLimit = 4096
@@ -492,7 +496,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.spinnerActive || m.ready {
 			return m, nil // Stop rotating once ready or spinner stopped.
 		}
-		m.tipIndex = (m.tipIndex + 1) % len(loadingTips)
+		m.tipIndex = (m.tipIndex + 1) % len(loadingTips())
 		return m, tea.Tick(tipInterval, func(time.Time) tea.Msg { return tipRotate{} })
 
 	case welcomeTick:
@@ -587,7 +591,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		elapsed := time.Since(m.lastHeartbeat)
 		if elapsed > 15*time.Second {
-			m.statusText = "Backend not responding..."
+			m.statusText = i18n.P("Backend not responding...")
 		}
 		return m, tea.Tick(5*time.Second, func(time.Time) tea.Msg { return heartbeatCheck{} })
 
@@ -858,7 +862,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 
 			task := strings.TrimSpace(p.Reason)
 			if task == "" {
-				task = fmt.Sprintf("handoff to %s", p.To)
+				task = fmt.Sprintf(i18n.P("handoff to %s"), p.To)
 			}
 			m.recordHandoff(task, p.To)
 			return m, waitForProtocolMsg(m.handler)
@@ -971,7 +975,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 				m.spinnerActive = true
 				m.spinnerLabel = p.Label
 				if m.spinnerLabel == "" {
-					m.spinnerLabel = "thinking"
+					m.spinnerLabel = i18n.P("thinking")
 				}
 				m.spinnerFrame = 0
 				m.recalculateViewportHeight()
@@ -1005,10 +1009,17 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		if m.inline {
 			m.input.Placeholder = ""
 		} else {
-			m.input.Placeholder = "Ask Lobster anything..."
+			m.input.Placeholder = i18n.P("Ask Lobster anything...")
 		}
 		m.input.Focus()
 		m.recalculateViewportHeight()
+		return m, waitForProtocolMsg(m.handler)
+
+	case protocol.TypeSetLang:
+		var p protocol.SetLangPayload
+		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
+			m.applyLang(p.Lang)
+		}
 		return m, waitForProtocolMsg(m.handler)
 
 	case protocol.TypeHeartbeat:
@@ -1069,7 +1080,7 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeModalityLoaded:
 		var p protocol.ModalityLoadedPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
-			info := fmt.Sprintf("📊 Loaded: %s", p.Name)
+			info := fmt.Sprintf(i18n.P("📊 Loaded: %s"), p.Name)
 			if p.Shape != "" {
 				info += fmt.Sprintf(" (%s)", p.Shape)
 			}
@@ -1288,7 +1299,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 			// First press: send cancel immediately.
 			m.isCanceling = true
-			m.statusText = "Cancelling…"
+			m.statusText = i18n.P("Cancelling…")
 			if m.handler != nil {
 				_ = m.handler.SendTyped(protocol.TypeCancel, protocol.CancelPayload{}, "")
 			}
@@ -1338,8 +1349,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, m.refreshSuggestions()
 			case "exit", "quit":
 				m.pendingConfirm = &protocol.ConfirmPayload{
-					Title:   "Confirm Exit",
-					Message: "Exit Lobster session?",
+					Title:   i18n.P("Confirm Exit"),
+					Message: i18n.P("Exit Lobster session?"),
 					Default: false,
 				}
 				m.pendingConfirmID = localExitConfirmID
@@ -1353,7 +1364,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 					Role: "alert_warning",
 					Blocks: []ContentBlock{BlockAlert{
 						Level:   "warning",
-						Message: "/dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard.",
+						Message: i18n.P("/dashboard is not available in Go TUI mode. Use `lobster chat --ui classic` for the Textual dashboard."),
 					}},
 				}, false)
 				m.input.SetValue("")
@@ -1685,6 +1696,23 @@ func (m *Model) getMarkdownRenderer() *glamour.TermRenderer {
 	return r
 }
 
+// applyLang switches the UI language at runtime. Text already printed to
+// terminal scrollback stays as it was; everything rendered afterwards uses
+// the new language.
+func (m *Model) applyLang(code string) {
+	i18n.Set(code)
+	for i := range m.messages {
+		m.messages[i].cache.clear()
+	}
+	if m.ready && !m.inline {
+		m.input.Placeholder = i18n.P("Ask Lobster anything...")
+	} else if !m.ready && !m.inline {
+		m.input.Placeholder = i18n.P("Initializing...")
+	}
+	m.recalculateViewportHeight()
+	m.rebuildViewportWithMode(false)
+}
+
 // rebuildViewport reconstructs the viewport content from messages + active stream.
 func (m *Model) rebuildViewport() {
 	m.rebuildViewportWithMode(false)
@@ -1787,7 +1815,7 @@ func (m *Model) applyClearTarget(target string) {
 
 // renderHelp appends a help message listing available commands.
 func (m *Model) renderHelp() {
-	help := `## Quick Help
+	help := i18n.P(`## Quick Help
 Ask in natural language, or use a slash command:
 
 - /workspace
@@ -1809,7 +1837,8 @@ Ask in natural language, or use a slash command:
 - Fullscreen mode supports PgUp and PgDn
 - Ctrl+G toggles mouse capture
 
-Use ` + "`lobster command \"/help\"`" + ` for the full slash-command catalog.`
+`) +
+		i18n.P("Use `lobster command \"/help\"` for the full slash-command catalog.")
 
 	m.appendMessage(ChatMessage{
 		Role:   "assistant",
@@ -1822,13 +1851,13 @@ func (m *Model) renderDataSummary() {
 	if len(m.modalities) == 0 {
 		m.appendMessage(ChatMessage{
 			Role:   "system",
-			Blocks: textBlocks("No data loaded. Use /read <file> or ask Lobster to load data."),
+			Blocks: textBlocks(i18n.P("No data loaded. Use /read <file> or ask Lobster to load data.")),
 		}, false)
 		return
 	}
 	var tb strings.Builder
-	tb.WriteString("## Loaded Data\n\n")
-	tb.WriteString("| Modality | Shape |\n| --- | --- |\n")
+	tb.WriteString("## " + i18n.P("Loaded Data") + "\n\n")
+	tb.WriteString("| " + i18n.P("Modality") + " | " + i18n.P("Shape") + " |\n| --- | --- |\n")
 	for _, mod := range m.modalities {
 		tb.WriteString(fmt.Sprintf("| %s | %s |\n", mod.Name, mod.Shape))
 	}
@@ -1959,8 +1988,8 @@ func (m Model) currentStatusLine() string {
 		if m.quietStartup && !m.ready {
 			spinnerText = "· " + m.spinnerLabel + "..."
 		}
-		if !m.ready && len(loadingTips) > 0 && !m.quietStartup {
-			spinnerText += "  ·  " + m.styles.Muted.Render("💡 "+loadingTips[m.tipIndex])
+		if tips := loadingTips(); !m.ready && len(tips) > 0 && !m.quietStartup {
+			spinnerText += "  ·  " + m.styles.Muted.Render("💡 "+tips[m.tipIndex%len(tips)])
 		}
 		statusText = spinnerText
 	}
@@ -1969,21 +1998,21 @@ func (m Model) currentStatusLine() string {
 		return joinStatusParts(statusText, workerStatus)
 	}
 	if m.completionMenuVisible() {
-		return joinStatusParts(statusText, workerStatus, "Tab accept", "↑/↓ or Ctrl+N/Ctrl+P move", "Esc dismiss")
+		return joinStatusParts(statusText, workerStatus, i18n.P("Tab accept"), i18n.P("↑/↓ or Ctrl+N/Ctrl+P move"), i18n.P("Esc dismiss"))
 	}
 
 	if m.inlineFlowMode() {
 		modelLabel := m.modelLabel()
-		guidance := "inline flow via terminal scrollback"
+		guidance := i18n.P("inline flow via terminal scrollback")
 		if m.isStreaming && m.activeTurn == activeTurnChat {
-			guidance = "inline flow: live response + terminal scrollback"
+			guidance = i18n.P("inline flow: live response + terminal scrollback")
 		}
 		if strings.TrimSpace(statusText) == "" {
 			return joinStatusParts(
 				workerStatus,
 				modelLabel,
-				"inline flow: use terminal scrollback",
-				"Ctrl+G optional mouse capture",
+				i18n.P("inline flow: use terminal scrollback"),
+				i18n.P("Ctrl+G optional mouse capture"),
 			)
 		}
 		return joinStatusParts(statusText, workerStatus, modelLabel, guidance)
@@ -1992,7 +2021,7 @@ func (m Model) currentStatusLine() string {
 	mouseLabel := m.mouseModeLabel()
 	modelLabel := m.modelLabel()
 	if strings.TrimSpace(statusText) == "" {
-		return joinStatusParts(workerStatus, modelLabel, mouseLabel, "Ctrl+G toggles")
+		return joinStatusParts(workerStatus, modelLabel, mouseLabel, i18n.P("Ctrl+G toggles"))
 	}
 	return joinStatusParts(statusText, workerStatus, modelLabel, mouseLabel)
 }
@@ -2031,7 +2060,7 @@ func (m Model) activeWorkerSummary() string {
 		return names[0]
 	}
 	if len(names) > 3 {
-		return fmt.Sprintf("%d agents active", len(names))
+		return fmt.Sprintf(i18n.P("%d agents active"), len(names))
 	}
 	return fmt.Sprintf("%s +%d", names[0], len(names)-1)
 }
@@ -2116,7 +2145,7 @@ func (m *Model) queueTurnOutput(incomplete bool) {
 	if incomplete && m.hasUnprintedAssistant() {
 		m.messages = append(m.messages, ChatMessage{
 			Role:   "alert_warning",
-			Blocks: []ContentBlock{BlockAlert{Level: "warning", Message: incompleteResponseNotice}},
+			Blocks: []ContentBlock{BlockAlert{Level: "warning", Message: incompleteResponseNotice()}},
 		})
 	}
 	m.enqueuePrint(m.takeUnprinted(), hadLiveStream)
@@ -2149,9 +2178,9 @@ func (m Model) modelLabel() string {
 
 func (m Model) mouseModeLabel() string {
 	if m.mouseCapture {
-		return "mouse: scroll"
+		return i18n.P("mouse: scroll")
 	}
-	return "mouse: select"
+	return i18n.P("mouse: select")
 }
 
 func (m Model) inlineHasPromptSpacer() bool {
@@ -2483,7 +2512,7 @@ func (m Model) renderCompletionMenu() string {
 
 	lines := make([]string, 0, (end-start)+2)
 	if hiddenAbove := count - end; hiddenAbove > 0 {
-		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf("+%d more", hiddenAbove)))
+		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf(i18n.P("+%d more"), hiddenAbove)))
 	}
 	for i := end - 1; i >= start; i-- {
 		label := truncateMiddle(m.completionSuggestions[i], menuWidth-2)
@@ -2496,7 +2525,7 @@ func (m Model) renderCompletionMenu() string {
 		lines = append(lines, indent+style.Render(line))
 	}
 	if hiddenBelow := start; hiddenBelow > 0 {
-		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf("+%d earlier", hiddenBelow)))
+		lines = append(lines, indent+m.styles.Dimmed.Render(fmt.Sprintf(i18n.P("+%d earlier"), hiddenBelow)))
 	}
 
 	return strings.Join(lines, "\n")
@@ -2611,7 +2640,7 @@ func (m Model) resolveConfirm(confirm bool) (tea.Model, tea.Cmd) {
 	}
 	m.appendMessage(ChatMessage{
 		Role:   "system",
-		Blocks: textBlocks("Exit cancelled."),
+		Blocks: textBlocks(i18n.P("Exit cancelled.")),
 	}, false)
 	return m, nil
 }
@@ -2640,7 +2669,7 @@ func (m Model) handleComponentRender(p protocol.ComponentRenderPayload, msgID st
 			if q, ok := p.Data["question"].(string); ok && q != "" {
 				prompt = q
 			} else {
-				prompt = "Please provide input"
+				prompt = i18n.P("Please provide input")
 			}
 		}
 		p.Data = map[string]any{"question": prompt}

@@ -70,14 +70,19 @@ def scaffold_agent_cmd(
         rel_path = pkg_dir.relative_to(Path.cwd())
     except ValueError:
         rel_path = pkg_dir
-    typer.echo(f"Plugin package created at: ./{rel_path}")
-    typer.echo("\nNext steps:")
+    typer.echo(h("Plugin package created at: ./{path}").format(path=rel_path))
+    typer.echo(h("\nNext steps:"))
     typer.echo(
-        f"  1. Fill in domain-specific tools in ./{rel_path}/lobster/agents/*/shared_tools.py"
+        h(
+            "  1. Fill in domain-specific tools in ./{path}/lobster/agents/*/shared_tools.py"
+        ).format(path=rel_path)
     )
-    typer.echo("  2. Add services and platform configs")
+    typer.echo(h("  2. Add services and platform configs"))
     typer.echo(
-        f"  3. Replace the placeholder figure_tool_cases() in ./{rel_path}/tests/test_contract.py"
-        " with real fixture data (D8: analysis tools never create figures)"
+        h(
+            "  3. Replace the placeholder figure_tool_cases() in ./{path}/tests/test_contract.py with real fixture data (D8: analysis tools never create figures)"
+        ).format(path=rel_path)
     )
-    typer.echo(f"  4. Validate: lobster validate-plugin ./{rel_path}")
+    typer.echo(
+        h("  4. Validate: lobster validate-plugin ./{path}").format(path=rel_path)
+    )

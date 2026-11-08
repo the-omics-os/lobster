@@ -856,6 +856,11 @@ run: $(VENV_PATH)
 	$(VENV_PATH)/bin/lobster chat
 
 # Rebuild the local Go UI. Use LOBSTER_TUI_BINARY to select it over installed wheels.
+.PHONY: i18n-sync
+i18n-sync:
+	cp lobster/i18n/en.json lobster/i18n/zh.json lobster/i18n/phrases.zh.json lobster-tui/internal/i18n/catalogs/
+	@echo 'Copied UI catalogs to lobster-tui/internal/i18n/catalogs/'
+
 .PHONY: dev-build
 dev-build:
 	cd lobster-tui && go build -ldflags "-X main.Version=$$(sed -n 's/^__version__ = "\([^"]*\)"/\1/p' ../lobster/version.py)" -o lobster-tui ./cmd/lobster-tui

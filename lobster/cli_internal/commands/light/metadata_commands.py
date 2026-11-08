@@ -22,6 +22,7 @@ from lobster.cli_internal.commands.output_adapter import (
     section_block,
     table_block,
 )
+from lobster.i18n import h
 
 
 def _make_progress_bar(pct: float, width: int = 10) -> str:
@@ -52,7 +53,7 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
     service = MetadataOverviewService(client.data_manager)
     overview = service.get_quick_overview()
 
-    blocks: list[OutputBlock] = [section_block(title="Metadata Overview")]
+    blocks: list[OutputBlock] = [section_block(title=h("Metadata Overview"))]
 
     # Publication Queue section
     pq = overview.get("publication_queue", {})
@@ -73,11 +74,11 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
             emoji = status_emojis.get(status, "📌")
             status_rows.append([f"{emoji} {status}", str(count)])
 
-        blocks.append(section_block(title="Publication Queue"))
+        blocks.append(section_block(title=h("Publication Queue")))
         if status_rows:
             blocks.append(
                 table_block(
-                    columns=[{"name": "Status"}, {"name": "Count"}],
+                    columns=[{"name": h("Status")}, {"name": h("Count")}],
                     rows=status_rows,
                 )
             )
@@ -85,9 +86,13 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
                 hint_block(
                     " | ".join(
                         [
-                            f"Total: {pq['total']}",
-                            f"Workspace-ready: {pq.get('workspace_ready', 0)}",
-                            f"Extracted datasets: {pq.get('extracted_datasets', 0)}",
+                            h("Total: {total}").format(total=pq["total"]),
+                            h("Workspace-ready: {count}").format(
+                                count=pq.get("workspace_ready", 0)
+                            ),
+                            h("Extracted datasets: {count}").format(
+                                count=pq.get("extracted_datasets", 0)
+                            ),
                         ]
                     )
                 )
@@ -97,24 +102,26 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
     samples = overview.get("samples", {})
     if samples.get("total_samples", 0) > 0:
         sample_rows = [
-            ("Total Samples", f"{samples['total_samples']:,}"),
+            (h("Total Samples"), f"{samples['total_samples']:,}"),
             ("BioProjects", str(samples.get("bioproject_count", 0))),
         ]
 
         if samples.get("has_aggregated"):
             filtered = samples.get("filtered_samples", 0)
             retention = samples.get("retention_rate", 0)
-            sample_rows.append(("Filtered Samples", f"{filtered:,}"))
-            sample_rows.append(("Retention", f"{retention:.1f}%"))
+            sample_rows.append((h("Filtered Samples"), f"{filtered:,}"))
+            sample_rows.append((h("Retention"), f"{retention:.1f}%"))
 
             coverage = samples.get("disease_coverage", 0)
             bar = _make_progress_bar(coverage)
-            sample_rows.append(("Disease Coverage", f"{bar} {coverage:.1f}%"))
+            sample_rows.append((h("Disease Coverage"), f"{bar} {coverage:.1f}%"))
         else:
             blocks.append(
-                hint_block("Run metadata filtering to generate aggregated statistics.")
+                hint_block(
+                    h("Run metadata filtering to generate aggregated statistics.")
+                )
             )
-        blocks.append(kv_block(sample_rows, title="Sample Statistics"))
+        blocks.append(kv_block(sample_rows, title=h("Sample Statistics")))
 
     # Workspace Files section
     workspace = overview.get("workspace", {})
@@ -123,35 +130,37 @@ def metadata_overview(client: "AgentClient", output: OutputAdapter) -> Optional[
         if workspace.get("metadata_files", 0) > 0:
             workspace_rows.append(
                 (
-                    "Metadata Files",
+                    h("Metadata Files"),
                     f"{workspace['metadata_files']} ({workspace.get('total_size_mb', 0):.1f} MB)",
                 )
             )
         if workspace.get("export_files", 0) > 0:
-            workspace_rows.append(("Export Files", str(workspace["export_files"])))
+            workspace_rows.append((h("Export Files"), str(workspace["export_files"])))
         if workspace.get("in_memory_entries", 0) > 0:
             workspace_rows.append(
-                ("In-memory Entries", str(workspace["in_memory_entries"]))
+                (h("In-memory Entries"), str(workspace["in_memory_entries"]))
             )
-        blocks.append(kv_block(workspace_rows, title="Workspace Files"))
+        blocks.append(kv_block(workspace_rows, title=h("Workspace Files")))
 
     # Next Steps
     next_steps = overview.get("next_steps", [])
     if next_steps:
-        blocks.append(list_block(next_steps, title="Next Steps"))
+        blocks.append(list_block(next_steps, title=h("Next Steps")))
 
     # Deprecated warnings
     if overview.get("has_deprecated"):
         blocks.append(
             alert_block(
-                "Found files in deprecated metadata/exports/ location. Use /metadata workspace for details.",
+                h(
+                    "Found files in deprecated metadata/exports/ location. Use /metadata workspace for details."
+                ),
                 level="warning",
             )
         )
 
     blocks.append(
         hint_block(
-            "Commands: /metadata publications | samples | workspace | exports | clear"
+            f"{h('Commands:')} /metadata publications | samples | workspace | exports | clear"
         )
     )
     _render_blocks(output, blocks)
@@ -185,7 +194,9 @@ def metadata_publications(
             output,
             [
                 alert_block(
-                    "No publication queue found. Use research_agent to process publications.",
+                    h(
+                        "No publication queue found. Use research_agent to process publications."
+                    ),
                     level="warning",
                 )
             ],
@@ -193,7 +204,11 @@ def metadata_publications(
         return None
 
     blocks: list[OutputBlock] = [
-        section_block(title=f"Publication Queue ({summary['total']} entries)")
+        section_block(
+            title=h("Publication Queue ({total} entries)").format(
+                total=summary["total"]
+            )
+        )
     ]
     status_rows = []
 
@@ -213,8 +228,8 @@ def metadata_publications(
         status_rows.append([f"{emoji} {status}", str(count)])
     blocks.append(
         table_block(
-            title="Status Breakdown",
-            columns=[{"name": "Status"}, {"name": "Count"}],
+            title=h("Status Breakdown"),
+            columns=[{"name": h("Status")}, {"name": h("Count")}],
             rows=status_rows,
         )
     )
@@ -232,8 +247,12 @@ def metadata_publications(
             )
         blocks.append(
             table_block(
-                title="Identifier Coverage",
-                columns=[{"name": "Type"}, {"name": "Count"}, {"name": "Coverage"}],
+                title=h("Identifier Coverage"),
+                columns=[
+                    {"name": h("Type")},
+                    {"name": h("Count")},
+                    {"name": h("Coverage")},
+                ],
                 rows=coverage_rows,
             )
         )
@@ -243,8 +262,8 @@ def metadata_publications(
     if extracted:
         blocks.append(
             table_block(
-                title="Extracted Identifiers",
-                columns=[{"name": "Database"}, {"name": "Count"}],
+                title=h("Extracted Identifiers"),
+                columns=[{"name": h("Database")}, {"name": h("Count")}],
                 rows=[
                     [db_type.upper(), str(count)]
                     for db_type, count in sorted(extracted.items(), key=lambda x: -x[1])
@@ -257,14 +276,16 @@ def metadata_publications(
     if ws_ready > 0:
         blocks.append(
             section_block(
-                body=f"Workspace Status: {ws_ready} entries with metadata files"
+                body=h("Workspace Status: {count} entries with metadata files").format(
+                    count=ws_ready
+                )
             )
         )
 
     # Recent errors
     errors = summary.get("recent_errors", [])
     if errors:
-        blocks.append(section_block(title="Recent Errors"))
+        blocks.append(section_block(title=h("Recent Errors")))
         blocks.append(
             list_block(
                 [
@@ -278,7 +299,7 @@ def metadata_publications(
     if not status_filter:
         blocks.append(
             hint_block(
-                "Tip: Filter by status with /metadata publications --status=<status>"
+                h("Tip: Filter by status with /metadata publications --status=<status>")
             )
         )
     _render_blocks(output, blocks)
@@ -309,7 +330,9 @@ def metadata_samples(client: "AgentClient", output: OutputAdapter) -> Optional[s
             output,
             [
                 alert_block(
-                    "No sample metadata found. Process publications with research_agent first.",
+                    h(
+                        "No sample metadata found. Process publications with research_agent first."
+                    ),
                     level="warning",
                 )
             ],
@@ -321,10 +344,10 @@ def metadata_samples(client: "AgentClient", output: OutputAdapter) -> Optional[s
     blocks: list[OutputBlock] = [
         kv_block(
             [
-                ("Total Samples", f"{total:,}"),
+                (h("Total Samples"), f"{total:,}"),
                 ("BioProjects", str(bioproject_count)),
             ],
-            title="Sample Statistics",
+            title=h("Sample Statistics"),
         )
     ]
 
@@ -334,15 +357,15 @@ def metadata_samples(client: "AgentClient", output: OutputAdapter) -> Optional[s
         coverage = stats.get("disease_coverage", 0)
         bar = _make_progress_bar(coverage, width=20)
         detail_rows = [
-            ("Filtered Samples", f"{filtered:,}"),
-            ("Retention", f"{retention:.1f}%"),
-            ("Disease Coverage", f"{bar} {coverage:.1f}%"),
+            (h("Filtered Samples"), f"{filtered:,}"),
+            (h("Retention"), f"{retention:.1f}%"),
+            (h("Disease Coverage"), f"{bar} {coverage:.1f}%"),
         ]
 
         criteria = stats.get("filter_criteria", "")
         if criteria:
-            detail_rows.append(("Filter Criteria", criteria))
-        blocks.append(kv_block(detail_rows, title="Aggregated Statistics"))
+            detail_rows.append((h("Filter Criteria"), criteria))
+        blocks.append(kv_block(detail_rows, title=h("Aggregated Statistics")))
 
         breakdown = stats.get("filter_breakdown", {})
         if breakdown:
@@ -363,24 +386,28 @@ def metadata_samples(client: "AgentClient", output: OutputAdapter) -> Optional[s
             if breakdown_rows:
                 blocks.append(
                     table_block(
-                        title="Filter Breakdown",
+                        title=h("Filter Breakdown"),
                         columns=[
-                            {"name": "Filter"},
-                            {"name": "Retained"},
-                            {"name": "Coverage"},
+                            {"name": h("Filter")},
+                            {"name": h("Retained")},
+                            {"name": h("Coverage")},
                         ],
                         rows=breakdown_rows,
                     )
                 )
         blocks.append(
             section_block(
-                body="Aggregated metadata available. Use /metadata exports to see export files."
+                body=h(
+                    "Aggregated metadata available. Use /metadata exports to see export files."
+                )
             )
         )
     else:
         blocks.append(
             alert_block(
-                "Samples not yet filtered. Use metadata_assistant to apply filters and generate aggregated statistics.",
+                h(
+                    "Samples not yet filtered. Use metadata_assistant to apply filters and generate aggregated statistics."
+                ),
                 level="warning",
             )
         )
@@ -389,8 +416,10 @@ def metadata_samples(client: "AgentClient", output: OutputAdapter) -> Optional[s
         if sources:
             source_items = list(sources[:10])
             if len(sources) > 10:
-                source_items.append(f"... and {len(sources) - 10} more")
-            blocks.append(list_block(source_items, title="Sample Sources"))
+                source_items.append(
+                    h("... and {count} more").format(count=len(sources) - 10)
+                )
+            blocks.append(list_block(source_items, title=h("Sample Sources")))
 
     _render_blocks(output, blocks)
 
@@ -414,11 +443,11 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
 
     service = MetadataOverviewService(client.data_manager)
     inventory = service.get_workspace_inventory()
-    blocks: list[OutputBlock] = [section_block(title="Workspace Inventory")]
+    blocks: list[OutputBlock] = [section_block(title=h("Workspace Inventory"))]
 
     mem_count = inventory.get("metadata_store_count", 0)
     if mem_count > 0:
-        rows = [("Entries", str(mem_count))]
+        rows = [(h("Entries"), str(mem_count))]
         categories = inventory.get("metadata_store_categories", {})
         for cat, count in sorted(
             categories.items(), key=lambda item: (-item[1], item[0])
@@ -427,19 +456,19 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
         blocks.append(
             kv_block(
                 rows,
-                title="In-Memory Store",
+                title=h("In-Memory Store"),
             )
         )
     else:
-        blocks.append(hint_block("In-memory metadata store is empty."))
+        blocks.append(hint_block(h("In-memory metadata store is empty.")))
 
     ws_files = inventory.get("workspace_files", {})
     if ws_files:
         total_files = inventory.get("workspace_files_total", 0)
         size_mb = inventory.get("total_size_mb", 0)
         rows = [
-            ("Total Files", str(total_files)),
-            ("Total Size", f"{size_mb:.1f} MB"),
+            (h("Total Files"), str(total_files)),
+            (h("Total Size"), f"{size_mb:.1f} MB"),
         ]
         for cat, count in sorted(
             ws_files.items(), key=lambda item: (-item[1], item[0])
@@ -448,11 +477,11 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
         blocks.append(
             kv_block(
                 rows,
-                title="Workspace Files",
+                title=h("Workspace Files"),
             )
         )
     else:
-        blocks.append(hint_block("No workspace metadata files found."))
+        blocks.append(hint_block(h("No workspace metadata files found.")))
 
     exports = inventory.get("exports", [])
     if exports:
@@ -463,17 +492,21 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
         ]
         blocks.append(
             table_block(
-                title=f"Export Files ({total_exports})",
+                title=h("Export Files ({total})").format(total=total_exports),
                 columns=[
-                    {"name": "File"},
-                    {"name": "Size"},
-                    {"name": "Modified"},
+                    {"name": h("File")},
+                    {"name": h("Size")},
+                    {"name": h("Modified")},
                 ],
                 rows=rows,
             )
         )
         if len(exports) > 10:
-            blocks.append(hint_block(f"... and {total_exports - 10} more files"))
+            blocks.append(
+                hint_block(
+                    h("... and {count} more files").format(count=total_exports - 10)
+                )
+            )
 
     warnings = inventory.get("deprecated_warnings", [])
     if warnings:
@@ -481,7 +514,7 @@ def metadata_workspace(client: "AgentClient", output: OutputAdapter) -> Optional
             blocks.append(alert_block(warn, level="warning"))
         blocks.append(
             hint_block(
-                "Consider migrating: mv workspace/metadata/exports/* workspace/exports/"
+                f"{h('Consider migrating:')} mv workspace/metadata/exports/* workspace/exports/"
             )
         )
 
@@ -523,7 +556,9 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
         return None
 
     blocks: list[OutputBlock] = [
-        section_block(title=f"Export Files ({exports['total_count']} files)")
+        section_block(
+            title=h("Export Files ({total} files)").format(total=exports["total_count"])
+        )
     ]
 
     categories = exports.get("categories", {})
@@ -536,7 +571,10 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
         ]
         blocks.append(
             kv_block(
-                rows, title="File Categories", key_label="Category", value_label="Count"
+                rows,
+                title=h("File Categories"),
+                key_label=h("Category"),
+                value_label=h("Count"),
             )
         )
 
@@ -544,16 +582,16 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
     if files:
         blocks.append(
             table_block(
-                title="Recent Files",
+                title=h("Recent Files"),
                 columns=[
                     {
-                        "name": "File",
+                        "name": h("File"),
                         "style": "cyan",
                         "width": 50,
                         "overflow": "ellipsis",
                     },
-                    {"name": "Size", "style": "grey50", "width": 10},
-                    {"name": "Modified", "style": "grey50", "width": 18},
+                    {"name": h("Size"), "style": "grey50", "width": 10},
+                    {"name": h("Modified"), "style": "grey50", "width": 18},
                 ],
                 rows=[
                     [f["name"], f"{f['size_kb']:.1f} KB", f["modified"]]
@@ -563,7 +601,11 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
         )
         if len(files) > 15:
             blocks.append(
-                hint_block(f"... and {exports['total_count'] - 15} more files")
+                hint_block(
+                    h("... and {count} more files").format(
+                        count=exports["total_count"] - 15
+                    )
+                )
             )
 
     hints = exports.get("usage_hints", {})
@@ -571,13 +613,13 @@ def metadata_exports(client: "AgentClient", output: OutputAdapter) -> Optional[s
         blocks.append(
             kv_block(
                 [
-                    ("List exports", hints.get("list", "N/A")),
-                    ("Access in code", hints.get("access", "N/A")),
-                    ("CLI command", hints.get("cli", "N/A")),
+                    (h("List exports"), hints.get("list", "N/A")),
+                    (h("Access in code"), hints.get("access", "N/A")),
+                    (h("CLI command"), hints.get("cli", "N/A")),
                 ],
-                title="Usage Tips",
-                key_label="Action",
-                value_label="Command",
+                title=h("Usage Tips"),
+                key_label=h("Action"),
+                value_label=h("Command"),
             )
         )
 
@@ -596,7 +638,7 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
     Returns:
         Summary string for conversation history, or None
     """
-    blocks: list[OutputBlock] = [section_block(title="Metadata Information")]
+    blocks: list[OutputBlock] = [section_block(title=h("Metadata Information"))]
     entries_shown = 0
 
     if hasattr(client.data_manager, "metadata_store"):
@@ -638,25 +680,25 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
 
             blocks.append(
                 table_block(
-                    title="Metadata Store",
+                    title=h("Metadata Store"),
                     columns=[
-                        {"name": "Dataset ID", "style": "bold white"},
-                        {"name": "Type", "style": "cyan"},
+                        {"name": h("Dataset ID"), "style": "bold white"},
+                        {"name": h("Type"), "style": "cyan"},
                         {
-                            "name": "Title",
+                            "name": h("Title"),
                             "style": "white",
                             "max_width": 40,
                             "overflow": "ellipsis",
                         },
-                        {"name": "Samples", "style": "grey74"},
-                        {"name": "Cached", "style": "grey50"},
+                        {"name": h("Samples"), "style": "grey74"},
+                        {"name": h("Cached"), "style": "grey50"},
                     ],
                     rows=rows,
                 )
             )
             entries_shown += len(metadata_store)
         else:
-            blocks.append(hint_block("No cached metadata in metadata store"))
+            blocks.append(hint_block(h("No cached metadata in metadata store")))
 
     if (
         hasattr(client.data_manager, "current_metadata")
@@ -666,17 +708,23 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
         rows = []
         for key, value in metadata.items():
             if isinstance(value, dict):
-                display_value = (
-                    f"Dict with {len(value)} keys: {', '.join(list(value.keys())[:3])}"
+                display_value = h("Dict with {count} keys: {keys}").format(
+                    count=len(value), keys=", ".join(list(value.keys())[:3])
                 )
                 if len(value) > 3:
-                    display_value += f" ... (+{len(value) - 3} more)"
+                    display_value += h(" ... (+{count} more)").format(
+                        count=len(value) - 3
+                    )
             elif isinstance(value, list):
-                display_value = f"List with {len(value)} items"
+                display_value = h("List with {count} items").format(count=len(value))
                 if len(value) > 0:
-                    display_value += f": {', '.join(str(v) for v in value[:3])}"
+                    display_value += h(": {items}").format(
+                        items=", ".join(str(v) for v in value[:3])
+                    )
                     if len(value) > 3:
-                        display_value += f" ... (+{len(value) - 3} more)"
+                        display_value += h(" ... (+{count} more)").format(
+                            count=len(value) - 3
+                        )
             else:
                 display_value = str(value)
                 if len(display_value) > 60:
@@ -687,14 +735,14 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
         blocks.append(
             kv_block(
                 rows,
-                title="Current Data Metadata",
-                key_label="Key",
-                value_label="Value",
+                title=h("Current Data Metadata"),
+                key_label=h("Key"),
+                value_label=h("Value"),
             )
         )
         entries_shown += len(metadata)
     else:
-        blocks.append(hint_block("No current data metadata available"))
+        blocks.append(hint_block(h("No current data metadata available")))
 
     workspace_path = Path(client.data_manager.workspace_path)
     metadata_dir = workspace_path / "metadata"
@@ -713,24 +761,30 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
 
             blocks.append(
                 table_block(
-                    title="Workspace Metadata Files",
+                    title=h("Workspace Metadata Files"),
                     columns=[
                         {
-                            "name": "File",
+                            "name": h("File"),
                             "style": "cyan",
                             "width": 50,
                             "overflow": "ellipsis",
                         },
-                        {"name": "Size", "style": "grey50", "width": 10},
-                        {"name": "Modified", "style": "grey50", "width": 20},
+                        {"name": h("Size"), "style": "grey50", "width": 10},
+                        {"name": h("Modified"), "style": "grey50", "width": 20},
                     ],
                     rows=rows,
                 )
             )
 
             if len(json_files) > 20:
-                blocks.append(hint_block(f"... and {len(json_files) - 20} more files"))
-            blocks.append(hint_block(f"Path: {metadata_dir}"))
+                blocks.append(
+                    hint_block(
+                        h("... and {count} more files").format(
+                            count=len(json_files) - 20
+                        )
+                    )
+                )
+            blocks.append(hint_block(h("Path: {path}").format(path=metadata_dir)))
 
     exports_dir = workspace_path / "exports"
     if exports_dir.exists():
@@ -755,16 +809,16 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
 
             blocks.append(
                 table_block(
-                    title="Export Files",
+                    title=h("Export Files"),
                     columns=[
                         {
-                            "name": "File",
+                            "name": h("File"),
                             "style": "green",
                             "width": 50,
                             "overflow": "ellipsis",
                         },
-                        {"name": "Size", "style": "grey50", "width": 10},
-                        {"name": "Modified", "style": "grey50", "width": 20},
+                        {"name": h("Size"), "style": "grey50", "width": 10},
+                        {"name": h("Modified"), "style": "grey50", "width": 20},
                     ],
                     rows=rows,
                 )
@@ -772,9 +826,13 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
 
             if len(export_files) > 15:
                 blocks.append(
-                    hint_block(f"... and {len(export_files) - 15} more files")
+                    hint_block(
+                        h("... and {count} more files").format(
+                            count=len(export_files) - 15
+                        )
+                    )
                 )
-            blocks.append(hint_block(f"Path: {exports_dir}"))
+            blocks.append(hint_block(h("Path: {path}").format(path=exports_dir)))
 
     old_exports_dir = workspace_path / "metadata" / "exports"
     if old_exports_dir.exists():
@@ -782,14 +840,16 @@ def metadata_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]
         if old_files:
             blocks.append(
                 alert_block(
-                    f"Found {len(old_files)} file(s) in old location: {old_exports_dir}",
+                    h("Found {count} file(s) in old location: {path}").format(
+                        count=len(old_files), path=old_exports_dir
+                    ),
                     level="warning",
                 )
             )
-            blocks.append(hint_block("New exports go to: workspace/exports/"))
+            blocks.append(hint_block(h("New exports go to: workspace/exports/")))
             blocks.append(
                 hint_block(
-                    "Migration: mv workspace/metadata/exports/* workspace/exports/"
+                    f"{h('Migration:')} mv workspace/metadata/exports/* workspace/exports/"
                 )
             )
 
@@ -845,7 +905,11 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
     if total_count == 0:
         _render_blocks(
             output,
-            [alert_block("Metadata is already empty (memory + disk)", level="warning")],
+            [
+                alert_block(
+                    h("Metadata is already empty (memory + disk)"), level="warning"
+                )
+            ],
         )
         return "Metadata already empty"
 
@@ -854,17 +918,28 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
         [
             kv_block(
                 [
-                    ("Memory (metadata_store)", f"{metadata_store_count} entries"),
-                    ("Memory (current_metadata)", f"{current_metadata_count} entries"),
-                    ("Disk (workspace/metadata/)", f"{disk_count} files"),
-                    ("Total", f"{total_count} items"),
+                    (
+                        h("Memory (metadata_store)"),
+                        h("{count} entries").format(count=metadata_store_count),
+                    ),
+                    (
+                        h("Memory (current_metadata)"),
+                        h("{count} entries").format(count=current_metadata_count),
+                    ),
+                    (
+                        h("Disk (workspace/metadata/)"),
+                        h("{count} files").format(count=disk_count),
+                    ),
+                    (h("Total"), h("{count} items").format(count=total_count)),
                 ],
-                title="About to Clear",
+                title=h("About to Clear"),
             )
         ],
     )
 
-    confirm = output.confirm(f"Clear all {total_count} metadata items?")
+    confirm = output.confirm(
+        h("Clear all {count} metadata items?").format(count=total_count)
+    )
 
     if confirm:
         cleared_store = 0
@@ -890,26 +965,35 @@ def metadata_clear(client: "AgentClient", output: OutputAdapter) -> Optional[str
 
         result_parts = []
         if cleared_store > 0:
-            result_parts.append(f"{cleared_store} metadata_store entries")
+            result_parts.append(
+                h("{count} metadata_store entries").format(count=cleared_store)
+            )
         if cleared_current > 0:
-            result_parts.append(f"{cleared_current} current_metadata entries")
+            result_parts.append(
+                h("{count} current_metadata entries").format(count=cleared_current)
+            )
         if deleted_files > 0:
-            result_parts.append(f"{deleted_files} disk files")
+            result_parts.append(h("{count} disk files").format(count=deleted_files))
 
-        blocks = [alert_block(f"Cleared {' + '.join(result_parts)}", level="success")]
+        blocks = [
+            alert_block(
+                h("Cleared {items}").format(items=" + ".join(result_parts)),
+                level="success",
+            )
+        ]
         if failures:
             blocks.append(
                 alert_block(
-                    f"{len(failures)} files could not be deleted",
+                    h("{count} files could not be deleted").format(count=len(failures)),
                     level="warning",
                 )
             )
-            blocks.append(list_block(failures[:5], title="Delete Failures"))
+            blocks.append(list_block(failures[:5], title=h("Delete Failures")))
         _render_blocks(output, blocks)
 
         return f"Cleared {total_count} metadata items (memory + disk)"
     else:
-        _render_blocks(output, [section_block(body="Operation cancelled")])
+        _render_blocks(output, [section_block(body=h("Operation cancelled"))])
         return None
 
 
@@ -943,17 +1027,17 @@ def metadata_clear_exports(
 
     if not export_files:
         _render_blocks(
-            output, [alert_block("No export files to clear", level="warning")]
+            output, [alert_block(h("No export files to clear"), level="warning")]
         )
         return "No export files to clear"
 
     blocks: list[OutputBlock] = [
         kv_block(
             [
-                ("Location", str(exports_dir)),
-                ("Files", str(len(export_files))),
+                (h("Location"), str(exports_dir)),
+                (h("Files"), str(len(export_files))),
             ],
-            title="About to Clear Export Files",
+            title=h("About to Clear Export Files"),
         )
     ]
     preview_items = [
@@ -961,12 +1045,18 @@ def metadata_clear_exports(
         for file in export_files[:5]
     ]
     if preview_items:
-        blocks.append(list_block(preview_items, title="Preview"))
+        blocks.append(list_block(preview_items, title=h("Preview")))
     if len(export_files) > 5:
-        blocks.append(hint_block(f"... and {len(export_files) - 5} more files"))
+        blocks.append(
+            hint_block(
+                h("... and {count} more files").format(count=len(export_files) - 5)
+            )
+        )
     _render_blocks(output, blocks)
 
-    confirm = output.confirm(f"Delete all {len(export_files)} export files?")
+    confirm = output.confirm(
+        h("Delete all {count} export files?").format(count=len(export_files))
+    )
 
     if confirm:
         deleted = 0
@@ -978,20 +1068,24 @@ def metadata_clear_exports(
             except Exception as e:
                 failures.append(f"{f.name}: {e}")
 
-        blocks = [alert_block(f"Deleted {deleted} export files", level="success")]
+        blocks = [
+            alert_block(
+                h("Deleted {count} export files").format(count=deleted), level="success"
+            )
+        ]
         if failures:
             blocks.append(
                 alert_block(
-                    f"{len(failures)} files could not be deleted",
+                    h("{count} files could not be deleted").format(count=len(failures)),
                     level="warning",
                 )
             )
-            blocks.append(list_block(failures[:5], title="Delete Failures"))
+            blocks.append(list_block(failures[:5], title=h("Delete Failures")))
         _render_blocks(output, blocks)
 
         return f"Cleared {deleted} export files"
     else:
-        _render_blocks(output, [section_block(body="Operation cancelled")])
+        _render_blocks(output, [section_block(body=h("Operation cancelled"))])
         return None
 
 
@@ -1045,7 +1139,7 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
             output,
             [
                 alert_block(
-                    "Nothing to clear (memory, metadata, exports all empty)",
+                    h("Nothing to clear (memory, metadata, exports all empty)"),
                     level="warning",
                 )
             ],
@@ -1055,33 +1149,53 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
     _render_blocks(
         output,
         [
-            alert_block("This cannot be undone.", level="warning"),
+            alert_block(h("This cannot be undone."), level="warning"),
             kv_block(
                 [
-                    ("Memory (metadata_store)", f"{metadata_store_count} entries"),
-                    ("Memory (current_metadata)", f"{current_metadata_count} entries"),
-                    ("Disk (workspace/metadata/)", f"{disk_count} files"),
-                    ("Disk (workspace/exports/)", f"{export_count} files"),
-                    ("Total", f"{total_count} items"),
+                    (
+                        h("Memory (metadata_store)"),
+                        h("{count} entries").format(count=metadata_store_count),
+                    ),
+                    (
+                        h("Memory (current_metadata)"),
+                        h("{count} entries").format(count=current_metadata_count),
+                    ),
+                    (
+                        h("Disk (workspace/metadata/)"),
+                        h("{count} files").format(count=disk_count),
+                    ),
+                    (
+                        h("Disk (workspace/exports/)"),
+                        h("{count} files").format(count=export_count),
+                    ),
+                    (h("Total"), h("{count} items").format(count=total_count)),
                 ],
-                title="About to Clear All Metadata",
+                title=h("About to Clear All Metadata"),
             ),
         ],
     )
-    confirm = output.confirm(f"Clear ALL {total_count} items? This cannot be undone!")
+    confirm = output.confirm(
+        h("Clear ALL {count} items? This cannot be undone!").format(count=total_count)
+    )
 
     if confirm:
         results = []
 
         if metadata_store_count > 0 and hasattr(client.data_manager, "metadata_store"):
             client.data_manager.metadata_store.clear()
-            results.append(f"{metadata_store_count} metadata_store entries")
+            results.append(
+                h("{count} metadata_store entries").format(count=metadata_store_count)
+            )
 
         if current_metadata_count > 0 and hasattr(
             client.data_manager, "current_metadata"
         ):
             client.data_manager.current_metadata.clear()
-            results.append(f"{current_metadata_count} current_metadata entries")
+            results.append(
+                h("{count} current_metadata entries").format(
+                    count=current_metadata_count
+                )
+            )
 
         deleted_metadata = 0
         metadata_failures = []
@@ -1092,7 +1206,7 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
             except Exception as e:
                 metadata_failures.append(f"{f.name}: {e}")
         if deleted_metadata > 0:
-            results.append(f"{deleted_metadata} metadata files")
+            results.append(h("{count} metadata files").format(count=deleted_metadata))
 
         deleted_exports = 0
         export_failures = []
@@ -1103,21 +1217,27 @@ def metadata_clear_all(client: "AgentClient", output: OutputAdapter) -> Optional
             except Exception as e:
                 export_failures.append(f"{f.name}: {e}")
         if deleted_exports > 0:
-            results.append(f"{deleted_exports} export files")
+            results.append(h("{count} export files").format(count=deleted_exports))
 
-        blocks = [alert_block(f"Cleared: {', '.join(results)}", level="success")]
+        blocks = [
+            alert_block(
+                h("Cleared: {items}").format(items=", ".join(results)), level="success"
+            )
+        ]
         all_failures = metadata_failures + export_failures
         if all_failures:
             blocks.append(
                 alert_block(
-                    f"{len(all_failures)} files could not be deleted",
+                    h("{count} files could not be deleted").format(
+                        count=len(all_failures)
+                    ),
                     level="warning",
                 )
             )
-            blocks.append(list_block(all_failures[:5], title="Delete Failures"))
+            blocks.append(list_block(all_failures[:5], title=h("Delete Failures")))
         _render_blocks(output, blocks)
 
         return f"Cleared all metadata ({total_count} items)"
     else:
-        _render_blocks(output, [section_block(body="Operation cancelled")])
+        _render_blocks(output, [section_block(body=h("Operation cancelled"))])
         return None

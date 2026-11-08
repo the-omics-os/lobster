@@ -96,8 +96,10 @@ def _uv_pip_install(package: str) -> tuple[bool, str]:
     if is_uv_tool_env():
         return (
             False,
-            "Cannot install packages directly in a uv tool environment. "
-            "Use: uv tool install lobster-ai --with <package>",
+            h(
+                "Cannot install packages directly in a uv tool environment. "
+                "Use: uv tool install lobster-ai --with <package>"
+            ),
         )
 
     # Check for local package first (development mode)
@@ -128,7 +130,7 @@ def _uv_pip_install(package: str) -> tuple[bool, str]:
     except subprocess.CalledProcessError as e:
         return False, e.stderr
     except FileNotFoundError:
-        return False, "Neither uv nor pip found"
+        return False, h("Neither uv nor pip found")
 
 
 def _uv_pip_uninstall(package: str) -> tuple[bool, str]:
@@ -162,7 +164,7 @@ def _uv_pip_uninstall(package: str) -> tuple[bool, str]:
     except subprocess.CalledProcessError as e:
         return False, e.stderr
     except FileNotFoundError:
-        return False, "Neither uv nor pip found"
+        return False, h("Neither uv nor pip found")
 
 
 def _get_agents_for_package(package_name: str) -> list[str]:
@@ -236,23 +238,23 @@ def agents_list(
     all_agents = component_registry.list_agents()
 
     if not all_agents:
-        console.print("[yellow]No agents installed.[/yellow]")
+        console.print(h("[yellow]No agents installed.[/yellow]"))
         console.print(
-            "[dim]Install agents with: lobster agents install <package>[/dim]"
+            h("[dim]Install agents with: lobster agents install <package>[/dim]")
         )
         return
 
     # Build table
     table = Table(
-        title="Installed Agents",
+        title=h("Installed Agents"),
         box=box.ROUNDED,
         show_header=True,
         header_style="bold",
     )
-    table.add_column("Name", style="cyan")
-    table.add_column("Package", style="white")
-    table.add_column("Tier", style="yellow")
-    table.add_column("Enabled", style="green", justify="center")
+    table.add_column(h("Name"), style="cyan")
+    table.add_column(h("Package"), style="white")
+    table.add_column(h("Tier"), style="yellow")
+    table.add_column(h("Enabled"), style="green", justify="center")
 
     # Sort agents alphabetically by name
     for name in sorted(all_agents.keys()):
@@ -270,7 +272,9 @@ def agents_list(
         table.add_row(name, package, tier, enabled)
 
     console.print(table)
-    console.print(f"\n[dim]{len(all_agents)} agents installed[/dim]")
+    console.print(
+        h("\n[dim]{count} agents installed[/dim]").format(count=len(all_agents))
+    )
 
 
 @agents_app.command("info")
@@ -302,26 +306,26 @@ def agents_info(
 
     # Extract agent properties
     display_name = getattr(agent_config, "display_name", agent_name)
-    description = getattr(agent_config, "description", "No description available")
+    description = getattr(agent_config, "description", h("No description available"))
     tier = getattr(agent_config, "tier_requirement", "free") or "free"
     package = getattr(agent_config, "package_name", None) or "lobster-ai"
     service_deps = getattr(agent_config, "service_dependencies", []) or []
 
     # Format service dependencies
-    deps_str = ", ".join(service_deps) if service_deps else "none"
+    deps_str = ", ".join(service_deps) if service_deps else h("none")
 
     # Build concise card (5-8 lines)
     card_content = (
         f"[bold cyan]{display_name}[/bold cyan]\n"
         f"[dim]{description}[/dim]\n\n"
-        f"[yellow]Tier:[/yellow] {tier}\n"
-        f"[yellow]Package:[/yellow] {package}\n"
-        f"[yellow]Dependencies:[/yellow] {deps_str}"
+        f"[yellow]{h('Tier:')}[/yellow] {tier}\n"
+        f"[yellow]{h('Package:')}[/yellow] {package}\n"
+        f"[yellow]{h('Dependencies:')}[/yellow] {deps_str}"
     )
 
     panel = Panel.fit(
         card_content,
-        title=f"Agent: {agent_name}",
+        title=f"{h('Agent')}: {agent_name}",
         border_style="cyan",
     )
     console.print(panel)
@@ -351,7 +355,9 @@ def agents_install(
     # Resolve workspace
     workspace_path = workspace or _get_workspace_path()
 
-    console.print(f"[cyan]Installing {package_name}...[/cyan]")
+    console.print(
+        h("[cyan]Installing {package}...[/cyan]").format(package=package_name)
+    )
 
     # Get agents before install for comparison
     component_registry.reset()  # Force reload after install
@@ -363,7 +369,9 @@ def agents_install(
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        task = progress.add_task(f"Installing {package_name}...", total=None)
+        task = progress.add_task(
+            h("Installing {package}...").format(package=package_name), total=None
+        )
         success, message = _uv_pip_install(package_name)
         progress.remove_task(task)
 
@@ -372,7 +380,7 @@ def agents_install(
         console.print(f"[dim]{message}[/dim]")
         raise typer.Exit(1)
 
-    console.print("[green]v[/green] Package installed successfully")
+    console.print(h("[green]v[/green] Package installed successfully"))
 
     # Reload component registry to discover new agents
     component_registry.reset()
@@ -396,11 +404,15 @@ def agents_install(
         config.enabled_agents = sorted(updated_enabled)
         config.save(workspace_path)
 
-        console.print(f"[green]v[/green] Enabled {len(new_agents)} agent(s):")
+        console.print(
+            h("[green]v[/green] Enabled {count} agent(s):").format(
+                count=len(new_agents)
+            )
+        )
         for agent in sorted(new_agents):
             console.print(f"  [cyan]{agent}[/cyan]")
     else:
-        console.print("[yellow]No new agents detected from package.[/yellow]")
+        console.print(h("[yellow]No new agents detected from package.[/yellow]"))
 
 
 @agents_app.command("uninstall")
@@ -428,7 +440,9 @@ def agents_uninstall(
     # Get agents from this package before uninstall
     package_agents = set(_get_agents_for_package(package_name))
 
-    console.print(f"[cyan]Uninstalling {package_name}...[/cyan]")
+    console.print(
+        h("[cyan]Uninstalling {package}...[/cyan]").format(package=package_name)
+    )
 
     # Uninstall package with spinner
     with Progress(
@@ -436,7 +450,9 @@ def agents_uninstall(
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        task = progress.add_task(f"Uninstalling {package_name}...", total=None)
+        task = progress.add_task(
+            h("Uninstalling {package}...").format(package=package_name), total=None
+        )
         success, message = _uv_pip_uninstall(package_name)
         progress.remove_task(task)
 
@@ -445,7 +461,7 @@ def agents_uninstall(
         console.print(f"[dim]{message}[/dim]")
         raise typer.Exit(1)
 
-    console.print("[green]v[/green] Package uninstalled successfully")
+    console.print(h("[green]v[/green] Package uninstalled successfully"))
 
     # Remove package's agents from config
     if package_agents:
@@ -459,7 +475,9 @@ def agents_uninstall(
         config.save(workspace_path)
 
         console.print(
-            f"[green]v[/green] Removed {len(package_agents)} agent(s) from config:"
+            h("[green]v[/green] Removed {count} agent(s) from config:").format(
+                count=len(package_agents)
+            )
         )
         for agent in sorted(package_agents):
             console.print(f"  [dim]{agent}[/dim]")
