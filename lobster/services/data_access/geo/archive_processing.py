@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import anndata
 import pandas as pd
 
+from lobster.core.archive_utils import unsafe_tar_members
 from lobster.services.data_access.geo.downloader import GEODownloadError
 from lobster.services.data_access.geo.helpers import (
     _is_archive_url,
@@ -36,19 +37,13 @@ def _extract_tar_all_or_nothing(tar: tarfile.TarFile, dest: Path) -> int:
     Uses the stdlib ``data`` filter: absolute paths, ``..`` escapes, links
     pointing outside ``dest`` and device files are refused. All members are
     checked before anything is written, so a refused archive leaves no files.
+
+    Raises:
+        GEODownloadError: If any member is unsafe; nothing is extracted.
+        tarfile.TarError: If the archive itself cannot be read.
     """
-    dest_str = str(dest.resolve())
     members = tar.getmembers()
-    unsafe = []
-    for member in members:
-        # The data filter would strip a leading "/"; refuse such names instead.
-        if member.name.startswith(("/", "\\")) or os.path.isabs(member.name):
-            unsafe.append(f"{member.name} (AbsolutePath)")
-            continue
-        try:
-            tarfile.data_filter(member, dest_str)
-        except tarfile.FilterError as e:
-            unsafe.append(f"{member.name} ({type(e).__name__})")
+    unsafe = unsafe_tar_members(members, dest)
     if unsafe:
         raise GEODownloadError(
             f"Archive refused: {len(unsafe)} unsafe member(s): {unsafe[:10]}"

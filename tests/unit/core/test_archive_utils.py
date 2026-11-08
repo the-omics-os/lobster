@@ -596,6 +596,26 @@ class TestIsSafeMember:
         member.type = tarfile.REGTYPE
         assert extractor._is_safe_member(member, tmp_path) is True
 
+    def test_rejects_symlink_into_sibling_sharing_name_prefix(self, tmp_path: Path):
+        """A link into ``ws2`` must not pass as inside ``ws`` (prefix match)."""
+        extractor = ArchiveExtractor()
+        target = tmp_path / "ws"
+        target.mkdir()
+        member = tarfile.TarInfo(name="link")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "../ws2/secret"
+        assert extractor._is_safe_member(member, target) is False
+
+    @pytest.mark.parametrize(
+        "member_type", [tarfile.CHRTYPE, tarfile.BLKTYPE, tarfile.FIFOTYPE]
+    )
+    def test_rejects_device_and_fifo_members(self, tmp_path: Path, member_type):
+        """_is_safe_member rejects character/block devices and FIFOs."""
+        extractor = ArchiveExtractor()
+        member = tarfile.TarInfo(name="dev/null")
+        member.type = member_type
+        assert extractor._is_safe_member(member, tmp_path) is False
+
 
 # =============================================================================
 # Security Tests: extract_safely reject-all policy
@@ -691,6 +711,50 @@ class TestExtractSafelyRejectAll:
 
         # target_dir should be cleaned up
         assert not target_dir.exists()
+
+    @pytest.mark.parametrize(
+        "unsafe_member",
+        [
+            {"name": "link", "type": tarfile.SYMTYPE, "linkname": "../extract2/x"},
+            {"name": "hard", "type": tarfile.LNKTYPE, "linkname": "../extract2/x"},
+            {"name": "null", "type": tarfile.CHRTYPE, "content": None},
+        ],
+        ids=["symlink-sibling-prefix", "hardlink-sibling-prefix", "device"],
+    )
+    def test_refuses_archive_and_writes_nothing(self, tmp_path: Path, unsafe_member):
+        """Sibling-prefix links and device files refuse the whole archive."""
+        (tmp_path / "extract2").mkdir()
+        (tmp_path / "extract2" / "x").write_text("outside")
+        tar_path = _write_tar_file(
+            tmp_path,
+            "evil.tar.gz",
+            [{"name": "safe.txt", "content": b"ok"}, unsafe_member],
+        )
+        target_dir = tmp_path / "extract"
+
+        with pytest.raises(RuntimeError, match="Archive rejected"):
+            ArchiveExtractor().extract_safely(tar_path, target_dir)
+
+        assert not target_dir.exists()
+        assert sorted(p.name for p in (tmp_path / "extract2").iterdir()) == ["x"]
+
+    def test_extraction_uses_data_filter(self, tmp_path: Path):
+        """Accepted archives are extracted with the stdlib data filter."""
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            info = tarfile.TarInfo(name="tool.sh")
+            info.mode = 0o4777  # setuid, world-writable
+            info.size = 2
+            tar.addfile(info, io.BytesIO(b"ok"))
+        tar_path = tmp_path / "modes.tar.gz"
+        tar_path.write_bytes(buf.getvalue())
+
+        target_dir = tmp_path / "extract"
+        ArchiveExtractor().extract_safely(tar_path, target_dir)
+
+        mode = (target_dir / "tool.sh").stat().st_mode
+        assert not mode & 0o4000  # setuid cleared
+        assert not mode & 0o022  # group/other write cleared
 
 
 # =============================================================================

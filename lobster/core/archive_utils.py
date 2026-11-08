@@ -30,6 +30,31 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 
+def unsafe_tar_members(members: List[tarfile.TarInfo], dest: Path) -> List[str]:
+    """Describe the TAR members that must not be extracted into ``dest``.
+
+    Uses the stdlib ``data`` filter, which refuses ``..`` escapes, links
+    pointing outside ``dest`` (checked with ``os.path.commonpath``, so a
+    sibling directory that shares a name prefix does not pass) and device
+    files. Absolute member names are refused outright; the filter would only
+    strip the leading slash.
+
+    Returns:
+        One ``"<name> (<reason>)"`` entry per unsafe member; empty if all are safe.
+    """
+    dest_str = str(dest.resolve())
+    unsafe = []
+    for member in members:
+        if member.name.startswith(("/", "\\")) or os.path.isabs(member.name):
+            unsafe.append(f"{member.name} (AbsolutePath)")
+            continue
+        try:
+            tarfile.data_filter(member, dest_str)
+        except tarfile.FilterError as e:
+            unsafe.append(f"{member.name} ({type(e).__name__})")
+    return unsafe
+
+
 class ArchiveContentType(Enum):
     """Detected content types for bioinformatics archives."""
 
@@ -95,6 +120,7 @@ class ArchiveExtractor:
         - Path traversal: ../../../../etc/passwd, /etc/shadow
         - Symlink escape: symlink -> /etc/shadow (CVE-2007-4559)
         - Hardlink escape: hardlink -> ../../../etc/shadow
+        - Device files and links into a sibling directory sharing a name prefix
 
         Args:
             member: TAR member to check
@@ -103,38 +129,10 @@ class ArchiveExtractor:
         Returns:
             True if safe to extract, False otherwise
         """
-        # 1. Check symlinks and hardlinks
-        if member.issym() or member.islnk():
-            link_target = Path(member.linkname)
-            if link_target.is_absolute():
-                logger.warning(
-                    f"Blocked absolute symlink: {member.name} -> {member.linkname}"
-                )
-                return False
-            # Resolve relative link against member's parent directory
-            member_parent = (target_dir / Path(member.name)).parent
-            resolved_link = (member_parent / link_target).resolve()
-            if not str(resolved_link).startswith(str(target_dir.resolve())):
-                logger.warning(
-                    f"Blocked symlink escaping target: "
-                    f"{member.name} -> {member.linkname}"
-                )
-                return False
-
-        # 2. Check path traversal (existing logic, preserved)
-        member_path = Path(member.name)
-        try:
-            target_path = (target_dir / member_path).resolve()
-            common_path = Path(os.path.commonpath([target_dir.resolve(), target_path]))
-            is_safe = common_path == target_dir.resolve()
-
-            if not is_safe:
-                logger.warning(f"Blocked unsafe TAR member: {member.name}")
-
-            return is_safe
-        except (ValueError, RuntimeError) as e:
-            logger.warning(f"Path safety check failed for {member.name}: {e}")
-            return False
+        unsafe = unsafe_tar_members([member], target_dir)
+        if unsafe:
+            logger.warning(f"Blocked unsafe TAR member: {unsafe[0]}")
+        return not unsafe
 
     def extract_safely(
         self, archive_path: Path, target_dir: Path, cleanup_on_error: bool = True
@@ -166,14 +164,11 @@ class ArchiveExtractor:
                     members = tar.getmembers()
 
                     # Reject-all: validate ALL members before extracting ANY
-                    unsafe = [
-                        m for m in members if not self._is_safe_member(m, target_dir)
-                    ]
+                    unsafe = unsafe_tar_members(members, target_dir)
                     if unsafe:
-                        unsafe_names = [m.name for m in unsafe[:10]]
                         raise RuntimeError(
                             f"Archive rejected: {len(unsafe)} unsafe member(s) "
-                            f"detected. Offending paths: {unsafe_names}"
+                            f"detected. Offending paths: {unsafe[:10]}"
                         )
 
                     if not members:
@@ -182,7 +177,7 @@ class ArchiveExtractor:
                     logger.debug(
                         f"Extracting {len(members)} validated members from TAR"
                     )
-                    tar.extractall(path=target_dir, members=members)
+                    tar.extractall(path=target_dir, members=members, filter="data")
 
             # Handle ZIP format
             elif archive_path.suffix == ".zip":
@@ -190,7 +185,9 @@ class ArchiveExtractor:
                     # ZIP paths are safer but still validate
                     members = zip_ref.namelist()
                     logger.debug(f"Extracting {len(members)} files from ZIP")
-                    zip_ref.extractall(target_dir)
+                    # zipfile drops absolute and ".." components and writes
+                    # link entries as plain files, so nothing lands outside.
+                    zip_ref.extractall(target_dir)  # nosec B202
 
             else:
                 raise ValueError(f"Unsupported archive format: {archive_path.suffix}")
