@@ -28,6 +28,7 @@ from lobster.core.archive_utils import (
     ArchiveExtractor,
     ArchiveInspector,
     ContentDetector,
+    unsafe_tar_members,
 )
 
 
@@ -615,6 +616,41 @@ class TestIsSafeMember:
         member = tarfile.TarInfo(name="dev/null")
         member.type = member_type
         assert extractor._is_safe_member(member, tmp_path) is False
+
+
+def _info(name, member_type=tarfile.REGTYPE, linkname="", mode=0o644):
+    info = tarfile.TarInfo(name)
+    info.type = member_type
+    info.linkname = linkname
+    info.mode = mode
+    return info
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        _info("./x.txt"),
+        _info("GSM1/", tarfile.DIRTYPE, mode=0o755),
+        _info("same.txt", tarfile.LNKTYPE, linkname="ok.txt"),
+        _info("GSM1/link.txt", tarfile.SYMTYPE, linkname="ok.txt"),
+        _info("GSM1_" + "x" * 150 + ".mtx"),
+        _info("GSM1 sample/matrix 1.mtx"),
+        _info("GSM1%20sample.txt"),
+        _info("tool.sh", mode=0o4755),  # setuid is cleared on extraction, not refused
+    ],
+    ids=[
+        "dot-slash",
+        "directory",
+        "hardlink-inside",
+        "symlink-inside",
+        "long-name",
+        "spaces",
+        "percent",
+        "setuid",
+    ],
+)
+def test_unsafe_tar_members_accepts_safe_layouts(tmp_path: Path, member):
+    assert unsafe_tar_members([member], tmp_path) == []
 
 
 # =============================================================================

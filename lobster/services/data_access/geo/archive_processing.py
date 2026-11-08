@@ -326,7 +326,7 @@ class ArchiveProcessor:
             nested_extract_dir.mkdir(exist_ok=True)
 
             # Extract any nested TAR.GZ files
-            nested_archives = list(extract_dir.glob("*.tar.gz"))
+            nested_archives = sorted(extract_dir.glob("*.tar.gz"))
             if nested_archives:
                 n_samples = len(nested_archives)
                 logger.info(f"Found {n_samples} nested TAR.GZ files (10X samples)")
@@ -349,7 +349,8 @@ class ArchiveProcessor:
                 for i, archive_path in enumerate(nested_archives, start=1):
                     sample_extract_dir = None
                     try:
-                        sample_id = archive_path.stem.split(".")[0]
+                        # A member named ".tar.gz" has no stem; keep it in its own folder.
+                        sample_id = archive_path.stem.split(".")[0] or f"sample_{i}"
                         sample_extract_dir = nested_extract_dir / sample_id
                         sample_extract_dir.mkdir(exist_ok=True)
 
@@ -376,7 +377,10 @@ class ArchiveProcessor:
                         logger.warning(
                             f"Failed to extract/parse sample {i}/{n_samples} ({archive_path.name}): {e}"
                         )
-                        if sample_extract_dir is not None:
+                        if (
+                            sample_extract_dir is not None
+                            and sample_extract_dir != nested_extract_dir
+                        ):
                             shutil.rmtree(sample_extract_dir, ignore_errors=True)
                         continue
 

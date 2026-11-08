@@ -36,8 +36,9 @@ def unsafe_tar_members(members: List[tarfile.TarInfo], dest: Path) -> List[str]:
     Uses the stdlib ``data`` filter, which refuses ``..`` escapes, links
     pointing outside ``dest`` (checked with ``os.path.commonpath``, so a
     sibling directory that shares a name prefix does not pass) and device
-    files. Absolute member names are refused outright; the filter would only
-    strip the leading slash.
+    files. Absolute member names, including Windows-style ones starting with
+    a backslash, are refused outright; the filter would only strip the
+    leading slash.
 
     Returns:
         One ``"<name> (<reason>)"`` entry per unsafe member; empty if all are safe.
