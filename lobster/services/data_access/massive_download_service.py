@@ -518,10 +518,10 @@ class MassIVEDownloadService(IDownloadService):
             code_template="""# MassIVE dataset download
 from lobster.services.data_access.massive_download_service import MassIVEDownloadService
 from lobster.tools.providers.massive_provider import MassIVEProvider
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 
 # Initialize
-dm = DataManagerV2(workspace_dir="./workspace")
+dm = DataManagerV2(workspace_path="./workspace")
 provider = MassIVEProvider(dm)
 service = MassIVEDownloadService(dm)
 

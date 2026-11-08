@@ -444,10 +444,10 @@ class PRIDEDownloadService(IDownloadService):
             code_template="""# PRIDE dataset download
 from lobster.services.data_access.pride_download_service import PRIDEDownloadService
 from lobster.tools.providers.pride_provider import PRIDEProvider
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 
 # Initialize
-dm = DataManagerV2(workspace_dir="./workspace")
+dm = DataManagerV2(workspace_path="./workspace")
 provider = PRIDEProvider(dm)
 service = PRIDEDownloadService(dm)
 

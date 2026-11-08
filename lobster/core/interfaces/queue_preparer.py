@@ -14,14 +14,14 @@ The QueuePreparationService uses this interface to:
 
 Usage Example:
     >>> from lobster.core.interfaces.queue_preparer import IQueuePreparer
-    >>> from lobster.core.data_manager_v2 import DataManagerV2
+    >>> from lobster.core.runtime.data_manager import DataManagerV2
     >>>
     >>> class PRIDEQueuePreparer(IQueuePreparer):
     ...     def supported_databases(self) -> List[str]:
     ...         return ["pride"]
     ...     # ... implement abstract methods
     >>>
-    >>> dm = DataManagerV2(workspace_dir="./workspace")
+    >>> dm = DataManagerV2(workspace_path="./workspace")
     >>> preparer = PRIDEQueuePreparer(dm)
     >>> result = preparer.prepare_queue_entry("PXD063610")
     >>> print(result.queue_entry.entry_id)
