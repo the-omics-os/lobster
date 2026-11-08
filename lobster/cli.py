@@ -668,6 +668,9 @@ def metadata_command(
             "Subcommand: overview, publications, samples, workspace, exports, list, clear"
         ),
     ),
+    target: Optional[str] = typer.Argument(
+        None, help=h("For clear: exports or all"), show_default=False
+    ),
     workspace: Optional[Path] = typer.Option(
         None,
         "--workspace",
@@ -683,26 +686,21 @@ def metadata_command(
     """
     Display metadata overview and statistics.
 
-    Subcommands:
-      - (none): Smart overview with key stats & next steps
-      - publications: Publication queue status breakdown
-      - samples: Sample statistics & disease coverage
-      - workspace: File inventory across all locations
-      - exports: Export files with usage hints
-      - list: Legacy detailed list
-      - clear: Clear metadata (with exports/all options)
+    Subcommands: overview (default), publications, samples, workspace,
+    exports, list, clear [exports|all] (asks before deleting).
 
     Examples:
       lobster metadata                           # Smart overview
-      lobster metadata publications              # Publication queue status
       lobster metadata publications --status=handoff_ready
-      lobster metadata samples                   # Sample statistics
-      lobster metadata exports                   # Export files
+      lobster metadata clear exports             # Clear export files
     """
     from lobster.cli_internal.commands.heavy.slash_commands import metadata_command_impl
 
     metadata_command_impl(
-        subcommand=subcommand, workspace=workspace, status_filter=status_filter
+        subcommand=subcommand,
+        workspace=workspace,
+        status_filter=status_filter,
+        target=target,
     )
 
 

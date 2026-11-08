@@ -3452,12 +3452,24 @@ def _dispatch_command(cmd_str: str, client, output):
 # ============================================================================
 
 
-def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
-    """Metadata command dispatcher (extracted from cli.py)."""
+def metadata_command_impl(
+    subcommand=None, workspace=None, status_filter=None, target=None
+):
+    """Metadata command dispatcher (extracted from cli.py).
+
+    ``target`` is the optional second word, used only by ``clear``
+    (``exports`` or ``all``).
+    """
+    import sys
+
     import typer
+    from rich.markup import escape
 
     from lobster.cli_internal.commands import (
         ConsoleOutputAdapter,
+        metadata_clear,
+        metadata_clear_all,
+        metadata_clear_exports,
         metadata_exports,
         metadata_list,
         metadata_overview,
@@ -3469,6 +3481,41 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
     from lobster.core.workspace import resolve_workspace
 
     output = ConsoleOutputAdapter(console)
+
+    # Only `clear` takes a second word; anything else is a usage error (exit 2,
+    # as before when the CLI rejected the extra argument).
+    if target is not None and subcommand != "clear":
+        output.print(
+            h("Unknown subcommand: {value}").format(value=f"{subcommand} {target}"),
+            style="error",
+        )
+        output.print(
+            h(
+                "Available: overview, publications, samples, workspace, exports, list, clear"
+            ),
+            style="info",
+        )
+        raise typer.Exit(2)
+    if subcommand == "clear" and target not in (None, "exports", "all"):
+        output.print(
+            h("Unknown subcommand: {value}").format(value=f"clear {target}"),
+            style="error",
+        )
+        output.print(
+            escape(h("Usage: lobster metadata clear [exports|all]")), style="info"
+        )
+        raise typer.Exit(2)
+    # Clearing deletes files, so it needs a person at a terminal to answer the
+    # confirmation. Piped input (e.g. `yes |`) is refused before anything runs.
+    if subcommand == "clear" and not sys.stdin.isatty():
+        output.print(
+            h(
+                "lobster metadata clear deletes files and asks for confirmation first. Run it in a terminal."
+            ),
+            style="error",
+        )
+        output.print(h("Nothing was deleted."), style="info")
+        raise typer.Exit(1)
 
     try:
         # Resolve workspace
@@ -3491,21 +3538,13 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
         elif subcommand == "list":
             metadata_list(client, output)
         elif subcommand == "clear":
-            output.print(
-                h("Usage: lobster metadata clear [exports|all]"), style="warning"
-            )
-            output.print(
-                "  lobster metadata clear         # Clear metadata (memory + workspace/metadata/)",
-                style="info",
-            )
-            output.print(
-                "  lobster metadata clear exports # Clear export files only",
-                style="info",
-            )
-            output.print(
-                "  lobster metadata clear all     # Clear ALL metadata",
-                style="info",
-            )
+            # Each clear previews and asks for confirmation before deleting.
+            if target == "exports":
+                metadata_clear_exports(client, output)
+            elif target == "all":
+                metadata_clear_all(client, output)
+            else:
+                metadata_clear(client, output)
         else:
             output.print(
                 h("Unknown subcommand: {value}").format(value=subcommand), style="error"

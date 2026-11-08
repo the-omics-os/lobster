@@ -1979,5 +1979,8 @@
   "Show completion for the current shell, to copy it or customize the installation.": "显示当前 shell 的命令补全脚本，可复制或自行安装。",
   "Install completion for the specified shell.": "为指定的 shell 安装命令补全。",
   "Show completion for the specified shell, to copy it or customize the installation.": "显示指定 shell 的命令补全脚本，可复制或自行安装。",
-  "Download from https://ollama.com/download": "从 https://ollama.com/download 下载"
+  "Download from https://ollama.com/download": "从 https://ollama.com/download 下载",
+  "For clear: exports or all": "仅用于 clear：exports 或 all",
+  "lobster metadata clear deletes files and asks for confirmation first. Run it in a terminal.": "lobster metadata clear 会删除文件，并会先请求确认。请在终端中运行。",
+  "Nothing was deleted.": "未删除任何内容。"
 }

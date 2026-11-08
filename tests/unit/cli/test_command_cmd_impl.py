@@ -150,46 +150,6 @@ def test_command_cmd_impl_empty_command_returns_json_error(capsys):
     assert '"error": "No command specified."' in capsys.readouterr().out
 
 
-def test_metadata_command_impl_clear_uses_adapter_messages(monkeypatch, tmp_path):
-    captured = {}
-
-    class _CapturingConsoleOutputAdapter(_StubConsoleOutputAdapter):
-        def __init__(self, console):
-            super().__init__(console)
-            captured["output"] = self
-
-    monkeypatch.setattr(
-        "lobster.core.workspace.resolve_workspace",
-        lambda explicit_path=None, create=False: tmp_path,
-    )
-    monkeypatch.setattr(
-        "lobster.core.client.AgentClient",
-        lambda workspace_path: object(),
-    )
-    monkeypatch.setattr(
-        "lobster.cli_internal.commands.ConsoleOutputAdapter",
-        _CapturingConsoleOutputAdapter,
-    )
-
-    slash_commands.metadata_command_impl(subcommand="clear", workspace=tmp_path)
-
-    assert captured["output"].messages == [
-        ("Usage: lobster metadata clear [exports|all]", "warning"),
-        (
-            "  lobster metadata clear         # Clear metadata (memory + workspace/metadata/)",
-            "info",
-        ),
-        (
-            "  lobster metadata clear exports # Clear export files only",
-            "info",
-        ),
-        (
-            "  lobster metadata clear all     # Clear ALL metadata",
-            "info",
-        ),
-    ]
-
-
 def test_command_cmd_impl_help_skips_auto_session_resolution(
     tmp_path, monkeypatch, capsys
 ):
@@ -258,9 +218,18 @@ def test_command_cmd_impl_query_help_profile_renders_query_subset(
     assert all(title != "Admin & UI Commands" for title in titles)
 
 
-def _route_metadata(monkeypatch, tmp_path, **kwargs):
+class _Stdin:
+    def __init__(self, tty):
+        self._tty = tty
+
+    def isatty(self):
+        return self._tty
+
+
+def _route_metadata(monkeypatch, tmp_path, tty=True, **kwargs):
     """Run metadata_command_impl with every metadata view stubbed; return the calls."""
     calls = []
+    monkeypatch.setattr("sys.stdin", _Stdin(tty))
     monkeypatch.setattr(
         "lobster.core.workspace.resolve_workspace",
         lambda explicit_path=None, create=False: tmp_path,
@@ -296,3 +265,145 @@ def test_metadata_overview_is_reachable_by_name(monkeypatch, tmp_path, subcomman
     assert _route_metadata(monkeypatch, tmp_path, subcommand=subcommand) == [
         "metadata_overview"
     ]
+
+
+@pytest.mark.parametrize(
+    "target,expected",
+    [
+        (None, "metadata_clear"),
+        ("exports", "metadata_clear_exports"),
+        ("all", "metadata_clear_all"),
+    ],
+)
+def test_metadata_clear_routes_to_the_documented_target(
+    monkeypatch, tmp_path, target, expected
+):
+    calls = _route_metadata(monkeypatch, tmp_path, subcommand="clear", target=target)
+    assert calls == [expected]
+
+
+@pytest.mark.parametrize(
+    "subcommand,target", [("clear", "bogus"), ("samples", "extra"), (None, "x")]
+)
+def test_metadata_rejects_a_second_word_it_does_not_take(
+    monkeypatch, tmp_path, subcommand, target
+):
+    with pytest.raises(typer.Exit) as exc_info:
+        _route_metadata(monkeypatch, tmp_path, subcommand=subcommand, target=target)
+    assert exc_info.value.exit_code == 2
+
+
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["metadata", "overview"], {"subcommand": "overview", "target": None}),
+        (
+            ["metadata", "clear", "exports"],
+            {"subcommand": "clear", "target": "exports"},
+        ),
+        (["metadata", "clear", "all"], {"subcommand": "clear", "target": "all"}),
+    ],
+)
+def test_metadata_cli_parses_the_documented_forms(monkeypatch, argv, expected):
+    from typer.testing import CliRunner
+
+    from lobster.cli import app
+
+    seen = {}
+    # Patch by dotted path: other tests may re-import the module.
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.heavy.slash_commands.metadata_command_impl",
+        lambda **kwargs: seen.update(kwargs),
+    )
+    result = CliRunner().invoke(app, argv)
+    assert result.exit_code == 0, result.output
+    assert {k: seen[k] for k in expected} == expected
+
+
+def _clear_workspace(monkeypatch, tmp_path, tty, answer):
+    """A workspace with one metadata file and one export, a fake client and a
+    real console adapter whose confirmation returns ``answer``."""
+    from types import SimpleNamespace
+
+    (tmp_path / "metadata").mkdir()
+    (tmp_path / "exports").mkdir()
+    meta = tmp_path / "metadata" / "probe.json"
+    export = tmp_path / "exports" / "probe.csv"
+    meta.write_text("{}")
+    export.write_text("a,b")
+    store = {"GSE1": {}}
+    client = SimpleNamespace(
+        data_manager=SimpleNamespace(
+            metadata_store=store, current_metadata={}, workspace_path=str(tmp_path)
+        )
+    )
+    created = []
+    monkeypatch.setattr("sys.stdin", _Stdin(tty))
+    monkeypatch.setattr(
+        "lobster.core.workspace.resolve_workspace",
+        lambda explicit_path=None, create=False: tmp_path,
+    )
+    monkeypatch.setattr(
+        "lobster.core.client.AgentClient",
+        lambda workspace_path: created.append(workspace_path) or client,
+    )
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.output_adapter.ConsoleOutputAdapter.confirm",
+        lambda self, question: answer,
+    )
+    return meta, export, store, created
+
+
+@pytest.mark.parametrize("target", [None, "exports", "all"])
+def test_metadata_clear_refuses_without_a_terminal(monkeypatch, tmp_path, target):
+    meta, export, store, created = _clear_workspace(
+        monkeypatch, tmp_path, tty=False, answer=True
+    )
+    printed = []
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.output_adapter.ConsoleOutputAdapter.print",
+        lambda self, message, style=None: printed.append(message),
+    )
+
+    with pytest.raises(typer.Exit) as exc_info:
+        slash_commands.metadata_command_impl(
+            subcommand="clear", target=target, workspace=tmp_path
+        )
+
+    assert exc_info.value.exit_code == 1
+    assert printed == [
+        "lobster metadata clear deletes files and asks for confirmation first. "
+        "Run it in a terminal.",
+        "Nothing was deleted.",
+    ]
+    assert created == []
+    assert meta.exists() and export.exists() and store == {"GSE1": {}}
+
+
+@pytest.mark.parametrize("target", [None, "exports", "all"])
+def test_metadata_clear_cancel_deletes_nothing(monkeypatch, tmp_path, target):
+    meta, export, store, _ = _clear_workspace(
+        monkeypatch, tmp_path, tty=True, answer=False
+    )
+
+    slash_commands.metadata_command_impl(
+        subcommand="clear", target=target, workspace=tmp_path
+    )
+
+    assert meta.exists() and export.exists() and store == {"GSE1": {}}
+
+
+@pytest.mark.parametrize(
+    "target,meta_left,export_left",
+    [(None, False, True), ("exports", True, False), ("all", False, False)],
+)
+def test_metadata_clear_confirmed_deletes_only_its_target(
+    monkeypatch, tmp_path, target, meta_left, export_left
+):
+    meta, export, _, _ = _clear_workspace(monkeypatch, tmp_path, tty=True, answer=True)
+
+    slash_commands.metadata_command_impl(
+        subcommand="clear", target=target, workspace=tmp_path
+    )
+
+    assert (meta.exists(), export.exists()) == (meta_left, export_left)
