@@ -27,6 +27,7 @@ from lobster.services.data_access.geo.helpers import (
 )
 from lobster.services.data_access.geo.parser import ParseResult
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -500,7 +501,9 @@ class ArchiveProcessor:
         """
         try:
             file_name = file_url.split("/")[-1]
-            local_file = self.service.cache_dir / f"{gse_id}_{file_name}"
+            local_file = safe_download_path(
+                self.service.cache_dir, f"{gse_id}_{file_name}"
+            )
 
             if not local_file.exists():
                 logger.info(f"Downloading file: {file_url}")
@@ -736,8 +739,8 @@ class ArchiveProcessor:
             for file_type, url in files_info.items():
                 if file_type in ["matrix", "barcodes", "features"]:
                     filename = url.split("/")[-1]
-                    local_path = (
-                        self.service.cache_dir / f"{gsm_id}_{file_type}_{filename}"
+                    local_path = safe_download_path(
+                        self.service.cache_dir, f"{gsm_id}_{file_type}_{filename}"
                     )
 
                     if not local_path.exists():
@@ -892,7 +895,9 @@ class ArchiveProcessor:
             logger.info(f"Processing H5 file for {gsm_id}")
 
             filename = url.split("/")[-1]
-            local_path = self.service.cache_dir / f"{gsm_id}_h5_{filename}"
+            local_path = safe_download_path(
+                self.service.cache_dir, f"{gsm_id}_h5_{filename}"
+            )
 
             if not local_path.exists():
                 logger.info(f"Downloading H5 file: {url}")
