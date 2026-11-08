@@ -805,7 +805,8 @@ def _log_dependency_versions() -> None:
     tell, from outside a running container, which versions it actually got.
 
     ``pkg_resources`` presence is tracked because setuptools >=82 removed it and
-    sgkit imports it at module load — that combination silently disables GWAS.
+    sgkit <= 0.9 imports it at module load; the genomics GWAS service supplies a
+    stand-in for that import when it is absent.
     """
     global _dependency_versions_logged
 
