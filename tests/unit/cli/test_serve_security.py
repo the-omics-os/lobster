@@ -1,5 +1,6 @@
 """`lobster serve`: loopback default, token for other binds, host check, safe errors."""
 
+import importlib
 import inspect
 
 import pytest
@@ -39,13 +40,37 @@ def _client(host, token=None, factory=FakeClient, base_url="http://localhost:800
     return TestClient(build_serve_app(host, token, factory), base_url=base_url)
 
 
+SERVE_APP = "lobster.cli_internal.commands.heavy.serve_app"
+SLASH_COMMANDS = "lobster.cli_internal.commands.heavy.slash_commands"
+
+
+def _refuse_to_serve(*args, **kwargs):
+    raise AssertionError("a test tried to start a real server")
+
+
+def _live(module_name):
+    # The module the code under test will import now, even if another test
+    # re-imported it after this file was collected.
+    return importlib.import_module(module_name)
+
+
+def _capture_serve_impl(monkeypatch, seen):
+    """Record serve_impl arguments; never let uvicorn bind a port."""
+    monkeypatch.setattr(
+        _live(SLASH_COMMANDS), "serve_impl", lambda **kw: seen.update(kw)
+    )
+    monkeypatch.setattr(_live("uvicorn"), "run", _refuse_to_serve)
+
+
 @pytest.fixture
 def no_uvicorn(monkeypatch):
-    import uvicorn
-
     calls = []
-    monkeypatch.setattr(uvicorn, "run", lambda app, host, port: calls.append(host))
-    monkeypatch.setattr(serve_app, "build_serve_app", lambda host, token: object())
+    monkeypatch.setattr(
+        _live("uvicorn"), "run", lambda app, host, port: calls.append(host)
+    )
+    monkeypatch.setattr(
+        _live(SERVE_APP), "build_serve_app", lambda host, token: object()
+    )
     monkeypatch.delenv("LOBSTER_SERVE_TOKEN", raising=False)
     return calls
 
@@ -62,9 +87,7 @@ def test_cli_serve_defaults_to_loopback(monkeypatch):
     from lobster.cli import app
 
     seen = {}
-    monkeypatch.setattr(
-        slash_commands, "serve_impl", lambda **kwargs: seen.update(kwargs)
-    )
+    _capture_serve_impl(monkeypatch, seen)
     monkeypatch.delenv("LOBSTER_SERVE_TOKEN", raising=False)
     result = CliRunner().invoke(app, ["serve"])
     assert result.exit_code == 0, result.output
@@ -75,9 +98,7 @@ def test_cli_serve_reads_token_from_env(monkeypatch):
     from lobster.cli import app
 
     seen = {}
-    monkeypatch.setattr(
-        slash_commands, "serve_impl", lambda **kwargs: seen.update(kwargs)
-    )
+    _capture_serve_impl(monkeypatch, seen)
     monkeypatch.setenv("LOBSTER_SERVE_TOKEN", TOKEN)
     result = CliRunner().invoke(app, ["serve", "--host", ALL_INTERFACES])
     assert result.exit_code == 0, result.output
