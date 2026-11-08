@@ -3482,8 +3482,21 @@ def metadata_command_impl(
 
     output = ConsoleOutputAdapter(console)
 
-    # Only `clear` takes a second word; anything else is a usage error (exit 2,
-    # as before when the CLI rejected the extra argument).
+    # Usage errors exit 2, before the workspace is opened.
+    known = (None, "overview", "publications", "pub", "samples", "sample")
+    known += ("workspace", "ws", "exports", "export", "list", "clear")
+    if subcommand not in known:
+        output.print(
+            h("Unknown subcommand: {value}").format(value=subcommand), style="error"
+        )
+        output.print(
+            h(
+                "Available: overview, publications, samples, workspace, exports, list, clear"
+            ),
+            style="info",
+        )
+        raise typer.Exit(2)
+    # Only `clear` takes a second word.
     if target is not None and subcommand != "clear":
         output.print(
             h("Unknown subcommand: {value}").format(value=f"{subcommand} {target}"),
@@ -3537,7 +3550,7 @@ def metadata_command_impl(
             metadata_exports(client, output)
         elif subcommand == "list":
             metadata_list(client, output)
-        elif subcommand == "clear":
+        else:  # clear
             # Each clear previews and asks for confirmation before deleting.
             if target == "exports":
                 metadata_clear_exports(client, output)
@@ -3545,17 +3558,6 @@ def metadata_command_impl(
                 metadata_clear_all(client, output)
             else:
                 metadata_clear(client, output)
-        else:
-            output.print(
-                h("Unknown subcommand: {value}").format(value=subcommand), style="error"
-            )
-            output.print(
-                h(
-                    "Available: overview, publications, samples, workspace, exports, list, clear"
-                ),
-                style="info",
-            )
-            raise typer.Exit(1)
 
     except typer.Exit:
         raise

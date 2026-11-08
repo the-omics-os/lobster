@@ -407,3 +407,32 @@ def test_metadata_clear_confirmed_deletes_only_its_target(
     )
 
     assert (meta.exists(), export.exists()) == (meta_left, export_left)
+
+
+@pytest.mark.parametrize("subcommand", ["bogus", "Overview", "clear-all"])
+def test_metadata_unknown_subcommand_is_a_usage_error(
+    monkeypatch, tmp_path, subcommand
+):
+    created = []
+    monkeypatch.setattr(
+        "lobster.core.client.AgentClient",
+        lambda workspace_path: created.append(workspace_path),
+    )
+    printed = []
+    monkeypatch.setattr(
+        "lobster.cli_internal.commands.output_adapter.ConsoleOutputAdapter.print",
+        lambda self, message, style=None: printed.append((message, style)),
+    )
+
+    with pytest.raises(typer.Exit) as exc_info:
+        slash_commands.metadata_command_impl(subcommand=subcommand, workspace=tmp_path)
+
+    assert exc_info.value.exit_code == 2
+    assert printed == [
+        (f"Unknown subcommand: {subcommand}", "error"),
+        (
+            "Available: overview, publications, samples, workspace, exports, list, clear",
+            "info",
+        ),
+    ]
+    assert created == []
