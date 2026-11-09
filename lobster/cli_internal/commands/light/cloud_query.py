@@ -324,7 +324,7 @@ def stream_cloud_query(
 ) -> CloudStreamResult:
     """POST /api/v1/sessions/{id}/chat/stream via DataStream protocol.
 
-    Uses stream.omics-os.com to bypass CloudFront OriginReadTimeout.
+    Uses the long-wait endpoint (stream.omics-os.com) for this request.
     DataStream is newline-delimited prefix:payload (NOT standard SSE).
     """
     url = f"{stream_base}/api/v1/sessions/{session_id}/chat/stream"
