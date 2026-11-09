@@ -149,14 +149,125 @@ def _stream(client):
     return client.converse_stream(modelId="synthetic", messages=[])["stream"]
 
 
-def test_default_bounds_replace_the_600s_read_timeout():
-    client = GatewayBedrockClient("https://example.invalid", lambda: "t")
-    # Unary headers arrive only after the whole generation, and the hosted
-    # endpoint enforces a shorter response limit, so nothing legitimate can
-    # arrive later.
-    assert client._timeout == GatewayBedrockClient._UNARY_RESPONSE_TIMEOUT == 190.0
+@pytest.mark.parametrize(
+    "endpoint, expected",
+    [
+        # The hosted endpoint enforces a shorter response limit, so nothing
+        # legitimate can arrive later.
+        ("https://app.omics-os.com", 190.0),
+        ("https://APP.omics-os.com/", 190.0),
+        # Other endpoints keep the longer 600 s wait.
+        ("https://stream.omics-os.com", 600.0),
+        ("https://tenant.omics-os.com", 600.0),
+        ("http://localhost:8000", 600.0),
+        ("https://example.invalid", 600.0),
+    ],
+)
+def test_unary_read_bound_depends_on_the_host(endpoint, expected):
+    client = GatewayBedrockClient(endpoint, lambda: "t")
+    assert client._timeout == expected
     assert client._stream_idle_timeout == GatewayBedrockClient._STREAM_IDLE_TIMEOUT
     assert GatewayBedrockClient._STREAM_IDLE_TIMEOUT == 90.0
+
+
+def test_explicit_timeout_wins_over_the_host_bound():
+    for endpoint in ("https://app.omics-os.com", "https://stream.omics-os.com"):
+        assert GatewayBedrockClient(endpoint, lambda: "t", timeout=42)._timeout == 42
+
+
+class _ScriptedClient:
+    """Stands in for httpx.Client; every request fails with ``error``."""
+
+    error = None
+    instances = []
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+        self.closed = False
+        _ScriptedClient.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.closed = True
+
+    def close(self):
+        self.closed = True
+
+    def build_request(self, method, url, **kwargs):
+        return httpx.Request(method, url)
+
+    def post(self, url, **kwargs):
+        raise self.error
+
+    def send(self, request, stream=False):
+        raise self.error
+
+
+@pytest.fixture
+def scripted_client(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(gbc, "time", SimpleNamespace(sleep=sleeps.append))
+    monkeypatch.setattr(httpx, "Client", _ScriptedClient)
+    _ScriptedClient.instances = []
+
+    def start(error):
+        _ScriptedClient.error = error
+        return _ScriptedClient.instances, sleeps
+
+    return start
+
+
+@pytest.mark.parametrize(
+    "endpoint, read_bound",
+    [("https://app.omics-os.com", 190.0), ("https://stream.omics-os.com", 600.0)],
+)
+@pytest.mark.parametrize("call", [_converse, _stream])
+def test_read_timeout_after_sending_is_not_retried(
+    scripted_client, endpoint, read_bound, call
+):
+    clients, sleeps = scripted_client(httpx.ReadTimeout("timed out"))
+    with pytest.raises(ClientError) as caught:
+        call(GatewayBedrockClient(endpoint, lambda: "t"))
+    error = caught.value.response["Error"]
+    assert error["Code"] == "ResponseTimeout"
+    assert "not retried" in error["Message"]
+    # The gateway may still be running, and billing, the request.
+    assert len(clients) == 1
+    assert sleeps == []
+    assert all(client.closed for client in clients)
+    if call is _converse:
+        assert clients[0].timeout.read == read_bound
+    else:
+        assert clients[0].timeout.read == GatewayBedrockClient._STREAM_IDLE_TIMEOUT
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["https://app.omics-os.com", "https://stream.omics-os.com"]
+)
+@pytest.mark.parametrize("call", [_converse, _stream])
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError("connection refused"),
+        httpx.ConnectTimeout("timed out"),
+        # The request was not fully sent, so the gateway cannot have run it.
+        httpx.WriteTimeout("timed out"),
+        httpx.PoolTimeout("timed out"),
+    ],
+    ids=lambda error: type(error).__name__,
+)
+def test_connection_failure_is_retried_on_every_host(
+    scripted_client, endpoint, call, error
+):
+    clients, sleeps = scripted_client(error)
+    with pytest.raises(ClientError) as caught:
+        call(GatewayBedrockClient(endpoint, lambda: "t"))
+    assert caught.value.response["Error"]["Code"] == "ConnectionError"
+    assert len(clients) == 3
+    assert len(sleeps) == 2
+    assert all(client.closed for client in clients)
 
 
 def test_unary_close_before_headers_is_retried(fault_server, caplog):
@@ -171,13 +282,31 @@ def test_unary_close_before_headers_is_retried(fault_server, caplog):
     assert "retrying (attempt 2 of 3)" in warnings[0].getMessage()
 
 
-def test_unary_silent_hang_is_bounded_then_retried(fault_server, monkeypatch):
-    monkeypatch.setattr(GatewayBedrockClient, "_UNARY_RESPONSE_TIMEOUT", 0.3)
-    server, _ = fault_server("hang", "json")
+def test_unary_silent_hang_is_bounded_and_not_retried(fault_server):
+    server, sleeps = fault_server("hang", "json")
+    client = GatewayBedrockClient(server.url, lambda: "synthetic-token", timeout=0.3)
     started = time.monotonic()
-    assert _converse(_client(server)) == REPLY
+    with pytest.raises(ClientError) as caught:
+        _converse(client)
     assert time.monotonic() - started < 5
-    assert server.accepted == 2
+    assert caught.value.response["Error"]["Code"] == "ResponseTimeout"
+    assert server.accepted == 1
+    assert sleeps == []
+
+
+def test_stream_silent_hang_before_headers_is_bounded_and_not_retried(fault_server):
+    server, sleeps = fault_server("hang", "stream")
+    client = GatewayBedrockClient(
+        server.url, lambda: "synthetic-token", stream_idle_timeout=0.3
+    )
+    started = time.monotonic()
+    with pytest.raises(ClientError) as caught:
+        _stream(client)
+    assert time.monotonic() - started < 5
+    assert caught.value.response["Error"]["Code"] == "ResponseTimeout"
+    assert caught.value.operation_name == "ConverseStream"
+    assert server.accepted == 1
+    assert sleeps == []
 
 
 def test_unary_gives_up_after_three_drops_with_a_clear_error(fault_server):

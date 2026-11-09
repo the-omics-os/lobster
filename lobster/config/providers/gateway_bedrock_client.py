@@ -4,7 +4,8 @@ import json
 import logging
 import random
 import time
-from typing import Callable, Optional
+from typing import Callable, NoReturn, Optional
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -81,29 +82,36 @@ class GatewayBedrockClient:
     Implements the converse() and converse_stream() surface that
     ChatBedrockConverse uses. All other methods raise NotImplementedError.
 
-    Connection failures before the response is received (dropped connection, no
-    response in time, a body cut short) are retried with backoff, up to
-    ``_MAX_RETRIES`` attempts.
+    Connection failures (no connection, a connection dropped before or while
+    the response arrives) are retried with backoff, up to ``_MAX_RETRIES``
+    attempts.
     Trade-off: the gateway may already have run, and billed, a request whose
     response was lost on the way back, so a retry can charge the same call
-    twice. Failing the whole agent run instead costs more. A stream is never
-    retried once its response has started, because the caller may already have
-    received part of the reply.
+    twice. Failing the whole agent run instead costs more.
+    A request that was sent but got no response in time is not retried: the
+    gateway is most likely still running it, so a retry would bill it twice
+    and wait just as long. A stream is never retried once its response has
+    started, because the caller may already have received part of the reply.
 
     Args:
         endpoint: Gateway base URL (e.g., "https://app.omics-os.com")
         token_fn: Callable returning current bearer token (handles refresh)
         timeout: Seconds to wait for a converse() response (default:
-            ``_UNARY_RESPONSE_TIMEOUT``); streams use ``stream_idle_timeout``
+            ``_UNARY_RESPONSE_TIMEOUT`` for ``_SHORT_LIMIT_HOSTS``,
+            ``_DEFAULT_RESPONSE_TIMEOUT`` otherwise); streams use
+            ``stream_idle_timeout``
         stream_idle_timeout: Seconds a converse_stream() response may stay
             silent between events (default: ``_STREAM_IDLE_TIMEOUT``)
     """
 
     _MAX_RETRIES = 3
-    # converse() responses start only after the whole generation, and the hosted
-    # endpoint enforces a shorter response limit, so a response cannot
-    # legitimately arrive later than this.
+    # converse() responses start only after the whole generation. The hosted
+    # app.omics-os.com endpoint enforces a shorter response limit, so through it
+    # a response cannot legitimately arrive later than this.
+    _SHORT_LIMIT_HOSTS = frozenset({"app.omics-os.com"})
     _UNARY_RESPONSE_TIMEOUT = 190.0
+    # Other endpoints keep the longer wait.
+    _DEFAULT_RESPONSE_TIMEOUT = 600.0
     # Bedrock sends stream events continuously; the slowest Bedrock call observed
     # through the gateway took about 10 s.
     _STREAM_IDLE_TIMEOUT = 90.0
@@ -118,7 +126,14 @@ class GatewayBedrockClient:
     ):
         self._endpoint = endpoint.rstrip("/")
         self._token_fn = token_fn
-        self._timeout = self._UNARY_RESPONSE_TIMEOUT if timeout is None else timeout
+        if timeout is None:
+            host = urlsplit(self._endpoint).hostname or ""
+            timeout = (
+                self._UNARY_RESPONSE_TIMEOUT
+                if host in self._SHORT_LIMIT_HOSTS
+                else self._DEFAULT_RESPONSE_TIMEOUT
+            )
+        self._timeout = timeout
         self._stream_idle_timeout = (
             self._STREAM_IDLE_TIMEOUT
             if stream_idle_timeout is None
@@ -175,6 +190,26 @@ class GatewayBedrockClient:
                         "Omics-OS Cloud gateway connection failed after "
                         f"{self._MAX_RETRIES} attempts "
                         f"({type(error).__name__}: {error})"
+                    ),
+                }
+            },
+            operation_name=operation,
+        ) from error
+
+    def _raise_response_timeout(
+        self, error: Exception, waited: float, operation: str
+    ) -> NoReturn:
+        """Fail a sent request that got no response in time, without a retry."""
+        from botocore.exceptions import ClientError
+
+        raise ClientError(
+            error_response={
+                "Error": {
+                    "Code": "ResponseTimeout",
+                    "Message": (
+                        "Omics-OS Cloud gateway sent no response within "
+                        f"{waited:g} s; not retried, because the request may "
+                        "still be running and billed."
                     ),
                 }
             },
@@ -284,6 +319,8 @@ class GatewayBedrockClient:
 
             except (httpx.LocalProtocolError, httpx.UnsupportedProtocol):
                 raise  # a malformed request fails the same way on every attempt
+            except httpx.ReadTimeout as e:
+                self._raise_response_timeout(e, self._timeout, "Converse")
             except httpx.TransportError as e:
                 self._retry_transport_error(e, attempt, "Converse")
 
@@ -356,6 +393,10 @@ class GatewayBedrockClient:
                 http.close()
                 if isinstance(e, (httpx.LocalProtocolError, httpx.UnsupportedProtocol)):
                     raise  # a malformed request fails the same way on every attempt
+                if isinstance(e, httpx.ReadTimeout):
+                    self._raise_response_timeout(
+                        e, self._stream_idle_timeout, "ConverseStream"
+                    )
                 self._retry_transport_error(e, attempt, "ConverseStream")
             except BaseException:
                 http.close()
