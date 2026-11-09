@@ -9,7 +9,6 @@ launcher hands to the real ``client.resume_from_interrupt``.
 from __future__ import annotations
 
 import re
-
 import time
 
 from tests.integration.decision_components._harness import (
