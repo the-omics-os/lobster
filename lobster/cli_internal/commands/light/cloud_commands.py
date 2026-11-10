@@ -441,7 +441,12 @@ def chat(
     import os
     import subprocess  # nosec B404 # used only to launch the installed chat client with an argv list
 
-    from lobster.cli_internal.npm_launcher import find_npm_binary, install_hint
+    from lobster.cli_internal.npm_launcher import (
+        TOKEN_ENV_VAR,
+        find_npm_binary,
+        install_hint,
+        supports_token_env,
+    )
 
     binary = find_npm_binary()
     if not binary:
@@ -487,13 +492,18 @@ def chat(
         cmd.append(f"--stream-endpoint={stream_base}")
     if session_id:
         cmd.append(f"--session-id={session_id}")
+    child_env = None
     if token:
-        cmd.append(f"--token={token}")
+        # Keep the token out of the process list when the client can read it from the environment.
+        if supports_token_env(binary):
+            child_env = {**os.environ, TOKEN_ENV_VAR: token}
+        else:
+            cmd.append(f"--token={token}")
     if project_id:
         cmd.append(f"--project-id={project_id}")
 
     proc = subprocess.Popen(  # nosec B603 # argv list for the installed chat client; no shell
-        cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr
+        cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, env=child_env
     )
     try:
         proc.wait()
