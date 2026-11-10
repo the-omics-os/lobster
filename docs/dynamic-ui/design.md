@@ -537,21 +537,21 @@ There is no idempotency store. Duplicates can't be consumed because of how the p
 
 ---
 
-## 10. The request cache
+## 10. Replay: build and judge run once
 
 LangGraph pauses `ask_user` by raising inside `interrupt()`. On resume it runs the whole function
 again, and each earlier `interrupt()` returns its recorded answer. Without care, that replay would
 build the question again. The LLM formatting path could build a *different* question, and the data
 files would be read again, so an answer could be judged against a question the user never saw.
 
-So `ask_user` keeps a small process-local cache (`_REQUESTS` in `lobster/tools/user_interaction.py`):
-for each decision, the list of versions shown so far. The key is the decision id plus a hash of the
-call's question, context and workspace. On replay, the loop walks that list instead of building and
-judging again. An entry lives only while its call is paused. It is removed when the call returns by
-any path, at most 256 entries are kept, and it holds plain models only (no data manager, no graph).
-If an entry is lost (restart, another process), the question is simply built again
+So the two steps a replay must not repeat, building the question (`build_question`) and judging an
+answer (`judge_answer`), run as LangGraph tasks (`_once` in `lobster/tools/user_interaction.py`).
+The checkpoint keeps each task's result, and the replay gets that result back instead of running the
+step again. Both steps take and return plain data, which is what a checkpoint stores. Outside a graph
+(a direct tool call) they simply run. An LLM call inside either step must carry the `nostream` tag,
+or the chat stream shows it as a sub-agent working (`component_mapper.py` does this)
 (`test_replay_reuses_the_cached_request`, `test_replay_after_a_rejection_still_uses_the_first_build`,
-`test_cache_is_kept_while_paused_and_removed_when_the_tool_returns`, `test_cache_is_bounded`).
+`test_replay_in_an_async_graph_still_uses_the_first_build`, `test_replay_reuses_the_cached_fingerprints`).
 
 ---
 
@@ -664,10 +664,9 @@ review screen.
   questions in chat was measured in 63 real sessions (21 without it, 21 with each of two wordings). It
   changed nothing on any prompt: the improved `ask_user` description was already enough. So the line
   was dropped.
-- **Everything is process-local.** No decision store, no restart durability, no idempotency store.
-  The list of versions shown lives in a process-local request cache. If an entry is lost, the question
-  is built again with fresh data-file fingerprints, so an answer given against the older data is then
-  judged against the data as it is now.
+- **Nothing outlives the checkpoint.** No decision store, no idempotency store. The versions shown
+  live in the graph's checkpoint as task results (10). The CLI's checkpoint is in memory, so a restart
+  loses the paused question with the rest of the run; a host with a persistent checkpointer keeps it.
 - **A data change re-asks with every answer kept.** The "the data changed" problem is shown above the
   dashboard's sections, and each section starts answered with the user's earlier answer, so the user
   can send the same answers again without opening a section.

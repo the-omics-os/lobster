@@ -139,7 +139,9 @@ def _llm_format_question(
             f"Context: {ctx_str}\n"
         )
         structured_llm = llm.with_structured_output(AskUserContext)
-        return structured_llm.invoke(prompt)
+        # nostream: this runs inside ask_user's build task, and the chat stream
+        # would show a call made there as a sub-agent working.
+        return structured_llm.invoke(prompt, config={"tags": ["nostream"]})
 
     except InferenceRefused:
         raise

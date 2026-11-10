@@ -731,7 +731,7 @@ def test_bare_id_default_pauses_instead_of_invalid_context():
     assert _tool_results(graph)["call_1"]["action"] == "submit"
 
 
-# --- Request cache ---
+# --- Replay: the question is built and each answer judged once ---
 
 
 class _ChangingLLM:
@@ -743,7 +743,7 @@ class _ChangingLLM:
     def with_structured_output(self, schema):
         return self
 
-    def invoke(self, prompt):
+    def invoke(self, prompt, config=None):
         from lobster.services.interaction.component_schemas import AskUserContext
 
         self.calls += 1
@@ -779,43 +779,32 @@ def test_replay_after_a_rejection_still_uses_the_first_build():
     assert _tool_results(graph)["call_1"]["attempts"] == 2
 
 
-def _cached_keys():
-    from lobster.tools import user_interaction
+def test_replay_in_an_async_graph_still_uses_the_first_build():
+    """The same replay when the graph runs async (ainvoke/astream): ask_user's
+    steps are awaited there instead of waited on, and still run once."""
+    import asyncio
 
-    return [k for k in user_interaction._REQUESTS if k.startswith("dec-call_cache")]
+    llm = _ChangingLLM()
+    tool = create_ask_user_tool(llm=llm)
+    graph = _graph(("call_1", "How should we handle these values?", None), tool=tool)
 
+    def run(graph_input):
+        async def go():
+            await graph.ainvoke(graph_input, CONFIG)
+            state = await graph.aget_state(CONFIG)
+            return [i for task in state.tasks for i in task.interrupts]
 
-def test_cache_is_kept_while_paused_and_removed_when_the_tool_returns():
-    graph = _graph(("call_cache", "Which count source?", SOURCE))
-    (first,) = _run(graph, {"messages": []})
-    assert len(_cached_keys()) == 1  # pause keeps it for the replay
-    second = _answer_pending(graph, first, {"source": {"id": "SRC-C"}})
-    assert len(_cached_keys()) == 1
-    assert _answer_pending(graph, second, {"source": {"id": "SRC-A"}}) is None
-    assert _cached_keys() == []
+        return asyncio.run(go())
 
+    def answer(pending, value):
+        return run(Command(resume={pending.id: _reply(pending.value, value)}))
 
-def test_cache_is_removed_on_invalid_context_and_errors():
-    bad = {"fields": [{"key": "cut", "type": "number", "view": "slider", "min": 0}]}
-    graph = _graph(("call_cache", "Cutoff?", bad))
-    _run(graph, {"messages": []})
-    assert _cached_keys() == []
-
-
-def test_cache_is_bounded():
-    from lobster.tools import user_interaction
-
-    saved = dict(user_interaction._REQUESTS)
-    try:
-        user_interaction._REQUESTS.clear()
-        for n in range(user_interaction._MAX_CACHED + 3):
-            user_interaction._remember(f"dec-{n}", [])
-        assert len(user_interaction._REQUESTS) == user_interaction._MAX_CACHED
-        assert "dec-0" not in user_interaction._REQUESTS
-        assert f"dec-{user_interaction._MAX_CACHED + 2}" in user_interaction._REQUESTS
-    finally:
-        user_interaction._REQUESTS.clear()
-        user_interaction._REQUESTS.update(saved)
+    (first,) = run({"messages": []})
+    (second,) = answer(first, {"answer_1": "   "})
+    assert second.value["fields"][0]["key"] == "answer_1"
+    assert answer(second, {"answer_1": "keep"}) == []
+    assert llm.calls == 1
+    assert _tool_results(graph)["call_1"]["attempts"] == 2
 
 
 # --- data_files fingerprints ---

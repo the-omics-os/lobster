@@ -15,12 +15,20 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import re
-import threading
-from collections import OrderedDict
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Union,
+)
 
 from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import ValidationError
@@ -63,35 +71,25 @@ _REJECTED_NOTE = (
     "failed first."
 )
 
-# --- Request cache ---------------------------------------------------------
+# --- Replay ------------------------------------------------------------------
 #
 # LangGraph pauses ask_user by raising inside interrupt() and, on resume,
 # runs the whole function again; earlier interrupt() calls then return their
-# recorded answers. Without a cache that replay would rebuild the question
-# (the LLM mapper path may build a different one) and re-read the data files,
-# so an answer could be judged against a question the user never saw.
-#
-# So each decision keeps the requests shown so far, version by version:
-# shown[i] is version i + 1, and every version but the last was refused. The
-# replay walks that list instead of judging old answers again.
-#
-# Memory lifecycle: process-local; values are plain pydantic models (no
-# closures, no data_manager, graph or store references); at most _MAX_CACHED
-# entries, oldest evicted; an entry is removed when its tool call returns
-# (any return path), and kept only while the call is paused. An evicted or
-# lost entry (restart, other process) just means the question is rebuilt.
-_MAX_CACHED = 256
-_REQUESTS: "OrderedDict[str, List[DecisionRequest]]" = OrderedDict()
-_REQUESTS_LOCK = threading.Lock()
+# recorded answers. Building the question and judging an answer must not run
+# again on that replay: the LLM mapper path may build a different question,
+# and the data files would be re-read, so an answer could be judged against a
+# question the user never saw. So both run as LangGraph tasks (_once): the
+# checkpoint keeps each result, and the replay gets it back unchanged.
 
 
-def _cache_key(decision_id: str, question: str, context: Any, workspace: Any) -> str:
-    """decision_id plus the call's inputs and workspace, so a reused tool-call
-    id can't pick up another question or another workspace's fingerprints."""
-    inputs = json.dumps(
-        [question, context, str(workspace)], sort_keys=True, default=str
-    )
-    return f"{decision_id}:{hashlib.sha256(inputs.encode()).hexdigest()[:16]}"
+def _graph_task() -> str:
+    """The graph task running this call (its checkpoint_ns), "" outside a graph."""
+    from langgraph.config import get_config
+
+    try:
+        return get_config().get("configurable", {}).get("checkpoint_ns", "")
+    except RuntimeError:  # not running inside a graph
+        return ""
 
 
 def _decision_id(tool_call_id: str) -> str:
@@ -102,36 +100,23 @@ def _decision_id(tool_call_id: str) -> str:
     and it is the same on the replay after a resume. Without a graph (the
     tool called directly) the tool-call id alone is used.
     """
-    from langgraph.config import get_config
-
-    try:
-        task = get_config().get("configurable", {}).get("checkpoint_ns", "")
-    except RuntimeError:  # not running inside a graph
-        task = ""
+    task = _graph_task()
     if not task:
         return f"dec-{tool_call_id}"
     return f"dec-{tool_call_id}-{hashlib.sha256(task.encode()).hexdigest()[:8]}"
 
 
-def _recall(key: str) -> Optional[List[DecisionRequest]]:
-    with _REQUESTS_LOCK:
-        shown = _REQUESTS.get(key)
-        if shown is not None:
-            _REQUESTS.move_to_end(key)
-        return shown
+async def _once(step: Callable[..., Dict[str, Any]], *args: Any) -> Dict[str, Any]:
+    """step(*args), run once per tool call: as a LangGraph task, whose result
+    the checkpoint keeps for the replay. ``step`` takes and returns plain data,
+    which is what a checkpoint stores. Outside a graph it just runs."""
+    from langgraph.func import task
 
-
-def _remember(key: str, shown: List[DecisionRequest]) -> None:
-    with _REQUESTS_LOCK:
-        _REQUESTS[key] = shown
-        _REQUESTS.move_to_end(key)
-        while len(_REQUESTS) > _MAX_CACHED:
-            _REQUESTS.popitem(last=False)
-
-
-def _forget(key: str) -> None:
-    with _REQUESTS_LOCK:
-        _REQUESTS.pop(key, None)
+    if not _graph_task():
+        return await asyncio.to_thread(step, *args)
+    result = task(step)(*args)
+    # An async graph gives an awaitable; a sync one (the CLI) a plain Future.
+    return await result if inspect.isawaitable(result) else result.result()
 
 
 def create_ask_user_tool(
@@ -271,8 +256,6 @@ def create_ask_user_tool(
               "invalid_context": nothing was shown; fix context using "problems"
                 and ask again.
               "rejected": the answers kept failing the checks; see "problems"."""
-        from langgraph.errors import GraphInterrupt
-
         if isinstance(context, str):
             # Some models send the object as JSON text: read it if it is one.
             context = _context_from_text(context)
@@ -291,35 +274,35 @@ def create_ask_user_tool(
                         "Fix context and call ask_user again.",
                     }
                 )
-        decision_id = _decision_id(tool_call_id)
-        key = _cache_key(decision_id, question, context, workspace_path)
-        shown = _recall(key)
-        if shown is None:
-            built = await asyncio.to_thread(
-                _build_request, question, context, decision_id, llm, workspace_path
+        built = await _once(
+            build_question, question, context, _decision_id(tool_call_id)
+        )
+        if "problems" in built:
+            return json.dumps(
+                {
+                    "action": "invalid_context",
+                    "problems": built["problems"],
+                    "note": "Nothing was shown to the user. "
+                    "Fix context and call ask_user again.",
+                }
             )
-            if not isinstance(built, DecisionRequest):
-                return json.dumps(
-                    {
-                        "action": "invalid_context",
-                        "problems": [problem.model_dump() for problem in built],
-                        "note": "Nothing was shown to the user. "
-                        "Fix context and call ask_user again.",
-                    }
-                )
-            shown = [built]
-            _remember(key, shown)
+        first = DecisionRequest.model_validate(built["request"])
+        result = await _ask_until_settled(first, judge_answer)
+        return json.dumps(_with_advice(result, first))
 
-        paused = False
-        try:
-            result = await _ask_until_settled(shown, workspace_path)
-        except GraphInterrupt:
-            paused = True  # the replay after the resume needs the entry
-            raise
-        finally:
-            if not paused:
-                _forget(key)
-        return json.dumps(_with_advice(result, shown[0]))
+    # The two steps a replay must not run again (see _once). Plain data in and
+    # out: a task's result is stored in the checkpoint.
+    def build_question(question: str, context: Any, decision_id: str) -> Dict[str, Any]:
+        built = _build_request(question, context, decision_id, llm, workspace_path)
+        if isinstance(built, DecisionRequest):
+            return {"request": built.to_wire()}
+        return {"problems": [problem.model_dump() for problem in built]}
+
+    def judge_answer(request: Dict[str, Any], raw: Any) -> Dict[str, Any]:
+        outcome = _judge(DecisionRequest.model_validate(request), raw, workspace_path)
+        if isinstance(outcome, DecisionRequest):
+            return {"reask": outcome.to_wire()}
+        return {"result": outcome}
 
     ask_user.description += _views_section() + _checks_section()
     ask_user.metadata = {"categories": ["UTILITY"], "provenance": False}
@@ -445,46 +428,40 @@ def _build_request(
 
 
 async def _ask_until_settled(
-    shown: List[DecisionRequest], workspace: Optional[Union[str, Path]]
+    first: DecisionRequest, judge: Callable[[Dict[str, Any], Any], Dict[str, Any]]
 ) -> Dict[str, Any]:
     """Ask, judge the answer, and ask again until it is settled.
 
-    ``shown`` is the cached list of versions; on a replay, answers to every
-    version but the last were refused before, so they are skipped.
+    ``judge`` is the tool's judge_answer step: it runs once per answer (see
+    _once), so a replay walks the same versions without judging again.
     """
-    from langgraph.errors import GraphInterrupt
     from langgraph.types import interrupt
 
-    attempt = 0
+    shown = [first]
     while True:
-        request = shown[attempt]
-        try:
-            raw = interrupt(request.to_wire())
-        except GraphInterrupt:
-            # Paused at this version: later ones belong to an abandoned run.
-            del shown[attempt + 1 :]
-            raise
-        attempt += 1
-        if attempt < len(shown):
-            continue
-        outcome = await _judge(request, raw, workspace)
-        if isinstance(outcome, dict):
+        request = shown[-1]
+        raw = interrupt(request.to_wire())
+        attempt = len(shown)
+        outcome = await _once(judge, request.to_wire(), raw)
+        if "result" in outcome:
+            result = outcome["result"]
             return {
-                **outcome,
-                **_changed(shown[0], outcome),
-                **_reasked_because(shown[:attempt]),
+                **result,
+                **_changed(first, result),
+                **_reasked_because(shown),
                 "attempts": attempt,
             }
+        reasked = DecisionRequest.model_validate(outcome["reask"])
         if attempt >= _MAX_REJECTED:
             return {
                 "decision_id": request.decision_id,
                 "action": "rejected",
-                "problems": [problem.model_dump() for problem in outcome.problems],
-                **_reasked_because(shown[:attempt]),
+                "problems": [problem.model_dump() for problem in reasked.problems],
+                **_reasked_because(shown),
                 "attempts": attempt,
                 "note": _REJECTED_NOTE,
             }
-        shown.append(outcome)
+        shown.append(reasked)
 
 
 def _reasked_because(asked: List[DecisionRequest]) -> Dict[str, Any]:
@@ -522,7 +499,7 @@ def _changed(first: DecisionRequest, result: Dict[str, Any]) -> Dict[str, Any]:
     return {"changed_from_default": changed} if changed else {}
 
 
-async def _judge(
+def _judge(
     request: DecisionRequest, raw: Any, workspace: Optional[Union[str, Path]]
 ) -> Union[Dict[str, Any], DecisionRequest]:
     """The tool result for this answer, or the next version of the request."""
@@ -554,7 +531,7 @@ async def _judge(
         and workspace is not None
     ):
         paths = [entry.path for entry in request.snapshot.files]
-        current = await asyncio.to_thread(fingerprint, paths, workspace, True)
+        current = fingerprint(paths, workspace, True)
     try:
         result = check_answer(request, answer, current)
     except AnswerMisrouted as error:
@@ -562,7 +539,7 @@ async def _judge(
     except AnswerStale as error:
         stale = reask(request, error.problems, answer.answer, snapshot=error.snapshot)
         # A field read from a table shows the table as it is now.
-        return await asyncio.to_thread(reread_items, stale, request.snapshot, workspace)
+        return reread_items(stale, request.snapshot, workspace)
     except AnswerRejected as error:
         return reask(request, error.problems, answer.answer)
     if result["action"] == "free_text":
