@@ -1159,25 +1159,14 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
         # Other message types (heartbeat, resize, etc.) — ignore and keep waiting.
 
 
-# How long one ask_user DecisionRequest screen waits for an answer, counted
-# from when it is drawn (keys on the screen send nothing to Python, so they
-# can't extend it). A real dashboard review takes well over 10 minutes. When
-# it runs out, the screen is closed and the supervisor told; nothing is
-# dropped silently. (_handle_interrupt keeps its own wait.)
-_ANSWER_TIMEOUT_S = 1800
+# An ask_user DecisionRequest screen waits for its answer with no deadline:
+# a run without an answer stays paused for as long as the process lives. Only
+# the user (quit, cancel) or the TUI going away ends the wait.
+# (_handle_interrupt keeps its own wait.)
 
 
 class _QuitTurn(Exception):
     """The user quit or cancelled the turn, or the TUI is gone."""
-
-
-class _NoAnswer(Exception):
-    """A screen got no answer in time; the TUI is still there."""
-
-    def __init__(self, reason: str, msg_id: str):
-        self.reason = reason
-        self.msg_id = msg_id
-        super().__init__(reason)
 
 
 class _ScreenFailed(Exception):
@@ -1276,8 +1265,6 @@ def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
         return build_answer(data, "cancel", comment=cannot_show([problem]))
     except _QuitTurn:
         raise
-    except _NoAnswer as ended:
-        return _close_unanswered(bridge, data, ended.reason, ended.msg_id)
     except Exception as error:
         # A fault while the question was open must not end the turn with
         # the screen still drawn. Only the type is named (the message could
@@ -1286,13 +1273,6 @@ def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
         reason = f"an error ({type(error).__name__})"
         return _close_unanswered(bridge, data, reason, "")
     return build_answer(data, action, answer)
-
-
-def _duration(seconds: float) -> str:
-    """30 minutes, or 2 seconds for a short wait."""
-    if seconds >= 60:
-        return f"{seconds / 60:g} minutes"
-    return f"{seconds:g} seconds"
 
 
 def _close_unanswered(
@@ -1326,10 +1306,8 @@ def _render_component(
     component. Only a reply carrying this render's id is accepted: a late
     answer to an earlier question is ignored instead of being taken as this
     one's answer. Raises _QuitTurn when the user quits or cancels the turn
-    or the TUI is gone, _NoAnswer when no answer came within
-    ``_ANSWER_TIMEOUT_S`` of drawing it (other messages, such as resizes,
-    don't extend it), and _ScreenFailed when the TUI replies that it
-    couldn't show the component.
+    or the TUI is gone, and _ScreenFailed when the TUI replies that it
+    couldn't show the component. There is no deadline: until then it waits.
     """
     msg_id = str(uuid.uuid4())
     if not fallback:
@@ -1339,15 +1317,10 @@ def _render_component(
         {"component": component, "data": data, "fallback_prompt": fallback},
         msg_id=msg_id,
     )
-    deadline = time.monotonic() + _ANSWER_TIMEOUT_S
     while True:
-        left = deadline - time.monotonic()
-        event = bridge.recv_event(timeout=left) if left > 0 else None
+        event = bridge.recv_event(timeout=None)
         if event is None:
-            closed = getattr(bridge, "closed", None)
-            if isinstance(closed, threading.Event) and closed.is_set():
-                raise _QuitTurn()  # the TUI is gone: nobody to tell
-            raise _NoAnswer(f"no answer after {_duration(_ANSWER_TIMEOUT_S)}", msg_id)
+            raise _QuitTurn()  # the TUI is gone: nobody to tell
         if event.get("type") in ("quit", "cancel"):
             raise _QuitTurn()
         if event.get("type") != "component_response":

@@ -610,7 +610,7 @@ review screen.
 | `ask_user` description and `get_dashboard_schema` | tell the supervisor how to ask, when to show ineligible items, to ask the direction of a comparison, which checks exist | that the supervisor asks, attaches checks, or asks the direction: that is model behaviour |
 | Contract (`component_schemas.py`) | a malformed question is never shown; an answer is accepted only if it answers this decision and version, the data is unchanged, every available item is answered, nothing unavailable or unknown is picked, and every attached check passes | rules the question didn't carry |
 | `ask_user` loop | a refused answer never reaches the supervisor; it is asked again with answers kept; at most five refusals in a row; a replay judges against the question that was shown | anything across separate `ask_user` calls |
-| Launcher | every pending question is asked and answered under its own interrupt id; only a reply with the screen's render id is taken; cancel, defer, a screen error, an unanswered screen (30 minutes) and a fault while asking resume the supervisor with the reason, and the screen is closed; quit and a closed TUI end the turn | durability across restarts |
+| Launcher | every pending question is asked and answered under its own interrupt id; only a reply with the screen's render id is taken; an unanswered screen waits with no deadline; cancel, defer, a screen error and a fault while asking resume the supervisor with the reason, and the screen is closed; quit and a closed TUI end the turn | durability across restarts |
 | Go adapter | never draws a broken screen; unavailable items are never wells or answer rows; problems are shown; every render has a plain-words fallback | — |
 | Go components | unavailable options can't be picked; a plate can't be sent with unresolved samples; a list can't be sent with a missing option or reason; a dashboard can't be sent while a section is unanswered, stale or unsaved; the review screen shows exactly what will be sent; text wraps instead of being cut | the checks (Python's job) |
 | Classic UI | the same answers, checks and re-asks | staleness markers, review screen |
@@ -629,16 +629,16 @@ review screen.
 - **The direction question is asked by the supervisor, not enforced.** The `ask_user` description tells
   it to ask, as its own choice field, which group is compared with which, whenever items are split into
   groups (`test_docstring_asks_for_the_direction_of_a_group_comparison`). No check requires it.
-- **A question waits 30 minutes for its answer** (`_ANSWER_TIMEOUT_S = 1800` in `go_tui_launcher.py`),
-  counted from when the screen is drawn. The screens send nothing to Python while the user works, so
-  working on them does not extend it, and neither does any other message (a resize). It ends earlier
-  only when the user answers, defers, cancels or quits. When the 30 minutes run out, or something
-  fails while the question is open, the question is never dropped silently: Python sends
-  `component_close` (the screen's render id and a reason), the TUI removes the screen and shows `This
-  question was closed (<reason>); nothing was sent.`, and the supervisor resumes with `cancel` and the
-  comment `Not answered: the question was closed (<reason>); nothing was decided. Ask again if it is
-  still needed.` A fault is named by its type only (`test_unanswered_question_is_closed_and_the_supervisor_told`,
-  `test_other_messages_do_not_extend_the_wait`, `test_a_fault_while_asking_closes_the_screen_and_tells_the_supervisor`).
+- **A question waits for its answer with no deadline.** A run without an answer stays paused for as
+  long as the process lives; nothing cancels it or continues with a default. The wait ends only when the
+  user answers, defers, cancels or quits (`test_decision_request_waits_with_no_deadline`,
+  `test_unanswered_question_stays_open_until_the_tui_goes`, end to end E20). When something fails
+  while the question is open, the question is never dropped silently: Python sends `component_close`
+  (the screen's render id and a reason), the TUI removes the screen and shows `This question was
+  closed (<reason>); nothing was sent.`, and the supervisor resumes with `cancel` and the comment `Not
+  answered: the question was closed (<reason>); nothing was decided. Ask again if it is still needed.`
+  A fault is named by its type only
+  (`test_a_fault_while_asking_closes_the_screen_and_tells_the_supervisor`).
   If the TUI itself has exited, the wait ends at once and the turn ends without resuming: nobody is
   there to read the supervisor's reply (`test_a_closed_tui_ends_the_wait_at_once_without_resuming`).
   Whenever a turn ends with a question still drawn, the TUI removes it and says `This question was
@@ -815,7 +815,7 @@ The contract doesn't depend on the Go TUI. A new surface needs:
 | `lobster/tools/user_interaction.py` | `ask_user` (build, pause, judge, re-ask, cache), `get_dashboard_schema` |
 | `lobster/agents/graph.py` | adds both tools in interactive mode |
 | `lobster/cli_internal/go_tui_components.py` | the Go adapter, `fallback_prompt`, `unsupported` |
-| `lobster/cli_internal/go_tui_launcher.py` | pending questions, render ids, the 30-minute wait and `component_close` |
+| `lobster/cli_internal/go_tui_launcher.py` | pending questions, render ids, the wait (no deadline) and `component_close` |
 | `lobster/cli_internal/classic_interaction.py` | plain-text prompts |
 | `lobster-tui/internal/biocomp/choice/` | `choice` |
 | `lobster-tui/internal/biocomp/choicelist/` | `choice_list` |

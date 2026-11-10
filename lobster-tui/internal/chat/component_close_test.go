@@ -34,7 +34,7 @@ func lastAlert(m Model) (string, string) {
 func TestComponentCloseRemovesTheScreenAndSaysWhy(t *testing.T) {
 	m, out := withScreen(t, "render-1")
 	msg := testProtocolMsg(t, protocol.TypeComponentClose, protocol.ComponentClosePayload{
-		Message: "This question was closed (no answer after 30 minutes); nothing was sent.",
+		Message: "This question was closed (an error (KeyError)); nothing was sent.",
 	})
 	msg.Message.ID = "render-1"
 	updated, _ := m.handleProtocol(msg)
@@ -43,7 +43,7 @@ func TestComponentCloseRemovesTheScreenAndSaysWhy(t *testing.T) {
 		t.Fatal("the screen is still drawn")
 	}
 	level, text := lastAlert(m)
-	if level != "warning" || text != "This question was closed (no answer after 30 minutes); nothing was sent." {
+	if level != "warning" || text != "This question was closed (an error (KeyError)); nothing was sent." {
 		t.Fatalf("alert = %q %q", level, text)
 	}
 	if sent := parseCapturedMessages(out); len(sent) != 0 {

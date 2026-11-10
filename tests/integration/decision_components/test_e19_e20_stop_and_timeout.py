@@ -1,4 +1,4 @@
-"""E19–E20: cancel, defer, quit and esc at each stage; the answer timeout."""
+"""E19–E20: cancel, defer, quit and esc at each stage; no answer timeout."""
 
 from __future__ import annotations
 
@@ -230,30 +230,21 @@ def test_e19_protocol_quit_while_asking_ends_the_turn_without_resuming(
     assert len(pending_interrupts(tui.client)) == 1  # paused, never answered
 
 
-def test_e20_unanswered_question_is_closed_and_the_supervisor_told(
-    start_tui, review8, monkeypatch
-):
-    """E20 (v3 L-01): with a 2 s wait, the screen is closed with an alert,
-    the supervisor resumes with a cancel saying why, and a key pressed
-    afterwards answers nothing (no screen is left to answer)."""
-    from lobster.cli_internal import go_tui_launcher
-
-    monkeypatch.setattr(go_tui_launcher, "_ANSWER_TIMEOUT_S", 2)
+def test_e20_unanswered_question_stays_open_until_answered(start_tui, review8):
+    """E20: there is no answer timeout. A question left unanswered stays on
+    screen with the run paused: nothing is closed, nothing resumes and the
+    turn doesn't end. A key pressed later still answers it."""
     ds = review8
     cid = new_id()
     tui = start_tui([ask((cid, "Which count source?", {"fields": [source_field(ds)]}))])
     tui.ask_supervisor()
     tui.wait_render(1)
-    started = time.time()
-    tui.wait_screen("This question was closed", timeout=15)
-    assert 1.5 <= time.time() - started <= 10
-    assert tui.wait_turn_end(timeout=15) == ""
-    result = tool_results(tui.client)[cid]
-    assert result["action"] == "cancel"
-    assert "answer" not in result
-    assert "no answer after 2 seconds" in result["comment"]
+    time.sleep(3.0)  # longer than the 2 s the old patched timeout waited
+    assert "This question was closed" not in tui.flat()
+    assert tui.turn_ends() == []
+    assert tui.resumes == []
+    assert len(pending_interrupts(tui.client)) == 1  # still paused
 
-    tui.key("1")  # nothing is drawn any more: no reply is sent
-    time.sleep(1.0)
-    assert tui.responses() == []
-    assert len(tui.resumes) == 1
+    tui.key("1")
+    assert tui.wait_turn_end() == ""
+    assert tool_results(tui.client)[cid]["answer"] == {"source": {"id": "SRC-A"}}
