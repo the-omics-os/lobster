@@ -14,10 +14,10 @@ the ask_user docstring stays short.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import inspect
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -93,17 +93,15 @@ def _graph_task() -> str:
 
 
 def _decision_id(tool_call_id: str) -> str:
-    """dec-<tool-call id>-<graph task>.
+    """dec-<tool-call id>-<8 random hex>: Lobster's own id for one question.
 
-    Some providers reuse tool-call ids (call_0, call_1, ...), even twice in
-    one message. The graph task that runs this call tells such calls apart,
-    and it is the same on the replay after a resume. Without a graph (the
-    tool called directly) the tool-call id alone is used.
+    It depends on nothing inside LangGraph. It is minted in the build step
+    (build_question, a task: see _once), so the replay after a resume gets
+    the same id back from the checkpoint instead of minting a new one. The
+    random part keeps calls apart when a provider reuses tool-call ids
+    (call_0, call_1, ...), even twice in one message.
     """
-    task = _graph_task()
-    if not task:
-        return f"dec-{tool_call_id}"
-    return f"dec-{tool_call_id}-{hashlib.sha256(task.encode()).hexdigest()[:8]}"
+    return f"dec-{tool_call_id}-{uuid.uuid4().hex[:8]}"
 
 
 async def _once(step: Callable[..., Dict[str, Any]], *args: Any) -> Dict[str, Any]:
@@ -274,9 +272,7 @@ def create_ask_user_tool(
                         "Fix context and call ask_user again.",
                     }
                 )
-        built = await _once(
-            build_question, question, context, _decision_id(tool_call_id)
-        )
+        built = await _once(build_question, question, context, tool_call_id)
         if "problems" in built:
             return json.dumps(
                 {
@@ -292,7 +288,11 @@ def create_ask_user_tool(
 
     # The two steps a replay must not run again (see _once). Plain data in and
     # out: a task's result is stored in the checkpoint.
-    def build_question(question: str, context: Any, decision_id: str) -> Dict[str, Any]:
+    def build_question(
+        question: str, context: Any, tool_call_id: str
+    ) -> Dict[str, Any]:
+        # The id is minted here, inside the task, so a replay keeps it.
+        decision_id = _decision_id(tool_call_id)
         built = _build_request(question, context, decision_id, llm, workspace_path)
         if isinstance(built, DecisionRequest):
             return {"request": built.to_wire()}

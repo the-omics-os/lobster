@@ -169,7 +169,8 @@ def test_ask_user_calls_interrupt_with_component_selection():
     call_arg = mock_interrupt.call_args[0][0]
     assert isinstance(call_arg, dict)
     assert call_arg["schema"] == "lobster.ask/1"
-    assert call_arg["decision_id"] == "dec-call_1"  # no graph: no task part
+    # dec-<tool-call id>-<8 random hex>, with or without a graph
+    assert re.fullmatch(r"dec-call_1-[0-9a-f]{8}", call_arg["decision_id"])
     assert call_arg["fields"][0]["type"] == "choice"
 
     # The result is the checked answer, as JSON.
@@ -285,7 +286,7 @@ def test_question_pauses_with_a_decision_request():
     (pending,) = _run(graph, {"messages": []})
     request = pending.value
     assert request["schema"] == "lobster.ask/1"
-    # dec-<tool-call id>-<graph task>: a reused tool-call id stays distinct
+    # dec-<tool-call id>-<8 random hex>: a reused tool-call id stays distinct
     assert re.fullmatch(r"dec-call_1-[0-9a-f]{8}", request["decision_id"])
     assert request["request_version"] == 1
     assert request["question"] == "Which count source?"
@@ -984,8 +985,8 @@ def test_dashboard_schema_covers_lists_checks_direction_and_review():
 
 def test_reused_tool_call_ids_get_their_own_decisions():
     """Some providers number tool calls (call_0, call_1, ...) and can repeat
-    one in a message. The graph task tells the calls apart, so each answer
-    still reaches its own question."""
+    one in a message. The random part of the id tells the calls apart, so
+    each answer still reaches its own question."""
     graph = _graph(
         ("call_1", "Which source?", SOURCE), ("call_1", "Which other source?", SOURCE)
     )
@@ -1009,10 +1010,20 @@ def test_reused_tool_call_ids_get_their_own_decisions():
 
 
 def test_decision_id_is_the_same_on_replay():
-    """The suffix comes from the graph task, which a resume replays as is."""
+    """The id is minted once, in the build task; a resume replays it as is."""
     graph, first = _ask(SOURCE)
     second = _answer_pending(graph, first, {"source": {"id": "SRC-C"}})
     assert second.value["decision_id"] == first.value["decision_id"]
+
+
+def test_decision_id_does_not_come_from_langgraph():
+    """Lobster mints the id itself (random), so the same call in the same
+    graph position gets a new id each run: nothing is derived from the
+    graph's task or interrupt id."""
+    _, first = _ask(SOURCE)
+    _, again = _ask(SOURCE)
+    assert first.value["decision_id"] != again.value["decision_id"]
+    assert first.value["decision_id"] not in (first.id, again.id)
 
 
 PROPOSED_GROUPS = {

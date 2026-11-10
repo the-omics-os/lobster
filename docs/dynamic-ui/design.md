@@ -121,7 +121,7 @@ sequenceDiagram
    problems, and nothing is shown (`test_invalid_context_never_pauses`,
    `test_bad_check_specs_never_pause`).
 3. **The graph pauses.** `ask_user` calls `interrupt(request.to_wire())`. The id of the decision is
-   `dec-<tool_call_id>-<task>` (section 4).
+   `dec-<tool_call_id>-<8 random hex>` (section 4).
 4. **The launcher collects every pending question** (`_handle_user_query`, `_handle_interrupts` in
    `go_tui_launcher.py`). It keeps reading after the first interrupt event, because the client yields
    one event per pending question. A `DecisionRequest` (schema `lobster.ask/1`) goes to
@@ -150,17 +150,19 @@ sequenceDiagram
 
 | Id | Made by | Looks like | What it is for |
 |---|---|---|---|
-| `decision_id` | `ask_user`, from the tool call id and the graph task | `dec-<tool_call_id>-<8 hex>` | Which question this is. Stays the same across re-asks. An answer whose `responds_to.decision_id` differs is *misrouted*: never used, the question is asked again (`test_answer_for_another_decision_is_not_consumed`). |
+| `decision_id` | `ask_user`, from the tool call id and a random part | `dec-<tool_call_id>-<8 hex>` | Which question this is. Stays the same across re-asks. An answer whose `responds_to.decision_id` differs is *misrouted*: never used, the question is asked again (`test_answer_for_another_decision_is_not_consumed`). |
 | `request_version` | `ask_user` | `1`, `2`, … | Which version of the question. Goes up by one on every re-ask. An answer for another version is *stale* and is asked again (`test_answer_to_an_old_question_version_is_asked_again`). |
-| LangGraph interrupt id | LangGraph | opaque string | Which paused `interrupt()` a resume value belongs to. The launcher keys answers by it. A re-ask inside the same tool call pauses again under the same interrupt id. |
+| LangGraph interrupt id | LangGraph | opaque string | Which paused `interrupt()` a resume value belongs to. The launcher keys answers by it. In LangGraph 1.2.16 (the locked version) a re-ask inside the same tool call pauses again under the same interrupt id; LangGraph 1.2.20 gives each re-ask a new one. Lobster's own ids don't depend on it. |
 | Render id | the launcher, per screen | a UUID in the message id | Which screen a Go reply belongs to. A reply with another id is ignored (`test_stray_reply_to_an_old_render_is_ignored`). |
 
-**Why the task suffix.** The tool call id is set by the model provider, never written by the model, and
-some providers number calls (`call_0`, `call_1`, …) and can repeat one inside one message. The 8 hex
-characters are a hash of LangGraph's task name for this call (`checkpoint_ns`, one task per tool call),
-which is the same when the call is replayed after a resume. So two calls with the same id get two
-decisions, and each answer reaches its own (`_decision_id`; `test_reused_tool_call_ids_get_their_own_decisions`,
-`test_decision_id_is_the_same_on_replay`). Called outside a graph, the id is `dec-<tool_call_id>`.
+**Why Lobster mints its own id.** The id is Lobster's, not LangGraph's: it is built from nothing
+inside LangGraph, whose interrupt-id formula has changed between versions. `_decision_id` adds 8 random
+hex characters to the tool call id. The tool call id is set by the model provider, and some providers
+number calls (`call_0`, `call_1`, …) and can repeat one inside one message, so the random part gives two
+such calls two decisions, and each answer reaches its own
+(`test_reused_tool_call_ids_get_their_own_decisions`, `test_decision_id_does_not_come_from_langgraph`).
+The id is minted inside the build step, a LangGraph task (section 10), so the replay after a resume gets
+the same id back from the checkpoint (`test_decision_id_is_the_same_on_replay`).
 
 The answer also carries an `answer_id` (`ans-<uuid>`). It is passed to the supervisor for reference;
 nothing deduplicates on it.
