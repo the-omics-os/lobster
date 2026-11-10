@@ -34,8 +34,9 @@ from lobster.services.data_access.geo.archive_processing import ArchiveProcessor
 from lobster.services.data_access.geo.concatenation import SampleConcatenator
 
 # Re-export constants for backward compatibility -- consumers import from here
-from lobster.services.data_access.geo.constants import (
+from lobster.services.data_access.geo.constants import (  # noqa: F401
     DownloadStrategy,
+    GEODataSource,
     GEOResult,
 )
 from lobster.services.data_access.geo.download_execution import DownloadExecutor
@@ -44,8 +45,12 @@ from lobster.services.data_access.geo.downloader import (
 )
 
 # Re-exports from helpers.py (added in Plan 01 Task 2) -- keep for backward compat
-from lobster.services.data_access.geo.helpers import (
+from lobster.services.data_access.geo.helpers import (  # noqa: F401
+    ARCHIVE_EXTENSIONS,
+    RetryOutcome,
     RetryResult,
+    _is_archive_url,
+    _score_expression_file,
 )
 from lobster.services.data_access.geo.helpers import _is_data_valid as _is_data_valid_fn
 from lobster.services.data_access.geo.helpers import (
