@@ -91,6 +91,7 @@
   "Question to ask": "要问的问题",
   "Session UUID to continue (or 'latest')": "要继续的会话 UUID（或 latest）",
   "Override stored auth token (prefer OMICS_OS_API_KEY env var)": "改用别的登录令牌（更建议用环境变量 OMICS_OS_API_KEY）",
+  "Override stored auth token (prefer LOBSTER_CLOUD_TOKEN env var)": "改用别的登录令牌（更建议用环境变量 LOBSTER_CLOUD_TOKEN）",
   "Custom REST API origin (e.g., https://app.omics-os.com)": "自定义 REST 地址（例如 https://app.omics-os.com）",
   "Skip endpoint allowlist validation (DANGEROUS)": "跳过地址白名单检查（危险）",
   "Stream text as it arrives": "边生成边显示文字",

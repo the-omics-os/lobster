@@ -90,3 +90,33 @@ def test_cloud_chat_passes_token_by_env_only_when_capable(monkeypatch, capable):
     else:
         assert on_argv
         assert seen["env"] is None
+
+
+def test_cloud_chat_reads_token_from_env_var(monkeypatch):
+    from typer.testing import CliRunner
+
+    from lobster.cli_internal.commands.light import cloud_commands
+
+    seen = {}
+
+    class FakeProc:
+        returncode = 0
+
+        def __init__(self, cmd, **kwargs):
+            seen["cmd"], seen["env"] = cmd, kwargs.get("env")
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(npm_launcher, "find_npm_binary", lambda: "/bin/fake-client")
+    monkeypatch.setattr(npm_launcher, "supports_token_env", lambda binary: True)
+    monkeypatch.setattr("os.isatty", lambda fd: True)
+    monkeypatch.setattr("subprocess.Popen", FakeProc)
+
+    result = CliRunner().invoke(
+        cloud_commands.cloud_app, ["chat"], env={TOKEN_ENV_VAR: "tok-env"}
+    )
+
+    assert result.exit_code == 0, result.output
+    assert not any("tok-env" in arg for arg in seen["cmd"])
+    assert seen["env"][TOKEN_ENV_VAR] == "tok-env"

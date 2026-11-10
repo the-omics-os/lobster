@@ -423,7 +423,10 @@ def chat(
         None, "--session-id", "-s", help=h("Resume an existing cloud session")
     ),
     token: Optional[str] = typer.Option(
-        None, "--token", help=h("Override stored auth token")
+        None,
+        "--token",
+        envvar="LOBSTER_CLOUD_TOKEN",
+        help=h("Override stored auth token (prefer LOBSTER_CLOUD_TOKEN env var)"),
     ),
     endpoint: Optional[str] = typer.Option(
         None, "--endpoint", help=h("Custom cloud API endpoint")
