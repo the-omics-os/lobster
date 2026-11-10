@@ -44,7 +44,16 @@ def test_supports_token_env_requires_exit_0_and_true_flag(tmp_path, body, expect
 def test_supports_token_env_false_on_timeout(tmp_path, monkeypatch):
     monkeypatch.setattr(npm_launcher, "CAPABILITIES_TIMEOUT_S", 0.2)
     slow = _client(tmp_path, "time.sleep(5); print('{\"token-env\": true}')")
+    procs = []
+    real_popen = npm_launcher.subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        procs.append(real_popen(*args, **kwargs))
+        return procs[-1]
+
+    monkeypatch.setattr(npm_launcher.subprocess, "Popen", recording_popen)
     assert supports_token_env(slow) is False
+    assert procs[0].returncode is not None  # killed child was reaped, not left a zombie
 
 
 def test_supports_token_env_false_when_binary_missing(tmp_path):

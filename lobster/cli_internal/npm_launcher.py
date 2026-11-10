@@ -51,6 +51,10 @@ def supports_token_env(binary: str) -> bool:
     except subprocess.TimeoutExpired:
         # Do not drain the pipe after the kill: on Windows a shim's child can keep it open.
         proc.kill()
+        try:
+            proc.wait(timeout=1)  # reap the child so it does not stay a zombie
+        except subprocess.TimeoutExpired:
+            pass
         return False
     if proc.returncode != 0:
         return False
