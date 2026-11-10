@@ -154,7 +154,7 @@ def test_get_xrefs_uniprot_filter(service):
     assert isinstance(result, list)
     assert len(result) > 0
 
-    # All results should be from UniProt. Ensembl currently reports these as
-    # "Uniprot_gn" for gene-level xrefs.
+    # Reviewed protein accession only, once (p53 is P04637).
+    assert [x["primary_id"] for x in result] == ["P04637"]
     for xref in result:
-        assert "uniprot" in xref.get("dbname", "").lower()
+        assert xref.get("dbname") == "Uniprot/SWISSPROT"

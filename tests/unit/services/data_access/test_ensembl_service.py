@@ -571,8 +571,13 @@ def test_get_xrefs_no_filter(service, mock_response):
 
 
 def test_get_xrefs_with_external_db_filter(service, mock_response):
-    """get_xrefs with external_db filter restricts results to a single database."""
-    resp = mock_response(json_data=XREFS_FILTERED_RESPONSE)
+    """get_xrefs with external_db filter restricts results to a single database.
+
+    The filter name is sent unchanged. all_levels=1 is needed because protein
+    xrefs such as UniProt/SWISSPROT sit on the translation, not the gene; the
+    copies Ensembl returns once per transcript are collapsed.
+    """
+    resp = mock_response(json_data=XREFS_FILTERED_RESPONSE * 3)
 
     with patch.object(service._session, "request", return_value=resp) as mock_req:
         result = service.get_xrefs("ENSG00000141510", external_db="UniProt/SWISSPROT")
@@ -580,7 +585,7 @@ def test_get_xrefs_with_external_db_filter(service, mock_response):
     mock_req.assert_called_once_with(
         "GET",
         f"{BASE_URL}/xrefs/id/ENSG00000141510",
-        params={"external_db": "UniProt/SWISSPROT"},
+        params={"external_db": "UniProt/SWISSPROT", "all_levels": 1},
         timeout=10,
     )
     assert len(result) == 1

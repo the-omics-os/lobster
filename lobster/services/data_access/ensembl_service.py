@@ -278,16 +278,21 @@ class EnsemblService:
         ensembl_id = self._strip_version(ensembl_id.strip())
         url = f"{BASE_URL}/xrefs/id/{ensembl_id}"
         params = {}
-        if external_db:
-            xref_db_aliases = {
-                "uniprot/swissprot": "Uniprot_gn",
-                "uniprotkb/swiss-prot": "Uniprot_gn",
-            }
-            params["external_db"] = xref_db_aliases.get(
-                external_db.lower(), external_db
-            )
+        if not external_db:
+            return self._request("GET", url, params=params)
 
-        return self._request("GET", url, params=params)
+        # Protein xrefs (e.g. UniProt/SWISSPROT) hang off the translation, so a
+        # gene ID needs all_levels; Ensembl then repeats them per transcript.
+        params = {"external_db": external_db, "all_levels": 1}
+        xrefs = self._request("GET", url, params=params)
+        seen = set()
+        unique = []
+        for xref in xrefs:
+            key = (xref.get("dbname"), xref.get("primary_id"))
+            if key not in seen:
+                seen.add(key)
+                unique.append(xref)
+        return unique
 
     # =========================================================================
     # Helpers
