@@ -1,5 +1,6 @@
 """Token handoff to the npm chat client: environment when the client says it can, argv otherwise."""
 
+import importlib
 import os
 import stat
 import sys
@@ -8,6 +9,12 @@ import pytest
 
 from lobster.cli_internal import npm_launcher
 from lobster.cli_internal.npm_launcher import TOKEN_ENV_VAR, supports_token_env
+
+
+def _live_launcher():
+    """The module cloud chat will import. Other tests purge lobster.cli* from
+    sys.modules, so this file's import-time reference can be stale."""
+    return importlib.import_module("lobster.cli_internal.npm_launcher")
 
 
 def _client(tmp_path, body: str) -> str:
@@ -77,15 +84,15 @@ def test_cloud_chat_passes_token_by_env_only_when_capable(monkeypatch, capable):
         def wait(self, timeout=None):
             return 0
 
-    monkeypatch.setattr(npm_launcher, "find_npm_binary", lambda: "/bin/fake-client")
-    monkeypatch.setattr(npm_launcher, "supports_token_env", lambda binary: capable)
+    monkeypatch.setattr(_live_launcher(), "find_npm_binary", lambda: "/bin/fake-client")
+    monkeypatch.setattr(_live_launcher(), "supports_token_env", lambda binary: capable)
     monkeypatch.setattr("os.isatty", lambda fd: True)
     monkeypatch.setattr("subprocess.Popen", FakeProc)
 
     with pytest.raises(typer.Exit):
         cloud_commands.chat(
             session_id=None,
-            token="tok-123",
+            token="tok-123",  # nosec B106 # fake token for the test
             endpoint=None,
             stream_endpoint=None,
             project_id=None,
@@ -117,8 +124,8 @@ def test_cloud_chat_reads_token_from_env_var(monkeypatch):
         def wait(self, timeout=None):
             return 0
 
-    monkeypatch.setattr(npm_launcher, "find_npm_binary", lambda: "/bin/fake-client")
-    monkeypatch.setattr(npm_launcher, "supports_token_env", lambda binary: True)
+    monkeypatch.setattr(_live_launcher(), "find_npm_binary", lambda: "/bin/fake-client")
+    monkeypatch.setattr(_live_launcher(), "supports_token_env", lambda binary: True)
     monkeypatch.setattr("os.isatty", lambda fd: True)
     monkeypatch.setattr("subprocess.Popen", FakeProc)
 
