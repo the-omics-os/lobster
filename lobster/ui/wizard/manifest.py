@@ -28,11 +28,13 @@ logger = logging.getLogger(__name__)
 class CredentialField:
     """A single credential the user must provide for a provider."""
 
-    key: str  # env var name, e.g. "ANTHROPIC_API_KEY"
+    # UI field id. lobster-cli's Ink wizard looks values up by it, so renaming
+    # one breaks that wizard; set env_var to the name actually written instead.
+    key: str
     label: str  # display label, e.g. "API Key"
     secret: bool = True  # mask input
     required: bool = True
-    env_var: str | None = None  # if different from key
+    env_var: str | None = None  # env var written, if different from key
     help_url: str | None = None
 
 
@@ -177,26 +179,34 @@ _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
     ],
     "bedrock": [
         CredentialField(
-            key="AWS_ACCESS_KEY_ID", label=h("AWS Access Key ID"), secret=False
-        ),
-        CredentialField(key="AWS_SECRET_ACCESS_KEY", label=h("AWS Secret Access Key")),
-        CredentialField(
-            key="AWS_DEFAULT_REGION",
-            label=h("AWS Region"),
+            key="AWS_ACCESS_KEY_ID",
+            label=h("AWS Access Key ID"),
             secret=False,
-            required=False,
+            env_var="AWS_BEDROCK_ACCESS_KEY",
         ),
+        CredentialField(
+            key="AWS_SECRET_ACCESS_KEY",
+            label=h("AWS Secret Access Key"),
+            env_var="AWS_BEDROCK_SECRET_ACCESS_KEY",
+        ),
+        # No region field: no init path can carry it, so it was silently
+        # dropped. The engine reads AWS_REGION (default us-east-1).
     ],
     "ollama": [],  # No credentials needed
     "gemini": [
         CredentialField(key="GOOGLE_API_KEY", label=h("Google API Key")),
     ],
     "azure": [
-        CredentialField(key="AZURE_OPENAI_API_KEY", label=h("Azure OpenAI API Key")),
+        CredentialField(
+            key="AZURE_OPENAI_API_KEY",
+            label=h("Azure OpenAI API Key"),
+            env_var="AZURE_AI_CREDENTIAL",
+        ),
         CredentialField(
             key="AZURE_OPENAI_ENDPOINT",
             label=h("Azure OpenAI Endpoint"),
             secret=False,
+            env_var="AZURE_AI_ENDPOINT",
         ),
     ],
     "openai": [
