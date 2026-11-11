@@ -275,6 +275,8 @@ def _write_global(config_dict: Dict[str, Any], env_lines: list[str]) -> None:
                         "CREDENTIAL",
                     ]
                 )
+                # The Azure endpoint is half of the Azure credential pair.
+                or key == "AZURE_AI_ENDPOINT"
                 or key == "LOBSTER_EMBEDDING_PROVIDER"
             ):
                 credentials[key] = value.strip()
