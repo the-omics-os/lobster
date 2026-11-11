@@ -7,6 +7,7 @@ Includes caching to avoid repeated checks and graceful error handling for offlin
 
 import json
 import logging
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -192,18 +193,28 @@ def get_update_message(latest_version: str) -> str:
     ).format(latest=latest_version, current=__version__, cmd=update_cmd)
 
 
-def maybe_show_update_notification(console) -> None:
+# Output that must stay machine-readable on stdout.
+_MACHINE_OUTPUT_FLAGS = {"--json", "-j", "--stdio"}
+
+
+def maybe_show_update_notification() -> None:
     """
-    Check for updates and display a notification if one is available.
+    Check for updates and print a notice on stderr if one is available.
 
-    This is the main entry point for CLI integration.
-
-    Args:
-        console: Rich console instance for output.
+    This is the main entry point for CLI integration. The notice never goes to
+    stdout. The check is skipped (no request, no cache write) for machine output
+    (--json, -j, --stdio) or when stderr is not a terminal.
     """
     try:
+        if _MACHINE_OUTPUT_FLAGS.intersection(sys.argv[1:]):
+            return
+        if not sys.stderr.isatty():
+            return
         update_available, latest_version = check_for_updates()
         if update_available and latest_version:
+            from rich.console import Console
+
+            console = Console(stderr=True)
             message = get_update_message(latest_version)
             console.print(f"[dim cyan]ℹ {message}[/dim cyan]")
             console.print()

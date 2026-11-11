@@ -411,10 +411,10 @@ def default_callback(
         console.print(f"lobster version {__version__}")
         raise typer.Exit()
 
-    # Check for updates (non-blocking, cached, fails silently if offline)
+    # Check for updates (cached, fails silently if offline); notice on stderr only
     from lobster.config.version_check import maybe_show_update_notification
 
-    maybe_show_update_notification(console)
+    maybe_show_update_notification()
 
     # If no subcommand was invoked, show the default help
     if ctx.invoked_subcommand is None:
