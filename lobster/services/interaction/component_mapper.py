@@ -146,7 +146,13 @@ def _llm_select_component(
 
         structured_llm = llm.with_structured_output(ComponentSelection)
         result = structured_llm.invoke(prompt)
-        return result  # Pydantic validator handles invalid component names
+        if isinstance(result, ComponentSelection):
+            return result  # Pydantic validator handles invalid component names
+        # A plain-text answer yields no selection (None): use the fallback.
+        logger.debug(
+            "LLM component selection returned no selection (result_type=%s)",
+            type(result).__name__,
+        )
 
     except InferenceRefused:
         raise

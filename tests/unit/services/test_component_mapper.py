@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from lobster.services.interaction.component_mapper import map_question
 from lobster.services.interaction.component_schemas import (
     COMPONENT_SCHEMAS,
@@ -160,6 +162,21 @@ def test_llm_exception_falls_back_to_text_input():
     result = map_question("Some ambiguous question here", llm=mock_llm)
     assert result.component == "text_input"
     assert result.fallback_prompt == "Some ambiguous question here"
+
+
+@pytest.mark.parametrize("answer", [None, "Just ask them for a number."])
+def test_llm_plain_text_answer_falls_back_to_text_input(answer):
+    """A model that answers in plain text gives no ComponentSelection (None from
+    structured output); the mapper must still return a usable text_input."""
+    mock_llm = MagicMock()
+    mock_structured = MagicMock()
+    mock_structured.invoke.return_value = answer
+    mock_llm.with_structured_output.return_value = mock_structured
+    result = map_question("Some ambiguous question here", llm=mock_llm)
+    assert isinstance(result, ComponentSelection)
+    assert result.component == "text_input"
+    assert result.fallback_prompt == "Some ambiguous question here"
+    assert result.model_dump()["data"] == {"question": "Some ambiguous question here"}
 
 
 def test_component_selection_empty_fallback_prompt_gets_default():
