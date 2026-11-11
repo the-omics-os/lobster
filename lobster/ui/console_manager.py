@@ -58,7 +58,9 @@ class HistoryConsole(Console):
                 history_path.parent.mkdir(parents=True, exist_ok=True)
 
                 self.history = FileHistory(str(history_path))
-                self.session = PromptSession(history=self.history)
+                # Built on first input(): constructing it opens the terminal
+                # input, which warns on stderr when stdin is not a terminal.
+                self.session = None
                 self._has_history = True
             except Exception:
                 # Fall back to no history if there are any issues
@@ -102,7 +104,12 @@ class HistoryConsole(Console):
             return result.rstrip("\n\r") if result else ""
 
         # Use prompt-toolkit for enhanced input if available
-        if self._has_history and self.session:
+        if self._has_history and self.session is None:
+            try:
+                self.session = PromptSession(history=self.history)
+            except Exception:
+                self._has_history = False  # as before: no history, plain input()
+        if self._has_history:
             try:
                 result = self.session.prompt("")
                 return result
