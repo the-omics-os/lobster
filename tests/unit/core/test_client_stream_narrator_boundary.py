@@ -314,13 +314,33 @@ class TestSingleSpeakerPolicy:
         delta_texts = [d["delta"] for d in deltas]
         assert delta_texts == [
             "I'll search for datasets.",
-            "Here are the results:",
+            "\n\nHere are the results:",
         ]
 
         agent_content = _events_of_type(events, "agent_content")
         assert len(agent_content) == 2
         assert agent_content[0]["source"] == "research_agent"
         assert agent_content[1]["source"] == "research_agent"
+
+    def test_supervisor_messages_around_a_tool_call_are_not_glued(self, tmp_path):
+        """Two supervisor messages around a tool call are separated by one blank
+        line in the deltas and in ``complete.response``; fragments of the same
+        message are joined as-is."""
+        events_in = [
+            _ai_chunk("Let me check.", "agent", "sup-1"),
+            _handoff_chunk("research_agent"),
+            _handoff_tool_response("tc-h"),
+            _ai_chunk("Fou", "agent", "sup-2"),
+            _ai_chunk("nd 3.", "agent", "sup-2"),
+        ]
+        client = _make_client(tmp_path, events_in)
+        events = _collect_events(client)
+
+        deltas = [d["delta"] for d in _events_of_type(events, "content_delta")]
+        assert deltas == ["Let me check.", "\n\nFou", "nd 3."]
+        (complete,) = _events_of_type(events, "complete")
+        assert complete["response"] == "Let me check.\n\nFound 3."
+        assert complete["response"] == "".join(deltas)
 
     def test_sub_agent_activity_still_tracked(self, tmp_path):
         """Sub-agent transitions emit agent_change events for the activity lane."""
@@ -423,7 +443,7 @@ class TestSingleSpeakerPolicy:
         delta_texts = [d["delta"] for d in deltas]
         assert delta_texts == [
             "I'll help you analyze.",
-            "Found 3 datasets.",
+            "\n\nFound 3 datasets.",
         ], f"Supervisor text must be content_delta, got {delta_texts}"
 
         agent_content = _events_of_type(events, "agent_content")
@@ -433,7 +453,7 @@ class TestSingleSpeakerPolicy:
         # Accumulated text should include supervisor content only.
         complete = [e for e in events if e["type"] == "complete"]
         assert len(complete) == 1
-        assert complete[0]["response"] == "I'll help you analyze.Found 3 datasets."
+        assert complete[0]["response"] == "I'll help you analyze.\n\nFound 3 datasets."
 
 
 # ===========================================================================
