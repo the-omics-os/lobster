@@ -10,7 +10,7 @@ from typing import Optional
 NPM_PACKAGE = "@omicsos/lobster"
 
 # Environment variable the npm client reads its auth token from (argv wins if both are set).
-TOKEN_ENV_VAR = "LOBSTER_CLOUD_TOKEN"
+TOKEN_ENV_VAR = "LOBSTER_CLOUD_TOKEN"  # nosec B105 # variable name, not a secret
 CAPABILITIES_TIMEOUT_S = 3.0
 
 

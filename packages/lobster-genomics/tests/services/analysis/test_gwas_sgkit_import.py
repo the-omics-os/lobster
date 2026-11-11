@@ -2,7 +2,7 @@
 pkg_resources at all (setuptools >= 82). Each case runs in a fresh interpreter
 because sgkit can only be imported once per process."""
 
-import subprocess
+import subprocess  # nosec B404 # runs this interpreter with fixed test code
 import sys
 import textwrap
 
@@ -24,7 +24,7 @@ sys.meta_path.insert(0, _Block())
 
 
 def _run(code: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
+    return subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-c", textwrap.dedent(code)],
         capture_output=True,
         text=True,
