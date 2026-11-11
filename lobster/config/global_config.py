@@ -5,8 +5,8 @@ This module provides user-level configuration management that applies across
 all Lobster workspaces unless overridden by workspace-specific settings.
 
 Storage Location (platform-specific):
-- Linux:   ~/.config/lobster/providers.json
-- macOS:   ~/Library/Application Support/lobster/providers.json
+- Linux and macOS: $XDG_CONFIG_HOME/lobster/providers.json
+  (~/.config/lobster/providers.json when XDG_CONFIG_HOME is unset)
 - Windows: %APPDATA%\\lobster\\providers.json
 
 Priority Hierarchy:
