@@ -79,6 +79,14 @@ var (
 	legendDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("144"))
 )
 
+// numberKeyStyle draws an option's number key as a small chip, like inline
+// code: soft red on dark grey.
+var numberKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("210")).Background(lipgloss.Color("236"))
+
+// NumberKey is option n's key as a chip (" 1 "), so it reads as a key to
+// press, apart from the option's text.
+func NumberKey(n int) string { return numberKeyStyle.Render(fmt.Sprintf(" %d ", n)) }
+
 // roomyHeight is the height from which a screen has room for gaps and the
 // instruction line; below it only the key legend is kept.
 const roomyHeight = 20

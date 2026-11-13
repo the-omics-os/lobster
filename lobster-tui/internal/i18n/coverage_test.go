@@ -122,6 +122,7 @@ var (
 	pendingDecisionScreens = map[string]bool{
 		"twice: cancel":                      true,
 		"→ not decided yet":                  true,
+		"· needs a reason":                   true,
 		"enter save · esc discard":           true,
 		"enter save · esc undo":              true,
 		"save reason":                        true,

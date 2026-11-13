@@ -619,7 +619,7 @@ func (c *Component) window(heights []int, avail int) (int, int) {
 	return c.offset, end
 }
 
-// optionsInLine is the option key on one line ("[1] retain    [2] exclude
+// optionsInLine is the option key on one line (" 1  retain     2  exclude
 // (needs a reason)"), when every option is plain (no details, none
 // unavailable, at most 9) and the line fits; ok is false otherwise.
 func (c *Component) optionsInLine(width int) (string, bool) {
@@ -635,7 +635,7 @@ func (c *Component) optionsInLine(width int) (string, bool) {
 		if o.Reason != nil {
 			text += optionNeedsReason
 		}
-		parts = append(parts, numberKey(j)+" "+dimStyle.Render(text))
+		parts = append(parts, biocomp.NumberKey(j+1)+" "+text)
 	}
 	line := "  " + strings.Join(parts, "    ")
 	if lipgloss.Width(line) > width {
@@ -646,27 +646,27 @@ func (c *Component) optionsInLine(width int) (string, bool) {
 
 const optionNeedsReason = " (needs a reason)"
 
-// numberKey is option j's key, drawn like every key to press: "[1]".
-func numberKey(j int) string {
-	return biocomp.KeyStyle.Render(fmt.Sprintf("[%d]", j+1))
-}
-
 func (c *Component) optionLine(j int, o option, width int) string {
 	prefix := "  · "
 	if j < 9 {
-		prefix = "  " + numberKey(j) + " "
-	}
-	text := withID(o.Label, o.ID)
-	if o.Details != "" {
-		text += " — " + o.Details
-	}
-	if o.Reason != nil {
-		text += " · needs a reason"
+		prefix = "  " + biocomp.NumberKey(j+1) + " "
 	}
 	if o.Unavailable != "" {
+		text := withID(o.Label, o.ID)
+		if o.Details != "" {
+			text += " — " + o.Details
+		}
 		return hang("  ✕ ", text+" · unavailable: "+o.Unavailable, width, dimStyle)
 	}
-	return hang(prefix, text, width, dimStyle)
+	// The option in normal text, its details and reason note in grey.
+	text := withID(o.Label, o.ID)
+	if o.Details != "" {
+		text += dimStyle.Render(" — " + o.Details)
+	}
+	if o.Reason != nil {
+		text += dimStyle.Render(" · needs a reason")
+	}
+	return hang(prefix, text, width, normalStyle)
 }
 
 func (c *Component) row(i, width int) string {

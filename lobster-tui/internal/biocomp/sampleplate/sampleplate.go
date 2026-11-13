@@ -708,21 +708,41 @@ func clipLines(block string, n, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// legend pairs each number key, drawn as a key to press, with its option's
-// dot in the option's colour, e.g. "[1] ● vehicle    [2] ● TDX-9".
-func (c *SamplePlateComponent) legend() string {
-	key := func(n int) string { return biocomp.KeyStyle.Render(fmt.Sprintf("[%d]", n)) }
+// legend pairs each number key, drawn as a key chip, with its option's dot
+// in the option's colour, e.g. " 1  ● vehicle     2  ● TDX-9". It wraps
+// between entries only, so a chip is never split across lines.
+func (c *SamplePlateComponent) legend(width int) string {
 	parts := make([]string, 0, len(c.options)+1)
 	for i, o := range c.options {
 		fg, _ := c.plate.GroupColor(o.ID)
-		text := key(i+1) + " " + lipgloss.NewStyle().Foreground(fg).Render("●") + " " + o.Label
+		text := biocomp.NumberKey(i+1) + " " + lipgloss.NewStyle().Foreground(fg).Render("●") + " " + o.Label
 		if o.Reason != nil {
 			text += " (asks a reason)"
 		}
 		parts = append(parts, text)
 	}
 	dot := lipgloss.NewStyle().Foreground(attentionColor).Bold(true).Render("○")
-	return strings.Join(append(parts, key(0)+" "+dot+" unresolved"), "    ")
+	parts = append(parts, biocomp.NumberKey(0)+" "+dot+" unresolved")
+	var lines []string
+	line := ""
+	for _, part := range parts {
+		switch {
+		case line == "":
+			line = part
+		case lipgloss.Width(line)+4+lipgloss.Width(part) <= width:
+			line += "    " + part
+		default:
+			lines = append(lines, line)
+			line = part
+		}
+	}
+	lines = append(lines, line)
+	for i, l := range lines {
+		if lipgloss.Width(l) > width { // one entry wider than the screen
+			lines[i] = hang("", l, width, lipgloss.NewStyle())
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // marks explains the other symbols, only those that can appear here.
@@ -838,7 +858,7 @@ func (c *SamplePlateComponent) View(width, height int) string {
 
 	below := []string{
 		"", // a gap between the plate and the lines about it
-		hang("", c.legend(), width, lipgloss.NewStyle()),
+		c.legend(width),
 		hang("", c.marks(), width, biocomp.DetailStyle),
 	}
 	if roomy {

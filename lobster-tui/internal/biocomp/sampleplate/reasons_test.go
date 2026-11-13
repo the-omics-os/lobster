@@ -52,7 +52,7 @@ func TestGroupsAreDotsWithMarksAndTheLegendNamesTheKeys(t *testing.T) {
 	v := view(c)
 	for _, want := range []string{
 		"D  ●   ●   ●!  ◉",
-		"[1] ● vehicle    [2] ● TDX-9    [3] ● leave out (asks a reason)    [0] ○ unresolved",
+		" 1  ● vehicle     2  ● TDX-9     3  ● leave out (asks a reason)     0  ○ unresolved",
 		"◉ has a reason · ! needs a reason (r)",
 		"needs a reason (1)",
 	} {
@@ -300,7 +300,7 @@ func TestAGapSeparatesThePlateFromTheLinesUnderIt(t *testing.T) {
 	lines := strings.Split(view(reasonPlate(t)), "\n")
 	for i, l := range lines {
 		if strings.HasPrefix(l, "H  ") {
-			if strings.TrimSpace(lines[i+1]) != "" || !strings.HasPrefix(lines[i+2], "[1] ● vehicle") {
+			if strings.TrimSpace(lines[i+1]) != "" || !strings.HasPrefix(lines[i+2], " 1  ● vehicle") {
 				t.Fatalf("no gap under the plate:\n%s", strings.Join(lines, "\n"))
 			}
 			return

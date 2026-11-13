@@ -160,9 +160,9 @@ def test_e27_72_rows_on_a_40_row_pty_keep_the_question_on_screen(start_tui, revi
     screen = tui.flat()
     for text in (
         "Which group is each sample in?",
-        "[1] control",
-        "[2] treated",
-        "[3] leave out (leave_out)",
+        " 1  control",
+        " 2  treated",
+        " 3  leave out (leave_out)",
     ):
         assert text in screen, tui.screen.text()
 
