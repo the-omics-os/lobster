@@ -915,19 +915,26 @@ def test_replay_reuses_the_cached_fingerprints(tmp_path):
     """Hashing happens at ask time and once per new answer, never on replay."""
     from lobster.tools import user_interaction
 
-    real = user_interaction.fingerprint
+    real_ask, real_again = user_interaction.fingerprint, user_interaction.refingerprint
     calls = []
 
-    def counting(paths, workspace, missing_ok=False):
-        calls.append(missing_ok)
-        return real(paths, workspace, missing_ok=missing_ok)
+    def asking(paths, workspace, *args, **kwargs):
+        calls.append("ask")
+        return real_ask(paths, workspace, *args, **kwargs)
 
-    with patch.object(user_interaction, "fingerprint", counting):
+    def answering(snapshot, workspace):
+        calls.append("answer")
+        return real_again(snapshot, workspace)
+
+    with (
+        patch.object(user_interaction, "fingerprint", asking),
+        patch.object(user_interaction, "refingerprint", answering),
+    ):
         _, graph, first = _ask_about_file(tmp_path)
         second = _answer_pending(graph, first, {"source": {"id": "SRC-C"}})
         assert _answer_pending(graph, second, {"source": {"id": "SRC-A"}}) is None
     # ask time, answer 1, answer 2 — not again for answer 1 on the second replay
-    assert calls == [False, True, True]
+    assert calls == ["ask", "answer", "answer"]
 
 
 # --- Tool description ---
@@ -1299,6 +1306,30 @@ def test_without_data_files_the_data_folder_is_watched(tmp_path):
     assert [p["message"] for p in again.value["problems"]] == [
         "the data changed while you were reviewing it: data/layout.csv"
     ]  # the new file is not a change
+    assert _answer_pending(graph, again, {"source": {"id": "SRC-A"}}) is None
+    assert _tool_results(graph)["call_1"]["action"] == "submit"
+
+
+def test_a_big_unnamed_file_is_watched_by_size_and_time(tmp_path):
+    """Review (folder watch cost): above 1 MB the folder watch records size
+    and time, and checks it the same way on submit: unchanged it never looks
+    stale; edited, the question comes back."""
+    workspace = _folder_workspace(tmp_path)
+    big = workspace / "data" / "matrix.csv"
+    big.write_bytes(b"0," * (1024 * 1024))  # 2 MB
+    tool = create_ask_user_tool(workspace_path=workspace)
+    graph, pending = _ask(SOURCE, tool=tool)
+    files = {e["path"]: e for e in pending.value["snapshot"]["files"]}
+    assert (
+        "quick" in files["data/matrix.csv"] and "sha256" not in files["data/matrix.csv"]
+    )
+
+    with big.open("ab") as handle:
+        handle.write(b"1,")
+    again = _answer_pending(graph, pending, {"source": {"id": "SRC-A"}})
+    assert [p["message"] for p in again.value["problems"]] == [
+        "the data changed while you were reviewing it: data/matrix.csv"
+    ]
     assert _answer_pending(graph, again, {"source": {"id": "SRC-A"}}) is None
     assert _tool_results(graph)["call_1"]["action"] == "submit"
 

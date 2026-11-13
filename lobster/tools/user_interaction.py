@@ -48,6 +48,7 @@ from lobster.services.interaction.component_schemas import (
     expand_items_from,
     fingerprint,
     reask,
+    refingerprint,
     reread_items,
     sounds_like_removal,
     watch_data_folder,
@@ -561,8 +562,8 @@ def _judge(
         and request.snapshot is not None
         and workspace is not None
     ):
-        paths = [entry.path for entry in request.snapshot.files]
-        current = fingerprint(paths, workspace, True)
+        # Each file read again the way it was when asked (full or quick).
+        current = refingerprint(request.snapshot, workspace)
     try:
         result = check_answer(request, answer, current)
     except AnswerMisrouted as error:

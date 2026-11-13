@@ -22,6 +22,7 @@ import math
 import os
 import re
 import stat
+import sys
 import uuid
 from collections import Counter
 from pathlib import Path
@@ -677,7 +678,8 @@ class FileFingerprint(BaseModel):
     )
     quick: Optional[str] = Field(
         default=None,
-        description="Set instead of sha256 for a file above QUICK_FINGERPRINT_BYTES: "
+        description="Set instead of sha256 for a file fingerprinted by size and time "
+        "(above QUICK_FINGERPRINT_BYTES, or FOLDER_QUICK_BYTES in the data/ watch): "
         '"<size> bytes, modified <mtime_ns>" (fingerprinted by size and time)',
     )
 
@@ -700,9 +702,20 @@ class FileSnapshot(BaseModel):
 
 _CHUNK = 1024 * 1024
 
-# Files larger than this are fingerprinted by size and modification time
-# instead of being read in full, so a large .h5ad never slows a question.
-QUICK_FINGERPRINT_BYTES = 50 * 1024 * 1024
+# Fingerprints: a full sha256 is exact but reads every byte (about 280 MB/s
+# here, so 1 GB is ~4 s, when asking and again on submit); size and
+# modification time is instant but misses a change that keeps both.
+#
+# The files the question names (data_files) are what the decision is about:
+# read in full up to this size, by size and time above it, so a huge .h5ad
+# or BAM never freezes a question for minutes.
+QUICK_FINGERPRINT_BYTES = 1024 * 1024 * 1024
+
+# The data/ folder watch is only a safety net for a question that named no
+# files, over up to DATA_FOLDER_LIMIT files: only files up to this size (a
+# sample sheet, a small table) are read in full, so the whole watch stays
+# around a second or two (500 x 1 MB at most).
+FOLDER_QUICK_BYTES = 1024 * 1024
 
 # The most files the default watch (the workspace's data/ folder) records.
 DATA_FOLDER_LIMIT = 500
@@ -741,7 +754,9 @@ def watch_data_folder(workspace: Union[str, Path]) -> Optional[FileSnapshot]:
         return None
     readable = [
         entry
-        for entry in fingerprint(paths, workspace, missing_ok=True).files
+        for entry in fingerprint(
+            paths, workspace, missing_ok=True, quick_above=FOLDER_QUICK_BYTES
+        ).files
         if _seen(entry) is not None
     ]
     return FileSnapshot(files=readable) if readable else None
@@ -755,10 +770,14 @@ def _seen(entry: FileFingerprint) -> Optional[Tuple[Optional[str], Optional[str]
 
 
 def fingerprint(
-    paths: Iterable[str], workspace: Union[str, Path], missing_ok: bool = False
+    paths: Iterable[str],
+    workspace: Union[str, Path],
+    missing_ok: bool = False,
+    quick_above: Optional[int] = None,
 ) -> FileSnapshot:
     """sha256 of each workspace file, read in chunks; for a file above
-    QUICK_FINGERPRINT_BYTES, its size and modification time instead.
+    ``quick_above`` (default QUICK_FINGERPRINT_BYTES), its size and
+    modification time instead.
 
     Paths must be relative and stay inside the workspace (no absolute paths,
     no "..", no links out). A file that breaks this, or is missing or
@@ -767,11 +786,35 @@ def fingerprint(
     such failure means the data changed).
     """
     root = Path(workspace).resolve()
+    limit = QUICK_FINGERPRINT_BYTES if quick_above is None else quick_above
+    return _fingerprints(root, [(raw, limit) for raw in paths], missing_ok)
+
+
+def refingerprint(snapshot: FileSnapshot, workspace: Union[str, Path]) -> FileSnapshot:
+    """The snapshot's files read again the same way each was recorded (in
+    full, or by size and time), so a file is always compared like with like,
+    whichever limit chose its kind when the question was asked. A file that
+    is gone or unreadable gets neither (it counts as changed)."""
+    root = Path(workspace).resolve()
+    every_size = sys.maxsize  # never above it: read in full
+    return _fingerprints(
+        root,
+        [
+            (entry.path, -1 if entry.quick is not None else every_size)
+            for entry in snapshot.files
+        ],
+        missing_ok=True,
+    )
+
+
+def _fingerprints(
+    root: Path, paths: List[Tuple[str, int]], missing_ok: bool
+) -> FileSnapshot:
     files = []
-    for raw in paths:
+    for raw, limit in paths:
         relative = Path(raw)
         try:
-            digest, quick = _fingerprint_inside(root, relative, raw)
+            digest, quick = _fingerprint_inside(root, relative, raw, limit)
         except (OSError, RuntimeError, ValueError):
             # RuntimeError: a link loop on Python < 3.13.
             if not missing_ok:
@@ -784,14 +827,14 @@ def fingerprint(
 
 
 def _fingerprint_inside(
-    root: Path, relative: Path, raw: str
+    root: Path, relative: Path, raw: str, limit: int
 ) -> Tuple[Optional[str], Optional[str]]:
-    """(sha256, None), or (None, size and time) for a big file; ValueError if
-    the file is outside the workspace or unreadable."""
+    """(sha256, None), or (None, size and time) for a file above ``limit``;
+    ValueError if the file is outside the workspace or unreadable."""
     resolved = _file_inside(root, relative, raw)
     try:
         status = resolved.stat()
-        if status.st_size > QUICK_FINGERPRINT_BYTES:
+        if status.st_size > limit:
             return None, f"{status.st_size} bytes, modified {status.st_mtime_ns}"
         return _sha256(resolved), None
     except OSError as error:

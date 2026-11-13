@@ -477,11 +477,20 @@ refused too (`test_untrusted_or_missing_data_file_is_invalid_context`,
 its subfolders (hidden files and links skipped, at most 500 files) is fingerprinted when the question
 is built, so a change to the file a question was built from is caught even when the supervisor named
 none; a named `data_files` list watches only those files, and files added during the question are
-ignored (`test_without_data_files_the_data_folder_is_watched`). A file above 50 MB is fingerprinted by
-its size and modification time instead of its sha256 (`quick`), so a large `.h5ad` never slows a
-question (`test_a_big_file_is_fingerprinted_by_size_and_time`).
+ignored (`test_without_data_files_the_data_folder_is_watched`).
 
-When a `submit` arrives, Python reads the files again. If any differs, the answer is stale with the
+**Two kinds of fingerprint.** A sha256 reads every byte: exact, but about 280 MB/s on a laptop, paid
+when the question is asked and again on submit. Size and modification time (`quick`) is instant but
+misses a change that keeps both (e.g. a copy that preserves the old time). So:
+- **named `data_files`** (what the decision is about) are read in full up to **1 GB** (about 4 s),
+  `quick` above it, so a huge `.h5ad` or BAM never freezes a question for minutes;
+- **the `data/` folder watch** (a safety net over up to 500 files) reads in full only files up to
+  **1 MB** (sample sheets, small tables), `quick` above it, so the whole watch stays around a second
+  or two (`test_the_folder_watch_reads_only_small_files_in_full`,
+  `test_a_big_unnamed_file_is_watched_by_size_and_time`).
+
+When a `submit` arrives, Python reads the files again, each the way it was recorded (`refingerprint`):
+a file recorded by size and time is compared by size and time, whatever its size now. If any differs, the answer is stale with the
 problem `the data changed while you were reviewing it: <path>`, and the question comes back with fresh
 fingerprints and the answers kept (`test_data_edited_before_submit_is_asked_again_with_answers_kept`).
 A deleted file stays stale until it is back; defer, cancel and the five-refusal limit still apply

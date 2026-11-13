@@ -66,3 +66,57 @@ def test_a_big_file_is_fingerprinted_by_size_and_time(workspace, monkeypatch):
 def test_a_small_file_is_still_hashed(workspace):
     (entry,) = fingerprint(["data/layout.csv"], workspace).files
     assert entry.sha256 and entry.quick is None
+
+
+# --- limits: named files in full up to 1 GB, the folder watch above 1 MB quick
+
+
+def _two_mb(workspace):
+    big = workspace / "data" / "matrix.csv"
+    big.write_bytes(b"0," * (1024 * 1024))  # 2 MB: above the folder limit
+    return big
+
+
+def test_the_limits_are_1_gb_for_named_files_and_1_mb_for_the_folder():
+    assert schemas.QUICK_FINGERPRINT_BYTES == 1024**3
+    assert schemas.FOLDER_QUICK_BYTES == 1024**2
+
+
+def test_the_folder_watch_reads_only_small_files_in_full(workspace):
+    _two_mb(workspace)
+    entries = {e.path: e for e in watch_data_folder(workspace).files}
+    assert (
+        entries["data/matrix.csv"].quick and entries["data/matrix.csv"].sha256 is None
+    )
+    assert (
+        entries["data/layout.csv"].sha256 and entries["data/layout.csv"].quick is None
+    )
+
+
+def test_a_named_file_is_read_in_full_whatever_the_folder_limit(workspace):
+    _two_mb(workspace)
+    (entry,) = fingerprint(["data/matrix.csv"], workspace).files
+    assert entry.sha256 and entry.quick is None
+
+
+def test_a_file_is_read_again_the_way_it_was_recorded(workspace):
+    """The folder recorded matrix.csv by size and time: reading it again in
+    full would differ every time and make every answer look stale."""
+    big = _two_mb(workspace)
+    asked = watch_data_folder(workspace)
+    assert _changed_files(asked, schemas.refingerprint(asked, workspace)) == []
+    with big.open("ab") as handle:
+        handle.write(b"1,")
+    assert _changed_files(asked, schemas.refingerprint(asked, workspace)) == [
+        "data/matrix.csv"
+    ]
+
+
+def test_a_named_file_is_read_again_in_full(workspace):
+    asked = fingerprint(["data/layout.csv"], workspace)
+    again = schemas.refingerprint(asked, workspace)
+    assert again.files[0].sha256 == asked.files[0].sha256
+    (workspace / "data" / "layout.csv").write_text("sample,well\nS1,A2\n")
+    assert _changed_files(asked, schemas.refingerprint(asked, workspace)) == [
+        "data/layout.csv"
+    ]
