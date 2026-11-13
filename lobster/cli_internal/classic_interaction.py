@@ -144,7 +144,7 @@ def _handle_text_input(fallback: str, data: Dict[str, Any]) -> Dict[str, Any]:
 # ask_user DecisionRequests: structured plain-text prompts
 # ---------------------------------------------------------------------------
 #
-# The Go adapter (go_tui_components) turns a request into component data and
+# The Go adapter (decision_screens) turns a request into component data and
 # each component's reply into the contract's answer. The classic UI reuses it
 # with a render that asks each component's data as text prompts and replies
 # in that component's own shape, so both interfaces build the same answer and
@@ -163,7 +163,7 @@ class _Stop(Exception):
 
 def _ask_decision(request: Dict[str, Any]) -> Dict[str, Any]:
     """Ask an ask_user DecisionRequest; return its DecisionAnswer as a dict."""
-    from lobster.cli_internal.go_tui_components import (
+    from lobster.cli_internal.decision_screens import (
         build_answer,
         cannot_show,
         collect,

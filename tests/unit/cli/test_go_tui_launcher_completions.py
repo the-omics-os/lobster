@@ -963,12 +963,12 @@ def test_a_fault_while_asking_closes_the_screen_and_tells_the_supervisor(
 ):
     """An error while the question is open resumes with a cancel naming only
     the error's type, never a silent end of turn."""
-    from lobster.cli_internal import go_tui_components
+    from lobster.cli_internal import decision_screens
 
     def broken(request, render):
         raise KeyError("/private/path")
 
-    monkeypatch.setattr(go_tui_components, "collect", broken)
+    monkeypatch.setattr(decision_screens, "collect", broken)
     bridge = _GoBridge([])
     response = go_tui_launcher._handle_interrupts(
         bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
@@ -1132,7 +1132,7 @@ def test_decision_request_and_other_interrupt_pending_together_are_keyed():
 
 
 def test_every_render_carries_the_whole_question_as_fallback_prompt():
-    from lobster.cli_internal.go_tui_components import fallback_prompt
+    from lobster.cli_internal.decision_screens import fallback_prompt
 
     request = _decision_request(
         options=["SRC-A", {"id": "SRC-C", "unavailable": "normalized"}]

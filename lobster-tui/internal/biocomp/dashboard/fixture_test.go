@@ -11,7 +11,7 @@ import (
 )
 
 // TestPythonFixtureRoundTrip loads the dashboard data written by the Python
-// adapter (tests/unit/cli/test_go_tui_components.py), plays a scientist's
+// adapter (tests/unit/cli/test_decision_screens.py), plays a scientist's
 // keys, and checks the reply against testdata/reply_from_go.json, which the
 // Python test then validates against the original request. Regenerate with
 // LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 (see the Python test for the order).

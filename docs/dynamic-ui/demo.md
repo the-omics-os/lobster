@@ -146,7 +146,7 @@ Python (from the repository root):
 
 ```bash
 uv run pytest tests/unit/services/test_component_schemas.py tests/unit/services/test_component_mapper.py \
-  tests/unit/tools/test_user_interaction.py tests/unit/cli/test_go_tui_components.py \
+  tests/unit/tools/test_user_interaction.py tests/unit/cli/test_decision_screens.py \
   tests/unit/cli/test_go_tui_launcher_completions.py tests/unit/cli/test_classic_interaction.py \
   tests/unit/cli/test_go_tui_turn_outcomes.py -q --no-cov
 uv run pytest tests/unit/tools/test_code_tool_switch.py tests/unit/config/test_model_compat.py \
@@ -166,9 +166,9 @@ The Python ↔ Go fixtures in `lobster-tui/internal/biocomp/dashboard/testdata/`
 this order:
 
 ```bash
-LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 uv run pytest tests/unit/cli/test_go_tui_components.py -q --no-cov
+LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 uv run pytest tests/unit/cli/test_decision_screens.py -q --no-cov
 cd lobster-tui && LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 go test ./internal/biocomp/dashboard/ && cd ..
-uv run pytest tests/unit/cli/test_go_tui_components.py -q --no-cov
+uv run pytest tests/unit/cli/test_decision_screens.py -q --no-cov
 ```
 
 ---

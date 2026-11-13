@@ -1236,7 +1236,7 @@ def _handle_interrupts(bridge: _LightBridge, interrupt_events: list) -> Optional
 
 def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
     """Show one ask_user DecisionRequest; return its DecisionAnswer as a dict."""
-    from lobster.cli_internal.go_tui_components import (
+    from lobster.cli_internal.decision_screens import (
         build_answer,
         cannot_show,
         collect,
@@ -1280,7 +1280,7 @@ def _close_unanswered(
 ) -> Dict[str, Any]:
     """Close a screen whose answer will never be read, tell the user, and
     return a cancel for the supervisor saying why (the turn goes on)."""
-    from lobster.cli_internal.go_tui_components import build_answer
+    from lobster.cli_internal.decision_screens import build_answer
 
     bridge.send(
         "component_close",

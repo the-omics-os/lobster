@@ -441,7 +441,7 @@ def test_classic_answers_go_through_the_checks_and_reask():
     asked again with the problem shown and the answers kept, then accepted."""
     from langgraph.types import Command
 
-    from tests.unit.cli.test_go_tui_components import (
+    from tests.unit.cli.test_decision_screens import (
         _CONTROLS_DASHBOARD,
         _one_question_graph,
     )

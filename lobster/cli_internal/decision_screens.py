@@ -1,7 +1,9 @@
-"""Go TUI adapter for ask_user decision requests.
+"""Decision screens: ask_user decision requests in, screen data out, and
+screen replies back into the contract's answers.
 
-Translates between the decision contract (``component_schemas``) and the Go
-TUI's BioComp components, in both directions:
+Translates between the decision contract (``component_schemas``) and simple
+screen data (the Go TUI's BioComp components; the classic UI reuses the same
+data), in both directions:
 
 - a field becomes one or more renders, each ``(component, data)`` for a Go
   component (choice, choice_list, threshold_slider, text_input, plate_map,

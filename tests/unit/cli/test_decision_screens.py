@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lobster.cli_internal.go_tui_components import (
+from lobster.cli_internal.decision_screens import (
     build_answer,
     cannot_show,
     collect,
@@ -896,9 +896,9 @@ def test_cannot_show_comment_tells_the_supervisor_not_to_retry_the_shape():
 # (lobster-tui/internal/biocomp/dashboard/fixture_test.go) loads it, plays a
 # scientist's keys, and writes the dashboard's reply; the test below checks
 # that reply against the request. Regenerate both files with:
-#   LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 pytest tests/unit/cli/test_go_tui_components.py
+#   LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 pytest tests/unit/cli/test_decision_screens.py
 #   cd lobster-tui && LOBSTER_UPDATE_DASHBOARD_FIXTURE=1 go test ./internal/biocomp/dashboard/
-#   pytest tests/unit/cli/test_go_tui_components.py
+#   pytest tests/unit/cli/test_decision_screens.py
 
 GO_FIXTURES = (
     Path(__file__).resolve().parents[3]
@@ -1738,7 +1738,7 @@ def test_a_decimal_slider_gets_a_round_step(low, high, step):
 
 def test_a_whole_slider_step_is_round_and_keeps_the_proposed_value():
     """200 to 5,000 with 500 proposed got step 48, so 500 showed as 488."""
-    from lobster.cli_internal.go_tui_components import _whole_step
+    from lobster.cli_internal.decision_screens import _whole_step
 
     assert _whole_step(200, 5000, 500) == 50
     for low, high, proposed in [(200, 5000, 500), (0, 1000, 250), (3, 5000, 500)]:
@@ -1747,7 +1747,7 @@ def test_a_whole_slider_step_is_round_and_keeps_the_proposed_value():
 
 
 def test_a_decimal_slider_step_keeps_the_proposed_decimals():
-    from lobster.cli_internal.go_tui_components import _round_step
+    from lobster.cli_internal.decision_screens import _round_step
 
     assert _round_step(0, 1, 0.025) == 0.001
     assert _round_step(0.5, 0.99, 0.75) == 0.01

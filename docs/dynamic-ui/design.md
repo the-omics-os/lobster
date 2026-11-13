@@ -95,7 +95,7 @@ sequenceDiagram
 | Asking the same question again after a refused answer | re-ask, `reask()` | same file |
 | The graph pausing to wait for the user | LangGraph `interrupt()` | `lobster/tools/user_interaction.py` |
 | One screen sent to the Go TUI | render, `component_render` message | `lobster/cli_internal/go_tui_launcher.py` |
-| Turning a request into Go screens and Go replies into answers | the Go adapter | `lobster/cli_internal/go_tui_components.py` |
+| Turning a request into Go screens and Go replies into answers | the Go adapter | `lobster/cli_internal/decision_screens.py` |
 | Any program that shows the question (Go TUI, classic UI, later others) | surface | — |
 
 ---
@@ -131,7 +131,7 @@ sequenceDiagram
    `_answer_interrupt`. Any other payload goes through the existing `_handle_interrupt`, unchanged
    (`test_other_interrupt_payload_goes_through_upstream_handle_interrupt`,
    `test_single_other_interrupt_resumes_bare_through_handle_interrupt`).
-5. **The adapter draws it** (`go_tui_components.py`). `unsupported()` first lists any shape this
+5. **The adapter draws it** (`decision_screens.py`). `unsupported()` first lists any shape this
    terminal can't draw. If there is one, the user gets an alert and the supervisor gets a `cancel` with
    a comment telling it not to retry the same shape. Otherwise `collect()` turns each field into one Go
    component (or a dashboard of them), and `_render_component` sends each one with a new render id and
@@ -833,7 +833,7 @@ The contract doesn't depend on the Go TUI. A new surface needs:
 | `lobster/services/interaction/component_mapper.py` | supervisor context → fields |
 | `lobster/tools/user_interaction.py` | `ask_user` (build, pause, judge, re-ask, cache), `get_dashboard_schema` |
 | `lobster/agents/graph.py` | adds both tools in interactive mode |
-| `lobster/cli_internal/go_tui_components.py` | the Go adapter, `fallback_prompt`, `unsupported` |
+| `lobster/cli_internal/decision_screens.py` | the Go adapter, `fallback_prompt`, `unsupported` |
 | `lobster/cli_internal/go_tui_launcher.py` | pending questions, render ids, the wait (no deadline) and `component_close` |
 | `lobster/cli_internal/classic_interaction.py` | plain-text prompts |
 | `lobster-tui/internal/biocomp/choice/` | `choice` |
@@ -844,7 +844,7 @@ The contract doesn't depend on the Go TUI. A new surface needs:
 | `docs/dynamic-ui/demo.md` | how to run all of it |
 
 Main tests: `tests/unit/services/test_component_schemas.py`, `tests/unit/services/test_component_mapper.py`,
-`tests/unit/tools/test_user_interaction.py`, `tests/unit/cli/test_go_tui_components.py`,
+`tests/unit/tools/test_user_interaction.py`, `tests/unit/cli/test_decision_screens.py`,
 `tests/unit/cli/test_go_tui_launcher_completions.py`, `tests/unit/cli/test_classic_interaction.py`,
 `tests/unit/cli/test_go_tui_turn_outcomes.py`, and the Go tests next to each component. The Python ↔ Go
 round trip (`test_dashboard_data_matches_the_go_fixture`, `test_go_dashboard_reply_becomes_a_valid_answer`,

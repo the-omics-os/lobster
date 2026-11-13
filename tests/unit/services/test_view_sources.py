@@ -11,7 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from lobster.cli_internal import classic_interaction
-from lobster.cli_internal.go_tui_components import _from_reply, _render_one, collect
+from lobster.cli_internal.decision_screens import _from_reply, _render_one, collect
 from lobster.services.interaction import view_sources
 from lobster.services.interaction.component_schemas import (
     AskUserContext,

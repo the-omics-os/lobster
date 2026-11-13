@@ -996,7 +996,7 @@ def test_reask_with_an_empty_answer_and_no_defaults_is_not_prefilled():
 
 def test_reask_after_a_partial_answer_keeps_but_does_not_claim_the_rest():
     """A field left out keeps the supervisor's default, not as the user's."""
-    from lobster.cli_internal.go_tui_components import dashboard_data
+    from lobster.cli_internal.decision_screens import dashboard_data
 
     request = _request(
         {**SOURCE, "default": {"id": "SRC-A"}},
