@@ -520,11 +520,11 @@ func withID(label, id string) string {
 }
 
 var (
-	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(biocomp.CursorColor)
 	normalStyle = lipgloss.NewStyle()
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	boxStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+	boxStyle    = lipgloss.NewStyle().Foreground(biocomp.CursorColor)
 )
 
 // hang renders text wrapped to the width, after a prefix; continuation lines

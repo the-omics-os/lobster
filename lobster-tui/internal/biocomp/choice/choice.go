@@ -241,7 +241,7 @@ func (c *Component) submit(indexes []int) *biocomp.ComponentResult {
 const escPrompt = "press esc again to cancel this question; nothing will be sent"
 
 var (
-	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(biocomp.CursorColor)
 	normalStyle = lipgloss.NewStyle()
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))

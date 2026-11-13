@@ -67,7 +67,7 @@ const plateMinHeight = 9
 var (
 	attentionColor = lipgloss.Color("214") // Theme.Missing: needs the user
 	mutedColor     = lipgloss.Color("240") // Theme.Empty
-	focusColor     = lipgloss.Color("63")
+	focusColor     = biocomp.CursorColor
 )
 
 func init() {

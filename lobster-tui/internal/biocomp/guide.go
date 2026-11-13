@@ -75,6 +75,10 @@ var (
 	DetailStyle = HintStyle
 )
 
+// CursorColor marks what the cursor is on (the option, row, well or section
+// being answered): Lobster's brand red.
+var CursorColor = lipgloss.Color("#e45c47")
+
 // numberKeyStyle draws an option's number key as a small chip, like inline
 // code: soft red on dark grey.
 var numberKeyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("210")).Background(lipgloss.Color("236"))

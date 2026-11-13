@@ -446,7 +446,7 @@ func (c *Component) reply() map[string]any {
 
 var (
 	titleStyle  = lipgloss.NewStyle().Bold(true)
-	activeStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	activeStyle = lipgloss.NewStyle().Bold(true).Foreground(biocomp.CursorColor)
 	doneStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))

@@ -176,7 +176,7 @@ const escPrompt = "press esc again to cancel this question; nothing will be sent
 
 var (
 	boldStyle   = lipgloss.NewStyle().Bold(true)
-	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
+	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(biocomp.CursorColor)
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	warnStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 )
