@@ -400,7 +400,10 @@ def _with_advice(result: Dict[str, Any], first: DecisionRequest) -> Dict[str, An
     item: such a question usually lists only the uncertain few, and the user
     can't judge them without the rest. A QC review gets no note (its
     decisions must not be pre-filled), nor does a field a no_default_for
-    check covers."""
+    check covers. Only a submitted answer gets it: after a cancel or defer
+    there is nothing to judge."""
+    if result.get("action") != "submit":
+        return result
     excused = {
         spec.get("field")
         for spec in first.checks

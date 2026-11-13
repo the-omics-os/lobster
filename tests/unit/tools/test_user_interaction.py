@@ -1301,6 +1301,16 @@ def test_a_qc_review_gets_no_note():
     assert "note" not in _settle(_per_item(options=qc), answered)
 
 
+@pytest.mark.parametrize("action", ["cancel", "defer"])
+def test_no_note_when_nothing_was_answered(action):
+    """After a cancel or defer there is nothing to judge, so no note."""
+    graph, pending = _ask(_per_item(), question="Group?")
+    _answer_pending(graph, pending, action=action)
+    result = _tool_results(graph)["call_1"]
+    assert result["action"] == action
+    assert "note" not in result
+
+
 def test_no_note_when_items_are_pre_filled_or_left_open_on_purpose():
     assert "note" not in _settle(_per_item(default={"S07": "vehicle"}), ANSWERED)
     check = [{"check": "no_default_for", "field": "groups", "items": ["S07", "S13"]}]
