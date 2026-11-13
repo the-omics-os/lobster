@@ -38,6 +38,7 @@ type item struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
 	Details     string `json:"details,omitempty"`
+	Warning     string `json:"warning,omitempty"` // a caution about the item, after its details
 	Unavailable string `json:"unavailable,omitempty"`
 }
 
@@ -618,8 +619,8 @@ func (c *Component) window(heights []int, avail int) (int, int) {
 	return c.offset, end
 }
 
-// optionsInLine is the option key on one line ("1 retain · 2 exclude ·
-// needs a reason"), when every option is plain (no details, none
+// optionsInLine is the option key on one line ("[1] retain    [2] exclude
+// (needs a reason)"), when every option is plain (no details, none
 // unavailable, at most 9) and the line fits; ok is false otherwise.
 func (c *Component) optionsInLine(width int) (string, bool) {
 	if len(c.options) > 9 {
@@ -630,25 +631,30 @@ func (c *Component) optionsInLine(width int) (string, bool) {
 		if o.Details != "" || o.Unavailable != "" {
 			return "", false
 		}
-		text := fmt.Sprintf("%d %s", j+1, withID(o.Label, o.ID))
+		text := withID(o.Label, o.ID)
 		if o.Reason != nil {
 			text += optionNeedsReason
 		}
-		parts = append(parts, text)
+		parts = append(parts, numberKey(j)+" "+dimStyle.Render(text))
 	}
-	line := "  " + strings.Join(parts, "   ")
+	line := "  " + strings.Join(parts, "    ")
 	if lipgloss.Width(line) > width {
 		return "", false
 	}
-	return dimStyle.Render(line), true
+	return line, true
 }
 
 const optionNeedsReason = " (needs a reason)"
 
+// numberKey is option j's key, drawn like every key to press: "[1]".
+func numberKey(j int) string {
+	return biocomp.KeyStyle.Render(fmt.Sprintf("[%d]", j+1))
+}
+
 func (c *Component) optionLine(j int, o option, width int) string {
 	prefix := "  · "
 	if j < 9 {
-		prefix = fmt.Sprintf("  %d ", j+1)
+		prefix = "  " + numberKey(j) + " "
 	}
 	text := withID(o.Label, o.ID)
 	if o.Details != "" {
@@ -673,8 +679,8 @@ func (c *Component) row(i, width int) string {
 	label := withID(it.Label, it.ID)
 	if it.Unavailable != "" {
 		parts := []string{dimStyle.Width(w).Render(label)}
-		if it.Details != "" {
-			parts = append(parts, dimStyle.Width(w).Render(it.Details))
+		if about := evidence(it); about != "" {
+			parts = append(parts, lipgloss.NewStyle().Width(w).Render(about))
 		}
 		parts = append(parts, dimStyle.Width(w).Render("✕ unavailable: "+it.Unavailable))
 		return lipgloss.JoinHorizontal(lipgloss.Top, "    ", strings.Join(parts, "\n"))
@@ -685,9 +691,8 @@ func (c *Component) row(i, width int) string {
 		mark = "● "
 	}
 	parts := []string{style.Width(w).Render(label)}
-	if it.Details != "" {
-		// Evidence in grey italic, apart from the state line under it.
-		parts = append(parts, dimStyle.Italic(true).Width(w).Render(it.Details))
+	if about := evidence(it); about != "" {
+		parts = append(parts, lipgloss.NewStyle().Width(w).Render(about))
 	}
 	switch {
 	case c.picked[i] < 0:
@@ -714,6 +719,19 @@ func (c *Component) row(i, width int) string {
 			dimStyle.Width(w).Render("enter save · esc discard"))
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, pointer+mark, strings.Join(parts, "\n"))
+}
+
+// evidence is an item's details in grey, then its warning in grey italic
+// after "⚠" (two spaces: many terminals draw the sign wide).
+func evidence(it item) string {
+	parts := []string{}
+	if it.Details != "" {
+		parts = append(parts, dimStyle.Render(it.Details))
+	}
+	if it.Warning != "" {
+		parts = append(parts, dimStyle.Italic(true).Render("⚠  "+it.Warning))
+	}
+	return strings.Join(parts, dimStyle.Render(" · "))
 }
 
 func (c *Component) SetData(data json.RawMessage) error {

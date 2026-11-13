@@ -607,7 +607,7 @@ def _list_data(field: Any, question: str, details: str) -> Dict[str, Any]:
         options.append(data)
     data = {
         "question": question,
-        "items": [_item(item) for item in field.for_each],
+        "items": [_list_item(item) for item in field.for_each],
         "options": options,
     }
     if field.default:
@@ -861,6 +861,14 @@ def _item(option: Any) -> Dict[str, Any]:
     warning = getattr(option, "warning", None)
     _with(data, "details", _join(option.details, warning and f"⚠ {warning}", sep=" · "))
     return _with(data, "unavailable", option.unavailable)
+
+
+def _list_item(item: Any) -> Dict[str, Any]:
+    """A list row: its details and its warning apart, so each gets its style."""
+    data = {"id": item.id, "label": item.label}
+    _with(data, "details", item.details)
+    _with(data, "warning", getattr(item, "warning", None))
+    return _with(data, "unavailable", item.unavailable)
 
 
 def _label(item: Any) -> str:

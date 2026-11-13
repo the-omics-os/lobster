@@ -1736,7 +1736,8 @@ def test_a_list_item_shows_its_warning_with_its_details():
         "options": ["retain", "drop"],
     }
     drawn, _ = _ask(_request(field), ("submit", {"answers": {"S02": {"id": "retain"}}}))
-    assert drawn[0][1]["items"][0]["details"] == "low library size · ⚠ check"
+    item = drawn[0][1]["items"][0]
+    assert (item["details"], item["warning"]) == ("low library size", "check")
 
 
 def test_a_label_holding_the_id_is_not_repeated_in_a_follow_up():

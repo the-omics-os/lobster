@@ -495,3 +495,15 @@ func TestCtrlDDefers(t *testing.T) {
 		t.Fatal("ctrl+d is not in the help")
 	}
 }
+
+func TestOptionKeysAreDrawnAsKeysAndTheWarningFollowsTheDetails(t *testing.T) {
+	c := newList(t, json.RawMessage(`{"question": "Keep?",
+		"items": [{"id": "S1", "details": "batch: B2", "warning": "label unresolved"}],
+		"options": [{"id": "retain", "label": "retain"}, {"id": "drop", "label": "drop"}]}`))
+	view := ansi.Strip(c.View(100, 30))
+	for _, want := range []string{"[1] retain    [2] drop", "batch: B2 · ⚠  label unresolved"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view lacks %q:\n%s", want, view)
+		}
+	}
+}

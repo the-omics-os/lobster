@@ -358,7 +358,15 @@ def _draw_choice_list(data: Dict[str, Any]) -> Dict[str, Any]:
     defaults = data.get("default") or {}
     answers: Dict[str, Any] = {}
     for item in data["items"]:
-        name = _name(item) + (f" ({item['details']})" if item.get("details") else "")
+        about = " · ".join(
+            x
+            for x in (
+                item.get("details"),
+                item.get("warning") and f"⚠ {item['warning']}",
+            )
+            if x
+        )
+        name = _name(item) + (f" ({about})" if about else "")
         if item.get("unavailable"):
             print(f"  {name}: not answered here ({item['unavailable']})")
             continue
