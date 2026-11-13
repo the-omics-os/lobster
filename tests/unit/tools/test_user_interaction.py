@@ -1344,3 +1344,26 @@ def test_the_supervisor_is_told_to_pre_fill_earlier_answers_when_it_asks_again()
         "When you ask again yourself, put the user's earlier"
         in create_ask_user_tool().description
     )
+
+
+def test_docstring_states_the_removes_mark():
+    """The removal rule is stated, not hidden in spelling (review: word rules)."""
+    description = " ".join(create_ask_user_tool().description.split())
+    assert '"removes": true and carries a required reason field' in description
+    assert '"removes": false on an option that only sounds like one' in description
+    assert "overrides something" not in description
+
+
+def test_a_marked_option_decides_whether_a_field_is_a_grouping():
+    from lobster.services.interaction.component_schemas import ChoiceField
+    from lobster.tools.user_interaction import _is_group_field
+
+    def field(*options):
+        return ChoiceField.model_validate(
+            {"key": "g", "type": "choice", "for_each": ["S01"], "options": options}
+        )
+
+    # Two groups, one of them named like a removal but marked as not one.
+    assert _is_group_field(field("control", {"id": "dropout_cells", "removes": False}))
+    # A group named innocently but marked as a removal is not a group.
+    assert not _is_group_field(field("control", {"id": "batch_2", "removes": True}))

@@ -740,12 +740,15 @@ The plate puts each sample into one group (`plate_map`). What it shows, and why:
   screen counts). When a per-item question that could be a plate pre-filled no item, the result
   carries the note "ask over all the samples, with the known ones pre-filled, so the user sees
   them in context" (not when a `no_default_for` check covers the field, as in a QC review).
-- **A removal always asks a reason.** `check_request` returns `invalid_context` for an option whose
-  id or label says it takes something out (remove, exclude, drop, discard, leave out) and that has no
-  required text field: `option 'remove' takes something out: give it a reason field`. It doesn't depend
-  on a `reason_required` check. It goes by words, so an option named like `removed_batch_effect` (a
-  source, not a removal) is refused too; rename it or give it a reason field
-  (`test_an_option_that_takes_something_out_needs_a_reason`).
+- **A removal always asks a reason.** An option marked `"removes": true` takes the item out, so
+  `check_request` returns `invalid_context` unless it has a required text field: `option 'batch_2'
+  takes something out (removes: true): give it a reason field`. `"removes": false` says it doesn't,
+  whatever its name. An unmarked option is checked by its id and label as a safety net (remove,
+  exclude, drop, discard, omit, leave out, not included): `option 'omit' sounds like it takes
+  something out: give it a reason field, or mark it "removes": false if it doesn't`, so a name that
+  only sounds like one (`dropout_cells`, `removed_batch_effect`) is one key away from passing. It
+  doesn't depend on a `reason_required` check (`test_removes_true_needs_a_reason_whatever_the_name`,
+  `test_removes_false_lets_a_name_that_only_sounds_like_one_through`).
 - **Decimal sliders move in round steps.** The adapter sends a step from the decimals in `min` and
   `max` (0.50 to 0.99: 0.01), ten times finer until there are at least 20 positions (0 to 1: 0.01);
   the slider puts every value on `min + k × step`, rounded to the step, so 0.75 is reachable and steps

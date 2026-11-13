@@ -188,6 +188,11 @@ class Option(Item):
     end: Optional[int] = Field(
         default=None, ge=1, description="Last position of a sequence region (inclusive)"
     )
+    removes: Optional[bool] = Field(
+        default=None,
+        description="True: picking it takes the item out (it must ask a reason). "
+        "False: it doesn't, whatever its name sounds like",
+    )
 
     @model_validator(mode="after")
     def _check_option_fields(self) -> "Option":
@@ -1296,16 +1301,23 @@ def check_request(context: AskUserContext) -> List[Problem]:
     return problems
 
 
-# An option whose id or label says it takes an item out of the analysis.
+# An option whose id or label sounds like it takes an item out of the
+# analysis. Only a safety net for options the supervisor didn't mark with
+# "removes"; the mark always wins.
 _TAKES_OUT = re.compile(
-    r"\b(remov\w*|exclu\w*|drop\w*|discard\w*|leave\s*out|left\s*out)\b"
+    r"\b(remov\w*|exclu\w*|drop\w*|discard\w*|omit\w*|leave\s*out|left\s*out"
+    r"|not\s*included)\b"
 )
 
 
 def _removals_without_reason(fields: List[Any], path: str) -> List[Problem]:
-    """Options that take something out (remove, exclude, drop, discard, leave
-    out) must ask for a reason, whatever checks the supervisor attached: a
-    removal is never recorded without one. Unavailable options are skipped
+    """Options that take something out must ask for a reason, whatever checks
+    the supervisor attached: a removal is never recorded without one.
+
+    An option marked "removes": true is one; "removes": false is not, whatever
+    its name. An unmarked option is one when its id or label sounds like it
+    (remove, exclude, drop, discard, omit, leave out, not included), and the
+    problem says how to mark it if it isn't. Unavailable options are skipped
     (they can't be picked); nested fields are checked too."""
     problems: List[Problem] = []
     for field in fields:
@@ -1319,18 +1331,32 @@ def _removals_without_reason(fields: List[Any], path: str) -> List[Problem]:
                 problems += _removals_without_reason(
                     option.fields, f"{where}.{option.id}."
                 )
-            if option.unavailable or _asks_a_reason(option):
+            if option.unavailable or _asks_a_reason(option) or option.removes is False:
                 continue
-            words = f"{option.id} {option.label}".replace("_", " ").replace("-", " ")
-            if _TAKES_OUT.search(words.lower()):
+            if option.removes:
                 problems.append(
                     _problem(
                         where,
-                        f"option '{option.id}' takes something out: give it a "
-                        "reason field",
+                        f"option '{option.id}' takes something out (removes: true): "
+                        "give it a reason field",
+                    )
+                )
+            elif sounds_like_removal(option):
+                problems.append(
+                    _problem(
+                        where,
+                        f"option '{option.id}' sounds like it takes something out: "
+                        'give it a reason field, or mark it "removes": false if it '
+                        "doesn't",
                     )
                 )
     return problems
+
+
+def sounds_like_removal(option: Any) -> bool:
+    """The option's id or label sounds like it takes an item out."""
+    words = f"{option.id} {option.label}".replace("_", " ").replace("-", " ")
+    return bool(_TAKES_OUT.search(words.lower()))
 
 
 def _asks_a_reason(option: Any) -> bool:

@@ -1295,8 +1295,50 @@ def test_an_option_that_takes_something_out_needs_a_reason(option):
     option_id = option if isinstance(option, str) else option["id"]
     assert problem.path == "qc"
     assert problem.message == (
-        f"option '{option_id}' takes something out: give it a reason field"
+        f"option '{option_id}' sounds like it takes something out: give it a "
+        'reason field, or mark it "removes": false if it doesn\'t'
     )
+
+
+def _one_option(option):
+    return _context(
+        {
+            "key": "qc",
+            "type": "choice",
+            "for_each": ["S01"],
+            "options": ["keep", option],
+        }
+    )
+
+
+@pytest.mark.parametrize("option", ["omit", "not_included", "dropout_cells"])
+def test_unmarked_names_that_sound_like_a_removal_are_refused(option):
+    """omit and not included were missed before; dropout_cells still sounds
+    like one until it is marked removes: false."""
+    (problem,) = check_request(_one_option(option))
+    assert "sounds like it takes something out" in problem.message
+
+
+def test_removes_false_lets_a_name_that_only_sounds_like_one_through():
+    assert check_request(_one_option({"id": "dropout_cells", "removes": False})) == []
+
+
+def test_removes_true_needs_a_reason_whatever_the_name():
+    (problem,) = check_request(_one_option({"id": "batch_2", "removes": True}))
+    assert problem.message == (
+        "option 'batch_2' takes something out (removes: true): give it a reason field"
+    )
+    reasoned = {
+        "id": "batch_2",
+        "removes": True,
+        "fields": [{"key": "reason", "type": "text"}],
+    }
+    assert check_request(_one_option(reasoned)) == []
+
+
+def test_an_unavailable_removal_needs_no_reason():
+    option = {"id": "omit", "removes": True, "unavailable": "locked"}
+    assert check_request(_one_option(option)) == []
 
 
 @pytest.mark.parametrize(

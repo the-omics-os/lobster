@@ -34,7 +34,6 @@ from langchain_core.tools import InjectedToolCallId, tool
 from pydantic import ValidationError
 
 from lobster.services.interaction.component_schemas import (
-    _TAKES_OUT,
     CHECKS,
     MAX_ATTEMPTS,
     VIEWS,
@@ -50,6 +49,7 @@ from lobster.services.interaction.component_schemas import (
     fingerprint,
     reask,
     reread_items,
+    sounds_like_removal,
     watch_data_folder,
 )
 from lobster.services.interaction.view_sources import (
@@ -186,9 +186,11 @@ def create_ask_user_tool(
                     "ontology_browser" and "sequence"
           view      how to draw it (see Views); never changes the answer
         choice:  options: [item, ...]. An option may carry "fields", shown only
-                 when it is picked. Every option that removes, excludes or
-                 overrides something carries a required reason field:
-                 "fields": [{"key": "reason", "type": "text"}].
+                 when it is picked. An option that takes the item out (remove,
+                 exclude, drop, omit) is marked "removes": true and carries a
+                 required reason field: "fields": [{"key": "reason", "type":
+                 "text"}]. Mark "removes": false on an option that only sounds
+                 like one (e.g. "dropout_cells").
         number:  min, max (value bounds), integer (true/false), unit
         text:    only when the answer can't be listed or counted
         record:  fields: [field, ...] answered together
@@ -337,7 +339,7 @@ _ASK_OVER_ALL = (
     "pre-fill exclusions or QC decisions."
 )
 
-# Options that are a QC verdict, not a group (a removal is _TAKES_OUT).
+# Options that are a QC verdict, not a group (a removal is _removes).
 _VERDICT = re.compile(
     r"\b(retain\w*|keep\w*|kept|defer\w*|flag\w*|review\w*|pass\w*|fail\w*)\b"
 )
@@ -351,12 +353,15 @@ def _is_group_field(field: Any) -> bool:
     if field.type != "choice" or not field.for_each or field.count is not None:
         return False
     options = [o for o in field.options if not o.unavailable]
-    groups = [
-        o
-        for o in options
-        if not _TAKES_OUT.search(_words(o)) and not _VERDICT.search(_words(o))
-    ]
+    groups = [o for o in options if not _removes(o) and not _VERDICT.search(_words(o))]
     return len(options) <= 9 and len(field.for_each) <= 96 and len(groups) >= 2
+
+
+def _removes(option: Any) -> bool:
+    """The option takes the item out: marked so, or (unmarked) sounds so."""
+    if option.removes is not None:
+        return option.removes
+    return sounds_like_removal(option)
 
 
 def _words(option: Any) -> str:
