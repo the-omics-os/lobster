@@ -5,7 +5,7 @@ TUI's BioComp components, in both directions:
 
 - a field becomes one or more renders, each ``(component, data)`` for a Go
   component (choice, choice_list, threshold_slider, text_input, plate_map,
-  dashboard);
+  ontology_browser, sequence_view, dashboard);
 - each component's own reply shape becomes the contract's answer shape.
 
 Go components keep their own reply shapes; only this module knows them. The
@@ -35,6 +35,7 @@ from lobster.services.interaction.component_schemas import (
     plain_number,
     well_index,
 )
+from lobster.services.interaction.view_sources import SUGGESTED
 
 # render(component, data) -> (action, reply). action is "submit", "cancel" or
 # "defer"; reply is the component's own data.
@@ -53,7 +54,12 @@ _REPLY_KEY = {
     "plate_map": "assignments",
     "threshold_slider": "value",
     "dashboard": "answers",
+    "ontology_browser": "selected",
+    "sequence_view": "selected",
 }
+
+# Components that reply like "choice": {"selected": [{"id": ...}]}.
+_PICKS = ("choice", "ontology_browser", "sequence_view")
 
 # 2,000,000 or -1,234.5: commas only between groups of three digits, as
 # numbers are shown; "1,5" stays "not a number".
@@ -354,6 +360,7 @@ def _is_list(field: Any) -> bool:
         field.type == "choice"
         and bool(field.for_each)
         and not _draws_plate(field)
+        and field.view not in ("ontology_browser", "sequence")
         and field.count is None
         and all(
             not option.fields or _is_one_required_text(option.fields)
@@ -387,6 +394,10 @@ def _render_one(
         return "plate_map", _plate_data(field, _join(question, details))
     if item is None and _is_list(field):
         return "choice_list", _list_data(field, question, details)
+    if field.type == "choice" and field.view == "ontology_browser":
+        return "ontology_browser", _ontology_data(field, question, details, default)
+    if field.type == "choice" and field.view == "sequence":
+        return "sequence_view", _sequence_data(field, question, details, default)
     if field.type == "choice":
         count = field.count
         data: Dict[str, Any] = {
@@ -489,6 +500,54 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
         "options": options,
         "wells": wells,
     }
+
+
+def _ontology_data(
+    field: Any, question: str, details: str, default: Any
+) -> Dict[str, Any]:
+    """The ontology's terms as a tree (each names its parent), the
+    suggested ones listed first on the screen, and the default term."""
+    options = []
+    for option in field.options:
+        data = _item(option)
+        options.append(_with(data, "parent", option.parent))
+    data = {
+        "question": question,
+        "ontology": field.options_from.ontology if field.options_from else "",
+        "options": options,
+        "suggested": [
+            option.id
+            for option in field.options
+            if (option.details or "").startswith(SUGGESTED)
+        ],
+    }
+    if isinstance(default, dict) and default.get("id"):
+        data["default"] = default["id"]
+    return _with(data, "details", details)
+
+
+def _sequence_data(
+    field: Any, question: str, details: str, default: Any
+) -> Dict[str, Any]:
+    """The sequence's letters, and each region as an option with its
+    start and end (1-based, inclusive)."""
+    source = field.sequence_from
+    options = []
+    for option in field.options:
+        data = _item(option)
+        if option.start is not None:
+            data.update(start=option.start, end=option.end)
+        options.append(data)
+    data = {
+        "question": question,
+        "name": source.id or source.file,
+        "kind": source.kind,
+        "sequence": source.sequence,
+        "options": options,
+    }
+    if isinstance(default, dict) and default.get("id"):
+        data["default"] = default["id"]
+    return _with(data, "details", details)
 
 
 # "batch: B1 · note: re-plated" (as items_from writes details).
@@ -704,7 +763,7 @@ def _from_reply(field: Any, component: str, data: Dict[str, Any], reply: Any) ->
             if row.get("fields"):
                 answers[item]["fields"] = dict(row["fields"])
         return answers
-    if component == "choice":
+    if component in _PICKS:
         picks = [{"id": pick["id"]} for pick in reply.get("selected") or []]
         if field.count is None:
             return picks[0] if picks else None
@@ -748,7 +807,7 @@ def _as_reply(field: Any, component: str, value: Any) -> Dict[str, Any]:
         return _with(reply, "reasons", reasons)
     if component == "choice_list":
         return {"answers": {item: dict(row) for item, row in value.items()}}
-    if component == "choice":
+    if component in _PICKS:
         picks = value if isinstance(value, list) else [value]
         return {"selected": [{"id": pick["id"]} for pick in picks]}
     if component == "threshold_slider":

@@ -52,6 +52,10 @@ from lobster.services.interaction.component_schemas import (
     reread_items,
     watch_data_folder,
 )
+from lobster.services.interaction.view_sources import (
+    expand_view_sources,
+    reread_sequences,
+)
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -177,6 +181,9 @@ def create_ask_user_tool(
                     you name the columns; a "default" value that isn't an
                     option (blank, "?", "unknown") proposes nothing; the file
                     is added to data_files
+          options_from, sequence_from  (choice) ontology terms or sequence
+                    regions filled in by Python: see the views
+                    "ontology_browser" and "sequence"
           view      how to draw it (see Views); never changes the answer
         choice:  options: [item, ...]. An option may carry "fields", shown only
                  when it is picked. Every option that removes, excludes or
@@ -284,7 +291,7 @@ def create_ask_user_tool(
             )
         first = DecisionRequest.model_validate(built["request"])
         result = await _ask_until_settled(first, judge_answer)
-        return json.dumps(_with_advice(result, first))
+        return json.dumps(_with_notes(_with_advice(result, first), built))
 
     # The two steps a replay must not run again (see _once). Plain data in and
     # out: a task's result is stored in the checkpoint.
@@ -293,9 +300,12 @@ def create_ask_user_tool(
     ) -> Dict[str, Any]:
         # The id is minted here, inside the task, so a replay keeps it.
         decision_id = _decision_id(tool_call_id)
-        built = _build_request(question, context, decision_id, llm, workspace_path)
+        notes: List[str] = []
+        built = _build_request(
+            question, context, decision_id, llm, workspace_path, notes
+        )
         if isinstance(built, DecisionRequest):
-            return {"request": built.to_wire()}
+            return {"request": built.to_wire(), "notes": notes}
         return {"problems": [problem.model_dump() for problem in built]}
 
     def judge_answer(request: Dict[str, Any], raw: Any) -> Dict[str, Any]:
@@ -353,6 +363,14 @@ def _words(option: Any) -> str:
     return f"{option.id} {option.label}".replace("_", " ").replace("-", " ").lower()
 
 
+def _with_notes(result: Dict[str, Any], built: Dict[str, Any]) -> Dict[str, Any]:
+    """Add the notes made while building the question (e.g. an ontology that
+    couldn't be loaded, so the question became a plain choice)."""
+    notes = [result["note"]] if result.get("note") else []
+    notes += built.get("notes") or []
+    return {**result, "note": " ".join(notes)} if notes else result
+
+
 def _with_advice(result: Dict[str, Any], first: DecisionRequest) -> Dict[str, Any]:
     """Add a note when a group question that could be a plate pre-filled no
     item: such a question usually lists only the uncertain few, and the user
@@ -380,18 +398,26 @@ def _build_request(
     decision_id: str,
     llm: Optional["BaseChatModel"],
     workspace: Optional[Union[str, Path]],
+    notes: Optional[List[str]] = None,
 ) -> Union[DecisionRequest, List[Problem]]:
     """The first version of the request, or the problems that stop it.
 
     Request-time checks run here, once, on the supervisor's context; data
     files are fingerprinted here, once. A field's items_from is read here
-    first, so the rest sees an ordinary for_each (and its file in data_files).
+    first, so the rest sees an ordinary for_each (and its file in data_files);
+    so are options_from (ontology terms) and sequence_from (a FASTA record).
+    Notes for the supervisor made on the way are added to ``notes``.
     """
     from lobster.services.interaction.component_mapper import map_question
 
     context, problems = expand_items_from(context, workspace)
     if problems:
         return problems
+    context, problems, made = expand_view_sources(context, workspace)
+    if problems:
+        return problems
+    if notes is not None:
+        notes += made
     try:
         asked = map_question(question, context, llm=llm)
     except ValidationError as error:
@@ -538,8 +564,9 @@ def _judge(
         return reask(request, error.problems, None)
     except AnswerStale as error:
         stale = reask(request, error.problems, answer.answer, snapshot=error.snapshot)
-        # A field read from a table shows the table as it is now.
-        return reread_items(stale, request.snapshot, workspace)
+        # A field read from a table (or a sequence file) shows it as it is now.
+        stale = reread_items(stale, request.snapshot, workspace)
+        return reread_sequences(stale, workspace)
     except AnswerRejected as error:
         return reask(request, error.problems, answer.answer)
     if result["action"] == "free_text":

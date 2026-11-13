@@ -92,11 +92,11 @@ func (m Model) componentFooterHeight() int {
 }
 
 // fillsTerminal reports whether a component fills whatever height it is given
-// (plate map, choice list, dashboard), so it needs a height budget that leaves
+// (plate map, choice list, dashboard, ontology browser, sequence view), so it needs a height budget that leaves
 // rows for the rest of the screen.
 func fillsTerminal(name string) bool {
 	switch name {
-	case "plate_map", "choice_list", "dashboard":
+	case "plate_map", "choice_list", "dashboard", "ontology_browser", "sequence_view":
 		return true
 	}
 	return false

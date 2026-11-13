@@ -166,12 +166,27 @@ class Item(BaseModel):
 
 
 class Option(Item):
-    """A choice option. ``fields`` appear only when this option is picked."""
+    """A choice option. ``fields`` appear only when this option is picked.
+
+    ``parent`` (view "ontology_browser") places the option under another
+    option in a tree; ``start``/``end`` (view "sequence") make it a region of
+    the sequence, 1-based and inclusive. Python sets ``parent`` from the
+    ontology; the supervisor writes ``start``/``end``.
+    """
 
     fields: Optional[List["QuestionField"]] = Field(
         default=None,
         min_length=1,
         description="Extra fields shown only when this option is picked",
+    )
+    parent: Optional[str] = Field(
+        default=None, description="The option this one sits under (ontology tree)"
+    )
+    start: Optional[int] = Field(
+        default=None, ge=1, description="First position of a sequence region (1-based)"
+    )
+    end: Optional[int] = Field(
+        default=None, ge=1, description="Last position of a sequence region (inclusive)"
     )
 
     @model_validator(mode="after")
@@ -182,6 +197,14 @@ class Option(Item):
             )
         if self.fields:
             _check_siblings(self.fields)
+        if (self.start is None) != (self.end is None):
+            raise ValueError(f"option {self.id!r} needs both start and end, or neither")
+        if self.start is not None and self.start > self.end:
+            raise ValueError(
+                f"option {self.id!r} starts at {self.start}, after its end {self.end}"
+            )
+        if self.parent is not None and self.parent == self.id:
+            raise ValueError(f"option {self.id!r} can't be its own parent")
         return self
 
 
@@ -252,6 +275,42 @@ class ItemsFromUnavailable(BaseModel):
     values: Dict[str, Annotated[str, Field(min_length=1)]] = Field(min_length=1)
 
 
+class OptionsFrom(BaseModel):
+    """A choice field's ``options_from``: its options are terms of a public
+    ontology, so ids come from the ontology, never typed by the LLM. The
+    supervisor names the ontology and suggests terms by name (or id); Python
+    loads the ontology when the question is built and fills ``options`` with
+    the suggestions and their neighbourhood (see view_sources)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ontology: str = Field(min_length=1, description='e.g. "uberon", "cell_ontology"')
+    suggest: List[Annotated[str, Field(min_length=1)]] = Field(
+        min_length=1,
+        max_length=10,
+        description="Suggested terms, by exact name or id; shown first",
+    )
+
+
+class SequenceFrom(BaseModel):
+    """A choice field's ``sequence_from``: the sequence its regions are on,
+    read from a FASTA file in the workspace by Python. ``sequence`` and
+    ``kind`` are filled in by ask_user, never by the supervisor."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    file: str = Field(min_length=1, description="Workspace-relative FASTA file")
+    id: Optional[str] = Field(
+        default=None, description="Record id; needed when the file has several"
+    )
+    sequence: Optional[str] = Field(
+        default=None, description="The letters, read from the file by ask_user"
+    )
+    kind: Optional[Literal["dna", "rna", "protein"]] = Field(
+        default=None, description="Read from the letters by ask_user"
+    )
+
+
 class Count(BaseModel):
     """How many values a field takes. The answer becomes a list."""
 
@@ -308,6 +367,42 @@ VIEWS: Dict[str, Dict[str, Any]] = {
             "options": ["control", "treated"],
         },
         "check": lambda owner: _check_plate_map(owner),
+    },
+    "ontology_browser": {
+        "applies_to": "choice",
+        "needs": ["options_from"],
+        "use_when": "picking ontology terms (tissue, cell type, disease), one "
+        "per item with for_each or one in all; options_from names the ontology "
+        '("uberon", "cell_ontology", "mondo") and suggests terms by exact name; '
+        "Python fills the options with real ids, so leave options out; the user "
+        "may pick a nearby term instead",
+        "example": {
+            "key": "tissue",
+            "type": "choice",
+            "view": "ontology_browser",
+            "for_each": ["S01", "S02"],
+            "options_from": {"ontology": "uberon", "suggest": ["liver", "lung"]},
+        },
+        "check": lambda owner: _check_ontology_browser(owner),
+    },
+    "sequence": {
+        "applies_to": "choice",
+        "needs": ["sequence_from"],
+        "use_when": "picking one region of a sequence (a guide, primer, ORF); "
+        "sequence_from names the FASTA file (and the record id if it has "
+        "several), each option is a region with start and end (1-based, "
+        "inclusive); Python reads the letters, never copy them",
+        "example": {
+            "key": "guide",
+            "type": "choice",
+            "view": "sequence",
+            "sequence_from": {"file": "data/construct.fasta", "id": "construct_1"},
+            "options": [
+                {"id": "g1", "label": "guide 1", "start": 120, "end": 139},
+                {"id": "g2", "label": "guide 2", "start": 410, "end": 429},
+            ],
+        },
+        "check": lambda owner: _check_sequence(owner),
     },
     "dashboard": {
         "applies_to": "fields",
@@ -408,6 +503,15 @@ class ChoiceField(_FieldBase):
         description="Where for_each was read from (set by ask_user when it "
         "reads the table); the table is read again if it changes",
     )
+    options_from: Optional[OptionsFrom] = Field(
+        default=None,
+        description="The ontology the options were filled from (view "
+        "ontology_browser)",
+    )
+    sequence_from: Optional[SequenceFrom] = Field(
+        default=None,
+        description="The sequence the regions are on (view sequence)",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -456,6 +560,16 @@ class ChoiceField(_FieldBase):
                 f"count.min ({self.count.min}) asks for more picks than there are "
                 f"available options ({len(pickable)})"
             )
+        # These keys only mean something on their own view; elsewhere they
+        # would be silently ignored, so they are refused.
+        if self.view != "ontology_browser" and any(o.parent for o in self.options):
+            raise ValueError("an option's parent is only for view 'ontology_browser'")
+        if self.view != "sequence" and any(o.start for o in self.options):
+            raise ValueError("an option's start and end are only for view 'sequence'")
+        if self.options_from is not None and self.view != "ontology_browser":
+            raise ValueError("options_from is only for view 'ontology_browser'")
+        if self.sequence_from is not None and self.view != "sequence":
+            raise ValueError("sequence_from is only for view 'sequence'")
         return self
 
 
@@ -1687,6 +1801,60 @@ def _check_plate_map(field: Any) -> None:
         taken[item.position] = item.id
 
 
+def _check_ontology_browser(field: Any) -> None:
+    """One term per pick, no follow-up fields, and the parents form a tree
+    over the options (each names another option, without a loop)."""
+    if field.count is not None:
+        raise ValueError(
+            "view 'ontology_browser' takes one term per pick; leave count out"
+        )
+    if any(option.fields for option in field.options):
+        raise ValueError("view 'ontology_browser' options can't have fields")
+    parents = {option.id: option.parent for option in field.options}
+    for option_id, parent in parents.items():
+        if parent is not None and parent not in parents:
+            raise ValueError(
+                f"option {option_id!r} sits under {parent!r}, which is not an option"
+            )
+        seen = {option_id}
+        while parent is not None:
+            if parent in seen:
+                raise ValueError(f"the options' parents loop through {parent!r}")
+            seen.add(parent)
+            parent = parents.get(parent)
+
+
+# The longest sequence one question shows: longer ones are not read by eye.
+SEQUENCE_MAX_LENGTH = 100_000
+
+
+def _check_sequence(field: Any) -> None:
+    """One region, picked once; the sequence was read (by ask_user); every
+    region that can be picked has a start and end inside it."""
+    if field.count is not None or field.for_each:
+        raise ValueError(
+            "view 'sequence' asks for one region; leave count and for_each out"
+        )
+    if any(option.fields for option in field.options):
+        raise ValueError("view 'sequence' options can't have fields")
+    letters = field.sequence_from.sequence
+    if not letters:
+        raise ValueError(
+            "view 'sequence' has no sequence; name the FASTA file in "
+            "sequence_from and leave sequence out (it is read from the file)"
+        )
+    for option in field.options:
+        if option.unavailable:
+            continue
+        if option.start is None:
+            raise ValueError(f"region {option.id!r} needs a start and an end")
+        if option.end > len(letters):
+            raise ValueError(
+                f"region {option.id!r} ends at {option.end}, past the end of the "
+                f"sequence ({len(letters)})"
+            )
+
+
 def _some(ids: List[str], limit: int = 5) -> str:
     """At most ``limit`` ids, then how many more: "S01, S02 and 3 more"."""
     shown = ", ".join(ids[:limit])
@@ -1699,6 +1867,11 @@ def _check_dashboard(owner: Any) -> None:
         raise ValueError("view 'dashboard' needs at least 2 fields")
     for field in owner.fields:
         where = f"dashboard section {field.key!r}"
+        if field.view in ("ontology_browser", "sequence"):
+            raise ValueError(
+                f"{where}: view {field.view!r} can't be in a dashboard yet; ask "
+                "it on its own"
+            )
         if field.type == "record":
             raise ValueError(f"{where}: a record can't be a section; split it")
         if field.count and field.type != "choice":

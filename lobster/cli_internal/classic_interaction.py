@@ -282,6 +282,53 @@ def _draw_choice(data: Dict[str, Any]) -> Dict[str, Any]:
     return {"selected": [{"id": options[i]["id"]} for i in picks]}
 
 
+def _draw_ontology(data: Dict[str, Any]) -> Dict[str, Any]:
+    """The suggested terms first, then the whole tree, indented under each
+    term's parent; one number picks any of them."""
+    options = data["options"]
+    known = {option["id"] for option in options}
+    children: Dict[Optional[str], List[Dict[str, Any]]] = {}
+    for option in options:
+        parent = option.get("parent") if option.get("parent") in known else None
+        children.setdefault(parent, []).append(option)
+    tree: List[Dict[str, Any]] = []
+
+    def walk(parent: Optional[str], depth: int) -> None:
+        for option in children.get(parent, []):
+            tree.append({**option, "label": "  " * depth + _name(option)})
+            walk(option["id"], depth + 1)
+
+    walk(None, 0)
+    suggested = [o for o in options if o["id"] in (data.get("suggested") or [])]
+    shown = [{**o, "label": f"★ {_name(o)}"} for o in suggested] + tree
+    if suggested:
+        print(
+            f"\n(★ = suggested; the {data.get('ontology') or 'ontology'} terms around them follow)"
+        )
+    default = [data["default"]] if data.get("default") else []
+    reply = _draw_choice({**data, "options": shown, "default": default})
+    return reply
+
+
+def _draw_sequence(data: Dict[str, Any]) -> Dict[str, Any]:
+    """The sequence's name and length, each region with its letters, then
+    one number picks a region."""
+    letters = data.get("sequence") or ""
+    kind = (data.get("kind") or "sequence").upper()
+    print(f"\n{data.get('name', '')}: {kind}, {len(letters)} letters")
+    options = []
+    for option in data["options"]:
+        start, end = option.get("start"), option.get("end")
+        part = letters[start - 1 : end] if start else ""
+        if len(part) > 60:
+            part = part[:57] + "..."
+        where = f"{start}–{end}: {part}" if start else ""
+        details = " · ".join(x for x in (where, option.get("details")) if x)
+        options.append({**option, "details": details})
+    default = [data["default"]] if data.get("default") else []
+    return _draw_choice({**data, "options": options, "default": default})
+
+
 def _draw_choice_list(data: Dict[str, Any]) -> Dict[str, Any]:
     """One prompt per available item; an option that needs one asks a reason."""
     _show(data["question"], data.get("details"))
@@ -438,7 +485,7 @@ def _summary(component: str, data: Dict[str, Any], reply: Dict[str, Any]) -> str
     """One line for a section's reply, for the confirmation summary."""
     from lobster.services.interaction.component_schemas import plain_number
 
-    if component == "choice":
+    if component in ("choice", "ontology_browser", "sequence_view"):
         names = {option["id"]: _name(option) for option in data["options"]}
         return ", ".join(names[pick["id"]] for pick in reply["selected"]) or "none"
     if component == "choice_list":
@@ -469,6 +516,8 @@ _DRAW: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
     "choice": _draw_choice,
     "choice_list": _draw_choice_list,
     "plate_map": _draw_plate,
+    "ontology_browser": _draw_ontology,
+    "sequence_view": _draw_sequence,
     "threshold_slider": _draw_slider,
     "text_input": _draw_text,
     "dashboard": _draw_dashboard,
