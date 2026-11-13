@@ -2009,7 +2009,13 @@ def _check_dashboard(owner: Any) -> None:
                         "text field (a reason) here"
                     )
         elif field.type == "choice" and any(o.fields for o in field.options):
-            raise ValueError(f"{where}: options with fields aren't supported here")
+            # Say why and what to do: "aren't supported here" alone made a
+            # model guess twice.
+            raise ValueError(
+                f"{where}: in a dashboard, only a section with for_each (a list "
+                "or plate) can ask a reason; ask this choice on its own, or give "
+                "it for_each"
+            )
 
 
 def _is_one_required_text(fields: List[Any]) -> bool:

@@ -474,6 +474,29 @@ def test_dashboard_section_it_cannot_draw_is_refused():
     )
 
 
+def test_dashboard_reason_on_a_single_choice_says_how_to_ask_it():
+    """A reason on a plain choice section is refused with what to do instead."""
+    single = {
+        "key": "plex2",
+        "type": "choice",
+        "question": "Plex 2?",
+        "options": [
+            "keep",
+            {"id": "drop_plex2", "fields": [{"key": "reason", "type": "text"}]},
+        ],
+    }
+    bad = {**DASHBOARD, "fields": [*DASHBOARD["fields"], single]}
+    graph = _graph(("call_1", "Set up the comparison", bad))
+    assert _run(graph, {"messages": []}) == []
+    result = _tool_results(graph)["call_1"]
+    assert result["action"] == "invalid_context"
+    assert any(
+        "only a section with for_each (a list or plate) can ask a reason"
+        in p["message"]
+        for p in result["problems"]
+    )
+
+
 # --- Re-ask loop (real checkpointed graph, no LLM) ---
 
 GROUPS = {
