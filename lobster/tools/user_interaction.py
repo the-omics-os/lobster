@@ -207,7 +207,8 @@ def create_ask_user_tool(
                  in the list with "unavailable": "<reason>", so the user sees
                  why; never drop it or mention it only in "details".
         data_files: workspace-relative paths of the files the decision is
-                 about; if one changes before the user answers, they are
+                 about (the originals, also when you built a copy from them);
+                 if one changes before the user answers, they are
                  asked again. data_files limits which files are watched;
                  without it, every file in data/ is.
         To put items into groups, ask ONE choice field with for_each over
