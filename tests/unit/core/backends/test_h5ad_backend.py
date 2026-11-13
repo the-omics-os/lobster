@@ -581,13 +581,13 @@ class TestH5ADDataSanitization:
         assert isinstance(adata_loaded.uns["filter_cells"], str)
         assert adata_loaded.uns["filter_cells"] == "False"
 
-        # Verify None values were converted to empty strings
-        assert adata_loaded.uns["missing_param"] == ""
-        assert adata_loaded.uns["description"] == ""
+        # Verify None values are kept as None
+        assert adata_loaded.uns["missing_param"] is None
+        assert adata_loaded.uns["description"] is None
 
         # Verify nested dict was sanitized
         assert isinstance(adata_loaded.uns["nested_config"]["enabled"], str)
-        assert adata_loaded.uns["nested_config"]["threshold"] == ""
+        assert adata_loaded.uns["nested_config"]["threshold"] is None
 
     def test_sanitize_completely_empty_columns(self):
         """Completely empty columns (all None/NaN) are dropped."""

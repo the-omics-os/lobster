@@ -12,6 +12,7 @@ One test group per finding:
 """
 
 import ast
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -175,7 +176,11 @@ def test_syntax_error_fails_the_export_and_writes_no_notebook(data_manager):
 # --- the fallback save keeps data and records the loss ----------------------
 
 
-def test_fallback_save_keeps_live_data_and_records_unwritten_keys(data_manager):
+def test_fallback_save_keeps_live_data_and_records_unwritten_keys(
+    data_manager, monkeypatch, capsys
+):
+    # Without the session writer (lobster not importable) the cell's fallback runs.
+    monkeypatch.setitem(sys.modules, "lobster.core.backends.h5ad_backend", None)
     _, notebook = _export(data_manager, _step("adata.uns['x'] = 1"))
     save_cell = next(
         c.source for c in notebook.cells if c.source.startswith("# Save processed data")
@@ -193,6 +198,7 @@ def test_fallback_save_keeps_live_data_and_records_unwritten_keys(data_manager):
     assert written.uns["fine"] == 1
     assert list(written.uns["lobster_unsaved_uns_keys"]) == ["bad"]
     assert "bad" in adata.uns  # in-memory result is untouched
+    assert "Written without the session writer" in capsys.readouterr().out
 
 
 def test_session_save_ir_uses_the_same_guarded_save(data_manager):
@@ -221,8 +227,10 @@ def test_session_save_ir_uses_the_same_guarded_save(data_manager):
     exec(compile(save_cell, "save_cell", "exec"), namespace)  # nosec B102
 
     written = anndata.read_h5ad(prefix + "_pbmc_clustered.h5ad")
-    assert list(written.uns["lobster_unsaved_uns_keys"]) == ["clustering_results"]
-    assert "compression='gzip'" in save_cell
+    # the session's writer saves float keys; nothing is left out
+    assert "lobster_unsaved_uns_keys" not in written.uns
+    assert "clustering_results" in written.uns
+    assert "write_session_h5ad(adata, output_path, compression='gzip')" in save_cell
 
 
 # --- failed steps -------------------------------------------------------------

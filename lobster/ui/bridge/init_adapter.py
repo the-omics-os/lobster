@@ -14,6 +14,7 @@ contract::
         "ollama_model":       str,   # Ollama model name (empty for non-Ollama)
         "smart_standardization_enabled": bool,  # enable vector-search setup
         "smart_standardization_openai_key": str,  # OpenAI key for embeddings
+        "lamin_enabled":      bool | None,  # LaminDB catalog; None: not asked
         "cancelled":          bool,  # True when user pressed Escape / Ctrl-C
     }
 
@@ -22,6 +23,8 @@ contract::
 - ``.env`` (or global credentials file in global mode)
 - ``.lobster_workspace/provider_config.json``
 - ``.lobster_workspace/agent_config.json``
+- ``LOBSTER_LAMIN`` in ``.lobster_workspace/.env`` (or ``lamin_enabled`` in the
+  global config) when the LaminDB question was answered
 
 It intentionally reuses the same helpers that ``init_impl()`` uses so that
 workspace files are byte-for-byte identical regardless of which UI path was
@@ -97,6 +100,9 @@ def apply_tui_init_result(
     smart_std_openai_key = (
         result.get("smart_standardization_openai_key") or ""
     ).strip()
+    lamin_enabled = result.get("lamin_enabled")
+    if not isinstance(lamin_enabled, bool):
+        lamin_enabled = None  # not asked (or an answer this version cannot read)
 
     from lobster.cli_internal.commands.heavy.init_commands import (
         _normalize_selected_agents,
@@ -209,6 +215,8 @@ def apply_tui_init_result(
     model_id = (result.get("model_id") or "").strip()
     if model_id:
         config_dict["model_id"] = model_id
+    if lamin_enabled is not None:
+        config_dict["lamin_enabled"] = lamin_enabled
 
     # ------------------------------------------------------------------
     # Write files
@@ -218,8 +226,15 @@ def apply_tui_init_result(
     if global_config:
         _write_global(config_dict, env_lines)
     else:
+        from lobster.cli_internal.commands.light.lamin_commands import (
+            apply_init_choice,
+            saved_settings,
+        )
+
+        previous = saved_settings(workspace_path)
         _write_workspace_env(env_path, env_lines)
         _write_provider_config(config_dict, workspace_path)
+        apply_init_choice(lamin_enabled, workspace_path, previous=previous)
 
     if agents:
         _write_agent_config(agents, workspace_path)

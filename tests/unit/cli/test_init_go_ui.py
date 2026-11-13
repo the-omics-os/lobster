@@ -23,7 +23,9 @@ def test_init_force_go_skips_reconfirm_and_uses_go_wizard(monkeypatch, tmp_path)
     def _unexpected_confirm(*args, **kwargs):
         raise AssertionError("Confirm.ask should not be called for --force")
 
-    def _fake_run_init_wizard(binary_path, *, theme="lobster-dark", timeout=300):
+    def _fake_run_init_wizard(
+        binary_path, *, theme="lobster-dark", timeout=300, lamin_default=None
+    ):
         seen["binary_path"] = binary_path
         seen["theme"] = theme
         seen["timeout"] = timeout
@@ -107,7 +109,9 @@ def test_init_go_cancel_exits_without_classic_fallback(monkeypatch, tmp_path):
         "sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})()
     )
 
-    def _fake_run_init_wizard(binary_path, *, theme="lobster-dark", timeout=300):
+    def _fake_run_init_wizard(
+        binary_path, *, theme="lobster-dark", timeout=300, lamin_default=None
+    ):
         return {"cancelled": True}
 
     def _unexpected_classic_fallback(*args, **kwargs):

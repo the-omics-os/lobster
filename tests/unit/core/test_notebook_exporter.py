@@ -327,6 +327,26 @@ class TestNotebookExporter:
         assert '"data_integrity_manifest"' in source
         assert '"provenance"' in source
 
+    def test_export_record_hashes_the_saved_modality_files(
+        self, provenance_tracker, tmp_path
+    ):
+        """Saved modalities live in data/; the record hashes them there."""
+        import hashlib
+
+        data = tmp_path / "data"
+        data.mkdir()
+        (data / "saved.h5ad").write_bytes(b"saved bytes")
+        dm = SimpleNamespace(
+            modalities={"saved": None, "unsaved": None},
+            workspace_path=tmp_path,
+            data_dir=data,
+        )
+        hashes = NotebookExporter(provenance_tracker, dm)._get_input_file_hashes()
+        assert hashes == {
+            "saved.h5ad": hashlib.sha256(b"saved bytes").hexdigest(),
+            "unsaved.h5ad": "file_not_found",
+        }
+
     def test_create_header_cell(self, provenance_tracker, data_manager):
         """Test header cell creation."""
         exporter = NotebookExporter(provenance_tracker, data_manager)

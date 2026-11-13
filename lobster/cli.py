@@ -101,6 +101,11 @@ from lobster.cli_internal.commands.light.agent_commands import agents_app
 from lobster.cli_internal.commands.light.auth_commands import auth_app
 from lobster.cli_internal.commands.light.cloud_commands import cloud_app
 from lobster.cli_internal.commands.light.init_protocol import init_protocol_app
+from lobster.cli_internal.commands.light.lamin_commands import lamin_app
+from lobster.cli_internal.commands.light.replay_commands import (
+    JsonUsageCommand,
+    replay_command,
+)
 from lobster.cli_internal.commands.light.scaffold_commands import scaffold_app
 from lobster.cli_internal.commands.light.validate_commands import validate_app
 
@@ -243,6 +248,10 @@ class CommandClient:
 
             # The concrete session this command reads is the export identity.
             bind_client_session(self.data_manager, session_id)
+        # Optional workspace catalog: one run per command invocation.
+        from lobster.core.catalog.factory import begin_command_run
+
+        begin_command_run(self.data_manager, workspace_path, session_id, session_dir)
         self.messages: list = []
         self.graph = None
         self.token_tracker = None
@@ -377,11 +386,22 @@ app.add_typer(auth_app, name="auth")
 # Register cloud subcommand group
 app.add_typer(cloud_app, name="cloud")
 
-# Register scaffold subcommand group
+# Register scaffold, validate-plugin and lamin (optional LaminDB catalog) commands
 app.add_typer(scaffold_app, name="scaffold")
-
-# Register validate-plugin command
 app.add_typer(validate_app, name="validate-plugin")
+app.add_typer(lamin_app, name="lamin")
+app.command(
+    name="replay",
+    cls=JsonUsageCommand,
+    help=h(
+        "Re-run an exported notebook and compare its output with the saved file. "
+        "Exit codes: 0 MATCH, 1 MISMATCH, 2 usage error, 3 NOT_COMPARED, "
+        "4 REFUSED, 5 the notebook failed to run, 6 MATCH_CUSTOM_POLICY, "
+        "130 interrupted. "
+        "Compares what the notebook writes against what the session saved, and "
+        "detects changes it can see; it does not prove how the outputs were computed."
+    ),
+)(replay_command)
 
 # Register init protocol commands (hidden — used by npm CLI for wizard handoff)
 app.add_typer(init_protocol_app)
@@ -958,6 +978,9 @@ def init(
             "UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)"
         ),
     ),
+    lamin: Optional[bool] = typer.Option(
+        None, "--lamin/--no-lamin", help=h("Keep a LaminDB catalog (default: ask; No)")
+    ),
 ):
     """
     Initialize Lobster AI configuration.
@@ -1012,44 +1035,10 @@ def init(
         --azure-endpoint=https://xxx.inference.ai.azure.com/ \\
         --azure-credential=xxx                       # CI/CD: Azure AI
     """
+    options = dict(locals())  # every option above, passed on by name
     from lobster.cli_internal.commands.heavy.init_commands import init_impl
 
-    init_impl(
-        global_config=global_config,
-        force=force,
-        non_interactive=non_interactive,
-        use_omics_os=use_omics_os,
-        omics_os_key=omics_os_key,
-        anthropic_key=anthropic_key,
-        bedrock_access_key=bedrock_access_key,
-        bedrock_secret_key=bedrock_secret_key,
-        use_ollama=use_ollama,
-        ollama_model=ollama_model,
-        model=model,
-        gemini_key=gemini_key,
-        openai_key=openai_key,
-        openrouter_key=openrouter_key,
-        nebius_key=nebius_key,
-        ollama_cloud_key=ollama_cloud_key,
-        azure_endpoint=azure_endpoint,
-        azure_credential=azure_credential,
-        profile=profile,
-        ncbi_key=ncbi_key,
-        cloud_key=cloud_key,
-        cloud_endpoint=cloud_endpoint,
-        skip_ssl_test=skip_ssl_test,
-        ssl_verify=ssl_verify,
-        ssl_cert_path=ssl_cert_path,
-        agents=agents,
-        preset=preset,
-        auto_agents=auto_agents,
-        agents_description=agents_description,
-        skip_docling=skip_docling,
-        install_docling=install_docling,
-        install_vector_search=install_vector_search,
-        skip_extras=skip_extras,
-        ui_mode=ui_mode,
-    )
+    init_impl(**options)
 
 
 def _display_streaming_response(

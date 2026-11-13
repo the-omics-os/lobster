@@ -145,7 +145,9 @@ def test_format_and_rich_render_share_same_startup_diagnostic_copy():
     assert "Run: uv pip install 'lobster-ai[bedrock]'" in rich_text
 
 
-def test_validate_startup_passes_provider_override_to_resolver(monkeypatch, tmp_path):
+def test_validate_startup_passes_provider_override_to_resolver(
+    monkeypatch, mocker, tmp_path
+):
     seen = {}
 
     class _FakeResolver:
@@ -166,7 +168,11 @@ def test_validate_startup_passes_provider_override_to_resolver(monkeypatch, tmp_
         "lobster.config.settings.settings.reload_credentials",
         lambda workspace_path: seen.setdefault("reload_path", workspace_path),
     )
-    monkeypatch.setattr(
+    # mocker, not monkeypatch: the unit-suite fixture auto_mock_provider_config already
+    # patches this attribute with mocker. Both must unwind in one last-in-first-out
+    # teardown; monkeypatch would restore the fixture's mock after the mocker had
+    # restored the real method, and leave it mocked for the rest of the process.
+    mocker.patch(
         "lobster.core.config_resolver.ConfigResolver.get_instance",
         lambda workspace_path: _FakeResolver(),
     )

@@ -236,9 +236,13 @@ def _assert_variants_equal(replayed, produced):
     assert replayed.shape == produced.shape
     assert all(isinstance(s, str) for s in replayed.obs["sequence"])
     # H5AD writing may categorize strings; biological values and order must agree.
-    pd.testing.assert_frame_equal(
-        replayed.obs.astype(object), produced.obs.astype(object), check_dtype=False
-    )
+    # Limit (1.3.1 item): the session writer stores an unnamed obs index under the
+    # name 'index' and an unnamed var index under 'gene_id'; the runtime object
+    # keeps None. Only the index name is set aside here; column labels and values
+    # still compare.
+    expected, actual = produced.obs.astype(object), replayed.obs.astype(object)
+    expected.index.name = actual.index.name = None
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
     np.testing.assert_array_equal(replayed.X, produced.X)
     assert list(replayed.var_names) == list(produced.var_names)
 
@@ -432,3 +436,12 @@ def test_original_branch_rejected_with_unchanged_positional_parent(
     assert list(scope["adata"].obs_names) == ["p1"]
     assert list(scope["adata"].obs["sequence"]) == ["KWKLFKKIGAVLKVL"]
     assert "output_path" not in scope
+
+
+def test_notebook_file_keeps_an_unnamed_obs_index_unnamed(tmp_path, monkeypatch):
+    dm, tools = _notebook_tools(tmp_path, monkeypatch)
+    path = _sequence_file(tmp_path, "fasta", ["p1", "p2"], ["ACDE", "FGHI"])
+    tools["import_peptide_sequences"].invoke({"file_path": str(path)})
+    scope = {}
+    _export_and_run(dm, "successful", scope)
+    assert ad.read_h5ad(scope["output_path"]).obs.index.name is None

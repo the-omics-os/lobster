@@ -23,6 +23,10 @@ class IDataBackend(ABC):
     consistent behavior across different storage solutions.
     """
 
+    # True when ``save`` writes a new file and renames it over an existing one,
+    # so another name for the old file keeps the old bytes.
+    replaces_file: bool = False
+
     @abstractmethod
     def load(self, path: Union[str, Path], **kwargs) -> anndata.AnnData:
         """

@@ -375,9 +375,9 @@ class TestNestedStructures:
         data = {"value": None, "list": [1, None, 3], "nested": {"inner": None}}
         result = sanitize_value(data)
 
-        assert result["value"] == ""
+        assert result["value"] is None
         assert "" in result["list"]
-        assert result["nested"]["inner"] == ""
+        assert result["nested"]["inner"] is None
 
     def test_path_objects_in_lists(self):
         """Test Path objects in lists."""
@@ -436,8 +436,8 @@ class TestGEOMetadataStructures:
         assert isinstance(result["is_processed"], str)
         assert result["is_processed"] == "True"
 
-        # None should be empty string
-        assert result["submission_date"] == ""
+        # None should stay None
+        assert result["submission_date"] is None
 
         # Lists should be numpy arrays
         assert isinstance(result["platforms"], np.ndarray)

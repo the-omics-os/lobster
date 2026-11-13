@@ -1440,3 +1440,102 @@ def test_csv_quoting_and_line_endings_do_not_matter(tmp_path):
     assert quoted[1] is Verdict.MATCH
     crlf = _file_pair(tmp_path / "b", "t.csv", "x\r\n1\r\n", "x\n1\n")
     assert crlf[1] is Verdict.MATCH
+
+
+# --------------------------------------------------------------------------
+# Structured arrays (rank_genes_groups) are compared field by field
+# --------------------------------------------------------------------------
+
+
+def _structured(names=("g1", "g2"), scores=(1.5, np.nan)):
+    dtype = [("0", "U4"), ("1", "f8")]
+    out = np.zeros(2, dtype=dtype)
+    out["0"], out["1"] = names, scores
+    return out
+
+
+def _structured_result(expected, actual):
+    (slot,) = compare({"x": expected}, {"x": actual}, ComparisonPolicy(required=("x",)))
+    return slot
+
+
+def test_equal_structured_arrays_are_compared_and_match():
+    slot = _structured_result(_structured(), _structured())
+    assert slot.status is SlotStatus.MATCH and slot.compared == 4
+    assert not slot.not_compared
+
+
+def test_a_structured_string_field_that_differs_is_a_mismatch_naming_the_field():
+    slot = _structured_result(_structured(), _structured(names=("g1", "gX")))
+    assert slot.status is SlotStatus.MISMATCH
+    assert any("x[0]" in d for d in slot.diffs), slot.diffs
+
+
+def test_a_structured_float_field_that_differs_is_a_mismatch_naming_the_field():
+    slot = _structured_result(_structured(), _structured(scores=(1.6, np.nan)))
+    assert slot.status is SlotStatus.MISMATCH
+    assert any("x[1]" in d for d in slot.diffs), slot.diffs
+
+
+def test_structured_arrays_with_other_fields_differ():
+    other = np.zeros(2, dtype=[("0", "U4"), ("2", "f8")])
+    assert _structured_result(_structured(), other).status is SlotStatus.MISMATCH
+
+
+def test_a_real_rank_genes_groups_output_is_compared_not_skipped(tmp_path):
+    sc = pytest.importorskip("scanpy")
+    rng = np.random.default_rng(0)
+    adata = anndata.AnnData(rng.random((40, 12)).astype("float32"))
+    adata.obs["g"] = pd.Categorical(["a", "b"] * 20)
+    sc.tl.rank_genes_groups(adata, "g", method="t-test")
+    path = tmp_path / "r.h5ad"
+    adata.write_h5ad(path)
+    first, second = anndata.read_h5ad(path), anndata.read_h5ad(path)
+    policy = ComparisonPolicy(required=("ad/uns",))
+    (slot,) = compare({"ad": first}, {"ad": second}, policy)
+    assert slot.status is SlotStatus.MATCH, slot
+    assert not any("unsupported" in n for n in slot.not_compared), slot.not_compared
+
+
+def _structured_object_nan(label="a", value=np.nan):
+    out = np.zeros(2, dtype=[("name", "O"), ("score", "f8")])
+    out["name"] = [label, "b"]
+    out["score"] = [value, 2.0]
+    return out
+
+
+def test_structured_arrays_with_an_object_field_and_a_nan_are_equal():
+    slot = _structured_result(_structured_object_nan(), _structured_object_nan())
+    assert slot.status is SlotStatus.MATCH and slot.compared >= 2, slot
+    assert not slot.diffs and not slot.not_compared
+
+
+def test_a_nan_against_a_number_in_a_structured_field_is_a_diff_naming_the_field():
+    slot = _structured_result(
+        _structured_object_nan(), _structured_object_nan(value=1.0)
+    )
+    assert slot.status is SlotStatus.MISMATCH
+    assert any("x[score]" in d for d in slot.diffs), slot.diffs
+
+
+def test_a_table_that_is_not_compared_says_which_one_and_why():
+    frame = pd.DataFrame({"condition[T.treated]": [1.0]})
+    results = compare(
+        {"x": {"design": frame}},
+        {"x": {"design": frame.copy()}},
+        ComparisonPolicy(required=("x",)),
+    )
+    text = " ".join(line for r in results for line in r.not_compared)
+    assert "x/design: this table was not compared" in text
+    assert (
+        "condition[T.treated]" in text
+        and "cannot be named in a comparison rule" in text
+    )
+    mapping = compare(
+        {"x": {"a/b": 1.0}}, {"x": {"a/b": 1.0}}, ComparisonPolicy(required=("x",))
+    )
+    assert any(
+        "this mapping was not compared" in line
+        for r in mapping
+        for line in r.not_compared
+    )

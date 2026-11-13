@@ -135,6 +135,12 @@ vector-search = [
 observability = ["langfuse>=3.2.6", "redis>=6.4.0"]
 
 # =============================================================================
+# Workspace catalog (LaminDB; off unless LOBSTER_LAMIN is set)
+# =============================================================================
+# lamindb-core, not the lamindb umbrella package, and without its own extras.
+lamin = ["lamindb-core>=2.12.2,<2.13", "pandera>=0.24.0"]
+
+# =============================================================================
 # Extended data access
 # =============================================================================
 extended-data = [

@@ -9,6 +9,7 @@ Canonical question order (matches Go TUI wizard):
   5. Agent packages      (from manifest.agent_packages)
   6. Optional keys       (NCBI, Cloud key — skip Cloud if Omics-OS)
   7. Smart Standardization (if selected agents benefit)
+  8. LaminDB catalog     (when ``lamin_default`` is given; default No)
 
 Returns the exact same JSON dict as the Go TUI wizard so that
 ``apply_tui_init_result()`` handles both paths without branching.
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Optional
 
 from lobster.i18n import h
 from lobster.ui.wizard.manifest import WizardManifest
@@ -44,6 +46,7 @@ _EMPTY_RESULT: dict = {
     "model_id": "",
     "smart_standardization_enabled": False,
     "smart_standardization_openai_key": "",
+    "lamin_enabled": None,
     "cancelled": False,
 }
 
@@ -66,10 +69,13 @@ def _cancelled(result: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def run_questionary_init(manifest: WizardManifest) -> dict:
+def run_questionary_init(
+    manifest: WizardManifest, *, lamin_default: Optional[bool] = None
+) -> dict:
     """Run questionary-based init wizard using WizardManifest data.
 
-    Returns the same dict structure as the Go TUI wizard.
+    Returns the same dict structure as the Go TUI wizard. The LaminDB question is
+    asked only when ``lamin_default`` is given (the answer it starts at).
 
     Raises:
         ImportError: when ``questionary`` is not installed.
@@ -359,6 +365,23 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
                 if embedding_key is None:
                     return _cancelled(result)
                 result["smart_standardization_openai_key"] = embedding_key.strip()
+
+        # ================================================================== #
+        # Step 9 — LaminDB catalog                                           #
+        # ================================================================== #
+        if lamin_default is not None:
+            from lobster.cli_internal.commands.light.lamin_commands import (
+                init_question,
+            )
+
+            title, text = init_question()
+            print(f"\n{title}\n{text}")
+            keep = questionary.confirm(
+                h("Keep a LaminDB catalog?"), default=lamin_default
+            ).ask()
+            if keep is None:
+                return _cancelled(result)
+            result["lamin_enabled"] = bool(keep)
 
     except KeyboardInterrupt:
         result["cancelled"] = True

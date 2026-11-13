@@ -208,6 +208,7 @@ class NotebookExecutor:
         input_data: Union[str, Path],
         parameters: Optional[Dict[str, Any]] = None,
         output_path: Optional[Path] = None,
+        timeout: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Execute notebook with Papermill.
@@ -217,6 +218,7 @@ class NotebookExecutor:
             input_data: Path to input H5AD file
             parameters: Optional parameter overrides
             output_path: Where to save output notebook
+            timeout: Seconds one cell may run before it fails (None: no limit)
 
         Returns:
             Dictionary with execution results:
@@ -266,6 +268,7 @@ class NotebookExecutor:
                 output_path=str(output_path),
                 parameters=params,
                 kernel_name="python3",
+                execution_timeout=timeout,
             )
 
             execution_time = time.time() - start_time

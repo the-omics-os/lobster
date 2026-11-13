@@ -437,7 +437,12 @@ class _Walk:
         for side in (expected, actual):
             bad = [k for k in side if not _addressable(k)]
             if bad:
-                self.skip(path, f"keys that cannot be addressed: {bad[:5]!r}")
+                self.skip(
+                    path,
+                    f"this mapping was not compared: the keys {bad[:5]!r} cannot "
+                    f"be named in a comparison rule (they contain '/', '[' or ']', "
+                    f"or are empty, padded, '.', '..' or not text)",
+                )
                 return
             keys.append({k for k in side if not self.excluded(f"{path}/{k}")})
         want, got = keys
@@ -505,6 +510,11 @@ class _Walk:
             flat_e, flat_a = expected.ravel(), actual.ravel()
             for index in range(flat_e.size):
                 self.value(flat_e[index], flat_a[index], f"{path}[{index}]")
+        elif kind == "V" and expected.dtype.names:
+            # Structured array (rank_genes_groups): field by field. The dtypes are
+            # equal, so the fields, their order and their types are the same.
+            for field in expected.dtype.names:
+                self._array_values(expected[field], actual[field], f"{path}[{field}]")
         else:
             self.skip(path, f"unsupported dtype {expected.dtype}")
 
@@ -597,7 +607,14 @@ class _Walk:
             texts = [str(c) for c in side]
             bad = [c for c in side if not _addressable(str(c))]
             if bad or len(set(texts)) != len(texts):
-                self.skip(path, f"column labels that cannot be addressed: {bad[:5]!r}")
+                reason = (
+                    f"the column labels {bad[:5]!r} cannot be named in a "
+                    f"comparison rule (they contain '/', '[' or ']', or are "
+                    f"empty, padded, '.' or '..')"
+                    if bad
+                    else "two column labels have the same text"
+                )
+                self.skip(path, f"this table was not compared: {reason}")
                 return
         want = [c for c in e_cols if not self.excluded(f"{path}/{c}")]
         got = [c for c in a_cols if not self.excluded(f"{path}/{c}")]

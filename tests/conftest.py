@@ -1289,3 +1289,21 @@ def _engine_log_level_baseline():
         yield
     finally:
         engine_logger.setLevel(previous)
+
+
+@pytest.fixture(autouse=True)
+def _console_files_follow_the_process_streams():
+    """Leave the shared Rich consoles following ``sys.stdout`` and ``sys.stderr``.
+
+    Code under test assigns ``console.file`` or calls ``restore_terminal_output``
+    with pytest's per-test capture file, and Rich keeps that file after the test
+    ends. The next test that prints through the shared manager then fails with
+    "I/O operation on closed file". ``_file`` is None while a console follows the
+    process streams. The manager is not created here, only reset if a test built it.
+    """
+    yield
+    module = sys.modules.get("lobster.ui.console_manager")
+    manager = getattr(module, "_console_manager", None)
+    if manager is not None:
+        for console in (manager._console, manager._error_console):
+            console._file = None

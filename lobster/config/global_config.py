@@ -36,7 +36,7 @@ import platform
 from pathlib import Path
 from typing import Dict, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from lobster.config.base_config import ProviderConfigBase
 
@@ -302,6 +302,21 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="UI language (en, zh) for all workspaces. A workspace lang wins.",
     )
 
+    lamin_enabled: Optional[bool] = Field(
+        None,
+        description="LaminDB catalog for workspaces without their own LOBSTER_LAMIN "
+        "(None: off).",
+    )
+
+    @field_validator("lamin_enabled", mode="before")
+    @classmethod
+    def _lamin_flag(cls, value):
+        # The catalog ignores a value it cannot read; so does this model, rather
+        # than dropping the whole file.
+        from lobster.core.catalog.factory import parse_flag
+
+        return parse_flag(value)
+
     model_context_windows: Dict[str, int] = Field(
         default_factory=dict,
         description="Context window overrides for arbitrary models (e.g., {'us.meta.llama3-1-70b-instruct-v1:0': 128000})",
@@ -416,6 +431,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.nebius_default_model = None
         self.ollama_cloud_default_model = None
         self.ollama_default_host = "http://localhost:11434"
+        self.lamin_enabled = None
         self.model_context_windows = {}
         logger.info("Reset global config to defaults")
 

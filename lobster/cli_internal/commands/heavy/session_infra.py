@@ -513,6 +513,10 @@ class CommandClient:
 
             # The concrete session this command reads is the export identity.
             bind_client_session(self.data_manager, session_id)
+        # Optional workspace catalog: one run per command invocation.
+        from lobster.core.catalog.factory import begin_command_run
+
+        begin_command_run(self.data_manager, workspace_path, session_id, session_dir)
         self.messages: list = []
         self.graph = None
         self.token_tracker = None

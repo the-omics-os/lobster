@@ -250,7 +250,11 @@ class GoTUIBridge:
 
 
 def run_init_wizard(
-    binary_path: str, *, theme: str = "", timeout: Optional[int] = None
+    binary_path: str,
+    *,
+    theme: str = "",
+    timeout: Optional[int] = None,
+    lamin_default: Optional[bool] = None,
 ) -> dict:
     """Run one-shot Go init wizard and parse its JSON result file.
 
@@ -292,6 +296,11 @@ def run_init_wizard(
     child_env.pop("LOBSTER_INIT_ASK_LANG", None)
     if not language_was_explicit():
         child_env["LOBSTER_INIT_ASK_LANG"] = "1"
+    # Ask the LaminDB question, starting at this answer. Older binaries ignore it
+    # and return no answer: the setting then stays as it is.
+    child_env.pop("LOBSTER_INIT_LAMIN", None)
+    if lamin_default is not None:
+        child_env["LOBSTER_INIT_LAMIN"] = "1" if lamin_default else "0"
     try:
         proc = subprocess.run(  # nosec B603 # argv list for the bundled TUI binary; no shell
             cmd,

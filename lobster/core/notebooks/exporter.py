@@ -37,40 +37,56 @@ logger = logging.getLogger(__name__)
 _OBSERVE: Any = object()
 
 
+# Printed by the save cell when it cannot import the session writer; the replay check
+# looks for exactly this line in the executed notebook.
+SESSION_WRITER_FALLBACK_LINE = (
+    "Written without the session writer (lobster not importable); "
+    "the saved file may differ from the session's."
+)
+
+
 def _guarded_save_code(path_line: str, compression: Optional[str] = None) -> str:
     """Code for the final save cell.
 
-    ``path_line`` assigns ``output_path``. If h5ad cannot write some uns
-    entries, the cell writes a copy without them, names them in
-    ``uns['lobster_unsaved_uns_keys']`` and leaves the in-memory adata as is.
+    The cell writes through the function the session saves with
+    (``write_session_h5ad``), so the notebook writes what the session wrote. Only if
+    Lobster cannot be imported does it fall back to a plain write; it says so, and
+    if h5ad cannot write some uns entries it writes a copy without them, names them
+    in ``uns['lobster_unsaved_uns_keys']`` and leaves the in-memory adata as is.
     """
     kwargs = f", compression={compression!r}" if compression else ""
     return f"""# Save processed data
 {path_line}
 try:
-    adata.write_h5ad(output_path{kwargs})
-except Exception as exc:
-    # Some uns entries cannot be written to h5ad. Write a copy without them
-    # and record their names in that copy; the in-memory adata keeps them.
-    import tempfile
-    from pathlib import Path as _Path
+    from lobster.core.backends.h5ad_backend import write_session_h5ad
+except ImportError:
+    print({SESSION_WRITER_FALLBACK_LINE!r})
+    try:
+        adata.write_h5ad(output_path{kwargs})
+    except Exception as exc:
+        # Some uns entries cannot be written to h5ad. Write a copy without them
+        # and record their names in that copy; the in-memory adata keeps them.
+        import tempfile
+        from pathlib import Path as _Path
 
-    _unwritable = []
-    with tempfile.TemporaryDirectory() as _tmp:
-        for _key in list(adata.uns):
-            _probe = adata.copy()
-            _probe.uns = {{_key: adata.uns[_key]}}
-            try:
-                _probe.write_h5ad(_Path(_tmp) / "probe.h5ad")
-            except Exception:
-                _unwritable.append(_key)
-    _to_write = adata.copy()
-    for _key in _unwritable:
-        del _to_write.uns[_key]
-    _to_write.uns["lobster_unsaved_uns_keys"] = list(_unwritable)
-    print(f"WARNING: these uns keys could not be written and are NOT in {{output_path}}: {{_unwritable}}")
-    print(f"         original error: {{type(exc).__name__}}: {{exc}}")
-    _to_write.write_h5ad(output_path{kwargs})
+        _unwritable = []
+        with tempfile.TemporaryDirectory() as _tmp:
+            for _key in list(adata.uns):
+                _probe = adata.copy()
+                _probe.uns = {{_key: adata.uns[_key]}}
+                try:
+                    _probe.write_h5ad(_Path(_tmp) / "probe.h5ad")
+                except Exception:
+                    _unwritable.append(_key)
+        _to_write = adata.copy()
+        for _key in _unwritable:
+            del _to_write.uns[_key]
+        _to_write.uns["lobster_unsaved_uns_keys"] = list(_unwritable)
+        print(f"WARNING: these uns keys could not be written and are NOT in {{output_path}}: {{_unwritable}}")
+        print(f"         original error: {{type(exc).__name__}}: {{exc}}")
+        _to_write.write_h5ad(output_path{kwargs})
+else:
+    write_session_h5ad(adata, output_path{kwargs})
 print(f"Saved processed data to: {{output_path}}")
 """
 
@@ -675,11 +691,13 @@ code recorded for it.
         Returns:
             Markdown cell with the export record
         """
+        input_files = self._get_input_file_hashes()
         record = {
             "data_integrity_manifest": {
                 "generated_at": datetime.now().isoformat(),
                 "provenance": self._get_provenance_hash(session_identity),
-                "input_files": self._get_input_file_hashes(),
+                "input_files": input_files,
+                "input_roles": self._get_input_roles(input_files),
                 "system": self._get_system_info(),
             }
         }
@@ -693,7 +711,8 @@ Recorded when this notebook was exported, for your own checks.
 ```
 
 **What is recorded**
-- `input_files`: SHA-256 of each modality's `.h5ad` file in the workspace at export time (`file_not_found` if the file was missing).
+- `input_files`: SHA-256 of each modality's `.h5ad` file in the workspace at export time (`not_saved` if the session never saved that modality, `file_not_found` if it saved it and the file is gone).
+- `input_roles`: `loaded` lists the name, SHA-256 and size of each file a modality was loaded from, read when it was loaded (no path); `saved` repeats `input_files`.
 - `provenance.sha256`: SHA-256 of the session ID (`null` when the client session identity was unavailable or ambiguous at export time), the provenance namespace and the activity and entity counts only. It does not cover the content of the provenance record.
 - `system`: Lobster and Python versions, the platform, and the short Git commit of the directory the export ran in (if any), as plain text.
 
@@ -738,21 +757,83 @@ Recorded when this notebook was exported, for your own checks.
                 "sha256": "unavailable",
             }
 
+    def _get_input_roles(self, saved: Dict[str, str]) -> Dict[str, Any]:
+        """Which files the session loaded and which it saved, for a later check.
+
+        ``loaded``: name, SHA-256 and size of each file a modality was loaded from,
+        as read at load time (never a path). ``saved``: the hashes above.
+        """
+        loaded: List[Dict[str, Any]] = []
+        try:
+            for entity in self.data_manager.provenance.entities.values():
+                meta = entity.get("metadata") or {}
+                modality = meta.get("modality_name")
+                if meta.get("loaded_file"):
+                    entry = {
+                        "modality": modality,
+                        **meta["loaded_file"],
+                        "adapter": meta.get("adapter"),
+                    }
+                elif meta.get("loaded_object"):
+                    entry = {
+                        "modality": modality,
+                        "name": f"{modality} (in memory)",
+                        **meta["loaded_object"],
+                    }
+                else:
+                    continue
+                same = (
+                    entry["name"],
+                    entry.get("sha256") or entry.get("content_sha256"),
+                )
+                if not any(
+                    (e["name"], e.get("sha256") or e.get("content_sha256")) == same
+                    for e in loaded
+                ):
+                    loaded.append(entry)
+        except Exception as e:
+            logger.warning(f"Failed to read the loaded files: {e}")
+        return {"version": 2, "loaded": loaded, "saved": saved}
+
+    def _saved_modality_names(self) -> Optional[set]:
+        """Modalities the session saved to a file (its save record); None if unknown."""
+        provenance = getattr(self.data_manager, "provenance", None)
+        if not provenance:
+            return None
+        try:
+            return {
+                (e.get("metadata") or {}).get("modality_name")
+                for e in provenance.entities.values()
+                if e.get("type") == "modality_data" and e.get("uri")
+            }
+        except Exception:
+            return None
+
     def _get_input_file_hashes(self) -> Dict[str, str]:
         """Calculate SHA-256 hashes of input data files."""
         file_hashes = {}
 
         try:
-            # Hash modality files from workspace
+            # Modalities are saved in the workspace's data/ folder.
+            workspace = Path(self.data_manager.workspace_path)
+            data_dir = getattr(self.data_manager, "data_dir", None) or (
+                workspace / "data"
+            )
+            saved = self._saved_modality_names()
             for modality_name in self.data_manager.modalities:
-                modality_path = (
-                    self.data_manager.workspace_path / f"{modality_name}.h5ad"
-                )
+                name = f"{modality_name}.h5ad"
+                modality_path = Path(data_dir) / name
+                if not modality_path.exists():
+                    modality_path = workspace / name  # where older versions looked
                 if modality_path.exists():
-                    file_hash = self._calculate_file_hash(modality_path)
-                    file_hashes[f"{modality_name}.h5ad"] = file_hash
+                    file_hashes[name] = self._calculate_file_hash(modality_path)
                 else:
-                    file_hashes[f"{modality_name}.h5ad"] = "file_not_found"
+                    # a file the session saved and lost, or a modality it never saved
+                    file_hashes[name] = (
+                        "file_not_found"
+                        if saved is None or modality_name in saved
+                        else "not_saved"
+                    )
 
         except Exception as e:
             logger.warning(f"Failed to hash input files: {e}")

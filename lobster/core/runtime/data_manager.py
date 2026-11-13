@@ -6,6 +6,7 @@ modality adapters, storage backends, and validation to enable
 flexible multi-omics data analysis with complete provenance tracking.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -16,7 +17,7 @@ import threading
 import time
 import zipfile
 from collections import OrderedDict
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypedDict, Union
@@ -26,6 +27,8 @@ import pandas as pd
 
 from lobster.core.adapters.base import BaseAdapter
 from lobster.core.adapters.factory import create_default_adapters
+from lobster.core.catalog.null import NullCatalog
+from lobster.core.catalog.port import Catalog, plain_save_section
 from lobster.core.exceptions import HdfReadRefusal
 from lobster.core.export_scope import (
     assert_inside_workspace,
@@ -131,6 +134,57 @@ def _ensure_anndata():
                 f"Install with: {cmd}"
             ) from exc
     return _anndata_module
+
+
+def _file_loaded(source: Any) -> Optional[Dict[str, Any]]:
+    """Name, SHA-256 and size of the file a modality is loaded from, read before it is.
+
+    The name only, never the path: notebooks that record it get shared. ``None`` for
+    anything that is not one readable file (an in-memory object, a folder).
+    """
+    if not isinstance(source, (str, Path)):
+        return None
+    try:
+        path = Path(source)
+        digest = hashlib.sha256()
+        size = 0
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+                size += len(block)
+        return {"name": path.name, "sha256": digest.hexdigest(), "size": size}
+    except OSError:
+        return None
+
+
+def _object_loaded(source: Any) -> Optional[Dict[str, Any]]:
+    """Content digest and shape of an AnnData object a modality is loaded from.
+
+    For a load that has no file (a download hands over an object). No name, no path.
+    ``None`` for anything else, or when the digest cannot be made.
+    """
+    if not _is_anndata_instance(source):
+        return None
+    try:
+        from lobster.core.provenance import content_digest as digest_module
+
+        if not digest_module.IN_MEMORY_INPUTS:  # no cost for a feature that is off
+            return {
+                "in_memory": True,
+                "n_obs": int(source.n_obs),
+                "n_vars": int(source.n_vars),
+            }
+        DIGEST, SCOPE = digest_module.DIGEST, digest_module.SCOPE
+        content_digest = digest_module.content_digest
+        return {
+            "content_sha256": content_digest(source),
+            "digest": DIGEST,
+            "scope": SCOPE,
+            "n_obs": int(source.n_obs),
+            "n_vars": int(source.n_vars),
+        }
+    except Exception:
+        return None
 
 
 def _is_anndata_instance(obj: Any) -> bool:
@@ -584,6 +638,45 @@ def _is_mudata_backend(backend: Any) -> bool:
     )
 
 
+def _keep_bytes(path: Path, keep: Path, *, link: bool) -> None:
+    """Give the bytes at ``path`` the new name ``keep`` (never overwrites ``keep``).
+
+    ``link``: a hard link, for a writer that replaces ``path`` with a new file
+    (a backend with ``replaces_file = True``); a copy where links are not
+    supported, and for every other writer, which may rewrite the file in place.
+    """
+    if link:
+        try:
+            os.link(path, keep)
+            return
+        except FileExistsError:
+            raise
+        except OSError:
+            pass  # no hard links here (another file system, FAT, some shares)
+    try:
+        with open(path, "rb") as source, open(keep, "xb") as target:
+            shutil.copyfileobj(source, target, 1024 * 1024)
+        shutil.copystat(path, keep)
+    except FileExistsError:
+        raise
+    except OSError:
+        try:
+            keep.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def _is_local_native_backend(backend: Any) -> bool:
+    """True for the native H5AD and MuData writers, which write local files."""
+    native = tuple(
+        cls
+        for cls in (H5ADBackend, MuDataBackend if MUDATA_BACKEND_AVAILABLE else None)
+        if isinstance(cls, type)
+    )
+    return bool(native) and isinstance(backend, native)
+
+
 def _package_payload_names(name: str) -> tuple:
     return (f"{name}.h5ad", f"{name}_metadata.json")
 
@@ -804,6 +897,10 @@ class DataManagerV2:
         self._client_session_lock = threading.Lock()
         self._client_session_id: Optional[str] = None
         self._client_session_unknown = False
+
+        # Optional workspace catalog (off by default): records explicit saves, loaded
+        # files, data packages and exported notebooks. The owning client attaches it.
+        self._catalog: Catalog = NullCatalog()
 
         # Optional callback for modality loaded events: fn(name, adata)
         self.on_modality_loaded = None
@@ -1026,6 +1123,206 @@ class DataManagerV2:
                 "Notebook export: client session identity is unknown (%s)", reason
             )
         return result
+
+    # ------------------------------------------------------------------
+    # Workspace catalog (optional; NullCatalog unless the user switched it on)
+    # ------------------------------------------------------------------
+
+    @property
+    def catalog(self) -> Catalog:
+        return self._catalog
+
+    def attach_catalog(self, catalog: Optional[Catalog]) -> None:
+        """Record this manager's saves, loads and exports in ``catalog`` (None: stop)."""
+        self._catalog = NullCatalog() if catalog is None else catalog
+
+    def _catalog_active(self) -> bool:
+        return not isinstance(self._catalog, NullCatalog)
+
+    def _catalog_key(self, path: Path) -> Optional[str]:
+        """``path`` relative to the workspace root (POSIX), or None when outside it."""
+        try:
+            return (
+                Path(path)
+                .resolve()
+                .relative_to(Path(self.workspace_path).resolve())
+                .as_posix()
+            )
+        except (ValueError, OSError):
+            return None
+
+    def _catalog_records_save(self, name: str, path: Path, local: bool) -> bool:
+        """True when an explicit save to ``path`` is recorded in the catalog.
+
+        Not recorded: auto-saves (they overwrite one file per modality on purpose),
+        saves through a non-local backend, and files outside the workspace (the
+        workspace catalog registers files where Lobster wrote them, never copies).
+        """
+        if not local or not self._catalog_active():
+            return False
+        path = Path(path)
+        if path.name == _autosave_file_name(name):
+            return False
+        return self._catalog_key(path) is not None
+
+    @contextmanager
+    def _catalog_saving(
+        self, name: str, adata: Any, path: Path, local: bool, *, replaces: bool
+    ):
+        """Record the save the block writes to ``path``, when it is recorded at all.
+
+        The catalog's save section holds its workspace lock from naming where the
+        recorded version of ``path`` is kept until the new file is registered, so
+        another process cannot write the file in between. The recorded version is
+        kept by ``_catalog_keeping``, so the name takes the new bytes, exactly as
+        without a catalog. Fail-open: a catalog problem never stops the save.
+        """
+        if not self._catalog_records_save(name, path, local):
+            yield
+            return
+        path = Path(path)
+        with ExitStack() as stack:
+            save = None
+            try:
+                opener = getattr(self._catalog, "save_section", None)
+                section = (
+                    opener(path)
+                    if opener is not None
+                    else plain_save_section(self._catalog, path)
+                )
+                save = stack.enter_context(section)
+            except Exception:
+                logger.debug("Catalog: could not prepare the save", exc_info=True)
+            keep = self._catalog_usable_keep(None if save is None else save.keep)
+            with self._catalog_keeping(path, keep, replaces=replaces):
+                yield
+            if save is not None and save.recorded:
+                try:
+                    fields = self._catalog_fields(name, adata, path)
+                    if fields is not None:
+                        save.register(**fields)
+                except Exception:
+                    logger.debug("Catalog: register_artifact failed", exc_info=True)
+
+    def _catalog_usable_keep(self, keep: Any) -> Optional[Path]:
+        """``keep`` when it is a free path inside the workspace that saves may use."""
+        try:
+            keep = None if keep is None else Path(keep)
+        except TypeError:
+            return None
+        if keep is None or self._catalog_key(keep) is None or keep.exists():
+            return None
+        try:
+            self._assert_save_allowed(keep)
+        except ManagedPathError:
+            return None
+        return keep
+
+    @contextmanager
+    def _catalog_keeping(self, path: Path, keep: Optional[Path], *, replaces: bool):
+        """Keep the bytes at ``path`` as ``keep`` for the write in the block.
+
+        ``path`` itself is never moved, so the write sees the same file as without
+        a catalog (permissions, read-only refusal, MuData backups). A writer that
+        replaces the file (``replaces``: the native H5AD writer) gets a second name
+        for the old bytes; one that rewrites it in place gets a copy. A failed
+        write removes the kept name again.
+        """
+        kept = False
+        if keep is not None and path.is_file() and not path.is_symlink():
+            try:
+                keep.parent.mkdir(parents=True, exist_ok=True)
+                _keep_bytes(path, keep, link=replaces)
+                kept = True
+            except OSError as exc:
+                logger.warning(
+                    "Catalog: the recorded version of %s could not be kept (%s); "
+                    "the save goes ahead and the catalog marks it.",
+                    path.name,
+                    type(exc).__name__,
+                )
+        try:
+            yield
+        except BaseException:
+            if kept:
+                try:
+                    keep.unlink()
+                except OSError:
+                    pass
+            raise
+
+    def _catalog_fields(
+        self, name: str, adata: Any, written: Path
+    ) -> Optional[Dict[str, Any]]:
+        """What the catalog records about a save of modality ``name``."""
+        key = self._catalog_key(written)
+        if key is None:
+            return None
+        from lobster.core.provenance.lineage import LINEAGE_KEY
+
+        uns = getattr(adata, "uns", None) or {}
+        lineage = uns.get(LINEAGE_KEY) if hasattr(uns, "get") else None
+        description = ""
+        if isinstance(lineage, dict):
+            description = str(lineage.get("step_summary") or "")
+        otype = "MuData" if type(adata).__name__ == "MuData" else "AnnData"
+        return {
+            "key": key,
+            "kind": "dataset",
+            "otype": otype,
+            "description": description or f"Lobster save of modality '{name}'",
+            "meta": {
+                "modality_name": name,
+                "shape": [int(n) for n in getattr(adata, "shape", ())],
+                "dm_session_id": self.session_id,
+            },
+        }
+
+    def _catalog_link_input(self, source: Any) -> None:
+        if not self._catalog_active() or not isinstance(source, (str, Path)):
+            return
+        try:
+            path = Path(source)
+            if path.is_file():
+                self._catalog.link_input(path.resolve())
+        except Exception:
+            logger.debug("Catalog: link_input failed", exc_info=True)
+
+    def _catalog_record_package(self, package_path: Any) -> None:
+        if not self._catalog_active():
+            return
+        try:
+            path = Path(package_path)
+            key = self._catalog_key(path)
+            if key is None or not path.is_file():
+                return
+            self._catalog.register_artifact(
+                path,
+                key=key,
+                kind="dataset",
+                otype=None,
+                description="Lobster data package",
+                meta={"dm_session_id": self.session_id},
+            )
+        except Exception:
+            logger.debug("Catalog: package registration failed", exc_info=True)
+
+    def _catalog_record_notebook(self, notebook_path: Any, description: str) -> None:
+        if not self._catalog_active():
+            return
+        try:
+            path = Path(notebook_path)
+            key = self._catalog_key(path)
+            if key is None or not path.is_file():
+                return
+            self._catalog.register_transform(
+                key=key,
+                kind="notebook",
+                source=path.read_text(encoding="utf-8"),
+                description=description or "Lobster session notebook",
+            )
+        except Exception:
+            logger.debug("Catalog: notebook registration failed", exc_info=True)
 
     @property
     def notebook_exporter(self):
@@ -1454,6 +1751,8 @@ class DataManagerV2:
             raise ValueError(f"Adapter '{adapter}' not registered")
 
         adapter_instance = self.adapters[adapter]
+        loaded_file = _file_loaded(source) if self.provenance else None
+        loaded_object = _object_loaded(source) if self.provenance else None
 
         # Load data using adapter
         if not _is_anndata_instance(source):
@@ -1491,6 +1790,8 @@ class DataManagerV2:
                     "modality_name": name,
                     "adapter": adapter,
                     "shape": adata.shape,
+                    **({"loaded_file": loaded_file} if loaded_file else {}),
+                    **({"loaded_object": loaded_object} if loaded_object else {}),
                 },
             )
 
@@ -1534,6 +1835,7 @@ class DataManagerV2:
         logger.info(
             f"Loaded modality '{name}': {adata.shape} using adapter '{adapter}'"
         )
+        self._catalog_link_input(source)
 
         # Notify listeners
         if self.on_modality_loaded is not None:
@@ -1658,8 +1960,12 @@ class DataManagerV2:
         3. Keep absolute (fallback for ``/tmp/`` paths outside workspace)
 
         Backends receive the relative path and resolve it against their
-        own base_path. The return value is always the absolute resolved
-        path (for provenance and caller use).
+        own base_path. The return value is the absolute resolved
+        path (for provenance and caller use). A local backend writes a
+        workspace path outside ``data_dir`` under ``data_dir``
+        (``<ws>/results/x.h5ad`` → ``<ws>/data/results/x.h5ad``); the
+        return value keeps the caller's spelling, the catalog records the
+        file written.
 
         Args:
             name: Name of modality to save
@@ -1728,7 +2034,11 @@ class DataManagerV2:
                 resolved_path = Path(path)
                 if not resolved_path.is_absolute():
                     resolved_path = self.data_dir / path
-                self._modality_backend.export_h5ad(name, resolved_path)
+                # export_h5ad copies into the file in place: the old version is copied.
+                with self._catalog_saving(
+                    name, adata, resolved_path, True, replaces=False
+                ):
+                    self._modality_backend.export_h5ad(name, resolved_path)
                 return str(resolved_path)
 
             backend_name = backend or self.default_backend
@@ -1747,6 +2057,15 @@ class DataManagerV2:
             # Local backends re-resolve via base_path in _resolve_path().
             backend_path = self._backend_path(resolved_path)
             self._assert_backend_destination_allowed(backend_instance, backend_path)
+            local_backend = _is_local_native_backend(backend_instance) and not str(
+                path
+            ).startswith("s3://")
+            written_path = resolved_path
+            if local_backend and not Path(backend_path).is_absolute():
+                # A local backend re-roots a relative path under its base folder
+                # (data/): a path in the workspace outside data/ is written there,
+                # so that is the file the catalog records.
+                written_path = Path(backend_instance._resolve_path(backend_path))
 
             # Validate data for H5AD serialization (optional pre-save check)
             if hasattr(adata, "uns"):
@@ -1768,13 +2087,22 @@ class DataManagerV2:
                             f"Set logging to DEBUG for full list."
                         )
 
-            # Save data — pass relative path to backend
-            if backup_stamp is None:
-                backend_instance.save(adata, backend_path, **kwargs)
-            else:
-                backend_instance.save(
-                    adata, backend_path, backup_stamp=backup_stamp, **kwargs
-                )
+            # Save data — pass relative path to backend. Workspace catalog: a recorded
+            # version is kept before it is overwritten, and the new file recorded.
+            with self._catalog_saving(
+                name,
+                adata,
+                written_path,
+                local_backend,
+                replaces=getattr(type(backend_instance), "replaces_file", False)
+                is True,
+            ):
+                if backup_stamp is None:
+                    backend_instance.save(adata, backend_path, **kwargs)
+                else:
+                    backend_instance.save(
+                        adata, backend_path, backup_stamp=backup_stamp, **kwargs
+                    )
             path = resolved_path
 
             # Log provenance
@@ -1822,7 +2150,8 @@ class DataManagerV2:
 
         When set, get_modality() delegates to the backend with LRU caching.
         When None (default), the existing dict path is used.
-        Feature-flagged: only call this when LOBSTER_MODALITY_BACKEND=1.
+        Nothing in Lobster calls this or reads a flag for it (no
+        ``LOBSTER_MODALITY_BACKEND`` exists): shipped code always uses the dict path.
         """
         from collections import OrderedDict
 
@@ -3105,8 +3434,9 @@ class DataManagerV2:
 
             ``create_activity()`` has always accepted a real ``agent`` parameter; this method
             simply had no way to forward one. It is **optional and defaults to the old
-            literal** on purpose: ~116 call sites pass no agent, and making it required would
-            break all of them at once. Tools are wired incrementally, and
+            literal** on purpose: many call sites still pass no agent (51 of 258 when last
+            counted), and making it required would break them all at once. Tools are wired
+            incrementally, and
             ``tests/unit/core/test_provenance_attribution_contract.py`` holds the audited set.
         """
         if self.provenance:
@@ -4547,7 +4877,7 @@ class DataManagerV2:
                     raise
 
         try:
-            return self._write_data_package(
+            package_path = self._write_data_package(
                 staging,
                 zip_filename,
                 legacy_names,
@@ -4564,6 +4894,8 @@ class DataManagerV2:
                 except OSError:
                     pass
             raise
+        self._catalog_record_package(package_path)
+        return package_path
 
     def _assert_package_file_allowed(self, path: Path) -> None:
         """Right before a payload file is written (or copied) into the package."""
@@ -5372,6 +5704,7 @@ https://github.com/OmicsOS/lobster
             raise ValueError("No activities recorded - nothing to export")
 
         path = self.notebook_exporter.export(name, description, filter_strategy)
+        self._catalog_record_notebook(path, description)
 
         logger.info(f"Notebook exported: {path}")
         logger.info("Next steps:")

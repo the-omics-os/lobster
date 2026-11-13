@@ -226,6 +226,8 @@ class AgentClient(BaseClient):
         # This client owns the session identity that notebook exports show; a data
         # manager already bound to another session shows it as unknown.
         bind_client_session(self.data_manager, self.session_id)
+        # Optional workspace catalog: one run per session (off unless switched on).
+        self._begin_catalog_run()
 
         self.profile_timings_enabled = getattr(
             self.data_manager, "profile_timings_enabled", False
@@ -3130,6 +3132,20 @@ class AgentClient(BaseClient):
                 "error": f"Unexpected error: {str(e)}",
             }
 
+    def _begin_catalog_run(self) -> None:
+        """Attach the workspace catalog and start this session's run; never raises."""
+        try:
+            from lobster.core.catalog.factory import begin_session_run
+
+            begin_session_run(
+                self.data_manager,
+                self.workspace_path,
+                self.session_id,
+                self.workspace_path / ".lobster" / "sessions" / self.session_id,
+            )
+        except Exception:
+            logger.debug("Catalog: session run not started", exc_info=True)
+
     def reset(self):
         """Reset the conversation state."""
         self.messages = []
@@ -3382,6 +3398,7 @@ class AgentClient(BaseClient):
             self.session_id = loaded_session_id
             # Restoring is the one sanctioned identity change for exports.
             bind_client_session(self.data_manager, self.session_id, replace=True)
+            self._begin_catalog_run()
 
         # Update metadata with load info
         loaded_metadata = session_data.get("metadata", {})

@@ -49,6 +49,7 @@ type WizardResult struct {
 	SmartStandardizationEnabled   bool     `json:"smart_standardization_enabled"`
 	SmartStandardizationOpenAIKey string   `json:"smart_standardization_openai_key"`
 	OAuthAuthenticated            bool     `json:"oauth_authenticated"`
+	LaminEnabled                  *bool    `json:"lamin_enabled,omitempty"` // nil: not asked
 	Cancelled                     bool     `json:"cancelled"`
 	Lang                          string   `json:"lang,omitempty"`
 }
@@ -260,6 +261,23 @@ const (
 // askLangEnv makes the wizard start with the language screen.
 const askLangEnv = "LOBSTER_INIT_ASK_LANG"
 
+// laminEnv asks the LaminDB catalog question last; "1" or "0" is the answer it
+// starts at. Unset: not asked, and the result carries no answer.
+const laminEnv = "LOBSTER_INIT_LAMIN"
+
+const laminTitle = "LaminDB catalog"
+
+// laminText is the same English text as lamin_commands.init_question (one zh entry).
+const laminText = "Record what Lobster does in a LaminDB catalog? Datasets saved in the " +
+	"workspace, sessions and exported notebooks are recorded with versions and " +
+	"hashes; `lobster lamin ls` lists them. The catalog lives in the workspace, " +
+	"works offline and contacts no server. Optional; needs lobster-ai[lamin]. " +
+	"If you later point Lobster at a LaminDB instance of your own (`lobster " +
+	"lamin use`), saved files are copied into that instance's storage (local " +
+	"storage only), and LaminDB contacts Lamin's servers (lamin.ai) only if the " +
+	"instance is registered there, or to look up an instance that is not set " +
+	"up on this machine."
+
 // initLanguages are shown in their own language and never translated.
 var initLanguages = []singleSelectItem{
 	{label: "English", value: "en"},
@@ -276,6 +294,7 @@ const (
 	subStepCloudKey
 	subStepSmartStdConfirm
 	subStepSmartStdKey
+	subStepLaminConfirm
 	subStepOptionalDone
 )
 
@@ -557,6 +576,8 @@ type WizardModel struct {
 	cloudInput      textinput.Model
 	smartStdConfirm confirmModel
 	smartStdInput   textinput.Model
+	askLamin        bool
+	laminConfirm    confirmModel
 }
 
 // NewWizardModel creates a WizardModel with the given theme and result path.
@@ -1300,6 +1321,20 @@ func (m *WizardModel) initOptionalKeys() {
 	ti3.Placeholder = "sk-..."
 	ti3.EchoMode = textinput.EchoPassword
 	m.smartStdInput = ti3
+
+	if v := os.Getenv(laminEnv); v == "0" || v == "1" {
+		m.askLamin = true
+		m.laminConfirm = confirmModel{title: laminTitle, description: laminText, value: v == "1"}
+	}
+}
+
+// afterSmartStd asks the LaminDB question when Python asked for it, else finishes.
+func (m WizardModel) afterSmartStd() (tea.Model, tea.Cmd) {
+	if m.askLamin {
+		m.optionalSub = subStepLaminConfirm
+		return m, nil
+	}
+	return m.finishWizard()
 }
 
 func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1402,17 +1437,17 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch {
 				case m.result.Provider == providerOpenAI:
 					m.result.SmartStandardizationOpenAIKey = strings.TrimSpace(m.result.APIKey)
-					return m.finishWizard()
+					return m.afterSmartStd()
 				case strings.TrimSpace(os.Getenv("OPENAI_API_KEY")) != "":
 					m.result.SmartStandardizationOpenAIKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
-					return m.finishWizard()
+					return m.afterSmartStd()
 				default:
 					m.optionalSub = subStepSmartStdKey
 					m.smartStdInput.Focus()
 					return m, textinput.Blink
 				}
 			}
-			return m.finishWizard()
+			return m.afterSmartStd()
 		}
 		return m, nil
 
@@ -1426,7 +1461,7 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil // require non-empty
 				}
 				m.result.SmartStandardizationOpenAIKey = val
-				return m.finishWizard()
+				return m.afterSmartStd()
 			case "esc":
 				m.optionalSub = subStepSmartStdConfirm
 				return m, nil
@@ -1435,6 +1470,20 @@ func (m WizardModel) updateOptionalKeys(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.smartStdInput, cmd = m.smartStdInput.Update(msg)
 		return m, cmd
+
+	case subStepLaminConfirm:
+		var done, cancelled bool
+		m.laminConfirm, done, cancelled = m.laminConfirm.Update(msg)
+		if cancelled {
+			m.optionalSub = subStepSmartStdConfirm
+			return m, nil
+		}
+		if done {
+			keep := m.laminConfirm.value
+			m.result.LaminEnabled = &keep
+			return m.finishWizard()
+		}
+		return m, nil
 	}
 
 	return m, nil
@@ -1454,6 +1503,8 @@ func (m WizardModel) viewOptionalKeys() string {
 		return m.smartStdConfirm.View(m.theme)
 	case subStepSmartStdKey:
 		return m.viewTextInput("OpenAI API Key for Embeddings", "Required for Smart Standardization / vector search.", m.smartStdInput)
+	case subStepLaminConfirm:
+		return m.laminConfirm.View(m.theme)
 	}
 	return ""
 }

@@ -18,11 +18,13 @@ import numpy as np
 import pandas as pd
 
 from lobster.core.backends.base import BaseBackend
+from lobster.core.utils.h5ad_utils import _default_index_name, anndata_keeps_native
 from lobster.core.utils.h5ad_utils import repair_log1p_base as _repair_log1p_base
 from lobster.core.utils.h5ad_utils import repair_marker_names
 from lobster.core.utils.h5ad_utils import sanitize_key as util_sanitize_key
 from lobster.core.utils.h5ad_utils import sanitize_keys as util_sanitize_keys
 from lobster.core.utils.h5ad_utils import sanitize_value as util_sanitize_value
+from lobster.core.utils.h5ad_utils import within_key
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,9 @@ class H5ADBackend(BaseBackend):
     with path parsing that's ready for future S3 integration
     without requiring API changes.
     """
+
+    # A save writes a new file and renames it over the old one (never in place).
+    replaces_file = True
 
     def __init__(
         self,
@@ -181,10 +186,15 @@ class H5ADBackend(BaseBackend):
 
         # Normalize only injective key mappings; never choose a surviving payload.
         uns_keys = util_sanitize_keys(adata.uns, slash_replacement)
-        adata.uns = {
-            key: util_sanitize_value(value, slash_replacement)
-            for key, value in zip(uns_keys, adata.uns.values())
-        }
+        sanitized_uns = {}
+        for key, value in zip(uns_keys, adata.uns.values()):
+            with within_key(key):
+                sanitized_uns[key] = (
+                    None
+                    if value is None and anndata_keeps_native()
+                    else util_sanitize_value(value, slash_replacement)
+                )
+        adata.uns = sanitized_uns
 
         # Apply the same refusal contract to each other rewritten AnnData slot.
         for slot in ("obsm", "varm", "layers"):
@@ -229,14 +239,17 @@ class H5ADBackend(BaseBackend):
         )
         logger.debug(f"SANITIZE: First 10 var columns: {list(adata.var.columns[:10])}")
 
-        # CRITICAL FIX: Check and fix None/empty index names in obs and var
-        # Use falsy check to catch both None AND empty string ("") which also breaks H5AD
-        if not adata.obs.index.name:
-            logger.debug("SANITIZE: obs.index.name is None/empty, setting to 'index'")
-            adata.obs.index.name = "index"
-        if not adata.var.index.name:
-            logger.debug("SANITIZE: var.index.name is None/empty, setting to 'gene_id'")
-            adata.var.index.name = "gene_id"
+        # An index name is kept when anndata writes and reads it back unchanged, so an
+        # unnamed index stays unnamed; only an empty name ("") cannot be stored and is
+        # replaced: 'index' for obs, 'gene_id' for var, as before.
+        obs_name = _default_index_name(adata.obs.index, "index")
+        if obs_name != adata.obs.index.name:
+            logger.debug("SANITIZE: obs.index.name is empty, setting to 'index'")
+            adata.obs.index.name = obs_name
+        var_name = _default_index_name(adata.var.index, "gene_id")
+        if var_name != adata.var.index.name:
+            logger.debug("SANITIZE: var.index.name is empty, setting to 'gene_id'")
+            adata.var.index.name = var_name
 
         none_columns_var = [col for col in adata.var.columns if col is None]
         if none_columns_var:
@@ -342,6 +355,14 @@ class H5ADBackend(BaseBackend):
                         )
                     # Categorical columns with string categories are already
                     # H5AD-safe — skip remaining steps.
+                    continue
+
+                # Nullable integer columns (Int8..Int64, UInt8..UInt64) are written
+                # natively by anndata, with or without pd.NA; without NA they
+                # already reach it unchanged. Step 3 would fillna("NA") and raise.
+                if pd.api.types.is_integer_dtype(df[col].dtype) and isinstance(
+                    df[col].dtype, pd.api.extensions.ExtensionDtype
+                ):
                     continue
 
                 # Step 3: Handle None/NaN in numeric columns
@@ -521,115 +542,19 @@ class H5ADBackend(BaseBackend):
                 if not target_mode & 0o222 or not os.access(resolved_path, os.W_OK):
                     raise PermissionError("Existing H5AD target is read-only")
 
-            # Disable Arrow string inference for the entire save path — pandas 3.0+
+            # The session's settings for the write (write_session_h5ad does not set
+            # them again here; it puts them back itself when called on its own).
+            # Arrow string inference off for the whole save path: pandas 3.0+
             # re-creates ArrowStringArray on copy()/sanitize() even after conversion.
-            import pandas as _pd
-
-            _pd.options.future.infer_string = False
-
-            # Opt in to writing nullable-string arrays because current anndata releases
-            # reject the default nullable-string representation during serialization.
-            # write them while both this setting is None and `infer_string` is False — which
-            # is exactly the state we just created on the line above. The only place this was
-            # ever set was the sandbox subprocess preamble
-            # (`custom_code_execution_service.py:925`), never the main process, so
-            # `save_modality` raised on a fresh session until some `execute_custom_code` call
-            # happened to run first. That made the failure ORDER-DEPENDENT, which is why it
-            # went unnoticed: any test or session that exercised custom code first masked it.
-            # Reproduced in isolation: store pbmc3k, call filter_and_normalize, observe the
-            # raise and an EMPTY provenance activity list.
+            pd.options.future.infer_string = False
+            # Current anndata releases reject the default nullable-string
+            # representation during serialization unless this is on.
             anndata.settings.allow_write_nullable_strings = True
 
             # Extract saving parameters
             compression = kwargs.get("compression", self.compression)
             compression_opts = kwargs.get("compression_opts", self.compression_opts)
             as_dense = kwargs.get("as_dense", False)
-
-            # PRE-SAVE DIAGNOSTIC: Check for None column names BEFORE sanitization
-            # (Helps identify where None columns are being introduced)
-            for df_name, df in [("obs", adata.obs), ("var", adata.var)]:
-                none_cols = [col for col in df.columns if col is None]
-                if none_cols:
-                    logger.warning(
-                        f"PRE-SAVE DIAGNOSTIC: Found {len(none_cols)} column(s) with None names "
-                        f"in adata.{df_name} before sanitization. These will be removed. "
-                        f"This indicates a bug in data loading or processing. "
-                        f"Total columns in {df_name}: {len(df.columns)}"
-                    )
-                    # Log first few rows to help debug
-                    logger.debug(
-                        f"Sample column names in {df_name}: {list(df.columns[:20])}"
-                    )
-
-            # Convert ArrowExtensionArray to standard types FIRST
-            # (pandas >=2.2.0 uses PyArrow-backed strings by default)
-            # Must be done before sanitization to ensure proper handling
-            adata_converted = self._convert_arrow_to_standard(adata)
-
-            # saniztize Anndata before storing
-            adata_sanitized = self.sanitize_anndata(adata_converted)
-            _repair_log1p_base(adata_sanitized)
-
-            # FIX #5.2: Post-sanitization validation (diagnostic safety check)
-            # Verify that sanitization actually worked before attempting write
-            if hasattr(adata_sanitized, "uns") and adata_sanitized.uns:
-                from lobster.core.utils.h5ad_utils import validate_for_h5ad
-
-                post_issues = validate_for_h5ad(adata_sanitized.uns, "adata.uns")
-                if post_issues and logger.isEnabledFor(logging.DEBUG):
-                    logger.warning(
-                        f"Post-sanitization check found {len(post_issues)} remaining issues (may be false positives):"
-                    )
-                    for issue in post_issues[:5]:
-                        logger.warning(f"  - {issue}")
-                    # Don't raise error - these might be false positives from validation
-                    # The write will catch real issues
-
-            # make variables unique
-            adata_sanitized.var_names_make_unique(join="__")
-
-            # Prepare AnnData for saving
-            # FIX #5.3: Explicit deep copy of uns to ensure sanitization is preserved
-            import copy
-
-            adata_to_save = adata_sanitized.copy()
-            if hasattr(adata_sanitized, "uns") and adata_sanitized.uns:
-                # Force deep copy of uns to prevent shallow copy issues
-                adata_to_save.uns = copy.deepcopy(adata_sanitized.uns)
-
-            if as_dense and hasattr(adata_to_save.X, "toarray"):
-                # Convert sparse to dense if requested
-                adata_to_save.X = adata_to_save.X.toarray()
-
-            # FINAL CHECK: Verify no None/empty index names or column names right before write
-            # CRITICAL: Check if index name is None/empty and fix it
-            # Use falsy check to catch both None AND empty string ("") which also breaks H5AD
-            if not adata_to_save.obs.index.name:
-                logger.debug(
-                    "Pre-write fix: obs.index.name is None/empty, setting to 'index'"
-                )
-                adata_to_save.obs.index.name = "index"
-            if not adata_to_save.var.index.name:
-                logger.debug(
-                    "Pre-write fix: var.index.name is None/empty, setting to 'index'"
-                )
-                adata_to_save.var.index.name = "index"
-
-            final_none_obs = [col for col in adata_to_save.obs.columns if col is None]
-            final_none_var = [col for col in adata_to_save.var.columns if col is None]
-
-            if final_none_obs or final_none_var:
-                logger.error(
-                    f"🚨 PRE-WRITE CHECK: Found None columns after sanitization! "
-                    f"obs: {len(final_none_obs)}, var: {len(final_none_var)}. "
-                    f"Removing them now as emergency fallback."
-                )
-                if final_none_obs:
-                    logger.error(f"🚨 Dropping None columns from obs: {final_none_obs}")
-                    adata_to_save.obs = adata_to_save.obs.drop(columns=final_none_obs)
-                if final_none_var:
-                    logger.error(f"🚨 Dropping None columns from var: {final_none_var}")
-                    adata_to_save.var = adata_to_save.var.drop(columns=final_none_var)
 
             # Observe the ordinary fresh-file mode without changing the umask.
             # This exclusively owned probe stays empty and is removed before writing.
@@ -656,10 +581,14 @@ class H5ADBackend(BaseBackend):
                     temporary_path.chmod(0o600)
             finally:
                 os.close(descriptor)
-            adata_to_save.write_h5ad(
+            write_session_h5ad(
+                adata,
                 temporary_path,
                 compression=compression,
                 compression_opts=compression_opts,
+                as_dense=as_dense,
+                backend=self,
+                manage_settings=False,
             )
 
             # Every fallible preparation/check happens before the atomic commit.
@@ -672,7 +601,7 @@ class H5ADBackend(BaseBackend):
                 size_mb=size_mb,
             )
             self._log_operation("save_prepared", resolved_path, **details)
-            _pd.options.future.infer_string = _prev_infer
+            pd.options.future.infer_string = _prev_infer
             anndata.settings.allow_write_nullable_strings = _prev_nullable
             settings_restored = True
 
@@ -984,3 +913,120 @@ class H5ADBackend(BaseBackend):
             return "h5"
         else:
             return "unknown"
+
+
+def write_session_h5ad(
+    adata: anndata.AnnData,
+    path: Union[str, Path],
+    compression: Optional[str] = "gzip",
+    compression_opts: Optional[int] = None,
+    as_dense: bool = False,
+    backend: Optional[Any] = None,
+    manage_settings: bool = True,
+) -> None:
+    """Write ``adata`` to ``path`` exactly as a session saves a modality.
+
+    The one writer: ``H5ADBackend.save`` calls it, and so does the save cell of an
+    exported notebook, so a notebook writes the bytes the session wrote. It
+    converts Arrow columns, sanitizes ``uns``/``obs``/``var`` and the like, repairs
+    ``uns['log1p']['base']``, makes gene names unique and writes. The caller's
+    object is not changed. Anndata settings are put back afterwards, unless the
+    caller manages them (``manage_settings=False``, as ``save`` does around its
+    staged write); ``backend`` is the instance whose hooks are used.
+    """
+    backend = backend or H5ADBackend
+    _prev_infer = pd.options.future.infer_string
+    _prev_nullable = anndata.settings.allow_write_nullable_strings
+    try:
+        if manage_settings:
+            pd.options.future.infer_string = False
+            anndata.settings.allow_write_nullable_strings = True
+        # PRE-SAVE DIAGNOSTIC: Check for None column names BEFORE sanitization
+        # (Helps identify where None columns are being introduced)
+        for df_name, df in [("obs", adata.obs), ("var", adata.var)]:
+            none_cols = [col for col in df.columns if col is None]
+            if none_cols:
+                logger.warning(
+                    f"PRE-SAVE DIAGNOSTIC: Found {len(none_cols)} column(s) with None names "
+                    f"in adata.{df_name} before sanitization. These will be removed. "
+                    f"This indicates a bug in data loading or processing. "
+                    f"Total columns in {df_name}: {len(df.columns)}"
+                )
+                # Log first few rows to help debug
+                logger.debug(
+                    f"Sample column names in {df_name}: {list(df.columns[:20])}"
+                )
+
+        # Convert ArrowExtensionArray to standard types FIRST
+        # (pandas >=2.2.0 uses PyArrow-backed strings by default)
+        # Must be done before sanitization to ensure proper handling
+        adata_converted = backend._convert_arrow_to_standard(adata)
+
+        # saniztize Anndata before storing
+        adata_sanitized = backend.sanitize_anndata(adata_converted)
+        _repair_log1p_base(adata_sanitized)
+
+        # FIX #5.2: Post-sanitization validation (diagnostic safety check)
+        # Verify that sanitization actually worked before attempting write
+        if hasattr(adata_sanitized, "uns") and adata_sanitized.uns:
+            from lobster.core.utils.h5ad_utils import validate_for_h5ad
+
+            post_issues = validate_for_h5ad(adata_sanitized.uns, "adata.uns")
+            if post_issues and logger.isEnabledFor(logging.DEBUG):
+                logger.warning(
+                    f"Post-sanitization check found {len(post_issues)} remaining issues (may be false positives):"
+                )
+                for issue in post_issues[:5]:
+                    logger.warning(f"  - {issue}")
+                # Don't raise error - these might be false positives from validation
+                # The write will catch real issues
+
+        # make variables unique
+        adata_sanitized.var_names_make_unique(join="__")
+
+        # Prepare AnnData for saving
+        # FIX #5.3: Explicit deep copy of uns to ensure sanitization is preserved
+        import copy
+
+        adata_to_save = adata_sanitized.copy()
+        if hasattr(adata_sanitized, "uns") and adata_sanitized.uns:
+            # Force deep copy of uns to prevent shallow copy issues
+            adata_to_save.uns = copy.deepcopy(adata_sanitized.uns)
+
+        if as_dense and hasattr(adata_to_save.X, "toarray"):
+            # Convert sparse to dense if requested
+            adata_to_save.X = adata_to_save.X.toarray()
+
+        # FINAL CHECK: same rule as in sanitize_anndata (only an empty name is replaced)
+        obs_name = _default_index_name(adata_to_save.obs.index, "index")
+        if obs_name != adata_to_save.obs.index.name:
+            logger.debug("Pre-write fix: obs.index.name is empty, setting to 'index'")
+            adata_to_save.obs.index.name = obs_name
+        var_name = _default_index_name(adata_to_save.var.index, "gene_id")
+        if var_name != adata_to_save.var.index.name:
+            logger.debug("Pre-write fix: var.index.name is empty, setting to 'gene_id'")
+            adata_to_save.var.index.name = var_name
+
+        final_none_obs = [col for col in adata_to_save.obs.columns if col is None]
+        final_none_var = [col for col in adata_to_save.var.columns if col is None]
+
+        if final_none_obs or final_none_var:
+            logger.error(
+                f"🚨 PRE-WRITE CHECK: Found None columns after sanitization! "
+                f"obs: {len(final_none_obs)}, var: {len(final_none_var)}. "
+                f"Removing them now as emergency fallback."
+            )
+            if final_none_obs:
+                logger.error(f"🚨 Dropping None columns from obs: {final_none_obs}")
+                adata_to_save.obs = adata_to_save.obs.drop(columns=final_none_obs)
+            if final_none_var:
+                logger.error(f"🚨 Dropping None columns from var: {final_none_var}")
+                adata_to_save.var = adata_to_save.var.drop(columns=final_none_var)
+
+        adata_to_save.write_h5ad(
+            path, compression=compression, compression_opts=compression_opts
+        )
+    finally:
+        if manage_settings:
+            pd.options.future.infer_string = _prev_infer
+            anndata.settings.allow_write_nullable_strings = _prev_nullable

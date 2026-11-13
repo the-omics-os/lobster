@@ -709,9 +709,11 @@ def _build_uv_tool_init_command(
     selected_agents: list[str] | None,
     *,
     include_vector_search: bool = False,
+    include_lamin: bool = False,
 ) -> list[str]:
     """Build the uv tool install command needed after init."""
     import importlib
+    import importlib.util
 
     from lobster.core.component_registry import AGENT_TO_PACKAGE
     from lobster.core.uv_tool_env import build_tool_install_command, detect_uv_tool_env
@@ -734,6 +736,9 @@ def _build_uv_tool_init_command(
             importlib.import_module("chromadb")
         except ImportError:
             extras.append("vector-search")
+
+    if include_lamin and importlib.util.find_spec("lamindb_setup") is None:
+        extras.append("lamin")
 
     published_packages = {
         pkg_name
@@ -1096,6 +1101,10 @@ def _create_global_config(config_dict: Dict[str, Any]) -> Path:
     try:
         global_config = GlobalProviderConfig()
         global_config.lang = _init_lang(None)
+        # A setting this run did not ask about survives it.
+        global_config.lamin_enabled = config_dict.get(
+            "lamin_enabled", GlobalProviderConfig.load().lamin_enabled
+        )
 
         # Set provider (required)
         if "provider" in config_dict:
@@ -1164,6 +1173,7 @@ def _uv_tool_env_handoff(
     selected_agents: list[str] | None,
     skip_extras: bool,
     include_vector_search: bool = False,
+    include_lamin: bool = False,
 ) -> None:
     """In a uv tool env, build and optionally run the install command.
 
@@ -1200,6 +1210,7 @@ def _uv_tool_env_handoff(
         None if skip_extras else provider_name,
         selected_agents,
         include_vector_search=include_vector_search,
+        include_lamin=include_lamin,
     )
     cmd.insert(3, "--reinstall")
     cmd_str = shlex.join(cmd)
@@ -1432,6 +1443,9 @@ def _postprocess_tui_init_result(
         raise
     if provider_name == "omics-os":
         console.print(OMICS_OS_KEY_NOT_VERIFIED)
+    _print_lamin_notes(
+        normalized_result.get("lamin_enabled"), global_config=global_config
+    )
 
     if is_uv_tool_env():
         return normalized_result
@@ -1700,6 +1714,50 @@ def _cancelled_text() -> str:
     return _markup_escape(t("cli.init.cancelled"))
 
 
+def _lamin_saved(workspace_path: Path) -> Dict[str, str]:
+    """The workspace's LaminDB settings before init writes anything."""
+    from lobster.cli_internal.commands.light.lamin_commands import saved_settings
+
+    return saved_settings(workspace_path)
+
+
+def _lamin_default(flag: Optional[bool], global_config: bool) -> Optional[bool]:
+    """What the wizard question starts at; None when a flag already answered it."""
+    if flag is not None:
+        return None
+    from lobster.cli_internal.commands.light.lamin_commands import init_default
+
+    return init_default(None, global_config=global_config)
+
+
+def _ask_lamin(global_config: bool) -> bool:
+    """The classic flow's LaminDB question."""
+    from lobster.cli_internal.commands.light.lamin_commands import init_question
+
+    title, text = init_question()
+    console.print(f"\n[bold white]{_markup_escape(title)}[/bold white]")
+    console.print(text, markup=False)
+    return Confirm.ask(
+        h("Keep a LaminDB catalog?"),
+        default=_lamin_default(None, global_config),
+    )
+
+
+def _save_lamin_choice(
+    choice: Optional[bool], workspace_path: Path, *, previous: Dict[str, str]
+) -> None:
+    from lobster.cli_internal.commands.light.lamin_commands import apply_init_choice
+
+    apply_init_choice(choice, workspace_path, previous=previous)
+
+
+def _print_lamin_notes(choice: Optional[bool], *, global_config: bool) -> None:
+    from lobster.cli_internal.commands.light.lamin_commands import init_notes
+
+    for line in init_notes(choice, global_config=global_config):
+        console.print(line, markup=False)
+
+
 def _resolve_workspace_or_exit(create: bool = True) -> Path:
     """Resolve the init workspace, exiting 1 with a clear message on OS errors."""
     from lobster.core.runtime.workspace import resolve_workspace
@@ -1932,6 +1990,7 @@ def init_impl(
             "UI mode: auto (Go TUI, then questionary, classic), go (Go TUI), classic (Rich prompts)"
         ),
     ),
+    lamin: Optional[bool] = None,
 ):
     """
     Initialize Lobster AI configuration.
@@ -2007,6 +2066,8 @@ def init_impl(
     else:
         config_path = resolve_workspace(None, create=False) / "provider_config.json"
         env_path = Path.cwd() / ".env"
+    # The LaminDB catalog answer (--lamin/--no-lamin, else asked when interactive).
+    lamin_previous = {} if global_config else _lamin_saved(config_path.parent)
 
     # Cloud is additive: retain the established priority of explicit providers.
     # Resolve/validate its input before a skipped configuration or force backup
@@ -2665,6 +2726,8 @@ def init_impl(
                             credentials[key] = value.strip()
 
                 # Save provider config
+                if lamin is not None:
+                    config_dict["lamin_enabled"] = lamin
                 global_config_path = _create_global_config(config_dict)
 
                 # Save credentials to credentials.env (with secure permissions)
@@ -2722,6 +2785,7 @@ def init_impl(
             # Create workspace config from structured config_dict
             workspace_path = _resolve_workspace_or_exit()
             _create_workspace_config(config_dict, workspace_path)
+            _save_lamin_choice(lamin, workspace_path, previous=lamin_previous)
 
             # Success message for non-interactive
             from lobster.i18n import t
@@ -2761,6 +2825,7 @@ def init_impl(
                 h("\n[bold]uv tool command:[/bold] {join}").format(join=" ".join(cmd))
             )
 
+        _print_lamin_notes(lamin, global_config=global_config)
         if cloud_selected:
             from lobster.config.cloud_setup import OMICS_OS_KEY_NOT_VERIFIED
 
@@ -2801,10 +2866,19 @@ def init_impl(
                     try:
                         from lobster.ui.bridge.go_tui_bridge import run_init_wizard
 
-                        _tui_result = run_init_wizard(_binary)
+                        _tui_result = run_init_wizard(
+                            _binary,
+                            lamin_default=_lamin_default(lamin, global_config),
+                        )
                         if _tui_result.get("cancelled", False):
                             console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                             raise typer.Exit(0)
+                        # An older lobster-tui ignores the question.
+                        lamin_skipped = (
+                            lamin is None and "lamin_enabled" not in _tui_result
+                        )
+                        if lamin is not None:
+                            _tui_result["lamin_enabled"] = lamin
 
                         _ws_path = _resolve_workspace_or_exit()
                         _ev_path = Path.cwd() / ".env"
@@ -2817,6 +2891,12 @@ def init_impl(
                         )
 
                         _print_init_summary(_tui_result, _ws_path)
+                        if lamin_skipped:
+                            console.print(
+                                h(
+                                    "[dim]This lobster-tui did not ask about the LaminDB catalog; its setting is unchanged. Set it with `lobster init --lamin` or `--no-lamin`.[/dim]"
+                                )
+                            )
                         from lobster.core.uv_tool_env import is_uv_tool_env as _is_uv
 
                         if _is_uv() and not skip_extras:
@@ -2831,6 +2911,7 @@ def init_impl(
                                     _tui_result.get("smart_standardization_enabled")
                                 )
                                 and not skip_extras,
+                                include_lamin=bool(_tui_result.get("lamin_enabled")),
                             )
                         _tui_handled = True
                     except typer.Exit:
@@ -2874,7 +2955,12 @@ def init_impl(
                 except KeyboardInterrupt:
                     console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                     raise typer.Exit(0)
-                _q_result = run_questionary_init(build_init_manifest())
+                _q_result = run_questionary_init(
+                    build_init_manifest(),
+                    lamin_default=_lamin_default(lamin, global_config),
+                )
+                if lamin is not None:
+                    _q_result["lamin_enabled"] = lamin
                 if _q_lang:
                     _q_result["lang"] = _q_lang
                 if _q_result.get("cancelled", False):
@@ -2904,6 +2990,7 @@ def init_impl(
                             _q_result.get("smart_standardization_enabled")
                         )
                         and not skip_extras,
+                        include_lamin=bool(_q_result.get("lamin_enabled")),
                     )
                 _tui_handled = True
             except typer.Exit:
@@ -3421,6 +3508,12 @@ def init_impl(
             )
             env_lines.extend(smart_std_lines)
 
+        # Step 8 — LaminDB catalog (default No)
+        if lamin is None:
+            lamin = _ask_lamin(global_config)
+        if global_config and lamin is not None:
+            config_dict["lamin_enabled"] = lamin
+
         # ================================================================== #
         # Save configuration                                                  #
         # ================================================================== #
@@ -3494,6 +3587,7 @@ def init_impl(
                 raise
 
             _create_workspace_config(config_dict, workspace_path)
+            _save_lamin_choice(lamin, workspace_path, previous=lamin_previous)
 
             success_message = h("[bold green]✅ Configuration saved![/bold green]\n\n")
             success_message += h("Environment: [cyan]{path}[/cyan]\n").format(
@@ -3515,6 +3609,7 @@ def init_impl(
         if config_dict.get("provider") == "omics-os":
             console.print(OMICS_OS_KEY_NOT_VERIFIED)
         console.print(Panel.fit(success_message, border_style="green"))
+        _print_lamin_notes(lamin, global_config=global_config)
         console.print()
 
         # In uv tool env, offer to run `uv tool install` for new packages
@@ -3540,6 +3635,7 @@ def init_impl(
                 selected_agents=selected_agents,
                 skip_extras=skip_extras,
                 include_vector_search=_want_vector_search,
+                include_lamin=bool(lamin),
             )
 
     except KeyboardInterrupt:

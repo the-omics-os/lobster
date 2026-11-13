@@ -16,6 +16,11 @@ from lobster.config.supervisor_config import SupervisorConfig
 
 logger = logging.getLogger(__name__)
 
+# The catalog reads these from the workspace .env itself, so that a value set in
+# the shell wins over the workspace (LOBSTER_LAMIN=0 lobster chat records nothing).
+# Loading a .env must therefore never leave them in os.environ.
+_SHELL_ONLY_KEYS = ("LOBSTER_LAMIN", "LOBSTER_LAMIN_INSTANCE")
+
 
 class Settings:
     """
@@ -212,7 +217,23 @@ class Settings:
         Example:
             >>> settings._load_credentials()  # Load from CWD
             >>> settings._load_credentials(Path("/path/to/workspace"))  # Explicit workspace
+
+        LOBSTER_LAMIN and LOBSTER_LAMIN_INSTANCE keep their shell values (or stay
+        unset): the catalog reads the workspace .env itself, below the shell. Neither
+        file loaded here (global credentials.env, workspace .env) can set them; the
+        global setting is ``lamin_enabled`` in providers.json.
         """
+        shell = {k: os.environ[k] for k in _SHELL_ONLY_KEYS if k in os.environ}
+        try:
+            self._load_credential_files(workspace_path)
+        finally:
+            for key in _SHELL_ONLY_KEYS:
+                if key in shell:
+                    os.environ[key] = shell[key]
+                else:
+                    os.environ.pop(key, None)
+
+    def _load_credential_files(self, workspace_path: Path = None) -> None:
         from lobster.config.global_config import (
             get_global_credentials_path,
             global_credentials_exist,

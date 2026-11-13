@@ -7,9 +7,12 @@ to H5AD-compatible types.
 """
 
 import collections
+import contextlib
+import contextvars
 import datetime
 import json
 import logging
+import functools
 import math
 from decimal import Decimal
 from fractions import Fraction
@@ -20,6 +23,19 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# The uns keys above the value being sanitized, for messages only.
+_KEY_PATH: contextvars.ContextVar = contextvars.ContextVar("h5ad_key_path", default=())
+
+
+@contextlib.contextmanager
+def within_key(key: Any):
+    """Name ``key`` as the uns key whose value is being sanitized (messages only)."""
+    token = _KEY_PATH.set(_KEY_PATH.get() + (str(key),))
+    try:
+        yield
+    finally:
+        _KEY_PATH.reset(token)
 
 
 def repair_marker_names(adata: Any) -> Any:
@@ -88,6 +104,160 @@ def sanitize_keys(keys: Iterable[Any], slash_replacement: str = "__") -> List[st
     return normalized
 
 
+@functools.lru_cache(maxsize=1)
+def anndata_keeps_native() -> bool:
+    """Whether this anndata writes and reads back an unnamed index and a ``None`` in ``uns``.
+
+    Decided by a real write of a tiny object to memory, once per process. When it
+    cannot, the writer falls back to its older behaviour (named index, ``None``
+    stored as an empty text), so a save never fails because of this.
+    """
+    try:
+        import io
+
+        import anndata
+
+        import h5py
+
+        adata = anndata.AnnData(np.ones((2, 2), dtype="float32"))
+        adata.uns["probe"] = {"none": None}
+        with h5py.File(io.BytesIO(), "w") as handle:
+            anndata.io.write_elem(handle, "a", adata)
+            back = anndata.io.read_elem(handle["a"])
+        return (
+            back.obs.index.name is None
+            and back.var.index.name is None
+            and back.uns["probe"]["none"] is None
+        )
+    except Exception:
+        return False
+
+
+def _default_index_name(index: pd.Index, default: str) -> Any:
+    """The name an index is written under.
+
+    An index name is kept when anndata writes and reads it back unchanged, so an
+    unnamed index stays unnamed. It is named only when its name is empty (h5py
+    cannot store an empty group name): ``default`` is used then, ``'index'`` for
+    obs and ``'gene_id'`` for var, as before. If this anndata cannot round-trip an
+    unnamed index (see ``anndata_keeps_native``), an unnamed index is named too.
+    """
+    if index.name is None and anndata_keeps_native():
+        return None
+    return index.name or default
+
+
+def _clean_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
+    """A copy of ``frame`` cleaned the way ``obs``/``var`` are, before the write probe.
+
+    Arrow-backed columns become plain ones, index and column names become
+    strings (a column named ``None`` is stored as ``"None"``). Numeric, bool and
+    categorical columns keep their values (an Arrow-backed numeric column
+    becomes a plain one, float64 if it has missing values). Any other column
+    (strings, objects, dates) is written as strings, and a missing value in such a column is stored as an empty string.
+    Missing numbers stay NaN. The caller's frame is not changed.
+    """
+    out = frame.copy()
+    index_name = None if frame.index.name is None else str(frame.index.name)
+    out.index = pd.Index([str(i) for i in frame.index], dtype=object, name=index_name)
+    out.columns = [str(c) for c in frame.columns]
+    for position in range(out.shape[1]):
+        column = out.iloc[:, position]
+        if isinstance(column.dtype, pd.CategoricalDtype):
+            if is_arrow_dtype(column.cat.categories):
+                values = column.to_numpy(dtype=str, na_value="")
+                out.isetitem(position, pd.Categorical(values))
+            continue
+        if is_arrow_dtype(column) and pd.api.types.is_numeric_dtype(column):
+            numeric = (
+                column.to_numpy(dtype=column.dtype.numpy_dtype)
+                if not column.isna().any()
+                else column.to_numpy(dtype="float64", na_value=float("nan"))
+            )
+            out.isetitem(position, numeric)
+            continue
+        if not is_arrow_dtype(column) and (
+            pd.api.types.is_bool_dtype(column) or pd.api.types.is_numeric_dtype(column)
+        ):
+            continue
+        out.isetitem(
+            position,
+            pd.Series(
+                ["" if pd.isna(v) else str(v) for v in column],
+                index=out.index,
+                dtype=object,
+            ),
+        )
+    return out
+
+
+def _table_round_trip_problem(cleaned: pd.DataFrame) -> Any:
+    """``None`` if anndata writes ``cleaned`` as a table and reads it back equal.
+
+    The probe is anndata's own element writer into an in-memory HDF5 file, so the
+    decision is what the real write would do, not a list of rules. It costs one
+    extra in-memory write per table. Otherwise the reason, as text.
+    """
+    import h5py
+    from anndata.io import read_elem, write_elem
+
+    try:
+        with h5py.File(
+            "table-probe", mode="w", driver="core", backing_store=False
+        ) as f:
+            write_elem(f, "table", cleaned)
+            back = read_elem(f["table"])
+        pd.testing.assert_frame_equal(
+            back,
+            cleaned,
+            check_dtype=False,
+            check_index_type=False,
+            check_column_type=False,
+            check_categorical=True,
+            check_names=True,
+        )
+        for name in cleaned.columns:
+            if isinstance(cleaned[name].dtype, pd.CategoricalDtype) and list(
+                back[name].cat.categories
+            ) != list(cleaned[name].cat.categories):
+                return f"categories of column {name!r} changed on a round trip"
+    except Exception as error:  # the probe decides, whatever the reason
+        return f"{type(error).__name__}: {str(error)[:160]}"
+    return None
+
+
+def _sanitize_dataframe(frame: pd.DataFrame) -> Any:
+    """The cleaned table, or ``None`` when it cannot be stored as a table.
+
+    A table is kept only if the probe writes it and reads it back equal. When it
+    cannot be kept the caller's old path runs unchanged (the table's text form,
+    exactly as before) and a warning names the uns key and the reason. Nothing is
+    repaired: the result is the table or the text, never something between.
+    """
+    try:
+        cleaned = _clean_dataframe(frame)
+        problem = _table_round_trip_problem(cleaned)
+    except Exception as error:
+        cleaned, problem = None, f"{type(error).__name__}: {str(error)[:160]}"
+    if problem is None:
+        return cleaned
+    where = "/".join(_KEY_PATH.get()) or "a table in uns"
+    logger.warning(
+        "uns[%s] is a table that cannot be stored as a table (%s); it is stored "
+        "as text.",
+        where,
+        problem,
+    )
+    return None
+
+
+def _sanitize_item(v: Any, slash_replacement, strict, preserve_numeric_tuples) -> Any:
+    """An item of a list, tuple or set. A table there is stored as its text form."""
+    if isinstance(v, pd.DataFrame):
+        return str(v)
+    return sanitize_value(v, slash_replacement, strict, preserve_numeric_tuples)
+
+
 def sanitize_value(
     obj: Any,
     slash_replacement: str = "__",
@@ -147,6 +317,13 @@ def sanitize_value(
     if obj is None:
         return ""
 
+    # A DataFrame is a table anndata can write; str(DataFrame) would lose it on reload
+    if isinstance(obj, pd.DataFrame):
+        table = _sanitize_dataframe(obj)
+        if table is not None:
+            return table
+        # else: the code below stores its text form, as before
+
     # OrderedDict → dict (with recursive sanitization + value stringification)
     if isinstance(obj, collections.OrderedDict):
         result = {}
@@ -155,10 +332,13 @@ def sanitize_value(
             # Stringify int/float dict values for HDF5 compatibility
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 result[sanitized_key] = str(v)
+            elif v is None and anndata_keeps_native():
+                result[sanitized_key] = None  # kept; a None in a list/tuple is text
             else:
-                result[sanitized_key] = sanitize_value(
-                    v, slash_replacement, strict, preserve_numeric_tuples
-                )
+                with within_key(sanitized_key):
+                    result[sanitized_key] = sanitize_value(
+                        v, slash_replacement, strict, preserve_numeric_tuples
+                    )
         return result
 
     # tuple → numpy array (stringified or numeric based on preserve_numeric_tuples)
@@ -172,14 +352,14 @@ def sanitize_value(
                 return np.array(obj)
             # Mixed or non-numeric tuples → string array
             sanitized_items = [
-                sanitize_value(v, slash_replacement, strict, preserve_numeric_tuples)
+                _sanitize_item(v, slash_replacement, strict, preserve_numeric_tuples)
                 for v in obj
             ]
             return np.array([str(item) for item in sanitized_items], dtype=str)
         else:
             # ALWAYS stringify for maximum H5AD safety
             sanitized_items = [
-                sanitize_value(v, slash_replacement, strict, preserve_numeric_tuples)
+                _sanitize_item(v, slash_replacement, strict, preserve_numeric_tuples)
                 for v in obj
             ]
             return np.array([str(item) for item in sanitized_items], dtype=str)
@@ -229,7 +409,7 @@ def sanitize_value(
     # HDF5 cannot handle Python sets
     if isinstance(obj, (set, frozenset)):
         sanitized_items = [
-            sanitize_value(v, slash_replacement, strict, preserve_numeric_tuples)
+            _sanitize_item(v, slash_replacement, strict, preserve_numeric_tuples)
             for v in sorted(obj, key=str)
         ]
         return np.array([str(item) for item in sanitized_items], dtype=str)
@@ -260,10 +440,13 @@ def sanitize_value(
             # Stringify int/float dict values for HDF5 compatibility
             elif isinstance(v, (int, float)) and not isinstance(v, bool):
                 result[sanitized_key] = str(v)
+            elif v is None and anndata_keeps_native():
+                result[sanitized_key] = None  # kept; a None in a list/tuple is text
             else:
-                result[sanitized_key] = sanitize_value(
-                    v, slash_replacement, strict, preserve_numeric_tuples
-                )
+                with within_key(sanitized_key):
+                    result[sanitized_key] = sanitize_value(
+                        v, slash_replacement, strict, preserve_numeric_tuples
+                    )
         return result
 
     # int → convert to strings (HDF5 requirement for scalar values)
@@ -286,7 +469,7 @@ def sanitize_value(
         else:
             # Recursively sanitize all items
             sanitized_items = [
-                sanitize_value(v, slash_replacement, strict, preserve_numeric_tuples)
+                _sanitize_item(v, slash_replacement, strict, preserve_numeric_tuples)
                 for v in obj
             ]
             # Convert to numpy string array for HDF5 compatibility
@@ -543,18 +726,14 @@ def convert_arrow_to_standard(adata):
     if is_arrow_dtype(adata_copy.obs.index):
         logger.debug("Converting obs.index from ArrowExtensionArray to object dtype")
         values = adata_copy.obs.index.to_numpy(dtype=str, na_value="")
-        original_name = (
-            adata_copy.obs.index.name if adata_copy.obs.index.name else "index"
-        )
+        original_name = _default_index_name(adata_copy.obs.index, "index")
         adata_copy.obs.index = pd.Index(values, dtype=object, name=original_name)
 
     # Convert var.index
     if is_arrow_dtype(adata_copy.var.index):
         logger.debug("Converting var.index from ArrowExtensionArray to object dtype")
         values = adata_copy.var.index.to_numpy(dtype=str, na_value="")
-        original_name = (
-            adata_copy.var.index.name if adata_copy.var.index.name else "gene_id"
-        )
+        original_name = _default_index_name(adata_copy.var.index, "gene_id")
         adata_copy.var.index = pd.Index(values, dtype=object, name=original_name)
 
     # Convert obs columns

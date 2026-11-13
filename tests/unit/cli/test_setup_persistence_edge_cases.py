@@ -228,7 +228,7 @@ def test_cloud_go_postwrite_failure_does_not_restart_another_wizard(
     monkeypatch.setattr(
         go_tui_bridge,
         "run_init_wizard",
-        lambda binary: {"provider": "omics-os", "api_key": KEY, "agents": []},
+        lambda binary, **_: {"provider": "omics-os", "api_key": KEY, "agents": []},
     )
 
     def fail(*args, **kwargs):

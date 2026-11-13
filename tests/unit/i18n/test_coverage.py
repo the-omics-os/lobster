@@ -21,7 +21,7 @@ I18N = PACKAGE / "i18n"
 
 # Files whose user-visible text is fully translated. A new raw English literal
 # in one of these fails the test. Extend this list as areas are translated.
-STRICT_FILES: list[str] = []
+STRICT_FILES: list[str] = ["lobster/cli_internal/commands/light/lamin_commands.py"]
 
 
 def _py_files():
