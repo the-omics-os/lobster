@@ -270,18 +270,12 @@ def create_ask_user_tool(
                 changed data); see "problems"."""
         if isinstance(context, str):
             # Some models send the object as JSON text: read it if it is one.
-            context = _context_from_text(context)
+            context, why = _context_from_text(context)
             if context is None:
                 return json.dumps(
                     {
                         "action": "invalid_context",
-                        "problems": [
-                            {
-                                "path": "context",
-                                "message": "context must be a JSON object, "
-                                'e.g. {"fields": [...]}',
-                            }
-                        ],
+                        "problems": [{"path": "context", "message": why}],
                         "note": "Nothing was shown to the user. "
                         "Fix context and call ask_user again.",
                     }
@@ -330,13 +324,32 @@ def create_ask_user_tool(
     return enable_sync_fallback(ask_user)
 
 
-def _context_from_text(text: str) -> Optional[Dict[str, Any]]:
-    """The object a JSON text holds, or None if it isn't a JSON object."""
+def _context_from_text(text: str) -> "tuple[Optional[Dict[str, Any]], str]":
+    """The object a JSON text holds, or None and what is wrong with the text.
+
+    Some models send context as JSON text, and some of that text is broken
+    (most often the last closing brace is missing). Saying where it broke,
+    and how many brackets are still open, lets the model fix it in one try
+    instead of guessing.
+    """
     try:
         parsed = json.loads(text)
-    except ValueError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    except ValueError as error:
+        message = (
+            f"context arrived as text that is not valid JSON ({error}). "
+            'Pass context as an object, e.g. {"fields": [...]}'
+        )
+        braces = text.count("{") - text.count("}")
+        brackets = text.count("[") - text.count("]")
+        if braces > 0 or brackets > 0:
+            open_ = ", ".join(
+                f"{n} '{c}'" for n, c in ((braces, "{"), (brackets, "[")) if n > 0
+            )
+            message += f"; {open_} never closed"
+        return None, message
+    if not isinstance(parsed, dict):
+        return None, 'context must be a JSON object, e.g. {"fields": [...]}'
+    return parsed, ""
 
 
 _ASK_OVER_ALL = (
@@ -718,6 +731,10 @@ def problems_from(error: ValidationError) -> List[Problem]:
     for item in error.errors():
         path = ".".join(str(part) for part in item["loc"]) or "answer"
         message = item["msg"].removeprefix("Value error, ")
+        if item["type"] == "extra_forbidden" and item["loc"]:
+            # Name the key: "Extra inputs are not permitted" alone made a
+            # model guess which one to drop.
+            message = f"unknown key {item['loc'][-1]!r}: remove it"
         problems.append(Problem(path=path, message=message))
     return problems
 

@@ -1399,3 +1399,40 @@ def test_a_marked_option_decides_whether_a_field_is_a_grouping():
     assert _is_group_field(field("control", {"id": "dropout_cells", "removes": False}))
     # A group named innocently but marked as a removal is not a group.
     assert not _is_group_field(field("control", {"id": "batch_2", "removes": True}))
+
+
+# --- TIDEPOOL v2 gauntlet T02 (GLM 5.3): blind retries on broken JSON text --
+
+
+def test_broken_json_text_says_where_and_what_is_left_open():
+    """GLM sent context as JSON text missing its last brace, three times;
+    the reply only said "must be a JSON object", so it guessed."""
+    from lobster.tools.user_interaction import _context_from_text
+
+    text = '{"fields": [{"key": "a", "type": "choice", "options": ["x", "y"]}]'
+    context, why = _context_from_text(text)
+    assert context is None
+    assert "not valid JSON" in why and "1 '{' never closed" in why
+    assert _context_from_text('["not", "an object"]')[1].startswith(
+        "context must be a JSON object"
+    )
+    assert _context_from_text('{"fields": []}') == ({"fields": []}, "")
+
+
+def test_ask_user_reports_broken_json_text_as_invalid_context():
+    result = _invoke(ask_user, "Pick", '{"fields": [{"key": "a", "type": "text"}]')
+    assert result["action"] == "invalid_context"
+    assert "never closed" in result["problems"][0]["message"]
+
+
+def test_an_unknown_key_is_named():
+    """T02: "Extra inputs are not permitted" made the model guess the key."""
+    result = _invoke(
+        ask_user,
+        "Pick",
+        {"fields": [{"key": "a", "id": "a", "type": "choice", "options": ["x"]}]},
+    )
+    assert result["action"] == "invalid_context"
+    assert any(
+        p["message"] == "unknown key 'id': remove it" for p in result["problems"]
+    )
