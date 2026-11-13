@@ -496,8 +496,10 @@ When a `submit` arrives, Python reads the files again, each the way it was recor
 a file recorded by size and time is compared by size and time, whatever its size now. If any differs, the answer is stale with the
 problem `the data changed while you were reviewing it: <path>`, and the question comes back with fresh
 fingerprints and the answers kept (`test_data_edited_before_submit_is_asked_again_with_answers_kept`).
-A deleted file stays stale until it is back; defer, cancel and the five-refusal limit still apply
-(`test_deleted_data_file_is_stale`). The screen never echoes the fingerprints: Python is the only
+A deleted **named** file stays stale until it is back (the decision is about it); defer, cancel and
+the five-refusal limit still apply (`test_deleted_data_file_is_stale`). A file deleted in the `data/`
+folder watch is reported once and then dropped, so an unrelated deletion never blocks the answer
+(`test_a_deleted_unrelated_file_blocks_the_answer_only_once`). The screen never echoes the fingerprints: Python is the only
 authority. The fingerprints are part of the cached request, so a replay doesn't re-read the files
 (`test_replay_reuses_the_cached_fingerprints`).
 
