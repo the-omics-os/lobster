@@ -68,8 +68,11 @@ func HintFor(c BioComponent) string {
 var (
 	// StatStyle is for counts and status lines ("retain 0 · exclude 1").
 	StatStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("109"))
-	// HintStyle is for the instruction line.
-	HintStyle = lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("110"))
+	// HintStyle is for the instruction line: the grey of details.
+	HintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	// The key legend: soft yellow keys, muted khaki words.
+	legendKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
+	legendDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("144"))
 )
 
 // roomyHeight is the height from which a screen has room for gaps and the
@@ -100,11 +103,10 @@ func Guide(c BioComponent, width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-// wrappedLegend is the key legend (keys bold, words dim, as RenderHelpBar
-// draws them), wrapped between entries so no key is cut off at the edge.
+// wrappedLegend is the key legend in gentle pastel yellow, wrapped between
+// entries so no key is cut off at the edge.
 func wrappedLegend(c BioComponent, width int) string {
-	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("63"))
-	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	keyStyle, descStyle := legendKeyStyle, legendDescStyle
 	var lines []string
 	line, used := "", 0
 	for _, b := range c.KeyBindings() {

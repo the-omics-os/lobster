@@ -256,6 +256,9 @@ func hang(prefix, text string, width int, style lipgloss.Style) string {
 
 func (c *Component) View(width, height int) string {
 	top := []string{hang("", c.question, width, lipgloss.NewStyle().Bold(true))}
+	if biocomp.Roomy(height) {
+		top = append(top, "") // a gap after the question
+	}
 	if c.details != "" {
 		top = append(top, hang("", c.details, width, dimStyle))
 	}
