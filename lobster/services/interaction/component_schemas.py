@@ -1338,7 +1338,7 @@ def _removals_without_reason(fields: List[Any], path: str) -> List[Problem]:
                     _problem(
                         where,
                         f"option '{option.id}' takes something out (removes: true): "
-                        "give it a reason field",
+                        f"give it a reason field, {REASON_FIELD}",
                     )
                 )
             elif sounds_like_removal(option):
@@ -1346,8 +1346,8 @@ def _removals_without_reason(fields: List[Any], path: str) -> List[Problem]:
                     _problem(
                         where,
                         f"option '{option.id}' sounds like it takes something out: "
-                        'give it a reason field, or mark it "removes": false if it '
-                        "doesn't",
+                        f"give it a reason field, {REASON_FIELD}, or mark it "
+                        '"removes": false if it doesn\'t',
                     )
                 )
     return problems
@@ -1359,12 +1359,20 @@ def sounds_like_removal(option: Any) -> bool:
     return bool(_TAKES_OUT.search(words.lower()))
 
 
+# How a reason is written, shown wherever one is missing.
+REASON_FIELD = '"fields": [{"key": "reason", "type": "text"}]'
+
+
+def _is_reason(sub: Any) -> bool:
+    """A reason box: one text answer (no count, which would make the answer a
+    list; no for_each). The one definition the removal rule, the
+    reason_required check and the screens all use."""
+    return sub.type == "text" and sub.count is None and not sub.for_each
+
+
 def _asks_a_reason(option: Any) -> bool:
-    """The option asks for at least one required text field."""
-    return any(
-        sub.type == "text" and (sub.count is None or sub.count.min >= 1)
-        for sub in option.fields or []
-    )
+    """The option asks for a reason (other fields may sit beside it)."""
+    return any(_is_reason(sub) for sub in option.fields or [])
 
 
 def check_value(field: Any, value: Any, path: str, partial: bool = False) -> Any:
@@ -1920,13 +1928,9 @@ def _check_dashboard(owner: Any) -> None:
 
 
 def _is_one_required_text(fields: List[Any]) -> bool:
-    """Exactly one text field, answered once (no count, no for_each)."""
-    return (
-        len(fields) == 1
-        and fields[0].type == "text"
-        and fields[0].count is None
-        and not fields[0].for_each
-    )
+    """Exactly one reason box and nothing else: what the plate, the per-item
+    list and the dashboard can draw on an option."""
+    return len(fields) == 1 and _is_reason(fields[0])
 
 
 def _check_profile(field: Any) -> None:
@@ -2116,15 +2120,12 @@ def _run_reason_required(
     for option in field.options:
         if option.id not in spec["options"]:
             continue
-        if not any(
-            sub.type == "text" and sub.count is None and not sub.for_each
-            for sub in option.fields or []
-        ):
+        if not _asks_a_reason(option):
             problems.append(
                 _problem(
                     field.key,
                     f"option {option.id!r} needs a required text field for the "
-                    'reason, e.g. "fields": [{"key": "reason", "type": "text"}]',
+                    f"reason, e.g. {REASON_FIELD}",
                 )
             )
     return problems

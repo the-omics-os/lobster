@@ -1296,7 +1296,8 @@ def test_an_option_that_takes_something_out_needs_a_reason(option):
     assert problem.path == "qc"
     assert problem.message == (
         f"option '{option_id}' sounds like it takes something out: give it a "
-        'reason field, or mark it "removes": false if it doesn\'t'
+        'reason field, "fields": [{"key": "reason", "type": "text"}], or mark it '
+        '"removes": false if it doesn\'t'
     )
 
 
@@ -1326,7 +1327,8 @@ def test_removes_false_lets_a_name_that_only_sounds_like_one_through():
 def test_removes_true_needs_a_reason_whatever_the_name():
     (problem,) = check_request(_one_option({"id": "batch_2", "removes": True}))
     assert problem.message == (
-        "option 'batch_2' takes something out (removes: true): give it a reason field"
+        "option 'batch_2' takes something out (removes: true): give it a reason "
+        'field, "fields": [{"key": "reason", "type": "text"}]'
     )
     reasoned = {
         "id": "batch_2",
@@ -1368,3 +1370,64 @@ def test_a_removal_inside_a_record_is_found():
     }
     (problem,) = check_request(_context(field))
     assert problem.path == "plan.step"
+
+
+# --- one definition of a reason box (review: three rules disagreed) ----------
+
+_COUNTED_REASON = {"key": "reason", "type": "text", "count": {"min": 1, "max": 1}}
+
+
+def _exclude_with(*fields, checks=False, for_each=True):
+    field = {
+        "key": "qc",
+        "type": "choice",
+        "options": ["retain", {"id": "exclude", "fields": list(fields)}],
+    }
+    if for_each:
+        field["for_each"] = ["S01", "S02"]
+    context = {"fields": [field]}
+    if checks:
+        context["checks"] = [
+            {"check": "reason_required", "field": "qc", "options": ["exclude"]}
+        ]
+    return AskUserContext.model_validate(context)
+
+
+def test_a_counted_reason_is_no_reason_for_the_removal_rule():
+    """count makes the answer a list, which no screen draws: before, this
+    rule passed it and the terminal then cancelled the question."""
+    (problem,) = check_request(_exclude_with(_COUNTED_REASON))
+    assert "sounds like it takes something out" in problem.message
+    assert '"fields": [{"key": "reason", "type": "text"}]' in problem.message
+
+
+def test_a_counted_reason_is_refused_the_same_way_by_reason_required():
+    problems = check_request(_exclude_with(_COUNTED_REASON, checks=True))
+    messages = [p.message for p in problems]
+    assert any("needs a required text field for the reason" in m for m in messages)
+    assert all('"fields": [{"key": "reason", "type": "text"}]' in m for m in messages)
+
+
+def test_a_plain_reason_passes_both_rules():
+    reason = {"key": "reason", "type": "text"}
+    assert check_request(_exclude_with(reason, checks=True)) == []
+
+
+def test_a_reason_beside_another_field_passes_in_a_single_choice():
+    """Only the plate, list and dashboard need the reason alone; a single
+    choice asks the fields one after another."""
+    reason = {"key": "reason", "type": "text"}
+    when = {"key": "when", "type": "number"}
+    assert check_request(_exclude_with(reason, when, checks=True, for_each=False)) == []
+
+
+def test_the_screens_and_the_rules_agree_on_a_reason_box():
+    from lobster.services.interaction.component_schemas import (
+        _asks_a_reason,
+        _is_one_required_text,
+    )
+
+    plain = _exclude_with({"key": "reason", "type": "text"}).fields[0].options[1]
+    counted = _exclude_with(_COUNTED_REASON).fields[0].options[1]
+    assert _asks_a_reason(plain) and _is_one_required_text(plain.fields)
+    assert not _asks_a_reason(counted) and not _is_one_required_text(counted.fields)
