@@ -422,11 +422,9 @@ def _render_one(
             "default": default if default is not None else field.min,
         }
         if field.integer:
-            # A hundredth of the range per key (shift: a tenth), as the
-            # slider does for decimals, but whole: never 1 read in 18 million.
-            data["step"] = max(1, round((field.max - field.min) / 100))
+            data["step"] = _whole_step(field.min, field.max, data["default"])
         else:
-            data["step"] = _round_step(field.min, field.max)
+            data["step"] = _round_step(field.min, field.max, data["default"])
         return "threshold_slider", _with(data, "unit", field.unit)
     # text, and numbers without a slider (typed in, parsed here).
     hint = _number_hint(field) if field.type == "number" else None
@@ -436,16 +434,44 @@ def _render_one(
     return "text_input", data
 
 
-def _round_step(low: float, high: float) -> float:
-    """A round step for a decimal slider, from the decimals in its bounds:
-    0.50 and 0.99 give 0.01, so 0.75 can be reached (a hundredth of the
-    range, 0.0049, could not). It is made ten times finer until the slider
-    has at least 20 positions, so 0 to 1 gets 0.01, not 1."""
+def _whole_step(low: float, high: float, default: Any) -> int:
+    """A round step (1, 2, 5, 10, 20, 50, ...) for a whole-number slider,
+    about a hundredth of the range (shift moves ten steps), on which the
+    proposed value sits exactly. The slider snaps to min + k * step, so a
+    step of 48 from 200 showed a proposed 500 as 488 and never reached
+    1,000; 200 to 5,000 with 500 proposed now gets 50. A step that also
+    divides min keeps round numbers reachable."""
+    values = [low, high, default]
+    if any(not float(v).is_integer() for v in values):
+        return 1
+    low, default = int(low), int(default)
+    # The nearest round step to a hundredth of the range, a little above
+    # it allowed: 48 rounds to 50, not down to 20 (240 key presses).
+    target = max(1.0, 1.5 * (high - low) / 100)
+    steps, scale = [], 1
+    while scale <= target:
+        steps += [step for step in (scale, 2 * scale, 5 * scale) if step <= target]
+        scale *= 10
+    steps = sorted(set(steps), reverse=True)
+    for fits in (lambda s: low % s == 0, lambda s: True):
+        for step in steps:
+            if (default - low) % step == 0 and fits(step):
+                return step
+    return 1
+
+
+def _round_step(low: float, high: float, default: Any = None) -> float:
+    """A round step for a decimal slider, from the decimals in its bounds
+    and its proposed value: 0.50 and 0.99 give 0.01, so 0.75 can be reached
+    (a hundredth of the range, 0.0049, could not), and a proposed 0.025
+    gives 0.001, so it isn't moved. It is made ten times finer until the
+    slider has at least 20 positions, so 0 to 1 gets 0.01, not 1."""
     places = max(
         0,
         *(
             -Decimal(str(bound)).normalize().as_tuple().exponent
-            for bound in (low, high)
+            for bound in (low, high, default)
+            if bound is not None
         ),
     )
     step = Decimal(1).scaleb(-places)

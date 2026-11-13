@@ -1355,8 +1355,8 @@ def test_integer_slider_step_scales_with_the_range():
         "max": 20_000_000,
         "default": 2_000_000,
     }
-    drawn, _ = _ask(_request(field), ("submit", {"value": 2_180_000}))
-    assert drawn[0][1]["step"] == 180_000
+    drawn, _ = _ask(_request(field), ("submit", {"value": 2_200_000}))
+    assert drawn[0][1]["step"] == 200_000  # a round step near 1/100 of the range
     small = {**field, "min": 0, "max": 7, "default": 3}
     drawn, _ = _ask(_request(small), ("submit", {"value": 4}))
     assert drawn[0][1]["step"] == 1  # never below one whole unit
@@ -1731,3 +1731,23 @@ def test_a_decimal_slider_gets_a_round_step(low, high, step):
     field = {"key": "cut", "type": "number", "view": "slider", "min": low, "max": high}
     drawn, _ = _ask(_request(field), ("submit", {"value": low}))
     assert drawn[0][1]["step"] == step
+
+
+# --- slider steps keep the proposed value (review) ---------------------------
+
+
+def test_a_whole_slider_step_is_round_and_keeps_the_proposed_value():
+    """200 to 5,000 with 500 proposed got step 48, so 500 showed as 488."""
+    from lobster.cli_internal.go_tui_components import _whole_step
+
+    assert _whole_step(200, 5000, 500) == 50
+    for low, high, proposed in [(200, 5000, 500), (0, 1000, 250), (3, 5000, 500)]:
+        step = _whole_step(low, high, proposed)
+        assert (proposed - low) % step == 0
+
+
+def test_a_decimal_slider_step_keeps_the_proposed_decimals():
+    from lobster.cli_internal.go_tui_components import _round_step
+
+    assert _round_step(0, 1, 0.025) == 0.001
+    assert _round_step(0.5, 0.99, 0.75) == 0.01
