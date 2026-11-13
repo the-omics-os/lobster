@@ -867,17 +867,17 @@ func (c *SamplePlateComponent) countsLine() string {
 	}
 	parts := make([]string, 0, len(c.options)+4)
 	for _, o := range c.options {
-		parts = append(parts, fmt.Sprintf("%s %d", o.Label, counts[o.ID]))
+		parts = append(parts, fmt.Sprintf("%s (%d)", o.Label, counts[o.ID]))
 	}
-	parts = append(parts, fmt.Sprintf("unresolved %d", counts[unresolved]))
+	parts = append(parts, fmt.Sprintf("unresolved (%d)", counts[unresolved]))
 	if n := len(c.missingReasons()); n > 0 {
-		parts = append(parts, fmt.Sprintf("needs a reason %d", n))
+		parts = append(parts, fmt.Sprintf("needs a reason (%d)", n))
 	}
 	if n := len(c.unreviewed()); n > 0 {
-		parts = append(parts, fmt.Sprintf("flagged to review %d", n))
+		parts = append(parts, fmt.Sprintf("flagged to review (%d)", n))
 	}
 	if excluded > 0 {
-		parts = append(parts, fmt.Sprintf("can't be assigned %d", excluded))
+		parts = append(parts, fmt.Sprintf("can't be assigned (%d)", excluded))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -987,7 +987,7 @@ func Summary(data json.RawMessage, answer map[string]any) string {
 	var parts []string
 	for _, o := range d.options() {
 		if n := counts[o.ID]; n > 0 {
-			parts = append(parts, fmt.Sprintf("%s %d", o.Label, n))
+			parts = append(parts, fmt.Sprintf("%s (%d)", o.Label, n))
 		}
 		delete(counts, o.ID)
 	}
@@ -997,7 +997,7 @@ func Summary(data json.RawMessage, answer map[string]any) string {
 	}
 	sort.Strings(others)
 	for _, v := range others {
-		parts = append(parts, fmt.Sprintf("%s %d", v, counts[v]))
+		parts = append(parts, fmt.Sprintf("%s (%d)", v, counts[v]))
 	}
 	return strings.Join(parts, " · ")
 }

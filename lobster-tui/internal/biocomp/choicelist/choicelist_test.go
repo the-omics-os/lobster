@@ -370,7 +370,7 @@ func TestRepeatedLabelsShowTheirIDs(t *testing.T) {
 func TestSummaryCountsEachOption(t *testing.T) {
 	c := newList(t, listData(qcItems, qcOptions, nil))
 	press(c, "1", "down", "3")
-	want := "Retain 1 · Exclude 0 · Defer 1 · undecided 1 · unavailable 1"
+	want := "Retain (1) · Exclude (0) · Defer (1) · undecided (1) · unavailable (1)"
 	if got := c.summary(); got != want {
 		t.Fatalf("summary = %q, want %q", got, want)
 	}
@@ -378,7 +378,7 @@ func TestSummaryCountsEachOption(t *testing.T) {
 		t.Fatalf("summary not shown:\n%s", view)
 	}
 	reply := map[string]any{"answers": map[string]any{"S01": map[string]any{"id": "exclude"}}}
-	if got := Summary(listData(qcItems, qcOptions, nil), reply); got != "Retain 0 · Exclude 1 · Defer 0 · undecided 2 · unavailable 1" {
+	if got := Summary(listData(qcItems, qcOptions, nil), reply); got != "Retain (0) · Exclude (1) · Defer (0) · undecided (2) · unavailable (1)" {
 		t.Fatalf("Summary = %q", got)
 	}
 }

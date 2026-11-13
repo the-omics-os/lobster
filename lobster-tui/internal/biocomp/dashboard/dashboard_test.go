@@ -519,7 +519,7 @@ func TestSectionsWithAnAnswerStartAnsweredAndAppearOnReview(t *testing.T) {
 	if got := statuses(c); got != "done,done,done,done" {
 		t.Fatalf("statuses = %s", got)
 	}
-	if view := plainView(c, 100, 50); !strings.Contains(view, "Retain 1 · Exclude 1") {
+	if view := plainView(c, 100, 50); !strings.Contains(view, "Retain (1) · Exclude (1)") {
 		t.Fatalf("choice_list summary missing:\n%s", view)
 	}
 	// Children are pre-filled: no unsaved-draft blocker, review opens at once.
@@ -545,7 +545,7 @@ func TestChoiceListSectionSummary(t *testing.T) {
 	c := withQC(t)
 	press(t, c, "enter", "enter") // source, groups
 	press(t, c, "1", "down", "1", "enter")
-	if c.sections[2].status != answered || !strings.Contains(c.sections[2].summary, "Retain 2 · Exclude 0") {
+	if c.sections[2].status != answered || !strings.Contains(c.sections[2].summary, "Retain (2) · Exclude (0)") {
 		t.Fatalf("qc = %v %q", c.sections[2].status, c.sections[2].summary)
 	}
 }
@@ -616,7 +616,7 @@ func TestProblemSectionRecordedChangedMakesDependantsStale(t *testing.T) {
 	if got := statuses(c); got != "done,done,stale,done" {
 		t.Fatalf("statuses = %s", got)
 	}
-	why := `"Sample groups" changed: control 1 · treated 1 → treated 2`
+	why := `"Sample groups" changed: control (1) · treated (1) → treated (2)`
 	if c.sections[2].staleWhy != why {
 		t.Fatalf("mito stale reason = %q, want %q", c.sections[2].staleWhy, why)
 	}

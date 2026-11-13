@@ -54,7 +54,7 @@ func TestGroupsAreDotsWithMarksAndTheLegendNamesTheKeys(t *testing.T) {
 		"D  ●   ●   ●!  ◉",
 		"1 ● vehicle   2 ● TDX-9   3 ● leave out (asks a reason)   0 ○ unresolved",
 		"◉ has a reason · ! needs a reason (r)",
-		"needs a reason 1",
+		"needs a reason (1)",
 	} {
 		if !strings.Contains(v, want) {
 			t.Fatalf("view lacks %q:\n%s", want, v)
@@ -279,7 +279,7 @@ func TestDescribeListsEveryReasonForTheReview(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Describe = %q\nwant %q", got, want)
 	}
-	if s := Summary(json.RawMessage(withReasons), answer); s != "vehicle 1 · TDX-9 1 · leave out 2" {
+	if s := Summary(json.RawMessage(withReasons), answer); s != "vehicle (1) · TDX-9 (1) · leave out (2)" {
 		t.Fatalf("Summary = %q", s)
 	}
 }

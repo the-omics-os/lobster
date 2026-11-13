@@ -220,7 +220,7 @@ func TestAnOptionCalledUnknownCanBeSent(t *testing.T) {
 	if c.assignments["X01"] != "unknown" || c.assignments["X02"] != unresolved {
 		t.Fatalf("assignments = %q", c.assignments)
 	}
-	if view := ansi.Strip(c.View(90, 30)); !strings.Contains(view, "unknown 1 · unresolved 1") {
+	if view := ansi.Strip(c.View(90, 30)); !strings.Contains(view, "unknown (1) · unresolved (1)") {
 		t.Fatalf("counts should tell the option from unresolved:\n%s", view)
 	}
 	if res, _ := c.HandleMsg(press("enter")); res != nil || !strings.Contains(c.message, "X02") {
@@ -257,7 +257,7 @@ func TestInitRefusesAnEmptyChoice(t *testing.T) {
 func TestViewShowsFocusAndPlate(t *testing.T) {
 	c := newComp(t)
 	out := ansi.Strip(c.View(90, 30))
-	for _, want := range []string{"X01", "Line 1", "unresolved 1", "   1   2   3", "A  ●   ●   ○", "H  ·"} {
+	for _, want := range []string{"X01", "Line 1", "unresolved (1)", "   1   2   3", "A  ●   ●   ○", "H  ·"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("view missing %q", want)
 		}
@@ -302,7 +302,7 @@ func TestExcludedSamplesSitGreyedInTheirWellsAndAreNotAnswered(t *testing.T) {
 		t.Fatalf("the cursor should start on the first sample that can be assigned, got %d,%d", row, col)
 	}
 	view := ansi.Strip(c.View(90, 30))
-	if !strings.Contains(view, "A  ●   ●   ○   ◌") || !strings.Contains(view, "can't be assigned 1") ||
+	if !strings.Contains(view, "A  ●   ●   ○   ◌") || !strings.Contains(view, "can't be assigned (1)") ||
 		!strings.Contains(view, "◌ can't be assigned") {
 		t.Fatalf("excluded well not drawn greyed:\n%s", view)
 	}
@@ -354,7 +354,7 @@ func seventyTwo(t *testing.T) *SamplePlateComponent {
 func TestSeventyTwoSamplesOnA96Plate(t *testing.T) {
 	c := seventyTwo(t)
 	view := ansi.Strip(c.View(100, 40))
-	for _, want := range []string{"control 36", "treated 35", "unresolved 1", "can't be assigned 1", "G  ◌", "H  ·"} {
+	for _, want := range []string{"control (36)", "treated (35)", "unresolved (1)", "can't be assigned (1)", "G  ◌", "H  ·"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}

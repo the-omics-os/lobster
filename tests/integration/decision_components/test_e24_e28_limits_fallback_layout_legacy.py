@@ -257,7 +257,7 @@ def test_e27_resize_mid_question_reflows_and_stays_answerable(start_tui, review8
     )
     time.sleep(0.5)
     tui.key("down")  # any key: the screen is redrawn at the new size
-    screen = tui.wait_screen("retain 1 · defer 0 · exclude 0 · undecided 1")
+    screen = tui.wait_screen("retain (1) · defer (0) · exclude (0) · undecided (1)")
     visible = " ".join([field["question"]] + [i["details"] for i in field["for_each"]])
     assert _missing_words(visible, screen) == []
     assert max(len(line) for line in tui.screen.lines()) <= 60

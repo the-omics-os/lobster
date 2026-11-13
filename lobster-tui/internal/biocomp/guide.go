@@ -66,8 +66,9 @@ func HintFor(c BioComponent) string {
 // The shared palette: one quiet meaning per colour, used the same way on
 // every screen.
 var (
-	// StatStyle is for counts and status lines ("retain 0 · exclude 1").
-	StatStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("109"))
+	// StatStyle is for counts and status lines ("retain (0) · exclude (1)"):
+	// the normal text colour.
+	StatStyle = lipgloss.NewStyle()
 	// HintStyle is for the instruction line: the grey of details.
 	HintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	// The key legend: soft yellow keys, muted khaki words.

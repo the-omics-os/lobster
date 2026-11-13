@@ -343,8 +343,8 @@ func wrap(text string, width int, style lipgloss.Style) string {
 
 func (c *Component) View(width, height int) string {
 	top := []string{wrap(c.question, width, boldStyle)}
-	if biocomp.Roomy(height) {
-		top = append(top, "") // a gap after the question
+	if biocomp.Roomy(height) && c.details != "" {
+		top = append(top, "") // a gap between the question and its details
 	}
 	if c.details != "" {
 		top = append(top, wrap(c.details, width, dimStyle))

@@ -430,12 +430,12 @@ func summaryLine(items []item, options []option, picked map[string]string) strin
 	var parts []string
 	for _, o := range options {
 		if o.Unavailable == "" {
-			parts = append(parts, fmt.Sprintf("%s %d", o.Label, counts[o.ID]))
+			parts = append(parts, fmt.Sprintf("%s (%d)", o.Label, counts[o.ID]))
 		}
 	}
-	parts = append(parts, fmt.Sprintf("undecided %d", undecided))
+	parts = append(parts, fmt.Sprintf("undecided (%d)", undecided))
 	if unavailable > 0 {
-		parts = append(parts, fmt.Sprintf("unavailable %d", unavailable))
+		parts = append(parts, fmt.Sprintf("unavailable (%d)", unavailable))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -535,8 +535,8 @@ func hang(prefix, text string, width int, style lipgloss.Style) string {
 
 func (c *Component) View(width, height int) string {
 	top := []string{hang("", c.question, width, lipgloss.NewStyle().Bold(true))}
-	if biocomp.Roomy(height) {
-		top = append(top, "") // a gap after the question
+	if biocomp.Roomy(height) && c.details != "" {
+		top = append(top, "") // a gap between the question and its details
 	}
 	if c.details != "" {
 		top = append(top, hang("", c.details, width, dimStyle))
@@ -544,8 +544,12 @@ func (c *Component) View(width, height int) string {
 	if biocomp.Roomy(height) {
 		top = append(top, "") // a gap between the question and the options
 	}
-	for j, o := range c.options {
-		top = append(top, c.optionLine(j, o, width))
+	if line, ok := c.optionsInLine(width); ok {
+		top = append(top, line)
+	} else {
+		for j, o := range c.options {
+			top = append(top, c.optionLine(j, o, width))
+		}
 	}
 	top = append(top, "")
 
@@ -614,6 +618,33 @@ func (c *Component) window(heights []int, avail int) (int, int) {
 	return c.offset, end
 }
 
+// optionsInLine is the option key on one line ("1 retain · 2 exclude ·
+// needs a reason"), when every option is plain (no details, none
+// unavailable, at most 9) and the line fits; ok is false otherwise.
+func (c *Component) optionsInLine(width int) (string, bool) {
+	if len(c.options) > 9 {
+		return "", false
+	}
+	parts := make([]string, 0, len(c.options))
+	for j, o := range c.options {
+		if o.Details != "" || o.Unavailable != "" {
+			return "", false
+		}
+		text := fmt.Sprintf("%d %s", j+1, withID(o.Label, o.ID))
+		if o.Reason != nil {
+			text += optionNeedsReason
+		}
+		parts = append(parts, text)
+	}
+	line := "  " + strings.Join(parts, "   ")
+	if lipgloss.Width(line) > width {
+		return "", false
+	}
+	return dimStyle.Render(line), true
+}
+
+const optionNeedsReason = " (needs a reason)"
+
 func (c *Component) optionLine(j int, o option, width int) string {
 	prefix := "  · "
 	if j < 9 {
@@ -655,11 +686,12 @@ func (c *Component) row(i, width int) string {
 	}
 	parts := []string{style.Width(w).Render(label)}
 	if it.Details != "" {
-		parts = append(parts, dimStyle.Width(w).Render(it.Details))
+		// Evidence in grey italic, apart from the state line under it.
+		parts = append(parts, dimStyle.Italic(true).Width(w).Render(it.Details))
 	}
 	switch {
 	case c.picked[i] < 0:
-		parts = append(parts, dimStyle.Width(w).Render("→ not decided yet"))
+		parts = append(parts, normalStyle.Width(w).Render("→ not decided yet"))
 	default:
 		o := c.options[c.picked[i]]
 		choice := "→ " + o.Label
