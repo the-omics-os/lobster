@@ -768,3 +768,19 @@ func TestCtrlDIsListedOnce(t *testing.T) {
 		t.Fatalf("ctrl+d listed %d times", n)
 	}
 }
+
+func TestTheChoiceDotFollowsThePickNotTheProposal(t *testing.T) {
+	// Proposed SRC-A, picked SRC-B: back on the section, (●) marks SRC-B.
+	raw := strings.Replace(synthetic, `"min": 1, "max": 1, "options"`,
+		`"min": 1, "max": 1, "default": ["SRC-A"], "options"`, 1)
+	c := &Component{}
+	if err := c.Init(json.RawMessage(raw)); err != nil {
+		t.Fatal(err)
+	}
+	press(t, c, "down", "enter")
+	press(t, c, "shift+tab")
+	view := ansi.Strip(c.View(100, 40))
+	if !strings.Contains(view, "(●) SRC-B") || strings.Contains(view, "(●) Author matrix") {
+		t.Fatalf("the dot should be on SRC-B only:\n%s", view)
+	}
+}

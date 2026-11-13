@@ -183,12 +183,15 @@ func (c *Component) HandleMsg(msg tea.Msg) (*biocomp.ComponentResult, tea.Cmd) {
 	return nil, nil
 }
 
-// pickOne submits option i in a radio list, unless it is unavailable.
+// pickOne submits option i in a radio list, unless it is unavailable. The
+// (●) moves to it: inside a dashboard the section stays on screen, and the
+// dot must show the answer recorded, not the earlier proposal.
 func (c *Component) pickOne(i int) *biocomp.ComponentResult {
 	if reason := c.options[i].Unavailable; reason != "" {
 		c.problem = fmt.Sprintf("%s can't be picked: %s", c.options[i].Label, reason)
 		return nil
 	}
+	c.defaultAt = i
 	return c.submit([]int{i})
 }
 
