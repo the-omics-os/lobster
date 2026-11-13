@@ -335,6 +335,29 @@ def test_dashboard_is_one_render_with_a_section_per_field():
     assert result["answer"]["mito"] == 0.2
 
 
+def test_dashboard_without_any_depends_on_rechecks_everything_below():
+    """A model that forgets depends_on still gets the re-check: each section
+    depends on every section above it."""
+    bare = [{k: v for k, v in f.items() if k != "depends_on"} for f in DASHBOARD]
+    data = dashboard_data(
+        DecisionRequest.model_validate(_request(*bare, view="dashboard"))
+    )
+    assert [(s["key"], s["depends_on"]) for s in data["sections"]] == [
+        ("source", []),
+        ("groups", ["source"]),
+        ("mito", ["source", "groups"]),
+    ]
+
+
+def test_dashboard_with_one_depends_on_is_kept_as_written():
+    """Once the model names any depends_on, nothing is added."""
+    some = [DASHBOARD[0], DASHBOARD[1], {**DASHBOARD[2], "depends_on": []}]
+    data = dashboard_data(
+        DecisionRequest.model_validate(_request(*some, view="dashboard"))
+    )
+    assert [s["depends_on"] for s in data["sections"]] == [[], ["source"], []]
+
+
 def test_dashboard_bad_typed_number_is_reported_not_crashed():
     sections = [DASHBOARD[0], {"key": "n", "type": "number", "question": "N?"}]
     reply = {

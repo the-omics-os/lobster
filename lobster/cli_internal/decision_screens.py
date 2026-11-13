@@ -623,15 +623,21 @@ def dashboard_data(request: DecisionRequest) -> Dict[str, Any]:
     are the user's submitted answer (``prefilled_from_answer``) does every
     section with one get it as ``answer``, in that component's reply shape,
     so Go starts it answered; the supervisor's proposals only pre-fill.
+
+    When no section names a depends_on, each depends on every section above
+    it, so changing an earlier answer always asks for the later ones to be
+    checked again (a model can forget depends_on; an extra re-check is cheap).
     """
     notes = _problems_by_field(request)
+    declared = any(field.depends_on for field in request.fields)
     sections = []
-    for field in request.fields:
+    for index, field in enumerate(request.fields):
         component, data = _render_one(field)
+        above = [f.key for f in request.fields[:index]]
         section = {
             "key": field.key,
             "title": field.question or field.key,
-            "depends_on": field.depends_on,
+            "depends_on": field.depends_on if declared else above,
             "component": component,
             "data": data,
         }
