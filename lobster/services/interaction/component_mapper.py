@@ -23,20 +23,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Patterns that strongly suggest a confirmation question.
-_CONFIRM_PATTERNS = re.compile(
-    r"\b(proceed|continue|confirm|approve|accept|do you want|should I|"
-    r"would you like|yes or no|y/n)\b",
-    re.IGNORECASE,
-)
-
-# Patterns suggesting a threshold/numeric input.
-_THRESHOLD_PATTERNS = re.compile(
-    r"\b(threshold|cutoff|p-value|fdr|log.?fc|fold.?change|"
-    r"significance|alpha|min|max)\b",
-    re.IGNORECASE,
-)
-
 
 def map_question(
     question: str,
@@ -97,19 +83,11 @@ def _from_hints(
         )
 
     # Threshold/numeric range context -> number on a slider.
-    if _has_threshold_context(ctx) or _THRESHOLD_PATTERNS.search(question):
+    # The question's wording is never read: a word like "max" or "do you
+    # want" decided the screen before ("Which sample has the max library
+    # size?" got a number box, "Do you want SRC-A or SRC-B?" got yes/no).
+    if _has_threshold_context(ctx):
         return _single(_threshold_field(ctx))
-
-    # Confirmation pattern -> yes/no choice.
-    if _CONFIRM_PATTERNS.search(question):
-        field: Dict[str, Any] = {
-            "key": "answer",
-            "type": "choice",
-            "options": ["yes", "no"],
-        }
-        if "default" in ctx:
-            field["default"] = {"id": "yes" if ctx["default"] else "no"}
-        return _single(field)
 
     # --- LLM path (ambiguous questions) ---
     if llm is not None:

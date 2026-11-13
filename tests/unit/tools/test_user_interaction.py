@@ -163,7 +163,8 @@ def test_ask_user_calls_interrupt_with_component_selection():
     """ask_user should map the question and call interrupt() with a DecisionRequest."""
     with patch("langgraph.types.interrupt") as mock_interrupt:
         mock_interrupt.side_effect = _submit({"answer": {"id": "yes"}})
-        result = _invoke(ask_user, "Proceed?")
+        # A yes/no is asked explicitly: the wording no longer picks it.
+        result = _invoke(ask_user, "Proceed?", {"options": ["yes", "no"]})
 
     mock_interrupt.assert_called_once()
     call_arg = mock_interrupt.call_args[0][0]
@@ -235,7 +236,7 @@ def test_create_ask_user_tool_calls_interrupt_with_selection():
 
     with patch("langgraph.types.interrupt") as mock_interrupt:
         mock_interrupt.side_effect = _submit({"answer": {"id": "yes"}})
-        _invoke(tool, "Continue?")
+        _invoke(tool, "Continue?", {"options": ["yes", "no"]})
 
     mock_interrupt.assert_called_once()
     call_arg = mock_interrupt.call_args[0][0]

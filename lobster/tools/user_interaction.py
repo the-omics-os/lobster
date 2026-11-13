@@ -247,7 +247,9 @@ def create_ask_user_tool(
 
         Args:
             question: One short line; put explanations in "details".
-            context: The fields to ask (see above). Omit for a single free-text answer.
+            context: The fields to ask (see above). Give it whenever the answer
+                is a choice or a number; without it the question is shaped for
+                you, usually as free text.
 
         Returns:
             JSON {"decision_id", "action", "answer", "attempts"}. An answer that

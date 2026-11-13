@@ -112,8 +112,11 @@ sequenceDiagram
    `map_question` (`lobster/services/interaction/component_mapper.py`) uses `context.fields` as given
    and validates it. Older hint-style context (`options`, `clusters`, threshold keys) is converted by
    rules (a threshold hint becomes a slider only when it gives both `min` and `max`; bounds are never
-   invented, so otherwise the number is typed in; bounds written as text, `"0.05"`, are read), an
-   ambiguous question can be formatted by an optional LLM, and anything else becomes one free-text
+   invented, so otherwise the number is typed in; bounds written as text, `"0.05"`, are read). The
+   question's wording is never read: words like "max" or "do you want" no longer pick a number box or
+   yes/no (`test_the_wording_of_a_question_never_decides_its_screen`). A question with neither fields
+   nor hints can be formatted by an optional LLM (kept: it is a registered model call site, covered
+   by the inference-refusal, log-privacy and call-site inventory tests), and anything else becomes one free-text
    field, whose `placeholder` hint is shown as its details, never filled in as the answer. A hint-style
    context keeps its `view`, `checks` and `data_files`, judged as on any context, never dropped
    (`test_hint_context_keeps_data_files_checks_and_view`). Then `check_request` runs the request-time checks once, and the files in

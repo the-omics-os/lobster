@@ -51,12 +51,20 @@ def test_threshold_context_maps_to_threshold_slider():
     assert (field.min, field.max, field.default) == (0.001, 0.1, 0.05)
 
 
-def test_threshold_keyword_in_question_maps_to_threshold():
-    # No bounds were given, so none are invented (a 0-1 slider would be wrong
-    # for a log2 fold change): the number is typed in.
-    field = _only_field(map_question("What log2FC cutoff should I use?"))
-    assert (field.type, field.view) == ("number", "default")
-    assert field.min is None and field.max is None
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Which sample has the max library size?",  # code review: got a number box
+        "Do you want me to continue with SRC-B or SRC-A?",  # code review: got yes/no
+        "What log2FC cutoff should I use?",
+        "Should I remove these outlier samples?",
+    ],
+)
+def test_the_wording_of_a_question_never_decides_its_screen(question):
+    """Words like "max" or "do you want" used to pick a number box or yes/no;
+    without fields or hints, a question is free text (or shaped by the llm)."""
+    field = _only_field(map_question(question))
+    assert (field.type, field.question) == ("text", question)
 
 
 def test_threshold_hint_without_bounds_keeps_its_default():
@@ -83,17 +91,6 @@ def test_threshold_hint_with_both_bounds_is_a_slider():
     assert (field.view, field.min, field.max, field.default) == ("slider", 0, 10, 2.5)
 
 
-def test_confirm_pattern_maps_to_confirm():
-    field = _only_field(map_question("Do you want to proceed with batch correction?"))
-    assert field.type == "choice"
-    assert [option.id for option in field.options] == ["yes", "no"]
-
-
-def test_confirm_should_i_pattern():
-    field = _only_field(map_question("Should I remove these outlier samples?"))
-    assert [option.id for option in field.options] == ["yes", "no"]
-
-
 def test_fallback_maps_to_text_input():
     field = _only_field(map_question("What cell types are you expecting?"))
     assert (field.type, field.question) == (
@@ -108,9 +105,10 @@ def test_empty_options_falls_through():
     assert field.type == "text"
 
 
-def test_confirm_default_propagated():
+def test_a_bare_default_hint_makes_no_yes_no_question():
+    """A yes/no question is asked explicitly, with options."""
     field = _only_field(map_question("Continue?", context={"default": True}))
-    assert field.default == {"id": "yes"}
+    assert field.type == "text"
 
 
 def test_threshold_with_unit():
