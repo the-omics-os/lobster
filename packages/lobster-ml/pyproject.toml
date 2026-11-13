@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-ml"
-version = "1.2.2"
+version = "1.2.6"
 description = "Machine learning agents for Lobster AI (feature selection, survival analysis, interpretability)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -85,7 +85,7 @@ full = [
 
 [project.urls]
 Homepage = "https://omics-os.com"
-Documentation = "https://docs.omics-os.com"
+Documentation = "https://docs.omics-os.com/docs"
 Repository = "https://github.com/the-omics-os/lobster"
 
 # Agent entry points - discovered by ComponentRegistry

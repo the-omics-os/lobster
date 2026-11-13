@@ -20,6 +20,12 @@ always: false
 Describe the biological task in natural language. Lobster routes it to installed
 specialist agents; do not assume every domain package is installed.
 
+The local interface can run in easy Simplified Chinese: `lobster --lang zh`,
+`LOBSTER_LANG=zh`, or `/lang zh` inside a session. Command names stay English.
+With Chinese selected, the assistant is asked to answer in Chinese and to keep
+tool names, paths, gene symbols, and code in English. See
+[language](references/cli-reference.md#local-language).
+
 ## Choose the Correct Client Before Installing
 
 **An Omics-OS Cloud account does not mean a Cloud session.** If the request is to

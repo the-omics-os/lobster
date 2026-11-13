@@ -20,11 +20,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from lobster.i18n import h, t
+
 logger = logging.getLogger(__name__)
 
 cloud_app = typer.Typer(
     name="cloud",
-    help="Manage Omics-OS Cloud connection and usage",
+    help=t("light.cloud.help"),
     no_args_is_help=True,
 )
 
@@ -41,7 +43,7 @@ def _is_secure_endpoint(endpoint: str) -> bool:
     return False
 
 
-def _validate_credentials(
+def _validate_credentials(  # nosec B107 # token_type is a display label, not a credential
     endpoint: str, token: str, token_type: str = "API key"
 ) -> Optional[dict]:
     """Validate credentials against the gateway. Returns usage data or None on failure."""
@@ -54,11 +56,15 @@ def _validate_credentials(
     try:
         validate_endpoint(endpoint)
     except EndpointPolicyError as e:
-        console.print(f"[red]Refusing to send token to disallowed endpoint: {e}[/red]")
+        console.print(
+            h("[red]Refusing to send token to disallowed endpoint: {e}[/red]").format(
+                e=e
+            )
+        )
         return None
 
     usage_url = f"{endpoint}/api/v1/gateway/usage"
-    console.print(f"[dim]Validating {token_type}...[/dim]")
+    console.print(h("[dim]Validating {type}...[/dim]").format(type=token_type))
 
     try:
         with httpx.Client(timeout=15.0) as client:
@@ -68,18 +74,26 @@ def _validate_credentials(
             )
     except (httpx.ConnectError, httpx.TimeoutException):
         console.print(
-            f"[red]Cannot reach Omics-OS Cloud at {endpoint}.[/red]\n"
-            "[dim]Check your network connection and try again.[/dim]"
+            h(
+                "[red]Cannot reach Omics-OS Cloud at {endpoint}.[/red]\n"
+                "[dim]Check your network connection and try again.[/dim]"
+            ).format(endpoint=endpoint)
         )
         return None
 
     if resp.status_code == 401:
-        console.print(f"[red]Invalid {token_type}. Please check and try again.[/red]")
+        console.print(
+            h("[red]Invalid {type}. Please check and try again.[/red]").format(
+                type=token_type
+            )
+        )
         return None
 
     if resp.status_code != 200:
         console.print(
-            f"[red]Unexpected response ({resp.status_code}): {resp.text}[/red]"
+            h("[red]Unexpected response ({code}): {text}[/red]").format(
+                code=resp.status_code, text=resp.text
+            )
         )
         return None
 
@@ -94,9 +108,11 @@ def _print_login_success(data: dict) -> None:
 
     console.print(
         Panel(
-            f"[green]Authenticated successfully![/green]\n\n"
-            f"Tier: [bold]{tier}[/bold]\n"
-            f"Budget remaining: [bold]${remaining}[/bold]",
+            h(
+                "[green]Authenticated successfully![/green]\n\n"
+                "Tier: [bold]{tier}[/bold]\n"
+                "Budget remaining: [bold]${remaining}[/bold]"
+            ).format(tier=tier, remaining=remaining),
             title="Omics-OS Cloud",
             border_style="green",
         )
@@ -109,12 +125,12 @@ def _api_key_login(api_key: Optional[str]) -> None:
 
     if not api_key:
         api_key = typer.prompt(
-            "Paste your Omics-OS API key (from app.omics-os.com/account)",
+            h("Paste your Omics-OS API key (from app.omics-os.com/account)"),
             hide_input=True,
         )
 
     if not api_key or not api_key.strip():
-        console.print("[red]API key cannot be empty.[/red]")
+        console.print(h("[red]API key cannot be empty.[/red]"))
         raise typer.Exit(1)
 
     api_key = api_key.strip()
@@ -122,8 +138,10 @@ def _api_key_login(api_key: Optional[str]) -> None:
 
     if not _is_secure_endpoint(endpoint):
         console.print(
-            f"[red]Refusing to send API key over insecure connection: {endpoint}[/red]\n"
-            "[dim]The endpoint must use HTTPS (or localhost for development).[/dim]"
+            h(
+                "[red]Refusing to send API key over insecure connection: {endpoint}[/red]\n"
+                "[dim]The endpoint must use HTTPS (or localhost for development).[/dim]"
+            ).format(endpoint=endpoint)
         )
         raise typer.Exit(1)
 
@@ -186,8 +204,10 @@ def account() -> None:
     api_key = get_api_key()
     if not api_key or not creds:
         console.print(
-            "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
-            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            h(
+                "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
+                "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            )
         )
         raise typer.Exit(0)
 
@@ -198,16 +218,16 @@ def account() -> None:
     auth_mode = creds.get("auth_mode", "unknown")
 
     table = Table(
-        title="Omics-OS Cloud Account", show_header=False, border_style="cyan"
+        title=h("Omics-OS Cloud Account"), show_header=False, border_style="cyan"
     )
-    table.add_column("Field", style="bold")
-    table.add_column("Value")
+    table.add_column(h("Field"), style="bold")
+    table.add_column(h("Value"))
 
-    table.add_row("Email", email)
-    table.add_row("Tier", tier)
-    table.add_row("User ID", user_id)
-    table.add_row("Auth mode", auth_mode)
-    table.add_row("Endpoint", endpoint)
+    table.add_row(h("Email"), email)
+    table.add_row(h("Tier"), tier)
+    table.add_row(h("User ID"), user_id)
+    table.add_row(h("Auth mode"), auth_mode)
+    table.add_row(h("Endpoint"), endpoint)
 
     # Fetch live usage data
     import httpx
@@ -226,25 +246,27 @@ def account() -> None:
             data = resp.json()
             budget = data.get("budget", {})
             table.add_row("", "")
-            table.add_row("Budget remaining", f"${budget.get('remaining_usd', '?')}")
-            table.add_row("Period", data.get("period", "?"))
+            table.add_row(h("Budget remaining"), f"${budget.get('remaining_usd', '?')}")
+            table.add_row(h("Period"), data.get("period", "?"))
     except EndpointPolicyError:
         table.add_row("", "")
-        table.add_row("Usage", "[red]endpoint not in allowlist[/red]")
+        table.add_row(h("Cloud usage"), h("[red]endpoint not in allowlist[/red]"))
     except (httpx.ConnectError, httpx.TimeoutException):
         table.add_row("", "")
-        table.add_row("Status", "[dim]Could not reach cloud[/dim]")
+        table.add_row(h("Status"), h("[dim]Could not reach cloud[/dim]"))
 
     console.print(table)
     console.print(
-        "\n[dim]Manage API keys:   https://app.omics-os.com/account[/dim]\n"
-        "[dim]Account settings:  https://app.omics-os.com/account[/dim]"
+        h(
+            "\n[dim]Manage API keys:   https://app.omics-os.com/account[/dim]\n"
+            "[dim]Account settings:  https://app.omics-os.com/account[/dim]"
+        )
     )
 
 
 keys_app = typer.Typer(
     name="keys",
-    help="API key management (web only)",
+    help=t("light.cloud.keys"),
     no_args_is_help=False,
     invoke_without_command=True,
 )
@@ -256,10 +278,12 @@ def keys_callback(ctx: typer.Context) -> None:
     """Manage API keys via the Omics-OS Cloud web interface."""
     if ctx.invoked_subcommand is None:
         console.print(
-            "API key management is available at:\n\n"
-            "  [bold cyan]https://app.omics-os.com/account[/bold cyan]\n\n"
-            "[dim]For security, API keys are managed through the web interface only.\n"
-            "Terminal sessions can expose key material in scrollback and shell history.[/dim]"
+            h(
+                "API key management is available at:\n\n"
+                "  [bold cyan]https://app.omics-os.com/account[/bold cyan]\n\n"
+                "[dim]For security, API keys are managed through the web interface only.\n"
+                "Terminal sessions can expose key material in scrollback and shell history.[/dim]"
+            )
         )
 
 
@@ -268,7 +292,7 @@ def login(
     api_key: Optional[str] = typer.Option(
         None,
         "--api-key",
-        help="Omics-OS API key from app.omics-os.com/account",
+        help=h("Omics-OS API key from app.omics-os.com/account"),
     ),
 ) -> None:
     """Authenticate the Python local gateway provider with --api-key <key>.
@@ -299,13 +323,15 @@ def status() -> None:
     api_key = get_api_key()
     if not api_key:
         console.print(
-            "[yellow]No Omics-OS Cloud API key found.[/yellow]\n"
-            "Credentials are read from the active Python profile or the "
-            "[bold]OMICS_OS_API_KEY[/bold] environment variable; these are "
-            "separate sources and neither is set in the current active profile.\n"
-            "Set [bold]OMICS_OS_API_KEY[/bold], run [bold]lobster init[/bold] "
-            "to configure a profile, or run: "
-            "[bold]lobster cloud login --api-key <key>[/bold]"
+            h(
+                "[yellow]No Omics-OS Cloud API key found.[/yellow]\n"
+                "Credentials are read from the active Python profile or the "
+                "[bold]OMICS_OS_API_KEY[/bold] environment variable; these are "
+                "separate sources and neither is set in the current active profile.\n"
+                "Set [bold]OMICS_OS_API_KEY[/bold], run [bold]lobster init[/bold] "
+                "to configure a profile, or run: "
+                "[bold]lobster cloud login --api-key <key>[/bold]"
+            )
         )
         raise typer.Exit(0)
 
@@ -314,7 +340,7 @@ def status() -> None:
     try:
         validate_endpoint(endpoint)
     except EndpointPolicyError as e:
-        console.print(f"[red]Endpoint not in allowlist: {e}[/red]")
+        console.print(h("[red]Endpoint not in allowlist: {e}[/red]").format(e=e))
         raise typer.Exit(1)
     usage_url = f"{endpoint}/api/v1/gateway/usage"
 
@@ -325,18 +351,28 @@ def status() -> None:
                 headers={"Authorization": f"Bearer {api_key}"},
             )
     except (httpx.ConnectError, httpx.TimeoutException):
-        console.print(f"[red]Cannot reach Omics-OS Cloud at {endpoint}.[/red]")
+        console.print(
+            h("[red]Cannot reach Omics-OS Cloud at {endpoint}.[/red]").format(
+                endpoint=endpoint
+            )
+        )
         raise typer.Exit(1)
 
     if resp.status_code == 401:
         console.print(
-            "[red]Credentials expired or invalid.[/red]\n"
-            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            h(
+                "[red]Credentials expired or invalid.[/red]\n"
+                "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            )
         )
         raise typer.Exit(1)
 
     if resp.status_code != 200:
-        console.print(f"[red]Error ({resp.status_code}): {resp.text}[/red]")
+        console.print(
+            h("[red]Error ({code}): {text}[/red]").format(
+                code=resp.status_code, text=resp.text
+            )
+        )
         raise typer.Exit(1)
 
     data = resp.json()
@@ -344,25 +380,27 @@ def status() -> None:
     budget = data.get("budget", {})
     limits = data.get("limits", {})
 
-    table = Table(title="Omics-OS Cloud Usage", show_header=False, border_style="cyan")
-    table.add_column("Field", style="bold")
-    table.add_column("Value")
+    table = Table(
+        title=h("Omics-OS Cloud Usage"), show_header=False, border_style="cyan"
+    )
+    table.add_column(h("Field"), style="bold")
+    table.add_column(h("Value"))
 
-    table.add_row("Tier", data.get("tier", "?"))
-    table.add_row("Period", data.get("period", "?"))
-    table.add_row("Input tokens", f"{usage.get('input_tokens', 0):,}")
-    table.add_row("Output tokens", f"{usage.get('output_tokens', 0):,}")
-    table.add_row("Total tokens", f"{usage.get('total_tokens', 0):,}")
-    table.add_row("Cost", f"${usage.get('cost_usd', 0):.2f}")
-    table.add_row("Requests", f"{usage.get('request_count', 0):,}")
+    table.add_row(h("Tier"), data.get("tier", "?"))
+    table.add_row(h("Period"), data.get("period", "?"))
+    table.add_row(h("Input tokens"), f"{usage.get('input_tokens', 0):,}")
+    table.add_row(h("Output tokens"), f"{usage.get('output_tokens', 0):,}")
+    table.add_row(h("Total tokens"), f"{usage.get('total_tokens', 0):,}")
+    table.add_row(h("Cost"), f"${usage.get('cost_usd', 0):.2f}")
+    table.add_row(h("Requests"), f"{usage.get('request_count', 0):,}")
     table.add_row("", "")
-    table.add_row("Monthly budget", f"${budget.get('monthly_budget_usd', 0):.2f}")
-    table.add_row("Remaining", f"${budget.get('remaining_usd', 0):.2f}")
-    table.add_row("Utilization", f"{budget.get('utilization_pct', 0):.1f}%")
+    table.add_row(h("Monthly budget"), f"${budget.get('monthly_budget_usd', 0):.2f}")
+    table.add_row(h("Remaining"), f"${budget.get('remaining_usd', 0):.2f}")
+    table.add_row(h("Utilization"), f"{budget.get('utilization_pct', 0):.1f}%")
     table.add_row("", "")
     max_tokens = limits.get("max_tokens_per_request")
     table.add_row(
-        "Max tokens/req", f"{max_tokens:,}" if isinstance(max_tokens, int) else "?"
+        h("Max tokens/req"), f"{max_tokens:,}" if isinstance(max_tokens, int) else "?"
     )
 
     console.print(table)
@@ -376,45 +414,57 @@ def logout() -> None:
     # Active-profile-only logout: on a V2 multi-profile file this removes the
     # active profile and preserves siblings (Codex P1). On V1 it deletes the file.
     _clear_active_profile()
-    console.print("Logged out of Omics-OS Cloud.")
+    console.print(h("Logged out of Omics-OS Cloud."))
 
 
 @cloud_app.command()
 def chat(
     session_id: Optional[str] = typer.Option(
-        None, "--session-id", "-s", help="Resume an existing cloud session"
+        None, "--session-id", "-s", help=h("Resume an existing cloud session")
     ),
     token: Optional[str] = typer.Option(
-        None, "--token", help="Override stored auth token"
+        None,
+        "--token",
+        envvar="LOBSTER_CLOUD_TOKEN",
+        help=h("Override stored auth token (prefer LOBSTER_CLOUD_TOKEN env var)"),
     ),
     endpoint: Optional[str] = typer.Option(
-        None, "--endpoint", help="Custom cloud API endpoint"
+        None, "--endpoint", help=h("Custom cloud API endpoint")
     ),
     stream_endpoint: Optional[str] = typer.Option(
         None,
         "--stream-endpoint",
-        help="Custom stream origin (e.g., https://stream.omics-os.com)",
+        help=h("Custom stream origin (e.g., https://stream.omics-os.com)"),
     ),
     project_id: Optional[str] = typer.Option(
-        None, "--project-id", "-p", help="Associate session with a cloud project"
+        None, "--project-id", "-p", help=h("Associate session with a cloud project")
     ),
 ) -> None:
     """Start an interactive cloud chat session (lobster-cli, direct connection)."""
     import os
-    import subprocess
+    import subprocess  # nosec B404 # used only to launch the installed chat client with an argv list
 
-    from lobster.cli_internal.npm_launcher import find_npm_binary
+    from lobster.cli_internal.npm_launcher import (
+        TOKEN_ENV_VAR,
+        find_npm_binary,
+        install_hint,
+        supports_token_env,
+    )
 
     binary = find_npm_binary()
     if not binary:
         console.print(
-            "[red]Error:[/red] Cloud TUI not installed.\n"
-            "Install: [bold]npm install -g @omicsos/lobster[/bold]"
+            h(
+                "[red]Error:[/red] Cloud TUI not installed.\n"
+                "Install: [bold]{hint}[/bold]"
+            ).format(hint=install_hint())
         )
         raise typer.Exit(1)
 
     if not os.isatty(0):
-        console.print("[red]Error:[/red] Cloud chat requires an interactive terminal.")
+        console.print(
+            h("[red]Error:[/red] Cloud chat requires an interactive terminal.")
+        )
         raise typer.Exit(1)
 
     api_url = endpoint or "https://app.omics-os.com/api/v1"
@@ -429,13 +479,13 @@ def chat(
         try:
             _validate_endpoint(endpoint.rstrip("/"))
         except CloudQueryError as e:
-            console.print(f"[red]Error:[/red] {e}")
+            console.print(h("[red]Error:[/red] {e}").format(e=e))
             raise typer.Exit(1)
     if stream_endpoint:
         try:
             _validate_endpoint(stream_endpoint.rstrip("/"))
         except CloudQueryError as e:
-            console.print(f"[red]Error:[/red] Stream endpoint: {e}")
+            console.print(h("[red]Error:[/red] Stream endpoint: {e}").format(e=e))
             raise typer.Exit(1)
 
     stream_base = derive_stream_base(api_url, stream_endpoint)
@@ -445,12 +495,19 @@ def chat(
         cmd.append(f"--stream-endpoint={stream_base}")
     if session_id:
         cmd.append(f"--session-id={session_id}")
+    child_env = None
     if token:
-        cmd.append(f"--token={token}")
+        # Keep the token out of the process list when the client can read it from the environment.
+        if supports_token_env(binary):
+            child_env = {**os.environ, TOKEN_ENV_VAR: token}
+        else:
+            cmd.append(f"--token={token}")
     if project_id:
         cmd.append(f"--project-id={project_id}")
 
-    proc = subprocess.Popen(cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+    proc = subprocess.Popen(  # nosec B603 # argv list for the installed chat client; no shell
+        cmd, stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr, env=child_env
+    )
     try:
         proc.wait()
     except KeyboardInterrupt:
@@ -463,43 +520,43 @@ def chat(
 
 @cloud_app.command()
 def query(
-    question: str = typer.Argument(..., help="Question to ask"),
+    question: str = typer.Argument(..., help=h("Question to ask")),
     session_id: Optional[str] = typer.Option(
-        None, "--session-id", "-s", help="Session UUID to continue (or 'latest')"
+        None, "--session-id", "-s", help=h("Session UUID to continue (or 'latest')")
     ),
     token: Optional[str] = typer.Option(
         None,
         "--token",
-        help="Override stored auth token (prefer OMICS_OS_API_KEY env var)",
+        help=h("Override stored auth token (prefer OMICS_OS_API_KEY env var)"),
     ),
     endpoint: Optional[str] = typer.Option(
         None,
         "--endpoint",
-        help="Custom REST API origin (e.g., https://app.omics-os.com)",
+        help=h("Custom REST API origin (e.g., https://app.omics-os.com)"),
     ),
     stream_endpoint: Optional[str] = typer.Option(
         None,
         "--stream-endpoint",
-        help="Custom stream origin (e.g., https://stream.omics-os.com)",
+        help=h("Custom stream origin (e.g., https://stream.omics-os.com)"),
     ),
     unsafe_endpoint: bool = typer.Option(
         False,
         "--unsafe-endpoint",
         is_flag=True,
         hidden=True,
-        help="Skip endpoint allowlist validation (DANGEROUS)",
+        help=h("Skip endpoint allowlist validation (DANGEROUS)"),
     ),
     stream: bool = typer.Option(
-        False, "--stream/--no-stream", help="Stream text as it arrives"
+        False, "--stream/--no-stream", help=h("Stream text as it arrives")
     ),
     json_output: bool = typer.Option(
-        False, "--json", "-j", is_flag=True, help="Output JSON only on stdout"
+        False, "--json", "-j", is_flag=True, help=h("Output JSON only on stdout")
     ),
     project_id: Optional[str] = typer.Option(
         None,
         "--project-id",
         "-p",
-        help="Associate session with a cloud project (personal projects only)",
+        help=h("Associate session with a cloud project (personal projects only)"),
     ),
 ) -> None:
     """Send a single query to Omics-OS Cloud (agents run on ECS Fargate)."""
@@ -547,7 +604,7 @@ def query(
         else:
             from rich.markup import escape
 
-            console.print(f"[red]Error:[/red] {escape(str(e))}")
+            console.print(h("[red]Error:[/red] {msg}").format(msg=escape(str(e))))
         raise typer.Exit(1)
 
     if not json_output:
@@ -594,7 +651,7 @@ def query(
         )
     except KeyboardInterrupt:
         if not json_output:
-            console.print("\n[yellow]Cancelled.[/yellow]")
+            console.print(h("\n[yellow]Cancelled.[/yellow]"))
         cancel_cloud_run(rest_base, headers, sid)
         if json_output:
             _emit_json_error("Cancelled by user", sid)
@@ -612,7 +669,9 @@ def query(
         else:
             from rich.markup import escape
 
-            console.print(f"[red]Error:[/red] {escape(result.error_detail)}")
+            console.print(
+                h("[red]Error:[/red] {msg}").format(msg=escape(result.error_detail))
+            )
         raise typer.Exit(1)
 
     workspace_files: list = []
@@ -620,7 +679,7 @@ def query(
         try:
             workspace_files = fetch_workspace_files(rest_base, headers, sid)
         except Exception:
-            pass
+            pass  # nosec B110 # workspace file listing is optional; the chat result is still reported
 
     if json_output:
         print(
@@ -663,21 +722,27 @@ def query(
         cost = result.token_usage.get("total_cost_usd")
         if isinstance(cost, (int, float)) and math.isfinite(cost):
             footer_parts.append(f"cost ${cost:.4f}")
-    footer_parts.append("continue with --session-id latest")
+    footer_parts.append(h("continue with --session-id latest"))
     console.print(f"\n[dim]{'  ·  '.join(footer_parts)}[/dim]")
 
     if workspace_files:
         file_count = len(workspace_files)
-        console.print(
-            f"[dim]{file_count} file{'s' if file_count != 1 else ''} in workspace · "
-            f"download: lobster cloud files download {sid} <path>[/dim]"
+        listing = (
+            h(
+                "[dim]{n} file in workspace · download: lobster cloud files download {sid} <path>[/dim]"
+            )
+            if file_count == 1
+            else h(
+                "[dim]{n} files in workspace · download: lobster cloud files download {sid} <path>[/dim]"
+            )
         )
+        console.print(listing.format(n=file_count, sid=sid))
 
 
 @cloud_app.command("projects")
 def projects(
     json_output: bool = typer.Option(
-        False, "--json", "-j", is_flag=True, help="Output JSON"
+        False, "--json", "-j", is_flag=True, help=h("Output JSON")
     ),
 ) -> None:
     """List your Omics-OS Cloud projects."""
@@ -698,7 +763,7 @@ def projects(
 
             print(_json.dumps({"success": False, "error": str(e)}))
         else:
-            console.print(f"[red]Error:[/red] {e}")
+            console.print(h("[red]Error:[/red] {e}").format(e=e))
         raise typer.Exit(1)
 
     import httpx
@@ -716,7 +781,9 @@ def projects(
                 )
             else:
                 console.print(
-                    "[yellow]Projects not available.[/yellow] Feature may not be enabled for your account."
+                    h(
+                        "[yellow]Projects not available.[/yellow] Feature may not be enabled for your account."
+                    )
                 )
             raise typer.Exit(0)
         if not resp.is_success:
@@ -727,7 +794,9 @@ def projects(
                     _json.dumps({"success": False, "error": f"HTTP {resp.status_code}"})
                 )
             else:
-                console.print(f"[red]Error:[/red] {resp.status_code}")
+                console.print(
+                    h("[red]Error:[/red] {code}").format(code=resp.status_code)
+                )
             raise typer.Exit(1)
         try:
             data = resp.json()
@@ -739,7 +808,7 @@ def projects(
                     _json.dumps({"success": False, "error": "Invalid JSON from server"})
                 )
             else:
-                console.print("[red]Error:[/red] Invalid response from server")
+                console.print(h("[red]Error:[/red] Invalid response from server"))
             raise typer.Exit(1)
     except httpx.HTTPError as e:
         if json_output:
@@ -747,15 +816,13 @@ def projects(
 
             print(_json.dumps({"success": False, "error": str(e)}))
         else:
-            console.print(f"[red]Cannot reach cloud:[/red] {e}")
+            console.print(h("[red]Cannot reach cloud:[/red] {err}").format(err=e))
         raise typer.Exit(1)
 
     project_list = (
         data.get("projects", data)
         if isinstance(data, dict)
-        else data
-        if isinstance(data, list)
-        else []
+        else data if isinstance(data, list) else []
     )
 
     if json_output:
@@ -765,14 +832,14 @@ def projects(
         return
 
     if not project_list:
-        console.print("[dim]No projects found. Create one at app.omics-os.com[/dim]")
+        console.print(h("[dim]No projects found. Create one at app.omics-os.com[/dim]"))
         return
 
-    table = Table(title="Omics-OS Cloud Projects", border_style="cyan")
+    table = Table(title=h("Omics-OS Cloud Projects"), border_style="cyan")
     table.add_column("ID", style="dim")
-    table.add_column("Name", style="bold")
-    table.add_column("Datasets")
-    table.add_column("Created")
+    table.add_column(h("Name"), style="bold")
+    table.add_column(h("Datasets"))
+    table.add_column(h("Created"))
     for p in project_list:
         if not isinstance(p, dict):
             continue

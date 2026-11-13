@@ -29,6 +29,11 @@ NPM_PACKAGE = "@omicsos/lobster"
 @pytest.fixture(autouse=True)
 def isolated_setup(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    import lobster.i18n as i18n
+
+    # Start each test as a plain English run with no language choice yet.
+    monkeypatch.setattr(i18n, "_LANG", "en")
+    monkeypatch.setattr(i18n, "_SOURCE", "default")
     from lobster.config import global_config
 
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global-config")
@@ -42,6 +47,7 @@ def isolated_setup(monkeypatch, tmp_path):
         "LOBSTER_LLM_PROVIDER",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
+        "LOBSTER_WORKSPACE",
     ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr("lobster.core.uv_tool_env.is_uv_tool_env", lambda: False)
@@ -312,7 +318,7 @@ def test_classic_cloud_wizard_does_not_attempt_browser_before_key(
 
     monkeypatch.setattr(http.server, "HTTPServer", forbidden_listener)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
-    answers = iter(["1", KEY])
+    answers = iter(["1", "1", KEY])  # language (English), provider, key
     monkeypatch.setattr(
         init_commands.Prompt, "ask", lambda *args, **kwargs: next(answers)
     )
@@ -542,7 +548,7 @@ def test_interactive_init_bridge_has_no_five_minute_deadline(monkeypatch):
 def test_init_bridge_restores_original_terminal_state_on_every_exit(
     outcome, monkeypatch
 ):
-    import subprocess
+    import subprocess  # nosec B404 # test inspects subprocess call arguments
     import termios
 
     from lobster.ui.bridge import go_tui_bridge

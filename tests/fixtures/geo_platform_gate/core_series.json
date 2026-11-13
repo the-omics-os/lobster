@@ -1,0 +1,656 @@
+{
+  "_source": "GEO E-utilities esummary (GSE) and GEO platform records (acc.cgi form=text view=brief, !Platform_title / !Platform_technology); metadata only, retrieved 2026-11-08.",
+  "_expected_gate": "refuse:<platform_type> = UnsupportedPlatformError with that platform_type; pass = the platform tier lets the series through to the modality check (later format or content refusals are not the gate's job).",
+  "rows": [
+    {
+      "row": 1,
+      "accession": "GSE4588",
+      "esummary": {
+        "title": "Identification of genes specifically over-expressed in lupus CD4 T and",
+        "gdsType": "Expression profiling by array",
+        "taxon": "Homo sapiens",
+        "n_samples": 49,
+        "gpl": [
+          "GPL570"
+        ],
+        "pdat": "2006/12/31"
+      },
+      "platforms": {
+        "GPL570": {
+          "title": "[HG-U133_Plus_2] Affymetrix Human Genome U133 Plus 2.0 Array",
+          "technology": "in situ oligonucleotide"
+        }
+      },
+      "expected_gate": "refuse:microarray"
+    },
+    {
+      "row": 2,
+      "accession": "GSE3892",
+      "esummary": {
+        "title": "Diffuse large B cell lymphomas",
+        "gdsType": "Expression profiling by array",
+        "taxon": "Homo sapiens",
+        "n_samples": 54,
+        "gpl": [
+          "GPL3255"
+        ],
+        "pdat": "2006/12/08"
+      },
+      "platforms": {
+        "GPL3255": {
+          "title": "VUMC MACF human 19K oligo v33",
+          "technology": "spotted oligonucleotide"
+        }
+      },
+      "expected_gate": "refuse:microarray"
+    },
+    {
+      "row": 3,
+      "accession": "GSE2034",
+      "esummary": {
+        "title": "Breast cancer relapse free survival",
+        "gdsType": "Expression profiling by array",
+        "taxon": "Homo sapiens",
+        "n_samples": 286,
+        "gpl": [
+          "GPL96"
+        ],
+        "pdat": "2005/02/23"
+      },
+      "platforms": {
+        "GPL96": {
+          "title": "[HG-U133A] Affymetrix Human Genome U133A Array",
+          "technology": "in situ oligonucleotide"
+        }
+      },
+      "expected_gate": "refuse:microarray"
+    },
+    {
+      "row": 4,
+      "accession": "GSE40279",
+      "esummary": {
+        "title": "Genome-wide Methylation Profiles Reveal Quantitative Views of Human Ag",
+        "gdsType": "Methylation profiling by array",
+        "taxon": "Homo sapiens",
+        "n_samples": 656,
+        "gpl": [
+          "GPL13534"
+        ],
+        "pdat": "2012/11/21"
+      },
+      "platforms": {
+        "GPL13534": {
+          "title": "Illumina HumanMethylation450 BeadChip (HumanMethylation450_15017482)",
+          "technology": "oligonucleotide beads"
+        }
+      },
+      "expected_gate": "refuse:methylation_array"
+    },
+    {
+      "row": 5,
+      "accession": "GSE164073",
+      "esummary": {
+        "title": "Response to SARS-CoV-2 infection in cornea, limbus and sclera from hum",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 18,
+        "gpl": [
+          "GPL18573"
+        ],
+        "pdat": "2020/12/31"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 6,
+      "accession": "GSE347528",
+      "esummary": {
+        "title": "Transcriptomic comparison of colorectal cancer biopsies and human iPSC",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 20,
+        "gpl": [
+          "GPL29480",
+          "GPL24676"
+        ],
+        "pdat": "2026/09/17"
+      },
+      "platforms": {
+        "GPL29480": {
+          "title": "DNBSEQ-T7 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        },
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 7,
+      "accession": "GSE147507",
+      "esummary": {
+        "title": "Transcriptional response to SARS-CoV-2 infection",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens; Mustela putorius furo",
+        "n_samples": 110,
+        "gpl": [
+          "GPL18573",
+          "GPL28369"
+        ],
+        "pdat": "2020/03/25"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        },
+        "GPL28369": {
+          "title": "Illumina NextSeq 500 (Mustela putorius furo)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 8,
+      "accession": "GSE60450",
+      "esummary": {
+        "title": "Transcriptome analysis of luminal and basal cell subpopulations in the",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Mus musculus",
+        "n_samples": 12,
+        "gpl": [
+          "GPL13112"
+        ],
+        "pdat": "2015/01/19"
+      },
+      "platforms": {
+        "GPL13112": {
+          "title": "Illumina HiSeq 2000 (Mus musculus)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 9,
+      "accession": "GSE114762",
+      "esummary": {
+        "title": "Kinetics of LPS induction in wt and Cop1-ko BMDMs",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Mus musculus",
+        "n_samples": 36,
+        "gpl": [
+          "GPL17021"
+        ],
+        "pdat": "2018/10/03"
+      },
+      "platforms": {
+        "GPL17021": {
+          "title": "Illumina HiSeq 2500 (Mus musculus)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 10,
+      "accession": "GSE184616",
+      "esummary": {
+        "title": "RNA-seq of HPV-negative Oral Squamous Cell Carcinoma Patients",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 30,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2021/11/25"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 11,
+      "accession": "GSE348945",
+      "esummary": {
+        "title": "Bulk RNA-seq profiling of paired colorectal cancer and adjacent tissue",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 20,
+        "gpl": [
+          "GPL34284"
+        ],
+        "pdat": "2026/10/06"
+      },
+      "platforms": {
+        "GPL34284": {
+          "title": "Illumina NovaSeq X Plus (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 12,
+      "accession": "GSE316039",
+      "esummary": {
+        "title": "Downregulation of MGST3 promotes colorectal cancer progression",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 14,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2026/01/14"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 13,
+      "accession": "GSE157103",
+      "esummary": {
+        "title": "Large-scale Multi-omic Analysis of COVID-19 Severity",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 126,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2020/08/29"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 14,
+      "accession": "GSE130036",
+      "esummary": {
+        "title": "Long non-coding and protein-coding RNA profiling using strand-specific",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 37,
+        "gpl": [
+          "GPL20795"
+        ],
+        "pdat": "2019/04/19"
+      },
+      "platforms": {
+        "GPL20795": {
+          "title": "HiSeq X Ten (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 15,
+      "accession": "GSE283452",
+      "esummary": {
+        "title": "HUMAN ALVEOLAR MACROPHAGE FUNCTION IS IMPAIRED IN TUBERCULOSIS CONTACT",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 89,
+        "gpl": [
+          "GPL21290"
+        ],
+        "pdat": "2025/12/31"
+      },
+      "platforms": {
+        "GPL21290": {
+          "title": "Illumina HiSeq 3000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 16,
+      "accession": "GSE314755",
+      "esummary": {
+        "title": "Dasatinib resensitizes BRAF/MEK inhibitor efficacy in patient-derived ",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 14,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2025/12/31"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 17,
+      "accession": "GSE109564",
+      "esummary": {
+        "title": "Inflammatory Response and Host-Donor Chimerism Defined by Single Cell ",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 7,
+        "gpl": [
+          "GPL18573",
+          "GPL16791"
+        ],
+        "pdat": "2018/06/19"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        },
+        "GPL16791": {
+          "title": "Illumina HiSeq 2500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 18,
+      "accession": "GSE144735",
+      "esummary": {
+        "title": "Single cell 3' RNA sequencing of 6 Belgian colorectal cancer patients",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 18,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2020/04/05"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 19,
+      "accession": "GSE282425",
+      "esummary": {
+        "title": "SenPred: A single-cell RNA sequencing-based machine learning pipeline ",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 4,
+        "gpl": [
+          "GPL18573"
+        ],
+        "pdat": "2024/12/05"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 20,
+      "accession": "GSE248556",
+      "esummary": {
+        "title": "Single-cell transcriptome of PBMC response to Omicron breakthrough inf",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 45,
+        "gpl": [
+          "GPL30173"
+        ],
+        "pdat": "2024/12/18"
+      },
+      "platforms": {
+        "GPL30173": {
+          "title": "NextSeq 2000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 21,
+      "accession": "GSE161529",
+      "esummary": {
+        "title": "scRNA-seq profiling of breast cancer tumors, BRCA1 mutant pre-neoplast",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 69,
+        "gpl": [
+          "GPL18573"
+        ],
+        "pdat": "2021/03/19"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 22,
+      "accession": "GSE182227",
+      "esummary": {
+        "title": "Cellular states are coupled to genomic and viral heterogeneity in HPV-",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 24,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2022/11/30"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 23,
+      "accession": "GSE155698",
+      "esummary": {
+        "title": "Multimodal Mapping of the Tumor and Peripheral Blood Immune Landscape ",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 41,
+        "gpl": [
+          "GPL20301",
+          "GPL24676"
+        ],
+        "pdat": "2020/10/01"
+      },
+      "platforms": {
+        "GPL20301": {
+          "title": "Illumina HiSeq 4000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        },
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 24,
+      "accession": "GSE194247",
+      "esummary": {
+        "title": "Deep single-cell transcriptome analysis reveals transitional cancer ce",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 5,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2022/05/01"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 25,
+      "accession": "GSE176078",
+      "esummary": {
+        "title": "A single-cell and spatially resolved atlas of human breast cancers",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 26,
+        "gpl": [
+          "GPL18573"
+        ],
+        "pdat": "2021/06/24"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 26,
+      "accession": "GSE241417",
+      "esummary": {
+        "title": "Gene expression profile at single cell level of bone marrow mononuclea",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 18,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2023/11/30"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 27,
+      "accession": "GSE209832",
+      "esummary": {
+        "title": "The FOXP3+ pro-inflammatory T cell: A Potential Therapeutic Target in ",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 11,
+        "gpl": [
+          "GPL20301"
+        ],
+        "pdat": "2023/12/31"
+      },
+      "platforms": {
+        "GPL20301": {
+          "title": "Illumina HiSeq 4000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 28,
+      "accession": "GSE242997",
+      "esummary": {
+        "title": "Integrated single-cell multiomic analysis of HIV latency reversal reve",
+        "gdsType": "Expression profiling by high throughput sequencing; Genome binding/occupancy profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 16,
+        "gpl": [
+          "GPL18573"
+        ],
+        "pdat": "2023/12/28"
+      },
+      "platforms": {
+        "GPL18573": {
+          "title": "Illumina NextSeq 500 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 29,
+      "accession": "GSE194122",
+      "esummary": {
+        "title": "A sandbox for prediction and integration of DNA, RNA, and proteins in ",
+        "gdsType": "Expression profiling by high throughput sequencing; Genome binding/occupancy profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 38,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2022/01/24"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    },
+    {
+      "row": 30,
+      "accession": "GSE150728",
+      "esummary": {
+        "title": "A single-cell atlas of the peripheral immune response to severe COVID-",
+        "gdsType": "Expression profiling by high throughput sequencing",
+        "taxon": "Homo sapiens",
+        "n_samples": 13,
+        "gpl": [
+          "GPL24676"
+        ],
+        "pdat": "2020/05/18"
+      },
+      "platforms": {
+        "GPL24676": {
+          "title": "Illumina NovaSeq 6000 (Homo sapiens)",
+          "technology": "high-throughput sequencing"
+        }
+      },
+      "expected_gate": "pass"
+    }
+  ]
+}

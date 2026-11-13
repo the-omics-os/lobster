@@ -1,7 +1,5 @@
 """Tests for shared configuration infrastructure."""
 
-import pytest
-
 from lobster.config.base_config import ProviderConfigBase
 from lobster.config.constants import VALID_PROFILES, VALID_PROVIDERS
 
@@ -11,13 +9,14 @@ def test_valid_providers_includes_all():
     assert "anthropic" in VALID_PROVIDERS
     assert "bedrock" in VALID_PROVIDERS
     assert "ollama" in VALID_PROVIDERS
+    assert "ollama-cloud" in VALID_PROVIDERS
     assert "gemini" in VALID_PROVIDERS
     assert "azure" in VALID_PROVIDERS
     assert "openai" in VALID_PROVIDERS
     assert "openrouter" in VALID_PROVIDERS
     assert "omics-os" in VALID_PROVIDERS
     assert "nebius" in VALID_PROVIDERS
-    assert len(VALID_PROVIDERS) == 9
+    assert len(VALID_PROVIDERS) == 10
 
 
 def test_valid_profiles_includes_all():

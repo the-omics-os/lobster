@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
 var ansiEscapeRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -19,10 +21,10 @@ func TestRenderInlineIntroActiveShowsTaglines(t *testing.T) {
 	m.welcomeSporadicCell = -1
 
 	intro := stripANSI(renderInlineIntro(m))
-	if !strings.Contains(intro, welcomeTagline) {
+	if !strings.Contains(intro, i18n.T("tui.welcome.tagline")) {
 		t.Fatalf("expected tagline in intro, got:\n%s", intro)
 	}
-	if !strings.Contains(intro, welcomeSubTagline) {
+	if !strings.Contains(intro, i18n.T("tui.welcome.sub")) {
 		t.Fatalf("expected sub-tagline in intro, got:\n%s", intro)
 	}
 }
@@ -37,7 +39,7 @@ func TestRenderInlineIntroInactiveKeepsLogoAndText(t *testing.T) {
 	m.welcomeSporadicCell = -1
 
 	intro := stripANSI(renderInlineIntro(m))
-	if !strings.Contains(intro, welcomeTagline) {
+	if !strings.Contains(intro, i18n.T("tui.welcome.tagline")) {
 		t.Fatalf("expected tagline to remain visible after animation, got:\n%s", intro)
 	}
 	if !strings.Contains(intro, "▗▖    ▗▄▖") {

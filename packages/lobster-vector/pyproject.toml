@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-vector"
-version = "1.2.2"
+version = "1.2.6"
 description = "Semantic vector search engine for biomedical ontologies"
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -43,7 +43,7 @@ full = ["lobster-vector[chromadb,openai,local,cohere,graph]"]
 
 [project.urls]
 Homepage = "https://omics-os.com"
-Documentation = "https://docs.omics-os.com"
+Documentation = "https://docs.omics-os.com/docs"
 Repository = "https://github.com/the-omics-os/lobster"
 
 [tool.setuptools]

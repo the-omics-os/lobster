@@ -119,7 +119,14 @@ def _llm_format_question(
         structured_llm = llm.with_structured_output(AskUserContext)
         # nostream: this runs inside ask_user's build task, and the chat stream
         # would show a call made there as a sub-agent working.
-        return structured_llm.invoke(prompt, config={"tags": ["nostream"]})
+        result = structured_llm.invoke(prompt, config={"tags": ["nostream"]})
+        if isinstance(result, AskUserContext):
+            return result
+        # A plain-text answer yields no fields (None): use the fallback.
+        logger.debug(
+            "LLM question formatting returned no fields (result_type=%s)",
+            type(result).__name__,
+        )
 
     except InferenceRefused:
         raise

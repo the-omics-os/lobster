@@ -117,7 +117,8 @@ class UnsupportedPlatformError(LobsterCoreError):
         details: Contains:
             - geo_id: Dataset identifier
             - unsupported_platforms: List of (GPL_ID, platform_title) tuples
-            - platform_type: Type of platform (e.g., "microarray")
+            - platform_type: "microarray", "methylation_array", or both joined
+              with "+" when a series mixes them (also given as "modality")
             - explanation: Why this platform is not supported
             - detected_platforms: Formatted string of detected platforms
             - suggestions: List of alternative approaches
@@ -141,8 +142,7 @@ class FeatureNotImplementedError(LobsterCoreError):
 
     Distinct from NotImplementedError because:
     - The functionality may already exist in the codebase
-    - A clear workaround or timeline is provided
-    - The feature is on the roadmap
+    - A clear workaround is provided
 
     Attributes:
         message: Human-readable error message
@@ -150,7 +150,6 @@ class FeatureNotImplementedError(LobsterCoreError):
             - explanation: Why this feature is not yet available
             - current_workaround: How to work around the limitation
             - suggestions: List of alternative approaches
-            - estimated_implementation: Development effort required
             - github_issue: Link to tracking issue
 
     Example:
@@ -159,7 +158,6 @@ class FeatureNotImplementedError(LobsterCoreError):
         except FeatureNotImplementedError as e:
             print(f"Feature: {e.message}")
             print(f"Workaround: {e.details['current_workaround']}")
-            print(f"Timeline: {e.details.get('estimated_implementation')}")
     """
 
     pass

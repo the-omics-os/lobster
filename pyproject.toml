@@ -272,7 +272,7 @@ all = [
 [project.urls]
 "Homepage" = "https://www.omics-os.com"
 "Bug Tracker" = "https://github.com/the-omics-os/lobster/issues"
-"Documentation" = "https://github.com/the-omics-os/lobster.wiki"
+"Documentation" = "https://docs.omics-os.com/docs"
 "Source Code" = "https://github.com/the-omics-os/lobster"
 
 [project.scripts]
@@ -523,7 +523,7 @@ disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
 [tool.bumpversion]
-current_version = "1.2.2"
+current_version = "1.2.6"
 commit = true
 tag = true
 

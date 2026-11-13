@@ -29,6 +29,7 @@ from lobster.cli_internal.startup_diagnostics import (
     raise_startup_diagnostic,
     render_startup_diagnostic_rich,
 )
+from lobster.i18n import h
 from lobster.ui.console_manager import get_console_manager
 
 if TYPE_CHECKING:
@@ -189,7 +190,9 @@ def should_show_progress(client_arg: Optional["AgentClient"] = None) -> bool:
             from lobster import cli as _cli_mod
 
             c = _cli_mod.client
-        except Exception:
+        except (
+            Exception
+        ):  # nosec B110 # no CLI module loaded: fall back to the default below
             pass
     if not c:
         return True  # Default to showing progress if no client
@@ -280,7 +283,9 @@ class LobsterClientAdapter:
                 return []
         except Exception as e:
             # Graceful fallback for any errors
-            console.print(f"[dim red]Error getting workspace files: {e}[/dim red]")
+            console.print(
+                f"[dim red]{h('Error getting workspace files: {e}').format(e=e)}[/dim red]"
+            )
             return []
 
     def _normalize_file_info(self, file_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -348,7 +353,7 @@ class CloudAwareCache:
                     # For cloud connection errors, return stale cache if available
                     if key in self.cache:
                         console.print(
-                            "[dim yellow]Using cached data due to connection issue[/dim yellow]"
+                            f"[dim yellow]{h('Using cached data due to connection issue')}[/dim yellow]"
                         )
                         return self.cache[key]["data"]
                 raise e
@@ -582,10 +587,10 @@ def _maybe_print_timings(client: "AgentClient", context: str) -> None:
     if not timing_sources:
         return
 
-    table = Table(title=f"{context} Timings", box=box.ROUNDED)
-    table.add_column("Component", style="cyan", no_wrap=True)
-    table.add_column("Step", style="white")
-    table.add_column("Seconds", justify="right")
+    table = Table(title=h("{context} Timings").format(context=context), box=box.ROUNDED)
+    table.add_column(h("Component"), style="cyan", no_wrap=True)
+    table.add_column(h("Step"), style="white")
+    table.add_column(h("Seconds"), justify="right")
 
     for component, entries in timing_sources.items():
         for step, value in sorted(
@@ -609,21 +614,21 @@ def build_session_blocks(client: "AgentClient") -> List[OutputBlock]:
     current_mode = get_current_profile()
 
     rows = [
-        ("Session ID", status["session_id"]),
-        ("Mode", current_mode),
-        ("Messages", status["message_count"]),
-        ("Workspace", status["workspace"]),
-        ("Data Loaded", status["has_data"]),
+        (h("Session ID"), status["session_id"]),
+        (h("Mode"), current_mode),
+        (h("Messages"), status["message_count"]),
+        (h("Workspace"), status["workspace"]),
+        (h("Data Loaded"), status["has_data"]),
     ]
 
     if status["has_data"] and status["data_summary"]:
         summary = status["data_summary"]
-        rows.append(("Data Shape", summary.get("shape", "N/A")))
-        rows.append(("Memory Usage", summary.get("memory_usage", "N/A")))
+        rows.append((h("Data Shape"), summary.get("shape", "N/A")))
+        rows.append((h("Memory Usage"), summary.get("memory_usage", "N/A")))
 
     return [
-        kv_block(rows, title="Session Status"),
-        hint_block("Use `/workspace list` to inspect available datasets."),
+        kv_block(rows, title=h("Session Status")),
+        hint_block(h("Use `/workspace list` to inspect available datasets.")),
     ]
 
 
@@ -713,9 +718,7 @@ def validate_startup_or_raise_startup_diagnostic(
 
     resolver = ConfigResolver.get_instance(workspace_path)
     try:
-        provider_name, _ = resolver.resolve_provider(
-            runtime_override=provider_override
-        )
+        provider_name, _ = resolver.resolve_provider(runtime_override=provider_override)
     except ConfigurationError as exc:
         raise_startup_diagnostic(
             exc,

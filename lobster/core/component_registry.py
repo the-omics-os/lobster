@@ -128,6 +128,7 @@ LLM_PROVIDER_PACKAGES: Dict[str, Tuple[str, str]] = {
     "openai": ("openai", "langchain-openai"),
     "openrouter": ("openrouter", "langchain-openai"),
     "nebius": ("nebius", "langchain-openai"),
+    "ollama-cloud": ("openai", "langchain-openai"),
 }
 
 
@@ -405,7 +406,7 @@ class ComponentRegistry:
                 try:
                     dist_name = entry.dist.name if hasattr(entry, "dist") else None
                 except Exception:
-                    pass  # Some entry points may not have dist info
+                    pass  # nosec B110 # Some entry points may not have dist info
 
                 # Only check compatibility for external packages (not lobster-ai itself)
                 if dist_name and dist_name != "lobster-ai":

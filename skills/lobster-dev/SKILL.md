@@ -51,6 +51,7 @@ plugin development, keep engine and plugin in the same `.venv`. When npm's
 | Tests | [testing.md](references/testing.md) |
 | Source discovery / architecture | [code-layout.md](references/code-layout.md) → [architecture.md](references/architecture.md) |
 | Local developer commands | [cli.md](references/cli.md) |
+| A new local UI string | [cli.md](references/cli.md#local-language) and `lobster/i18n/README.md` |
 | External domain knowledge | [bioskills-bridge.md](references/bioskills-bridge.md) |
 
 ## Scaffold First
@@ -92,6 +93,9 @@ engine's command and current test kit, not that older script as a release gate.
    count validation. Drawing a figure must not rerun an analysis unnecessarily.
 10. Propagate terminal `InferenceRefused` through recovery handlers; do not switch
     inference authority or expose raw SDK errors/request payloads to the user.
+11. A new local user-visible string needs easy Simplified Chinese in the same
+    change. Follow [local language](references/cli.md#local-language). Do not
+    translate command names, flags, JSON keys, tool docstrings, or agent prompts.
 
 Custom-code exposure uses `attach_code_tool` and the canonical registry name. The supervisor, `data_expert_agent`, `metadata_assistant`, and `visualization_expert_agent` default to enabled; other participating built-in experts default to disabled. `research_agent` does not offer this tool. See [CLI configuration](references/cli.md#code-tool-availability) for overrides and precedence. Code runs as your own OS user, not within a confinement boundary; run only code you trust.
 

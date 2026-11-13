@@ -7,6 +7,7 @@ Includes caching to avoid repeated checks and graceful error handling for offlin
 
 import json
 import logging
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -15,6 +16,7 @@ from typing import Optional, Tuple
 
 from packaging import version as pkg_version
 
+from lobster.i18n import h
 from lobster.version import __version__
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,18 @@ def _get_cache_path() -> Path:
     cache_dir = Path.home() / ".lobster"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / CACHE_FILE_NAME
+
+
+def clear_update_cache() -> None:
+    """Remove the cached latest-version so the next run re-checks PyPI.
+
+    Best-effort: never raises. Called after a successful self-upgrade so
+    the update notification does not linger with a stale cached version.
+    """
+    try:
+        _get_cache_path().unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _read_cache() -> Optional[dict]:
@@ -86,7 +100,7 @@ def _fetch_latest_version() -> Optional[str]:
                 "User-Agent": f"lobster-ai/{__version__}",
             },
         )
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310 # fixed https URL
             request, timeout=REQUEST_TIMEOUT_SECONDS
         ) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -173,25 +187,34 @@ def get_update_message(latest_version: str) -> str:
     except Exception:
         update_cmd = "uv pip install --upgrade lobster-ai"
 
-    return (
-        f"A new version of lobster-ai is available: {latest_version} "
-        f"(current: {__version__})\n"
-        f"Update with: {update_cmd}"
-    )
+    return h(
+        "A new version of lobster-ai is available: {latest} (current: {current})\n"
+        "Update with: lobster upgrade  (or: {cmd})"
+    ).format(latest=latest_version, current=__version__, cmd=update_cmd)
 
 
-def maybe_show_update_notification(console) -> None:
+# Output that must stay machine-readable on stdout.
+_MACHINE_OUTPUT_FLAGS = {"--json", "-j", "--stdio"}
+
+
+def maybe_show_update_notification() -> None:
     """
-    Check for updates and display a notification if one is available.
+    Check for updates and print a notice on stderr if one is available.
 
-    This is the main entry point for CLI integration.
-
-    Args:
-        console: Rich console instance for output.
+    This is the main entry point for CLI integration. The notice never goes to
+    stdout. The check is skipped (no request, no cache write) for machine output
+    (--json, -j, --stdio) or when stderr is not a terminal.
     """
     try:
+        if _MACHINE_OUTPUT_FLAGS.intersection(sys.argv[1:]):
+            return
+        if not sys.stderr.isatty():
+            return
         update_available, latest_version = check_for_updates()
         if update_available and latest_version:
+            from rich.console import Console
+
+            console = Console(stderr=True)
             message = get_update_message(latest_version)
             console.print(f"[dim cyan]ℹ {message}[/dim cyan]")
             console.print()

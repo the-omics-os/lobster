@@ -29,9 +29,14 @@ from lobster.core.exceptions import (
     reraise_inference_refusal,
 )
 from lobster.services.data_access.geo.constants import (
+    ARRAY_TECHNOLOGIES,
+    METHYLATION_KEYWORDS,
+    METHYLATION_PLATFORMS,
     PLATFORM_REGISTRY,
-    SUPPORTED_KEYWORDS,
+    SEQUENCING_TECHNOLOGIES,
+    SUPPORTED_TITLE_PATTERNS,
     UNSUPPORTED_KEYWORDS,
+    UNSUPPORTED_TITLE_PATTERNS,
     PlatformCompatibility,
 )
 from lobster.services.data_access.geo.soft_download import pre_download_soft_file
@@ -640,6 +645,8 @@ class MetadataFetcher:
 
         Entrez provides limited platform information compared to SOFT files.
         This method creates a minimal platform dict compatible with downstream processing.
+        ``technology`` is the series-level ``ptechtype``, applied to every GPL;
+        it is empty when Entrez gives none.
 
         Args:
             entrez_record: Entrez esummary record
@@ -660,9 +667,9 @@ class MetadataFetcher:
                 platforms[gpl_id] = {
                     "title": f"Platform {gpl_id}",
                     "organism": platform_organism,
-                    "technology": (
-                        platform_tech if platform_tech else "high throughput sequencing"
-                    ),
+                    # Left empty when Entrez gives none: the platform gate
+                    # treats a sequencing technology as decisive.
+                    "technology": platform_tech,
                     "_note": "Platform details from Entrez are limited. Full details available on GEO website.",
                 }
 
@@ -910,10 +917,19 @@ class MetadataFetcher:
         """
         Check if dataset platform is supported before downloading files.
 
-        Performs multi-level platform detection:
-        1. Series-level platforms (most common)
-        2. Sample-level platforms (for mixed-platform datasets)
-        3. Keyword matching for unknown platforms
+        Collects series-level and sample-level platforms, then classifies each:
+        1. GPL in PLATFORM_REGISTRY: the registry decides.
+        2. GEO technology is an array technology: unsupported; a sequencing
+           technology: supported.
+        3. Technology empty or unrecognised: a sequencing title keyword makes
+           it supported, else an array title keyword makes it unsupported,
+           else it is unknown.
+
+        Platforms from Entrez esummary carry the series-level ``ptechtype`` on
+        every GPL (Entrez has no per-platform technology). In a multi-platform
+        series that value may not fit each GPL: an unregistered array GPL in a
+        series marked "high throughput sequencing" is classed supported, so
+        the series is treated as mixed. SOFT metadata has per-GPL technology.
 
         Args:
             geo_id: GEO series identifier
@@ -925,7 +941,9 @@ class MetadataFetcher:
                 - message: Human-readable explanation
 
         Raises:
-            UnsupportedPlatformError: If platform is explicitly unsupported (microarray)
+            UnsupportedPlatformError: If every platform is an expression or DNA
+                methylation array (by registry, title keyword or GEO technology).
+                Unknown platforms are not refused here; they get the modality check.
         """
         # CHANGE 1: Store minimal metadata BEFORE any early returns
         # This guarantees metadata availability for all code paths (including early returns)
@@ -958,6 +976,7 @@ class MetadataFetcher:
         for platform_id, platform_data in series_platforms.items():
             all_platforms[platform_id] = {
                 "title": platform_data.get("title", ""),
+                "technology": platform_data.get("technology", ""),
                 "level": "series",
                 "samples": sample_platforms.get(platform_id, []),
             }
@@ -983,6 +1002,7 @@ class MetadataFetcher:
 
         for platform_id, platform_info in all_platforms.items():
             platform_title = platform_info.get("title", "").lower()
+            platform_technology = platform_info.get("technology", "").strip().lower()
 
             # Check registry
             if platform_id in PLATFORM_REGISTRY:
@@ -994,12 +1014,22 @@ class MetadataFetcher:
                     supported_platforms.append((platform_id, platform_info))
                 elif status == PlatformCompatibility.EXPERIMENTAL:
                     experimental_platforms.append((platform_id, platform_info))
+            # Not in the registry: a known GEO technology decides; title
+            # keywords only when the technology is empty or not recognised.
+            elif platform_technology in ARRAY_TECHNOLOGIES:
+                unsupported_platforms.append((platform_id, platform_info))
+            elif platform_technology in SEQUENCING_TECHNOLOGIES:
+                supported_platforms.append((platform_id, platform_info))
             else:
-                # Unknown platform - use keyword matching
-                if any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS):
-                    unsupported_platforms.append((platform_id, platform_info))
-                elif any(kw in platform_title for kw in SUPPORTED_KEYWORDS):
+                # A sequencing keyword wins over an array keyword: the title of
+                # a sequencing panel may say "array", and an accepted platform
+                # still gets the modality check.
+                if any(p.search(platform_title) for p in SUPPORTED_TITLE_PATTERNS):
                     supported_platforms.append((platform_id, platform_info))
+                elif any(kw in platform_title for kw in UNSUPPORTED_KEYWORDS) or any(
+                    p.search(platform_title) for p in UNSUPPORTED_TITLE_PATTERNS
+                ):
+                    unsupported_platforms.append((platform_id, platform_info))
                 else:
                     unknown_platforms.append((platform_id, platform_info))
 
@@ -1025,6 +1055,36 @@ class MetadataFetcher:
                 ]
             )
 
+            # DNA methylation arrays are their own class, not expression microarrays.
+            kinds = sorted(
+                {
+                    (
+                        "methylation_array"
+                        if pid in METHYLATION_PLATFORMS
+                        or any(
+                            kw in info.get("title", "").lower()
+                            for kw in METHYLATION_KEYWORDS
+                        )
+                        else "microarray"
+                    )
+                    for pid, info in unsupported_platforms
+                }
+            )
+            platform_type = "+".join(kinds)
+            if kinds == ["methylation_array"]:
+                explanation = (
+                    "This dataset uses DNA methylation array platform(s) (for example "
+                    "Illumina 450K or EPIC). Lobster does not import methylation data; "
+                    "it is designed for RNA-seq data (bulk or single-cell) and "
+                    "proteomics data."
+                )
+            else:
+                explanation = (
+                    "This dataset appears to use microarray platform(s), which are not "
+                    "currently supported by Lobster. Lobster is designed for RNA-seq data "
+                    "(bulk or single-cell) and proteomics data."
+                )
+
             raise UnsupportedPlatformError(
                 message=f"Dataset {geo_id} uses unsupported platform(s)",
                 details={
@@ -1032,12 +1092,9 @@ class MetadataFetcher:
                     "unsupported_platforms": [
                         (pid, info["title"]) for pid, info in unsupported_platforms
                     ],
-                    "platform_type": "microarray",
-                    "explanation": (
-                        "This dataset appears to use microarray platform(s), which are not "
-                        "currently supported by Lobster. Lobster is designed for RNA-seq data "
-                        "(bulk or single-cell) and proteomics data."
-                    ),
+                    "platform_type": platform_type,
+                    "modality": platform_type,
+                    "explanation": explanation,
                     "detected_platforms": platform_list,
                     "suggestions": [
                         "Search for RNA-seq version of this experiment",
@@ -1057,18 +1114,17 @@ class MetadataFetcher:
             )
             return True, "Experimental platform detected - proceed with validation"
 
-        # Handle unknown platforms conservatively
+        # Unknown platforms are not trusted on their own: the modality check
+        # below still runs for them.
         if unknown_platforms and not supported_platforms:
             platform_list = ", ".join([pid for pid, _ in unknown_platforms])
             logger.warning(
                 f"{geo_id} has unknown platform(s): {platform_list}. "
-                f"Will attempt loading but recommend validation."
+                f"Checking the data modality before loading."
             )
-            return True, "Unknown platform - will attempt loading"
-
-        # All platforms supported (GPL registry check passed)
-        platform_list = ", ".join([pid for pid, _ in supported_platforms])
-        logger.info(f"GPL registry check passed for {geo_id}: {platform_list}")
+        else:
+            platform_list = ", ".join([pid for pid, _ in supported_platforms])
+            logger.info(f"GPL registry check passed for {geo_id}: {platform_list}")
 
         # === TIER 2: LLM MODALITY DETECTION (Phase 2.1) ===
         logger.info(f"Running LLM modality detection for {geo_id}...")
@@ -1182,8 +1238,7 @@ class MetadataFetcher:
                     ]
                 )
                 logger.debug(
-                    f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}. "
-                    f"Support planned for future releases (v2.6+)."
+                    f"Skipping unsupported modalities in {geo_id}: {unsupported_summary}."
                 )
 
                 return (
@@ -1215,11 +1270,11 @@ class MetadataFetcher:
                         "detected_signals": modality_result.detected_signals,
                         "explanation": modality_result.compatibility_reason,
                         "current_workaround": (
-                            f"Lobster v2.3 currently supports bulk RNA-seq, 10X single-cell, and Smart-seq2. "
-                            f"Support for {modality_result.modality} is planned for future releases."
+                            "Lobster imports bulk RNA-seq and single-cell RNA-seq "
+                            "(for example 10x Genomics and Smart-seq2) from GEO. "
+                            f"It does not import {modality_result.modality} data."
                         ),
                         "suggestions": modality_result.suggestions,
-                        "estimated_implementation": "Planned for Lobster v2.6-v2.8 depending on modality",
                         "detected_signals_formatted": signals_display,
                         "sample_types_detected": (
                             sample_types if sample_types else "No samples classified"

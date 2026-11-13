@@ -91,11 +91,11 @@ class Settings:
         # AWS region (fallback for backward compatibility)
         self.REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-        # Web server settings (for 'lobster serve' FastAPI server)
+        # Web server settings: reserved, no current consumer. `lobster serve`
+        # takes --host/--port (localhost:8000 by default); these only mirror it.
         self.PORT = int(os.environ.get("PORT", "8000"))
-        self.HOST = os.environ.get(
-            "HOST", "0.0.0.0"
-        )  # nosec B104 # container default; override with HOST
+        # Localhost by default; containers set HOST=0.0.0.0 explicitly.
+        self.HOST = os.environ.get("HOST", "127.0.0.1")
         self.DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
         # Data processing settings

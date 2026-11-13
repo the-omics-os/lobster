@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.i18n import h
 
 # ============================================================================
 # Helper Functions (Matrix/DataFrame Formatting)
@@ -122,7 +123,7 @@ def _format_dataframe_preview(df: "pd.DataFrame", max_rows: int = 5) -> Dict[str
     import pandas as pd
 
     # Build columns
-    columns = [{"name": "Index", "style": "bold grey50"}]
+    columns = [{"name": h("Index"), "style": "bold grey50"}]
     for col in df.columns[:10]:  # Limit to first 10 columns
         dtype_str = str(df[col].dtype)
         style = (
@@ -158,7 +159,9 @@ def _format_dataframe_preview(df: "pd.DataFrame", max_rows: int = 5) -> Dict[str
 
     # Add more columns indicator
     if len(df.columns) > 10:
-        columns.append({"name": f"... +{len(df.columns) - 10} more", "style": "dim"})
+        columns.append(
+            {"name": h("... +{n} more").format(n=len(df.columns) - 10), "style": "dim"}
+        )
 
     return {"title": None, "columns": columns, "rows": rows}
 
@@ -179,8 +182,8 @@ def _format_array_info(
         return None
 
     columns = [
-        {"name": "Key", "style": "bold cyan"},
-        {"name": "Shape", "style": "white"},
+        {"name": h("Key"), "style": "bold cyan"},
+        {"name": h("Shape"), "style": "white"},
         {"name": "Dtype", "style": "grey70"},
     ]
 
@@ -218,7 +221,9 @@ def modalities_list(client: "AgentClient", output: OutputAdapter) -> Optional[st
     """
     if not hasattr(client.data_manager, "list_modalities"):
         output.print(
-            "[grey50]Modality information not available (using legacy DataManager)[/grey50]",
+            h(
+                "[grey50]Modality information not available (using legacy DataManager)[/grey50]"
+            ),
             style="info",
         )
         return None
@@ -226,10 +231,10 @@ def modalities_list(client: "AgentClient", output: OutputAdapter) -> Optional[st
     modalities = client.data_manager.list_modalities()
 
     if not modalities:
-        output.print("[grey50]No modalities loaded[/grey50]", style="info")
+        output.print(h("[grey50]No modalities loaded[/grey50]"), style="info")
         return "No modalities loaded"
 
-    output.print("[bold red]🧬 Modality Details[/bold red]\n", style="info")
+    output.print(h("[bold red]🧬 Modality Details[/bold red]\n"), style="info")
 
     modalities_shown = 0
     for modality_name in modalities:
@@ -240,14 +245,14 @@ def modalities_list(client: "AgentClient", output: OutputAdapter) -> Optional[st
             mod_table_data = {
                 "title": f"🧬 {modality_name}",
                 "columns": [
-                    {"name": "Property", "style": "bold grey93"},
-                    {"name": "Value", "style": "white"},
+                    {"name": h("Property"), "style": "bold grey93"},
+                    {"name": h("Value"), "style": "white"},
                 ],
                 "rows": [],
             }
 
             mod_table_data["rows"].append(
-                ["Shape", f"{adata.n_obs} obs × {adata.n_vars} vars"]
+                [h("Shape"), f"{adata.n_obs} obs × {adata.n_vars} vars"]
             )
 
             # Show obs columns
@@ -255,36 +260,36 @@ def modalities_list(client: "AgentClient", output: OutputAdapter) -> Optional[st
             if obs_cols:
                 cols_preview = ", ".join(obs_cols[:5])
                 if len(obs_cols) > 5:
-                    cols_preview += f" ... (+{len(obs_cols) - 5} more)"
-                mod_table_data["rows"].append(["Obs Columns", cols_preview])
+                    cols_preview += h(" ... (+{n} more)").format(n=len(obs_cols) - 5)
+                mod_table_data["rows"].append([h("Obs Columns"), cols_preview])
 
             # Show var columns
             var_cols = list(adata.var.columns)
             if var_cols:
                 var_preview = ", ".join(var_cols[:5])
                 if len(var_cols) > 5:
-                    var_preview += f" ... (+{len(var_cols) - 5} more)"
-                mod_table_data["rows"].append(["Var Columns", var_preview])
+                    var_preview += h(" ... (+{n} more)").format(n=len(var_cols) - 5)
+                mod_table_data["rows"].append([h("Var Columns"), var_preview])
 
             # Show layers
             from lobster.core.utils.layer_keys import layer_names
 
             layers = layer_names(adata)
             if layers:
-                mod_table_data["rows"].append(["Layers", ", ".join(layers)])
+                mod_table_data["rows"].append([h("Layers"), ", ".join(layers)])
 
             # Show obsm
             if adata.obsm:
                 obsm_str = ", ".join(list(adata.obsm.keys()))
-                mod_table_data["rows"].append(["Obsm", obsm_str])
+                mod_table_data["rows"].append([h("Obsm"), obsm_str])
 
             # Show some uns info
             if adata.uns:
                 uns_keys = list(adata.uns.keys())[:5]
                 uns_str = ", ".join(uns_keys)
                 if len(adata.uns) > 5:
-                    uns_str += f" ... (+{len(adata.uns) - 5} more)"
-                mod_table_data["rows"].append(["Uns Keys", uns_str])
+                    uns_str += h(" ... (+{n} more)").format(n=len(adata.uns) - 5)
+                mod_table_data["rows"].append([h("Uns Keys"), uns_str])
 
             output.print_table(mod_table_data)
             output.print("")  # Blank line
@@ -292,7 +297,9 @@ def modalities_list(client: "AgentClient", output: OutputAdapter) -> Optional[st
 
         except Exception as e:
             output.print(
-                f"[red]Error accessing modality {modality_name}: {e}[/red]",
+                h("[red]Error accessing modality {modality_name}: {e}[/red]").format(
+                    modality_name=modality_name, e=e
+                ),
                 style="error",
             )
 
@@ -337,15 +344,17 @@ def modality_describe(
 
     if not hasattr(client.data_manager, "list_modalities"):
         emit(
-            "[grey50]Describe command not available (using legacy DataManager)[/grey50]",
+            h(
+                "[grey50]Describe command not available (using legacy DataManager)[/grey50]"
+            ),
             style="info",
         )
         return None
 
     # Check if modality_name provided
     if not modality_name:
-        output.print("[red]Usage: /describe <modality_name>[/red]", style="error")
-        emit("[dim]Available modalities:[/dim]", style="info")
+        output.print(h("[red]Usage: /describe <modality_name>[/red]"), style="error")
+        emit(h("[dim]Available modalities:[/dim]"), style="info")
         modalities = client.data_manager.list_modalities()
         for mod in modalities:
             emit(f"  • {mod}", style="info")
@@ -353,8 +362,13 @@ def modality_describe(
 
     # Check if modality exists
     if modality_name not in client.data_manager.list_modalities():
-        output.print(f"[red]Modality '{modality_name}' not found[/red]", style="error")
-        emit("[dim]Available modalities:[/dim]", style="info")
+        output.print(
+            h("[red]Modality '{modality_name}' not found[/red]").format(
+                modality_name=modality_name
+            ),
+            style="error",
+        )
+        emit(h("[dim]Available modalities:[/dim]"), style="info")
         for mod in client.data_manager.list_modalities():
             emit(f"  • {mod}", style="info")
         return None
@@ -365,49 +379,61 @@ def modality_describe(
 
         # Create main header
         emit("", style="info")
-        emit(f"[bold orange1]🧬 Modality: {modality_name}[/bold orange1]", style="info")
+        emit(
+            h("[bold orange1]🧬 Modality: {modality_name}[/bold orange1]").format(
+                modality_name=modality_name
+            ),
+            style="info",
+        )
         emit("━" * 60, style="info")
 
         # ====================================================================
         # Basic Information
         # ====================================================================
         matrix_info = _get_matrix_info(adata.X)
-        emit("\n[bold white]📊 Basic Information[/bold white]", style="info")
+        emit(h("\n[bold white]📊 Basic Information[/bold white]"), style="info")
 
         basic_table_data = {
             "title": None,
             "columns": [
-                {"name": "Property", "style": "grey70"},
-                {"name": "Value", "style": "white"},
+                {"name": h("Property"), "style": "grey70"},
+                {"name": h("Value"), "style": "white"},
             ],
             "rows": [
-                ["Shape", f"{adata.n_obs:,} observations × {adata.n_vars:,} variables"],
-                ["Memory", f"{matrix_info['memory_mb']:.1f} MB"],
+                [
+                    h("Shape"),
+                    h("{n_obs:,} observations × {n_vars:,} variables").format(
+                        n_obs=adata.n_obs, n_vars=adata.n_vars
+                    ),
+                ],
+                [h("Memory"), f"{matrix_info['memory_mb']:.1f} MB"],
             ],
         }
 
         if matrix_info["sparse"]:
             basic_table_data["rows"].append(
                 [
-                    "Matrix Type",
-                    f"Sparse ({matrix_info['format']}, {matrix_info['density']:.1f}% density)",
+                    h("Matrix Type"),
+                    h("Sparse ({fmt}, {density:.1f}% density)").format(
+                        fmt=matrix_info["format"], density=matrix_info["density"]
+                    ),
                 ]
             )
             basic_table_data["rows"].append(
-                ["Non-zero", f"{matrix_info['nnz']:,} elements"]
+                [h("Non-zero"), h("{nnz:,} elements").format(nnz=matrix_info["nnz"])]
             )
         else:
-            basic_table_data["rows"].append(["Matrix Type", "Dense array"])
+            basic_table_data["rows"].append([h("Matrix Type"), h("Dense array")])
 
-        basic_table_data["rows"].append(["Data Type", matrix_info["dtype"]])
+        basic_table_data["rows"].append([h("Data Type"), matrix_info["dtype"]])
 
         output.print_table(basic_table_data)
 
         # ====================================================================
         # Data Matrix (X) Preview
         # ====================================================================
-        emit("\n[bold white]📈 Data Matrix (X)[/bold white]", style="info")
-        emit("[grey70]Preview (first 5×5 cells):[/grey70]", style="info")
+        emit(h("\n[bold white]📈 Data Matrix (X)[/bold white]"), style="info")
+        emit(h("[grey70]Preview (first 5×5 cells):[/grey70]"), style="info")
         x_preview = _format_data_preview(adata.X)
         output.print_table(x_preview)
 
@@ -416,7 +442,9 @@ def modality_describe(
         # ====================================================================
         if not adata.obs.empty:
             emit(
-                f"\n[bold white]🔬 Observations (obs) - {adata.n_obs:,} cells[/bold white]",
+                h(
+                    "\n[bold white]🔬 Observations (obs) - {n:,} cells[/bold white]"
+                ).format(n=adata.n_obs),
                 style="info",
             )
 
@@ -427,18 +455,22 @@ def modality_describe(
                 obs_info.append(f"{col} ({dtype})")
 
             emit(
-                f"[grey70]Columns ({len(adata.obs.columns)}):[/grey70] {', '.join(obs_info[:5])}",
+                h("[grey70]Columns ({n}):[/grey70] {cols}").format(
+                    n=len(adata.obs.columns), cols=", ".join(obs_info[:5])
+                ),
                 style="info",
             )
             if len(obs_info) > 5:
                 emit(
-                    f"[grey50]... and {len(obs_info) - 5} more columns[/grey50]",
+                    h("[grey50]... and {n} more columns[/grey50]").format(
+                        n=len(obs_info) - 5
+                    ),
                     style="info",
                 )
 
             # Preview table
             if len(adata.obs) > 0:
-                emit("[grey70]Preview:[/grey70]", style="info")
+                emit(h("[grey70]Preview:[/grey70]"), style="info")
                 obs_preview = _format_dataframe_preview(adata.obs)
                 output.print_table(obs_preview)
 
@@ -447,7 +479,9 @@ def modality_describe(
         # ====================================================================
         if not adata.var.empty:
             emit(
-                f"\n[bold white]🧪 Variables (var) - {adata.n_vars:,} features[/bold white]",
+                h(
+                    "\n[bold white]🧪 Variables (var) - {n:,} features[/bold white]"
+                ).format(n=adata.n_vars),
                 style="info",
             )
 
@@ -458,32 +492,38 @@ def modality_describe(
                 var_info.append(f"{col} ({dtype})")
 
             emit(
-                f"[grey70]Columns ({len(adata.var.columns)}):[/grey70] {', '.join(var_info[:5])}",
+                h("[grey70]Columns ({n}):[/grey70] {cols}").format(
+                    n=len(adata.var.columns), cols=", ".join(var_info[:5])
+                ),
                 style="info",
             )
             if len(var_info) > 5:
                 emit(
-                    f"[grey50]... and {len(var_info) - 5} more columns[/grey50]",
+                    h("[grey50]... and {n} more columns[/grey50]").format(
+                        n=len(var_info) - 5
+                    ),
                     style="info",
                 )
 
             # Preview table
             if len(adata.var) > 0:
-                emit("[grey70]Preview:[/grey70]", style="info")
+                emit(h("[grey70]Preview:[/grey70]"), style="info")
                 var_preview = _format_dataframe_preview(adata.var)
                 output.print_table(var_preview)
 
         # ====================================================================
         # Additional Data Structures
         # ====================================================================
-        emit("\n[bold white]📦 Additional Data Structures[/bold white]", style="info")
+        emit(
+            h("\n[bold white]📦 Additional Data Structures[/bold white]"), style="info"
+        )
 
         # Layers
         from lobster.core.utils.layer_keys import layer_names
 
         layers = layer_names(adata)
         if layers:
-            emit(f"\n[cyan]Layers ({len(layers)}):[/cyan]", style="info")
+            emit(h("\n[cyan]Layers ({n}):[/cyan]").format(n=len(layers)), style="info")
             for layer_name, layer_data in adata.layers.items():
                 if layer_name is None:  # .X alias, see layer_names()
                     continue
@@ -495,45 +535,57 @@ def modality_describe(
 
         # Obsm (observation matrices)
         if adata.obsm:
-            emit("\n[cyan]Observation Matrices (obsm):[/cyan]", style="info")
+            emit(h("\n[cyan]Observation Matrices (obsm):[/cyan]"), style="info")
             obsm_table = _format_array_info(dict(adata.obsm))
             if obsm_table:
                 output.print_table(obsm_table)
 
         # Varm (variable matrices)
         if adata.varm:
-            emit("\n[cyan]Variable Matrices (varm):[/cyan]", style="info")
+            emit(h("\n[cyan]Variable Matrices (varm):[/cyan]"), style="info")
             varm_table = _format_array_info(dict(adata.varm))
             if varm_table:
                 output.print_table(varm_table)
 
         # Obsp (observation pairwise)
         if adata.obsp:
-            emit("\n[cyan]Observation Pairwise (obsp):[/cyan]", style="info")
+            emit(h("\n[cyan]Observation Pairwise (obsp):[/cyan]"), style="info")
             for key in adata.obsp.keys():
                 matrix = adata.obsp[key]
                 emit(f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info")
 
         # Varp (variable pairwise)
         if adata.varp:
-            emit("\n[cyan]Variable Pairwise (varp):[/cyan]", style="info")
+            emit(h("\n[cyan]Variable Pairwise (varp):[/cyan]"), style="info")
             for key in adata.varp.keys():
                 matrix = adata.varp[key]
                 emit(f"  • {key}: {matrix.shape[0]}×{matrix.shape[1]}", style="info")
 
         # Unstructured data (uns)
         if adata.uns:
-            emit("\n[cyan]Unstructured Data (uns):[/cyan]", style="info")
+            emit(h("\n[cyan]Unstructured Data (uns):[/cyan]"), style="info")
             uns_items = []
             for key, value in adata.uns.items():
                 if isinstance(value, dict):
-                    uns_items.append(f"{key} (dict with {len(value)} keys)")
+                    uns_items.append(
+                        h("{key} (dict with {n} keys)").format(key=key, n=len(value))
+                    )
                 elif isinstance(value, (list, tuple)):
-                    uns_items.append(f"{key} (list/tuple with {len(value)} items)")
+                    uns_items.append(
+                        h("{key} (list/tuple with {n} items)").format(
+                            key=key, n=len(value)
+                        )
+                    )
                 elif isinstance(value, np.ndarray):
-                    uns_items.append(f"{key} (array {value.shape})")
+                    uns_items.append(
+                        h("{key} (array {shape})").format(key=key, shape=value.shape)
+                    )
                 elif isinstance(value, pd.DataFrame):
-                    uns_items.append(f"{key} (DataFrame {value.shape})")
+                    uns_items.append(
+                        h("{key} (DataFrame {shape})").format(
+                            key=key, shape=value.shape
+                        )
+                    )
                 else:
                     type_name = type(value).__name__
                     uns_items.append(f"{key} ({type_name})")
@@ -542,7 +594,9 @@ def modality_describe(
                 emit(f"  • {item}", style="info")
             if len(uns_items) > 10:
                 emit(
-                    f"[grey50]  ... and {len(uns_items) - 10} more items[/grey50]",
+                    h("[grey50]  ... and {n} more items[/grey50]").format(
+                        n=len(uns_items) - 10
+                    ),
                     style="info",
                 )
 
@@ -554,24 +608,24 @@ def modality_describe(
             and modality_name in client.data_manager.metadata_store
         ):
             metadata = client.data_manager.metadata_store[modality_name]
-            emit("\n[bold white]📋 Metadata[/bold white]", style="info")
+            emit(h("\n[bold white]📋 Metadata[/bold white]"), style="info")
 
             meta_table_data = {
                 "title": None,
                 "columns": [
-                    {"name": "Property", "style": "grey70"},
-                    {"name": "Value", "style": "white"},
+                    {"name": h("Property"), "style": "grey70"},
+                    {"name": h("Value"), "style": "white"},
                 ],
                 "rows": [],
             }
 
             if "source" in metadata:
-                meta_table_data["rows"].append(["Source", metadata["source"]])
+                meta_table_data["rows"].append([h("Source"), metadata["source"]])
             if "created_at" in metadata:
-                meta_table_data["rows"].append(["Created", metadata["created_at"]])
+                meta_table_data["rows"].append([h("Created"), metadata["created_at"]])
             if "geo_accession" in metadata:
                 meta_table_data["rows"].append(
-                    ["GEO Accession", metadata["geo_accession"]]
+                    [h("GEO Accession"), metadata["geo_accession"]]
                 )
 
             if meta_table_data["rows"]:
@@ -581,5 +635,7 @@ def modality_describe(
         return f"Described modality: {modality_name}"
 
     except Exception as e:
-        output.print(f"[red]Error describing modality: {e}[/red]", style="error")
+        output.print(
+            h("[red]Error describing modality: {e}[/red]").format(e=e), style="error"
+        )
         return None

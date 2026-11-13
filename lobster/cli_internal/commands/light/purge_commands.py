@@ -18,6 +18,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
+from lobster.i18n import h
+
 if TYPE_CHECKING:
     from lobster.cli_internal.commands.output_adapter import OutputAdapter
 
@@ -224,7 +226,7 @@ def discover_purge_targets(
             targets.append(
                 PurgeTarget(
                     path=home_dir,
-                    description="License, history, and version cache",
+                    description=h("License, history, and version cache"),
                     size_bytes=size,
                     file_count=count,
                     is_verified=is_verified,
@@ -242,7 +244,7 @@ def discover_purge_targets(
             targets.append(
                 PurgeTarget(
                     path=config_dir,
-                    description="Global configuration and credentials",
+                    description=h("Global configuration and credentials"),
                     size_bytes=size,
                     file_count=count,
                     is_verified=is_verified,
@@ -259,7 +261,7 @@ def discover_purge_targets(
             targets.append(
                 PurgeTarget(
                     path=workspace_dir,
-                    description="Current workspace (data, cache, sessions)",
+                    description=h("Current workspace (data, cache, sessions)"),
                     size_bytes=size,
                     file_count=count,
                     is_verified=is_verified,
@@ -306,10 +308,16 @@ def execute_purge(
             result.total_size_freed += target.size_bytes
 
         except PermissionError:
-            result.errors.append(f"Permission denied: {target.path}")
+            result.errors.append(
+                h("Permission denied: {path}").format(path=target.path)
+            )
             result.success = False
         except Exception as e:
-            result.errors.append(f"Failed to remove {target.path}: {str(e)}")
+            result.errors.append(
+                h("Failed to remove {path}: {error}").format(
+                    path=target.path, error=str(e)
+                )
+            )
             result.success = False
 
     return result
@@ -346,15 +354,15 @@ def purge(
     try:
         purge_scope = PurgeScope(scope.lower())
     except ValueError:
-        output.print(f"[red]Invalid scope: {scope}[/red]")
-        output.print("[dim]Valid options: global, workspace, all[/dim]")
+        output.print(h("[red]Invalid scope: {scope}[/red]").format(scope=scope))
+        output.print(h("[dim]Valid options: global, workspace, all[/dim]"))
         return None
 
     # Discover targets
     targets = discover_purge_targets(purge_scope, workspace_path)
 
     if not targets:
-        output.print("[yellow]No Lobster AI files found to purge.[/yellow]")
+        output.print(h("[yellow]No Lobster AI files found to purge.[/yellow]"))
         return "No files to purge"
 
     # Check if any targets are verified
@@ -363,11 +371,17 @@ def purge(
 
     if not verified_targets:
         output.print(
-            "[yellow]Found directories but none verified as Lobster AI:[/yellow]"
+            h("[yellow]Found directories but none verified as Lobster AI:[/yellow]")
         )
         for target in unverified_targets:
-            output.print(f"  • [dim]{target.path}[/dim] - No marker files found")
-        output.print("\n[dim]These may belong to other software. Not removing.[/dim]")
+            output.print(
+                h("  • [dim]{path}[/dim] - No marker files found").format(
+                    path=target.path
+                )
+            )
+        output.print(
+            h("\n[dim]These may belong to other software. Not removing.[/dim]")
+        )
         return "No verified Lobster AI files found"
 
     # Calculate totals
@@ -375,68 +389,88 @@ def purge(
     total_files = sum(t.file_count for t in verified_targets)
 
     # Display what will be removed
-    mode_label = "[bold yellow]DRY RUN[/bold yellow] - " if dry_run else ""
-    output.print(f"\n{mode_label}[bold cyan]🧹 Lobster AI Purge[/bold cyan]")
+    mode_label = h("[bold yellow]DRY RUN[/bold yellow] - ") if dry_run else ""
+    output.print(
+        h("\n{mode}[bold cyan]🧹 Lobster AI Purge[/bold cyan]").format(mode=mode_label)
+    )
     output.print("[dim]" + "─" * 60 + "[/dim]")
 
     # Show verified targets
-    output.print("\n[bold green]✓ Verified Lobster AI directories:[/bold green]")
+    output.print(h("\n[bold green]✓ Verified Lobster AI directories:[/bold green]"))
     for target in verified_targets:
         size_str = _format_size(target.size_bytes)
         output.print(f"\n  [cyan]{target.path}[/cyan]")
         output.print(f"    {target.description}")
-        output.print(f"    [dim]{size_str}, {target.file_count} files[/dim]")
-        output.print(f"    [dim]Verified by: {target.marker_found}[/dim]")
+        output.print(
+            h("    [dim]{size}, {count} files[/dim]").format(
+                size=size_str, count=target.file_count
+            )
+        )
+        output.print(
+            h("    [dim]Verified by: {marker}[/dim]").format(marker=target.marker_found)
+        )
 
     # Show unverified targets (won't be removed)
     if unverified_targets:
-        output.print("\n[bold yellow]⚠ Skipping unverified directories:[/bold yellow]")
+        output.print(
+            h("\n[bold yellow]⚠ Skipping unverified directories:[/bold yellow]")
+        )
         for target in unverified_targets:
-            output.print(f"  [dim]{target.path}[/dim] - No marker files")
+            output.print(
+                h("  [dim]{path}[/dim] - No marker files").format(path=target.path)
+            )
 
     # Summary
     output.print("\n[dim]" + "─" * 60 + "[/dim]")
     output.print(
-        f"[bold]Total to remove:[/bold] {_format_size(total_size)} across {total_files} files"
+        h("[bold]Total to remove:[/bold] {size} across {count} files").format(
+            size=_format_size(total_size), count=total_files
+        )
     )
 
     # Dry run - don't actually delete
     if dry_run:
-        output.print("\n[yellow]Dry run complete. No files were deleted.[/yellow]")
-        output.print("[dim]Remove --dry-run to execute the purge.[/dim]")
+        output.print(h("\n[yellow]Dry run complete. No files were deleted.[/yellow]"))
+        output.print(h("[dim]Remove --dry-run to execute the purge.[/dim]"))
         return f"Dry run: would remove {_format_size(total_size)}"
 
     # Confirmation unless --force
     if not force:
-        output.print("\n[bold red]⚠️  This action cannot be undone![/bold red]")
+        output.print(h("\n[bold red]⚠️  This action cannot be undone![/bold red]"))
         # Note: Interactive confirmation would go here in CLI
         # For now, require --force flag
-        output.print("[yellow]Use --force to confirm deletion.[/yellow]")
+        output.print(h("[yellow]Use --force to confirm deletion.[/yellow]"))
         return "Purge cancelled - use --force to confirm"
 
     # Execute purge
-    output.print("\n[bold]Purging...[/bold]")
+    output.print(h("\n[bold]Purging...[/bold]"))
     result = execute_purge(verified_targets, dry_run=False)
 
     # Report results
     if result.success:
-        output.print("\n[bold green]✓ Purge complete![/bold green]")
+        output.print(h("\n[bold green]✓ Purge complete![/bold green]"))
         for target in result.targets_removed:
-            output.print(f"  [green]✓[/green] Removed {target.path}")
-        output.print(f"\n[dim]Freed {_format_size(result.total_size_freed)}[/dim]")
+            output.print(
+                h("  [green]✓[/green] Removed {path}").format(path=target.path)
+            )
+        output.print(
+            h("\n[dim]Freed {size}[/dim]").format(
+                size=_format_size(result.total_size_freed)
+            )
+        )
     else:
-        output.print("\n[bold yellow]⚠ Purge completed with errors:[/bold yellow]")
+        output.print(h("\n[bold yellow]⚠ Purge completed with errors:[/bold yellow]"))
         for error in result.errors:
             output.print(f"  [red]✗[/red] {error}")
 
     # Show uninstall instructions
     output.print("\n[dim]" + "─" * 60 + "[/dim]")
-    output.print("\n[bold cyan]📦 To completely uninstall Lobster AI:[/bold cyan]")
-    output.print("\n  [bold]Using uv (recommended):[/bold]")
+    output.print(h("\n[bold cyan]📦 To completely uninstall Lobster AI:[/bold cyan]"))
+    output.print(h("\n  [bold]Using uv (recommended):[/bold]"))
     output.print("    [white]uv pip uninstall lobster-ai[/white]")
-    output.print("\n  [bold]Using pip:[/bold]")
+    output.print(h("\n  [bold]Using pip:[/bold]"))
     output.print("    [white]pip uninstall lobster-ai[/white]")
-    output.print("\n  [bold]Using pipx (if installed via pipx):[/bold]")
+    output.print(h("\n  [bold]Using pipx (if installed via pipx):[/bold]"))
     output.print("    [white]pipx uninstall lobster-ai[/white]")
 
     return f"Purged {_format_size(result.total_size_freed)} from {len(result.targets_removed)} locations"

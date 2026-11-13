@@ -13,7 +13,7 @@ The DownloadOrchestrator uses this interface to:
 
 Usage Example:
     >>> from lobster.core.interfaces.download_service import IDownloadService
-    >>> from lobster.core.data_manager_v2 import DataManagerV2
+    >>> from lobster.core.runtime.data_manager import DataManagerV2
     >>> from lobster.core.schemas.download_queue import DownloadQueueEntry
     >>>
     >>> # Implementation (e.g., GEODownloadService)
@@ -30,7 +30,7 @@ Usage Example:
     ...     # ... implement other abstract methods
     >>>
     >>> # Usage in DownloadOrchestrator
-    >>> dm = DataManagerV2(workspace_dir="./workspace")
+    >>> dm = DataManagerV2(workspace_path="./workspace")
     >>> service = GEODownloadService(dm)
     >>> if service.supports_database("geo"):
     ...     adata, stats, ir = service.download_dataset(queue_entry)

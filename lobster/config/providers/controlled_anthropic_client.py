@@ -1,6 +1,7 @@
 """Explicit native Messages clients with request admission and owned streams."""
 
 import asyncio
+import hmac
 import json
 import time
 from concurrent.futures import Future
@@ -317,15 +318,55 @@ class ControlledAnthropicClient:
             raise InferenceRefused("auth")
         request.headers["x-api-key"] = auth.value
 
+    def _matches_key(self, value):
+        return type(value) is str and hmac.compare_digest(
+            value.encode("utf-8", "surrogatepass"),
+            self._api_key.encode("utf-8", "surrogatepass"),
+        )
+
+    def _normalize_credential(self, request):
+        """Collapse the SDK's key spellings to the legacy ``x-api-key`` wire form.
+
+        anthropic>=2 sends the API key as ``Authorization: Bearer <key>``; older
+        SDKs send ``x-api-key``. Exactly one credential (``x-api-key`` or
+        ``Authorization: Bearer <our key>``, or both when each is our key) is
+        accepted. Anything else (another key or scheme, a repeated header, a
+        disagreement between the two) refuses. On success the Authorization
+        header is removed and ``x-api-key`` carries the key, so every later
+        check and the outgoing request are identical across SDK versions.
+        """
+        headers = request.headers
+        keys = headers.get_list("x-api-key")
+        auths = headers.get_list("authorization")
+        if (
+            (not keys and not auths)
+            or len(keys) > 1
+            or len(auths) > 1
+            or any(not self._matches_key(key) for key in keys)
+            or any(
+                not auth.startswith("Bearer ") or not self._matches_key(auth[7:])
+                for auth in auths
+            )
+        ):
+            raise InferenceRefused("context")
+        if auths:
+            del headers["authorization"]
+            headers["x-api-key"] = self._api_key
+
     def _descriptor(self, request):
         attempt = self._attempt.get()
         if self._closed or attempt is None or attempt.admitted:
             raise InferenceRefused("context")
-        expected_endpoint = self.endpoint + ("?beta=true" if attempt.beta else "")
+        self._normalize_credential(request)
+        # anthropic<2 posts beta requests to ``?beta=true``; anthropic>=2 posts
+        # them to the plain route. Either is exactly the owned Messages route.
+        endpoints = {self.endpoint}
+        if attempt.beta:
+            endpoints.add(self.endpoint + "?beta=true")
         if (
-            str(request.url) != expected_endpoint
+            str(request.url) not in endpoints
             or request.method != "POST"
-            or request.headers.get("x-api-key") != self._api_key
+            or not self._matches_key(request.headers.get("x-api-key"))
             or "authorization" in request.headers
             or "cookie" in request.headers
         ):

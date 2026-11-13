@@ -52,7 +52,7 @@ def test_provider_registry_initialization():
     assert "openrouter" in providers
     assert "omics-os" in providers
     assert "nebius" in providers
-    assert len(providers) == 9
+    assert len(providers) == 10
 
 
 def test_get_provider():

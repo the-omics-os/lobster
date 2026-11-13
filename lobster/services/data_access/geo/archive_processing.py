@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import anndata
 import pandas as pd
 
+from lobster.core.archive_utils import unsafe_tar_members
 from lobster.services.data_access.geo.downloader import GEODownloadError
 from lobster.services.data_access.geo.helpers import (
     _is_archive_url,
@@ -26,8 +27,30 @@ from lobster.services.data_access.geo.helpers import (
 )
 from lobster.services.data_access.geo.parser import ParseResult
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
+
+
+def _extract_tar_all_or_nothing(tar: tarfile.TarFile, dest: Path) -> int:
+    """Extract every member of ``tar`` into ``dest``, or nothing.
+
+    Uses the stdlib ``data`` filter: absolute paths, ``..`` escapes, links
+    pointing outside ``dest`` and device files are refused. All members are
+    checked before anything is written, so a refused archive leaves no files.
+
+    Raises:
+        GEODownloadError: If any member is unsafe; nothing is extracted.
+        tarfile.TarError: If the archive itself cannot be read.
+    """
+    members = tar.getmembers()
+    unsafe = unsafe_tar_members(members, dest)
+    if unsafe:
+        raise GEODownloadError(
+            f"Archive refused: {len(unsafe)} unsafe member(s): {unsafe[:10]}"
+        )
+    tar.extractall(path=dest, members=members, filter="data")
+    return len(members)
 
 
 class ArchiveProcessor:
@@ -249,22 +272,9 @@ class ArchiveProcessor:
                 extract_dir.mkdir(exist_ok=True)
 
                 with tarfile.open(tar_file_path, "r") as tar:
-                    # Security check for path traversal
-                    def is_safe_member(member):
-                        member_path = Path(member.name)
-                        try:
-                            target_path = (extract_dir / member_path).resolve()
-                            common_path = Path(
-                                os.path.commonpath([extract_dir.resolve(), target_path])
-                            )
-                            return common_path == extract_dir.resolve()
-                        except (ValueError, RuntimeError):
-                            return False
+                    extracted = _extract_tar_all_or_nothing(tar, extract_dir)
 
-                    safe_members = [m for m in tar.getmembers() if is_safe_member(m)]
-                    tar.extractall(path=extract_dir, members=safe_members)
-
-                logger.debug(f"Extracted {len(safe_members)} files from TAR")
+                logger.debug(f"Extracted {extracted} files from TAR")
 
             # STEP 1: Check for Kallisto/Salmon quantification files in extracted directory
             try:
@@ -316,7 +326,7 @@ class ArchiveProcessor:
             nested_extract_dir.mkdir(exist_ok=True)
 
             # Extract any nested TAR.GZ files
-            nested_archives = list(extract_dir.glob("*.tar.gz"))
+            nested_archives = sorted(extract_dir.glob("*.tar.gz"))
             if nested_archives:
                 n_samples = len(nested_archives)
                 logger.info(f"Found {n_samples} nested TAR.GZ files (10X samples)")
@@ -337,8 +347,10 @@ class ArchiveProcessor:
 
                 all_matrices = []
                 for i, archive_path in enumerate(nested_archives, start=1):
+                    sample_extract_dir = None
                     try:
-                        sample_id = archive_path.stem.split(".")[0]
+                        # A member named ".tar.gz" has no stem; keep it in its own folder.
+                        sample_id = archive_path.stem.split(".")[0] or f"sample_{i}"
                         sample_extract_dir = nested_extract_dir / sample_id
                         sample_extract_dir.mkdir(exist_ok=True)
 
@@ -346,7 +358,7 @@ class ArchiveProcessor:
 
                         logger.debug(f"Extracting nested archive: {archive_path.name}")
                         with tarfile.open(archive_path, "r:gz") as nested_tar:
-                            nested_tar.extractall(path=sample_extract_dir)
+                            _extract_tar_all_or_nothing(nested_tar, sample_extract_dir)
 
                         adata_sample = self.service.geo_parser.parse_10x_data(
                             sample_extract_dir, sample_id
@@ -365,6 +377,11 @@ class ArchiveProcessor:
                         logger.warning(
                             f"Failed to extract/parse sample {i}/{n_samples} ({archive_path.name}): {e}"
                         )
+                        if (
+                            sample_extract_dir is not None
+                            and sample_extract_dir != nested_extract_dir
+                        ):
+                            shutil.rmtree(sample_extract_dir, ignore_errors=True)
                         continue
 
                 if all_matrices:
@@ -488,7 +505,9 @@ class ArchiveProcessor:
         """
         try:
             file_name = file_url.split("/")[-1]
-            local_file = self.service.cache_dir / f"{gse_id}_{file_name}"
+            local_file = safe_download_path(
+                self.service.cache_dir, f"{gse_id}_{file_name}"
+            )
 
             if not local_file.exists():
                 logger.info(f"Downloading file: {file_url}")
@@ -724,8 +743,8 @@ class ArchiveProcessor:
             for file_type, url in files_info.items():
                 if file_type in ["matrix", "barcodes", "features"]:
                     filename = url.split("/")[-1]
-                    local_path = (
-                        self.service.cache_dir / f"{gsm_id}_{file_type}_{filename}"
+                    local_path = safe_download_path(
+                        self.service.cache_dir, f"{gsm_id}_{file_type}_{filename}"
                     )
 
                     if not local_path.exists():
@@ -880,7 +899,9 @@ class ArchiveProcessor:
             logger.info(f"Processing H5 file for {gsm_id}")
 
             filename = url.split("/")[-1]
-            local_path = self.service.cache_dir / f"{gsm_id}_h5_{filename}"
+            local_path = safe_download_path(
+                self.service.cache_dir, f"{gsm_id}_h5_{filename}"
+            )
 
             if not local_path.exists():
                 logger.info(f"Downloading H5 file: {url}")

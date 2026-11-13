@@ -26,7 +26,11 @@ def isolated(monkeypatch, tmp_path):
         "lobster.cli_internal.commands.heavy.init_commands"
     )
     uv_tool_env = importlib.import_module("lobster.core.uv_tool_env")
+    i18n = importlib.import_module("lobster.i18n")
     monkeypatch.chdir(tmp_path)
+    # Start each test as a plain English run with no language choice yet.
+    monkeypatch.setattr(i18n, "_LANG", "en")
+    monkeypatch.setattr(i18n, "_SOURCE", "default")
     monkeypatch.setattr(global_config, "CONFIG_DIR", tmp_path / "global")
     monkeypatch.setattr(credentials, "CREDENTIALS_DIR", tmp_path / "profiles")
     monkeypatch.setattr(
@@ -242,7 +246,7 @@ def test_classic_workspace_writer_is_private(existing, monkeypatch, tmp_path):
         (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=synthetic-old-key\n")
         (tmp_path / ".env").chmod(0o644)
     monkeypatch.setattr("sys.stdin", SimpleNamespace(isatty=lambda: True))
-    answers = iter(["1", KEY])
+    answers = iter(["1", "1", KEY])  # language (English), provider, key
     monkeypatch.setattr(init_commands.Prompt, "ask", lambda *a, **kw: next(answers))
     monkeypatch.setattr(init_commands.Confirm, "ask", lambda *a, **kw: False)
     monkeypatch.setattr(

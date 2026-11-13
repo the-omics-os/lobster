@@ -9,8 +9,9 @@ def test_vector_search_reports_backend_unavailable(monkeypatch):
     real_import = builtins.__import__
 
     def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "lobster.services.vector.service":
-            raise ImportError("No module named 'lobster.services.vector.service'")
+        # Block the backend whether or not lobster-vector is installed here.
+        if name == "lobster.vector.service" or name.startswith("lobster.vector."):
+            raise ImportError(f"No module named {name!r}", name=name)
         return real_import(name, globals, locals, fromlist, level)
 
     monkeypatch.setattr(builtins, "__import__", _fake_import)
@@ -24,5 +25,6 @@ def test_vector_search_reports_backend_unavailable(monkeypatch):
 
     error_text = str(exc_info.value)
     assert "Vector search backend is not available in this install." in error_text
-    assert "lobster-metadata development package" in error_text
+    assert "lobster-metadata" not in error_text
+    assert "lobster-vector" in error_text
     assert "uv pip install 'lobster-ai[vector-search]'" in error_text

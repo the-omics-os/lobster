@@ -30,6 +30,8 @@
 
 ---
 
+简体中文：[README.zh.md](README.zh.md) · 命令行加上 `--lang zh`，或设置 `LOBSTER_LANG=zh`。
+
 # Quickstart
 
 **1. Install Lobster AI (macOS/Linux):**

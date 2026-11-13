@@ -579,3 +579,77 @@ class TestFallbackGating:
                 f"Expected empty database list when _ALLOW_HARDCODED_FALLBACK=False "
                 f"and no entry points discovered, got: {supported}"
             )
+
+
+# =============================================================================
+# Download directory comes from DataManagerV2.workspace_path
+# =============================================================================
+
+
+class TestDownloadDirUsesWorkspacePath:
+    """DataManagerV2 exposes workspace_path only; downloads must not need workspace_dir."""
+
+    SELECTED = [{"url": "ftp://example.org/data/f.txt", "filename": "f.txt"}]
+
+    @pytest.fixture
+    def data_manager(self, mock_data_manager):
+        del mock_data_manager.workspace_dir
+        return mock_data_manager
+
+    def _entry(self, database, dataset_id):
+        return Mock(database=database, dataset_id=dataset_id, recommended_strategy=None)
+
+    def _assert_reaches_download(self, service, entry, data_manager, expected_dir):
+        with pytest.raises(RuntimeError) as exc:
+            service.download_dataset(entry)
+        assert "All file downloads failed" in str(exc.value)
+        assert "workspace_dir" not in str(exc.value)
+        assert (data_manager.workspace_path / "downloads" / expected_dir).is_dir()
+
+    def test_pride(self, data_manager):
+        from lobster.services.data_access.pride_download_service import (
+            PRIDEDownloadService,
+        )
+
+        service = PRIDEDownloadService(data_manager)
+        service.pride_provider = Mock()
+        service.pride_provider.get_download_urls.return_value = Mock(
+            error=None, raw_files=[], processed_files=[], search_files=[]
+        )
+        service._select_files_by_strategy = Mock(return_value=self.SELECTED)
+        service._download_ftp_file = Mock(return_value=None)
+
+        self._assert_reaches_download(
+            service, self._entry("pride", "PXD000001"), data_manager, "PXD000001"
+        )
+
+    def test_massive(self, data_manager):
+        from lobster.services.data_access.massive_download_service import (
+            MassIVEDownloadService,
+        )
+
+        service = MassIVEDownloadService(data_manager)
+        service._scan_ftp_directory = Mock(return_value=self.SELECTED)
+        service._select_files_by_strategy_massive = Mock(return_value=self.SELECTED)
+        service._download_ftp_file = Mock(return_value=None)
+
+        self._assert_reaches_download(
+            service,
+            self._entry("massive", "MSV000000001"),
+            data_manager,
+            "MSV000000001",
+        )
+
+    def test_metabolights(self, data_manager):
+        from lobster.services.data_access.metabolights_download_service import (
+            MetaboLightsDownloadService,
+        )
+
+        service = MetaboLightsDownloadService(data_manager)
+        service._fetch_study_files = Mock(return_value=self.SELECTED)
+        service._select_files_by_strategy = Mock(return_value=self.SELECTED)
+        service._download_file = Mock(return_value=None)
+
+        self._assert_reaches_download(
+            service, self._entry("metabolights", "MTBLS1"), data_manager, "mtbls1"
+        )

@@ -18,6 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
 func init() {
@@ -157,7 +158,7 @@ func (c *ThresholdSliderComponent) View(width, height int) string {
 	if c.data.Total > 0 {
 		pct := float64(c.data.Count) / float64(c.data.Total) * 100
 		countLine = countStyle.Render(fmt.Sprintf(
-			"%d / %d items passing (%.1f%%)",
+			i18n.P("%d / %d items passing (%.1f%%)"),
 			c.data.Count, c.data.Total, pct,
 		))
 	}
@@ -191,10 +192,10 @@ func (c *ThresholdSliderComponent) Mode() string     { return "overlay" }
 
 func (c *ThresholdSliderComponent) KeyBindings() []key.Binding {
 	return []key.Binding{
-		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("</>", "adjust")),
-		key.NewBinding(key.WithKeys("shift+left", "shift+right"), key.WithHelp("S-</>", "coarse")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "go")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		key.NewBinding(key.WithKeys("left", "right"), key.WithHelp("</>", i18n.P("adjust"))),
+		key.NewBinding(key.WithKeys("shift+left", "shift+right"), key.WithHelp("S-</>", i18n.P("coarse"))),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", i18n.P("go"))),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", i18n.P("cancel"))),
 	}
 }
 

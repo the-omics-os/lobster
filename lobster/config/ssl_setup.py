@@ -14,6 +14,8 @@ import ssl
 import urllib.request
 from typing import Optional, Tuple
 
+from lobster.i18n import h
+
 logger = logging.getLogger(__name__)
 
 # Test endpoints for SSL connectivity
@@ -56,7 +58,7 @@ def test_ssl_connectivity(
             logger.debug("certifi not available, using system certificates")
 
         # Test connection
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310 # fixed NCBI https test URL (NCBI_TEST_URL default)
             test_url, context=ssl_context, timeout=timeout
         ) as response:
             response.read()  # Ensure full response
@@ -164,14 +166,14 @@ def _prompt_fallback_ssl_fix(console) -> Optional[str]:
     """
     from rich.prompt import Prompt
 
-    console.print("[bold]Choose a fallback option:[/bold]")
-    console.print("  [cyan]1[/cyan] - Use corporate CA certificate")
-    console.print("  [cyan]2[/cyan] - Disable SSL verification (TESTING ONLY)")
-    console.print("  [cyan]3[/cyan] - Skip (configure manually later)")
+    console.print(h("[bold]Choose a fallback option:[/bold]"))
+    console.print(h("  [cyan]1[/cyan] - Use corporate CA certificate"))
+    console.print(h("  [cyan]2[/cyan] - Disable SSL verification (TESTING ONLY)"))
+    console.print(h("  [cyan]3[/cyan] - Skip (configure manually later)"))
     console.print()
 
     fallback_choice = Prompt.ask(
-        "[bold]Choose option[/bold]",
+        h("[bold]Choose option[/bold]"),
         choices=["1", "2", "3"],
         default="1",
     )
@@ -179,24 +181,34 @@ def _prompt_fallback_ssl_fix(console) -> Optional[str]:
     if fallback_choice == "1":
         # Custom certificate path
         cert_path = Prompt.ask(
-            "\n[bold]Enter path to your CA certificate file[/bold]",
+            h("\n[bold]Enter path to your CA certificate file[/bold]"),
             default="/etc/ssl/certs/ca-certificates.crt",
         )
-        console.print(f"[green]Setting LOBSTER_SSL_CERT_PATH={cert_path}[/green]")
+        console.print(
+            h("[green]Setting LOBSTER_SSL_CERT_PATH={cert_path}[/green]").format(
+                cert_path=cert_path
+            )
+        )
         return f"LOBSTER_SSL_CERT_PATH={cert_path}"
 
     elif fallback_choice == "2":
         # Disable SSL verification
-        console.print("\n[yellow]Warning: SSL verification will be disabled.[/yellow]")
         console.print(
-            "[yellow]This is NOT secure and should only be used for testing.[/yellow]\n"
+            h("\n[yellow]Warning: SSL verification will be disabled.[/yellow]")
+        )
+        console.print(
+            h(
+                "[yellow]This is NOT secure and should only be used for testing.[/yellow]\n"
+            )
         )
         return "LOBSTER_SSL_VERIFY=false"
 
     else:
         # Skip
         console.print(
-            "\n[dim]Skipping SSL configuration. You may encounter errors later.[/dim]"
+            h(
+                "\n[dim]Skipping SSL configuration. You may encounter errors later.[/dim]"
+            )
         )
         return None
 
@@ -221,28 +233,28 @@ def prompt_ssl_fix(console, error_message: Optional[str] = None) -> Optional[str
         Panel(
             get_ssl_error_guidance(error_message),
             border_style="yellow",
-            title="SSL Configuration Required",
+            title=h("SSL Configuration Required"),
         )
     )
     console.print()
 
     # Prompt user
     choice = Prompt.ask(
-        "[bold]Choose an option[/bold]",
+        h("[bold]Choose an option[/bold]"),
         choices=["1", "2", "3", "skip"],
         default="1",
     )
 
     if choice == "1":
         # Try upgrading certifi automatically
-        console.print("\n[cyan]Installing/upgrading certifi package...[/cyan]")
+        console.print(h("\n[cyan]Installing/upgrading certifi package...[/cyan]"))
 
-        import subprocess
+        import subprocess  # nosec B404 # fixed argv list below, no shell
         import sys
 
         try:
             # Run pip install in the current Python environment
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 # fixed argv list, no shell
                 [sys.executable, "-m", "pip", "install", "--upgrade", "certifi"],
                 capture_output=True,
                 text=True,
@@ -250,62 +262,80 @@ def prompt_ssl_fix(console, error_message: Optional[str] = None) -> Optional[str
             )
 
             if result.returncode == 0:
-                console.print("[green]✓ certifi installed successfully[/green]")
+                console.print(h("[green]✓ certifi installed successfully[/green]"))
 
                 # Retest SSL connectivity
-                console.print("[dim]Retesting SSL connectivity...[/dim]")
+                console.print(h("[dim]Retesting SSL connectivity...[/dim]"))
                 success, is_ssl_error, new_error_msg = test_ssl_connectivity(timeout=10)
 
                 if success:
-                    console.print("[green]✓ SSL connectivity now working![/green]")
-                    console.print("[dim]Continuing with setup...[/dim]\n")
+                    console.print(h("[green]✓ SSL connectivity now working![/green]"))
+                    console.print(h("[dim]Continuing with setup...[/dim]\n"))
                     return None  # SSL fixed, don't need to add env vars
                 else:
                     console.print(
-                        "[yellow]⚠️  SSL issue persists after certifi upgrade[/yellow]"
+                        h(
+                            "[yellow]⚠️  SSL issue persists after certifi upgrade[/yellow]"
+                        )
                     )
                     console.print(
-                        "[yellow]This suggests a corporate proxy/firewall issue.[/yellow]\n"
+                        h(
+                            "[yellow]This suggests a corporate proxy/firewall issue.[/yellow]\n"
+                        )
                     )
                     # Fall through to prompt for other options
                     return _prompt_fallback_ssl_fix(console)
             else:
                 console.print(
-                    f"[yellow]⚠️  certifi installation failed: {result.stderr[:100]}[/yellow]"
+                    h(
+                        "[yellow]⚠️  certifi installation failed: {stderr}[/yellow]"
+                    ).format(stderr=result.stderr[:100])
                 )
                 console.print(
-                    "[yellow]Falling back to manual configuration...[/yellow]\n"
+                    h("[yellow]Falling back to manual configuration...[/yellow]\n")
                 )
                 return _prompt_fallback_ssl_fix(console)
 
         except subprocess.TimeoutExpired:
-            console.print("[yellow]⚠️  certifi installation timed out[/yellow]")
+            console.print(h("[yellow]⚠️  certifi installation timed out[/yellow]"))
             return _prompt_fallback_ssl_fix(console)
         except Exception as e:
-            console.print(f"[yellow]⚠️  Error installing certifi: {e}[/yellow]")
+            console.print(
+                h("[yellow]⚠️  Error installing certifi: {e}[/yellow]").format(e=e)
+            )
             return _prompt_fallback_ssl_fix(console)
 
     elif choice == "2":
         # User chose to provide CA cert directly (skipping certifi)
         cert_path = Prompt.ask(
-            "\n[bold]Enter path to your CA certificate file[/bold]",
+            h("\n[bold]Enter path to your CA certificate file[/bold]"),
             default="/etc/ssl/certs/ca-certificates.crt",
         )
-        console.print(f"[green]Setting LOBSTER_SSL_CERT_PATH={cert_path}[/green]")
+        console.print(
+            h("[green]Setting LOBSTER_SSL_CERT_PATH={cert_path}[/green]").format(
+                cert_path=cert_path
+            )
+        )
         return f"LOBSTER_SSL_CERT_PATH={cert_path}"
 
     elif choice == "3":
         # User chose to disable SSL verification directly (skipping certifi)
-        console.print("\n[yellow]Warning: SSL verification will be disabled.[/yellow]")
         console.print(
-            "[yellow]This is NOT secure and should only be used for testing.[/yellow]\n"
+            h("\n[yellow]Warning: SSL verification will be disabled.[/yellow]")
+        )
+        console.print(
+            h(
+                "[yellow]This is NOT secure and should only be used for testing.[/yellow]\n"
+            )
         )
         return "LOBSTER_SSL_VERIFY=false"
 
     else:
         # Skip
         console.print(
-            "\n[dim]Skipping SSL configuration. You may encounter errors later.[/dim]"
+            h(
+                "\n[dim]Skipping SSL configuration. You may encounter errors later.[/dim]"
+            )
         )
         return None
 
@@ -327,10 +357,10 @@ def test_ssl_with_disabled_verification(
         Tuple of (success: bool, error_message: Optional[str])
     """
     try:
-        # Create unverified SSL context
-        ssl_context = ssl._create_unverified_context()
+        # Create unverified SSL context: a diagnostic probe whose response is discarded.
+        ssl_context = ssl._create_unverified_context()  # nosec B323 # diagnostic
 
-        with urllib.request.urlopen(
+        with urllib.request.urlopen(  # nosec B310 # fixed NCBI https test URL (NCBI_TEST_URL default)
             test_url, context=ssl_context, timeout=timeout
         ) as response:
             response.read()

@@ -7,6 +7,17 @@ If npm `lobster` is also installed, use `uv run python -m lobster <command>` in
 an environment containing the Python engine to avoid selecting the npm binary.
 In particular, npm `lobster init` is not local Python provider configuration.
 
+## Local language
+
+```bash
+lobster --lang zh --help
+lobster --lang zh chat
+```
+
+Inside a session, `/lang zh` saves the choice and `/lang` prints the current one.
+`zh-CN` and `zh-Hans` are the same option. The Go terminal screen picks the
+language up on its next launch. JSON field names and command names stay English.
+
 ## Installation and Local Configuration
 
 Install or upgrade only with the user's permission. The Cloud init flags in this

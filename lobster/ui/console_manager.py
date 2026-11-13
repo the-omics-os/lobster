@@ -58,7 +58,9 @@ class HistoryConsole(Console):
                 history_path.parent.mkdir(parents=True, exist_ok=True)
 
                 self.history = FileHistory(str(history_path))
-                self.session = PromptSession(history=self.history)
+                # Built on first input(): constructing it opens the terminal
+                # input, which warns on stderr when stdin is not a terminal.
+                self.session = None
                 self._has_history = True
             except Exception:
                 # Fall back to no history if there are any issues
@@ -102,7 +104,12 @@ class HistoryConsole(Console):
             return result.rstrip("\n\r") if result else ""
 
         # Use prompt-toolkit for enhanced input if available
-        if self._has_history and self.session:
+        if self._has_history and self.session is None:
+            try:
+                self.session = PromptSession(history=self.history)
+            except Exception:
+                self._has_history = False  # as before: no history, plain input()
+        if self._has_history:
             try:
                 result = self.session.prompt("")
                 return result
@@ -110,7 +117,7 @@ class HistoryConsole(Console):
                 raise
             except Exception:
                 # Fall back to built-in input on any error
-                pass
+                pass  # nosec B110 # fall back to built-in input on any prompt error
 
         # Fall back to built-in input
         return input()
@@ -218,6 +225,10 @@ class LobsterConsoleManager:
             datefmt="[%X]",
             handlers=[rich_handler],
         )
+
+        # The engine owns a "lobster" namespace logger pinned at INFO; root's
+        # level never reaches it, so the CLI host must set it explicitly.
+        _set_engine_log_level(log_level)
 
         # Adjust levels for specific loggers (always suppress noisy libraries)
         logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -450,7 +461,7 @@ class LobsterConsoleManager:
         try:
             muted_file.close()
         except Exception:
-            pass
+            pass  # nosec B110 # best-effort close of a muted output file
 
     def has_history_support(self) -> bool:
         """Check if the console has command history support enabled."""
@@ -492,6 +503,18 @@ def get_console() -> Console:
     return _console_manager.console
 
 
+def _set_engine_log_level(level: int) -> None:
+    """Apply the CLI log level to the engine's ``lobster`` namespace logger.
+
+    The engine configures that logger once, lazily, on the first
+    ``get_logger`` call (INFO by default). Trigger that configuration first so
+    a later first call cannot reset the level we set here.
+    """
+    from lobster.utils.logger import get_logger
+
+    get_logger("lobster").setLevel(level)
+
+
 def get_console_manager() -> LobsterConsoleManager:
     """Get the console manager instance."""
     global _console_manager
@@ -524,6 +547,7 @@ def setup_logging(level: int = None):
     get_console_manager()
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
+    _set_engine_log_level(level)
 
     # Update all existing handlers to respect the new level
     for handler in root_logger.handlers:

@@ -38,6 +38,7 @@ from lobster.core.interfaces.download_service import IDownloadService
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
 from lobster.core.schemas.download_queue import DownloadQueueEntry
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -259,9 +260,14 @@ class MetaboLightsDownloadService(IDownloadService):
             logger.info(f"Selected {len(selected_files)} file(s) to download")
 
             # Step 4: Download files
-            download_dir = (
-                self.data_manager.workspace_dir / "downloads" / dataset_id.lower()
-            )
+            workspace_path = getattr(
+                self.data_manager, "workspace_path", None
+            ) or getattr(self.data_manager, "workspace_dir", None)
+            if workspace_path is None:
+                raise AttributeError(
+                    "Data manager must expose workspace_path or workspace_dir"
+                )
+            download_dir = Path(workspace_path) / "downloads" / dataset_id.lower()
             download_dir.mkdir(parents=True, exist_ok=True)
 
             local_files = []
@@ -570,7 +576,11 @@ class MetaboLightsDownloadService(IDownloadService):
             logger.warning("Empty filename in file info, skipping")
             return None
 
-        output_path = download_dir / filename
+        try:
+            output_path = safe_download_path(download_dir, filename)
+        except ValueError as e:
+            logger.warning(f"Skipping file: {e}")
+            return None
         if output_path.exists() and output_path.stat().st_size > 0:
             logger.info(f"File already exists, skipping download: {filename}")
             return output_path

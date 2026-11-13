@@ -17,7 +17,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass, field
-from typing import Literal
+from typing import Literal, Optional
+
+from lobster.i18n import h
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +28,13 @@ logger = logging.getLogger(__name__)
 class CredentialField:
     """A single credential the user must provide for a provider."""
 
-    key: str  # env var name, e.g. "ANTHROPIC_API_KEY"
+    # UI field id. lobster-cli's Ink wizard looks values up by it, so renaming
+    # one breaks that wizard; set env_var to the name actually written instead.
+    key: str
     label: str  # display label, e.g. "API Key"
     secret: bool = True  # mask input
     required: bool = True
-    env_var: str | None = None  # if different from key
+    env_var: str | None = None  # env var written, if different from key
     help_url: str | None = None
 
 
@@ -43,8 +47,8 @@ class ModelDef:
     description: str = ""
     is_default: bool = False
     context_window: int = 0
-    input_cost_per_million: float = 0.0
-    output_cost_per_million: float = 0.0
+    input_cost_per_million: Optional[float] = None
+    output_cost_per_million: Optional[float] = None
 
 
 @dataclass
@@ -153,59 +157,76 @@ _MODEL_SELECTION: dict[str, Literal["explicit", "profile", "local", "managed"]] 
     "openrouter": "explicit",
     "omics-os": "managed",
     "nebius": "explicit",
+    "ollama-cloud": "explicit",
 }
 
 _PROVIDER_DISPLAY: dict[str, tuple[str, str]] = {
     "anthropic": ("Anthropic", "Claude models via Anthropic API"),
     "bedrock": ("AWS Bedrock", "Claude models via AWS Bedrock"),
     "ollama": ("Ollama", "Local models via Ollama"),
-    "gemini": ("Google Gemini", "Gemini models via Google AI"),
+    "gemini": ("Google Gemini", "Gemini models"),
     "azure": ("Azure AI", "Models via Azure AI"),
-    "openai": ("OpenAI", "GPT models via OpenAI API"),
+    "openai": ("OpenAI", "GPT models"),
     "openrouter": ("OpenRouter", "Multi-provider model proxy"),
-    "omics-os": ("Omics-OS Cloud", "Managed models via Omics-OS"),
-    "nebius": ("Nebius AI Studio", "Open-weight models via Nebius"),
+    "omics-os": ("Omics-OS Cloud", "Free Omics-OS Cloud LLMs"),
+    "nebius": ("Nebius AI Studio", "Open-weight models"),
+    "ollama-cloud": ("Ollama Cloud", "Hosted models, requires API key"),
 }
 
 _PROVIDER_CREDENTIALS: dict[str, list[CredentialField]] = {
     "anthropic": [
-        CredentialField(key="ANTHROPIC_API_KEY", label="Anthropic API Key"),
+        CredentialField(key="ANTHROPIC_API_KEY", label=h("Anthropic API Key")),
     ],
     "bedrock": [
         CredentialField(
-            key="AWS_ACCESS_KEY_ID", label="AWS Access Key ID", secret=False
-        ),
-        CredentialField(key="AWS_SECRET_ACCESS_KEY", label="AWS Secret Access Key"),
-        CredentialField(
-            key="AWS_DEFAULT_REGION",
-            label="AWS Region",
+            key="AWS_ACCESS_KEY_ID",
+            label=h("AWS Access Key ID"),
             secret=False,
-            required=False,
+            env_var="AWS_BEDROCK_ACCESS_KEY",
         ),
+        CredentialField(
+            key="AWS_SECRET_ACCESS_KEY",
+            label=h("AWS Secret Access Key"),
+            env_var="AWS_BEDROCK_SECRET_ACCESS_KEY",
+        ),
+        # No region field: no init path can carry it, so it was silently
+        # dropped. The engine reads AWS_REGION (default us-east-1).
     ],
     "ollama": [],  # No credentials needed
     "gemini": [
-        CredentialField(key="GOOGLE_API_KEY", label="Google API Key"),
+        CredentialField(key="GOOGLE_API_KEY", label=h("Google API Key")),
     ],
     "azure": [
-        CredentialField(key="AZURE_OPENAI_API_KEY", label="Azure OpenAI API Key"),
+        CredentialField(
+            key="AZURE_OPENAI_API_KEY",
+            label=h("Azure OpenAI API Key"),
+            env_var="AZURE_AI_CREDENTIAL",
+        ),
         CredentialField(
             key="AZURE_OPENAI_ENDPOINT",
-            label="Azure OpenAI Endpoint",
+            label=h("Azure OpenAI Endpoint"),
             secret=False,
+            env_var="AZURE_AI_ENDPOINT",
         ),
     ],
     "openai": [
-        CredentialField(key="OPENAI_API_KEY", label="OpenAI API Key"),
+        CredentialField(key="OPENAI_API_KEY", label=h("OpenAI API Key")),
     ],
     "openrouter": [
-        CredentialField(key="OPENROUTER_API_KEY", label="OpenRouter API Key"),
+        CredentialField(key="OPENROUTER_API_KEY", label=h("OpenRouter API Key")),
     ],
     "omics-os": [
-        CredentialField(key="OMICS_OS_API_KEY", label="Omics-OS API Key"),
+        CredentialField(key="OMICS_OS_API_KEY", label=h("Omics-OS API Key")),
+    ],
+    "ollama-cloud": [
+        CredentialField(
+            key="OLLAMA_API_KEY",
+            label=h("Ollama API Key"),
+            help_url="https://ollama.com/settings/keys",
+        )
     ],
     "nebius": [
-        CredentialField(key="NEBIUS_API_KEY", label="Nebius API Key"),
+        CredentialField(key="NEBIUS_API_KEY", label=h("Nebius API Key")),
     ],
 }
 
@@ -213,10 +234,10 @@ _PROVIDER_AUTH_METHODS: dict[str, list[AuthMethodDef]] = {
     "anthropic": [
         AuthMethodDef(
             type="oauth",
-            label="Login with Claude account (Pro/Max)",
+            label=h("Login with Claude account (Pro/Max)"),
             is_default=True,
         ),
-        AuthMethodDef(type="api_key", label="Paste API key"),
+        AuthMethodDef(type="api_key", label=h("Paste API key")),
     ],
     # Other providers: api_key only (no explicit auth_methods needed)
 }
@@ -257,8 +278,15 @@ def build_init_manifest(detect_ollama: bool = True) -> WizardManifest:
         models: list[ModelDef] = []
         if model_sel == "explicit":
             provider = ProviderRegistry.get(name)
-            if provider and hasattr(provider, "KNOWN_MODELS"):
-                for mi in provider.KNOWN_MODELS:
+            if provider and (
+                name == "ollama-cloud" or hasattr(provider, "KNOWN_MODELS")
+            ):
+                catalog = (
+                    provider.list_models()
+                    if name == "ollama-cloud"
+                    else provider.KNOWN_MODELS
+                )
+                for mi in catalog:
                     models.append(
                         ModelDef(
                             name=mi.name,

@@ -12,12 +12,11 @@ Usage:
 """
 
 import argparse
-import gzip
 import logging
-import subprocess
+import subprocess  # nosec B404 # runs wget/curl with an argv list, no shell
 import tarfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -67,6 +66,12 @@ class DatasetDownloader:
         logger.info(f"Path: {output_dir.relative_to(self.datasets_dir)}")
         logger.info(f"{'='*60}")
 
+        if dataset.get("stale"):
+            logger.info(
+                f"Skipped: entry is stale ({dataset.get('stale_reason', '')})\n"
+            )
+            return
+
         # Handle metadata-only datasets (for rejection tests)
         if dataset.get("metadata_only"):
             logger.info("Metadata-only dataset (for rejection testing)")
@@ -108,14 +113,14 @@ class DatasetDownloader:
     def _download_from_url(self, url: str, output_dir: Path) -> None:
         """Download from URL using wget or curl."""
         try:
-            cmd = f"wget -r -np -nd -P {output_dir} {url}"
-            subprocess.run(cmd, shell=True, check=True, capture_output=True)
-        except subprocess.CalledProcessError:
+            cmd = ["wget", "-r", "-np", "-nd", "-P", str(output_dir), url]
+            subprocess.run(cmd, check=True, capture_output=True)  # nosec B603
+        except (subprocess.CalledProcessError, FileNotFoundError):
             logger.warning("wget failed, trying curl...")
             try:
-                cmd = f"curl -L -o {output_dir}/download.tar {url}"
-                subprocess.run(cmd, shell=True, check=True)
-            except subprocess.CalledProcessError as e:
+                cmd = ["curl", "-L", "-o", str(output_dir / "download.tar"), url]
+                subprocess.run(cmd, check=True)  # nosec B603 # argv list, no shell
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
                 logger.error(f"Download failed: {e}")
                 raise
 
@@ -123,7 +128,9 @@ class DatasetDownloader:
         """Extract tar/tar.gz files."""
         logger.info(f"Extracting {tar_path.name}...")
         with tarfile.open(tar_path, "r:*") as tar:
-            tar.extractall(path=output_dir)
+            # The "data" filter refuses absolute paths, links out of output_dir
+            # and special files.
+            tar.extractall(path=output_dir, filter="data")
 
     def _generate_ambiguous_dataset(self, dataset: Dict, output_dir: Path) -> None:
         """Generate ambiguous test datasets."""

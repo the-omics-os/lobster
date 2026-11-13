@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
+import subprocess  # nosec B404 # test runs the CLI as a child process
 import sys
 from pathlib import Path
 
 import pytest
-
 
 pytestmark = pytest.mark.integration
 
@@ -61,7 +60,7 @@ def _run_cli(
     cwd: Path | None = None,
     timeout: int = 30,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", *args],
         cwd=str(cwd or REPO_ROOT),
         env=_isolated_env(tmp_path, hide_npm_cli=hide_npm_cli),
@@ -82,9 +81,11 @@ def _assert_no_python_traceback(result: subprocess.CompletedProcess[str]) -> Non
     assert "Traceback (most recent call last)" not in output, output
 
 
-def test_local_python_cli_can_hide_global_npm_and_find_go_binary(tmp_path: Path) -> None:
+def test_local_python_cli_can_hide_global_npm_and_find_go_binary(
+    tmp_path: Path,
+) -> None:
     env = _isolated_env(tmp_path, hide_npm_cli=True)
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 # fixed argv, no shell
         [
             sys.executable,
             "-c",
@@ -180,7 +181,7 @@ def test_cloud_chat_with_stub_npm_binary_reaches_tty_guard(tmp_path: Path) -> No
     env = _isolated_env(tmp_path, hide_npm_cli=True)
     env["PATH"] = os.pathsep.join([str(bin_dir), env["PATH"]])
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603 # fixed argv, no shell
         [sys.executable, "-m", "lobster.cli", "cloud", "chat"],
         cwd=str(REPO_ROOT),
         env=env,
@@ -200,7 +201,7 @@ def test_cloud_chat_with_stub_npm_binary_reaches_tty_guard(tmp_path: Path) -> No
 
 def test_init_manifest_fallback_and_preflight_import_contracts() -> None:
     from lobster.cli import _preflight_provider_check
-    from lobster.cli_internal.commands.heavy.init_commands import _offer_npm_cross_install
+    from lobster.cli_internal.commands.heavy import init_commands
     from lobster.ui.bridge.questionary_fallback import run_questionary_init
     from lobster.ui.wizard.manifest import build_init_manifest
 
@@ -208,7 +209,7 @@ def test_init_manifest_fallback_and_preflight_import_contracts() -> None:
 
     assert len(manifest.providers) >= 1
     assert run_questionary_init is not None
-    assert _offer_npm_cross_install is not None
+    assert not hasattr(init_commands, "_offer_npm_cross_install")
     assert _preflight_provider_check is not None
 
 

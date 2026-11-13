@@ -12,7 +12,7 @@ Key features:
 - Support for multiple download strategies
 """
 
-import ftplib
+import ftplib  # nosec B402 # PRIDE and MassIVE serve FTP only
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,6 +28,7 @@ from lobster.services.data_access.proteomics_parsers import (
 )
 from lobster.tools.providers.pride_provider import PRIDEProvider
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -216,13 +217,23 @@ class PRIDEDownloadService(IDownloadService):
 
             # Step 4: Download files via FTP
             local_files = []
-            download_dir = self.data_manager.workspace_dir / "downloads" / dataset_id
+            workspace_path = getattr(
+                self.data_manager, "workspace_path", None
+            ) or getattr(self.data_manager, "workspace_dir", None)
+            if workspace_path is None:
+                raise AttributeError(
+                    "Data manager must expose workspace_path or workspace_dir"
+                )
+            download_dir = Path(workspace_path) / "downloads" / dataset_id
             download_dir.mkdir(parents=True, exist_ok=True)
 
             for file_info in selected_files:
-                local_path = self._download_ftp_file(
-                    file_info["url"], download_dir / file_info["filename"]
-                )
+                try:
+                    target = safe_download_path(download_dir, file_info["filename"])
+                except ValueError as e:
+                    logger.warning(f"Skipping file: {e}")
+                    continue
+                local_path = self._download_ftp_file(file_info["url"], target)
                 if local_path:
                     local_files.append(local_path)
 
@@ -369,7 +380,7 @@ class PRIDEDownloadService(IDownloadService):
 
         for attempt in range(max_retries):
             try:
-                ftp = ftplib.FTP(host, timeout=60)
+                ftp = ftplib.FTP(host, timeout=60)  # nosec B321 # PRIDE serves FTP only
                 ftp.login()  # Anonymous login
                 ftp.set_pasv(True)  # Passive mode
 
@@ -433,10 +444,10 @@ class PRIDEDownloadService(IDownloadService):
             code_template="""# PRIDE dataset download
 from lobster.services.data_access.pride_download_service import PRIDEDownloadService
 from lobster.tools.providers.pride_provider import PRIDEProvider
-from lobster.core.data_manager_v2 import DataManagerV2
+from lobster.core.runtime.data_manager import DataManagerV2
 
 # Initialize
-dm = DataManagerV2(workspace_dir="./workspace")
+dm = DataManagerV2(workspace_path="./workspace")
 provider = PRIDEProvider(dm)
 service = PRIDEDownloadService(dm)
 

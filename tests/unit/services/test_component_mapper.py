@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
+import pytest
+
 from lobster.services.interaction.component_mapper import map_question
 from lobster.services.interaction.component_schemas import AskUserContext
 
@@ -277,6 +279,19 @@ def test_llm_invalid_component_falls_back_to_text_input():
 def test_llm_exception_falls_back_to_text_input():
     """LLM raising exception should gracefully fall back to free text."""
     mock_llm = _make_mock_llm(error=RuntimeError("LLM unavailable"))
+    field = _only_field(map_question("Some ambiguous question here", llm=mock_llm))
+    assert (field.type, field.question) == ("text", "Some ambiguous question here")
+
+
+@pytest.mark.parametrize("answer", [None, "Just ask them for a number."])
+def test_llm_plain_text_answer_falls_back_to_free_text(answer):
+    """A model that answers in plain text gives no fields (None from structured
+    output); the mapper must still return a usable free-text question.
+    (Ported from upstream's ComponentSelection version of this test.)"""
+    mock_llm = MagicMock()
+    mock_structured = MagicMock()
+    mock_structured.invoke.return_value = answer
+    mock_llm.with_structured_output.return_value = mock_structured
     field = _only_field(map_question("Some ambiguous question here", llm=mock_llm))
     assert (field.type, field.question) == ("text", "Some ambiguous question here")
 

@@ -5,6 +5,7 @@ Tests comprehensive edge cases for the _detect_sample_types method
 and verifies platform compatibility handling for multi-modal datasets.
 """
 
+import re
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -402,6 +403,12 @@ class TestPlatformCompatibilityMultiModal:
                 geo_service._check_platform_compatibility("GSE12345", metadata)
 
             assert "cite_seq" in str(exc_info.value).lower()
+            details = exc_info.value.details
+            assert "estimated_implementation" not in details
+            assert details["current_workaround"].endswith(
+                "It does not import cite_seq data."
+            )
+            assert not re.search(r"v\d+\.\d", details["current_workaround"])
 
     def test_multimodal_info_stored_in_metadata(self, geo_service):
         """Verify multimodal info is stored in metadata store."""

@@ -117,6 +117,8 @@ const (
 	// (no answer in time, or an error), and says why. The Message.ID names
 	// the component; an empty ID closes whichever is active.
 	TypeComponentClose = "component_close"
+	// TypeSetLang switches the UI language at runtime (e.g. after /lang zh).
+	TypeSetLang = "set_lang"
 )
 
 // ---- Go → Python message type constants -----------------------------------
@@ -269,6 +271,11 @@ type SpinnerPayload struct {
 // StatusPayload updates the status-bar line.
 type StatusPayload struct {
 	Text string `json:"text"`
+}
+
+// SetLangPayload carries the new UI language code (e.g. "en", "zh").
+type SetLangPayload struct {
+	Lang string `json:"lang"`
 }
 
 // ClearPayload optionally targets a specific region.

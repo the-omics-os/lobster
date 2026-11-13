@@ -58,6 +58,7 @@ from lobster.services.data_access.geo.strategy import (
     create_pipeline_context,
 )
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -466,10 +467,9 @@ Ready for quality control and downstream analysis!"""
 
 Multi-Modal Dataset Detected:
    Loaded: RNA ({len(sample_types.get("rna", []))} samples)
-   Skipped: {excluded_summary} (support coming in v2.6+)
+   Skipped: {excluded_summary} (Lobster does not import these modalities)
 
-   Note: Only RNA samples were downloaded. Unsupported modalities were excluded to save bandwidth.
-   When protein/VDJ support is added, you can re-download to get all modalities."""
+   Note: Only RNA samples were downloaded."""
 
             success_msg += f"\n\nThe dataset is now available as modality '{modality_name}' for other agents to use."
 
@@ -1069,7 +1069,9 @@ Multi-Modal Dataset Detected:
                 if target_file:
                     logger.debug(f"Found H5 {file_category} file: {target_file}")
                     filename = target_file.split("/")[-1]
-                    local_path = self.service.cache_dir / f"{geo_id}_h5_{filename}"
+                    local_path = safe_download_path(
+                        self.service.cache_dir, f"{geo_id}_h5_{filename}"
+                    )
 
                     if not local_path.exists():
                         if not self.service.geo_downloader.download_file(

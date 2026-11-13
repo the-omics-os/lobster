@@ -22,6 +22,7 @@ from __future__ import annotations
 import logging
 import os
 
+from lobster.i18n import h
 from lobster.ui.wizard.manifest import WizardManifest
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
             for p in manifest.providers
         ]
         provider = questionary.select(
-            "Select your LLM provider:",
+            h("Select your LLM provider:"),
             choices=provider_choices,
             default="omics-os",
         ).ask()
@@ -115,11 +116,13 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
             from lobster.config.cloud_setup import OMICS_OS_AUTH_GUIDANCE
 
             print(OMICS_OS_AUTH_GUIDANCE)
-            key = questionary.password("Enter your Omics-OS API key:").ask()
+            key = questionary.password(h("Enter your Omics-OS API key:")).ask()
             if key is None:
                 return _cancelled(result)
             if not key.strip():
-                print("Omics-OS Cloud API key is required. " + OMICS_OS_AUTH_GUIDANCE)
+                print(
+                    h("Omics-OS Cloud API key is required. ") + OMICS_OS_AUTH_GUIDANCE
+                )
                 return _cancelled(result)
             result["api_key"] = key.strip()
 
@@ -132,7 +135,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
             for i, cred in enumerate(provider_def.credentials):
                 if not cred.required:
                     continue
-                prompt = f"Enter your {cred.label}:"
+                prompt = h("Enter your {label}:").format(label=cred.label)
                 if cred.secret:
                     value = questionary.password(prompt).ask()
                 else:
@@ -157,14 +160,16 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
 
             for m in manifest.ollama_status.models:
                 ollama_choices.append(
-                    questionary.Choice(f"{m:<24} detected locally", value=m)
+                    questionary.Choice(
+                        h("{name:<24} detected locally").format(name=m), value=m
+                    )
                 )
                 if not default_model:
                     default_model = m
 
             ollama_choices.append(
                 questionary.Choice(
-                    "Other model               Type a custom model name",
+                    h("Other model               Type a custom model name"),
                     value=_CUSTOM_OLLAMA_MODEL,
                 )
             )
@@ -172,7 +177,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
                 default_model = ollama_choices[0].value
 
             model = questionary.select(
-                "Choose an Ollama model:",
+                h("Choose an Ollama model:"),
                 choices=ollama_choices,
                 default=default_model or None,
             ).ask()
@@ -180,7 +185,9 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
                 return _cancelled(result)
 
             if model == _CUSTOM_OLLAMA_MODEL:
-                custom_model = questionary.text("Enter your Ollama model name:").ask()
+                custom_model = questionary.text(
+                    h("Enter your Ollama model name:")
+                ).ask()
                 if custom_model is None:
                     return _cancelled(result)
                 result["ollama_model"] = custom_model.strip()
@@ -199,7 +206,9 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
 
             model_choices.append(
                 questionary.Choice(
-                    "Other model                                      Enter a custom model ID",
+                    h(
+                        "Other model                                      Enter a custom model ID"
+                    ),
                     value=_CUSTOM_MODEL_SENTINEL,
                 )
             )
@@ -208,7 +217,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
                 default_model = model_choices[0].value
 
             selected_model = questionary.select(
-                "Select default model (you can change this later):",
+                h("Select default model (you can change this later):"),
                 choices=model_choices,
                 default=default_model,
             ).ask()
@@ -217,7 +226,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
 
             if selected_model == _CUSTOM_MODEL_SENTINEL:
                 custom_id = questionary.text(
-                    "Enter your model ID:", default=default_model
+                    h("Enter your model ID:"), default=default_model
                 ).ask()
                 if custom_id is None:
                     return _cancelled(result)
@@ -243,7 +252,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
             )
 
             profile = questionary.select(
-                "Select agent configuration profile:",
+                h("Select agent configuration profile:"),
                 choices=profile_choices,
                 default=default_profile,
             ).ask()
@@ -269,7 +278,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
             )
 
         selected_pkgs = questionary.checkbox(
-            "Select agent packages to install (Space to toggle, Enter to confirm):",
+            h("Select agent packages to install (Space to toggle, Enter to confirm):"),
             choices=agent_choices,
         ).ask()
 
@@ -282,7 +291,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
         # Step 6 — Optional NCBI key                                         #
         # ================================================================== #
         add_ncbi = questionary.confirm(
-            "Add an NCBI API key? (enhances literature search, optional)",
+            h("Add an NCBI API key? (enhances literature search, optional)"),
             default=False,
         ).ask()
 
@@ -290,7 +299,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
             return _cancelled(result)
 
         if add_ncbi:
-            ncbi = questionary.password("Enter your NCBI API key:").ask()
+            ncbi = questionary.password(h("Enter your NCBI API key:")).ask()
             if ncbi is None:
                 return _cancelled(result)
             result["ncbi_key"] = ncbi.strip()
@@ -300,7 +309,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
         # ================================================================== #
         if provider != "omics-os":
             add_cloud = questionary.confirm(
-                "Add an Omics-OS Cloud API key? (enables premium tier, optional)",
+                h("Add an Omics-OS Cloud API key? (enables premium tier, optional)"),
                 default=False,
             ).ask()
 
@@ -308,7 +317,9 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
                 return _cancelled(result)
 
             if add_cloud:
-                ckey = questionary.password("Enter your Omics-OS Cloud API key:").ask()
+                ckey = questionary.password(
+                    h("Enter your Omics-OS Cloud API key:")
+                ).ask()
                 if ckey is None:
                     return _cancelled(result)
                 result["cloud_key"] = ckey.strip()
@@ -317,12 +328,13 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
         # Step 8 — Smart Standardization / vector search                     #
         # ================================================================== #
         beneficiaries = _get_smart_standardization_beneficiaries(result["agents"])
-        smart_std_prompt = "Enable Smart Standardization / vector search? (OpenAI embeddings + ontology matching, optional)"
+        smart_std_prompt = h(
+            "Enable Smart Standardization / vector search? (OpenAI embeddings + ontology matching, optional)"
+        )
         if beneficiaries:
-            smart_std_prompt = (
+            smart_std_prompt = h(
                 "Enable Smart Standardization / vector search? Helpful for "
-                + ", ".join(beneficiaries)
-            )
+            ) + ", ".join(beneficiaries)
 
         enable_smart_std = questionary.confirm(
             smart_std_prompt,
@@ -342,7 +354,7 @@ def run_questionary_init(manifest: WizardManifest) -> dict:
                 result["smart_standardization_openai_key"] = existing_openai_key
             else:
                 embedding_key = questionary.password(
-                    "Enter your OpenAI API key for embeddings:",
+                    h("Enter your OpenAI API key for embeddings:"),
                 ).ask()
                 if embedding_key is None:
                     return _cancelled(result)

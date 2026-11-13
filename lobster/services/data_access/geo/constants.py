@@ -8,6 +8,7 @@ Contains all shared constants used across the GEO service modules:
 - Keyword patterns for platform detection
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -100,6 +101,10 @@ PLATFORM_REGISTRY: Dict[str, PlatformCompatibility] = {
     "GPL21103": PlatformCompatibility.SUPPORTED,  # Illumina HiSeq 2500 (single-cell)
     "GPL19057": PlatformCompatibility.SUPPORTED,  # Illumina NextSeq 500 (single-cell)
     # === UNSUPPORTED MICROARRAY PLATFORMS ===
+    # Illumina DNA methylation arrays (see METHYLATION_PLATFORMS)
+    "GPL8490": PlatformCompatibility.UNSUPPORTED,  # HumanMethylation27 BeadChip
+    "GPL13534": PlatformCompatibility.UNSUPPORTED,  # HumanMethylation450 BeadChip
+    "GPL21145": PlatformCompatibility.UNSUPPORTED,  # Infinium MethylationEPIC
     # Affymetrix arrays
     "GPL570": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133 Plus 2.0
     "GPL96": PlatformCompatibility.UNSUPPORTED,  # Affymetrix U133A
@@ -148,7 +153,13 @@ UNSUPPORTED_KEYWORDS = [
     "snp chip",
     "exon array",
     "gene chip",
+    "nimblegen",
 ]
+
+# Matched against the lowercased title as words, not substrings: "oligo" must
+# hit "VUMC MACF human 19K oligo v33" but not "oligodendrocyte" or
+# "oligo-dT primed RNA-seq".
+UNSUPPORTED_TITLE_PATTERNS = [re.compile(r"\boligo\b(?!-)")]
 
 SUPPORTED_KEYWORDS = [
     "rna-seq",
@@ -163,3 +174,33 @@ SUPPORTED_KEYWORDS = [
     "single-cell",
     "sequencing",
 ]
+
+# SUPPORTED_KEYWORDS matched as substrings of the lowercased title, so "rna-seq"
+# still hits "scRNA-seq", "snRNA-seq" and "mRNA-seq". Only "sequencing" must
+# start a word, so it does not hit "Resequencing Array" (an Affymetrix array).
+_WORD_START_KEYWORDS = {"sequencing"}
+SUPPORTED_TITLE_PATTERNS = [
+    re.compile((r"(?<![a-z0-9])" if kw in _WORD_START_KEYWORDS else "") + re.escape(kw))
+    for kw in SUPPORTED_KEYWORDS
+]
+
+# GEO "!Platform_technology" values of array platforms. They classify platforms
+# whose title matches no keyword (e.g. GPL3255, GPL21145 "Infinium MethylationEPIC").
+ARRAY_TECHNOLOGIES = {
+    "in situ oligonucleotide",
+    "spotted oligonucleotide",
+    "spotted dna/cdna",
+    "oligonucleotide beads",
+}
+
+# GEO "!Platform_technology" values of sequencing platforms. Entrez esummary
+# writes "high throughput sequencing" without the hyphen.
+SEQUENCING_TECHNOLOGIES = {
+    "high-throughput sequencing",
+    "high throughput sequencing",
+}
+
+# Array platforms that measure DNA methylation rather than gene expression,
+# by title keyword or by GPL id (Entrez metadata has no platform titles).
+METHYLATION_KEYWORDS = ["methylation"]
+METHYLATION_PLATFORMS = {"GPL8490", "GPL13534", "GPL21145"}

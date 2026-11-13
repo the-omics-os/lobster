@@ -4,9 +4,11 @@ from pathlib import Path
 
 import typer
 
+from lobster.i18n import h, t
+
 validate_app = typer.Typer(
     name="validate-plugin",
-    help="Validate Lobster AI plugin packages for contract compliance",
+    help=t("light.validate.help"),
     invoke_without_command=True,
 )
 
@@ -14,7 +16,7 @@ validate_app = typer.Typer(
 @validate_app.callback(invoke_without_command=True)
 def validate_plugin_cmd(
     plugin_dir: Path = typer.Argument(
-        ..., help="Path to plugin package directory", exists=True
+        ..., help=h("Path to plugin package directory"), exists=True
     ),
 ):
     """Validate a plugin package for Lobster AI contract compliance.
@@ -36,7 +38,7 @@ def validate_plugin_cmd(
     results = validate_plugin(plugin_dir)
 
     if not results:
-        typer.echo("No checks could be performed. Is this a valid plugin directory?")
+        typer.echo(h("No checks could be performed. Is this a valid plugin directory?"))
         raise typer.Exit(1)
 
     passed = 0
@@ -59,8 +61,14 @@ def validate_plugin_cmd(
 
     typer.echo("")
     if failed == 0:
-        suffix = f" ({warned} with warnings)" if warned else ""
-        typer.echo(f"All {passed} checks passed{suffix}.")
+        suffix = h(" ({count} with warnings)").format(count=warned) if warned else ""
+        typer.echo(
+            h("All {count} checks passed{suffix}.").format(count=passed, suffix=suffix)
+        )
     else:
-        typer.echo(f"{failed} check(s) failed, {passed} passed.")
+        typer.echo(
+            h("{failed} check(s) failed, {passed} passed.").format(
+                failed=failed, passed=passed
+            )
+        )
         raise typer.Exit(1)

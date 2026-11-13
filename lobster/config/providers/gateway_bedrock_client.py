@@ -4,7 +4,8 @@ import json
 import logging
 import random
 import time
-from typing import Callable, Optional
+from typing import Callable, NoReturn, Optional
+from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class _EventIterator:
         self._response = response
         self._http = http
         self._closed = False
+        self._events = 0
 
     def __iter__(self):
         return self
@@ -42,9 +44,11 @@ class _EventIterator:
                     self.close()
                     raise StopIteration
                 try:
-                    return json.loads(line)
+                    event = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                self._events += 1
+                return event
             from botocore.exceptions import ClientError
 
             raise ClientError(
@@ -56,8 +60,19 @@ class _EventIterator:
                 },
                 operation_name="ConverseStream",
             )
-        except BaseException:
+        except BaseException as error:
             self.close()
+            import httpx
+
+            if isinstance(error, httpx.TransportError):
+                # Not retried: events may already have reached the caller, and
+                # replaying the request would duplicate them.
+                logger.warning(
+                    "Omics-OS Cloud gateway stream stopped after %d event(s) (%s); "
+                    "a stream is not retried once its response has started.",
+                    self._events,
+                    type(error).__name__,
+                )
             raise
 
 
@@ -67,23 +82,63 @@ class GatewayBedrockClient:
     Implements the converse() and converse_stream() surface that
     ChatBedrockConverse uses. All other methods raise NotImplementedError.
 
+    Connection failures (no connection, a connection dropped before or while
+    the response arrives) are retried with backoff, up to ``_MAX_RETRIES``
+    attempts.
+    Trade-off: the gateway may already have run, and billed, a request whose
+    response was lost on the way back, so a retry can charge the same call
+    twice. Failing the whole agent run instead costs more.
+    A request that was sent but got no response in time is not retried: the
+    gateway is most likely still running it, so a retry would bill it twice
+    and wait just as long. A stream is never retried once its response has
+    started, because the caller may already have received part of the reply.
+
     Args:
         endpoint: Gateway base URL (e.g., "https://app.omics-os.com")
         token_fn: Callable returning current bearer token (handles refresh)
-        timeout: HTTP read timeout in seconds (default: 600)
+        timeout: Seconds to wait for a converse() response (default:
+            ``_UNARY_RESPONSE_TIMEOUT`` for ``_SHORT_LIMIT_HOSTS``,
+            ``_DEFAULT_RESPONSE_TIMEOUT`` otherwise); streams use
+            ``stream_idle_timeout``
+        stream_idle_timeout: Seconds a converse_stream() response may stay
+            silent between events (default: ``_STREAM_IDLE_TIMEOUT``)
     """
 
     _MAX_RETRIES = 3
+    # converse() responses start only after the whole generation. The hosted
+    # app.omics-os.com endpoint enforces a shorter response limit, so through it
+    # a response cannot legitimately arrive later than this.
+    _SHORT_LIMIT_HOSTS = frozenset({"app.omics-os.com"})
+    _UNARY_RESPONSE_TIMEOUT = 190.0
+    # Other endpoints keep the longer wait.
+    _DEFAULT_RESPONSE_TIMEOUT = 600.0
+    # Bedrock sends stream events continuously; the slowest Bedrock call observed
+    # through the gateway took about 10 s.
+    _STREAM_IDLE_TIMEOUT = 90.0
+    _CONNECT_TIMEOUT = 10.0
 
     def __init__(
         self,
         endpoint: str,
         token_fn: Callable[[], Optional[str]],
-        timeout: float = 600.0,
+        timeout: Optional[float] = None,
+        stream_idle_timeout: Optional[float] = None,
     ):
         self._endpoint = endpoint.rstrip("/")
         self._token_fn = token_fn
+        if timeout is None:
+            host = urlsplit(self._endpoint).hostname or ""
+            timeout = (
+                self._UNARY_RESPONSE_TIMEOUT
+                if host in self._SHORT_LIMIT_HOSTS
+                else self._DEFAULT_RESPONSE_TIMEOUT
+            )
         self._timeout = timeout
+        self._stream_idle_timeout = (
+            self._STREAM_IDLE_TIMEOUT
+            if stream_idle_timeout is None
+            else stream_idle_timeout
+        )
 
     class meta:
         """Required by ChatBedrockConverse for region detection."""
@@ -106,6 +161,60 @@ class GatewayBedrockClient:
         return base + random.uniform(
             0, 0.5
         )  # nosec B311 # Retry timing jitter, not cryptographic randomness.
+
+    def _retry_transport_error(
+        self, error: Exception, attempt: int, operation: str
+    ) -> None:
+        """Back off before the next attempt, or raise once attempts run out."""
+        if attempt < self._MAX_RETRIES - 1:
+            delay = self._retry_delay(attempt)
+            logger.warning(
+                "Omics-OS Cloud gateway connection failed before the response was "
+                "received (%s); "
+                "retrying (attempt %d of %d) in %.1f s. The failed request may "
+                "still have been processed and billed.",
+                type(error).__name__,
+                attempt + 2,
+                self._MAX_RETRIES,
+                delay,
+            )
+            time.sleep(delay)
+            return
+        from botocore.exceptions import ClientError
+
+        raise ClientError(
+            error_response={
+                "Error": {
+                    "Code": "ConnectionError",
+                    "Message": (
+                        "Omics-OS Cloud gateway connection failed after "
+                        f"{self._MAX_RETRIES} attempts "
+                        f"({type(error).__name__}: {error})"
+                    ),
+                }
+            },
+            operation_name=operation,
+        ) from error
+
+    def _raise_response_timeout(
+        self, error: Exception, waited: float, operation: str
+    ) -> NoReturn:
+        """Fail a sent request that got no response in time, without a retry."""
+        from botocore.exceptions import ClientError
+
+        raise ClientError(
+            error_response={
+                "Error": {
+                    "Code": "ResponseTimeout",
+                    "Message": (
+                        "Omics-OS Cloud gateway sent no response within "
+                        f"{waited:g} s; not retried, because the request may "
+                        "still be running and billed."
+                    ),
+                }
+            },
+            operation_name=operation,
+        ) from error
 
     def _handle_error(self, status_code: int, body: str) -> None:
         """Raise botocore-compatible ClientError for ChatBedrockConverse error handling."""
@@ -189,7 +298,8 @@ class GatewayBedrockClient:
         last_exc: Optional[Exception] = None
         for attempt in range(self._MAX_RETRIES):
             try:
-                with httpx.Client(timeout=self._timeout) as http:
+                timeout = httpx.Timeout(self._timeout, connect=self._CONNECT_TIMEOUT)
+                with httpx.Client(timeout=timeout) as http:
                     resp = http.post(url, json=kwargs, headers=headers)
 
                 if self._should_retry(resp.status_code):
@@ -207,19 +317,12 @@ class GatewayBedrockClient:
 
                 return resp.json()
 
-            except (httpx.ConnectError, httpx.TimeoutException) as e:
-                last_exc = e
-                if attempt < self._MAX_RETRIES - 1:
-                    time.sleep(self._retry_delay(attempt))
-                    continue
-                from botocore.exceptions import ClientError
-
-                raise ClientError(
-                    error_response={
-                        "Error": {"Code": "ConnectionError", "Message": str(e)}
-                    },
-                    operation_name="Converse",
-                ) from e
+            except (httpx.LocalProtocolError, httpx.UnsupportedProtocol):
+                raise  # a malformed request fails the same way on every attempt
+            except httpx.ReadTimeout as e:
+                self._raise_response_timeout(e, self._timeout, "Converse")
+            except httpx.TransportError as e:
+                self._retry_transport_error(e, attempt, "Converse")
 
         if last_exc and "429" in str(last_exc):
             from lobster.config.providers.omics_os_provider import RateLimitError
@@ -248,9 +351,14 @@ class GatewayBedrockClient:
 
         last_exc: Optional[Exception] = None
         for attempt in range(self._MAX_RETRIES):
+            # Use a persistent client for streaming; the read timeout bounds both
+            # the wait for headers and every gap between events.
+            http = httpx.Client(
+                timeout=httpx.Timeout(
+                    self._stream_idle_timeout, connect=self._CONNECT_TIMEOUT
+                )
+            )
             try:
-                # Use a persistent client for streaming
-                http = httpx.Client(timeout=httpx.Timeout(self._timeout, connect=10.0))
                 resp = http.send(
                     http.build_request("POST", url, json=kwargs, headers=headers),
                     stream=True,
@@ -281,19 +389,18 @@ class GatewayBedrockClient:
                     "ResponseMetadata": {"HTTPStatusCode": 200},
                 }
 
-            except (httpx.ConnectError, httpx.TimeoutException) as e:
-                last_exc = e
-                if attempt < self._MAX_RETRIES - 1:
-                    time.sleep(self._retry_delay(attempt))
-                    continue
-                from botocore.exceptions import ClientError
-
-                raise ClientError(
-                    error_response={
-                        "Error": {"Code": "ConnectionError", "Message": str(e)}
-                    },
-                    operation_name="ConverseStream",
-                ) from e
+            except httpx.TransportError as e:
+                http.close()
+                if isinstance(e, (httpx.LocalProtocolError, httpx.UnsupportedProtocol)):
+                    raise  # a malformed request fails the same way on every attempt
+                if isinstance(e, httpx.ReadTimeout):
+                    self._raise_response_timeout(
+                        e, self._stream_idle_timeout, "ConverseStream"
+                    )
+                self._retry_transport_error(e, attempt, "ConverseStream")
+            except BaseException:
+                http.close()
+                raise
 
         if last_exc and "429" in str(last_exc):
             from lobster.config.providers.omics_os_provider import RateLimitError

@@ -17,6 +17,8 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from lobster.i18n import h
+
 _RICH_TAG_RE = re.compile(r"\[([^\[\]]+)\]")
 _ALERT_STYLES = {"error", "warning", "success", "info"}
 
@@ -103,9 +105,13 @@ def kv_block(
     rows: Iterable[tuple[str, Any]],
     *,
     title: Optional[str] = None,
-    key_label: str = "Field",
-    value_label: str = "Value",
+    key_label: Optional[str] = None,
+    value_label: Optional[str] = None,
 ) -> OutputBlock:
+    if key_label is None:
+        key_label = h("Field")
+    if value_label is None:
+        value_label = h("Value")
     return OutputBlock(
         kind="kv",
         data={
@@ -232,6 +238,9 @@ class OutputAdapter(ABC):
     def print_code_block(self, code: str, language: str = "python") -> None:
         self.render_blocks([code_block(code, language=language)])
 
+    def set_lang(self, lang: str) -> None:
+        """Tell an attached UI that the language changed. Default: nothing to do."""
+
 
 class ConsoleOutputAdapter(OutputAdapter):
     """OutputAdapter for Rich Console (CLI mode)."""
@@ -269,8 +278,8 @@ class ConsoleOutputAdapter(OutputAdapter):
                 {
                     "title": data.get("title"),
                     "columns": [
-                        {"name": data.get("key_label", "Field")},
-                        {"name": data.get("value_label", "Value")},
+                        {"name": data.get("key_label", h("Field"))},
+                        {"name": data.get("value_label", h("Value"))},
                     ],
                     "rows": rows,
                 }
@@ -379,7 +388,9 @@ class JsonOutputAdapter(OutputAdapter):
         self.render_blocks(
             [
                 alert_block(
-                    f"Prompt skipped (non-interactive): {_strip_markup(question)} -> {default!r}",
+                    h(
+                        "Prompt skipped (non-interactive): {question} -> {default}"
+                    ).format(question=_strip_markup(question), default=repr(default)),
                     level="warning",
                 )
             ]
@@ -390,7 +401,9 @@ class JsonOutputAdapter(OutputAdapter):
         self.render_blocks(
             [
                 alert_block(
-                    f"Confirmation skipped (non-interactive): {_strip_markup(question)}",
+                    h("Confirmation skipped (non-interactive): {question}").format(
+                        question=_strip_markup(question)
+                    ),
                     level="warning",
                 )
             ]
@@ -441,8 +454,8 @@ class JsonOutputAdapter(OutputAdapter):
                     {
                         "title": block.get("title"),
                         "columns": [
-                            block.get("key_label", "Field"),
-                            block.get("value_label", "Value"),
+                            block.get("key_label", h("Field")),
+                            block.get("value_label", h("Value")),
                         ],
                         "rows": [
                             [_strip_markup(str(cell)) for cell in row]
@@ -513,8 +526,8 @@ class DashboardOutputAdapter(OutputAdapter):
             self._render_block(
                 table_block(
                     columns=[
-                        {"name": data.get("key_label", "Field")},
-                        {"name": data.get("value_label", "Value")},
+                        {"name": data.get("key_label", h("Field"))},
+                        {"name": data.get("value_label", h("Value"))},
                     ],
                     rows=data.get("rows", []),
                     title=data.get("title"),
@@ -624,6 +637,10 @@ class ProtocolOutputAdapter(OutputAdapter):
         for block in blocks:
             self._render_block(block)
 
+    def set_lang(self, lang: str) -> None:
+        """Switch the Go TUI language at runtime."""
+        self._send("set_lang", {"lang": lang})
+
     @staticmethod
     def _table_payload_columns(
         columns: Sequence[Dict[str, Any]],
@@ -658,8 +675,8 @@ class ProtocolOutputAdapter(OutputAdapter):
             if title:
                 self._send("text", {"content": _strip_markup(title) + "\n"})
             columns = [
-                {"name": _strip_markup(data.get("key_label", "Field"))},
-                {"name": _strip_markup(data.get("value_label", "Value"))},
+                {"name": _strip_markup(data.get("key_label", h("Field")))},
+                {"name": _strip_markup(data.get("value_label", h("Value")))},
             ]
             self._send(
                 "table",

@@ -63,6 +63,12 @@ def create_supervisor_prompt(
 
     sections.append(f"Today's date is {date.today()}.")
 
+    from lobster.i18n import reply_language_instruction
+
+    reply_language = reply_language_instruction()
+    if reply_language:
+        sections.append(reply_language)
+
     return "\n\n".join(sections)
 
 

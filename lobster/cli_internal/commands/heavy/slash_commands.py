@@ -14,6 +14,7 @@ import logging
 import os
 import shutil
 import time
+from contextlib import nullcontext
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Sequence
@@ -27,6 +28,7 @@ from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
+from lobster.i18n import current_lang, h, t, use_lang, write_workspace_lang
 from lobster.ui import LobsterTheme
 from lobster.ui.components.file_tree import create_file_tree, create_workspace_tree
 from lobster.ui.components.multi_progress import get_multi_progress_manager
@@ -149,8 +151,8 @@ def _render_output_blocks(output, blocks: List[OutputBlock]) -> None:
                 {
                     "title": data.get("title"),
                     "columns": [
-                        {"name": data.get("key_label", "Field")},
-                        {"name": data.get("value_label", "Value")},
+                        {"name": data.get("key_label", h("Field"))},
+                        {"name": data.get("value_label", h("Value"))},
                     ],
                     "rows": data.get("rows", []),
                 }
@@ -200,6 +202,17 @@ def _is_protocol_output(output: Optional["OutputAdapter"]) -> bool:
     return output is not None and output.__class__.__name__ == "ProtocolOutputAdapter"
 
 
+def _blocks_lang(output: Optional["OutputAdapter"]):
+    """Language context for building and rendering structured blocks.
+
+    JSON output keeps English column names, labels and values whatever the UI
+    language is, so machine consumers see one stable shape.
+    """
+    if output is not None and output.__class__.__name__ == "JsonOutputAdapter":
+        return use_lang("en")
+    return nullcontext()
+
+
 def check_for_missing_slash_command(user_input: str) -> Optional[str]:
     """Check if user input matches a command without the leading slash."""
     if not user_input or user_input.startswith("/"):
@@ -224,62 +237,67 @@ def extract_available_commands() -> Dict[str, str]:
 
     # Static command definitions with descriptions (extracted from help text)
     command_descriptions = {
-        "/help": "Show this help message",
-        "/session": "Show current session status",
-        "/status": "Show subscription tier, packages, and agents",
-        "/input-features": "Show input capabilities and navigation features",
-        "/dashboard": "Switch to interactive dashboard (Textual UI)",
-        "/status-panel": "Show comprehensive system status panel",
-        "/workspace-info": "Show detailed workspace overview",
-        "/analysis-dash": "Show analysis monitoring dashboard",
-        "/progress": "Show multi-task progress monitor",
-        "/files": "List workspace files",
-        "/tree": "Show directory tree view",
-        "/data": "Show current data summary",
-        "/metadata": "Show smart metadata overview with stats & next steps",
-        "/metadata publications": "Publication queue status breakdown",
-        "/metadata samples": "Aggregated sample statistics & disease coverage",
-        "/metadata workspace": "Categorized file inventory across all locations",
-        "/metadata exports": "Export files with categories & usage hints",
-        "/metadata list": "Legacy detailed list (use overview instead)",
-        "/metadata clear": "Clear metadata (memory + workspace/metadata/)",
-        "/metadata clear exports": "Clear export files (workspace/exports/)",
-        "/metadata clear all": "Clear ALL metadata (memory + disk + exports)",
+        "/help": t("slash.help"),
+        "/lang": t("slash.lang"),
+        "/session": h("Show current session status"),
+        "/status": h("Show subscription tier, packages, and agents"),
+        "/input-features": h("Show input capabilities and navigation features"),
+        "/dashboard": h("Switch to interactive dashboard (Textual UI)"),
+        "/status-panel": h("Show comprehensive system status panel"),
+        "/workspace-info": h("Show detailed workspace overview"),
+        "/analysis-dash": h("Show analysis monitoring dashboard"),
+        "/progress": h("Show multi-task progress monitor"),
+        "/files": t("slash.files"),
+        "/tree": h("Show directory tree view"),
+        "/data": t("slash.data"),
+        "/metadata": h("Show smart metadata overview with stats & next steps"),
+        "/metadata publications": h("Publication queue status breakdown"),
+        "/metadata samples": h("Aggregated sample statistics & disease coverage"),
+        "/metadata workspace": h("Categorized file inventory across all locations"),
+        "/metadata exports": h("Export files with categories & usage hints"),
+        "/metadata list": h("Legacy detailed list (use overview instead)"),
+        "/metadata clear": h("Clear metadata (memory + workspace/metadata/)"),
+        "/metadata clear exports": h("Clear export files (workspace/exports/)"),
+        "/metadata clear all": h("Clear ALL metadata (memory + disk + exports)"),
         # Queue commands (temporary, intent-driven)
-        "/queue": "Show queue status",
-        "/queue load": "Load file into queue (supports .ris, more coming)",
-        "/queue list": "List queued items",
-        "/queue clear": "Clear publication queue",
-        "/queue clear download": "Clear download queue",
-        "/queue clear all": "Clear all queues (publication + download)",
-        "/queue export": "Export queue to workspace for persistence",
+        "/queue": h("Show queue status"),
+        "/queue load": h("Load file into queue (supports .ris, more coming)"),
+        "/queue list": h("List queued items"),
+        "/queue clear": h("Clear publication queue"),
+        "/queue clear download": h("Clear download queue"),
+        "/queue clear all": h("Clear all queues (publication + download)"),
+        "/queue export": h("Export queue to workspace for persistence"),
         # Workspace commands (persistent)
-        "/workspace": "Show workspace status and information",
-        "/workspace list": "List available datasets in workspace",
-        "/workspace load": "Load dataset or file into workspace",
-        "/workspace remove": "Remove modality(ies) by index, pattern, or name",
-        "/workspace save": "Save modality to workspace",
-        "/workspace info": "Show dataset information",
-        "/restore": "Restore previous session datasets",
-        "/modalities": "Show detailed modality information",
-        "/describe": "Show detailed information about a specific modality",
-        "/plots": "List all generated plots",
-        "/plot": "Open plots directory or specific plot",
-        "/open": "Open file or folder in system default application",
-        "/save": "Save current state to workspace (--force to re-save all)",
-        "/read": "View file contents (inspection only)",
-        "/export": "Export to ZIP: data + saved figures with HTML views and every recorded PNG; no new PNG is rendered, --no-png only disables generation (--force to re-serialize all)",
-        "/reset": "Reset conversation",
-        "/config": "Show current configuration (provider, profile, config files)",
-        "/config provider": "List available LLM providers",
-        "/config provider <name>": "Switch to specified provider (runtime only)",
-        "/config provider <name> --save": "Switch provider and persist to workspace",
-        "/config model": "List available Ollama models",
-        "/config model <name>": "Switch to specified Ollama model (runtime only)",
-        "/config model <name> --save": "Switch Ollama model and persist to workspace",
-        "/vector-search": "Search all ontology collections (semantic vector similarity)",
-        "/clear": "Clear screen",
-        "/exit": "Exit the chat",
+        "/workspace": h("Show workspace status and information"),
+        "/workspace list": h("List available datasets in workspace"),
+        "/workspace load": h("Load dataset or file into workspace"),
+        "/workspace remove": h("Remove modality(ies) by index, pattern, or name"),
+        "/workspace save": h("Save modality to workspace"),
+        "/workspace info": h("Show dataset information"),
+        "/restore": h("Restore previous session datasets"),
+        "/modalities": h("Show detailed modality information"),
+        "/describe": h("Show detailed information about a specific modality"),
+        "/plots": t("slash.plots"),
+        "/plot": t("slash.plot"),
+        "/open": h("Open file or folder in system default application"),
+        "/save": h("Save current state to workspace (--force to re-save all)"),
+        "/read": h("View file contents (inspection only)"),
+        "/export": t("slash.export"),
+        "/reset": h("Reset conversation"),
+        "/config": t("slash.config"),
+        "/config provider": h("List available LLM providers"),
+        "/config provider <name>": h("Switch to specified provider (runtime only)"),
+        "/config provider <name> --save": h("Switch provider and persist to workspace"),
+        "/config model": h("List available Ollama models"),
+        "/config model <name>": h("Switch to specified Ollama model (runtime only)"),
+        "/config model <name> --save": h(
+            "Switch Ollama model and persist to workspace"
+        ),
+        "/vector-search": h(
+            "Search all ontology collections (semantic vector similarity)"
+        ),
+        "/clear": t("slash.clear"),
+        "/exit": t("slash.exit"),
     }
 
     # Try to extract dynamically as fallback, but use static definitions as primary
@@ -304,7 +322,9 @@ def extract_available_commands() -> Dict[str, str]:
                     if isinstance(cmd, str) and cmd.startswith("/"):
                         # If not in our static definitions, add with generic description
                         if cmd not in command_descriptions:
-                            command_descriptions[cmd] = f"Execute {cmd} command"
+                            command_descriptions[cmd] = h(
+                                "Execute {cmd} command"
+                            ).format(cmd=cmd)
 
     except Exception:  # nosec B110 - static command list is the fallback
         # Fallback to static definitions if AST parsing fails (silent)
@@ -431,7 +451,9 @@ if PROMPT_TOOLKIT_AVAILABLE:
             except Exception as e:
                 # Graceful fallback
                 console = console_manager.get_console()
-                console.print(f"[dim red]File completion error: {e}[/dim red]")
+                console.print(
+                    f"[dim red]{h('File completion error: {e}').format(e=e)}[/dim red]"
+                )
                 files = []
 
             # Generate completions
@@ -871,7 +893,9 @@ def get_user_input_with_editing(prompt_text: str, client=None) -> str:
         raise KeyboardInterrupt
     except Exception as e:
         # Fallback on any other error (e.g., prompt_toolkit issues)
-        console.print(f"[dim red]Input error, using fallback: {e}[/dim red]")
+        console.print(
+            f"[dim red]{h('Input error, using fallback: {e}').format(e=e)}[/dim red]"
+        )
         try:
             user_input = console_manager.console.input(
                 prompt=prompt_text, markup=True, emoji=True
@@ -918,7 +942,9 @@ def execute_shell_command(command: str) -> bool:
                 console.print(f"[grey74]{current_directory}[/grey74]")
                 return True
             else:
-                console.print(f"[red]cd: no such file or directory: {target}[/red]")
+                console.print(
+                    f"[red]{h('cd: no such file or directory: {target}').format(target=target)}[/red]"
+                )
                 return True  # We handled it, even if it failed
 
         elif cmd == "pwd":
@@ -946,22 +972,24 @@ def execute_shell_command(command: str) -> bool:
                 items = list(target_dir.iterdir())
                 if not items:
                     console.print(
-                        f"[grey50]Empty directory: {show_path or str(target_dir)}[/grey50]"
+                        f"[grey50]{h('Empty directory: {path}').format(path=show_path or str(target_dir))}[/grey50]"
                     )
                     return True
 
                 # Create a structured table for ls output
                 table = Table(
-                    title=f"📁 Directory Contents: {show_path or target_dir.name}",
+                    title=h("📁 Directory Contents: {path}").format(
+                        path=show_path or target_dir.name
+                    ),
                     box=box.SIMPLE,
                     border_style="blue",
                     show_header=True,
                     title_style="bold blue",
                 )
-                table.add_column("Name", style="white", min_width=20)
-                table.add_column("Type", style="cyan", width=10)
-                table.add_column("Size", style="grey74", width=10)
-                table.add_column("Modified", style="grey50", width=16)
+                table.add_column(h("Name"), style="white", min_width=20)
+                table.add_column(h("Type"), style="cyan", width=10)
+                table.add_column(h("Size"), style="grey74", width=10)
+                table.add_column(h("Modified"), style="grey50", width=16)
 
                 # Sort: directories first, then files
                 dirs = [item for item in items if item.is_dir()]
@@ -975,11 +1003,11 @@ def execute_shell_command(command: str) -> bool:
                         stat = item.stat()
                         if item.is_dir():
                             name = f"[bold blue]{item.name}/[/bold blue]"
-                            type_str = "📁 DIR"
+                            type_str = h("📁 DIR")
                             size_str = "-"
                         else:
                             name = f"[white]{item.name}[/white]"
-                            type_str = "📄 FILE"
+                            type_str = h("📄 FILE")
                             size = stat.st_size
                             if size < 1024:
                                 size_str = f"{size}B"
@@ -1008,19 +1036,23 @@ def execute_shell_command(command: str) -> bool:
 
                 console.print(table)
                 console.print(
-                    f"\n[grey50]Total: {len(dirs)} directories, {len(files)} files[/grey50]"
+                    f"\n[grey50]{h('Total: {dirs} directories, {files} files').format(dirs=len(dirs), files=len(files))}[/grey50]"
                 )
                 return True
             else:
                 console.print(
-                    f"[red]ls: cannot access '{parts[1] if len(parts) > 1 else target_dir}': No such file or directory[/red]"
+                    "[red]"
+                    + h("ls: cannot access '{path}': No such file or directory").format(
+                        path=parts[1] if len(parts) > 1 else target_dir
+                    )
+                    + "[/red]"
                 )
                 return True
 
         elif cmd == "cat":
             # Enhanced cat command with syntax highlighting
             if len(parts) < 2:
-                console.print("[red]cat: missing file argument[/red]")
+                console.print(f"[red]{h('cat: missing file argument')}[/red]")
                 return True
 
             file_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -1075,17 +1107,19 @@ def execute_shell_command(command: str) -> bool:
                         )
                     else:
                         console.print(
-                            f"[grey50]📄 {file_path.name} (empty file)[/grey50]"
+                            f"[grey50]📄 {h('{name} (empty file)').format(name=file_path.name)}[/grey50]"
                         )
                 else:
                     console.print(
-                        f"[red]cat: {file_path}: No such file or directory[/red]"
+                        f"[red]{h('cat: {path}: No such file or directory').format(path=file_path)}[/red]"
                     )
             except PermissionError:
-                console.print(f"[red]cat: {file_path}: Permission denied[/red]")
+                console.print(
+                    f"[red]{h('cat: {path}: Permission denied').format(path=file_path)}[/red]"
+                )
             except UnicodeDecodeError:
                 console.print(
-                    f"[red]cat: {file_path}: Binary file (cannot display)[/red]"
+                    f"[red]{h('cat: {path}: Binary file (cannot display)').format(path=file_path)}[/red]"
                 )
             except Exception as e:
                 console.print(f"[red]cat: {file_path}: {e}[/red]")
@@ -1095,7 +1129,9 @@ def execute_shell_command(command: str) -> bool:
         elif cmd == "open":
             # Handle open command to open files or folders
             if len(parts) < 2:
-                console.print("[red]open: missing file or folder argument[/red]")
+                console.print(
+                    f"[red]{h('open: missing file or folder argument')}[/red]"
+                )
                 return True
 
             file_or_folder = " ".join(parts[1:])  # Handle paths with spaces
@@ -1110,7 +1146,11 @@ def execute_shell_command(command: str) -> bool:
 
             if not target_path.exists():
                 console.print(
-                    f"[red]open: '{file_or_folder}': No such file or directory[/red]"
+                    "[red]"
+                    + h("open: '{path}': No such file or directory").format(
+                        path=file_or_folder
+                    )
+                    + "[/red]"
                 )
                 return True
 
@@ -1133,7 +1173,7 @@ def execute_shell_command(command: str) -> bool:
         elif cmd == "mkdir":
             # Create directory using pathlib (safe, no shell injection)
             if len(parts) < 2:
-                console.print("[red]mkdir: missing operand[/red]")
+                console.print(f"[red]{h('mkdir: missing operand')}[/red]")
                 return True
 
             dir_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -1145,10 +1185,16 @@ def execute_shell_command(command: str) -> bool:
 
             try:
                 target_dir.mkdir(parents=True, exist_ok=False)
-                console.print(f"[green]📁 Created directory: {parts[1]}[/green]")
+                console.print(
+                    f"[green]📁 {h('Created directory: {path}').format(path=parts[1])}[/green]"
+                )
             except FileExistsError:
                 console.print(
-                    f"[red]mkdir: cannot create directory '{parts[1]}': File exists[/red]"
+                    "[red]"
+                    + h("mkdir: cannot create directory '{path}': File exists").format(
+                        path=parts[1]
+                    )
+                    + "[/red]"
                 )
             except Exception as e:
                 console.print(f"[red]mkdir: {e}[/red]")
@@ -1158,7 +1204,7 @@ def execute_shell_command(command: str) -> bool:
         elif cmd == "touch":
             # Create file using pathlib (safe, no shell injection)
             if len(parts) < 2:
-                console.print("[red]touch: missing file operand[/red]")
+                console.print(f"[red]{h('touch: missing file operand')}[/red]")
                 return True
 
             file_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -1170,7 +1216,9 @@ def execute_shell_command(command: str) -> bool:
 
             try:
                 target_file.touch()
-                console.print(f"[green]📄 Created file: {parts[1]}[/green]")
+                console.print(
+                    f"[green]📄 {h('Created file: {path}').format(path=parts[1])}[/green]"
+                )
             except Exception as e:
                 console.print(f"[red]touch: {e}[/red]")
 
@@ -1179,7 +1227,7 @@ def execute_shell_command(command: str) -> bool:
         elif cmd == "cp":
             # Copy file using shutil (safe, no shell injection)
             if len(parts) < 3:
-                console.print("[red]cp: missing file operand[/red]")
+                console.print(f"[red]{h('cp: missing file operand')}[/red]")
                 return True
 
             src = parts[1]
@@ -1196,7 +1244,9 @@ def execute_shell_command(command: str) -> bool:
                     shutil.copytree(src_path, dst_path)
                 else:
                     shutil.copy2(src_path, dst_path)
-                console.print(f"[green]📋 Copied: {parts[1]} → {parts[2]}[/green]")
+                console.print(
+                    f"[green]📋 {h('Copied: {src} → {dst}').format(src=parts[1], dst=parts[2])}[/green]"
+                )
             except Exception as e:
                 console.print(f"[red]cp: {e}[/red]")
 
@@ -1205,7 +1255,7 @@ def execute_shell_command(command: str) -> bool:
         elif cmd == "mv":
             # Move file using shutil (safe, no shell injection)
             if len(parts) < 3:
-                console.print("[red]mv: missing file operand[/red]")
+                console.print(f"[red]{h('mv: missing file operand')}[/red]")
                 return True
 
             src = parts[1]
@@ -1219,7 +1269,9 @@ def execute_shell_command(command: str) -> bool:
 
             try:
                 shutil.move(str(src_path), str(dst_path))
-                console.print(f"[green]📦 Moved: {parts[1]} → {parts[2]}[/green]")
+                console.print(
+                    f"[green]📦 {h('Moved: {src} → {dst}').format(src=parts[1], dst=parts[2])}[/green]"
+                )
             except Exception as e:
                 console.print(f"[red]mv: {e}[/red]")
 
@@ -1228,7 +1280,7 @@ def execute_shell_command(command: str) -> bool:
         elif cmd == "rm":
             # Remove file using pathlib (safe, no shell injection)
             if len(parts) < 2:
-                console.print("[red]rm: missing operand[/red]")
+                console.print(f"[red]{h('rm: missing operand')}[/red]")
                 return True
 
             file_path = " ".join(parts[1:])  # Handle paths with spaces
@@ -1244,18 +1296,28 @@ def execute_shell_command(command: str) -> bool:
                     if "-r" in parts or "-rf" in parts:
                         shutil.rmtree(target_path)
                         console.print(
-                            f"[green]🗑️  Removed directory: {parts[1]}[/green]"
+                            f"[green]🗑️  {h('Removed directory: {path}').format(path=parts[1])}[/green]"
                         )
                     else:
                         console.print(
-                            f"[red]rm: cannot remove '{parts[1]}': Is a directory (use -r to remove directories)[/red]"
+                            "[red]"
+                            + h(
+                                "rm: cannot remove '{path}': Is a directory (use -r to remove directories)"
+                            ).format(path=parts[1])
+                            + "[/red]"
                         )
                 else:
                     target_path.unlink()
-                    console.print(f"[green]🗑️  Removed: {parts[1]}[/green]")
+                    console.print(
+                        f"[green]🗑️  {h('Removed: {path}').format(path=parts[1])}[/green]"
+                    )
             except FileNotFoundError:
                 console.print(
-                    f"[red]rm: cannot remove '{parts[1]}': No such file or directory[/red]"
+                    "[red]"
+                    + h("rm: cannot remove '{path}': No such file or directory").format(
+                        path=parts[1]
+                    )
+                    + "[/red]"
                 )
             except Exception as e:
                 console.print(f"[red]rm: {e}[/red]")
@@ -1267,7 +1329,7 @@ def execute_shell_command(command: str) -> bool:
             return False
 
     except Exception as e:
-        console.print(f"[red]Error executing command: {e}[/red]")
+        console.print(f"[red]{h('Error executing command: {e}').format(e=e)}[/red]")
         return True  # We handled it, even if it failed
 
 
@@ -1439,19 +1501,23 @@ def _show_workspace_prompt(client):
 
         # Line 1: Application status
         console.print(
-            f"  [{tier_color}]●[/] lobster v{__version__} [{tier_color}]{tier}[/] [dim]│[/] {agent_count} agents{semantic_badge} [dim]│ local │[/] [dim italic]/help[/]"
+            f"  [{tier_color}]●[/] lobster v{__version__} [{tier_color}]{tier}[/] [dim]│[/] {h('{count} agents').format(count=agent_count)}{semantic_badge} [dim]│ local │[/] [dim italic]/help[/]"
         )
 
         # Line 2-4: System resources (stacked for clarity)
-        console.print(f"[dim]  └─ Compute:[/] {ram_gb}GB RAM [dim]│[/] {gpu_label}")
         console.print(
-            f"[dim]     Storage:[/] {disk_free_gb}GB free [dim](workspace)[/]"
+            f"[dim]  └─ {h('Compute:')}[/] {ram_gb}GB RAM [dim]│[/] {gpu_label}"
         )
-        console.print(f"[dim]     Provider:[/] {provider_display}")
+        console.print(
+            f"[dim]     {h('Storage:')}[/] {h('{gb}GB free').format(gb=disk_free_gb)} [dim]({h('workspace')})[/]"
+        )
+        console.print(f"[dim]     {h('Provider:')}[/] {provider_display}")
         console.print()
     except Exception as e:
         # Fallback to basic prompt if system info fails
-        console.print(f"[dim red]Error loading system info: {e}[/dim red]")
+        console.print(
+            f"[dim red]{h('Error loading system info: {e}').format(e=e)}[/dim red]"
+        )
         console.print(f"  [green]●[/] lobster v{__version__}")
         console.print()
 
@@ -1618,11 +1684,11 @@ def _extract_argument(original_command: str, prefix: str) -> Optional[str]:
 
 def _help_table_columns(*, protocol_friendly: bool = False) -> list[dict[str, object]]:
     if not protocol_friendly:
-        return [{"name": "Command"}, {"name": "Description"}]
+        return [{"name": h("Command")}, {"name": h("Description")}]
 
     return [
-        {"name": "Command", "width": 32, "no_wrap": True, "overflow": "ellipsis"},
-        {"name": "Description", "max_width": 40, "overflow": "fold"},
+        {"name": h("Command"), "width": 32, "no_wrap": True, "overflow": "ellipsis"},
+        {"name": h("Description"), "max_width": 40, "overflow": "fold"},
     ]
 
 
@@ -1630,100 +1696,106 @@ def _build_help_blocks(*, protocol_friendly: bool = False) -> list[OutputBlock]:
     table_columns = _help_table_columns(protocol_friendly=protocol_friendly)
 
     return [
-        section_block(title="Quick Start"),
-        section_block(body="Just ask what you want to do in natural language"),
+        section_block(title=h("Quick Start")),
+        section_block(body=h("Just ask what you want to do in natural language")),
         section_block(
-            body='Example: "analyze my single-cell data" or "find breast cancer datasets"'
+            body=h(
+                'Example: "analyze my single-cell data" or "find breast cancer datasets"'
+            )
         ),
-        section_block(body="Load data: /read <file> (supports *.h5ad, *.csv, etc.)"),
+        section_block(body=h("Load data: /read <file> (supports *.h5ad, *.csv, etc.)")),
         table_block(
-            title="Core Commands",
+            title=h("Core Commands"),
             columns=table_columns,
             rows=[
-                ["/session", "Current session status"],
-                ["/status", "Subscription tier & agents"],
-                ["/data", "Current data summary"],
-                ["/workspace", "Workspace info"],
-                ["/queue", "Queue status & controls"],
-                ["/metadata", "Metadata overview"],
-                ["/config", "Provider/model settings"],
-                ["/plots", "List generated plots"],
-                ["/read <file>", "Load data file"],
-                ["/pipeline export [--replay]", "Export as Jupyter notebook"],
-                ["/tokens", "Token usage & costs"],
-                ["/clear", "Clear screen"],
-                ["/exit", "Exit"],
+                ["/session", h("Current session status")],
+                ["/status", h("Subscription tier & agents")],
+                ["/data", h("Current data summary")],
+                ["/workspace", h("Workspace info")],
+                ["/queue", h("Queue status & controls")],
+                ["/metadata", h("Metadata overview")],
+                ["/config", h("Provider/model settings")],
+                ["/plots", h("List generated plots")],
+                ["/read <file>", h("Load data file")],
+                ["/pipeline export [--replay]", h("Export as Jupyter notebook")],
+                ["/tokens", h("Token usage & costs")],
+                ["/clear", h("Clear screen")],
+                ["/exit", h("Exit")],
             ],
         ),
         table_block(
-            title="Power Commands",
+            title=h("Power Commands"),
             columns=table_columns,
             rows=[
-                ["/workspace list", "List available datasets"],
-                ["/workspace load <name>", "Load data from workspace"],
-                ["/queue clear [download|all]", "Clear queue(s)"],
-                ["/metadata clear [exports|all]", "Clear metadata"],
-                ["/describe <modality>", "Inspect a modality"],
-                ["/save [--force]", "Persist loaded modalities"],
-                ["/restore [pattern]", "Restore datasets from session cache"],
+                ["/workspace list", h("List available datasets")],
+                ["/workspace load <name>", h("Load data from workspace")],
+                ["/queue clear [download|all]", h("Clear queue(s)")],
+                ["/metadata clear [exports|all]", h("Clear metadata")],
+                ["/describe <modality>", h("Inspect a modality")],
+                ["/save [--force]", h("Persist loaded modalities")],
+                ["/restore [pattern]", h("Restore datasets from session cache")],
             ],
         ),
         table_block(
-            title="Admin & UI Commands",
+            title=h("Admin & UI Commands"),
             columns=table_columns,
             rows=[
                 [
                     "/dashboard",
-                    "Classic dashboard; Go mode shows a fallback",
+                    h("Classic dashboard; Go mode shows a fallback"),
                 ],
                 [
                     "/status-panel",
-                    "Status dashboard; Go mode shows /status",
+                    h("Status dashboard; Go mode shows /status"),
                 ],
                 [
                     "/workspace-info",
-                    "Workspace dashboard; Go mode shows /workspace",
+                    h("Workspace dashboard; Go mode shows /workspace"),
                 ],
                 [
                     "/analysis-dash",
-                    "Analysis dashboard; Go mode shows /metadata + /plots",
+                    h("Analysis dashboard; Go mode shows /metadata + /plots"),
                 ],
-                ["/progress", "Progress monitor; Go mode shows a compact summary"],
+                ["/progress", h("Progress monitor; Go mode shows a compact summary")],
             ],
         ),
-        hint_block("Next step: use `/workspace list` or `/read <file>` to begin."),
+        hint_block(h("Next step: use `/workspace list` or `/read <file>` to begin.")),
     ]
 
 
 def _build_query_help_blocks(*, protocol_friendly: bool = False) -> list[OutputBlock]:
     return [
-        section_block(title="Query Mode Help"),
+        section_block(title=h("Query Mode Help")),
         section_block(
-            body="`lobster query` runs one-shot questions and local slash commands without opening the interactive chat."
+            body=h(
+                "`lobster query` runs one-shot questions and local slash commands without opening the interactive chat."
+            )
         ),
         table_block(
-            title="Query-Compatible Commands",
+            title=h("Query-Compatible Commands"),
             columns=_help_table_columns(protocol_friendly=protocol_friendly),
             rows=[
-                ["/help", "Show this query-focused help"],
-                ["/status", "Installation, subscription, and agent summary"],
-                ["/data", "Current data summary"],
-                ["/workspace", "Workspace overview"],
-                ["/workspace list", "List datasets in the workspace"],
-                ["/workspace info <#>", "Show dataset details"],
-                ["/files", "List workspace files"],
-                ["/read <file>", "Inspect a file preview"],
-                ["/plots", "List generated plots"],
-                ["/metadata", "Metadata overview"],
-                ["/queue", "Queue status"],
+                ["/help", h("Show this query-focused help")],
+                ["/status", h("Installation, subscription, and agent summary")],
+                ["/data", h("Current data summary")],
+                ["/workspace", h("Workspace overview")],
+                ["/workspace list", h("List datasets in the workspace")],
+                ["/workspace info <#>", h("Show dataset details")],
+                ["/files", h("List workspace files")],
+                ["/read <file>", h("Inspect a file preview")],
+                ["/plots", h("List generated plots")],
+                ["/metadata", h("Metadata overview")],
+                ["/queue", h("Queue status")],
                 [
                     "/pipeline export",
-                    "Export an analysis notebook when provenance exists",
+                    h("Export an analysis notebook when provenance exists"),
                 ],
             ],
         ),
         hint_block(
-            'Use `lobster command "/help"` or `lobster chat` for the full interactive slash-command catalog.'
+            h(
+                'Use `lobster command "/help"` or `lobster chat` for the full interactive slash-command catalog.'
+            )
         ),
     ]
 
@@ -1733,7 +1805,7 @@ def _build_token_blocks(client: "AgentClient") -> list[OutputBlock]:
     if not token_usage or "error" in token_usage:
         return [
             alert_block(
-                "Token tracking not available for this client type", level="warning"
+                h("Token tracking not available for this client type"), level="warning"
             )
         ]
 
@@ -1745,12 +1817,14 @@ def _build_token_blocks(client: "AgentClient") -> list[OutputBlock]:
     is_ollama = current_provider == "ollama"
 
     title = (
-        "Session Token Usage (FREE - Local)"
+        h("Session Token Usage (FREE - Local)")
         if is_ollama
-        else "Session Token Usage & Cost"
+        else h("Session Token Usage & Cost")
     )
     cost_display = (
-        "FREE (local model)" if is_ollama else f"${token_usage['total_cost_usd']:.4f}"
+        h("FREE (local model)")
+        if is_ollama
+        else f"${token_usage['total_cost_usd']:.4f}"
     )
     provider_display = (
         "Ollama (Local)"
@@ -1761,29 +1835,29 @@ def _build_token_blocks(client: "AgentClient") -> list[OutputBlock]:
     blocks: list[OutputBlock] = [
         kv_block(
             [
-                ("Session ID", token_usage["session_id"]),
-                ("Provider", provider_display),
-                ("Total Input Tokens", f"{token_usage['total_input_tokens']:,}"),
-                ("Total Output Tokens", f"{token_usage['total_output_tokens']:,}"),
-                ("Total Tokens", f"{token_usage['total_tokens']:,}"),
-                ("Total Cost", cost_display),
+                (h("Session ID"), token_usage["session_id"]),
+                (h("Provider"), provider_display),
+                (h("Total Input Tokens"), f"{token_usage['total_input_tokens']:,}"),
+                (h("Total Output Tokens"), f"{token_usage['total_output_tokens']:,}"),
+                (h("Total Tokens"), f"{token_usage['total_tokens']:,}"),
+                (h("Total Cost"), cost_display),
             ],
             title=title,
-            key_label="Metric",
-            value_label="Value",
+            key_label=h("Metric"),
+            value_label=h("Value"),
         )
     ]
 
     if token_usage.get("by_agent"):
         agent_cols = [
-            {"name": "Agent"},
-            {"name": "Input"},
-            {"name": "Output"},
-            {"name": "Total"},
+            {"name": h("Agent")},
+            {"name": h("Input")},
+            {"name": h("Output")},
+            {"name": h("Total")},
         ]
         if not is_ollama:
-            agent_cols.append({"name": "Cost (USD)"})
-        agent_cols.append({"name": "Calls"})
+            agent_cols.append({"name": h("Cost (USD)")})
+        agent_cols.append({"name": h("Calls")})
 
         agent_rows = []
         for agent_name, stats in token_usage["by_agent"].items():
@@ -1800,7 +1874,7 @@ def _build_token_blocks(client: "AgentClient") -> list[OutputBlock]:
 
         blocks.append(
             table_block(
-                title="Tokens by Agent",
+                title=h("Tokens by Agent"),
                 columns=agent_cols,
                 rows=agent_rows,
             )
@@ -1845,7 +1919,7 @@ def _build_files_blocks(
             )
         blocks.append(
             table_block(
-                title=f"{category.title()} Files",
+                title=h("{category} Files").format(category=category.title()),
                 columns=[
                     {"name": "Name", "style": "bold white"},
                     {"name": "Size", "style": "grey74"},
@@ -1856,7 +1930,7 @@ def _build_files_blocks(
             )
         )
     if not blocks:
-        return [section_block(body="No files in workspace")]
+        return [section_block(body=h("No files in workspace"))]
     return blocks
 
 
@@ -1876,14 +1950,21 @@ def _build_save_blocks(saved_items: list[str]) -> list[OutputBlock]:
     saved_items = [item for item in saved_items if item not in not_saved]
     actual_saves = [item for item in saved_items if "Skipped" not in item]
     skipped_count = len(saved_items) - len(actual_saves)
-    blocks = [section_block(body=f"Saved: {item}") for item in actual_saves]
+    blocks = [
+        section_block(body=h("Saved: {item}").format(item=item))
+        for item in actual_saves
+    ]
     if skipped_count > 0:
         blocks.append(
-            section_block(body=f"Skipped {skipped_count} unchanged modalities")
+            section_block(
+                body=h("Skipped {count} unchanged modalities").format(
+                    count=skipped_count
+                )
+            )
         )
     blocks.extend(section_block(body=item) for item in not_saved)
     if not blocks:
-        blocks.append(section_block(body="All modalities already up-to-date"))
+        blocks.append(section_block(body=h("All modalities already up-to-date")))
     return blocks
 
 
@@ -1897,12 +1978,15 @@ def _build_restore_blocks(result: dict[str, Any]) -> list[OutputBlock]:
             for item in restored
         ]
         blocks.extend(
-            section_block(body=f"Restored: {name}") for name in restored_names
+            section_block(body=h("Restored: {name}").format(name=name))
+            for name in restored_names
         )
     if skipped:
-        blocks.append(section_block(body=f"Skipped {len(skipped)} items"))
+        blocks.append(
+            section_block(body=h("Skipped {count} items").format(count=len(skipped)))
+        )
     if not blocks:
-        blocks.append(section_block(body="Nothing to restore"))
+        blocks.append(section_block(body=h("Nothing to restore")))
     return blocks
 
 
@@ -1915,9 +1999,9 @@ def _build_open_blocks(
 ) -> list[OutputBlock]:
     blocks: list[OutputBlock] = [alert_block(message, level=level)]
     if target:
-        blocks.append(section_block(body=f"Path: {target}"))
+        blocks.append(section_block(body=h("Path: {path}").format(path=target)))
     if include_usage:
-        blocks.append(section_block(body="Usage: /open <file_or_folder>"))
+        blocks.append(section_block(body=h("Usage: /open <file_or_folder>")))
     return blocks
 
 
@@ -2001,40 +2085,58 @@ def _execute_command(
 
         return None
 
+    if cmd == "/lang" or cmd.startswith("/lang "):
+        argument = original_command.strip()[len("/lang") :].strip()
+        if not argument:
+            output.print(t("slash.lang.current", lang=current_lang()))
+            return None
+        workspace = getattr(client, "workspace_path", None)
+        target = Path(workspace) if workspace else Path.cwd() / ".lobster_workspace"
+        applied = write_workspace_lang(target, argument)
+        extract_available_commands.cache_clear()
+        output.set_lang(applied)
+        output.print(t("slash.lang.set", lang=applied))
+        return f"UI language set to {applied}"
+
     if cmd == "/help":
-        _render_structured_output(
-            output,
-            _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
-        )
+        with _blocks_lang(output):
+            _render_structured_output(
+                output,
+                _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
+            )
 
     elif cmd == "/data":
         return data_summary(client, output)
 
     elif cmd == "/session":
         try:
-            _render_structured_output(output, build_session_blocks(client))
+            with _blocks_lang(output):
+                _render_structured_output(output, build_session_blocks(client))
             return f"Session: {getattr(client, 'session_id', 'unknown')}"
         except Exception as e:
-            output.print(f"Session info error: {e}", style="error")
+            output.print(h("Session info error: {e}").format(e=e), style="error")
 
     elif cmd == "/status":
         try:
-            _render_structured_output(
-                output,
-                build_status_blocks(
-                    compact=_is_protocol_output(output),
-                    workspace_path=getattr(client, "workspace_path", None),
-                    provider_override=getattr(client, "provider_override", None),
-                ),
-            )
+            with _blocks_lang(output):
+                _render_structured_output(
+                    output,
+                    build_status_blocks(
+                        compact=_is_protocol_output(output),
+                        workspace_path=getattr(client, "workspace_path", None),
+                        provider_override=getattr(client, "provider_override", None),
+                    ),
+                )
         except Exception as e:
-            output.print(f"Status info error: {e}", style="error")
+            output.print(h("Status info error: {e}").format(e=e), style="error")
 
     elif cmd == "/tokens":
         try:
             _render_structured_output(output, _build_token_blocks(client))
         except Exception as e:
-            output.print(f"Failed to retrieve token usage: {e}", style="error")
+            output.print(
+                h("Failed to retrieve token usage: {e}").format(e=e), style="error"
+            )
 
     elif cmd == "/input-features":
         if _is_protocol_output(output):
@@ -2055,7 +2157,9 @@ def _execute_command(
                 }
             )
             output.print(
-                "Tip: type '/' then press Tab to accept a suggestion. Use Ctrl+G to switch mouse mode between select and scroll.",
+                h(
+                    "Tip: type '/' then press Tab to accept a suggestion. Use Ctrl+G to switch mouse mode between select and scroll."
+                ),
                 style="info",
             )
             return None
@@ -2136,7 +2240,7 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
 • Persistent command history between sessions"""
 
         features_panel = LobsterTheme.create_panel(
-            features_text, title="🔤 Input Features & Navigation"
+            features_text, title=h("🔤 Input Features & Navigation")
         )
         console_manager.print(features_panel)
 
@@ -2146,7 +2250,7 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             from lobster.ui.os_app import run_lobster_os
 
             console_manager.print(
-                f"[{LobsterTheme.PRIMARY_ORANGE}]Launching interactive dashboard...[/{LobsterTheme.PRIMARY_ORANGE}]"
+                f"[{LobsterTheme.PRIMARY_ORANGE}]{h('Launching interactive dashboard...')}[/{LobsterTheme.PRIMARY_ORANGE}]"
             )
             # Get workspace from client
             workspace_path = getattr(client, "workspace_path", None)
@@ -2171,19 +2275,22 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/status-panel renders Rich dashboard panels and is not available in Go TUI. Showing /status fallback.",
+                        h(
+                            "/status-panel renders Rich dashboard panels and is not available in Go TUI. Showing /status fallback."
+                        ),
                         level="warning",
                     ),
                 ],
             )
-            _render_structured_output(
-                output,
-                build_status_blocks(
-                    compact=True,
-                    workspace_path=getattr(client, "workspace_path", None),
-                    provider_override=getattr(client, "provider_override", None),
-                ),
-            )
+            with _blocks_lang(output):
+                _render_structured_output(
+                    output,
+                    build_status_blocks(
+                        compact=True,
+                        workspace_path=getattr(client, "workspace_path", None),
+                        provider_override=getattr(client, "provider_override", None),
+                    ),
+                )
             return None
 
         # Show comprehensive system health dashboard (Rich panels)
@@ -2200,7 +2307,7 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             console_manager.print(
                 LobsterTheme.create_panel(
                     f"[bold {LobsterTheme.PRIMARY_ORANGE}]System Health Dashboard[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-                    title="🦞 Status Panel",
+                    title=h("🦞 Status Panel"),
                 )
             )
             console_manager.print(core_panel)
@@ -2219,7 +2326,9 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/workspace-info renders Rich dashboard panels and is not available in Go TUI. Showing /workspace fallback.",
+                        h(
+                            "/workspace-info renders Rich dashboard panels and is not available in Go TUI. Showing /workspace fallback."
+                        ),
                         level="warning",
                     ),
                 ],
@@ -2240,7 +2349,7 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             console_manager.print(
                 LobsterTheme.create_panel(
                     f"[bold {LobsterTheme.PRIMARY_ORANGE}]Workspace Overview[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-                    title="🏗️ Workspace",
+                    title=h("🏗️ Workspace"),
                 )
             )
             console_manager.print(workspace_info_panel)
@@ -2259,7 +2368,9 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/analysis-dash renders Rich dashboard panels and is not available in Go TUI. Showing /metadata + /plots fallback.",
+                        h(
+                            "/analysis-dash renders Rich dashboard panels and is not available in Go TUI. Showing /metadata + /plots fallback."
+                        ),
                         level="warning",
                     ),
                 ],
@@ -2281,7 +2392,7 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
             console_manager.print(
                 LobsterTheme.create_panel(
                     f"[bold {LobsterTheme.PRIMARY_ORANGE}]Analysis Dashboard[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-                    title="🧬 Analysis",
+                    title=h("🧬 Analysis"),
                 )
             )
             console_manager.print(analysis_panel)
@@ -2301,15 +2412,19 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 output,
                 [
                     alert_block(
-                        "/progress renders Rich live panels and is not available in Go TUI. Showing compact summary.",
+                        h(
+                            "/progress renders Rich live panels and is not available in Go TUI. Showing compact summary."
+                        ),
                         level="warning",
                     ),
                     kv_block(
                         [("Active Operations", str(active_count))],
-                        title="Progress Summary",
+                        title=h("Progress Summary"),
                     ),
                     hint_block(
-                        "Use transcript history and command-family output for detailed progress."
+                        h(
+                            "Use transcript history and command-family output for detailed progress."
+                        )
                     ),
                 ],
             )
@@ -2329,7 +2444,9 @@ Install prompt-toolkit for arrow key navigation, command history, and Tab comple
                 console_manager.print(
                     LobsterTheme.create_panel(
                         f"[bold {LobsterTheme.PRIMARY_ORANGE}]Multi-Task Progress Monitor[/bold {LobsterTheme.PRIMARY_ORANGE}]",
-                        title=f"🔄 Progress ({active_count} active)",
+                        title=h("🔄 Progress ({count} active)").format(
+                            count=active_count
+                        ),
                     )
                 )
                 console_manager.print(operations_panel)
@@ -2353,7 +2470,7 @@ when they are started by agents or analysis workflows.
 [grey50]Multi-task operations will appear here when active.[/grey50]"""
 
                 info_panel = LobsterTheme.create_panel(
-                    info_text, title="🔄 Progress Monitor"
+                    info_text, title=h("🔄 Progress Monitor")
                 )
                 console_manager.print(info_panel)
 
@@ -2381,10 +2498,15 @@ when they are started by agents or analysis workflows.
                     output,
                     [
                         alert_block(
-                            f"Unknown clear type: {subsubcommand}", level="warning"
+                            h("Unknown clear type: {value}").format(
+                                value=subsubcommand
+                            ),
+                            level="warning",
                         ),
                         section_block(
-                            body="Available: /metadata clear, /metadata clear exports, /metadata clear all"
+                            body=h(
+                                "Available: /metadata clear, /metadata clear exports, /metadata clear all"
+                            )
                         ),
                     ],
                 )
@@ -2412,11 +2534,15 @@ when they are started by agents or analysis workflows.
                 output,
                 [
                     alert_block(
-                        f"Unknown metadata subcommand: {subcommand}",
+                        h("Unknown metadata subcommand: {value}").format(
+                            value=subcommand
+                        ),
                         level="warning",
                     ),
                     section_block(
-                        body="Available: publications, samples, workspace, exports, list, clear"
+                        body=h(
+                            "Available: publications, samples, workspace, exports, list, clear"
+                        )
                     ),
                 ],
             )
@@ -2428,7 +2554,9 @@ when they are started by agents or analysis workflows.
     elif cmd == "/tree":
         if _is_protocol_output(output):
             output.print(
-                "Tree rendering is not available in Go TUI. Use /files for structured listing.",
+                h(
+                    "Tree rendering is not available in Go TUI. Use /files for structured listing."
+                ),
                 style="info",
             )
             return None
@@ -2438,13 +2566,15 @@ when they are started by agents or analysis workflows.
             # Show current directory tree
             current_tree = create_file_tree(
                 root_path=current_directory,
-                title=f"Current Directory: {current_directory.name}",
+                title=h("Current Directory: {name}").format(
+                    name=current_directory.name
+                ),
                 show_hidden=False,
                 max_depth=3,
             )
 
             tree_panel = LobsterTheme.create_panel(
-                current_tree, title="📁 Directory Tree"
+                current_tree, title=h("📁 Directory Tree")
             )
             console_manager.print(tree_panel)
 
@@ -2459,7 +2589,7 @@ when they are started by agents or analysis workflows.
                 workspace_tree = create_workspace_tree(workspace_path)
 
                 workspace_panel = LobsterTheme.create_panel(
-                    workspace_tree, title="🦞 Workspace Tree"
+                    workspace_tree, title=h("🦞 Workspace Tree")
                 )
                 console_manager.print(workspace_panel)
 
@@ -2502,11 +2632,13 @@ when they are started by agents or analysis workflows.
                 output,
                 [
                     alert_block(
-                        f"Unknown workspace subcommand: {subcommand}",
+                        h("Unknown workspace subcommand: {value}").format(
+                            value=subcommand
+                        ),
                         level="warning",
                     ),
                     section_block(
-                        body="Available: status, list, info, load, remove, save"
+                        body=h("Available: status, list, info, load, remove, save")
                     ),
                 ],
             )
@@ -2544,10 +2676,11 @@ when they are started by agents or analysis workflows.
                         output,
                         [
                             alert_block(
-                                f"Unknown queue type: {parts[2]}", level="warning"
+                                h("Unknown queue type: {value}").format(value=parts[2]),
+                                level="warning",
                             ),
                             section_block(
-                                body="Usage: /queue list [download|publication]"
+                                body=h("Usage: /queue list [download|publication]")
                             ),
                         ],
                     )
@@ -2567,9 +2700,10 @@ when they are started by agents or analysis workflows.
                         output,
                         [
                             alert_block(
-                                f"Unknown queue type: {parts[2]}", level="warning"
+                                h("Unknown queue type: {value}").format(value=parts[2]),
+                                level="warning",
                             ),
-                            section_block(body="Usage: /queue clear [download|all]"),
+                            section_block(body=h("Usage: /queue clear [download|all]")),
                         ],
                     )
                     return None
@@ -2588,9 +2722,12 @@ when they are started by agents or analysis workflows.
                 output,
                 [
                     alert_block(
-                        f"Unknown queue subcommand: {subcommand}", level="warning"
+                        h("Unknown queue subcommand: {value}").format(value=subcommand),
+                        level="warning",
                     ),
-                    section_block(body="Available: load, list, clear, export, import"),
+                    section_block(
+                        body=h("Available: load, list, clear, export, import")
+                    ),
                 ],
             )
             return None
@@ -2647,10 +2784,12 @@ when they are started by agents or analysis workflows.
                 output,
                 [
                     alert_block(
-                        f"Unknown pipeline subcommand: {subcommand}",
+                        h("Unknown pipeline subcommand: {value}").format(
+                            value=subcommand
+                        ),
                         level="warning",
                     ),
-                    section_block(body="Available: export, list, run, info"),
+                    section_block(body=h("Available: export, list, run, info")),
                 ],
             )
             return None
@@ -2677,7 +2816,7 @@ when they are started by agents or analysis workflows.
             _render_structured_output(
                 output,
                 _build_open_blocks(
-                    message="/open: missing file or folder argument",
+                    message=h("/open: missing file or folder argument"),
                     level="error",
                     include_usage=True,
                 ),
@@ -2698,7 +2837,9 @@ when they are started by agents or analysis workflows.
             _render_structured_output(
                 output,
                 _build_open_blocks(
-                    message=f"/open security error: {resolved.error}",
+                    message=h("/open security error: {error}").format(
+                        error=resolved.error
+                    ),
                     level="error",
                 ),
             )
@@ -2710,7 +2851,9 @@ when they are started by agents or analysis workflows.
             _render_structured_output(
                 output,
                 _build_open_blocks(
-                    message=f"/open: '{file_or_folder}': No such file or folder",
+                    message=h("/open: '{path}': No such file or folder").format(
+                        path=file_or_folder
+                    ),
                     level="error",
                     target=str(target_path),
                 ),
@@ -2733,7 +2876,7 @@ when they are started by agents or analysis workflows.
         _render_structured_output(
             output,
             _build_open_blocks(
-                message=f"/open failed: {message}",
+                message=h("/open failed: {error}").format(error=message),
                 level="error",
                 target=str(target_path),
             ),
@@ -2795,17 +2938,22 @@ when they are started by agents or analysis workflows.
                 save = "--save" in parts
                 return config_model_switch(client, output, model_name, save)
         else:
-            output.print(f"Unknown config subcommand: {parts[1]}", style="warning")
-            output.print("Available: show, provider, model", style="info")
+            output.print(
+                h("Unknown config subcommand: {value}").format(value=parts[1]),
+                style="warning",
+            )
+            output.print(h("Available: show, provider, model"), style="info")
             return None
 
     elif cmd.startswith("/vector-search"):
         # Parse: /vector-search "query" [--top-k N]
         raw_args = cmd[len("/vector-search") :].strip()
         if not raw_args:
-            output.print("Usage: /vector-search <query> [--top-k N]", style="info")
-            output.print('Example: /vector-search "glioblastoma"', style="dim")
-            output.print("Example: /vector-search CD8+ T cell --top-k 10", style="dim")
+            output.print(h("Usage: /vector-search <query> [--top-k N]"), style="info")
+            output.print(h('Example: /vector-search "glioblastoma"'), style="dim")
+            output.print(
+                h("Example: /vector-search CD8+ T cell --top-k 10"), style="dim"
+            )
             return None
 
         # Parse --top-k flag
@@ -2817,13 +2965,13 @@ when they are started by agents or analysis workflows.
                 vs_top_k = int(parts_vs[1].strip().split()[0])
             except (ValueError, IndexError):
                 output.print(
-                    "Invalid --top-k value, using default (5)", style="warning"
+                    h("Invalid --top-k value, using default (5)"), style="warning"
                 )
 
         # Strip surrounding quotes from query
         query_text = raw_args.strip().strip("\"'")
         if not query_text:
-            output.print("Please provide a search query.", style="warning")
+            output.print(h("Please provide a search query."), style="warning")
             return None
 
         try:
@@ -2840,7 +2988,7 @@ when they are started by agents or analysis workflows.
             output.print(str(e), style="error")
             return None
         except Exception as e:
-            output.print(f"Vector search error: {e}", style="error")
+            output.print(h("Vector search error: {e}").format(e=e), style="error")
             return None
 
     elif cmd == "/clear":
@@ -2852,14 +3000,14 @@ when they are started by agents or analysis workflows.
     elif cmd == "/reset":
         # Reset conversation state
         client.reset()
-        output.print("Conversation reset", style="success")
-        output.print("Messages cleared. Data and modalities retained.", style="dim")
+        output.print(h("Conversation reset"), style="success")
+        output.print(h("Messages cleared. Data and modalities retained."), style="dim")
         return "Conversation reset"
 
     elif cmd == "/exit":
         if _is_protocol_output(output):
             # Non-interactive protocol mode cannot use direct Rich prompts.
-            if output.confirm("exit?"):
+            if output.confirm(h("exit?")):
                 if hasattr(client, "_save_session_json"):
                     try:
                         client._save_session_json()
@@ -2868,7 +3016,7 @@ when they are started by agents or analysis workflows.
                 raise KeyboardInterrupt
             return None
 
-        if Confirm.ask("[dim]exit?[/dim]"):
+        if Confirm.ask(f"[dim]{h('exit?')}[/dim]"):
             if hasattr(client, "_save_session_json"):
                 try:
                     client._save_session_json()
@@ -2879,7 +3027,7 @@ when they are started by agents or analysis workflows.
             # Display session ID for continuity
             console.print(
                 f"[dim]Session: {client.session_id} "
-                f"(use --session-id latest to continue)[/dim]"
+                f"{h('(use --session-id latest to continue)')}[/dim]"
             )
 
             console.print(
@@ -2898,7 +3046,7 @@ when they are started by agents or analysis workflows.
             raise KeyboardInterrupt
 
     else:
-        output.print(f"Unknown command: {cmd}", style="error")
+        output.print(h("Unknown command: {cmd}").format(cmd=cmd), style="error")
 
 
 # ============================================================================
@@ -2926,7 +3074,7 @@ def _command_save(client, output, force: bool = False) -> Optional[str]:
     saveable = getattr(data_manager, "has_saveable_modalities", None)
     if not (saveable() if callable(saveable) else len(data_manager.modalities)):
         _render_structured_output(
-            output, [section_block(body="Nothing to save (no data loaded)")]
+            output, [section_block(body=h("Nothing to save (no data loaded)"))]
         )
         return "No data to save"
 
@@ -2949,7 +3097,7 @@ def _command_restore(client, output, pattern: str = "recent") -> Optional[str]:
     if not hasattr(client.data_manager, "restore_session"):
         _render_structured_output(
             output,
-            [alert_block("Restore not available for this client", level="error")],
+            [alert_block(h("Restore not available for this client"), level="error")],
         )
         return None
 
@@ -2963,7 +3111,7 @@ def _command_restore(client, output, pattern: str = "recent") -> Optional[str]:
         return f"Restored {len(restored)} datasets"
     except Exception as e:
         _render_structured_output(
-            output, [alert_block(f"Restore failed: {e}", level="error")]
+            output, [alert_block(h("Restore failed: {e}").format(e=e), level="error")]
         )
         return None
 
@@ -3023,10 +3171,11 @@ def _dispatch_command(cmd_str: str, client, output):
     # --- Data & files ---
 
     if base == "help":
-        _render_structured_output(
-            output,
-            _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
-        )
+        with _blocks_lang(output):
+            _render_structured_output(
+                output,
+                _build_help_blocks(protocol_friendly=_is_protocol_output(output)),
+            )
         return None
 
     if base == "data":
@@ -3040,7 +3189,7 @@ def _dispatch_command(cmd_str: str, client, output):
         if args:
             filename = f"{sub} {args}"
         if not filename:
-            output.print("Usage: read <file|pattern>", style="error")
+            output.print(h("Usage: read <file|pattern>"), style="error")
             return None
         current_directory = Path(client.workspace_path)
         return file_read(client, output, filename, current_directory, PathResolver)
@@ -3119,11 +3268,11 @@ def _dispatch_command(cmd_str: str, client, output):
             if not prov or not prov.activities:
                 # No provenance - provide guidance
                 output.print(
-                    "Pipeline export requires a session with analysis history.",
+                    h("Pipeline export requires a session with analysis history."),
                     style="error",
                 )
                 output.print(
-                    "Usage: lobster command 'pipeline export' --session-id <id>",
+                    h("Usage: lobster command 'pipeline export' --session-id <id>"),
                     style="info",
                 )
 
@@ -3174,11 +3323,13 @@ def _dispatch_command(cmd_str: str, client, output):
 
             if not prov or not prov.activities:
                 output.print(
-                    "Pipeline run requires a session with analysis history.",
+                    h("Pipeline run requires a session with analysis history."),
                     style="error",
                 )
                 output.print(
-                    "Usage: lobster command 'pipeline run <notebook>' --session-id <id>",
+                    h(
+                        "Usage: lobster command 'pipeline run <notebook>' --session-id <id>"
+                    ),
                     style="info",
                 )
                 raise _CommandFailed(
@@ -3244,7 +3395,7 @@ def _dispatch_command(cmd_str: str, client, output):
                 query_text = f"{sub} {args}"
         query_text = query_text.strip().strip("\"'")
         if not query_text:
-            output.print("Usage: vector-search <query> [--top-k N]", style="error")
+            output.print(h("Usage: vector-search <query> [--top-k N]"), style="error")
             return None
 
         # Parse --top-k flag
@@ -3268,7 +3419,7 @@ def _dispatch_command(cmd_str: str, client, output):
             output.print(str(e), style="error")
             return None
         except Exception as e:
-            output.print(f"Vector search error: {e}", style="error")
+            output.print(h("Vector search error: {e}").format(e=e), style="error")
             return None
 
     else:
@@ -3289,8 +3440,10 @@ def _dispatch_command(cmd_str: str, client, output):
             "config [provider list|model list]",
             "vector-search <query>",
         ]
-        output.print(f"Unknown command: {cmd_str}", style="error")
-        output.print("Available commands: " + ", ".join(available), style="info")
+        output.print(
+            h("Unknown command: {cmd_str}").format(cmd_str=cmd_str), style="error"
+        )
+        output.print(h("Available commands: ") + ", ".join(available), style="info")
         return _UNKNOWN_COMMAND
 
 
@@ -3299,12 +3452,24 @@ def _dispatch_command(cmd_str: str, client, output):
 # ============================================================================
 
 
-def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
-    """Metadata command dispatcher (extracted from cli.py)."""
+def metadata_command_impl(
+    subcommand=None, workspace=None, status_filter=None, target=None
+):
+    """Metadata command dispatcher (extracted from cli.py).
+
+    ``target`` is the optional second word, used only by ``clear``
+    (``exports`` or ``all``).
+    """
+    import sys
+
     import typer
+    from rich.markup import escape
 
     from lobster.cli_internal.commands import (
         ConsoleOutputAdapter,
+        metadata_clear,
+        metadata_clear_all,
+        metadata_clear_exports,
         metadata_exports,
         metadata_list,
         metadata_overview,
@@ -3317,6 +3482,70 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
 
     output = ConsoleOutputAdapter(console)
 
+    # Each accepted word and the command it runs; used for both the usage
+    # check and the dispatch below.
+    commands = {
+        None: "overview",
+        "overview": "overview",
+        "publications": "publications",
+        "pub": "publications",
+        "samples": "samples",
+        "sample": "samples",
+        "workspace": "workspace",
+        "ws": "workspace",
+        "exports": "exports",
+        "export": "exports",
+        "list": "list",
+        "clear": "clear",
+    }
+    command = commands.get(subcommand)
+
+    # Usage errors exit 2, before the workspace is opened.
+    if command is None:
+        output.print(
+            h("Unknown subcommand: {value}").format(value=subcommand), style="error"
+        )
+        output.print(
+            h(
+                "Available: overview, publications, samples, workspace, exports, list, clear"
+            ),
+            style="info",
+        )
+        raise typer.Exit(2)
+    # Only `clear` takes a second word.
+    if target is not None and command != "clear":
+        output.print(
+            h("Unknown subcommand: {value}").format(value=f"{subcommand} {target}"),
+            style="error",
+        )
+        output.print(
+            h(
+                "Available: overview, publications, samples, workspace, exports, list, clear"
+            ),
+            style="info",
+        )
+        raise typer.Exit(2)
+    if command == "clear" and target not in (None, "exports", "all"):
+        output.print(
+            h("Unknown subcommand: {value}").format(value=f"clear {target}"),
+            style="error",
+        )
+        output.print(
+            escape(h("Usage: lobster metadata clear [exports|all]")), style="info"
+        )
+        raise typer.Exit(2)
+    # Clearing deletes files, so it needs a person at a terminal to answer the
+    # confirmation. Piped input (e.g. `yes |`) is refused before anything runs.
+    if command == "clear" and not sys.stdin.isatty():
+        output.print(
+            h(
+                "lobster metadata clear deletes files and asks for confirmation first. Run it in a terminal."
+            ),
+            style="error",
+        )
+        output.print(h("Nothing was deleted."), style="info")
+        raise typer.Exit(1)
+
     try:
         # Resolve workspace
         workspace_path = resolve_workspace(workspace, create=False)
@@ -3325,44 +3554,31 @@ def metadata_command_impl(subcommand=None, workspace=None, status_filter=None):
         client = AgentClient(workspace_path=str(workspace_path))
 
         # Route to appropriate command
-        if subcommand is None:
+        if command == "overview":
             metadata_overview(client, output)
-        elif subcommand in ("publications", "pub"):
+        elif command == "publications":
             metadata_publications(client, output, status_filter=status_filter)
-        elif subcommand in ("samples", "sample"):
+        elif command == "samples":
             metadata_samples(client, output)
-        elif subcommand in ("workspace", "ws"):
+        elif command == "workspace":
             metadata_workspace(client, output)
-        elif subcommand in ("exports", "export"):
+        elif command == "exports":
             metadata_exports(client, output)
-        elif subcommand == "list":
+        elif command == "list":
             metadata_list(client, output)
-        elif subcommand == "clear":
-            output.print("Usage: lobster metadata clear [exports|all]", style="warning")
-            output.print(
-                "  lobster metadata clear         # Clear metadata (memory + workspace/metadata/)",
-                style="info",
-            )
-            output.print(
-                "  lobster metadata clear exports # Clear export files only",
-                style="info",
-            )
-            output.print(
-                "  lobster metadata clear all     # Clear ALL metadata",
-                style="info",
-            )
-        else:
-            output.print(f"Unknown subcommand: {subcommand}", style="error")
-            output.print(
-                "Available: overview, publications, samples, workspace, exports, list, clear",
-                style="info",
-            )
-            raise typer.Exit(1)
+        else:  # clear
+            # Each clear previews and asks for confirmation before deleting.
+            if target == "exports":
+                metadata_clear_exports(client, output)
+            elif target == "all":
+                metadata_clear_all(client, output)
+            else:
+                metadata_clear(client, output)
 
     except typer.Exit:
         raise
     except Exception as e:
-        output.print(f"Error: {e}", style="error")
+        output.print(h("Error: {e}").format(e=e), style="error")
         raise typer.Exit(1)
 
 
@@ -3373,7 +3589,23 @@ def command_cmd_impl(
     json_output: bool = False,
     help_profile: str = "default",
 ):
-    """Execute workspace commands without an LLM session (extracted from cli.py)."""
+    """Execute workspace commands without an LLM session (extracted from cli.py).
+
+    JSON output is machine-readable, so it always renders in English.
+    """
+    if json_output:
+        with use_lang("en"):
+            return _command_cmd_impl(cmd, workspace, session_id, True, help_profile)
+    return _command_cmd_impl(cmd, workspace, session_id, False, help_profile)
+
+
+def _command_cmd_impl(
+    cmd: str,
+    workspace=None,
+    session_id=None,
+    json_output: bool = False,
+    help_profile: str = "default",
+):
     import json
     import sys
 
@@ -3401,10 +3633,12 @@ def command_cmd_impl(
                 )
             )
         else:
-            output.print("No command specified.", style="error")
+            output.print(h("No command specified."), style="error")
         raise typer.Exit(1)
 
-    original_console_file = console.file
+    # Save the explicit stream (None means "follow sys.stdout"). Reading
+    # console.file would pin whatever sys.stdout is right now.
+    original_console_file = getattr(console, "_file", None)
 
     # In JSON mode, redirect Rich console to stderr
     if json_output:
@@ -3445,16 +3679,18 @@ def command_cmd_impl(
                         session_dirs[0].stat().st_mtime
                     )
                     output.print(
-                        f"Using session: {resolved_session_id} "
-                        f"(last activity: {last_activity.strftime('%Y-%m-%d %H:%M')})",
+                        h("Using session: {session_id} (last activity: {time})").format(
+                            session_id=resolved_session_id,
+                            time=last_activity.strftime("%Y-%m-%d %H:%M"),
+                        ),
                         style="info",
                     )
 
             # Explicit latest request must resolve to an existing session.
             if session_id == "latest" and not resolved_session_id:
-                output.print("No sessions found in workspace.", style="error")
+                output.print(h("No sessions found in workspace."), style="error")
                 output.print(
-                    "Create one with: lobster query '...' --session-id <name>",
+                    h("Create one with: lobster query '...' --session-id <name>"),
                     style="info",
                 )
                 raise typer.Exit(1)
@@ -3467,12 +3703,13 @@ def command_cmd_impl(
             runtime_output = output
 
         if base_cmd == "help" and help_profile == "query":
-            _render_structured_output(
-                runtime_output,
-                _build_query_help_blocks(
-                    protocol_friendly=_is_protocol_output(runtime_output)
-                ),
-            )
+            with _blocks_lang(runtime_output):
+                _render_structured_output(
+                    runtime_output,
+                    _build_query_help_blocks(
+                        protocol_friendly=_is_protocol_output(runtime_output)
+                    ),
+                )
             result = None
         else:
             result = _dispatch_command(cmd_str, cmd_client, runtime_output)
@@ -3519,11 +3756,11 @@ def command_cmd_impl(
                 )
             )
         else:
-            output.print(f"Error: {e}", style="error")
+            output.print(h("Error: {e}").format(e=e), style="error")
         raise typer.Exit(1)
     finally:
         # Ensure global console state does not leak across command invocations/tests.
-        console.file = original_console_file
+        console._file = original_console_file
 
 
 def vector_search_cmd_impl(query_text: str, top_k=None, pretty: bool = True):
@@ -3542,49 +3779,49 @@ def vector_search_cmd_impl(query_text: str, top_k=None, pretty: bool = True):
         typer.echo(str(e), err=True)
         raise typer.Exit(1)
     except Exception as e:
-        typer.echo(f"Vector search error: {e}", err=True)
+        typer.echo(h("Vector search error: {e}").format(e=e), err=True)
         raise typer.Exit(1)
 
 
 def serve_impl(
     port: int = 8000,
-    host: str = "0.0.0.0",  # nosec B104 - API server; bind address is set with --host
+    host: str = "127.0.0.1",
+    token: Optional[str] = None,
 ):
-    """Start the agent system as an API server (extracted from cli.py)."""
-    from typing import Optional
+    """Start the agent system as an API server (extracted from cli.py).
 
+    Non-loopback binds require a bearer token from ``token`` or
+    ``LOBSTER_SERVE_TOKEN``.
+    """
     import typer
     import uvicorn
-    from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel
 
-    from lobster.cli_internal.commands.heavy.session_infra import init_client
-
-    # Create FastAPI app
-    api = FastAPI(
-        title="Lobster Agent API",
-        description="🦞 Multi-Agent Bioinformatics System by Omics-OS",
-        version="2.0",
+    from lobster.cli_internal.commands.heavy.serve_app import (
+        TOKEN_ENV_VAR,
+        build_serve_app,
+        is_loopback_host,
     )
 
-    class QueryRequest(BaseModel):
-        question: str
-        session_id: Optional[str] = None
-        stream: bool = False
+    token = token or os.environ.get(TOKEN_ENV_VAR) or None
+    if not is_loopback_host(host):
+        if token is None:
+            typer.echo(
+                h(
+                    "Error: serving on {host} needs a token. Set LOBSTER_SERVE_TOKEN or pass --token, or use the default --host 127.0.0.1."
+                ).format(host=host),
+                err=True,
+            )
+            raise typer.Exit(1)
+        typer.echo(
+            h(
+                "Warning: {host} is reachable from other machines. Every request must send 'Authorization: Bearer <token>'. The agent can run code and use your API keys."
+            ).format(host=host),
+            err=True,
+        )
 
-    @api.post("/query")
-    async def query_endpoint(request: QueryRequest):
-        try:
-            client = init_client()
-            result = client.query(request.question, stream=request.stream)
-            return result
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+    api = build_serve_app(host, token)
 
-    @api.get("/status")
-    async def status_endpoint():
-        client = init_client()
-        return client.get_status()
-
-    typer.echo(f"Starting Lobster API server on {host}:{port}")
+    typer.echo(
+        h("Starting Lobster API server on {host}:{port}").format(host=host, port=port)
+    )
     uvicorn.run(api, host=host, port=port)

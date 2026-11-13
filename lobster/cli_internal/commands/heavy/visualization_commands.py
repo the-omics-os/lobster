@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from lobster.core.client import AgentClient
 
 from lobster.cli_internal.commands.output_adapter import OutputAdapter
+from lobster.i18n import h
 from lobster.utils import open_path
 
 logger = logging.getLogger(__name__)
@@ -34,13 +35,15 @@ def _print_legacy_not_supported(names, output, where: str) -> None:
     """Say plainly that legacy plot files exist and are not supported here (read-only)."""
     if names is None:
         output.print(
-            "[yellow]⚠ Legacy plot files in plots/ could not be listed.[/yellow]",
+            h("[yellow]⚠ Legacy plot files in plots/ could not be listed.[/yellow]"),
             style="warning",
         )
     elif names:
         output.print(
-            f"[yellow]⚠ {len(names)} legacy plot file(s) in plots/ are not supported by "
-            f"{where} here; they are not included and stay unchanged.[/yellow]",
+            h(
+                "[yellow]⚠ {n} legacy plot file(s) in plots/ are not supported by "
+                "{where} here; they are not included and stay unchanged.[/yellow]"
+            ).format(n=len(names), where=where),
             style="warning",
         )
 
@@ -57,15 +60,22 @@ def _print_not_copied(data_manager, output) -> None:
         int(report.get("recorded_png_not_copied") or 0),
     )
     legacy_text = (
-        "legacy plot files could not be listed"
+        h("legacy plot files could not be listed")
         if legacy is None
-        else f"{int(legacy)} legacy plot file(s)"
+        else h("{n} legacy plot file(s)").format(n=int(legacy))
     )
     if any(missing) or legacy is None or legacy:
         output.print(
-            f"[yellow]⚠ Not copied: {missing[0]} figure revision(s), {missing[1]} HTML "
-            f"view(s), {missing[2]} recorded PNG(s), {legacy_text}. "
-            "See README.md 'Not copied'.[/yellow]",
+            h(
+                "[yellow]⚠ Not copied: {figures} figure revision(s), {views} HTML "
+                "view(s), {pngs} recorded PNG(s), {legacy_text}. "
+                "See README.md 'Not copied'.[/yellow]"
+            ).format(
+                figures=missing[0],
+                views=missing[1],
+                pngs=missing[2],
+                legacy_text=legacy_text,
+            ),
             style="warning",
         )
 
@@ -115,16 +125,18 @@ def export_data(
                 # Build progress message
                 items = []
                 if modality_count:
-                    items.append(f"{modality_count} dataset(s)")
+                    items.append(h("{n} dataset(s)").format(n=modality_count))
                 if plot_count:
-                    items.append(f"{plot_count} plot(s)")
+                    items.append(h("{n} plot(s)").format(n=plot_count))
 
                 # Use Rich progress if console is available
                 if console is not None:
                     export_stats = {"reused": 0, "saved": 0, "plots": 0}
 
                     with console.status(
-                        f"[bold cyan]Exporting {', '.join(items)}...[/bold cyan]",
+                        h("[bold cyan]Exporting {items}...[/bold cyan]").format(
+                            items=", ".join(items)
+                        ),
                         spinner="dots",
                     ) as status:
 
@@ -147,18 +159,24 @@ def export_data(
                         export_path = Path(export_path)
 
                     # Show summary
-                    output.print("[green]✓ Export complete:[/green]", style="success")
+                    output.print(
+                        h("[green]✓ Export complete:[/green]"), style="success"
+                    )
                     _print_not_copied(data_manager, output)
                     output.print(f"  [green]•[/green] {export_path.name}", style="info")
                     if export_stats["reused"] > 0:
                         output.print(
-                            f"  [dim]⚡ Reused {export_stats['reused']} cached file(s)[/dim]",
+                            h("  [dim]⚡ Reused {n} cached file(s)[/dim]").format(
+                                n=export_stats["reused"]
+                            ),
                             style="info",
                         )
                 else:
                     # Fallback: simple progress callback
                     output.print(
-                        f"[yellow]Exporting {', '.join(items)}...[/yellow]",
+                        h("[yellow]Exporting {items}...[/yellow]").format(
+                            items=", ".join(items)
+                        ),
                         style="info",
                     )
 
@@ -173,7 +191,9 @@ def export_data(
                     )
                     export_path = Path(export_path)
                     output.print(
-                        f"[green]✓ Session exported to:[/green] [grey74]{export_path}[/grey74]",
+                        h(
+                            "[green]✓ Session exported to:[/green] [grey74]{path}[/grey74]"
+                        ).format(path=export_path),
                         style="success",
                     )
                     _print_not_copied(data_manager, output)
@@ -182,12 +202,16 @@ def export_data(
                 if has_plots:
                     plot_count = saved_figures
                     output.print(
-                        f"[yellow]Exporting {plot_count} plot(s)...[/yellow]",
+                        h("[yellow]Exporting {n} plot(s)...[/yellow]").format(
+                            n=plot_count
+                        ),
                         style="info",
                     )
                 export_path = client.export_session()
                 output.print(
-                    f"[green]✓ Session exported to:[/green] [grey74]{export_path}[/grey74]",
+                    h(
+                        "[green]✓ Session exported to:[/green] [grey74]{path}[/grey74]"
+                    ).format(path=export_path),
                     style="success",
                 )
                 _print_legacy_not_supported(
@@ -196,18 +220,20 @@ def export_data(
         else:
             # For cloud client or other clients
             output.print(
-                "[yellow]Exporting session data and plots...[/yellow]", style="info"
+                h("[yellow]Exporting session data and plots...[/yellow]"), style="info"
             )
             export_path = client.export_session()
             output.print(
-                f"[green]✓ Session exported to:[/green] [grey74]{export_path}[/grey74]",
+                h(
+                    "[green]✓ Session exported to:[/green] [grey74]{path}[/grey74]"
+                ).format(path=export_path),
                 style="success",
             )
 
         return f"Session exported to: {export_path}"
 
     except Exception as e:
-        output.print(f"[red]Export failed: {e}[/red]", style="error")
+        output.print(h("[red]Export failed: {e}[/red]").format(e=e), style="error")
         logger.exception("Export error")
         return f"Export failed: {e}"
 
@@ -227,15 +253,15 @@ def plots_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
         history, stats, _ = client.data_manager.plot_manager.get_plot_history()
 
         if history:
-            output.print("\n[bold red]📊 Generated Plots[/bold red]\n", style="info")
+            output.print(h("\n[bold red]📊 Generated Plots[/bold red]\n"), style="info")
 
             table_data = {
-                "title": "🦞 Generated Plots",
+                "title": h("🦞 Generated Plots"),
                 "columns": [
                     {"name": "ID", "style": "bold white"},
-                    {"name": "Title", "style": "white"},
-                    {"name": "Source", "style": "grey74"},
-                    {"name": "Created", "style": "grey50"},
+                    {"name": h("Title"), "style": "white"},
+                    {"name": h("Source"), "style": "grey74"},
+                    {"name": h("Created"), "style": "grey50"},
                 ],
                 "rows": [],
             }
@@ -257,7 +283,7 @@ def plots_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
 
             # Add usage hint
             output.print(
-                "\n[grey50]Tip: Use /plot <ID> to open a specific plot[/grey50]",
+                h("\n[grey50]Tip: Use /plot <ID> to open a specific plot[/grey50]"),
                 style="info",
             )
             _print_legacy_not_supported(
@@ -278,19 +304,23 @@ def plots_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
                 from lobster.core.figures.errors import safe_reason
 
                 output.print(
-                    f"[yellow]⚠ Saved figures could not be read ({safe_reason(e)}).[/yellow]",
+                    h(
+                        "[yellow]⚠ Saved figures could not be read ({reason}).[/yellow]"
+                    ).format(reason=safe_reason(e)),
                     style="warning",
                 )
                 _print_legacy_not_supported(legacy, output, "/plot or /export")
                 return "Saved figures could not be read"
             if not saved and not legacy and legacy is not None:
-                output.print("[grey50]No plots generated yet[/grey50]", style="info")
+                output.print(h("[grey50]No plots generated yet[/grey50]"), style="info")
                 return "No plots available"
             if saved:
                 output.print(
-                    f"[grey50]No plots generated in this session; {figures} saved "
-                    f"figure(s), {saved} revision(s) in this workspace. Use /plot "
-                    "<figure ref or title> to open one.[/grey50]",
+                    h(
+                        "[grey50]No plots generated in this session; {figures} saved "
+                        "figure(s), {saved} revision(s) in this workspace. Use /plot "
+                        "<figure ref or title> to open one.[/grey50]"
+                    ).format(figures=figures, saved=saved),
                     style="info",
                 )
             _print_legacy_not_supported(legacy, output, "/plot or /export")
@@ -300,7 +330,10 @@ def plots_list(client: "AgentClient", output: OutputAdapter) -> Optional[str]:
             )
 
     except Exception as e:
-        output.print(f"[red]Failed to retrieve plot history: {e}[/red]", style="error")
+        output.print(
+            h("[red]Failed to retrieve plot history: {e}[/red]").format(e=e),
+            style="error",
+        )
         logger.exception("Plot list error")
         return None
 
@@ -354,11 +387,16 @@ def plot_show(
                 return f"Opened plots directory: {plots_dir}"
             else:
                 output.print(
-                    f"[red]Failed to open plots directory: {message}[/red]",
+                    h("[red]Failed to open plots directory: {message}[/red]").format(
+                        message=message
+                    ),
                     style="error",
                 )
                 output.print(
-                    f"[grey50]Plots directory: {plots_dir}[/grey50]", style="info"
+                    h("[grey50]Plots directory: {path}[/grey50]").format(
+                        path=plots_dir
+                    ),
+                    style="info",
                 )
                 return f"Failed to open plots directory: {message}"
 
@@ -368,8 +406,10 @@ def plot_show(
             legacy = _legacy_match(data_manager, plot_identifier)
             if legacy is _LEGACY_UNLISTED:
                 output.print(
-                    f"[yellow]{plot_identifier} is not among saved figures; legacy plot "
-                    "files could not be listed.[/yellow]",
+                    h(
+                        "[yellow]{ident} is not among saved figures; legacy plot "
+                        "files could not be listed.[/yellow]"
+                    ).format(ident=plot_identifier),
                     style="warning",
                 )
                 return (
@@ -378,15 +418,20 @@ def plot_show(
                 )
             if legacy:
                 output.print(
-                    f"[yellow]{legacy} is a legacy plot file in plots/ (read-only). "
-                    "Opening legacy plot files is not supported here; it is "
-                    "unchanged.[/yellow]",
+                    h(
+                        "[yellow]{name} is a legacy plot file in plots/ (read-only). "
+                        "Opening legacy plot files is not supported here; it is "
+                        "unchanged.[/yellow]"
+                    ).format(name=legacy),
                     style="warning",
                 )
                 return f"Legacy plot file not supported here: {legacy}"
-            output.print(f"[red]Plot not found: {plot_identifier}[/red]", style="error")
             output.print(
-                "[grey50]Use /plots to see available plot IDs and titles[/grey50]",
+                h("[red]Plot not found: {ident}[/red]").format(ident=plot_identifier),
+                style="error",
+            )
+            output.print(
+                h("[grey50]Use /plots to see available plot IDs and titles[/grey50]"),
                 style="info",
             )
             return f"Plot not found: {plot_identifier}"
@@ -394,13 +439,17 @@ def plot_show(
         view = ensure_html_rendition(store, ref)
         if view.status == "pending":
             output.print(
-                f"[yellow]Figure {ref}: save confirmation pending ({view.reason}).[/yellow]",
+                h(
+                    "[yellow]Figure {ref}: save confirmation pending ({reason}).[/yellow]"
+                ).format(ref=ref, reason=view.reason),
                 style="warning",
             )
             return f"Figure {ref}: save confirmation pending: {view.reason}"
         if view.status != "available":
             output.print(
-                f"[yellow]Figure {ref} is saved; its HTML view failed ({view.reason}).[/yellow]",
+                h(
+                    "[yellow]Figure {ref} is saved; its HTML view failed ({reason}).[/yellow]"
+                ).format(ref=ref, reason=view.reason),
                 style="warning",
             )
             return f"Figure {ref} saved; HTML view failed: {view.reason}"
@@ -409,16 +458,25 @@ def plot_show(
         success, message = open_path(html_path)
         if success:
             output.print(
-                f"[green]✓ Opened plot:[/green] [grey74]{title}[/grey74] [grey50]({ref})[/grey50]",
+                h(
+                    "[green]✓ Opened plot:[/green] [grey74]{title}[/grey74] [grey50]({ref})[/grey50]"
+                ).format(title=title, ref=ref),
                 style="success",
             )
             return f"Opened plot: {title} ({ref})"
-        output.print(f"[red]Failed to open plot: {message}[/red]", style="error")
-        output.print(f"[grey50]Plot file: {html_path}[/grey50]", style="info")
+        output.print(
+            h("[red]Failed to open plot: {message}[/red]").format(message=message),
+            style="error",
+        )
+        output.print(
+            h("[grey50]Plot file: {path}[/grey50]").format(path=html_path), style="info"
+        )
         return f"Failed to open plot: {message}"
 
     except Exception as e:
-        output.print(f"[red]Failed to show plot: {e}[/red]", style="error")
+        output.print(
+            h("[red]Failed to show plot: {e}[/red]").format(e=e), style="error"
+        )
         logger.exception("Plot show error")
         return None
 

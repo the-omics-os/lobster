@@ -18,11 +18,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from lobster.i18n import h, t
+
 logger = logging.getLogger(__name__)
 
 data_app = typer.Typer(
     name="data",
-    help="Data provenance and audit trail",
+    help=t("light.data.help"),
     no_args_is_help=True,
 )
 
@@ -53,6 +55,15 @@ def _strip_control_chars(text: str) -> str:
     return text
 
 
+def _kind_label(entity_type: str) -> str:
+    """Translate the entity kind word used inside messages (unknown words stay as-is)."""
+    if entity_type == "dataset":
+        return h("dataset")
+    if entity_type == "session":
+        return h("session")
+    return entity_type
+
+
 def _fetch_events(
     endpoint: str, token: str, entity_id: str, limit: int
 ) -> Optional[dict]:
@@ -74,32 +85,40 @@ def _fetch_events(
                 continue
             if resp.status_code == 401:
                 console.print(
-                    "[red]Authentication failed.[/red]\n"
-                    "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+                    h(
+                        "[red]Authentication failed.[/red]\n"
+                        "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+                    )
                 )
                 return None
             if resp.status_code == 403:
                 console.print(
-                    f"[red]Access denied for {entity_type[:-1]} {entity_id}.[/red]"
+                    h("[red]Access denied for {kind} {id}.[/red]").format(
+                        kind=_kind_label(entity_type[:-1]), id=entity_id
+                    )
                 )
                 return None
         except (httpx.ConnectError, httpx.TimeoutException):
-            console.print("[red]Cannot reach Omics-OS Cloud.[/red]")
+            console.print(h("[red]Cannot reach Omics-OS Cloud.[/red]"))
             return None
 
     console.print(
-        f"[yellow]No dataset or session found with ID: {entity_id}[/yellow]\n"
-        "[dim]Check the ID and ensure you have access.[/dim]"
+        h(
+            "[yellow]No dataset or session found with ID: {entity_id}[/yellow]\n"
+            "[dim]Check the ID and ensure you have access.[/dim]"
+        ).format(entity_id=entity_id)
     )
     return None
 
 
 @data_app.command()
 def events(
-    entity_id: str = typer.Argument(help="Dataset or session ID"),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max events to fetch (1-200)"),
+    entity_id: str = typer.Argument(help=h("Dataset or session ID")),
+    limit: int = typer.Option(
+        50, "--limit", "-n", help=h("Max events to fetch (1-200)")
+    ),
     format: str = typer.Option(
-        "table", "--format", "-f", help="Output format: table or csv"
+        "table", "--format", "-f", help=h("Output format: table or csv")
     ),
 ) -> None:
     """Show provenance events for a dataset or session.
@@ -111,16 +130,20 @@ def events(
 
     if not _validate_entity_id(entity_id):
         console.print(
-            "[red]Invalid entity ID.[/red]\n"
-            "[dim]Entity IDs must be alphanumeric (with hyphens/underscores), max 128 chars.[/dim]"
+            h(
+                "[red]Invalid entity ID.[/red]\n"
+                "[dim]Entity IDs must be alphanumeric (with hyphens/underscores), max 128 chars.[/dim]"
+            )
         )
         raise typer.Exit(1)
 
     api_key = get_api_key()
     if not api_key:
         console.print(
-            "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
-            "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            h(
+                "[yellow]Not connected to Omics-OS Cloud.[/yellow]\n"
+                "Run: [bold]lobster cloud login --api-key <key>[/bold]"
+            )
         )
         raise typer.Exit(0)
 
@@ -132,7 +155,11 @@ def events(
     try:
         validate_endpoint(endpoint)
     except EndpointPolicyError as e:
-        console.print(f"[red]Refusing to send token to disallowed endpoint: {e}[/red]")
+        console.print(
+            h("[red]Refusing to send token to disallowed endpoint: {e}[/red]").format(
+                e=e
+            )
+        )
         raise typer.Exit(1)
     data = _fetch_events(endpoint, api_key, entity_id, limit)
     if data is None:
@@ -142,7 +169,11 @@ def events(
     entity_type = data.get("_entity_type", "entity")
 
     if not events_list:
-        console.print(f"[dim]No events found for {entity_type} {entity_id}.[/dim]")
+        console.print(
+            h("[dim]No events found for {kind} {id}.[/dim]").format(
+                kind=_kind_label(entity_type), id=entity_id
+            )
+        )
         raise typer.Exit(0)
 
     if format == "csv":
@@ -158,13 +189,15 @@ def _print_table(
 ) -> None:
     """Render events as a Rich table."""
     table = Table(
-        title=f"Events for {entity_type} {entity_id} ({count} shown)",
+        title=h("Events for {kind} {id} ({count} shown)").format(
+            kind=_kind_label(entity_type), id=entity_id, count=count
+        ),
         border_style="cyan",
     )
-    table.add_column("Timestamp", style="dim", no_wrap=True)
-    table.add_column("Event Type", style="bold")
-    table.add_column("Actor", style="dim")
-    table.add_column("Details")
+    table.add_column(h("Timestamp"), style="dim", no_wrap=True)
+    table.add_column(h("Event Type"), style="bold")
+    table.add_column(h("Actor"), style="dim")
+    table.add_column(h("Details"))
 
     for event in events_list:
         timestamp = event.get("timestamp", "?")

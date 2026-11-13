@@ -5,6 +5,11 @@ This stateless service wraps sgkit for performing GWAS on genomic data,
 following the Lobster 3-tuple pattern (AnnData, stats, IR).
 """
 
+import importlib.metadata
+import importlib.util
+import sys
+import types
+import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata
@@ -18,14 +23,75 @@ from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+def _import_sgkit():
+    """Import sgkit whether or not setuptools still ships ``pkg_resources``.
+
+    sgkit <= 0.9 runs ``from pkg_resources import DistributionNotFound,
+    get_distribution`` at import, only to read its own version. setuptools 81
+    deprecates ``pkg_resources`` (a warning on every start) and 82 removes it
+    (``import sgkit`` fails). sgkit 0.10 drops the import but pins numpy < 2.2.
+
+    With a real ``pkg_resources`` the deprecation warning is filtered for this
+    import. Without one, those two names are provided from
+    ``importlib.metadata`` for the duration of the import and removed again, so
+    no other code sees a stand-in ``pkg_resources``. If the import needs any
+    other ``pkg_resources`` name, ``ImportError(name="pkg_resources")`` is
+    raised.
+    """
+    try:
+        has_pkg_resources = importlib.util.find_spec("pkg_resources") is not None
+    except (ImportError, ValueError):
+        has_pkg_resources = False
+
+    if has_pkg_resources:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="pkg_resources is deprecated",
+                category=UserWarning,
+            )
+            import sgkit
+        return sgkit
+
+    class DistributionNotFound(Exception):
+        pass
+
+    def get_distribution(name):
+        try:
+            return types.SimpleNamespace(version=importlib.metadata.version(name))
+        except importlib.metadata.PackageNotFoundError as exc:
+            raise DistributionNotFound(name) from exc
+
+    stand_in = types.ModuleType("pkg_resources")
+    stand_in.DistributionNotFound = DistributionNotFound
+    stand_in.get_distribution = get_distribution
+    sys.modules["pkg_resources"] = stand_in
+    try:
+        import sgkit
+    except AttributeError as exc:
+        # Something in the import used a part of pkg_resources the stand-in
+        # lacks. Report it as the missing dependency it is, so GWAS degrades
+        # like any other broken optional install instead of crashing the import.
+        if getattr(exc, "obj", None) is not stand_in:
+            raise
+        raise ImportError(
+            f"sgkit needs pkg_resources.{exc.name}, which this setuptools "
+            "no longer provides",
+            name="pkg_resources",
+        ) from exc
+    finally:
+        if sys.modules.get("pkg_resources") is stand_in:
+            del sys.modules["pkg_resources"]
+    return sgkit
+
+
 # Optional sgkit dependency (install with: pip install sgkit)
 SGKIT_AVAILABLE = False
 sg = None
 
 try:
-    import sgkit as _sg
-
-    sg = _sg
+    sg = _import_sgkit()
     SGKIT_AVAILABLE = True
 except ImportError as exc:
     # Distinguish a deliberate opt-out from a broken install. Both used to be
@@ -36,8 +102,7 @@ except ImportError as exc:
     else:
         logger.warning(
             "sgkit is installed but failed to import (missing %r); GWAS tools "
-            "will be unavailable. Known cause: setuptools >=82 removed "
-            "pkg_resources, which sgkit imports at module load.",
+            "will be unavailable.",
             getattr(exc, "name", None),
             exc_info=True,
         )

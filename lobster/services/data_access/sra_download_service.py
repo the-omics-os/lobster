@@ -19,12 +19,12 @@ Key Features:
 
 Example Usage:
     ```python
-    from lobster.core.data_manager_v2 import DataManagerV2
+    from lobster.core.runtime.data_manager import DataManagerV2
     from lobster.tools.download_orchestrator import DownloadOrchestrator
     from lobster.services.data_access.sra_download_service import SRADownloadService
 
     # Initialize service
-    dm = DataManagerV2(workspace_dir="./workspace")
+    dm = DataManagerV2(workspace_path="./workspace")
     orchestrator = DownloadOrchestrator(dm)
     sra_service = SRADownloadService(dm)
     orchestrator.register_service(sra_service)

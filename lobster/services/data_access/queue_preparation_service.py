@@ -9,9 +9,9 @@ Example usage:
     >>> from lobster.services.data_access.queue_preparation_service import (
     ...     QueuePreparationService,
     ... )
-    >>> from lobster.core.data_manager_v2 import DataManagerV2
+    >>> from lobster.core.runtime.data_manager import DataManagerV2
     >>>
-    >>> dm = DataManagerV2(workspace_dir="./workspace")
+    >>> dm = DataManagerV2(workspace_path="./workspace")
     >>> service = QueuePreparationService(dm)
     >>> result = service.prepare("PXD063610")
     >>> print(result.queue_entry.entry_id)

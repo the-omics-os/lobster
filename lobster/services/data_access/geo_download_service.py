@@ -12,12 +12,12 @@ The wrapper handles:
 - Validating GEO-specific strategy parameters
 
 Example usage:
-    >>> from lobster.core.data_manager_v2 import DataManagerV2
+    >>> from lobster.core.runtime.data_manager import DataManagerV2
     >>> from lobster.tools.download_orchestrator import DownloadOrchestrator
     >>> from lobster.services.data_access.geo_download_service import GEODownloadService
     >>>
     >>> # Initialize orchestrator and register GEO service
-    >>> dm = DataManagerV2(workspace_dir="./workspace")
+    >>> dm = DataManagerV2(workspace_path="./workspace")
     >>> orchestrator = DownloadOrchestrator(dm)
     >>> geo_service = GEODownloadService(dm)
     >>> orchestrator.register_service(geo_service)

@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 	"github.com/the-omics-os/lobster-tui/internal/protocol"
 )
 
@@ -286,21 +287,21 @@ func (f inlineFormModel) View() string {
 			}
 
 		case formFieldConfirm:
-			yes := "Yes"
-			no := "No"
+			yes := i18n.P("Yes")
+			no := i18n.P("No")
 			if field.confirmed {
-				yes = cursorStyle.Render("> Yes")
-				no = "  No"
+				yes = cursorStyle.Render("> " + yes)
+				no = "  " + no
 			} else {
-				yes = "  Yes"
-				no = cursorStyle.Render("> No")
+				yes = "  " + yes
+				no = cursorStyle.Render("> " + no)
 			}
 			sb.WriteString("  " + yes + "  " + no + "\n")
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(descStyle.Render("enter: submit  tab: next  esc: cancel"))
+	sb.WriteString(descStyle.Render(i18n.P("enter: submit  tab: next  esc: cancel")))
 	return sb.String()
 }
 

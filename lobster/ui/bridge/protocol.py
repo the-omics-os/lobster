@@ -34,6 +34,7 @@ class MessageType(str, Enum):
     RESUME = "resume"
     READY = "ready"
     HEARTBEAT = "heartbeat"
+    SET_LANG = "set_lang"
 
     # Go -> Python
     INPUT = "input"

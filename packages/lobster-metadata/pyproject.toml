@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lobster-metadata"
-version = "1.2.2"
+version = "1.2.6"
 description = "Metadata assistant agent for Lobster AI - sample metadata and harmonization operations"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -32,7 +32,7 @@ dependencies = [
 
 [project.urls]
 "Homepage" = "https://www.omics-os.com"
-"Documentation" = "https://docs.omics-os.com"
+"Documentation" = "https://docs.omics-os.com/docs"
 "Source Code" = "https://github.com/the-omics-os/lobster"
 
 [project.optional-dependencies]

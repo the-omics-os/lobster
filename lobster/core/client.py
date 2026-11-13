@@ -693,6 +693,7 @@ class AgentClient(BaseClient):
             start_time = datetime.now()
             last_agent = None
             accumulated_text = ""
+            last_text_message_id = None
             seen_message_ids: set = set()
             seen_content_hashes: set = set()
             seen_compaction_signatures: set[tuple[str, Any, Any, Any]] = set()
@@ -825,6 +826,17 @@ class AgentClient(BaseClient):
                     # Specialist → agent_content (future UI lanes)
                     for frag in text_fragments:
                         if source == "supervisor":
+                            # A new supervisor message (e.g. after a tool
+                            # call) starts a new paragraph; fragments of the
+                            # same message are joined as-is.
+                            if (
+                                accumulated_text
+                                and message_id
+                                and last_text_message_id
+                                and message_id != last_text_message_id
+                            ):
+                                frag = "\n\n" + frag
+                            last_text_message_id = message_id
                             accumulated_text += frag
                             yield {
                                 "type": "content_delta",

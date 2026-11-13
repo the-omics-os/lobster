@@ -12,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+	"github.com/the-omics-os/lobster-tui/internal/i18n"
 )
 
 func init() {
@@ -193,10 +194,10 @@ func (s *SelectComponent) Mode() string     { return "overlay" }
 
 func (s *SelectComponent) KeyBindings() []key.Binding {
 	return []key.Binding{
-		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "navigate")),
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
-		key.NewBinding(key.WithKeys("1", "2", "3"), key.WithHelp("1-9", "direct")),
-		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel")),
+		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", i18n.P("navigate"))),
+		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", i18n.P("select"))),
+		key.NewBinding(key.WithKeys("1", "2", "3"), key.WithHelp("1-9", i18n.P("direct"))),
+		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", i18n.P("cancel"))),
 	}
 }
 

@@ -18,6 +18,7 @@ VALID_PROVIDERS: Final[List[str]] = [
     "openrouter",
     "omics-os",
     "nebius",
+    "ollama-cloud",
 ]
 
 # Valid agent configuration profiles
@@ -46,6 +47,7 @@ PROVIDER_DISPLAY_NAMES: Final[dict] = {
     "openrouter": "OpenRouter (600+ models)",
     "omics-os": "Omics-OS Cloud",
     "nebius": "Nebius AI Studio",
+    "ollama-cloud": "Ollama Cloud",
 }
 
 # Provider icons for UI. Single palette shared by every surface (status line,
@@ -61,6 +63,7 @@ PROVIDER_ICONS: Final[dict] = {
     "openrouter": "🔵",
     "omics-os": "🦞",
     "nebius": "🔹",
+    "ollama-cloud": "☁️",
 }
 
 PROVIDER_ICON_FALLBACK: Final[str] = "⚪"

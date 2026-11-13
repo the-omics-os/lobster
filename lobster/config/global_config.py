@@ -5,8 +5,8 @@ This module provides user-level configuration management that applies across
 all Lobster workspaces unless overridden by workspace-specific settings.
 
 Storage Location (platform-specific):
-- Linux:   ~/.config/lobster/providers.json
-- macOS:   ~/Library/Application Support/lobster/providers.json
+- Linux and macOS: $XDG_CONFIG_HOME/lobster/providers.json
+  (~/.config/lobster/providers.json when XDG_CONFIG_HOME is unset)
 - Windows: %APPDATA%\\lobster\\providers.json
 
 Priority Hierarchy:
@@ -284,6 +284,10 @@ class GlobalProviderConfig(ProviderConfigBase):
         description="Default OpenRouter model (e.g., 'anthropic/claude-sonnet-4-5', 'openai/gpt-4o')",
     )
 
+    ollama_cloud_default_model: Optional[str] = Field(
+        default=None, description="Ollama Cloud model"
+    )
+
     nebius_default_model: Optional[str] = Field(
         None,
         description="Default Nebius model (e.g., 'Qwen/Qwen3-30B-A3B-Instruct-2507')",
@@ -291,6 +295,11 @@ class GlobalProviderConfig(ProviderConfigBase):
 
     ollama_default_host: str = Field(
         "http://localhost:11434", description="Default Ollama server URL"
+    )
+
+    lang: Optional[str] = Field(
+        None,
+        description="UI language (en, zh) for all workspaces. A workspace lang wins.",
     )
 
     model_context_windows: Dict[str, int] = Field(
@@ -405,6 +414,7 @@ class GlobalProviderConfig(ProviderConfigBase):
         self.azure_default_model = None
         self.openrouter_default_model = None
         self.nebius_default_model = None
+        self.ollama_cloud_default_model = None
         self.ollama_default_host = "http://localhost:11434"
         self.model_context_windows = {}
         logger.info("Reset global config to defaults")

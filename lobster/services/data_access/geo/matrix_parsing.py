@@ -26,6 +26,7 @@ from lobster.core.exceptions import reraise_inference_refusal
 from lobster.services.data_access.geo.parser import ParseResult
 from lobster.services.data_access.geo.soft_download import pre_download_soft_file
 from lobster.utils.logger import get_logger
+from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
@@ -830,7 +831,9 @@ class MatrixParser:
             logger.info(f"Processing single expression file for {gsm_id}")
 
             filename = url.split("/")[-1]
-            local_path = self.service.cache_dir / f"{gsm_id}_expr_{filename}"
+            local_path = safe_download_path(
+                self.service.cache_dir, f"{gsm_id}_expr_{filename}"
+            )
 
             if not local_path.exists():
                 logger.info(f"Downloading expression file: {url}")
