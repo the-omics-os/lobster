@@ -759,7 +759,7 @@ func (m Model) viewInline() tea.View {
 	// declared mode — there is no overlay layer to composite onto.
 	if m.activeComponent != nil {
 		comp := m.activeComponent.Component
-		inlineView, panicked := safeView(comp, m.width, m.inlineComponentHeight())
+		inlineView, panicked := m.inlineQuestion(comp, m.inlineComponentHeight())
 		if panicked {
 			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
 			m.activeComponent = nil
@@ -2276,12 +2276,12 @@ func (m Model) layoutReservedRowsLegacy() int {
 	if m.activeComponent != nil {
 		if m.inline {
 			// In inline mode, all components render as inline blocks.
-			inlineView := m.activeComponent.Component.View(m.width, m.inlineComponentHeight())
+			inlineView, _ := m.inlineQuestion(m.activeComponent.Component, m.inlineComponentHeight())
 			if inlineView != "" {
 				rows += lineCount(inlineView)
 			}
 		} else if m.activeComponent.Component.Mode() == "inline" {
-			inlineView := m.activeComponent.Component.View(m.width, m.height)
+			inlineView, _ := m.inlineQuestion(m.activeComponent.Component, m.height)
 			if inlineView != "" {
 				rows += lineCount(inlineView)
 			}
@@ -2647,6 +2647,22 @@ func safeHandleMsg(comp biocomp.BioComponent, msg tea.Msg) (result *biocomp.Comp
 	}()
 	result, cmd = comp.HandleMsg(msg)
 	return result, cmd, false
+}
+
+// inlineQuestion draws a component inline: its screen, then its guide (a
+// short instruction and the key legend, see biocomp.Guide), all within
+// height. The screen gets the rows the guide doesn't need.
+func (m Model) inlineQuestion(comp biocomp.BioComponent, height int) (string, bool) {
+	guide := biocomp.Guide(comp, m.width, height)
+	budget := height
+	if guide != "" {
+		budget = max(height-lineCount(guide), 3)
+	}
+	view, panicked := safeView(comp, m.width, budget)
+	if panicked || view == "" || guide == "" {
+		return view, panicked
+	}
+	return view + "\n" + guide, false
 }
 
 // safeView wraps comp.View in a recover boundary. Returns empty string on panic.

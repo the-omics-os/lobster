@@ -427,3 +427,11 @@ func (c *Component) KeyBindings() []key.Binding {
 }
 
 func (c *Component) ChangeEvent() map[string]any { return nil }
+
+// Hint is the instruction under the screen (see biocomp.Guide).
+func (c *Component) Hint() string {
+	if c.browsing {
+		return biocomp.HintBrowse
+	}
+	return biocomp.HintSuggested
+}

@@ -823,12 +823,15 @@ func (c *SamplePlateComponent) View(width, height int) string {
 	if c.listOrder {
 		top = append(top, hang("", listOrderNote, width, messageStyle.Bold(true)))
 	}
+	if len(top) > 0 && biocomp.Roomy(height) {
+		top = append(top, "") // a gap between the question and the plate
+	}
 
 	below := []string{
 		"", // a gap between the plate and the lines about it
 		hang("", c.legend(), width, lipgloss.NewStyle()),
 		hang("", c.marks(), width, dimStyle),
-		hang("", c.countsLine(), width, dimStyle),
+		hang("", c.countsLine(), width, biocomp.StatStyle),
 	}
 	line, details := c.currentWell(width)
 	below = append(below, line)
@@ -901,6 +904,14 @@ func (c *SamplePlateComponent) KeyBindings() []key.Binding {
 }
 
 func (c *SamplePlateComponent) ChangeEvent() map[string]any { return nil }
+
+// Hint is the instruction under the screen (see biocomp.Guide).
+func (c *SamplePlateComponent) Hint() string {
+	if c.box.open {
+		return biocomp.HintReason
+	}
+	return biocomp.HintPlate
+}
 
 // Draft returns the assignments and reasons on screen in the reply's shape,
 // so a dashboard can tell whether they differ from the answer it recorded.

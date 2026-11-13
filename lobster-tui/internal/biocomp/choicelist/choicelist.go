@@ -538,12 +538,15 @@ func (c *Component) View(width, height int) string {
 	if c.details != "" {
 		top = append(top, hang("", c.details, width, dimStyle))
 	}
+	if biocomp.Roomy(height) {
+		top = append(top, "") // a gap between the question and the options
+	}
 	for j, o := range c.options {
 		top = append(top, c.optionLine(j, o, width))
 	}
 	top = append(top, "")
 
-	bottom := []string{"", hang("", c.summary(), width, dimStyle)}
+	bottom := []string{"", hang("", c.summary(), width, biocomp.StatStyle)}
 	if c.message != "" {
 		bottom = append(bottom, hang("", c.message, width, warnStyle))
 	}
@@ -552,6 +555,9 @@ func (c *Component) View(width, height int) string {
 	heights := make([]int, len(c.items))
 	for i := range c.items {
 		rows[i] = c.row(i, width)
+		if i < len(c.items)-1 && biocomp.Roomy(height) {
+			rows[i] += "\n" // a gap between items, so each reads as one block
+		}
 		heights[i] = lipgloss.Height(rows[i])
 	}
 	avail := height - lipgloss.Height(strings.Join(top, "\n")) - lipgloss.Height(strings.Join(bottom, "\n"))
@@ -683,6 +689,14 @@ func (c *Component) InitCmd() tea.Cmd            { return nil }
 func (c *Component) Name() string                { return "choice_list" }
 func (c *Component) Mode() string                { return "overlay" }
 func (c *Component) ChangeEvent() map[string]any { return nil }
+
+// Hint is the instruction under the screen (see biocomp.Guide).
+func (c *Component) Hint() string {
+	if c.box.open {
+		return biocomp.HintReason
+	}
+	return biocomp.HintPickEach
+}
 
 func (c *Component) KeyBindings() []key.Binding {
 	if c.box.open {

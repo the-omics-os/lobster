@@ -261,7 +261,7 @@ func (c *Component) View(width, height int) string {
 	}
 	top = append(top, "")
 
-	bottom := []string{"", dimStyle.Render(c.status())}
+	bottom := []string{"", biocomp.StatStyle.Render(c.status())}
 	if c.problem != "" {
 		bottom = append(bottom, hang("", c.problem, width, warnStyle))
 	}
@@ -390,6 +390,14 @@ func (c *Component) KeyBindings() []key.Binding {
 }
 
 func (c *Component) ChangeEvent() map[string]any { return nil }
+
+// Hint is the instruction under the screen (see biocomp.Guide).
+func (c *Component) Hint() string {
+	if c.single() {
+		return biocomp.HintPickOne
+	}
+	return biocomp.HintPickSome(c.min, c.max)
+}
 
 // Draft returns what is on screen in the reply's shape (the highlighted
 // option of a radio list, the ticked ones of a checklist), so a dashboard can

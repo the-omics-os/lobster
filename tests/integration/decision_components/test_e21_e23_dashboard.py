@@ -143,13 +143,14 @@ def test_e23_review_screen_shows_exactly_what_is_sent(start_tui, review8):
     tui.key("ctrl+s")
     shown = tui.wait_screen("This is exactly what will be sent")
     expected_lines = [
-        "Review before sending: Set up the comparison",
+        "Review before sending Set up the comparison",  # title, then the question
         f"1. {SOURCE} Author-supplied matrix (SRC-A)",
         f"2. {GROUPS} control (4): S01, S02, S03, S04 treated (4): S05, S06, S07, S08",
         "changed from the data: S08 (blank) → treated",
         f"3. {DIRECTION} treated compared with control (treated_vs_control)",
         f"4. {QC} Donor B (S02) → exclude · reason: {reason} Donor F (S06) → retain",
-        "enter send · b back",
+        "Check your answers, then press enter to send them.",  # the guide
+        "enter send",  # the key legend
     ]
     for line in expected_lines:
         assert line in shown, line

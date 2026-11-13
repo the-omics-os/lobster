@@ -465,6 +465,9 @@ func (c *Component) View(width, height int) string {
 		return c.reviewView(width, height)
 	}
 	top := []string{hang("", c.question, width, titleStyle)}
+	if biocomp.Roomy(height) {
+		top = append(top, "") // a gap between the question and the sections
+	}
 	for _, p := range c.problems {
 		top = append(top, hang("⚠ ", p, width, warnStyle))
 	}
@@ -481,7 +484,10 @@ func (c *Component) View(width, height int) string {
 	}
 	top = append(top, dimStyle.Render(strings.Repeat("─", max(width, 1))))
 
-	bottom := []string{dimStyle.Render(c.progress())}
+	bottom := []string{biocomp.StatStyle.Render(c.progress())}
+	if biocomp.Roomy(height) {
+		bottom = append([]string{""}, bottom...)
+	}
 	if c.message != "" {
 		bottom = append(bottom, hang("", c.message, width, warnStyle))
 	}
@@ -514,32 +520,42 @@ func (c *Component) sectionLine(i int, s *section, width int) string {
 }
 
 // reviewView shows the reply that enter will send, section by section, in
-// full, wrapped and scrollable.
+// full, wrapped and scrollable: a title, the question, a rule, then each
+// section's title with its answers indented under it, a gap between
+// sections. The keys are in the guide under the screen (biocomp.Guide).
 func (c *Component) reviewView(width, height int) string {
-	var content []string
-	content = append(content,
-		hang("", "Review before sending: "+c.question, width, titleStyle),
-		dimStyle.Width(max(width, 1)).Render("This is exactly what will be sent."),
-		"")
+	content := []string{
+		hang("", reviewTitle, width, activeStyle),
+		hang("", c.question, width, titleStyle),
+		hang("", reviewNote, width, dimStyle),
+		dimStyle.Render(strings.Repeat("─", max(width, 1))),
+	}
 	answers, _ := c.pending["answers"].(map[string]any)
 	for i, s := range c.sections {
-		content = append(content, hang(fmt.Sprintf("%d. ", i+1), s.Title, width, titleStyle))
+		content = append(content, "", hang(fmt.Sprintf("%d. ", i+1), s.Title, width, titleStyle))
 		answer, _ := answers[s.Key].(map[string]any)
 		for _, line := range describe(s.sectionData, answer) {
-			content = append(content, hang("     ", line, width, plainStyle))
+			content = append(content, hang("    ", line, width, plainStyle))
 		}
 	}
 	lines := strings.Split(strings.Join(content, "\n"), "\n")
 
-	avail := max(height-2, 1)
+	avail := max(height-1, 1)
+	if len(lines) <= avail {
+		return strings.Join(lines, "\n")
+	}
 	c.reviewOffset = min(max(c.reviewOffset, 0), max(len(lines)-avail, 0))
 	end := min(c.reviewOffset+avail, len(lines))
-	footer := fmt.Sprintf("enter send · b back · ↑/↓ scroll · lines %d–%d of %d",
-		c.reviewOffset+1, end, len(lines))
 	out := append([]string{}, lines[c.reviewOffset:end]...)
-	out = append(out, dimStyle.Render(strings.Repeat("─", max(width, 1))), hang("", footer, width, dimStyle))
-	return strings.Join(out, "\n")
+	where := fmt.Sprintf(reviewLines, c.reviewOffset+1, end, len(lines))
+	return strings.Join(append(out, biocomp.StatStyle.Render(where)), "\n")
 }
+
+const (
+	reviewTitle = "Review before sending"
+	reviewNote  = "This is exactly what will be sent."
+	reviewLines = "lines %d–%d of %d · ↑/↓ scroll"
+)
 
 func (c *Component) progress() string {
 	done, stales := 0, 0
@@ -597,6 +613,21 @@ func (c *Component) KeyBindings() []key.Binding {
 }
 
 func (c *Component) ChangeEvent() map[string]any { return nil }
+
+// Hint is the instruction under the screen (see biocomp.Guide): the review's,
+// the active section's own, or the dashboard's once everything is answered.
+func (c *Component) Hint() string {
+	if c.reviewing {
+		return biocomp.HintReview
+	}
+	if c.nextOpen() < 0 && c.sections[c.active].status == answered {
+		return biocomp.HintDashboardDone
+	}
+	if hint := biocomp.HintFor(c.child()); hint != "" {
+		return hint
+	}
+	return biocomp.HintDashboard
+}
 
 // ---------------------------------------------------------------------------
 // Per-component helpers: summaries for the section list, full descriptions

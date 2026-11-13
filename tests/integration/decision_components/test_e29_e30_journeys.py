@@ -125,7 +125,8 @@ def test_e30_dashboard_journey_with_review_screen(start_tui, any_dataset):
     tui.wait_screen("Every section is answered")
     tui.key("ctrl+s")
     review = tui.wait_screen("This is exactly what will be sent")
-    total = int(review.rsplit(" of ", 1)[1].split()[0])
+    # "lines a–b of N" is shown only when the review needs scrolling.
+    total = int(review.rsplit(" of ", 1)[1].split()[0]) if " of " in review else 0
     seen_lines = review
     for _ in range(total // 10 + 1):  # scroll through the whole review
         tui.key("pgdown")
