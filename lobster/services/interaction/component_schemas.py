@@ -592,11 +592,27 @@ class NumberField(_FieldBase):
     @classmethod
     def _check_bounds(cls, data: Any) -> Any:
         # Before-mode, so it runs ahead of _check_common's check of `default`.
+        # Compared as numbers: "10" and "9" written as text would compare as
+        # text, and "0" against 1 would crash. A bound that isn't a number at
+        # all is left to the field's own check, which names it.
         if isinstance(data, dict):
-            low, high = data.get("min"), data.get("max")
+            low, high = _as_number(data.get("min")), _as_number(data.get("max"))
             if low is not None and high is not None and low > high:
-                raise ValueError(f"min ({low}) is larger than max ({high})")
+                raise ValueError(
+                    f"min ({data['min']}) is larger than max ({data['max']})"
+                )
         return data
+
+
+def _as_number(value: Any) -> Optional[float]:
+    """``value`` as a number (from a number or numeric text), else None."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 class TextField(_FieldBase):
@@ -698,6 +714,20 @@ class FileSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     files: List[FileFingerprint] = Field(min_length=1)
+    folder: bool = Field(
+        default=False,
+        description="True when the files are the data/ folder watch (no "
+        "data_files named): a deleted file there is reported once, then "
+        "forgotten, so an unrelated deletion never blocks the answer",
+    )
+
+    @model_serializer(mode="wrap")
+    def _leave_out_named(self, handler: Any) -> Dict[str, Any]:
+        """A named-files snapshot stays {"files"}, as before."""
+        data = handler(self)
+        if not data.get("folder"):
+            data.pop("folder", None)
+        return data
 
 
 _CHUNK = 1024 * 1024
@@ -759,7 +789,7 @@ def watch_data_folder(workspace: Union[str, Path]) -> Optional[FileSnapshot]:
         ).files
         if _seen(entry) is not None
     ]
-    return FileSnapshot(files=readable) if readable else None
+    return FileSnapshot(files=readable, folder=True) if readable else None
 
 
 def _seen(entry: FileFingerprint) -> Optional[Tuple[Optional[str], Optional[str]]]:
@@ -1637,8 +1667,11 @@ def reask(
     field left out of ``submitted`` (an empty answer, a partial submit)
     keeps the supervisor's default, which is never shown as the user's,
     so then it is False. ``snapshot``, a fresh reading of the data files,
-    replaces the old fingerprints, except for a file that is gone, which
-    keeps its old one so the answer stays stale until the file is back.
+    replaces the old fingerprints, except for a file that is gone. A named
+    file that is gone keeps its old fingerprint, so the answer stays stale
+    until the file is back (the decision is about it). A gone file in the
+    data/ folder watch is dropped: it was reported once, and an unrelated
+    deletion must not block the answer forever.
     """
     fields = request.fields
     prefilled = request.prefilled_from_answer
@@ -1661,9 +1694,16 @@ def reask(
         fresh = {
             entry.path: entry for entry in snapshot.files if _seen(entry) is not None
         }
-        update["snapshot"] = FileSnapshot(
-            files=[fresh.get(entry.path, entry) for entry in request.snapshot.files]
-        )
+        old = request.snapshot
+        if old.folder:
+            kept = [fresh[entry.path] for entry in old.files if entry.path in fresh]
+            update["snapshot"] = (
+                old.model_copy(update={"files": kept}) if kept else None
+            )
+        else:
+            update["snapshot"] = old.model_copy(
+                update={"files": [fresh.get(e.path, e) for e in old.files]}
+            )
     return request.model_copy(update=update)
 
 
@@ -1736,11 +1776,13 @@ def reread_items(
     update: Dict[str, Any] = {"fields": fields, "problems": problems}
     if unreadable and before is not None and request.snapshot is not None:
         old = {entry.path: entry for entry in before.files}
-        update["snapshot"] = FileSnapshot(
-            files=[
-                old.get(entry.path, entry) if entry.path in unreadable else entry
-                for entry in request.snapshot.files
-            ]
+        update["snapshot"] = request.snapshot.model_copy(
+            update={
+                "files": [
+                    old.get(entry.path, entry) if entry.path in unreadable else entry
+                    for entry in request.snapshot.files
+                ]
+            }
         )
     return request.model_copy(update=update)
 

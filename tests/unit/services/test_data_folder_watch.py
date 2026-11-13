@@ -120,3 +120,59 @@ def test_a_named_file_is_read_again_in_full(workspace):
     assert _changed_files(asked, schemas.refingerprint(asked, workspace)) == [
         "data/layout.csv"
     ]
+
+
+# --- a deleted file in the folder watch is reported once, then forgotten ----
+
+
+def test_the_folder_watch_is_marked_and_named_files_are_not(workspace):
+    assert watch_data_folder(workspace).folder is True
+    named = fingerprint(["data/layout.csv"], workspace)
+    assert named.folder is False
+    assert "folder" not in named.model_dump()  # the wire is unchanged
+
+
+def test_a_deleted_unrelated_file_blocks_the_answer_only_once(workspace):
+    """Review: deleting old_notes.txt made every answer stale, forever."""
+    from lobster.services.interaction.component_schemas import (
+        DecisionRequest,
+        reask,
+        refingerprint,
+    )
+
+    (workspace / "data" / "old_notes.txt").write_text("old\n")
+    request = DecisionRequest(
+        question="Which source?",
+        fields=[{"key": "s", "type": "choice", "options": ["A", "B"]}],
+        snapshot=watch_data_folder(workspace),
+    )
+    (workspace / "data" / "old_notes.txt").unlink()
+    now = refingerprint(request.snapshot, workspace)
+    assert _changed_files(request.snapshot, now) == ["data/old_notes.txt"]
+    again = reask(request, [], {"s": {"id": "A"}}, snapshot=now)
+    assert "data/old_notes.txt" not in [e.path for e in again.snapshot.files]
+    assert (
+        _changed_files(again.snapshot, refingerprint(again.snapshot, workspace)) == []
+    )
+
+
+def test_a_deleted_named_file_still_stays_stale(workspace):
+    """P-11: the decision is about a named file, so it stays stale until back."""
+    from lobster.services.interaction.component_schemas import (
+        DecisionRequest,
+        reask,
+        refingerprint,
+    )
+
+    request = DecisionRequest(
+        question="Which source?",
+        fields=[{"key": "s", "type": "choice", "options": ["A", "B"]}],
+        snapshot=fingerprint(["data/layout.csv"], workspace),
+    )
+    (workspace / "data" / "layout.csv").unlink()
+    again = reask(
+        request, [], None, snapshot=refingerprint(request.snapshot, workspace)
+    )
+    assert _changed_files(again.snapshot, refingerprint(again.snapshot, workspace)) == [
+        "data/layout.csv"
+    ]

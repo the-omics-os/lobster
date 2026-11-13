@@ -70,7 +70,8 @@ _FREE_TEXT_NOTE = (
     "Restate how you understood it to the user and confirm before acting."
 )
 _REJECTED_NOTE = (
-    "The user's answers kept failing these checks; nothing was decided. "
+    "The answers kept being refused (see problems: a check the answer failed, "
+    "or data that changed while the user was answering); nothing was decided. "
     "Tell the user what failed and how to answer, or ask differently. "
     "Don't ask the same question again in this turn; tell the user what "
     "failed first."
@@ -265,7 +266,8 @@ def create_ask_user_tool(
               "free_text": "text" is the user's own words, not checked; follow "note".
               "invalid_context": nothing was shown; fix context using "problems"
                 and ask again.
-              "rejected": the answers kept failing the checks; see "problems"."""
+              "rejected": the answers kept being refused (failed checks or
+                changed data); see "problems"."""
         if isinstance(context, str):
             # Some models send the object as JSON text: read it if it is one.
             context = _context_from_text(context)

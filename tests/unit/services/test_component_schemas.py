@@ -1431,3 +1431,22 @@ def test_the_screens_and_the_rules_agree_on_a_reason_box():
     counted = _exclude_with(_COUNTED_REASON).fields[0].options[1]
     assert _asks_a_reason(plain) and _is_one_required_text(plain.fields)
     assert not _asks_a_reason(counted) and not _is_one_required_text(counted.fields)
+
+
+# --- number limits written as text (review) --------------------------------
+
+
+def test_number_limits_written_as_text_are_compared_as_numbers():
+    """ "min": "0" crashed the build; "10" > "9" was accepted as text."""
+    ok = AskUserContext.model_validate(
+        {"fields": [{"key": "n", "type": "number", "min": "0", "max": 1}]}
+    )
+    assert (ok.fields[0].min, ok.fields[0].max) == (0, 1)
+    with pytest.raises(ValidationError, match=r"min \(10\) is larger than max \(9\)"):
+        AskUserContext.model_validate(
+            {"fields": [{"key": "n", "type": "number", "min": "10", "max": "9"}]}
+        )
+    with pytest.raises(ValidationError, match="valid number"):
+        AskUserContext.model_validate(
+            {"fields": [{"key": "n", "type": "number", "min": "abc", "max": 1}]}
+        )
