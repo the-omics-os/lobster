@@ -150,7 +150,7 @@ def test_e23_review_screen_shows_exactly_what_is_sent(start_tui, review8):
         f"3. {DIRECTION} treated compared with control (treated_vs_control)",
         f"4. {QC} Donor B (S02) → exclude · reason: {reason} Donor F (S06) → retain",
         "Check your answers, then press enter to send them.",  # the guide
-        "enter send",  # the key legend
+        "enter  send",  # the key legend (the key is a chip)
     ]
     for line in expected_lines:
         assert line in shown, line

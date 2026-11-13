@@ -73,10 +73,6 @@ var (
 	HintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	// DetailStyle is for a question's details: the same readable grey.
 	DetailStyle = HintStyle
-	// KeyStyle is for a key to press, wherever it is shown: soft yellow.
-	KeyStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
-	// The key legend's words: muted khaki.
-	legendDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("144"))
 )
 
 // numberKeyStyle draws an option's number key as a small chip, like inline
@@ -115,10 +111,10 @@ func Guide(c BioComponent, width, height int) string {
 	return strings.Join(lines, "\n")
 }
 
-// wrappedLegend is the key legend in gentle pastel yellow, wrapped between
-// entries so no key is cut off at the edge.
+// wrappedLegend is the key legend: each key a chip like the option number
+// keys, its words in normal text, wrapped between entries so no key is cut
+// off at the edge.
 func wrappedLegend(c BioComponent, width int) string {
-	keyStyle, descStyle := KeyStyle, legendDescStyle
 	var lines []string
 	line, used := "", 0
 	for _, b := range c.KeyBindings() {
@@ -126,8 +122,8 @@ func wrappedLegend(c BioComponent, width int) string {
 		if k == "" {
 			continue
 		}
-		part := keyStyle.Render(k) + " " + descStyle.Render(d)
-		size := lipgloss.Width(k) + 1 + lipgloss.Width(d)
+		part := numberKeyStyle.Render(" "+k+" ") + " " + d
+		size := lipgloss.Width(k) + 2 + 1 + lipgloss.Width(d)
 		if used > 0 && used+2+size > width {
 			lines = append(lines, line)
 			line, used = "", 0
