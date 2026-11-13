@@ -113,6 +113,7 @@ type plateOption struct {
 
 type sampleplateData struct {
 	Question string        `json:"question"`
+	Details  string        `json:"details"`
 	Title    string        `json:"title"`
 	Format   int           `json:"format"`
 	Options  []plateOption `json:"options"`
@@ -138,6 +139,7 @@ type reasonBox struct {
 type SamplePlateComponent struct {
 	plate       platemap.Model
 	question    string
+	details     string // the question's evidence and rules, under it in grey
 	format      platemap.PlateFormat
 	options     []plateOption
 	listOrder   bool
@@ -213,7 +215,7 @@ func (c *SamplePlateComponent) Init(data json.RawMessage) error {
 		seenWells[[2]int{w.Row, w.Col}] = true
 	}
 
-	c.question = d.Question
+	c.question, c.details = d.Question, d.Details
 	c.format = format
 	c.options = options
 	c.listOrder = d.Positions == "list_order"
@@ -706,20 +708,21 @@ func clipLines(block string, n, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-// legend pairs each number key with its option's dot, in the option's
-// colour, e.g. "1 ● vehicle   2 ● TDX-9   3 ● leave out (asks a reason)".
+// legend pairs each number key, drawn as a key to press, with its option's
+// dot in the option's colour, e.g. "[1] ● vehicle    [2] ● TDX-9".
 func (c *SamplePlateComponent) legend() string {
+	key := func(n int) string { return biocomp.KeyStyle.Render(fmt.Sprintf("[%d]", n)) }
 	parts := make([]string, 0, len(c.options)+1)
 	for i, o := range c.options {
 		fg, _ := c.plate.GroupColor(o.ID)
-		text := fmt.Sprintf("%d %s %s", i+1, lipgloss.NewStyle().Foreground(fg).Render("●"), o.Label)
+		text := key(i+1) + " " + lipgloss.NewStyle().Foreground(fg).Render("●") + " " + o.Label
 		if o.Reason != nil {
 			text += " (asks a reason)"
 		}
 		parts = append(parts, text)
 	}
 	dot := lipgloss.NewStyle().Foreground(attentionColor).Bold(true).Render("○")
-	return strings.Join(append(parts, "0 "+dot+" unresolved"), "   ")
+	return strings.Join(append(parts, key(0)+" "+dot+" unresolved"), "    ")
 }
 
 // marks explains the other symbols, only those that can appear here.
@@ -813,26 +816,35 @@ func (c *SamplePlateComponent) currentWell(width int) (line string, details []st
 }
 
 func (c *SamplePlateComponent) View(width, height int) string {
-	dimStyle := lipgloss.NewStyle().Foreground(mutedColor)
 	messageStyle := lipgloss.NewStyle().Foreground(attentionColor)
 
+	roomy := biocomp.Roomy(height)
 	var top []string
 	if c.question != "" {
 		top = append(top, hang("", c.question, width, lipgloss.NewStyle().Bold(true)))
 	}
+	if c.details != "" {
+		if roomy && len(top) > 0 {
+			top = append(top, "") // a gap between the question and its details
+		}
+		top = append(top, hang("", c.details, width, biocomp.DetailStyle))
+	}
 	if c.listOrder {
 		top = append(top, hang("", listOrderNote, width, messageStyle.Bold(true)))
 	}
-	if len(top) > 0 && biocomp.Roomy(height) {
+	if len(top) > 0 && roomy {
 		top = append(top, "") // a gap between the question and the plate
 	}
 
 	below := []string{
 		"", // a gap between the plate and the lines about it
 		hang("", c.legend(), width, lipgloss.NewStyle()),
-		hang("", c.marks(), width, dimStyle),
-		hang("", c.countsLine(), width, biocomp.StatStyle),
+		hang("", c.marks(), width, biocomp.DetailStyle),
 	}
+	if roomy {
+		below = append(below, "") // a gap between the keys and the counts
+	}
+	below = append(below, hang("", c.countsLine(), width, biocomp.StatStyle))
 	line, details := c.currentWell(width)
 	below = append(below, line)
 	detailsAt := len(below)

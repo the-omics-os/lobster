@@ -52,7 +52,7 @@ func TestGroupsAreDotsWithMarksAndTheLegendNamesTheKeys(t *testing.T) {
 	v := view(c)
 	for _, want := range []string{
 		"D  ●   ●   ●!  ◉",
-		"1 ● vehicle   2 ● TDX-9   3 ● leave out (asks a reason)   0 ○ unresolved",
+		"[1] ● vehicle    [2] ● TDX-9    [3] ● leave out (asks a reason)    [0] ○ unresolved",
 		"◉ has a reason · ! needs a reason (r)",
 		"needs a reason (1)",
 	} {
@@ -300,7 +300,7 @@ func TestAGapSeparatesThePlateFromTheLinesUnderIt(t *testing.T) {
 	lines := strings.Split(view(reasonPlate(t)), "\n")
 	for i, l := range lines {
 		if strings.HasPrefix(l, "H  ") {
-			if strings.TrimSpace(lines[i+1]) != "" || !strings.HasPrefix(lines[i+2], "1 ● vehicle") {
+			if strings.TrimSpace(lines[i+1]) != "" || !strings.HasPrefix(lines[i+2], "[1] ● vehicle") {
 				t.Fatalf("no gap under the plate:\n%s", strings.Join(lines, "\n"))
 			}
 			return
@@ -323,5 +323,15 @@ func TestALabelHoldingTheIdIsNotRepeated(t *testing.T) {
 	c.HandleMsg(press("right"))
 	if v := view(c); !strings.Contains(v, "A2  R02 · Line B · proposed") {
 		t.Fatalf("a label without the id should keep it:\n%s", v)
+	}
+}
+
+func TestDetailsSitUnderTheQuestionAfterAGap(t *testing.T) {
+	c := reasonPlate(t)
+	c.details = "Pre-fills come from the bench sheet."
+	lines := strings.Split(view(c), "\n")
+	if !strings.HasPrefix(lines[0], "Which group") || strings.TrimSpace(lines[1]) != "" ||
+		!strings.HasPrefix(lines[2], "Pre-fills come") {
+		t.Fatalf("details not under the question after a gap:\n%s", strings.Join(lines, "\n"))
 	}
 }

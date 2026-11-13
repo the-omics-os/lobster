@@ -390,7 +390,7 @@ def _read_text(label: str, kept: Optional[str]) -> str:
 def _draw_plate(data: Dict[str, Any]) -> Dict[str, Any]:
     """One prompt per sample, named with its well; an option that needs one
     asks a reason. Samples that can't be assigned are listed, never asked."""
-    _show(data["question"])
+    _show(data["question"], data.get("details"))
     if data.get("positions") == "list_order":
         print("  (No positions were given: the wells are in list order.)")
     options = data.get("options") or [{"id": c} for c in data.get("choices", [])]

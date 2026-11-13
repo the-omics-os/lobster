@@ -277,7 +277,7 @@ func TestNumberKeysFollowTheChoices(t *testing.T) {
 	if c.assignments["X01"] != "control" {
 		t.Fatalf("key 4 changed X01 to %q", c.assignments["X01"])
 	}
-	if out := ansi.Strip(c.View(90, 30)); !strings.Contains(out, "1 ● control   2 ● treated   3 ● leave_out   0 ○ unresolved") {
+	if out := ansi.Strip(c.View(90, 30)); !strings.Contains(out, "[1] ● control    [2] ● treated    [3] ● leave_out    [0] ○ unresolved") {
 		t.Fatalf("legend missing:\n%s", out)
 	}
 }

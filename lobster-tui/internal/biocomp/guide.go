@@ -71,8 +71,11 @@ var (
 	StatStyle = lipgloss.NewStyle()
 	// HintStyle is for the instruction line: the grey of details.
 	HintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	// The key legend: soft yellow keys, muted khaki words.
-	legendKeyStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
+	// DetailStyle is for a question's details: the same readable grey.
+	DetailStyle = HintStyle
+	// KeyStyle is for a key to press, wherever it is shown: soft yellow.
+	KeyStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
+	// The key legend's words: muted khaki.
 	legendDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("144"))
 )
 
@@ -107,7 +110,7 @@ func Guide(c BioComponent, width, height int) string {
 // wrappedLegend is the key legend in gentle pastel yellow, wrapped between
 // entries so no key is cut off at the edge.
 func wrappedLegend(c BioComponent, width int) string {
-	keyStyle, descStyle := legendKeyStyle, legendDescStyle
+	keyStyle, descStyle := KeyStyle, legendDescStyle
 	var lines []string
 	line, used := "", 0
 	for _, b := range c.KeyBindings() {

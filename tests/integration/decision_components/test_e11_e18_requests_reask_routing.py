@@ -96,7 +96,7 @@ def test_e12_after_a_rejection_every_other_answer_is_still_prefilled_72(
     press_in_plate(tui, ds.ids, dict(sorted(assignments.items())))
 
     second = tui.wait_render(2)
-    assert "'control' has no items" in second.data["question"]
+    assert "'control' has no items" in second.data["details"]
     tui.wait_screen("'control' has no items")
     kept = {w["sample_id"]: w["condition"] for w in second.data["wells"]}
     assert kept == {sid: "treated" for sid in ds.ids}
@@ -171,7 +171,7 @@ def test_e14_reply_to_version_1_after_version_2_is_shown_is_reasked(start_tui, r
     press_in_plate(tui, ds.ids, {"S01": "control"})
     third = tui.wait_render(3)
     tui.rewrite_resume = None
-    assert "version 1 of the question" in third.data["question"]
+    assert "version 1 of the question" in third.data["details"]
     tui.wait_screen("this answer is for version 1 of the question")
     kept = {w["sample_id"]: w["condition"] for w in third.data["wells"]}
     assert kept["S01"] == "control"  # the answer to version 2 is kept

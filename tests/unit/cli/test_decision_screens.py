@@ -287,6 +287,16 @@ def test_plate_map_lays_items_out_as_wells():
     assert result["answer"]["groups"]["S08"] == {"id": "treated"}
 
 
+def test_plate_map_keeps_the_details_apart_from_the_question():
+    """The question is drawn bold and its details grey under it, so they travel apart."""
+    field = {**PLATE, "details": "Pre-fills come from the sample sheet."}
+    reply = {"assignments": {"S01": "control", "S05": "treated", "S08": "treated"}}
+    drawn, _ = _ask(_request(field), ("submit", reply))
+    ((_, data),) = drawn
+    assert data["question"] == "Group of each sample?"
+    assert data["details"] == "Pre-fills come from the sample sheet."
+
+
 # --- dashboard ---
 
 DASHBOARD = [

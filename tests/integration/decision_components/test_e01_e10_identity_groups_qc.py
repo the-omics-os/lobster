@@ -187,7 +187,7 @@ def test_e06_every_control_moved_is_reasked_with_answers_kept(start_tui, review8
 
     second = tui.wait_render(2)
     assert second.component == "plate_map"
-    assert "'control' has no items" in second.data["question"]
+    assert "'control' has no items" in second.data["details"]
     tui.wait_screen("'control' has no items")
     kept = {w["sample_id"]: w["condition"] for w in second.data["wells"]}
     assert kept == {sid: "treated" for sid in ds.ids}  # every answer kept

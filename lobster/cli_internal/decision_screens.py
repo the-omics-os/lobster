@@ -393,7 +393,7 @@ def _render_one(
     default = _item_default(field, item)
 
     if _draws_plate(field):
-        return "plate_map", _plate_data(field, _join(question, details))
+        return "plate_map", _plate_data(field, question, details)
     if item is None and _is_list(field):
         return "choice_list", _list_data(field, question, details)
     if field.type == "choice" and field.view == "ontology_browser":
@@ -483,11 +483,12 @@ def _round_step(low: float, high: float, default: Any = None) -> float:
     return float(step)
 
 
-def _plate_data(field: Any, question: str) -> Dict[str, Any]:
+def _plate_data(field: Any, question: str, about: str = "") -> Dict[str, Any]:
     """Each item becomes a well: at its own position when items have them,
     else filled row by row (A1, A2, ...) and the plate says so. Unavailable
     items sit greyed in their wells with the reason ("excluded"). An option
     that asks a reason carries the key and question of its text field.
+    ``about`` is the question's details, drawn under it in grey.
     """
     defaults = field.default or {}
     placed = all(item.position for item in field.for_each)
@@ -520,7 +521,7 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
             sub = option.fields[0]
             data["reason"] = _with({"key": sub.key}, "question", sub.question)
         options.append(data)
-    return {
+    plate = {
         "question": question,
         "title": field.question or field.key,
         "format": _PLATE_WELLS,  # unsupported() refuses more samples
@@ -528,6 +529,7 @@ def _plate_data(field: Any, question: str) -> Dict[str, Any]:
         "options": options,
         "wells": wells,
     }
+    return _with(plate, "details", about)
 
 
 def _ontology_data(
