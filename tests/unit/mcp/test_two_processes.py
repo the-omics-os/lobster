@@ -20,7 +20,7 @@ def lock_of(out: Path) -> Path:
 def test_a_second_process_is_refused_until_the_first_has_closed(tmp_path):
     data, out = tmp_path / "input.h5ad", tmp_path / "out"
     make_input(data)
-    args = {"input_path": str(data), "output_dir": str(out), "analysis": "scrna_qc"}
+    args = {"question": "q", "input_path": str(data), "output_dir": str(out)}
     first = Host(script("continue_first_process.json", tmp_path, data), tmp_path / "c1")
     second = Host(
         script("continue_second_process.json", tmp_path, data), tmp_path / "c2"

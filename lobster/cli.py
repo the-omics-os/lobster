@@ -100,6 +100,7 @@ from lobster.cli_internal.commands.light.init_protocol import init_protocol_app
 from lobster.cli_internal.commands.light.lamin_commands import lamin_app
 from lobster.cli_internal.commands.light.manifest_commands import commands_command
 from lobster.cli_internal.commands.light.mcp_commands import mcp_command
+from lobster.cli_internal.commands.light.project_commands import projects_app
 from lobster.cli_internal.commands.light.replay_commands import (
     JsonUsageCommand,
     replay_command,
@@ -294,6 +295,8 @@ app.command(name="agent")(agent_command)
 app.command(name="mcp")(mcp_command)
 app.command(name="commands")(commands_command)
 app.add_typer(sessions_app, name="sessions")
+app.add_typer(projects_app, name="projects")
+app.add_typer(projects_app, name="project", hidden=True)
 app.add_typer(skills_app, name="skills")
 
 # Register auth subcommand group (OAuth login/logout for LLM providers)
@@ -730,6 +733,11 @@ def purge(
 
 @app.command(help=t("cli.init.help"))
 def init(
+    folder: Optional[Path] = typer.Argument(
+        None,
+        help=h("Folder to set up as a project (default: the current folder)"),
+        show_default=False,
+    ),
     global_config: bool = typer.Option(
         False,
         "--global",
@@ -897,6 +905,18 @@ def init(
             "UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)"
         ),
     ),
+    project_name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        help=h("Project name (default: the folder name)"),
+    ),
+    provider_flag: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        help=h(
+            "Provider for a project made without a terminal (no key is read or saved)"
+        ),
+    ),
     lamin: Optional[bool] = typer.Option(
         None, "--lamin/--no-lamin", help=h("Keep a LaminDB catalog (default: ask; No)")
     ),
@@ -904,8 +924,10 @@ def init(
     """
     Initialize Lobster AI configuration.
 
-    By default, creates workspace-specific configuration (.env + provider_config.json).
-    Use --global to set user-wide defaults that apply to all workspaces.
+    By default, creates workspace-specific configuration (.env + provider_config.json)
+    and makes the folder a Lobster project. Run it again to change the settings; the
+    project keeps its identity. Use --global to set user-wide defaults that apply to
+    all workspaces.
 
     Interactive mode (default):
       Guides you through provider selection and API key entry with masked input.
@@ -925,6 +947,7 @@ def init(
 
     Examples:
       lobster init                                    # Interactive setup (workspace)
+      lobster init my-study                           # Set up a new project in ./my-study
       lobster init --global                           # Interactive setup (global defaults)
       lobster init --force                            # Reconfigure (overwrite existing)
       lobster init --global --force                   # Reconfigure global defaults

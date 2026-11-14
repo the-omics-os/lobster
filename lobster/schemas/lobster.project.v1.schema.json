@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omics-os.com/schemas/lobster/lobster.project.v1.schema.json",
+  "title": "lobster.project/1",
+  "description": "Output of `lobster projects list | info | delete --json`: a listing (`projects`, `total`), one project (`project`, `local`), the result of a delete, or an error. The `project` block uses the field names of an Omics-OS Cloud project record; `project_id` is a local id and is never a Cloud id. Extra properties are allowed so later versions can add fields.",
+  "oneOf": [
+    {
+      "title": "list",
+      "type": "object",
+      "required": ["schema_version", "projects", "total"],
+      "properties": {
+        "schema_version": { "const": "lobster.project/1" },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["project_id", "name", "root", "missing"],
+            "properties": {
+              "project_id": { "type": "string" },
+              "name": { "type": "string" },
+              "root": { "type": "string", "description": "Absolute path of the project folder." },
+              "missing": { "type": "boolean", "description": "The folder or its project file is gone." }
+            },
+            "additionalProperties": true
+          }
+        },
+        "total": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    {
+      "title": "info",
+      "type": "object",
+      "required": ["schema_version", "project", "local"],
+      "properties": {
+        "schema_version": { "const": "lobster.project/1" },
+        "project": { "$ref": "#/$defs/project" },
+        "local": {
+          "type": "object",
+          "required": ["root", "workspace", "provider", "model", "experts", "preset", "runs_folder", "runs", "runs_total"],
+          "properties": {
+            "root": { "type": "string" },
+            "workspace": { "type": "string" },
+            "provider": { "type": ["string", "null"] },
+            "model": { "type": ["string", "null"] },
+            "experts": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Expert names the project's workspace enables; empty means no explicit list (every installed expert)."
+            },
+            "preset": { "type": ["string", "null"] },
+            "runs_folder": { "type": "string" },
+            "runs": { "type": "array", "items": { "type": "string" }, "maxItems": 100 },
+            "runs_total": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    {
+      "title": "delete",
+      "type": "object",
+      "required": ["schema_version", "removed", "kept", "skipped", "dry_run", "deleted"],
+      "properties": {
+        "schema_version": { "const": "lobster.project/1" },
+        "project": { "$ref": "#/$defs/deleted_project" },
+        "removed": { "type": "array", "items": { "type": "string" }, "description": "Absolute paths removed (or, with dry_run, that would be)." },
+        "kept": { "type": "array", "items": { "type": "string" }, "description": "Paths in the project folder that were left in place." },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "reason"],
+            "properties": { "path": { "type": "string" }, "reason": { "type": "string" } }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Things worth knowing that did not stop the delete (an unreadable record or folder, a broken project.json)."
+        },
+        "dry_run": { "type": "boolean" },
+        "deleted": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "title": "error",
+      "type": "object",
+      "required": ["error", "kind", "status", "code", "retryable", "request_id"],
+      "properties": {
+        "error": { "type": "string" },
+        "kind": { "enum": ["not_found", "invalid", "forbidden", "conflict", "usage", "internal"] },
+        "status": { "type": "null" },
+        "code": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "request_id": { "type": "null" }
+      },
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "project": {
+      "type": "object",
+      "required": ["project_id", "name", "status", "org_id", "created_at"],
+      "properties": {
+        "project_id": { "type": "string" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "enum": ["active", "archived", "deleted"] },
+        "org_id": { "type": ["string", "null"] },
+        "created_at": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "deleted_project": {
+      "description": "The project block of a delete result: the same fields as `project`, except that `project_id` and `created_at` are null when the project.json that was deleted could not be read.",
+      "type": "object",
+      "required": ["project_id", "name", "status", "org_id", "created_at"],
+      "properties": {
+        "project_id": { "type": ["string", "null"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "enum": ["active", "archived", "deleted"] },
+        "org_id": { "type": ["string", "null"] },
+        "created_at": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    }
+  }
+}

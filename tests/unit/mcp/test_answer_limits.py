@@ -408,4 +408,7 @@ def test_an_unparseable_line_is_a_parse_error_and_the_server_keeps_serving(line)
     )
     first, second = [json.loads(row) for row in out.getvalue().splitlines()]
     assert first["error"]["code"] == mcp_stdio.PARSE_ERROR and first["id"] is None
-    assert [tool["name"] for tool in second["result"]["tools"]][0] == "lobster_run"
+    assert [tool["name"] for tool in second["result"]["tools"]][:2] == [
+        "lobster_overview",
+        "lobster_run",
+    ]

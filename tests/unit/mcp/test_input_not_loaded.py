@@ -22,7 +22,7 @@ def first_run(tmp_path, name, readable=True):
             "lobster_run",
             input_path=str(data),
             output_dir=str(out),
-            analysis="scrna_qc",
+            question="What is in this file?",
         )
         done = host.finished(run["run_id"])
     finally:

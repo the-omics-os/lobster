@@ -158,3 +158,38 @@ def test_a_data_sources_401_stays_a_plain_failure(engine, tmp_path, data):
     assert done["status"] == "failed"
     assert done["error"]["code"] != "provider_key_rejected"
     assert "PubMed mirror" in done["error"]["message"]
+
+
+def _gateway_error(status):
+    """What the Omics-OS Cloud gateway client raises for *status*, as a run
+    records it (class name and text)."""
+    from lobster.config.providers.gateway_bedrock_client import GatewayBedrockClient
+
+    try:
+        GatewayBedrockClient._handle_error(None, status, "{}")
+    except Exception as exc:
+        return {"code": type(exc).__name__, "message": str(exc)}
+    raise AssertionError("no error raised")
+
+
+def test_the_cloud_gateways_401_is_a_rejected_key():
+    assert mcp_record.rejected_key(_gateway_error(401))
+
+
+@pytest.mark.parametrize("status", [402, 403, 422])
+def test_the_cloud_gateways_other_refusals_are_not(status):
+    assert not mcp_record.rejected_key(_gateway_error(status))
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "An error occurred (AccessDenied) when calling the GetObject operation: "
+        "Access Denied",
+        "An error occurred (403) when calling the HeadObject operation: Forbidden",
+        "An error occurred (ExpiredToken) when calling the GetObject operation: "
+        "The provided token has expired.",
+    ],
+)
+def test_a_data_downloads_aws_error_is_not(message):
+    assert not mcp_record.rejected_key({"code": "ClientError", "message": message})

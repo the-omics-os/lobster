@@ -150,6 +150,8 @@ def test_needs_decision_status_carries_the_question_and_no_poll_hint(
         "run_id": run_id,
         "elapsed_s": waiting["elapsed_s"],
         "phase": "waiting",
+        # the first question came before any expert: the plan's approval
+        "plan": {"requested": True, "asked": True},
         "decision": {
             "decision_id": decision["decision_id"],
             "request_version": 1,

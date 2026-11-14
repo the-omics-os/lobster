@@ -28,6 +28,9 @@ SCIENTIST_FACING = frozenset(
         "cloud query",
         "dashboard",
         "init",
+        "projects delete",
+        "projects info",
+        "projects list",
         "query",
         "status",
     }

@@ -74,7 +74,11 @@ def test_codex_snippet():
     assert {k: server[k] for k in LAUNCH} == LAUNCH
     assert "env" not in server  # keys come from the user's environment
     # By design: only the read-only tool is pre-approved.
-    assert server["tools"] == {"lobster_status": {"approval_mode": "approve"}}
+    assert server["tools"] == {
+        "lobster_overview": {"approval_mode": "approve"},
+        "lobster_status": {"approval_mode": "approve"},
+        "lobster_wait": {"approval_mode": "approve"},
+    }
     _no_secrets_or_user_paths(raw)
 
 
@@ -109,7 +113,7 @@ def test_the_readme_names_every_tool_the_server_lists():
     readme = (INTEGRATIONS / "README.md").read_text()
     tools = [t["name"] for t in mcp_contract.list_tools()]
     assert (
-        f"lists {['zero','one','two','three','four','five','six'][len(tools)]} tools"
+        f"lists {['zero','one','two','three','four','five','six','seven','eight','nine','ten'][len(tools)]} tools"
         in readme
     )
     for name in tools:

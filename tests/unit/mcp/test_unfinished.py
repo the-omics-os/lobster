@@ -229,6 +229,16 @@ def test_a_failed_turn_lists_its_steps_too(started):
     ]
 
 
+@pytest.mark.parametrize("steps", [0, 2])
+def test_a_stopped_first_turn_says_it_cannot_be_continued(steps):
+    text = mcp_record.stopped_summary("Stopped.", steps, first_turn=True)
+    assert text.endswith(
+        " A first turn that stopped cannot be continued: start again with "
+        "lobster_run."
+    )
+    assert mcp_record.STOPPED_KEPT not in text
+
+
 def test_the_notebook_note_says_the_turn_was_stopped_and_what_stayed():
     ir = mcp_record.outcome_ir("cancelled", ["a", "b"])
     assert ir.render() == (

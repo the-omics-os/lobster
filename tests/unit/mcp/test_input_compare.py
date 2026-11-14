@@ -15,7 +15,8 @@ import pytest
 from lobster.cli_internal import mcp_contract, mcp_record
 
 
-def judged(tmp_path, given, sources, instruction=None):
+def loaded(tmp_path, given, sources):
+    """True when a first turn given *given* that read *sources* read the input."""
     activities = [
         {
             "type": "load_dataset",
@@ -24,9 +25,9 @@ def judged(tmp_path, given, sources, instruction=None):
         for n, s in enumerate(sources)
     ]
     dm = SimpleNamespace(provenance=SimpleNamespace(activities=activities))
-    turn = mcp_record.Turn(datetime.now(timezone.utc), 0, 2)
+    turn = mcp_record.Turn(datetime.now(timezone.utc), 0, 1)
     workspace = tmp_path / "out" / mcp_record.WORKSPACE_DIR
-    return mcp_record.judge_loads(dm, turn, str(given), workspace, instruction)
+    return mcp_record.input_refusal(dm, turn, str(given), workspace) is None
 
 
 # the same file by another route ------------------------------------------------
@@ -39,8 +40,7 @@ def test_a_folder_input_whose_members_are_links_is_still_the_input(tmp_path):
     given = tmp_path / "tenx"
     given.mkdir()
     (given / "matrix.mtx").symlink_to(elsewhere / "matrix.mtx")
-    result = judged(tmp_path, given, [given / "matrix.mtx"])
-    assert result.foreign == [] and result.input_loaded
+    assert loaded(tmp_path, given, [given / "matrix.mtx"])
 
 
 def test_a_folder_named_in_another_letter_case_is_the_input(tmp_path):
@@ -49,8 +49,7 @@ def test_a_folder_named_in_another_letter_case_is_the_input(tmp_path):
     (given / "matrix.mtx").write_text("counts")
     if not (tmp_path / "TENX").exists():
         pytest.skip("a case-sensitive file system: TENX is another folder")
-    result = judged(tmp_path, given, [tmp_path / "TENX" / "matrix.mtx"])
-    assert result.foreign == [] and result.input_loaded
+    assert loaded(tmp_path, given, [tmp_path / "TENX" / "matrix.mtx"])
 
 
 def test_a_hard_link_to_the_input_is_the_input_and_is_not_read(tmp_path, monkeypatch):
@@ -65,9 +64,9 @@ def test_a_hard_link_to_the_input_is_the_input_and_is_not_read(tmp_path, monkeyp
         "open",
         lambda file, *a, **k: opened.append(str(file)) or real_open(file, *a, **k),
     )
-    result = judged(tmp_path, given, [linked])
+    result = loaded(tmp_path, given, [linked])
     monkeypatch.undo()
-    assert result.foreign == [] and not [p for p in opened if p.endswith(".h5ad")]
+    assert result and not [p for p in opened if p.endswith(".h5ad")]
 
 
 def test_a_loader_that_reads_the_folder_of_the_input_file_reads_the_input(tmp_path):
@@ -75,17 +74,15 @@ def test_a_loader_that_reads_the_folder_of_the_input_file_reads_the_input(tmp_pa
     folder.mkdir()
     given = folder / "matrix.mtx"
     given.write_bytes(b"x")
-    result = judged(tmp_path, given, [folder])
-    assert result.foreign == [] and result.input_loaded
+    assert loaded(tmp_path, given, [folder])
 
 
-def test_a_folder_that_is_not_the_inputs_is_another_file(tmp_path):
+def test_a_folder_that_is_not_the_inputs_is_not_the_input(tmp_path):
     given = tmp_path / "data" / "matrix.mtx"
     given.parent.mkdir()
     given.write_bytes(b"x")
     (tmp_path / "other").mkdir()
-    result = judged(tmp_path, given, [tmp_path / "other"])
-    assert result.foreign == [str((tmp_path / "other").resolve())]
+    assert not loaded(tmp_path, given, [tmp_path / "other"])
 
 
 # the bytes ---------------------------------------------------------------------
@@ -159,45 +156,15 @@ def test_a_missing_file_is_not_the_same(tmp_path):
     assert mcp_record._same_content(tmp_path / "gone.h5ad", given) is False
 
 
-# the host's words --------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "instruction, asked",
-    [
-        ("compare with {p}", True),
-        ("compare with {p}.", True),
-        ("compare with '{p}', please", True),
-        ('use "{p}" too', True),
-        ("compare with ({p})", True),
-        ("compare with {p}.bak", False),
-        ("compare with {p}2", False),
-        ("compare with /mnt{p}", False),
-        ("compare with {p}/inner", False),
-        ("compare with other.h5ad", False),
-    ],
-)
-def test_the_instruction_names_a_file_only_by_its_whole_path(
-    tmp_path, instruction, asked
-):
-    given = tmp_path / "in.h5ad"
-    given.write_bytes(b"x")
-    other = tmp_path / "other.h5ad"
-    other.write_bytes(b"y")
-    result = judged(tmp_path, given, [other], instruction.format(p=other.resolve()))
-    assert (result.foreign == []) is asked
-
-
 # what the texts claim ----------------------------------------------------------
 
 
 def test_the_texts_say_the_check_covers_the_loading_tools_only():
     tools = {t["name"]: t["description"] for t in mcp_contract.list_tools()}
     for name in ("lobster_run", "lobster_continue"):
-        text = tools[name]
-        assert "Lobster's loading tools" in text
+        assert "Lobster's loading tools read in loaded_files" in tools[name]
     sentence = (
-        "Code the model writes can read other files, which this check does not see."
+        "Code the model writes can read other files, which this list does not show."
     )
     for name in ("lobster_run", "lobster_continue"):
         assert sentence in tools[name]

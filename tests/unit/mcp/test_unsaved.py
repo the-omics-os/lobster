@@ -33,7 +33,6 @@ def later_turn(before, after, data_files):
         SimpleNamespace(data_manager=dm),
         turn,
         {"files_written": []},
-        analysis="x",
         exported=True,
         open_question=False,
         data_files=data_files,

@@ -90,17 +90,17 @@ def test_output_dir_holds_only_the_deliverables(session_files, tmp_path, data):
     out = tmp_path / "out"
     assert sorted(p.name for p in out.iterdir()) == [
         ".lobster_workspace",
-        "lobster_scrna_qc.ipynb",
+        "lobster_run.ipynb",
         "pbmc.h5ad",
         "result.json",
     ]
     # Everything else stays in the hidden session folder.
     assert (hidden(tmp_path) / "exports" / "qc.csv").exists()
     assert (hidden(tmp_path) / "plots" / "p.json").exists()
-    assert (hidden(tmp_path) / "notebooks" / "lobster_scrna_qc.ipynb").exists()
+    assert (hidden(tmp_path) / "notebooks" / "lobster_run.ipynb").exists()
 
     assert Path(status["result_path"]) == out / "result.json"
-    assert Path(status["notebook_path"]) == out / "lobster_scrna_qc.ipynb"
+    assert Path(status["notebook_path"]) == out / "lobster_run.ipynb"
     assert status["files"] == [
         {
             "path": str(out / "result.json"),
@@ -108,7 +108,7 @@ def test_output_dir_holds_only_the_deliverables(session_files, tmp_path, data):
             "size_bytes": (out / "result.json").stat().st_size,
         },
         {
-            "path": str(out / "lobster_scrna_qc.ipynb"),
+            "path": str(out / "lobster_run.ipynb"),
             "category": "notebook",
             "size_bytes": 2,
         },
@@ -174,16 +174,16 @@ def test_a_file_already_in_output_dir_is_never_overwritten_nor_hidden_behind_it(
     out = tmp_path / "out"
     out.mkdir()
     (out / "pbmc.h5ad").write_bytes(b"the user's own file")
-    (out / "lobster_scrna_qc.ipynb").write_bytes(b"the user's own notebook")
+    (out / "lobster_run.ipynb").write_bytes(b"the user's own notebook")
     status = run_engine(tmp_path, data)
     assert (out / "pbmc.h5ad").read_bytes() == b"the user's own file"
-    assert (out / "lobster_scrna_qc.ipynb").read_bytes() == b"the user's own notebook"
+    assert (out / "lobster_run.ipynb").read_bytes() == b"the user's own notebook"
     # What the session wrote is published under a name that is free.
     assert (out / "pbmc_2.h5ad").read_bytes() == H5AD
-    assert Path(status["notebook_path"]) == out / "lobster_scrna_qc_2.ipynb"
+    assert Path(status["notebook_path"]) == out / "lobster_run_2.ipynb"
     assert [Path(f["path"]).name for f in status["files"]] == [
         "result.json",
-        "lobster_scrna_qc_2.ipynb",
+        "lobster_run_2.ipynb",
         "pbmc_2.h5ad",
     ]
     codes = [w["code"] for w in status["warnings"]]
@@ -200,7 +200,7 @@ def test_result_json_lists_published_paths_and_keeps_the_unpublished_ones(
     listed = {f["relative"]: f for f in on_disk["files_written"]}
     assert set(listed) == {
         "pbmc.h5ad",
-        "lobster_scrna_qc.ipynb",
+        "lobster_run.ipynb",
         ".lobster_workspace/exports/qc.csv",
         ".lobster_workspace/plots/p.json",
     }
@@ -280,7 +280,11 @@ def test_a_run_that_never_started_does_not_hold_its_folder(engine, tmp_path, dat
     # The folder is the claim's, made in the same lobster_run call.
     claim = mcp_lock.claim_new(tmp_path / "out")
     request = RunRequest(
-        new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc", claim=claim
+        new_run_id(),
+        str(data),
+        str(tmp_path / "out"),
+        "What is in this file?",
+        claim=claim,
     )
     status = mcp_stdio.run_engine(request, threading.Event())
     assert status["status"] == "failed"
@@ -310,7 +314,11 @@ def test_a_cancel_while_the_session_starts_leaves_the_folder_free(
     )
     claim = mcp_lock.claim_new(tmp_path / "out")
     request = mcp_stdio.RunRequest(
-        new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc", claim=claim
+        new_run_id(),
+        str(data),
+        str(tmp_path / "out"),
+        "What is in this file?",
+        claim=claim,
     )
     assert mcp_stdio.run_engine(request, cancel)["status"] == "cancelled"
     assert not hidden(tmp_path).exists()
@@ -352,7 +360,7 @@ def test_every_reported_path_is_under_output_dir_as_the_host_gave_it(
     opened, script = engine
     script["events"] = [COMPLETE]
     request = RunRequest(
-        new_run_id(), str(data), str(tmp_path / "link" / "out"), "scrna_qc"
+        new_run_id(), str(data), str(tmp_path / "link" / "out"), "What is in this file?"
     )
     status = mcp_stdio.run_engine(request, threading.Event())
     prefix = str(tmp_path / "link" / "out")

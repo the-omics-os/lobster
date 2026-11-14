@@ -27,6 +27,14 @@
         },
         "version": {
           "type": "string"
+        },
+        "provider": {
+          "description": "The LLM provider the run used, as the engine resolved it for the run's session (MCP runs from this build on; every turn of a session names its first run's). Absent for a replayed model or when it could not be read.",
+          "type": "string"
+        },
+        "model": {
+          "description": "The model the run used for that provider, unless the provider file names another model for one expert. Absent as provider is, or when the provider names no default.",
+          "type": "string"
         }
       }
     },
@@ -54,6 +62,15 @@
     "previous_workspace_moved_to": {
       "description": "MCP runs: where the session folder of an earlier run in this output_dir that never finished was moved, whole, before this run began. Nothing in it was deleted; the user may delete it.",
       "type": "string"
+    },
+    "plan": {
+      "description": "MCP first turns: requested is lobster_run plan; asked is true when the turn's first question came before any expert started, the plan's approval.",
+      "type": "object",
+      "properties": {
+        "requested": {"type": "boolean"},
+        "asked": {"type": "boolean"}
+      },
+      "required": ["requested", "asked"]
     },
     "duration": {
       "type": [
@@ -130,16 +147,29 @@
       "description": "What the host asked for (MCP runs).",
       "type": "object",
       "required": [
-        "analysis",
-        "input_path",
         "instruction",
         "channel"
       ],
       "properties": {
+        "question": {
+          "description": "The host's question of a lobster_run as normalised (MCP runs from this build on).",
+          "type": "string"
+        },
+        "experts": {
+          "description": "The experts the host named for the run (lobster_run experts); every turn of the session keeps them. Absent: the project's experts.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "plan": {
+          "description": "lobster_run plan: whether the host asked the first turn to plan before any expert works (MCP runs from this build on).",
+          "type": "boolean"
+        },
         "analysis": {
+          "description": "The fixed analysis of a run made by an earlier build; absent in question runs.",
           "type": "string"
         },
         "input_path": {
+          "description": "The file the host named, when it named one.",
           "type": "string"
         },
         "instruction": {
@@ -208,6 +238,29 @@
           "type": "integer"
         }
       }
+    },
+    "loaded_files": {
+      "description": "Files the turn read with a loading tool, as resolved paths and the modality each became; at most 20.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "modality"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "modality": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "loaded_files_total": {
+      "description": "How many files were loaded, when loaded_files is cut.",
+      "type": "integer"
     },
     "decisions": {
       "description": "Answers a host gave to questions asked during this turn, in the order given, as the host reported them; absent when none was asked.",

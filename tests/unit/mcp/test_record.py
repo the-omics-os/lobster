@@ -85,7 +85,6 @@ def files_since(dm, turn, extra=()):
 
 def gather(client, turn, result, **overrides):
     args = {
-        "analysis": "scrna_qc",
         "exported": True,
         "open_question": False,
         **overrides,
@@ -191,8 +190,8 @@ def test_a_later_turn_reports_qc_only_when_it_did_qc(tmp_path, counts):
     tools["assess_data_quality"].invoke({"modality_name": "input", "max_mt_pct": 12})
     qc = gather(client, again, {})["metrics"]["qc"]
     assert qc["thresholds_assessed"]["max_mt_pct"] == 12.0
-    # A first run always reports it, even one that did no QC step.
-    assert "qc" in gather(client, Turn.begin(dm, 1), {})["metrics"]
+    # A first run that did no QC step reports none either.
+    assert "qc" not in gather(client, Turn.begin(dm, 1), {})["metrics"]
 
 
 # warnings: one per code --------------------------------------------------------
@@ -319,11 +318,10 @@ def test_no_data_file_saved(tmp_path, counts):
     assert "file" not in sections["modality_details"][-1]
 
 
-def test_no_qc_plots_only_for_a_recipe_that_draws_them(tmp_path, counts):
+def test_a_question_run_is_not_told_to_draw_qc_plots(tmp_path, counts):
     dm, client, tools = session(tmp_path, counts)
     turn, result = run_qc(dm, tools, max_ribo_percent=50)
-    assert codes(gather(client, turn, result)) == ["no_qc_plots"]
-    assert codes(gather(client, turn, result, analysis="other")) == []
+    assert codes(gather(client, turn, result)) == []
 
 
 def test_notebook_not_exported_and_open_question(tmp_path, counts):
@@ -377,13 +375,11 @@ def test_without_a_data_manager_the_run_is_still_described(tmp_path):
         SimpleNamespace(),
         Turn.begin(None),
         {},
-        analysis="scrna_qc",
         exported=True,
         open_question=False,
     )
     assert codes(sections) == ["metrics_unavailable"]
-    assert set(sections["metrics"]) == {"qc"}
-    assert set(sections["metrics"]["qc"].values()) == {None}
+    assert sections["metrics"] == {}
 
 
 def test_every_code_is_in_the_closed_list():
@@ -391,15 +387,12 @@ def test_every_code_is_in_the_closed_list():
     assert "plot_view_failed" in WARNING_CODES  # reserved for the plot views
 
 
-def test_the_recipe_quotes_the_filter_output_as_it_is_printed(tmp_path, counts):
-    from lobster.cli_internal import mcp_contract
-
+def test_the_filter_prints_the_flags_it_carries(tmp_path, counts):
     dm, _client, tools = session(tmp_path, counts)
     tools["assess_data_quality"].invoke({"modality_name": "input"})
     response = tools["filter_and_normalize"].invoke(
         {"modality_name": "input_quality_assessed", "save_result": False}
     )
     quoted = "**QC flags carried into this result:**"
-    assert quoted in mcp_contract.ANALYSIS_PROMPTS["scrna_qc"]
     paragraph = next(p for p in response.split("\n\n") if p.startswith(quoted))
     assert paragraph.endswith("they are not fitted to this dataset.")

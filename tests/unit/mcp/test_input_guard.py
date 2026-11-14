@@ -1,4 +1,4 @@
-"""A run analyses the file it was given, and no other."""
+"""A run given a file loads it; what else it loads is listed, not refused."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def other(tmp_path):
 
 def run_first(tmp_path, data, **extra):
     request = RunRequest(
-        new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc", **extra
+        new_run_id(), str(data), str(tmp_path / "out"), "What is in this file?", **extra
     )
     return mcp_stdio.run_engine(request, threading.Event())
 
@@ -62,26 +62,25 @@ def test_a_path_that_is_not_a_file_or_folder_is_refused(tmp_path, data):
 # after the turn ------------------------------------------------------------
 
 
-def test_another_file_loaded_in_place_of_the_input_fails_the_run(
-    engine, tmp_path, data, other
-):
+def test_another_file_loaded_beside_the_input_is_listed(engine, tmp_path, data, other):
     _opened, script = engine
+    script["loads_input"] = False
     script["events"] = [load(data, "notes"), load(other, "pbmc"), COMPLETE]
     status = run_first(tmp_path, data)
-    assert status["status"] == "failed"
-    assert status["error"]["code"] == "other_file_loaded"
-    # The summary is cut to one short line; the message holds both paths whole.
-    assert status["summary"].startswith("other_file_loaded: ")
-    message = status["error"]["message"]
-    assert str(data) in message and str(other) in message
-    out = tmp_path / "out"
-    assert sorted(p.name for p in out.iterdir()) == [".lobster_workspace"]
+    assert status["status"] == "completed"
+    assert status["loaded_files"] == [
+        {"path": str(data.resolve()), "modality": "notes"},
+        {"path": str(other.resolve()), "modality": "pbmc"},
+    ]
+    on_disk = json.loads(Path(status["result_path"]).read_text())
+    assert on_disk["loaded_files"] == status["loaded_files"]
 
 
-def test_only_another_file_loaded_fails_the_run(engine, tmp_path, data, other):
+def test_only_another_file_loaded_is_input_not_loaded(engine, tmp_path, data, other):
     _opened, script = engine
+    script["loads_input"] = False
     script["events"] = [load(other), COMPLETE]
-    assert run_first(tmp_path, data)["error"]["code"] == "other_file_loaded"
+    assert run_first(tmp_path, data)["error"]["code"] == "input_not_loaded"
 
 
 @pytest.mark.parametrize(
@@ -121,13 +120,6 @@ def test_a_run_that_loaded_its_input_among_other_work_is_not_failed(
     assert status["status"] == "completed" and "notes" not in status
 
 
-def test_a_session_with_no_tracker_is_not_judged(engine, tmp_path, data):
-    _opened, script = engine
-    script["activities"] = None
-    script["events"] = [COMPLETE]
-    assert run_first(tmp_path, data)["status"] == "completed"
-
-
 def test_the_input_and_the_sessions_own_files_are_not_foreign(engine, tmp_path, data):
     _opened, script = engine
     inside = tmp_path / "out" / ".lobster_workspace" / "data" / "geo.h5ad"
@@ -159,11 +151,12 @@ def test_a_file_of_the_same_size_but_other_content_is_another_file(
     engine, tmp_path, data
 ):
     _opened, script = engine
+    script["loads_input"] = False
     data.write_bytes(b"a" * 600)
     other = tmp_path / "other.h5ad"
     other.write_bytes(b"b" * 600)
     script["events"] = [load(other), COMPLETE]
-    assert run_first(tmp_path, data)["error"]["code"] == "other_file_loaded"
+    assert run_first(tmp_path, data)["error"]["code"] == "input_not_loaded"
 
 
 def test_a_file_inside_an_input_folder_is_part_of_the_input(engine, tmp_path):
@@ -192,9 +185,7 @@ def idle(engine, scan, tmp_path, data):
     return server, opened, run["run_id"]
 
 
-def test_a_later_turn_may_load_another_file_only_if_the_instruction_names_it(
-    idle, other
-):
+def test_a_later_turn_may_load_another_file_and_lists_it(idle, other):
     server, opened, first_id = idle
     client = opened[0]["client"]
     client.events = [load(other), COMPLETE]
@@ -203,30 +194,13 @@ def test_a_later_turn_may_load_another_file_only_if_the_instruction_names_it(
         "lobster_continue",
         {"run_id": first_id, "instruction": "also look at the cells"},
     )
-    failed = wait_terminal(server, reply["run_id"])
-    assert failed["status"] == "failed"
-    assert failed["error"]["code"] == "other_file_loaded"
-    assert failed["summary"].startswith("other_file_loaded: ")
-    assert str(other) in failed["error"]["message"]
-    # The failed turn is on the record for the next one.
-    notes = [a for a in client.data_manager.provenance.activities]
-    assert notes[-1]["parameters"] == {
-        "outcome": "failed",
-        "steps_completed": "load_dataset",
-    }
-
-    client.events = [load(other), COMPLETE]
-    reply = call(
-        server,
-        "lobster_continue",
-        {"run_id": first_id, "instruction": f"compare with {other}"},
-    )
-    assert wait_terminal(server, reply["run_id"])["status"] == "completed"
+    done = wait_terminal(server, reply["run_id"])
+    assert done["status"] == "completed"
+    assert done["loaded_files"] == [{"path": str(other.resolve()), "modality": "m"}]
 
 
-def test_the_recipe_says_to_use_only_the_input_file():
-    from lobster.cli_internal import mcp_contract
-
-    recipe = mcp_contract.ANALYSIS_PROMPTS["scrna_qc"]
-    assert "Analyse only the file at the input path" in recipe
-    assert "stop and say so" in recipe
+def test_the_prompt_says_to_load_the_input_first():
+    prompt = mcp_record.compose_question_prompt("q", "/in/a.h5ad")
+    assert "Load the input file below first" in prompt
+    assert "stop and say so" in prompt
+    assert "Load the input" not in mcp_record.compose_question_prompt("q", None)

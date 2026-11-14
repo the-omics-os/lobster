@@ -40,6 +40,7 @@ from tests.unit.mcp.replay_input import loading
 
 ROOT = Path(__file__).resolve().parents[3]
 REPLAY = ROOT / "tests" / "fixtures" / "protocol-v1" / "replay"
+QUESTION = "What is in this file?"
 
 
 def call(server: McpServer, name: str, arguments: dict) -> dict:
@@ -76,7 +77,7 @@ def data(tmp_path):
 
 
 def run_args(source: Path, out: Path) -> dict:
-    return {"input_path": str(source), "output_dir": str(out), "analysis": "scrna_qc"}
+    return {"question": QUESTION, "input_path": str(source), "output_dir": str(out)}
 
 
 class Gate:
@@ -119,6 +120,7 @@ def test_run_returns_at_once_and_serves_status_while_blocked(tmp_path, data):
             "run_id": run["run_id"],
             "phase": "starting",
             "elapsed_s": live["elapsed_s"],
+            "plan": {"requested": True, "asked": False},
             "poll_after_s": mcp_contract.POLL_AFTER_S,
         }
         assert isinstance(live["elapsed_s"], int) and live["elapsed_s"] >= 0
@@ -172,6 +174,8 @@ def test_one_active_run_then_the_next(tmp_path, data):
     busy = call(server, "lobster_run", run_args(data, tmp_path / "b"))
     assert busy["error_text"].startswith("engine_busy:")
     assert first["run_id"] in busy["error_text"]
+    assert "wait with lobster_wait" in busy["error_text"]
+    assert "poll" not in busy["error_text"]
     assert len(gate.calls) == 1
 
     gate.release.set()
@@ -425,7 +429,9 @@ HANDLE = new_run_id()
 
 
 def run_engine(tmp_path, data):
-    request = RunRequest(HANDLE, str(data), str(tmp_path / "out"), "scrna_qc")
+    request = RunRequest(
+        HANDLE, str(data), str(tmp_path / "out"), "What is in this file?"
+    )
     return mcp_stdio.run_engine(request, threading.Event())
 
 
@@ -467,13 +473,17 @@ def test_engine_completed(engine, tmp_path, data, export_fails):
     assert on_disk.pop("modality_details") == status["modality_details"]
     for key in ("request", "steps", "metrics", "warnings"):
         del on_disk[key]
+    assert on_disk.pop("loaded_files") == status["loaded_files"]
+    # result.json's engine also names what the run used; the status says it once.
+    used = {"provider": status["provider"], "model": status["model"]}
+    assert on_disk.pop("engine") == {**result.pop("engine"), **used}
     assert on_disk == json.loads(json.dumps(result))
     if export_fails:
         assert status["notebook_path"] is None
     else:
         notebook = Path(status["notebook_path"])
         assert notebook.is_absolute() and notebook.exists()
-        assert notebook.name == "lobster_scrna_qc.ipynb"
+        assert notebook.name == "lobster_run.ipynb"
 
 
 def test_engine_error_event_is_the_run_api_failure(engine, tmp_path, data):
@@ -564,7 +574,9 @@ def test_engine_cancel_before_start_opens_no_session(engine, tmp_path, data):
     opened, _script = engine
     cancel = threading.Event()
     cancel.set()
-    request = RunRequest(new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc")
+    request = RunRequest(
+        new_run_id(), str(data), str(tmp_path / "out"), "What is in this file?"
+    )
     status = mcp_stdio.run_engine(request, cancel)
     assert status["status"] == "cancelled"
     assert status["summary"] == "Stopped before the analysis started."
@@ -590,7 +602,9 @@ def test_engine_cancel_during_session_start_sends_no_prompt(
     monkeypatch.setattr(
         session_infra, "init_client_or_raise_startup_diagnostic", init_then_cancel
     )
-    request = RunRequest(new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc")
+    request = RunRequest(
+        new_run_id(), str(data), str(tmp_path / "out"), "What is in this file?"
+    )
     status = mcp_stdio.run_engine(request, cancel)
     assert status["status"] == "cancelled"
     assert status["summary"] == (
@@ -723,6 +737,13 @@ def test_summary_bound(extra, cut):
     assert bounded.endswith(mcp_stdio.SUMMARY_CUT) is cut
 
 
+def test_a_long_report_reaches_the_host_whole():
+    # A full analysis report runs to several thousand characters; the reply
+    # cuts only past what a host shows comfortably.
+    summary = "a" * 7900
+    assert mcp_stdio._bounded(_completed(summary))["summary"] == summary
+
+
 def test_summary_cut_never_splits_an_astral_character():
     keep = mcp_stdio.SUMMARY_MAX_CHARS - len(mcp_stdio.SUMMARY_CUT)
     summary = "a" * (keep - 1) + "\U0001f600" * 50
@@ -790,6 +811,27 @@ def test_cancel_stops_a_running_run(tmp_path, data):
     assert "run_id" in call(server, "lobster_run", run_args(data, tmp_path / "b"))
 
 
+def test_a_cancelled_first_turn_says_what_continue_then_does(engine, tmp_path, data):
+    opened, script = engine
+    step = WaitForCancel()
+    script.update(events=[step])
+    server = McpServer(ThreadRunner())
+    out = tmp_path / "out"
+    run_id = call(server, "lobster_run", run_args(data, out))["run_id"]
+    assert step.entered.wait(10)
+    call(server, "lobster_cancel", {"run_id": run_id})
+    done = wait_terminal(server, run_id)
+    assert done["summary"].endswith(mcp_stdio.mcp_record.FIRST_TURN_STOPPED)
+    # As the summary says: neither the run nor its folder can be continued.
+    by_id = call(server, "lobster_continue", {"run_id": run_id, "instruction": "go"})
+    assert by_id["error_text"].startswith("not_continuable: ")
+    by_folder = call(
+        server, "lobster_continue", {"output_dir": str(out), "instruction": "go"}
+    )
+    assert by_folder["error_text"].startswith("no_session_found: ")
+    assert "Start a new run with lobster_run" in by_folder["error_text"]
+
+
 def test_cancel_unknown_run_is_a_tool_error():
     server = McpServer(ThreadRunner(lambda request, cancel_event: {}))
     refused = call(server, "lobster_cancel", {"run_id": "nope"})
@@ -811,7 +853,9 @@ def test_cancel_through_the_thread_runner_and_the_run_api(engine, tmp_path, data
     done = wait_terminal(server, run_id)
     assert done["status"] == "cancelled" and done["cancel_reason"] == "cancel"
     assert done["summary"] == (
-        "Stopped before the analysis finished. No analysis step had completed."
+        "Stopped before the analysis finished. No analysis step had completed. "
+        "A first turn that stopped cannot be continued: start again with "
+        "lobster_run."
     )
     assert len(opened) == 1 and opened[0]["client"].prompts
     assert call(server, "lobster_cancel", {"run_id": run_id})["outcome"] == (
@@ -822,7 +866,9 @@ def test_cancel_through_the_thread_runner_and_the_run_api(engine, tmp_path, data
 def test_fake_runner_cancel_uses_an_engine_reason(tmp_path, data):
     runner = mcp_stdio.FakeRunner()
     run_id = new_run_id()
-    runner.start(RunRequest(run_id, str(data), str(tmp_path / "out"), "scrna_qc"))
+    runner.start(
+        RunRequest(run_id, str(data), str(tmp_path / "out"), "What is in this file?")
+    )
     assert runner.cancel(run_id) == "cancel_requested"
     assert runner.status(run_id)["cancel_reason"] in CANCEL_REASONS
 
@@ -923,6 +969,7 @@ def test_running_status_names_the_latest_recorded_step(
         "elapsed_s": 12,
         "step": "filter_and_normalize",
         "steps_done": 3,  # the load of the input and two steps; not the earlier session's
+        "plan": {"requested": True, "asked": False},
         "poll_after_s": mcp_contract.POLL_AFTER_S,
     }
     hold.release.set()
@@ -951,27 +998,12 @@ def test_running_status_has_no_step_before_one_is_recorded(engine, tmp_path, dat
     wait_terminal(server, run_id)
 
 
-def test_running_status_without_a_provenance_source_omits_step_fields(
-    engine, tmp_path, data
-):
-    _opened, script = engine
-    script["activities"] = None  # a session with no provenance tracker
-    hold = Hold()
-    script["events"] = [hold, COMPLETE]
-    server = McpServer(ThreadRunner())
-    run_id = call(server, "lobster_run", run_args(data, tmp_path / "out"))["run_id"]
-    assert hold.entered.wait(10)
-    live = call(server, "lobster_status", {"run_id": run_id})
-    assert live["phase"] == "running"
-    assert "step" not in live and "steps_done" not in live
-    hold.release.set()
-    wait_terminal(server, run_id)
-
-
 def test_fake_runner_statuses_carry_the_new_fields(tmp_path, data):
     runner = mcp_stdio.FakeRunner()
     run_id = new_run_id()
-    runner.start(RunRequest(run_id, str(data), str(tmp_path / "out"), "scrna_qc"))
+    runner.start(
+        RunRequest(run_id, str(data), str(tmp_path / "out"), "What is in this file?")
+    )
     live = runner.status(run_id)
     assert live["status"] == "running" and live["phase"] == "running"
     assert live["poll_after_s"] == mcp_contract.POLL_AFTER_S
@@ -1015,3 +1047,20 @@ def test_status_bound_drops_result_then_steps_then_modality_detail():
     assert long["metrics"] == {"cells_before": 3}
     assert long["warnings"] and long["files"] and long["result_path"]
     assert len(json.dumps(long, default=str)) < bound
+
+
+def test_a_run_without_credentials_says_where_to_put_the_key(engine, tmp_path, data):
+    from lobster.cli_internal import mcp_overview
+
+    _opened, script = engine
+    script["raise"] = StartupDiagnosticError(
+        StartupDiagnostic(
+            code="missing_credentials",
+            title="Missing credentials for provider 'ollama-cloud'",
+        )
+    )
+    status = run_engine(tmp_path, data)
+    assert status["error"]["code"] == "missing_credentials"
+    assert status["error"]["message"] == (
+        "Missing credentials for provider 'ollama-cloud'. " + mcp_overview.key_fix()
+    )

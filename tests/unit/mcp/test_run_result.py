@@ -27,7 +27,9 @@ from tests.unit.mcp.test_run import (  # noqa: F401  (fixtures)
 
 
 def run_engine(tmp_path, data):
-    request = RunRequest(new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc")
+    request = RunRequest(
+        new_run_id(), str(data), str(tmp_path / "out"), "What is in this file?"
+    )
     return mcp_stdio.run_engine(request, threading.Event())
 
 
@@ -75,7 +77,7 @@ def test_open_question_is_judged_on_the_whole_summary_not_the_cut_one(
     engine, tmp_path, data
 ):
     _opened, script = engine
-    long_text = "x" * 5000 + "\n\nShall I go on?"
+    long_text = "x" * 9000 + "\n\nShall I go on?"
     script["events"] = [complete(long_text)]
     status = mcp_stdio._bounded(run_engine(tmp_path, data))
     assert status["open_question"] is True
@@ -134,7 +136,7 @@ def test_completed_status_lists_the_files_in_output_dir(
             "size_bytes": (out / "result.json").stat().st_size,
         },
         {
-            "path": str(out / "lobster_scrna_qc.ipynb"),
+            "path": str(out / "lobster_run.ipynb"),
             "category": "notebook",
             "size_bytes": 2,
         },
@@ -149,7 +151,7 @@ def test_completed_status_lists_the_files_in_output_dir(
     assert {f["relative"] for f in on_disk["files_written"]} == {
         "a.h5ad",
         ".lobster_workspace/exports/qc.csv",
-        "lobster_scrna_qc.ipynb",
+        "lobster_run.ipynb",
     }
     assert "files_written" not in status["result"]
     assert written["since"][0].tzinfo is not None
@@ -172,12 +174,12 @@ def test_a_saved_copy_of_the_loaded_input_is_not_published(
     _opened, script = engine
     written["files"] = [
         written_file(tmp_path, "raw.h5ad", 11),
-        written_file(tmp_path, "raw_qc.h5ad", 12),
+        written_file(tmp_path, "pbmc.h5ad", 12),
     ]
     script["events"] = [Act("load_dataset", name="raw", source=str(data)), COMPLETE]
     status = run_engine(tmp_path, data)
     out = tmp_path / "out"
-    assert sorted(p.name for p in out.glob("*.h5ad")) == ["raw_qc.h5ad"]
+    assert sorted(p.name for p in out.glob("*.h5ad")) == ["pbmc.h5ad"]
     assert [f["category"] for f in status["files"]] == ["result", "notebook", "data"]
     assert "no_data_file_saved" not in [w["code"] for w in status["warnings"]]
     # result.json still lists what the engine wrote, where it is.
@@ -288,11 +290,6 @@ def test_completed_status_carries_metrics_modalities_and_warnings(
         "cells_after": 3,
         "genes_before": 2,
         "genes_after": 2,
-        "qc": {
-            "thresholds_assessed": None,
-            "thresholds_applied": None,
-            "flagged_kept": None,
-        },
         "tokens": {
             "total": None,
             "cost_usd": None,
@@ -311,7 +308,7 @@ def test_completed_status_carries_metrics_modalities_and_warnings(
             "file": str(tmp_path / "out" / "pbmc.h5ad"),
         }
     ]
-    assert [w["code"] for w in status["warnings"]] == ["no_qc_plots"]
+    assert status["warnings"] == []
     # The engine's own result is left as it was, minus what travels elsewhere.
     assert status["result"]["has_data"] is True
     # The engine's names stay in the result; the objects are modality_details.
@@ -328,8 +325,9 @@ def test_result_json_has_the_request_the_steps_and_the_modality_detail(
     status = run_engine(tmp_path, data)
     on_disk = json.loads(Path(status["result_path"]).read_text())
     assert on_disk["request"] == {
-        "analysis": "scrna_qc",
+        "question": "What is in this file?",
         "input_path": str(data),
+        "plan": False,  # run_engine directly: no lobster_run default
         "instruction": None,
         "channel": "mcp:unknown",
         "turn": 1,

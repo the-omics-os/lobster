@@ -31,8 +31,8 @@ _SERVER = (
     "import sys\n"
     "from lobster.cli_internal.mcp_stdio import FakeRunner, run_mcp_stdio\n"
     "code = run_mcp_stdio(runner=FakeRunner())\n"
-    "engine = sorted(m for m in sys.modules\n"
-    "    if m.startswith(('lobster.core', 'lobster.agents')))\n"
+    "from lobster.cli_internal.mcp_overview import HEAVY\n"
+    "engine = sorted(m for m in sys.modules if m.startswith(HEAVY))\n"
     "print('ENGINE_MODULES=' + ','.join(engine), file=sys.stderr)\n"
     "sys.exit(code)\n"
 )
@@ -135,36 +135,45 @@ def test_initialize_list_and_fake_run_over_the_pipe(host, tmp_path):
     assert init["protocolVersion"] == SDK_LATEST
     assert init["serverInfo"]["name"] == "lobster"
     assert "tools" in init["capabilities"]
-    assert init["instructions"] == mcp_contract.INSTRUCTIONS
+    assert init["instructions"].endswith(mcp_contract.INSTRUCTIONS)
 
     assert host.request("ping")["result"] == {}
     tools = host.request("tools/list")["result"]["tools"]
     assert [t["name"] for t in tools] == [
+        "lobster_overview",
         "lobster_run",
         "lobster_status",
+        "lobster_wait",
         "lobster_answer",
         "lobster_cancel",
         "lobster_continue",
         "lobster_inspect",
+        "lobster_docs",
     ]
     for tool in tools:
         assert set(tool) == {"name", "description", "inputSchema", "annotations"}
         assert tool["inputSchema"]["type"] == "object"
+    by = {t["name"]: t for t in tools}
     # By design: run is not claimed non-destructive.
-    assert tools[0]["annotations"] == {"readOnlyHint": False, "openWorldHint": True}
-    assert tools[1]["annotations"] == {
+    assert by["lobster_run"]["annotations"] == {
+        "readOnlyHint": False,
+        "openWorldHint": True,
+    }
+    assert by["lobster_status"]["annotations"] == {
         "readOnlyHint": True,
         "idempotentHint": True,
         "openWorldHint": False,
     }
+    assert by["lobster_wait"]["annotations"] == by["lobster_status"]["annotations"]
+    assert by["lobster_overview"]["annotations"] == by["lobster_status"]["annotations"]
     # An answer starts the next part of the run: not read-only, not repeatable.
-    assert tools[2]["annotations"] == {
+    assert by["lobster_answer"]["annotations"] == {
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": False,
         "openWorldHint": False,
     }
-    answer_schema = tools[2]["inputSchema"]
+    answer_schema = by["lobster_answer"]["inputSchema"]
     assert answer_schema["required"] == [
         "run_id",
         "decision_id",
@@ -183,16 +192,15 @@ def test_initialize_list_and_fake_run_over_the_pipe(host, tmp_path):
         "object",
     }
     assert properties["comment"]["type"] == "string"
-    assert tools[3]["annotations"] == {
+    assert by["lobster_cancel"]["annotations"] == {
         "readOnlyHint": False,
         "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": False,
     }
-    assert tools[3]["inputSchema"]["required"] == ["run_id"]
-    run_schema = tools[0]["inputSchema"]
-    assert run_schema["required"] == ["input_path", "output_dir", "analysis"]
-    assert run_schema["properties"]["analysis"]["enum"][0] == "scrna_qc"
+    assert by["lobster_cancel"]["inputSchema"]["required"] == ["run_id"]
+    run_schema = by["lobster_run"]["inputSchema"]
+    assert run_schema["required"] == ["question"]
 
     out = tmp_path / "out"
     source = tmp_path / "pbmc.h5ad"
@@ -200,9 +208,9 @@ def test_initialize_list_and_fake_run_over_the_pipe(host, tmp_path):
     started = host.call(
         "lobster_run",
         {
+            "question": "What is in this file?",
             "input_path": str(source),
             "output_dir": str(out),
-            "analysis": "scrna_qc",
         },
     )
     assert set(started) == {"content"}  # no structuredContent, no isError
@@ -237,7 +245,7 @@ def test_initialize_list_and_fake_run_over_the_pipe(host, tmp_path):
     # A folder that holds a run is not reused; a new one is fine.
     reused = host.call(
         "lobster_run",
-        {"input_path": str(source), "output_dir": str(out), "analysis": "scrna_qc"},
+        {"question": "q", "input_path": str(source), "output_dir": str(out)},
     )
     assert reused["isError"] is True
     assert reused["content"][0]["text"].startswith("output_dir_in_use: ")
@@ -245,9 +253,9 @@ def test_initialize_list_and_fake_run_over_the_pipe(host, tmp_path):
         host.call(
             "lobster_run",
             {
+                "question": "q",
                 "input_path": str(source),
                 "output_dir": str(tmp_path / "out2"),
-                "analysis": "scrna_qc",
             },
         )
     )
@@ -305,10 +313,8 @@ def test_errors(host):
 
     assert host.request("no/such/method")["error"]["code"] == -32601
 
-    bad = host.call(
-        "lobster_run", {"input_path": "/a", "output_dir": "/b", "analysis": "x"}
-    )
-    assert bad["isError"] is True and "scrna_qc" in bad["content"][0]["text"]
+    bad = host.call("lobster_run", {"input_path": "/a", "output_dir": "/b"})
+    assert bad["isError"] is True and "question" in bad["content"][0]["text"]
     with pytest.raises(RuntimeError, match="Unknown run_id"):
         unwrap(host.call("lobster_status", {"run_id": "nope"}))
 
@@ -323,7 +329,8 @@ def test_descriptions_are_the_skill_contract():
         assert mcp_contract.NO_REWRITE in by_name[name]["description"]
     cancel = by_name["lobster_cancel"]["description"]
     assert "Use only when the user asks to stop." in cancel
-    assert "the run ends after the step in progress returns" in cancel
+    assert "the step in progress finishes first" in cancel
+    assert "phase cancelling" in cancel
     assert mcp_contract.ABSOLUTE_PATHS in by_name["lobster_run"]["description"]
     answer = by_name["lobster_answer"]["description"]
     for needle in (
@@ -341,11 +348,11 @@ def test_descriptions_are_the_skill_contract():
     assert "needs_decision" in by_name["lobster_status"]["description"]
     assert "decision_abandoned" in by_name["lobster_cancel"]["description"]
 
-    # A host waits between status calls instead of watching the output folder.
-    wait = f"{mcp_contract.POLL_AFTER_S} seconds"
+    # A host waits with lobster_wait, never by watching the output folder.
     for name in ("lobster_run", "lobster_status"):
-        assert wait in by_name[name]["description"]
-        assert "poll_after_s" in by_name[name]["description"]
+        assert "lobster_wait" in by_name[name]["description"]
+        assert "output folder yourself" in by_name[name]["description"]
+    assert "poll_after_s" in by_name["lobster_status"]["description"]
     status = by_name["lobster_status"]["description"]
     for field in ("elapsed_s", "phase", "step", "steps_done"):
         assert field in status
@@ -376,6 +383,7 @@ def test_status_text_describes_elapsed_files_and_the_open_question():
     ]
     # elapsed_s is monotonic time since the run was accepted, not a wall clock.
     assert "wall" not in status.lower()
+    assert "provider and model: what the run used" in mcp_contract.PROGRESS
     assert "A finished status carries elapsed_s, the seconds since the run was" in (
         status.replace("\n", " ")
     )
@@ -419,22 +427,26 @@ def test_status_text_describes_metrics_modalities_and_warnings():
     assert "result.json also holds the steps and the request" in status
 
 
-def test_run_text_describes_the_output_folder_and_the_instruction():
+def test_run_text_describes_the_output_folder_and_the_question():
     run = {t["name"]: t for t in mcp_contract.list_tools()}["lobster_run"]
     text = run["description"]
-    assert mcp_contract.OUTPUT in text and mcp_contract.INSTRUCTION in text
+    assert mcp_contract.OUTPUT in text and mcp_contract.QUESTION in text
     for needle in (
         "output_dir_in_use",
         "result.json, the notebook and the saved .h5ad files",
         "output_dir/.lobster_workspace",
-        "500 characters at most",
+        "4000 characters at most",
         "as you reported it",
+        "loaded_files",
+        ".lobster_workspace.unfinished-",
+        "kept until the user removes it or deletes the run",
+        "a Lobster project's own folder",
+        "<project>/runs/<name>",
     ):
         assert needle in text, needle
     assert "overwrite" not in text
-    prop = run["inputSchema"]["properties"]["instruction"]
-    assert prop["type"] == "string" and prop["maxLength"] == 500
-    assert "instruction" not in run["inputSchema"]["required"]
+    prop = run["inputSchema"]["properties"]["question"]
+    assert prop["type"] == "string" and prop["maxLength"] == 4000
 
 
 def test_the_new_text_makes_no_claim():
@@ -442,11 +454,10 @@ def test_the_new_text_makes_no_claim():
         [
             mcp_contract.FINISHED,
             mcp_contract.OUTPUT,
-            mcp_contract.INSTRUCTION,
-            mcp_contract.ANALYSIS_PROMPTS["scrna_qc"],
+            mcp_contract.QUESTION,
             {t["name"]: t for t in mcp_contract.list_tools()}["lobster_run"][
                 "inputSchema"
-            ]["properties"]["instruction"]["description"],
+            ]["properties"]["question"]["description"],
         ]
     ).lower()
     for word in ("verif", "prove", "proof", "guarantee", "reproducib", "sandbox"):
@@ -459,7 +470,7 @@ CLAIMS = re.compile(
 )
 # Notebook cells are written for the reader of the notebook, who is told what
 # Lobster cannot check; every other string is a text the host or the model gets.
-NOTEBOOK_CELLS = {"instruction_ir"}
+NOTEBOOK_CELLS = {"_host_text_ir"}
 
 
 def _strings(module):
@@ -510,7 +521,10 @@ def test_no_text_the_host_or_the_model_gets_makes_a_claim():
         mcp_record._INSTRUCTION_HEADER,
         mcp_record._CONTINUE_LEAD,
         mcp_record._CONTINUE_RULES,
-        mcp_record._INSTRUCTION_RULES,
+        mcp_record._QUESTION_LEAD,
+        mcp_record._QUESTION_FILE,
+        mcp_record._QUESTION_HEADER,
+        mcp_record._QUESTION_RULES,
         json.dumps(mcp_contract.list_tools()),
     ]
     assert [t for t in whole if CLAIMS.search(t)] == []
@@ -572,45 +586,6 @@ def test_the_continue_text_names_only_its_own_parameters():
     assert "output_dir" in tool["description"]
 
 
-RECIPE = mcp_contract.ANALYSIS_PROMPTS["scrna_qc"]
-
-
-def test_the_recipe_has_one_placeholder_and_the_five_steps_in_order():
-    assert re.findall(r"\{[^}]*\}", RECIPE) == ["{input_path}"]
-    assert "{" not in RECIPE.replace("{input_path}", "")
-    assert "}" not in RECIPE.replace("{input_path}", "")
-    steps = [m.start() for m in re.finditer(r"(?m)^[1-5]\. ", RECIPE)]
-    assert len(steps) == 5 and steps == sorted(steps)
-    positions = [
-        RECIPE.index(name)
-        for name in (
-            "assess_data_quality",
-            "create_qc_plots",
-            "filter_and_normalize",
-            "Reply in this order",
-        )
-    ]
-    assert positions == sorted(positions)
-    assert RECIPE.startswith("Run standard quality control on the single-cell")
-    assert RECIPE.format(input_path="/a/{b}.h5ad").count("/a/{b}.h5ad") == 1
-
-
-def test_the_recipe_never_picks_a_ribosomal_number():
-    # Digits are only step numbers; the ribosomal value comes from the tool
-    # default or from the host's instruction, never from this text.
-    without_steps = re.sub(r"(?m)^\d\. |\bstep \d", "", RECIPE)
-    assert not re.search(r"\d", without_steps)
-    assert "Never choose a ribosomal threshold yourself." in RECIPE
-    for name in ("max_ribo_percent", "min_genes_per_cell", "max_mito_percent"):
-        assert name in RECIPE
-
-
-def test_the_recipe_quotes_the_paragraph_the_filter_prints():
-    assert (
-        'begins "**QC flags carried into this result:**", quoted unchanged'
-    ) in RECIPE
-
-
 def test_instructions_are_sentences_of_the_connector_description():
     instructions = mcp_contract.INSTRUCTIONS
     assert len(instructions) <= 512
@@ -618,15 +593,13 @@ def test_instructions_are_sentences_of_the_connector_description():
         assert sentence in mcp_contract.CONNECTOR_DESCRIPTION
     assert "needs_decision" in instructions
     assert "lobster_answer" in instructions
-    assert "source human if the user gave the answer in this conversation" in (
-        instructions
-    )
+    assert "source human; source model only if they said so" in instructions
     assert "ask" in instructions and "Runs without asking questions" not in instructions
     assert "One run at a time" in instructions
     assert "lobster_cancel" in instructions
-    assert f"every {mcp_contract.POLL_AFTER_S} s" in instructions
-    assert "new output_dir" in instructions and "read the warnings" in instructions
-    assert "lobster_continue" in instructions
+    assert "lobster_wait until it ends or needs_decision" in instructions
+    assert "read its warnings and files" in instructions
+    assert "lobster_overview first" in instructions
     connector = mcp_contract.CONNECTOR_DESCRIPTION
     assert "lobster_continue" in connector and "lobster_inspect" in connector
 
@@ -641,12 +614,15 @@ def test_lobster_mcp_stdio_command_answers_initialize():
         assert init["serverInfo"]["name"] == "lobster"
         tools = host.request("tools/list")["result"]["tools"]
         assert [t["name"] for t in tools] == [
+            "lobster_overview",
             "lobster_run",
             "lobster_status",
+            "lobster_wait",
             "lobster_answer",
             "lobster_cancel",
             "lobster_continue",
             "lobster_inspect",
+            "lobster_docs",
         ]
         assert elapsed < 45, f"initialize took {elapsed:.1f}s"
         assert host.close()[0] == 0

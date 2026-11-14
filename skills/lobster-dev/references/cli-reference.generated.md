@@ -101,7 +101,7 @@ Log out of Omics-OS Cloud.
 
 ### `lobster cloud projects`
 
-List your Omics-OS Cloud projects.
+List your Omics-OS Cloud projects (also: omics-os lobster projects list).
 
   - `json` (boolean, optional) - Output JSON
 
@@ -195,6 +195,7 @@ Launch interactive dashboard (Textual UI).
 
 Initialize Lobster AI configuration.
 
+  - `folder` (path, optional) - Folder to set up as a project (default: the current folder)
   - `global` (boolean, optional) - Save configuration globally (~/.config/lobster/) for all workspaces
   - `force` (boolean, optional) - Overwrite existing configuration
   - `non-interactive` (boolean, optional) - Non-interactive mode for CI/CD (requires API key flags)
@@ -229,6 +230,8 @@ Initialize Lobster AI configuration.
   - `install-vector-search` (boolean, optional) - Install Smart Standardization dependencies (the lobster-vector package)
   - `skip-extras` (boolean, optional) - Skip optional package installation (provider, TUI, extended-data)
   - `ui` (string, optional) - UI mode for interactive init: auto (Go TUI if available, else questionary, else classic), go (require Go TUI), classic (Rich prompts only)
+  - `name` (string, optional) - Project name (default: the folder name)
+  - `provider` (string, optional) - Provider for a project made without a terminal (no key is read or saved)
   - `lamin` (boolean, optional) - Keep a LaminDB catalog (default: ask; No)
 
 ### `lobster lamin init`
@@ -276,6 +279,7 @@ Record this workspace in a LaminDB instance of your own instead.
 Run Lobster as an MCP server for desktop and agent hosts (JSON-RPC on stdin and stdout).
 
   - `stdio` (boolean, optional) - Speak MCP (JSON-RPC) on stdin and stdout.
+  - `workspace` (path, optional) - Folder the Lobster project is found from (default: the current folder).
 
 ### `lobster metadata`
 
@@ -285,6 +289,28 @@ Display metadata overview and statistics.
   - `target` (string, optional) - For clear: exports or all
   - `workspace` (path, optional) - Workspace directory. Default: ./.lobster_workspace
   - `status` (string, optional) - Status filter for publications subcommand
+
+### `lobster projects delete`
+
+Delete a project's Lobster workspace; the folder and your other files stay.
+
+  - `folder` (path, optional) - Project folder (default: the project in the current folder)
+  - `yes` (boolean, optional) - Delete without asking (needed without a terminal)
+  - `dry-run` (boolean, optional) - List what would be removed; change nothing
+  - `json` (boolean, optional) - Print the result as lobster.project/1 JSON
+
+### `lobster projects info`
+
+Show a project's identity, provider, model, experts and runs.
+
+  - `folder` (path, optional) - Project folder (default: the project that contains the current folder)
+  - `json` (boolean, optional) - Print the lobster.project/1 record as JSON
+
+### `lobster projects list`
+
+List the projects this machine has set up.
+
+  - `json` (boolean, optional) - Print the lobster.project/1 listing as JSON
 
 ### `lobster purge`
 

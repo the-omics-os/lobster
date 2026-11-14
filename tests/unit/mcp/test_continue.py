@@ -102,13 +102,12 @@ def test_a_second_turn_runs_in_the_same_session_with_its_own_outputs(started):
     assert len(prompts) == 2
     assert prompts[1] == mcp_record.compose_continue_prompt("now cluster the cells")
     assert Path(done["result_path"]) == out / "result_2.json"
-    assert Path(done["notebook_path"]) == out / "lobster_scrna_qc_2.ipynb"
+    assert Path(done["notebook_path"]) == out / "lobster_run_2.ipynb"
     assert (out / "result.json").read_bytes() == turn_one  # never overwritten
-    assert (out / "lobster_scrna_qc.ipynb").exists()
+    assert (out / "lobster_run.ipynb").exists()
 
     record = json.loads((out / "result_2.json").read_text())
     assert record["request"] == {
-        "analysis": "scrna_qc",
         "input_path": record["request"]["input_path"],
         "instruction": "now cluster the cells",
         "channel": "mcp:unknown",
@@ -157,12 +156,13 @@ def test_steps_files_and_metrics_are_this_turns_own(started):
     assert [s["tool"] for s in record["steps"]] == ["cluster_cells"]
     activities = opened[0]["client"].data_manager.provenance.activities
     assert [a["type"] for a in activities] == [
+        "host_question",
         "load_dataset",
         "host_instruction",
         "cluster_cells",
     ]
     names = [Path(f["path"]).name for f in done["files"]]
-    assert names[:2] == ["result_2.json", "lobster_scrna_qc_2.ipynb"]
+    assert names[:2] == ["result_2.json", "lobster_run_2.ipynb"]
     assert done["elapsed_s"] >= 0 and "result_2.json" in names[0]
 
 
@@ -174,7 +174,7 @@ def test_the_notebook_of_each_turn_holds_the_steps_so_far(started):
     done = wait_terminal(server, second["run_id"])
     assert (done["continues"], done["turn"]) == (second_id, 3)
     assert Path(done["result_path"]) == out / "result_3.json"
-    assert Path(done["notebook_path"]) == out / "lobster_scrna_qc_3.ipynb"
+    assert Path(done["notebook_path"]) == out / "lobster_run_3.ipynb"
     assert sorted(p.name for p in out.glob("result*.json")) == [
         "result.json",
         "result_2.json",
@@ -182,15 +182,15 @@ def test_the_notebook_of_each_turn_holds_the_steps_so_far(started):
     ]
 
 
-def test_a_later_turn_does_not_warn_about_missing_qc_plots(started):
+def test_no_turn_warns_about_missing_qc_plots(started):
     server, _opened, _script, out, first_id = started
     first = call(server, "lobster_status", {"run_id": first_id})
-    assert "no_qc_plots" in [w["code"] for w in first["warnings"]]
+    assert "no_qc_plots" not in [w["code"] for w in first["warnings"]]
     done = wait_terminal(server, go_on(server, run_id=first_id)["run_id"])
     assert "no_qc_plots" not in [w["code"] for w in done["warnings"]]
 
 
-def test_a_later_turn_need_not_save_a_data_file():
+def test_a_turn_that_made_no_data_need_not_save_a_file():
     dm = SimpleNamespace(list_modalities_with_lineage=lambda: [])
     client = SimpleNamespace(data_manager=dm)
     codes = {}
@@ -200,13 +200,11 @@ def test_a_later_turn_need_not_save_a_data_file():
             client,
             turn,
             {"files_written": []},
-            analysis="x",
             exported=True,
             open_question=False,
         )
         codes[number] = [w["code"] for w in found["warnings"]]
-    assert "no_data_file_saved" in codes[1]
-    assert "no_data_file_saved" not in codes[2]
+    assert "no_data_file_saved" not in codes[1] + codes[2]
 
 
 def test_the_open_question_of_a_turn_is_flagged_as_for_a_first_run(started):
@@ -427,7 +425,7 @@ def test_the_instruction_is_required_and_bounded_like_a_runs(started):
         refused = call(server, "lobster_continue", missing)
         assert refused["error_text"].startswith("instruction_required:")
     for value, text in (
-        ("x" * 501, "instruction_too_long: 500 characters at most"),
+        ("x" * 4001, "instruction_too_long: 4000 characters at most"),
         ("a\x00b", "instruction must not contain control characters"),
         (5, "instruction_required:"),
     ):
@@ -493,13 +491,13 @@ def test_the_tool_is_listed_with_its_arguments():
     schema = tool["inputSchema"]
     assert set(schema["properties"]) == {"run_id", "output_dir", "instruction"}
     assert schema["required"] == ["instruction"]
-    assert schema["properties"]["instruction"]["maxLength"] == 500
+    assert schema["properties"]["instruction"]["maxLength"] == 4000
     assert tool["annotations"] == {"readOnlyHint": False, "openWorldHint": True}
     text = tool["description"]
     for needle in (
         "run_id or output_dir",
         "result_2.json",
-        "lobster_status",
+        "lobster_wait",
         "engine_busy",
     ):
         assert needle in text, needle
@@ -531,15 +529,11 @@ def test_cells_before_of_a_later_turn_are_the_cells_it_started_with():
     client = SimpleNamespace(data_manager=dm)
     turn = mcp_record.Turn.begin(dm, 2)
     modalities.append(entry("clustered", 90, "kept", "3"))
-    found = mcp_record.collect(
-        client, turn, {}, analysis="x", exported=True, open_question=False
-    )
+    found = mcp_record.collect(client, turn, {}, exported=True, open_question=False)
     assert found["metrics"]["cells_before"] == 100
     assert found["metrics"]["cells_after"] == 90
     first = mcp_record.Turn.begin(dm, 1)  # a first run reports from the root
-    found = mcp_record.collect(
-        client, first, {}, analysis="x", exported=True, open_question=False
-    )
+    found = mcp_record.collect(client, first, {}, exported=True, open_question=False)
     assert found["metrics"]["cells_before"] == 200
 
 
@@ -556,7 +550,6 @@ def test_tokens_of_a_later_turn_are_the_turns_own():
             client,
             turn,
             {"token_usage": usage},
-            analysis="x",
             exported=True,
             open_question=False,
         )

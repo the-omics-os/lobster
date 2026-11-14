@@ -145,5 +145,5 @@ def test_the_texts_say_what_notes_are_and_ask_for_the_whole_reply_in_one_message
         "Put the whole reply in your last message; do not refer to text you "
         "sent earlier."
     )
-    assert mcp_contract.ANALYSIS_PROMPTS["scrna_qc"].rstrip().endswith(sentence)
+    assert mcp_record._QUESTION_LEAD.endswith(sentence)
     assert sentence in mcp_record._CONTINUE_LEAD

@@ -29,15 +29,28 @@ import re
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import IO, Any, Callable, Dict, List, Optional, Protocol, Sequence, Tuple
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+)
 
 from lobster.cli_internal import mcp_contract as contract
 from lobster.cli_internal import (
     mcp_decision,
     mcp_inspect,
     mcp_lock,
+    mcp_overview,
     mcp_record,
     mcp_turns,
     response_style,
@@ -55,9 +68,15 @@ INTERNAL_ERROR = -32603
 INTERACTIVE = True
 # How long EOF waits for the active run to stop at its next graph event.
 SHUTDOWN_WAIT_S = 5.0
+# How often lobster_wait re-reads a run's status.
+WAIT_STEP_S = 0.25
+# Tools answered on a thread of their own, so a long call holds no other reply.
+_SLOW_TOOLS = frozenset({"lobster_wait", "lobster_docs"})
 # Result bounds: Codex truncates a tool result at
 # 10k tokens, Claude Code moves text over 50,000 characters into a file.
-SUMMARY_MAX_CHARS = 2000
+SUMMARY_MAX_CHARS = 8000
+# The summary's length when the rest of the status leaves it no more room.
+SUMMARY_MIN_CHARS = 2000
 STATUS_MAX_CHARS = 40_000
 SUMMARY_CUT = "... (cut; full text in result_path)"
 # Any other text in a status (names, messages, parameter values) and an error
@@ -98,6 +117,21 @@ class RunProgress:
         self._answered: Any = None  # the Run an accepted answer started
         self._given: List[Dict[str, Any]] = []  # accepted answers, as recorded
         self._given_total = 0
+        # A first turn's plan: did the host ask for one, did the run ask it.
+        self._plan: Optional[Dict[str, bool]] = None
+
+    def plan_requested(self, requested: bool) -> None:
+        with self._cond:
+            self._plan = {"requested": requested, "asked": False}
+
+    def plan_asked(self) -> None:
+        with self._cond:
+            if self._plan is not None:
+                self._plan["asked"] = True
+
+    def plan(self) -> Optional[Dict[str, bool]]:
+        with self._cond:
+            return dict(self._plan) if self._plan is not None else None
 
     def begin(self, probe: Callable[[], Dict[str, Any]], manager: Any = None) -> None:
         with self._cond:
@@ -264,14 +298,15 @@ class EngineSession:
     client: Any
     manager: Any
     output_dir: Path
-    analysis: str
-    input_path: str
+    stem: str  # the notebook name base
+    input_path: Optional[str]
     turns: int  # completed turns
     latest_run_id: str  # the run of the last completed turn
     claim: Optional[mcp_lock.FolderClaim] = None  # released when the session closes
     # Restored sessions only: modalities earlier turns made that the restore did
     # not bring back. The first turn after the restore says so, once.
     not_restored: Tuple[str, ...] = ()
+    experts: Optional[Tuple[str, ...]] = None  # the run's, kept for every turn
 
 
 class SessionSlot:
@@ -311,12 +346,13 @@ def _close(session: EngineSession) -> None:
 @dataclass(frozen=True)
 class RunRequest:
     run_id: str
-    input_path: str
+    input_path: Optional[str]
     output_dir: str
-    analysis: str
+    question: Optional[str] = None  # the host's, already normalised; first runs only
     progress: Optional[RunProgress] = None
     channel: str = "mcp:unknown"  # who carries the run: ``mcp:<host name>``
     instruction: Optional[str] = None  # the host's, already normalised
+    stem: str = mcp_record.RUN_STEM  # the notebook name base
     turn: int = 1  # 2 or later: a ``lobster_continue``
     continues: Optional[str] = None  # the run whose session this turn goes on with
     restore: bool = False  # the session is read from output_dir, not kept here
@@ -325,6 +361,9 @@ class RunRequest:
     # The claim on output_dir, made when the request was accepted. A session
     # that keeps the folder takes it over (``kept``); otherwise the run releases it.
     claim: Optional[mcp_lock.FolderClaim] = None
+    experts: Optional[Tuple[str, ...]] = None  # None: the project's
+    project_ws: Optional[Path] = None  # where provider, model and experts are set
+    plan: bool = False  # a first turn asks to approve its plan before any expert
 
 
 class Runner(Protocol):
@@ -481,6 +520,8 @@ class ThreadRunner:
             self.slot.clear()
         else:
             session = self.slot.take()  # back in the slot when the turn ends
+        if request.turn == 1:
+            progress.plan_requested(request.plan)
         request = replace(request, progress=progress, session=session, slot=self.slot)
         thread = threading.Thread(
             target=self._drive,
@@ -527,6 +568,9 @@ class ThreadRunner:
             if claim is not None and not claim.kept:  # no session keeps the folder
                 claim.release()
         final["run_id"] = request.run_id
+        plan = request.progress.plan() if request.progress is not None else None
+        if plan is not None:
+            final["plan"] = plan
         with self._lock:
             final.update(self._turn.get(request.run_id, {}))
             final["elapsed_s"] = int(_now() - self._started[request.run_id])
@@ -543,6 +587,7 @@ class ThreadRunner:
             started = self._started[run_id]
             progress = self._progress[run_id]
             later = self._turn.get(run_id, {})
+            stopping = self._cancel[run_id].is_set()
         if status.get("status") in contract.TERMINAL_STATES:
             return status
         live = {
@@ -551,6 +596,11 @@ class ThreadRunner:
             "elapsed_s": int(_now() - started),
             **progress.snapshot(),
         }
+        if stopping and live.get("phase") in ("starting", "running"):
+            live["phase"] = "cancelling"
+        plan = progress.plan()
+        if plan is not None:
+            live["plan"] = plan
         if "decision" in live:  # nothing changes until it is answered
             return {**live, "status": "needs_decision"}
         return {**live, "poll_after_s": contract.POLL_AFTER_S}
@@ -609,6 +659,54 @@ class ThreadRunner:
         return not any(thread.is_alive() for thread in threads)
 
 
+def _startup_error(
+    diagnostic: Any, project_ws: Optional[Path], workspace: Optional[Path] = None
+) -> Dict[str, Any]:
+    message = diagnostic.title
+    fixes = {
+        "missing_credentials": mcp_overview.key_fix,
+        "provider_not_configured": mcp_overview.provider_fix,
+    }
+    detail = " ".join(diagnostic.detail_lines)
+    if detail and diagnostic.code not in fixes:  # those get the server's own fix
+        message = f"{message}: {_one_line(detail)}"
+    if diagnostic.code not in fixes and workspace is not None:
+        # The engine reports some providers' missing key as a plain failure.
+        message += _missing_key_fix(workspace, project_ws)
+    if diagnostic.code in fixes:
+        message = f"{message}. {fixes[diagnostic.code]()}"
+        root = project_ws.parent if project_ws is not None else None
+        if (
+            diagnostic.code == "missing_credentials"
+            and root is not None
+            and Path.cwd().resolve() != root.resolve()
+        ):
+            message += (
+                f" This server was started outside the project (in "
+                f"{Path.cwd()}); start it in {root} to use the project's "
+                "settings."
+            )
+    return {"code": diagnostic.code, "message": message, "retryable": False}
+
+
+def _missing_key_fix(workspace: Path, project_ws: Optional[Path]) -> str:
+    """The overview's two fixes, when the key of the provider the session
+    resolves is found nowhere; else nothing."""
+    try:
+        provider = mcp_overview.run_settings(workspace)[0]
+        key = mcp_overview.key_presence(provider, project_ws or workspace)
+    except Exception:
+        return ""
+    if not key or key.get("present") is not False:
+        return ""
+    names = key["names"]
+    found = "was" if len(names) == 1 else "were"
+    return (
+        f". No {' and '.join(names)} {found} found for {provider}. "
+        f"{mcp_overview.key_fix(names)}"
+    )
+
+
 def _discard_unstarted(request: RunRequest) -> None:
     """A first turn that never started leaves no session folder; its claim made
     the folder in the same call (a run without a claim leaves it be)."""
@@ -631,9 +729,6 @@ def run_engine(request: RunRequest, cancel_event: threading.Event) -> Dict[str, 
     if request.turn > 1:
         return _continue_turn(request, cancel_event)
 
-    from lobster.cli_internal.commands.heavy.session_infra import (
-        init_client_or_raise_startup_diagnostic,
-    )
     from lobster.cli_internal.startup_diagnostics import StartupDiagnosticError
     from lobster.core.runs import runs_for
 
@@ -644,17 +739,15 @@ def run_engine(request: RunRequest, cancel_event: threading.Event) -> Dict[str, 
     try:
         # The reply is read after the run: "run" style, whatever the user's
         # LOBSTER_RESPONSE_STYLE says (it is only a default).
+        team = _prepare_session(workspace, request.project_ws, request.experts)
         with response_style.forced("run"):
-            client = init_client_or_raise_startup_diagnostic(
-                workspace=workspace, interactive=INTERACTIVE
-            )
+            client = _build_client(workspace, request.project_ws, request.experts)
     except StartupDiagnosticError as exc:
+        # Read before the folder goes: the session's provider file is in it.
+        error = _startup_error(exc.diagnostic, request.project_ws, workspace)
         # A run that never began must not hold its folder.
         _discard_unstarted(request)
-        diagnostic = exc.diagnostic
-        return _failed(
-            {"code": diagnostic.code, "message": diagnostic.title, "retryable": False}
-        )
+        return _failed(error)
     if cancel_event.is_set():
         _discard_unstarted(request)
         return _cancelled(
@@ -662,31 +755,31 @@ def run_engine(request: RunRequest, cancel_event: threading.Event) -> Dict[str, 
             "Stopped while the session was starting; the analysis did not start.",
         )
 
-    prompt = mcp_record.compose_prompt(
-        contract.ANALYSIS_PROMPTS[request.analysis],
-        request.input_path,
-        request.instruction,
+    prompt = mcp_record.compose_question_prompt(
+        request.question or "", request.input_path, plan=request.plan
     )
     manager = runs_for(client)
     manager.report_files = True  # the status lists the files this run wrote
     data_manager = getattr(client, "data_manager", None)
-    if request.instruction is not None and not _record_instruction(
-        data_manager, request
-    ):
+    if not _record_question(data_manager, request):
         # The model would act on words the notebook does not show.
         _discard_unstarted(request)
-        return _not_recorded()
+        return _not_recorded("question")
     status = _run_turn(client, manager, prompt, request, cancel_event, output_dir)
+    if team is not None:
+        status["experts_loaded"] = team
+    status.update(_run_settings(workspace))
     if status["status"] == "completed" and request.slot is not None:
         session = EngineSession(
             client,
             manager,
             output_dir,
-            request.analysis,
+            request.stem,
             request.input_path,
             1,
             request.run_id,
             request.claim,
+            experts=request.experts,
         )
         if request.claim is not None:
             request.claim.kept = True
@@ -694,11 +787,11 @@ def run_engine(request: RunRequest, cancel_event: threading.Event) -> Dict[str, 
     return status
 
 
-def _not_recorded() -> Dict[str, Any]:
+def _not_recorded(what: str = "instruction") -> Dict[str, Any]:
     return _failed(
         {
-            "code": "instruction_not_recorded",
-            "message": "The instruction could not be recorded, so the run did not start.",
+            "code": f"{what}_not_recorded",
+            "message": f"The {what} could not be recorded, so the run did not start.",
             "retryable": False,
         }
     )
@@ -742,6 +835,10 @@ def _continue_turn(
         except BaseException:
             _record_outcome(client, "failed")
             raise
+        team = _team_of(output_dir / mcp_record.WORKSPACE_DIR)
+        if team is not None:
+            status["experts_loaded"] = team
+        status.update(_run_settings(output_dir / mcp_record.WORKSPACE_DIR))
         session.not_restored = ()  # the model was told once, whatever became of the turn
         if status["status"] == "completed":
             session.turns, session.latest_run_id = request.turn, request.run_id
@@ -761,7 +858,6 @@ def _restore_session(request: RunRequest, output_dir: Path):
     ``--session-id`` path (``resolve_session_continuation`` and
     ``client.load_session``); a failed status when it cannot be."""
     from lobster.cli_internal.commands.heavy.session_infra import (
-        init_client_or_raise_startup_diagnostic,
         resolve_session_continuation,
     )
     from lobster.cli_internal.startup_diagnostics import StartupDiagnosticError
@@ -778,15 +874,13 @@ def _restore_session(request: RunRequest, output_dir: Path):
             }
         )
     try:
+        _prepare_session(workspace, request.project_ws, request.experts)
         with response_style.forced("run"):
-            client = init_client_or_raise_startup_diagnostic(
-                workspace=workspace, session_id=session_id, interactive=INTERACTIVE
+            client = _build_client(
+                workspace, request.project_ws, request.experts, session_id=session_id
             )
     except StartupDiagnosticError as exc:
-        diagnostic = exc.diagnostic
-        return _failed(
-            {"code": diagnostic.code, "message": diagnostic.title, "retryable": False}
-        )
+        return _failed(_startup_error(exc.diagnostic, request.project_ws, workspace))
     if session_file is not None:
         loaded = client.load_session(session_file)
         if not loaded.get("success"):
@@ -803,12 +897,13 @@ def _restore_session(request: RunRequest, output_dir: Path):
         client,
         runs_for(client),
         output_dir,
-        request.analysis,
+        request.stem,
         request.input_path,
         request.turn - 1,
         request.continues or "",
         request.claim,
         _not_restored(client, output_dir),
+        request.experts,
     )
 
 
@@ -825,6 +920,99 @@ def _not_restored(client: Any, output_dir: Path) -> Tuple[str, ...]:
         )
         return ()
     return tuple(gone)
+
+
+class _Stop:
+    """What ``_stop_on_cancel`` saw: whether it stopped the turn, and the
+    conversation before the turn (the client's list and the graph thread's
+    messages; None when it could not be read)."""
+
+    def __init__(self, messages_before: Optional[int], thread_before: Any) -> None:
+        self.messages_before = messages_before
+        self.thread_before = thread_before
+        self.tripped = False
+
+
+def _thread_config(client: Any) -> Dict[str, Any]:
+    return {"configurable": {"thread_id": client.session_id}}
+
+
+def _thread_messages(client: Any) -> Optional[List[Any]]:
+    try:
+        state = client.graph.get_state(_thread_config(client))
+        return list(state.values.get("messages") or [])
+    except Exception:
+        return None
+
+
+@contextmanager
+def _stop_on_cancel(client: Any, cancel_event: threading.Event) -> Iterator[_Stop]:
+    """For the turn, a callback on *client* that raises at the next tool or
+    model call once *cancel_event* is set. The client checks the event only
+    between the supervisor's stream events, and an expert's whole work is one
+    of those: without this a cancel waited for the expert to finish."""
+    callbacks = getattr(client, "callbacks", None)
+    messages = getattr(client, "messages", None)
+    stop = _Stop(
+        len(messages) if isinstance(messages, list) else None,
+        _thread_messages(client),
+    )
+    if not isinstance(callbacks, list):
+        yield stop
+        return
+    from langchain_core.callbacks import BaseCallbackHandler
+
+    class StopOnCancel(BaseCallbackHandler):
+        raise_error = True  # the exception ends the graph run
+        run_inline = True
+
+        def _check(self, *_args: Any, **_kwargs: Any) -> None:
+            if cancel_event.is_set():
+                stop.tripped = True
+                raise RunCancelled("cancelled through lobster_cancel")
+
+        on_tool_start = _check
+        on_chat_model_start = _check
+        on_llm_start = _check
+
+    handler = StopOnCancel()
+    callbacks.append(handler)
+    try:
+        yield stop
+    finally:
+        callbacks.remove(handler)
+
+
+class RunCancelled(Exception):
+    """Raised inside the engine's graph to end a cancelled turn."""
+
+
+def _forget_cancelled_turn(client: Any, stop: _Stop) -> None:
+    """Put the conversation back as it was before a cancelled turn: the graph
+    thread can hold a tool call without its result, which the next turn
+    refuses. The client's own rollback cuts the thread at the length of its
+    message list, which holds no tool calls or results, so after a first turn
+    it cuts into that turn. The work the turn did stays in the session."""
+    if stop.thread_before is None:
+        return
+    from langchain_core.messages import RemoveMessage
+    from langgraph.graph.message import REMOVE_ALL_MESSAGES
+
+    try:
+        if stop.messages_before is not None:
+            client.messages = client.messages[: stop.messages_before]
+        client.graph.update_state(
+            _thread_config(client),
+            {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *stop.thread_before]},
+        )
+        save = getattr(client, "_save_session_json", None)
+        if save is not None:
+            save()
+    except Exception as exc:  # the next turn then says what is wrong
+        print(
+            f"lobster mcp: conversation not put back after a cancel: {exc!r}",
+            file=sys.stderr,
+        )
 
 
 def _run_turn(
@@ -845,12 +1033,15 @@ def _run_turn(
         not_restored=not_restored,
     )
     try:
-        status = _follow_turn(
-            client, manager, prompt, request, cancel_event, output_dir, turn
-        )
+        with _stop_on_cancel(client, cancel_event) as stop:
+            status = _follow_turn(
+                client, manager, prompt, request, cancel_event, output_dir, turn
+            )
     except BaseException:
         _record_turn_end(client, output_dir, request.turn, "failed")
         raise
+    if status["status"] == "cancelled":
+        _forget_cancelled_turn(client, stop)
     if status["status"] != "completed":  # a completed turn noted itself in _completed
         _record_turn_end(client, output_dir, request.turn, status["status"])
     if status["status"] in mcp_record.UNFINISHED_OUTCOMES:
@@ -860,7 +1051,9 @@ def _run_turn(
             if total > len(steps):
                 status["steps_completed_total"] = total
         if status["status"] == "cancelled":
-            status["summary"] = mcp_record.stopped_summary(status["summary"], total)
+            status["summary"] = mcp_record.stopped_summary(
+                status["summary"], total, first_turn=request.turn == 1
+            )
     return status
 
 
@@ -878,6 +1071,16 @@ def _follow_turn(
     if request.progress is not None:
         request.progress.begin(_step_probe(client, turn), manager)
     last = _drain(run)
+    if (
+        request.plan
+        and request.turn == 1
+        and request.progress is not None
+        and run.state == "needs_decision"
+        # The plan comes first: no expert has started (its first message
+        # streams as agent_change) before the turn's first question.
+        and not any(e.get("type") == "agent_change" for e in run.events)
+    ):
+        request.progress.plan_asked()
     while run.state == "needs_decision":
         pending = [
             d
@@ -906,25 +1109,16 @@ def _follow_turn(
         run = following
         last = _drain(run)
     if run.state == "completed" and run.result is not None:
-        workspace = output_dir / mcp_record.WORKSPACE_DIR
-        judged = mcp_record.judge_loads(
+        refusal = mcp_record.input_refusal(
             data_manager,
             turn,
             request.input_path,
-            workspace,
-            request.instruction if request.turn > 1 else None,
-        )
-        refusal = mcp_record.input_refusal(
-            data_manager, turn, request.input_path, workspace, None, judged
+            output_dir / mcp_record.WORKSPACE_DIR,
         )
         if refusal is not None:
-            if refusal["code"] == "other_file_loaded" and request.turn > 1:
-                refusal = _drop_foreign_data(
-                    data_manager, turn, judged, workspace, refusal
-                )
             failed = _failed(refusal)
             said = str(run.result.get("response") or "").strip()
-            if refusal["code"] == "input_not_loaded" and said:
+            if said:
                 # What the model said is commentary on a run that analysed nothing.
                 failed["notes"] = mcp_record.notes_tail(said)
                 failed["notes_chars"] = len(said)
@@ -942,30 +1136,6 @@ def _follow_turn(
     )
 
 
-def _drop_foreign_data(
-    data_manager: Any,
-    turn: mcp_record.Turn,
-    judged: mcp_record.LoadJudgement,
-    workspace: Path,
-    refusal: Dict[str, Any],
-) -> Dict[str, Any]:
-    """*refusal* of a later turn that read another file, saying what became of
-    that file's data. It must not stay in the session: the next turn would
-    report it as the result. When it cannot be removed the session is closed
-    and the folder's run is marked not continuable."""
-    if mcp_record.discard_loaded(data_manager, turn, judged.foreign_modalities):
-        said = " Every dataset this turn loaded or made was removed from the session."
-    else:
-        mcp_turns.block(workspace, mcp_turns.FOREIGN_DATA)
-        said = (
-            " The session could not be put back as it was before this turn "
-            "(that data could not be removed, or it replaced data the session "
-            "held before), so the session is closed and cannot be continued; "
-            "start a new run with lobster_run in a new output_dir."
-        )
-    return {**refusal, "message": refusal["message"] + said}
-
-
 def _record_instruction(data_manager: Any, request: RunRequest) -> bool:
     try:
         return mcp_record.record_instruction(
@@ -973,6 +1143,16 @@ def _record_instruction(data_manager: Any, request: RunRequest) -> bool:
         )
     except Exception as exc:  # no data manager, or a tracker that refuses
         print(f"lobster mcp: instruction not recorded: {exc!r}", file=sys.stderr)
+        return False
+
+
+def _record_question(data_manager: Any, request: RunRequest) -> bool:
+    try:
+        return mcp_record.record_question(
+            data_manager, request.question, request.channel
+        )
+    except Exception as exc:  # no data manager, or a tracker that refuses
+        print(f"lobster mcp: question not recorded: {exc!r}", file=sys.stderr)
         return False
 
 
@@ -1011,7 +1191,7 @@ def _completed(
         output_dir,
         mcp_record.deliverables(
             result.get("files_written"),
-            _export_notebook(client, request.analysis, request.turn),
+            _export_notebook(client, request.stem, request.turn),
             request.turn,
             output_dir,
             skip=[n for n, _s in mcp_record.file_loads(data_manager, turn) or []],
@@ -1025,7 +1205,6 @@ def _completed(
         client,
         turn,
         result,
-        analysis=request.analysis,
         exported=notebook is not None,
         open_question=open_question,
         final_answer=reply.final,
@@ -1054,7 +1233,7 @@ def _completed(
         result,
         sections,
         mcp_record.request_record(
-            request.analysis,
+            request.stem,
             request.input_path,
             request.instruction,
             request.channel,
@@ -1062,12 +1241,27 @@ def _completed(
             unfinished,
             model_source,
             turn.not_restored,
+            question=request.question,
+            experts=request.experts,
+            plan=request.plan if request.turn == 1 else None,
         ),
         request.continues,
         notes=reply.notes,
         notes_chars=reply.notes_chars,
     )
+    record["engine"] = {
+        **record.get("engine", {}),
+        **_run_settings(output_dir / mcp_record.WORKSPACE_DIR),
+    }
+    loaded, loaded_total = mcp_record.loaded_files(data_manager, turn)
+    if loaded:
+        record["loaded_files"] = loaded
+        if loaded_total > len(loaded):
+            record["loaded_files_total"] = loaded_total
     record.update(_moved_to(request))
+    plan = request.progress.plan() if request.progress is not None else None
+    if plan is not None:
+        record["plan"] = plan
     answers: Dict[str, Any] = {}
     if given:
         answers["decisions"] = given
@@ -1107,6 +1301,9 @@ def _completed(
         )
     )
     status.update(mcp_record.status_fields(sections))
+    for key in ("loaded_files", "loaded_files_total"):
+        if key in record:
+            status[key] = record[key]
     if unfinished[0]:
         status["unfinished_instructions"] = unfinished[0]
     if answers:
@@ -1117,6 +1314,20 @@ def _completed(
     left_out = {"response", "files_written"}
     status["result"] = {k: v for k, v in result.items() if k not in left_out}
     return status
+
+
+def _run_settings(workspace: Path) -> Dict[str, str]:
+    """``provider`` and ``model`` as the engine resolves them for the session
+    in *workspace*: every turn of a session resolves from the provider file
+    its first run was given. Empty for a replayed model, and a value that
+    cannot be read is left out."""
+    if _model_source():
+        return {}
+    try:
+        provider, _source, model, _model_from = mcp_overview.run_settings(workspace)
+    except Exception:
+        return {}
+    return {k: v for k, v in (("provider", provider), ("model", model)) if v}
 
 
 def _model_source() -> Optional[str]:
@@ -1205,12 +1416,17 @@ def _step_probe(client: Any, turn: mcp_record.Turn) -> Callable[[], Dict[str, An
 
 
 def _bounded(status: Dict[str, Any]) -> Dict[str, Any]:
-    """Cut ``summary`` and, while the status text is still too long, drop
-    ``result``, then ``steps``, then the objects of ``modality_details`` (the names
-    stay), then the ``steps_completed`` of ``unfinished_instructions`` (the
-    instructions stay), then ``decisions`` (``decisions_total`` stays).
-    ``metrics``, ``warnings``, ``files``, ``run_id`` and the
-    paths always stay.
+    """Cut ``summary`` to ``SUMMARY_MAX_CHARS``. While the status text is too
+    long: when the rest fits with ``SUMMARY_MIN_CHARS`` of summary, cut the
+    summary to the room the rest leaves; otherwise drop ``result``, then
+    ``steps``, then the
+    objects of ``modality_details`` (the names stay), then the
+    ``steps_completed`` of ``unfinished_instructions`` (the instructions stay),
+    then ``decisions`` (``decisions_total`` stays), and cut the summary to the
+    room left only after that (never below ``SUMMARY_MIN_CHARS`` characters of
+    JSON text). ``metrics``, ``warnings``,
+    ``files``, ``run_id`` and the paths always stay. Lengths are of the JSON
+    text, where a character outside ASCII takes up to twelve.
 
     All of it stays whole in ``result.json``. Slicing a str cuts between code
     points, so an astral character is never split into a lone surrogate.
@@ -1220,6 +1436,9 @@ def _bounded(status: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(summary, str) and len(summary) > SUMMARY_MAX_CHARS:
         keep = SUMMARY_MAX_CHARS - len(SUMMARY_CUT)
         status = {**status, "summary": summary[:keep] + SUMMARY_CUT}
+    rest = len(json.dumps({**status, "summary": ""}, default=str))
+    if rest < STATUS_MAX_CHARS - 1 - SUMMARY_MIN_CHARS:
+        status = _fit_summary(status)  # the fields stay whole
     for key in ("result", "steps"):
         if key in status and len(json.dumps(status, default=str)) >= STATUS_MAX_CHARS:
             status = {k: v for k, v in status.items() if k != key}
@@ -1254,7 +1473,42 @@ def _bounded(status: Dict[str, Any]) -> Dict[str, Any]:
         total = status.get("decisions_total", len(status["decisions"]))
         status = {k: v for k, v in status.items() if k != "decisions"}
         status.update(decisions_omitted=True, decisions_total=total)
-    return status
+    return _fit_summary(status)
+
+
+def _fit_summary(status: Dict[str, Any]) -> Dict[str, Any]:
+    """Cut ``summary`` to the room the rest of a too-long status leaves, not
+    below ``SUMMARY_MIN_CHARS`` characters of JSON text."""
+    summary = status.get("summary")
+    if (
+        not isinstance(summary, str)
+        or len(json.dumps(status, default=str)) < STATUS_MAX_CHARS
+    ):
+        return status
+    rest = len(json.dumps({**status, "summary": ""}, default=str))
+    room = max(STATUS_MAX_CHARS - 1 - rest, SUMMARY_MIN_CHARS)
+    return {**status, "summary": _cut_summary(summary, room)}
+
+
+def _cut_summary(summary: str, room: int) -> str:
+    """*summary* whose JSON text (without its quotes) is at most *room*
+    characters, cut with ``SUMMARY_CUT`` when it is longer."""
+
+    def fits(text: str) -> bool:
+        return len(json.dumps(text)) - 2 <= room
+
+    if fits(summary):
+        return summary
+    if summary.endswith(SUMMARY_CUT):
+        summary = summary[: -len(SUMMARY_CUT)]
+    low, high = 0, len(summary)  # the longest prefix that fits
+    while low < high:
+        mid = (low + high + 1) // 2
+        if fits(summary[:mid] + SUMMARY_CUT):
+            low = mid
+        else:
+            high = mid - 1
+    return summary[:low] + SUMMARY_CUT
 
 
 def _cut_fields(value: Any) -> Any:
@@ -1274,12 +1528,12 @@ def _cut_fields(value: Any) -> Any:
     return value
 
 
-def _export_notebook(client: Any, analysis: str, turn: int = 1) -> Optional[str]:
+def _export_notebook(client: Any, stem: str, turn: int = 1) -> Optional[str]:
     """Notebook from the recorded steps (in the session folder), or None; a
     failed export never fails a run. Each turn's has its own name."""
     try:
         path = client.data_manager.export_notebook(
-            mcp_record.notebook_stem(analysis, turn), filter_strategy="successful"
+            mcp_record.notebook_stem(stem, turn), filter_strategy="successful"
         )
         return str(Path(path).resolve())
     except Exception as exc:
@@ -1348,11 +1602,44 @@ def _one_line(value: Any, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
-class McpServer:
-    """JSON-RPC dispatch for one host connection."""
+@dataclass
+class _Wait:
+    """One open lobster_wait. ``ended`` stops it early; ``cancelled`` (the host
+    withdrew the request, or its input ended) means no reply is sent."""
 
-    def __init__(self, runner: Runner):
+    run_id: str
+    key: str
+    ended: threading.Event
+    cancelled: bool = False
+
+
+class _NoReply(Exception):
+    pass
+
+
+class McpServer:
+    """JSON-RPC dispatch for one host connection.
+
+    With *send*, slow tools reply from a thread of their own through it; without,
+    every reply is ``handle_line``'s return value.
+    """
+
+    def __init__(
+        self,
+        runner: Runner,
+        send: Optional[Callable[[Dict[str, Any]], None]] = None,
+        start: Optional[Path] = None,
+        follow_project: bool = False,
+    ):
         self.runner = runner
+        self._send = send
+        # The process serving a host enters a project that appears later.
+        self._follow_project = follow_project
+        # Where the project is looked for: the folder the server was started in.
+        self._start_folder = Path(start) if start is not None else Path.cwd()
+        self._wait_lock = threading.Lock()
+        self._waits: Dict[str, _Wait] = {}  # run_id -> the open wait on it
+        self._waits_by_request: Dict[str, _Wait] = {}
         self._active: Optional[str] = None
         self._out: Dict[str, Path] = {}  # run_id -> resolved output_dir
         self._channel = "mcp:unknown"  # who carries answers, from initialize
@@ -1363,12 +1650,15 @@ class McpServer:
             "tools/call": self._call_tool,
         }
         self._tools: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {
+            "lobster_overview": lambda args: mcp_overview.overview(self._start_folder),
             "lobster_run": self._lobster_run,
             "lobster_status": self._lobster_status,
+            "lobster_wait": self._lobster_wait,
             "lobster_answer": self._lobster_answer,
             "lobster_cancel": self._lobster_cancel,
             "lobster_continue": self._lobster_continue,
             "lobster_inspect": self._lobster_inspect,
+            "lobster_docs": self._lobster_docs,
         }
 
     def handle_line(self, line: str) -> Optional[Dict[str, Any]]:
@@ -1385,6 +1675,8 @@ class McpServer:
         if "id" not in message or not isinstance(method, str):
             # Notifications need no answer; this server sends no requests, so
             # an inbound response has nothing to match.
+            if method == "notifications/cancelled":
+                self._cancel_wait(message.get("params"))
             return None
         request_id = message["id"]
         handler = self._methods.get(method)
@@ -1393,8 +1685,39 @@ class McpServer:
         params = message.get("params") or {}
         if not isinstance(params, dict):
             return _error(request_id, INVALID_PARAMS, "params must be an object")
+        if (
+            self._send is not None
+            and method == "tools/call"
+            and params.get("name") in _SLOW_TOOLS
+        ):
+            threading.Thread(
+                target=self._reply_later,
+                args=(request_id, method, params),
+                daemon=True,
+                name="lobster-mcp-reply",
+            ).start()
+            return None
+        return self._reply(request_id, method, params)
+
+    def _reply_later(self, request_id: Any, method: str, params: Dict[str, Any]):
+        reply = self._reply(request_id, method, params)
+        if reply is None:
+            return
         try:
-            result = handler(params)
+            self._send(reply)
+        except (OSError, ValueError) as exc:  # the host's pipe is gone
+            print(f"lobster mcp: reply not sent: {exc!r}", file=sys.stderr)
+
+    def _reply(
+        self, request_id: Any, method: str, params: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            if method == "tools/call":
+                result = self._call_tool(params, request_id)
+            else:
+                result = self._methods[method](params)
+        except _NoReply:
+            return None
         except _InvalidParams as exc:
             return _error(request_id, INVALID_PARAMS, str(exc))
         except Exception as exc:  # report, never a traceback on stdout
@@ -1414,10 +1737,25 @@ class McpServer:
             ),
             "capabilities": {"tools": {}},
             "serverInfo": {"name": contract.SERVER_NAME, "version": __version__},
-            "instructions": contract.INSTRUCTIONS,
+            "instructions": mcp_overview.start_text(self._enter_project()),
         }
 
-    def _call_tool(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _enter_project(self) -> Path:
+        """The start folder, after making the root of a project that now
+        contains it the working folder (see enter_start_folder). Never while a
+        run is active, and never out of a project root."""
+        if self._follow_project and self._active_status() is None:
+            from lobster.core.runtime.workspace import find_project_root
+
+            here = Path.cwd()
+            root = find_project_root(self._start_folder)
+            if root is not None and find_project_root(here) != here:
+                os.chdir(root)
+        return self._start_folder
+
+    def _call_tool(
+        self, params: Dict[str, Any], request_id: Any = None
+    ) -> Dict[str, Any]:
         name = params.get("name")
         tool = self._tools.get(name) if isinstance(name, str) else None
         if tool is None:
@@ -1425,8 +1763,13 @@ class McpServer:
         arguments = params.get("arguments") or {}
         if not isinstance(arguments, dict):
             raise _InvalidParams("arguments must be an object")
+        if name not in _SLOW_TOOLS:  # those reply from threads of their own
+            self._enter_project()
         try:
-            payload = tool(arguments)
+            if name == "lobster_wait":
+                payload = self._lobster_wait(arguments, request_id)
+            else:
+                payload = tool(arguments)
         except ToolError as exc:
             text = _one_line(exc, limit=1000)
             return {"content": [{"type": "text", "text": text}], "isError": True}
@@ -1438,26 +1781,43 @@ class McpServer:
         return {"content": [{"type": "text", "text": text}]}
 
     def _lobster_run(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        input_path = _string_arg(args, "input_path")
-        output_dir = _string_arg(args, "output_dir")
-        analysis = _string_arg(args, "analysis")
-        if analysis not in contract.ANALYSES:
-            raise ToolError(
-                f"Unsupported analysis {analysis!r}; supported: "
-                + ", ".join(contract.ANALYSES)
-            )
+        try:
+            question = mcp_record.normalise_question(args.get("question"))
+        except ValueError as exc:
+            raise ToolError(str(exc)) from None
+        output_dir = args.get("output_dir")
+        if output_dir is not None:
+            output_dir = _string_arg(args, "output_dir")
+        input_path = args.get("input_path")
+        if input_path is not None:
+            input_path = _string_arg(args, "input_path")
+        plan = args.get("plan", True)
+        if not isinstance(plan, bool):
+            raise ToolError("bad_argument: plan must be true or false.")
+        if output_dir is None:
+            output_dir = str(self._new_run_folder())
         _check_paths(input_path, output_dir)
-        instruction = args.get("instruction")
-        if instruction is not None:
-            try:
-                instruction = mcp_record.normalise_instruction(instruction)
-            except ValueError as exc:
-                raise ToolError(str(exc)) from None
+        linked = Path(output_dir).parent
+        if linked.is_symlink() and mcp_record.holds_project(linked.parent):
+            raise ToolError(
+                f"path_not_allowed: {linked} is a link; a run goes in a real "
+                "runs folder of the project."
+            )
+        resolved = _resolve(output_dir, "output_dir")
+        project = _project_of(resolved)
+        if project is not None:
+            _check_in_runs(output_dir, resolved, project)
+        experts = _check_experts(args.get("experts"), project)
+        if experts is None and project is not None:
+            from lobster.core.projects import project_settings
+
+            _refuse_not_installed(project_settings(project).experts, project)
+        _refuse_without_loader(input_path, experts, project)
         self._refuse_if_busy()
         from lobster.core.runs import new_run_id
 
         run_id = new_run_id()
-        resolved = _resolve(output_dir, "output_dir")
+        existed = os.path.lexists(resolved)
         # The folder is claimed here, before the reply, not by the worker later:
         # a second process that asks next must already see it taken.
         claim = _claim(
@@ -1466,28 +1826,59 @@ class McpServer:
             ),
             output_dir,
         )
+        if project is not None and not existed:
+            _record_run_folder(project, resolved)
         self._start(
             RunRequest(
                 run_id,
                 input_path,
                 output_dir,
-                analysis,
+                question,
                 channel=self._channel,
-                instruction=instruction,
                 claim=claim,
+                experts=experts,
+                project_ws=project.workspace if project is not None else None,
+                plan=plan,
             )
         )
         self._active = run_id
         self._out[run_id] = resolved
-        started = {
+        started: Dict[str, Any] = {
             "status": "running",
             "run_id": run_id,
             "output_dir": output_dir,
+            "question_recorded": True,
             **_moved_to(claim),
         }
-        if instruction is not None:
-            started["instruction_recorded"] = True
+        if experts is not None:
+            started["experts"] = list(experts)
+        if project is not None:
+            note = mcp_overview.settings_note(project)
+            if note:
+                started["project_settings_not_applied"] = note
         return started
+
+    def _new_run_folder(self) -> Path:
+        """A folder that does not exist yet in the runs folder of the project
+        that contains the server's start folder."""
+        from lobster.core.projects import runs_dir
+
+        project, broken = mcp_overview.find_project_or_reason(self._start_folder)
+        if project is None:
+            raise ToolError(
+                "bad_argument: output_dir is needed. "
+                + (broken or mcp_overview.no_project_text(self._start_folder))
+            )
+        if runs_dir(project).is_symlink():
+            raise ToolError(
+                f"path_not_allowed: {runs_dir(project)} is a link; a run goes in "
+                "a real runs folder of the project. Pass output_dir."
+            )
+        stamp = mcp_lock._stamp()
+        folder, n = runs_dir(project) / stamp, 2
+        while os.path.lexists(folder):
+            folder, n = runs_dir(project) / f"{stamp}-{n}", n + 1
+        return folder
 
     def _start(self, request: RunRequest) -> None:
         try:
@@ -1517,7 +1908,7 @@ class McpServer:
             )
         else:
             now = (
-                "is still running; poll lobster_status until it is "
+                "is still running; wait with lobster_wait until it is "
                 "completed, failed or cancelled"
             )
         raise ToolError(
@@ -1571,10 +1962,10 @@ class McpServer:
                     f"no_session_found: {output_dir} cannot be continued: {exc}. "
                     "Start a new run with lobster_run in a new output_dir."
                 ) from None
-            analysis, input_path = disk.analysis, disk.input_path
+            stem, input_path, experts = disk.stem, disk.input_path, disk.experts
             turn, continues = disk.turn, disk.continues
         else:
-            analysis, input_path = idle.analysis, idle.input_path
+            stem, input_path, experts = idle.stem, idle.input_path, idle.experts
             turn, continues = idle.turns + 1, idle.latest_run_id
         from lobster.core.runs import new_run_id
 
@@ -1584,13 +1975,15 @@ class McpServer:
                 new_id,
                 input_path,
                 str(output_dir),
-                analysis,
                 channel=self._channel,
                 instruction=instruction,
+                stem=stem,
                 turn=turn,
                 continues=continues,
                 restore=restore,
                 claim=claim,
+                experts=experts,
+                project_ws=_project_ws(output_dir),
             )
         )
         self._active = new_id
@@ -1600,6 +1993,53 @@ class McpServer:
             started["continues"] = continues
         started.update(turn=turn, output_dir=str(output_dir), instruction_recorded=True)
         return started
+
+    def _lobster_docs(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from lobster.cli_internal import mcp_docs
+
+        query, slug = args.get("query"), args.get("slug")
+        given = [
+            name
+            for name, value in (("query", query), ("slug", slug))
+            if value is not None
+        ]
+        if len(given) != 1 or not isinstance(args[given[0]], str):
+            raise ToolError("exactly_one_of: pass query (to search) or slug (to read).")
+        text = args[given[0]].strip()
+        if not text:
+            raise ToolError(f"exactly_one_of: {given[0]} must not be empty.")
+        wrong = "page" if query is not None else "limit"
+        if wrong in args:
+            raise ToolError(
+                f"bad_argument: {wrong} goes with "
+                f"{'slug' if wrong == 'page' else 'query'}."
+            )
+
+        def bounded(name: str, default: int, top: Optional[int]) -> int:
+            value = args.get(name, default)
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 1
+                or (top is not None and value > top)
+            ):
+                most = f" to {top}" if top is not None else " or more"
+                raise ToolError(f"bad_argument: {name} must be a whole number 1{most}.")
+            return value
+
+        try:
+            if query is not None:
+                if len(text) > contract.DOCS_QUERY_MAX:
+                    raise ToolError(
+                        f"bad_argument: query has at most {contract.DOCS_QUERY_MAX} "
+                        "characters."
+                    )
+                return mcp_docs.search(text, bounded("limit", 5, mcp_docs.MAX_RESULTS))
+            return mcp_docs.read(text, bounded("page", 1, None))
+        except mcp_docs.DocsError as exc:
+            raise ToolError(f"docs_unavailable: {_one_line(exc)}") from None
+        except ValueError as exc:  # a page past the end
+            raise ToolError(f"bad_argument: {_one_line(exc)}") from None
 
     def _lobster_inspect(self, args: Dict[str, Any]) -> Dict[str, Any]:
         raw = _string_arg(args, "path")
@@ -1681,6 +2121,79 @@ class McpServer:
             raise ToolError(f"Unknown run_id {run_id!r}")
         return status
 
+    def _lobster_wait(self, args: Dict[str, Any], request_id: Any = None):
+        """The run's status once it changes, or after ``timeout_s``."""
+        run_id = _string_arg(args, "run_id")
+        timeout = args.get("timeout_s", contract.WAIT_DEFAULT_S)
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not 0 <= timeout <= contract.WAIT_MAX_S
+        ):
+            raise ToolError(
+                f"bad_argument: timeout_s must be a number from 0 to "
+                f"{contract.WAIT_MAX_S}."
+            )
+        status = self.runner.status(run_id)
+        if status is None:
+            raise ToolError(f"Unknown run_id {run_id!r}")
+        if _settled(status):
+            return status
+        wait = self._open_wait(run_id, request_id)
+        try:
+            deadline = time.monotonic() + timeout
+            # shortcut: the status is re-read every WAIT_STEP_S rather than the
+            # worker waking the wait, so the end shows up to WAIT_STEP_S late.
+            while not wait.ended.wait(
+                max(0.0, min(WAIT_STEP_S, deadline - time.monotonic()))
+            ):
+                status = self.runner.status(run_id)
+                if _settled(status):
+                    return status
+                if time.monotonic() >= deadline:
+                    return _still(run_id, status)
+            if wait.cancelled:
+                raise _NoReply()
+            status = self.runner.status(run_id)  # a later wait took its place
+            return status if _settled(status) else _still(run_id, status, True)
+        finally:
+            self._close_wait(wait)
+
+    def _open_wait(self, run_id: str, request_id: Any) -> _Wait:
+        wait = _Wait(run_id, _request_key(request_id), threading.Event())
+        with self._wait_lock:
+            earlier = self._waits.get(run_id)
+            if earlier is not None:  # one wait per run: the earlier one returns
+                earlier.ended.set()
+            self._waits[run_id] = wait
+            self._waits_by_request[wait.key] = wait
+        return wait
+
+    def _close_wait(self, wait: _Wait) -> None:
+        with self._wait_lock:
+            if self._waits.get(wait.run_id) is wait:
+                del self._waits[wait.run_id]
+            if self._waits_by_request.get(wait.key) is wait:
+                del self._waits_by_request[wait.key]
+
+    def _cancel_wait(self, params: Any) -> None:
+        """notifications/cancelled: the host withdrew a request. Only a wait
+        can still be open; it ends without a reply."""
+        if not isinstance(params, dict) or "requestId" not in params:
+            return
+        with self._wait_lock:
+            wait = self._waits_by_request.get(_request_key(params["requestId"]))
+            if wait is not None:
+                wait.cancelled = True
+                wait.ended.set()
+
+    def close(self) -> None:
+        """The host is gone: every open wait ends without a reply."""
+        with self._wait_lock:
+            for wait in self._waits.values():
+                wait.cancelled = True
+                wait.ended.set()
+
     def _lobster_answer(self, args: Dict[str, Any]) -> Dict[str, Any]:
         run_id = _string_arg(args, "run_id")
         decision_id = args.get("decision_id")
@@ -1726,6 +2239,31 @@ class _InvalidParams(Exception):
     pass
 
 
+def _settled(status: Dict[str, Any]) -> bool:
+    """A status the host must act on: a wait returns it at once."""
+    state = status.get("status")
+    return state in contract.TERMINAL_STATES or state == "needs_decision"
+
+
+def _still(
+    run_id: str, status: Dict[str, Any], superseded: bool = False
+) -> Dict[str, Any]:
+    """The short reply of a wait that ended with nothing for the host to do."""
+    short = {"run_id": run_id}
+    short.update(
+        (k, status[k])
+        for k in ("status", "step", "steps_done", "elapsed_s")
+        if k in status
+    )
+    short["superseded" if superseded else "timed_out"] = True
+    return short
+
+
+def _request_key(request_id: Any) -> str:
+    # JSON-RPC ids are strings or numbers: 1 and "1" are different requests.
+    return json.dumps(request_id)
+
+
 def _too_long(field: str, limit: int = ANSWER_MAX_CHARS) -> str:
     return f"bad_answer: {field} is longer than {limit} characters."
 
@@ -1754,22 +2292,359 @@ def _host_token(name: Any) -> str:
     return token or "unknown"
 
 
-def _check_paths(input_path: str, output_dir: str) -> None:
-    source, target = Path(input_path), Path(output_dir)
-    if not source.is_absolute() or not target.is_absolute():
+def _build_client(
+    workspace: Path,
+    project_ws: Optional[Path],
+    experts: Optional[Tuple[str, ...]],
+    **kwargs: Any,
+) -> Any:
+    """The engine client of one run, its session in *workspace*, which
+    _prepare_session has given the run's provider file and expert list."""
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        init_client_or_raise_startup_diagnostic,
+    )
+
+    return init_client_or_raise_startup_diagnostic(
+        workspace=workspace, interactive=INTERACTIVE, **kwargs
+    )
+
+
+def _prepare_session(
+    workspace: Path, project_ws: Optional[Path], experts: Optional[Tuple[str, ...]]
+) -> Optional[List[str]]:
+    """Give the run's session folder the project's provider file and the
+    run's expert list; returns every expert that loads when a list applies."""
+    if project_ws is not None:
+        _copy_project_provider(project_ws, workspace)
+    return _write_expert_list(workspace, project_ws, experts)
+
+
+def _refusal(code: str, title: str) -> Exception:
+    from lobster.cli_internal.startup_diagnostics import (
+        StartupDiagnostic,
+        StartupDiagnosticError,
+    )
+
+    return StartupDiagnosticError(StartupDiagnostic(code=code, title=title))
+
+
+def _write_expert_list(
+    workspace: Path, project_ws: Optional[Path], experts: Optional[Tuple[str, ...]]
+) -> Optional[List[str]]:
+    """The project's config.toml in the run's session folder, its expert list
+    replaced by *experts* when given; the engine builds the team from it.
+    Returns every expert that loads, or None when no list applies (every
+    installed expert) or the folder already has one (a continued run keeps
+    its first run's). A file that does not read back as written, or a listed
+    expert the license tier removes, stops the run before it starts."""
+    from lobster.config.workspace_agent_config import (
+        CONFIG_FILE_NAME,
+        WorkspaceAgentConfig,
+    )
+
+    target = workspace / CONFIG_FILE_NAME
+    if target.exists():
+        return None
+    config = WorkspaceAgentConfig()
+    source = project_ws / CONFIG_FILE_NAME if project_ws is not None else None
+    if source is not None and source.exists():
+        try:
+            config = mcp_overview.load_agent_config(source)
+        except Exception as exc:  # tomllib, pydantic or OSError
+            raise _refusal(
+                "project_settings_unreadable",
+                f"{source} cannot be read ({_one_line(exc, limit=200)}); the run "
+                "did not start. Ask the user to repair the file.",
+            ) from None
+    names = list(experts) if experts is not None else list(config.enabled_agents)
+    if not names and config.preset:
+        from lobster.config.agent_presets import expand_preset
+
+        names = list(expand_preset(config.preset) or [])
+    if not names and config == WorkspaceAgentConfig():
+        return None
+    config = config.model_copy(update={"enabled_agents": names, "preset": None})
+    loaded = None
+    if names:
+        loaded, removed = _expert_team(names)
+        if removed:
+            raise _refusal(
+                "expert_not_in_tier",
+                f"The license tier of this install does not include "
+                f"{', '.join(removed)}; the run did not start. Leave "
+                f"{'it' if len(removed) == 1 else 'them'} out of the list.",
+            )
+    try:
+        config.save(workspace)
+        written = mcp_overview.load_agent_config(target)
+    except Exception:
+        written = None
+    # only what the server set: an ignored table may not survive the round trip
+    if written is None or (written.enabled_agents, written.preset) != (names, None):
+        raise _refusal(
+            "expert_list_not_applied",
+            f"The expert list could not be written to {target} as meant; the "
+            "run did not start rather than run with every expert.",
+        )
+    return loaded
+
+
+def _team_of(workspace: Path) -> Optional[List[str]]:
+    """The experts loaded for the list in *workspace*'s config.toml, or None
+    without one; the engine's registry is loaded by then."""
+    try:
+        names = mcp_overview.load_agent_config(workspace / "config.toml")
+    except Exception:  # no file, or one the first turn did not write
+        return None
+    if not names.enabled_agents:
+        return None
+    return _expert_team(names.enabled_agents)[0]
+
+
+def _expert_team(names: Sequence[str]) -> Tuple[List[str], List[str]]:
+    """(the experts that load for *names*: they and their child experts, as
+    the engine's graph adds them and its license tier filter keeps them; the
+    names that filter removes). Loads the engine's expert registry."""
+    from lobster.config.subscription_tiers import is_agent_available
+    from lobster.core.component_registry import component_registry
+
+    try:
+        from lobster.core.license_manager import get_current_tier
+
+        tier = get_current_tier()
+    except ImportError:  # as agents.graph does
+        tier = "free"
+    agents = component_registry.list_agents()
+    loaded = {n for n in names if n in agents}
+    for name in list(loaded):
+        loaded.update(c for c in agents[name].child_agents or () if c in agents)
+    removed = [n for n in names if not is_agent_available(n, tier)]
+    return sorted(n for n in loaded if is_agent_available(n, tier)), removed
+
+
+def _copy_project_provider(project_ws: Path, workspace: Path) -> None:
+    """The project's provider file in the run's session folder, which the
+    engine reads before the global file and LOBSTER_LLM_PROVIDER. It holds
+    names, never a key. One already there (a continued run) is kept."""
+    from lobster.config.workspace_config import CONFIG_FILE_NAME as NAME
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+
+    source = project_ws / NAME
+    if WorkspaceProviderConfig.exists(workspace) or not source.exists():
+        return
+    try:  # not WorkspaceProviderConfig.load: it turns an error into "no provider"
+        config = mcp_overview.load_provider_config(source)
+    except Exception as exc:  # OSError, JSON or pydantic
+        raise _refusal(
+            "project_settings_not_copied",
+            f"{source} cannot be read ({_one_line(exc, limit=200)}); the run "
+            "did not start rather than use another provider. Ask the user to "
+            "repair the file.",
+        ) from None
+    if not config.global_provider:
+        return
+    try:
+        config.save(workspace)
+    except Exception as exc:  # OSError, or the file's own serialisation
+        said = getattr(exc, "strerror", None) or _one_line(exc, limit=200)
+        raise _refusal(
+            "project_settings_not_copied",
+            "The project's provider settings could not be copied into "
+            f"{workspace}: {said}",
+        ) from None
+
+
+def _check_experts(raw: Any, project: Any = None) -> Optional[Tuple[str, ...]]:
+    """*raw* as the run's expert names, or None; a list that is not one, a
+    name this server cannot load or one *project* lacks is a tool error that
+    names the fix."""
+    if raw is None:
+        return None
+    if (
+        not isinstance(raw, list)
+        or not 1 <= len(raw) <= contract.EXPERTS_MAX
+        or not all(
+            isinstance(n, str) and mcp_record.EXPERT_NAME.fullmatch(n) for n in raw
+        )
+        or len(set(raw)) != len(raw)
+    ):
+        raise ToolError(
+            f"bad_argument: experts must be a list of 1 to {contract.EXPERTS_MAX} "
+            "different expert names (letters, digits and _); lobster_overview "
+            "lists them."
+        )
+    _refuse_not_installed(raw, project)
+    loaded = mcp_overview.loaded_experts()
+    late = [n for n in raw if loaded is not None and n not in loaded]
+    if late:
+        raise ToolError(
+            f"restart_needed: {mcp_overview.restart_text(late)} Then call "
+            "lobster_run again."
+        )
+    _check_project_experts(tuple(raw), project)
+    return tuple(raw)
+
+
+def _refuse_not_installed(names: Sequence[str], project: Any) -> None:
+    """A tool error naming each of *names* that is not installed, with the
+    line that installs it; the engine would leave it out without a word."""
+    missing = [n for n in names if n not in mcp_overview.installed_experts()]
+    if not missing:
+        return
+    where = f"in {project.root} " if project is not None else ""
+    fixes = []
+    for name in missing:
+        package = mcp_overview.expert_package(name)
+        fixes.append(
+            f"{name}: {where}run {mcp_overview.install_line(package)}"
+            if package
+            else f"{name}: no package is known to provide it; "
+            "check the name with lobster_overview or "
+            f"{mcp_overview.lobster_command('agents', 'list')}"
+        )
+    raise ToolError(
+        "agent_not_available: these experts are not installed. "
+        + "; ".join(fixes)
+        + ". Then call lobster_run again."
+    )
+
+
+LOADER = "data_expert_agent"
+
+
+def _refuse_without_loader(
+    input_path: Optional[str], experts: Optional[Tuple[str, ...]], project: Any
+) -> None:
+    """A tool error when a run given a file has a team without the expert that
+    loads files: the run's list, else the project's (with none, every expert
+    loads). Without it the run would end in input_not_loaded after spending."""
+    if input_path is None:
+        return
+    names: Sequence[str] = ()
+    if experts is not None:
+        names = experts
+    elif project is not None:
+        from lobster.core.projects import project_settings
+
+        names = project_settings(project).experts
+    if not names or LOADER in names:
+        return
+    said = (
+        f"data_expert_needed: the file at {input_path} would not be loaded: "
+        f"the team ({', '.join(names)}) lacks {LOADER}, the expert that loads "
+        "data files."
+    )
+    if LOADER not in mcp_overview.installed_experts():
+        package = mcp_overview.expert_package(LOADER)
+        if package is None:
+            raise ToolError(
+                f"{said} {LOADER} is not installed and no package is known to "
+                "provide it; check with "
+                f"{mcp_overview.lobster_command('agents', 'list')}."
+            )
+        raise ToolError(
+            f"{said} {LOADER} is not installed: run this line in a shell: "
+            f"{mcp_overview.install_line(package)}, restart the Lobster MCP "
+            "server (reconnect it in your host), tell the user what you ran, "
+            "then call lobster_run again."
+        )
+    if experts is not None:
+        raise ToolError(f"{said} Add {LOADER} to experts, then call lobster_run again.")
+    again = mcp_overview.lobster_command(
+        "init", str(project.root), "--agents", ",".join([*names, LOADER])
+    )
+    raise ToolError(
+        f"{said} The project {project.name} lists its experts without it. To "
+        f"add it, run this line in a shell: {again} (the project keeps its id "
+        "and its runs), tell the user what you ran, then call lobster_run again."
+    )
+
+
+def _project_of(output_dir: Path) -> Any:
+    """The Lobster project that contains *output_dir*, or None."""
+    from lobster.core.projects import enclosing_project
+
+    return enclosing_project(output_dir)
+
+
+def _check_in_runs(output_dir: str, resolved: Path, project: Any) -> None:
+    """In a project a run folder is one level into its runs folder: what
+    deleting the project removes, and never inside its hidden workspace."""
+    from lobster.core.projects import runs_dir
+
+    runs = runs_dir(project)
+    if runs.is_symlink() or resolved.parent != runs.resolve():
+        raise ToolError(
+            f"path_not_allowed: {output_dir} is inside the Lobster project "
+            f"{project.name}; a run there goes one level into its runs folder: "
+            f"{runs / '<name>'}."
+        )
+
+
+def _project_ws(output_dir: Path) -> Optional[Path]:
+    project = _project_of(output_dir)
+    return project.workspace if project is not None else None
+
+
+def _check_project_experts(experts: Optional[Tuple[str, ...]], project: Any) -> None:
+    """A run in a project may name only the experts the project has (all
+    installed ones when it lists none)."""
+    if experts is None or project is None:
+        return
+    from lobster.core.projects import project_settings
+
+    have = project_settings(project).experts
+    lacking = [n for n in experts if have and n not in have]
+    if lacking:
+        again = mcp_overview.lobster_command(
+            "init", str(project.root), "--agents", ",".join(list(have) + lacking)
+        )
+        raise ToolError(
+            f"agent_not_available: the project {project.name} does not list "
+            f"{', '.join(lacking)}. To add them, run this line in a shell: "
+            f"{again} (the project keeps its id and its runs), tell the user "
+            "what you ran, then call lobster_run again."
+        )
+
+
+def _record_run_folder(project: Any, folder: Path) -> None:
+    """Note *folder*, which this run made, in the project so that deleting the
+    project removes it; a failure is said on stderr and the run goes on."""
+    from lobster.core.projects import record_created_path
+
+    try:
+        record_created_path(project, folder)
+    except Exception as exc:  # the run's files are not at risk
+        print(
+            f"lobster mcp: {folder} was not recorded in the project: {exc}",
+            file=sys.stderr,
+        )
+
+
+def _check_paths(input_path: Optional[str], output_dir: str) -> None:
+    target = Path(output_dir)
+    if not target.is_absolute() or (
+        input_path is not None and not Path(input_path).is_absolute()
+    ):
         raise ToolError("input_path and output_dir must be absolute paths")
-    _resolve(input_path, "input_path")
     _resolve(output_dir, "output_dir")
+    if target.exists() and not target.is_dir():
+        raise ToolError(f"output_dir is not a directory: {output_dir}")
+    if input_path is not None:
+        _check_input(input_path)
+    if mcp_record.output_dir_in_use(target):
+        raise ToolError(_in_use(output_dir, target, mcp_lock.holder(target)))
+
+
+def _check_input(input_path: str) -> None:
+    source = Path(input_path)
+    _resolve(input_path, "input_path")
     if not source.exists():
         raise ToolError(f"input_path does not exist: {input_path}")
     if not os.access(source, os.R_OK):
         raise ToolError(f"input_path is not readable: {input_path}")
     if not (source.is_file() or source.is_dir()):  # a pipe or a device never ends
         raise ToolError(f"input_path is not a regular file or a folder: {input_path}")
-    if target.exists() and not target.is_dir():
-        raise ToolError(f"output_dir is not a directory: {output_dir}")
-    if mcp_record.output_dir_in_use(target):
-        raise ToolError(_in_use(output_dir, target, mcp_lock.holder(target)))
 
 
 def _in_use(output_dir: str, target: Path, pid: Optional[int], hint: str = "") -> str:
@@ -1779,6 +2654,8 @@ def _in_use(output_dir: str, target: Path, pid: Optional[int], hint: str = "") -
         return f"output_dir_in_use: {who}; {hint or 'choose a new folder'}."
     if hint:
         return f"output_dir_in_use: {output_dir} is in use; {hint}."
+    if mcp_record.holds_project(target):
+        return mcp_record.project_refusal(output_dir)
     if (target / "result.json").exists():
         return (
             f"output_dir_in_use: {output_dir} already holds a Lobster run; choose a "
@@ -1851,13 +2728,41 @@ def _error(request_id: Any, code: int, message: str) -> Dict[str, Any]:
     }
 
 
+def enter_start_folder(workspace: Optional[Path]) -> Path:
+    """Make the root of the project that contains *workspace* (default: the
+    current folder) the working folder, else *workspace* itself; returns the
+    resolved start folder. Called once, as the server starts.
+
+    A run of this build takes its provider file and .env from the working
+    folder, so this makes ``--workspace`` and a start in a subfolder the same
+    as a start in the project folder. Values read later relative to the
+    first working folder are made absolute first."""
+    from lobster.core.runtime.workspace import find_project_root
+
+    if sys.argv and sys.argv[0] and not os.path.isabs(sys.argv[0]):
+        sys.argv[0] = os.path.abspath(sys.argv[0])  # the overview's lobster path
+    # shortcut: the global settings folder (XDG_CONFIG_HOME) is fixed when
+    # lobster.config is imported, before this runs; a relative value, invalid
+    # by the XDG spec, is not made absolute and goes wrong after the move.
+    value = os.environ.get("LOBSTER_SSL_CERT_PATH")
+    if value and not os.path.isabs(value):
+        os.environ["LOBSTER_SSL_CERT_PATH"] = os.path.abspath(value)
+    start = (workspace if workspace is not None else Path.cwd()).resolve()
+    os.chdir(find_project_root(start) or start)
+    return start
+
+
 def run_mcp_stdio(
     *,
     runner: Optional[Runner] = None,
     stdin: Optional[IO[str]] = None,
     stdout: Optional[IO[str]] = None,
+    start: Optional[Path] = None,
+    follow_project: bool = False,
 ) -> int:
-    """Serve one host over stdio until EOF; returns the exit code."""
+    """Serve one host over stdio until EOF; returns the exit code. *start* is
+    the folder the project is found from (default: the current folder);
+    *follow_project* lets the server enter a project made later."""
     if stdout is None:
         from lobster.cli_internal.agent_stdio import _claim_stdout
 
@@ -1868,16 +2773,26 @@ def run_mcp_stdio(
         # default would misread it. Untested on Windows.
         sys.stdin.reconfigure(encoding="utf-8")
         stdin = sys.stdin
-    server = McpServer(runner or ThreadRunner())
+    write_lock = threading.Lock()  # replies come from the reader and reply threads
+
+    def send(reply: Dict[str, Any]) -> None:
+        text = json.dumps(reply, separators=(",", ":")) + "\n"
+        with write_lock:
+            out.write(text)
+            out.flush()
+
+    server = McpServer(
+        runner or ThreadRunner(), send=send, start=start, follow_project=follow_project
+    )
     for line in stdin:
         if not line.strip():
             continue
         reply = server.handle_line(line)
         if reply is not None:
-            out.write(json.dumps(reply, separators=(",", ":")) + "\n")
-            out.flush()
-    # EOF: the host is gone. Cancel the active run and wait briefly; a run
-    # dies with this process.
+            send(reply)
+    # EOF: the host is gone. End the open waits, cancel the active run and
+    # wait briefly; a run dies with this process.
+    server.close()
     if not server.runner.stop(SHUTDOWN_WAIT_S):
         # shortcut: a worker inside a model or tool call cannot be interrupted
         # and engine threads would hold interpreter exit; leave without them.

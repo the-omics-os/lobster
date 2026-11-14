@@ -23,6 +23,9 @@ def test_real_init_entry_reports_missing_key_and_existing_config(tmp_path):
         work = tmp_path / case
         home = work / "home"
         home.mkdir(parents=True)
+        # A project cannot be the home folder or one above it, so init runs in a sibling.
+        study = work / "study"
+        study.mkdir()
         env = {
             "PATH": os.defpath,
             "HOME": str(home),
@@ -53,7 +56,7 @@ def test_real_init_entry_reports_missing_key_and_existing_config(tmp_path):
         options = ["--use-omics-os"]
         original = b"LOBSTER_LLM_PROVIDER=anthropic\nANTHROPIC_API_KEY=synthetic\n"
         if case == "existing-config":
-            (work / ".env").write_bytes(original)
+            (study / ".env").write_bytes(original)
             options += ["--omics-os-key", "omk_subprocess_synthetic"]
         result = subprocess.run(
             [
@@ -66,7 +69,7 @@ def test_real_init_entry_reports_missing_key_and_existing_config(tmp_path):
                 "--skip-ssl-test",
                 *options,
             ],
-            cwd=work,
+            cwd=study,
             env=env,
             stdin=subprocess.DEVNULL,
             capture_output=True,
@@ -81,14 +84,14 @@ def test_real_init_entry_reports_missing_key_and_existing_config(tmp_path):
         assert "setup complete" not in result.stdout.lower()
         for marker in ("Configuration saved", "API key saved"):
             assert marker.lower() not in (result.stdout + result.stderr).lower()
-        assert not (work / ".lobster_workspace" / "provider_config.json").exists()
-        assert not list(work.glob(".env.backup.*"))
+        assert not (study / ".lobster_workspace" / "provider_config.json").exists()
+        assert not list(study.glob(".env.backup.*"))
         if case == "missing-key":
             assert "API key" in result.stdout
             assert "--omics-os-key" in result.stdout
             assert "app.omics-os.com" in result.stdout
-            assert not (work / ".env").exists()
+            assert not (study / ".env").exists()
         else:
             assert "existing configuration found" in result.stdout.lower()
             assert "--force" in result.stdout
-            assert (work / ".env").read_bytes() == original
+            assert (study / ".env").read_bytes() == original

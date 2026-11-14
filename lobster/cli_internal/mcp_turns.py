@@ -36,7 +36,8 @@ _write_lock = threading.Lock()
 
 # Why a session may not be continued. The record keeps only the code; the host
 # reads the server's own sentence for it, never text from the file (a folder can
-# come from someone else).
+# come from someone else). foreign_data is set only by an earlier build, which
+# refused a turn that read another file.
 FOREIGN_DATA = "foreign_data"
 BLOCKED_REASONS = {
     FOREIGN_DATA: (

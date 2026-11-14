@@ -52,7 +52,7 @@ def test_the_second_process_restores_the_session_through_the_engine(earlier):
 
     assert done["status"] == "completed"
     assert Path(done["result_path"]) == out / "result_2.json"
-    assert Path(done["notebook_path"]) == out / "lobster_scrna_qc_2.ipynb"
+    assert Path(done["notebook_path"]) == out / "lobster_run_2.ipynb"
     restored = opened[1]
     assert restored["workspace"] == hidden(out.parent)
     assert restored["session_id"] == "session_test"  # the engine's "latest"

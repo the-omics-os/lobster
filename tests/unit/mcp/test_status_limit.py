@@ -61,11 +61,17 @@ def test_the_worst_case_fits_and_keeps_what_must_stay():
     assert len(status["unfinished_instructions"]) == 10
     assert all("steps_completed" not in e for e in status["unfinished_instructions"])
     assert status["unfinished_steps_omitted"] is True
+    # Last, the summary gives up what the rest leaves no room for.
+    assert mcp_stdio.SUMMARY_MIN_CHARS < len(status["summary"])
+    assert len(status["summary"]) < mcp_stdio.SUMMARY_MAX_CHARS
+    assert status["summary"].endswith(mcp_stdio.SUMMARY_CUT)
+    assert size(status) > LIMIT - 10  # it takes all the room left
 
 
 def test_step_names_stay_while_the_status_fits():
     status = mcp_stdio._bounded(worst_case(steps=2, warnings=1))
     assert size(status) < LIMIT
+    assert len(status["summary"]) == mcp_stdio.SUMMARY_MAX_CHARS
     assert status["unfinished_instructions"][0]["steps_completed"]
     assert "unfinished_steps_omitted" not in status
 
@@ -110,3 +116,39 @@ def test_answers_stay_while_the_status_fits():
     assert "decisions_total" not in bounded
     alone = mcp_stdio._bounded({**worst_case(), "decisions": decisions()})
     assert alone["decisions_total"] == mcp_decision.MAX_RECORDED
+
+
+def test_a_long_non_ascii_summary_is_cut_before_any_field_goes():
+    # Each CJK character is six characters of JSON text (\uXXXX).
+    status = {
+        **_completed("细" * mcp_stdio.SUMMARY_MAX_CHARS),
+        "steps": [{"tool": "cluster_cells"}],
+        "decisions": decisions(3),
+    }
+    bounded = mcp_stdio._bounded(status)
+    assert size(bounded) < LIMIT
+    for key in ("result", "steps", "decisions"):
+        assert key in bounded and f"{key}_omitted" not in bounded, key
+    assert bounded["summary"].endswith(mcp_stdio.SUMMARY_CUT)
+    assert len(bounded["summary"]) > mcp_stdio.SUMMARY_MIN_CHARS  # cut to the room
+
+
+def test_when_the_fields_alone_are_too_long_the_summary_keeps_its_length():
+    # A code-heavy run: 50 steps, each with code at the field limit. Squeezing
+    # the summary cannot save the steps, so the steps go and the summary stays.
+    code = {"python_code": "x=1\n" * 250, "description": "d" * 100}
+    steps = [
+        {"seq": i, "tool": "execute_custom_code", "parameters": code}
+        for i in range(mcp_record.MAX_STEPS)
+    ]
+    status = {
+        **_completed("a" * mcp_stdio.SUMMARY_MAX_CHARS),
+        "steps": steps,
+        "modality_details": [{"name": "a"}],
+        "metrics": {"x": 1},
+    }
+    assert size(status) > 2 * LIMIT
+    bounded = mcp_stdio._bounded(status)
+    assert size(bounded) < LIMIT
+    assert bounded["summary"] == "a" * mcp_stdio.SUMMARY_MAX_CHARS
+    assert bounded.get("steps_omitted") is True

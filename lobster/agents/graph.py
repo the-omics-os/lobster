@@ -10,7 +10,9 @@ See: https://docs.langchain.com/oss/langchain/multi-agent#tool-calling
 
 from __future__ import annotations
 
+import functools
 import inspect
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
@@ -57,6 +59,43 @@ from lobster.utils.llm_response_utils import extract_text_from_llm_response
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Tool calls of one model message run on separate threads, and native code that
+# is not thread-safe (Numba's parallel kernels behind neighbors and UMAP) aborts
+# the process when two calls reach it at once. Reentrant: a tool may call another.
+_TOOL_LOCK = threading.RLock()
+
+
+def _locked(func):
+    @functools.wraps(func)
+    def run(*args, **kwargs):
+        with _TOOL_LOCK:
+            return func(*args, **kwargs)
+
+    run.holds_tool_lock = True
+    return run
+
+
+def _one_tool_at_a_time(agent) -> None:
+    """Hold the process tool lock around each sync tool function of `agent`.
+
+    Hand-off tools stay outside: the expert they start needs the lock for its
+    own tools. Tools with a coroutine stay outside too: they wait on I/O or a
+    subprocess, and taking the lock on the event loop would block it.
+    """
+    graph = getattr(agent, "bound", agent)
+    node = getattr(graph, "nodes", {}).get("tools")
+    for t in getattr(getattr(node, "bound", None), "tools_by_name", {}).values():
+        func = getattr(t, "func", None)
+        categories = (t.metadata or {}).get("categories") or []
+        if (
+            func is None
+            or getattr(t, "coroutine", None) is not None
+            or "DELEGATE" in categories
+            or getattr(func, "holds_tool_lock", False)
+        ):
+            continue
+        t.func = _locked(func)
 
 
 # =============================================================================
@@ -588,6 +627,7 @@ def _create_agents_single_pass(
             created_agents[agent_name] = factory_function(**factory_kwargs).with_config(
                 {"recursion_limit": 200}
             )
+            _one_tool_at_a_time(created_agents[agent_name])
         except InferenceRefused:
             raise
         except Exception as e:
@@ -1057,6 +1097,7 @@ def create_bioinformatics_graph(
         pre_model_hook=pre_model_hook,
         store=store,
     )
+    _one_tool_at_a_time(supervisor_agent)
 
     # Wrap in a StateGraph with explicit "supervisor" node name
     # This ensures events are keyed by "supervisor" (backward compatible with client)

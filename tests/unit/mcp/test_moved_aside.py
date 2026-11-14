@@ -149,3 +149,30 @@ def test_rmtree_is_only_used_for_a_folder_made_in_the_same_call():
                 if isinstance(call_node, ast.Call) and name == "rmtree":
                     found.append((path.name, node.name))
     assert sorted(set(found)) == [("mcp_lock.py", "discard")]
+
+
+@pytest.mark.parametrize("project_file", ["project.json", "created_paths.json"])
+def test_a_projects_workspace_is_never_moved_aside(
+    engine, tmp_path, data, stamp, project_file
+):
+    """An unfinished run's session folder that has since become a project's
+    workspace (``lobster init`` there) is the project: it stays where it is."""
+    _opened, script = engine
+    out = tmp_path / "out"
+    server = McpServer(ThreadRunner())
+    script["events"] = [REJECTED]
+    first = call(server, "lobster_run", run_args(data, out))
+    assert wait_terminal(server, first["run_id"])["status"] == "failed"
+    workspace = out / mcp_record.WORKSPACE_DIR
+    (workspace / project_file).write_text("{}")
+    before = tree(workspace)
+    assert not mcp_record.unfinished_leftover(out)
+
+    gate = Gate()
+    refused = call(McpServer(ThreadRunner(gate)), "lobster_run", run_args(data, out))
+    text = refused["error_text"]
+    assert text.startswith("output_dir_in_use:")
+    assert "is a Lobster project" in text
+    assert str(out / "runs" / "<name>") in text
+    assert gate.calls == [] and tree(workspace) == before
+    assert not list(out.glob(f"{mcp_record.WORKSPACE_DIR}.unfinished-*"))

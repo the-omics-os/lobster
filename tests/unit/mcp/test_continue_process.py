@@ -121,8 +121,7 @@ def test_a_session_survives_a_restart_without_doubling_its_history(tmp_path):
             "lobster_run",
             input_path=str(data),
             output_dir=str(out),
-            analysis="scrna_qc",
-            instruction="use the tool defaults",
+            question="What is in this file?",
         )
         assert first.finished(run["run_id"])["status"] == "completed"
         second_turn = first.call(
@@ -153,7 +152,7 @@ def test_a_session_survives_a_restart_without_doubling_its_history(tmp_path):
         final = second.finished(third["run_id"])
         assert final["status"] == "completed", final
         assert final["summary"] == "Third turn answer, after a restart."
-        assert Path(final["notebook_path"]) == out / "lobster_scrna_qc_3.ipynb"
+        assert Path(final["notebook_path"]) == out / "lobster_run_3.ipynb"
     finally:
         assert second.close() == 0
 
@@ -163,10 +162,11 @@ def test_a_session_survives_a_restart_without_doubling_its_history(tmp_path):
     assert after[len(before) :] == ["host_instruction"]
     assert before.count("assess_data_quality") == 1
     assert before.count("filter_and_normalize") == 1
-    notebook = notebook_text(out / "lobster_scrna_qc_3.ipynb")
+    notebook = notebook_text(out / "lobster_run_3.ipynb")
     assert notebook.count(": assess_data_quality") == 1  # one step heading
     assert notebook.count(": filter_and_normalize") == 1
-    assert notebook.count(": host_instruction") == 3
+    assert notebook.count(": host_question") == 1
+    assert notebook.count(": host_instruction") == 2
     record = json.loads((out / "result_3.json").read_text())
     assert record["continued_from"] == done["run_id"]
     assert [
@@ -197,8 +197,7 @@ def test_a_restart_tells_the_next_turn_which_modalities_did_not_come_back(tmp_pa
             "lobster_run",
             input_path=str(data),
             output_dir=str(out),
-            analysis="scrna_qc",
-            instruction="use the tool defaults",
+            question="What is in this file?",
         )
         assert first.finished(run["run_id"])["status"] == "completed"
         second = first.call(
@@ -247,5 +246,5 @@ def test_a_restart_tells_the_next_turn_which_modalities_did_not_come_back(tmp_pa
         != notice[0]
     )
     # It is not the host's instruction in the notebook or the record.
-    assert NOTICE not in notebook_text(out / "lobster_scrna_qc_3.ipynb")
+    assert NOTICE not in notebook_text(out / "lobster_run_3.ipynb")
     assert record["request"]["instruction"] == "and once more"

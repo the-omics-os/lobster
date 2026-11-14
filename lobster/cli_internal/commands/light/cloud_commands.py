@@ -745,7 +745,7 @@ def projects(
         False, "--json", "-j", is_flag=True, help=h("Output JSON")
     ),
 ) -> None:
-    """List your Omics-OS Cloud projects."""
+    """List your Omics-OS Cloud projects (also: omics-os lobster projects list)."""
     from lobster.cli_internal.commands.light.cloud_query import (
         CloudQueryError,
         _validate_endpoint,

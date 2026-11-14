@@ -186,7 +186,6 @@ def sections(views, **overrides):
         "files_written": [{"category": "plots", "path": "/p", "figure_ref": "a@b"}]
     }
     args = {
-        "analysis": "scrna_qc",
         "exported": True,
         "open_question": False,
         "plots": views,
@@ -218,27 +217,24 @@ def test_more_figures_than_views_is_visible_to_the_host():
     assert record["plots_truncated"] is True and record["plots_total"] == 9
 
 
-def test_no_qc_plots_is_only_for_the_first_turn_of_a_recipe_that_draws_them():
+def test_no_turn_is_told_it_drew_no_qc_plots():
     nothing = {"files_written": []}
     client = SimpleNamespace(data_manager=SimpleNamespace())
 
-    def run(number, analysis="scrna_qc"):
+    def run(number):
         turn = mcp_record.Turn.begin(None, number)
         return codes(
             mcp_record.collect(
                 client,
                 turn,
                 nothing,
-                analysis=analysis,
                 exported=True,
                 open_question=False,
                 plots=mcp_record.PlotViews([], total=0, failed=0),
             )
         )
 
-    assert "no_qc_plots" in run(1)
-    assert "no_qc_plots" not in run(2)  # a later turn need not draw plots
-    assert "no_qc_plots" not in run(1, analysis="other")
+    assert "no_qc_plots" not in run(1) + run(2)
 
 
 # wiring in a completed run -----------------------------------------------------
@@ -274,7 +270,7 @@ def test_published_views_are_listed_in_files_and_in_result_json(
         return mcp_record.PlotViews([entry], total=7, failed=0)
 
     monkeypatch.setattr(mcp_record, "publish_plot_views", fake_views)
-    request = RunRequest(new_run_id(), str(data), str(out), "scrna_qc")
+    request = RunRequest(new_run_id(), str(data), str(out), "What is in this file?")
     status = mcp_stdio.run_engine(request, threading.Event())
 
     plot = next(f for f in status["files"] if f["category"] == "plots")
@@ -304,7 +300,9 @@ def test_a_view_that_cannot_be_read_does_not_fail_the_run(
         raise StorageError("saved figures could not be listed")
 
     monkeypatch.setattr(FakeDataManager, "files_written_since", broken, raising=False)
-    request = RunRequest(new_run_id(), str(data), str(tmp_path / "out"), "scrna_qc")
+    request = RunRequest(
+        new_run_id(), str(data), str(tmp_path / "out"), "What is in this file?"
+    )
     status = mcp_stdio.run_engine(request, threading.Event())
     assert status["status"] == "completed"
     [warning] = [w for w in status["warnings"] if w["code"] == "metrics_unavailable"]

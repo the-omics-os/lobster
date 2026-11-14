@@ -21,8 +21,15 @@ env_vars = [
   "OLLAMA_API_KEY",
 ]
 
-# lobster_status only reads a run's state. lobster_run and lobster_cancel keep
-# Codex's default approval: one calls a model provider and writes under
-# output_dir, the other stops a run.
+# lobster_overview reads the project's state; lobster_status and lobster_wait
+# only read a run's state. lobster_run and lobster_cancel keep Codex's default
+# approval: one calls a model provider and writes under output_dir, the other
+# stops a run.
+[mcp_servers.lobster.tools.lobster_overview]
+approval_mode = "approve"
+
 [mcp_servers.lobster.tools.lobster_status]
+approval_mode = "approve"
+
+[mcp_servers.lobster.tools.lobster_wait]
 approval_mode = "approve"

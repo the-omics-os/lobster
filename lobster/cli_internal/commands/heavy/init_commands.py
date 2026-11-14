@@ -5,18 +5,22 @@ Extracted from cli.py -- the `lobster init` wizard and all supporting
 helper functions for provider setup, agent selection, and package installation.
 """
 
+import functools
 import logging
 import os
 import shutil
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import typer
 from rich.markup import escape as _markup_escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
+from lobster.cli_internal.agent_packages import (
+    AVAILABLE_AGENT_PACKAGES as _CATALOG,
+)
 from lobster.config import provider_setup
 from lobster.i18n import h
 from lobster.ui import LobsterTheme
@@ -75,89 +79,8 @@ def change_mode(new_mode: str, current_client: "AgentClient") -> "AgentClient":
 # Format: (package_name, description, agents_provided, published_on_pypi, experimental)
 
 AVAILABLE_AGENT_PACKAGES = [
-    (
-        "lobster-research",
-        h("Literature search & data discovery"),
-        ["research_agent", "data_expert_agent"],
-        True,
-        False,
-    ),
-    (
-        "lobster-transcriptomics",
-        h("Single-cell & bulk RNA-seq analysis"),
-        ["transcriptomics_expert", "annotation_expert", "de_analysis_expert"],
-        True,
-        False,
-    ),
-    (
-        "lobster-visualization",
-        h("Data visualization & plotting"),
-        ["visualization_expert_agent"],
-        True,
-        False,
-    ),
-    (
-        "lobster-genomics",
-        h("Genomics/DNA analysis (VCF, GWAS, clinical variants)"),
-        ["genomics_expert", "variant_analysis_expert"],
-        True,
-        False,
-    ),
-    (
-        "lobster-proteomics",
-        h("Mass spec & affinity proteomics analysis"),
-        [
-            "proteomics_expert",
-            "proteomics_de_analysis_expert",
-            "biomarker_discovery_expert",
-        ],
-        True,
-        False,
-    ),
-    (
-        "lobster-metabolomics",
-        h("LC-MS, GC-MS, and NMR metabolomics analysis"),
-        ["metabolomics_expert"],
-        True,
-        False,
-    ),
-    (
-        "lobster-ml",
-        h("Machine learning, feature selection, and survival analysis"),
-        [
-            "machine_learning_expert",
-            "feature_selection_expert",
-            "survival_analysis_expert",
-        ],
-        True,
-        True,
-    ),
-    (
-        "lobster-drug-discovery",
-        h("Drug discovery, cheminformatics, and translational strategy"),
-        [
-            "drug_discovery_expert",
-            "cheminformatics_expert",
-            "clinical_dev_expert",
-            "pharmacogenomics_expert",
-        ],
-        True,
-        True,
-    ),
-    (
-        "lobster-metadata",
-        h("Metadata filtering & standardization"),
-        ["metadata_assistant"],
-        True,
-        True,
-    ),
-    (
-        "lobster-structural-viz",
-        h("Protein structure visualization (PyMOL, PDB)"),
-        ["protein_structure_visualization_expert"],
-        True,
-        True,
-    ),
+    (name, h(description), agents, published, experimental)
+    for name, description, agents, published, experimental in _CATALOG
 ]
 
 _DEFAULT_TUI_AGENT_PACKAGES = ("lobster-research", "lobster-transcriptomics")
@@ -1758,15 +1681,20 @@ def _print_lamin_notes(choice: Optional[bool], *, global_config: bool) -> None:
         console.print(line, markup=False)
 
 
-def _resolve_workspace_or_exit(create: bool = True) -> Path:
+def _resolve_workspace_or_exit(
+    create: bool = True, workspace: Optional[Path] = None
+) -> Path:
     """Resolve the init workspace, exiting 1 with a clear message on OS errors."""
     from lobster.core.runtime.workspace import resolve_workspace
 
     try:
-        return resolve_workspace(None, create=create)
+        return resolve_workspace(workspace, create=create)
     except OSError as exc:
-        configured = os.environ.get("LOBSTER_WORKSPACE") or str(
-            Path.cwd() / ".lobster_workspace"
+        configured = (
+            str(workspace)
+            if workspace is not None
+            else os.environ.get("LOBSTER_WORKSPACE")
+            or str(Path.cwd() / ".lobster_workspace")
         )
         console.print(
             h(
@@ -1774,7 +1702,8 @@ def _resolve_workspace_or_exit(create: bool = True) -> Path:
             ).format(
                 _markup_escape=_markup_escape(configured),
                 _markup_escape3=_markup_escape(exc.strerror or str(exc)),
-            )
+            ),
+            soft_wrap=True,
         )
         raise typer.Exit(1)
 
@@ -1828,7 +1757,506 @@ def _ensure_tui_installed() -> None:
         console.print(h("  [green]✓[/green] textual installed"))
 
 
+def _init_target(folder: Optional[Path]) -> Tuple[Path, Optional[Path]]:
+    """The folder ``lobster init`` configures and the workspace path to use for it.
+
+    Init configures the folder it is run in (or the one named), never the project
+    that happens to enclose it, so the workspace is pinned to that folder. Only a
+    ``LOBSTER_WORKSPACE`` set without a named folder keeps meaning what it always
+    did: the workspace is taken from it (second value ``None``).
+    """
+    from lobster.core.runtime.workspace import WORKSPACE_ENV_VAR
+
+    root = Path(os.path.abspath(Path.cwd() if folder is None else folder))
+    if folder is None and os.environ.get(WORKSPACE_ENV_VAR):
+        return root, None
+    return root, root / ".lobster_workspace"
+
+
+def _ensure_project(
+    folder: Optional[Path],
+    project_name: Optional[str],
+    env_before: Optional[bytes] = None,
+) -> None:
+    """Give a folder that init just configured its project identity (kept if present).
+
+    ``env_before`` is what the folder's ``.env`` held before init ran (None: no
+    file); a file that now differs is one init wrote, and the project records it.
+    """
+    from lobster.core.projects import ProjectError, init_project, record_created_file
+    from lobster.core.runtime.workspace import (
+        WORKSPACE_FOLDER_NAME,
+        resolve_workspace,
+    )
+
+    _, pinned = _init_target(folder)
+    workspace = resolve_workspace(pinned, create=False)
+    # Nothing was written (cancelled, or a failed run): no project either. A
+    # workspace named otherwise (LOBSTER_WORKSPACE) is not a project folder.
+    if (
+        workspace.name != WORKSPACE_FOLDER_NAME
+        or not (workspace / "provider_config.json").is_file()
+    ):
+        return
+    try:
+        project, created = init_project(workspace.parent, name=project_name)
+    except ProjectError as exc:
+        console.print(
+            f"[yellow]⚠ {_markup_escape(exc.message)}[/yellow]", soft_wrap=True
+        )
+        return
+    try:
+        env = project.root / ".env"
+        if env.is_file() and env.read_bytes() != env_before:
+            record_created_file(project, ".env")
+    except OSError:
+        pass  # the .env note is advice only; init itself went through
+    console.print(
+        h("✓ Project {name} {state} at {path}").format(
+            name=_markup_escape(project.name),
+            state=h("created") if created else h("kept"),
+            path=_markup_escape(str(project.root)),
+        ),
+        soft_wrap=True,
+    )
+
+
+def _missing_ancestors(folder: Path) -> List[Path]:
+    """The folders above ``folder`` (and itself) that do not exist yet, nearest first."""
+    missing = []
+    for parent in (folder, *folder.parents):
+        if parent.exists() or parent.is_symlink():
+            break
+        missing.append(parent)
+    return missing
+
+
+def _undo_empty_init(pinned: Path, made: List[Path]) -> None:
+    """Remove the workspace and folders this call made when no setup was written."""
+    import shutil
+
+    if (
+        pinned.is_dir()
+        and not pinned.is_symlink()
+        and not (pinned / "provider_config.json").exists()
+        and not (pinned / "project.json").exists()
+    ):
+        shutil.rmtree(pinned, ignore_errors=True)
+    for folder in made:  # nearest first: a folder goes only once it is empty
+        try:
+            folder.rmdir()
+        except OSError:
+            break
+
+
+class _Handled(typer.Exit):
+    """``init`` finished and said everything itself; the project is already made."""
+
+
+_KEY_FLAG_NAMES = (
+    "anthropic_key",
+    "bedrock_access_key",
+    "bedrock_secret_key",
+    "use_ollama",
+    "gemini_key",
+    "openai_key",
+    "openrouter_key",
+    "nebius_key",
+    "ollama_cloud_key",
+    "azure_endpoint",
+    "azure_credential",
+    "use_omics_os",
+    "omics_os_key",
+    "cloud_key",
+)
+
+
+# Options the key-free path cannot apply; passing one is refused, not dropped.
+_TERMINAL_ONLY_OPTIONS = (
+    ("--ncbi-key", "ncbi_key"),
+    ("--profile", "profile"),
+    ("--ollama-model", "ollama_model"),
+    ("--cloud-endpoint", "cloud_endpoint"),
+    ("--install-docling", "install_docling"),
+    ("--install-vector-search", "install_vector_search"),
+    ("--agents-description", "agents_description"),
+    ("--lamin", "lamin"),
+    ("--ssl-verify", "ssl_verify"),
+    ("--ssl-cert-path", "ssl_cert_path"),
+    ("--skip-ssl-test", "skip_ssl_test"),
+)
+
+
+_SWITCH_OPTIONS = {"ssl_verify": "--no-ssl-verify", "lamin": "--no-lamin"}
+
+
+def _terminal_only_given(name: str, value: Any) -> bool:
+    if name in _SWITCH_OPTIONS:  # Optional[bool]: --no-x is False, unset is None
+        return value is not None
+    return value is not None and value is not False
+
+
+def _given(value: Any) -> bool:
+    """A flag the user passed (an unset typer option is not a str or True)."""
+    return value is True or isinstance(value, str)
+
+
+def _where(setting: Any) -> str:
+    return {
+        "global": setting.where or "the global config",
+        "shell": "the shell",
+        "project": "this project",
+        "default": "provider default",
+    }[setting.source]
+
+
+def _init_without_terminal(
+    init_root: Path,
+    init_ws: Path,
+    project_name: Optional[str],
+    terminal_only: List[str],
+    provider_flag: Optional[str],
+    model: Any,
+    agents: Any,
+    preset: Any,
+    auto_agents: Any,
+) -> None:
+    """``lobster init <folder>`` with no terminal and no key flag: a host's call.
+
+    The project gets its identity, and runs with the provider and key of the setup
+    the user already has: nothing secret is read into, copied or written under the
+    project. ``--provider``, ``--model`` and ``--agents``/``--preset`` go into the
+    project's own settings. Every check comes before the first write, so a refused
+    call changes nothing.
+    """
+    import shutil
+    import unicodedata
+
+    from lobster.cli_internal import provider_hint
+    from lobster.config.workspace_agent_config import WorkspaceAgentConfig
+    from lobster.config.workspace_config import WorkspaceProviderConfig
+    from lobster.core.component_registry import AGENT_TO_PACKAGE
+    from lobster.core.projects import (
+        Effective,
+        ProjectError,
+        effective_settings,
+        init_project,
+        load_project,
+        project_settings,
+    )
+
+    def say(text: str) -> None:
+        console.print(_markup_escape(text), soft_wrap=True)
+
+    def refuse(code: int, *lines: str) -> None:
+        for line in lines:
+            say(line)
+        raise typer.Exit(code)
+
+    folder_text = str(init_root)
+    if terminal_only:
+        refuse(
+            2,
+            f"✗ bad_argument: {', '.join(terminal_only)} needs a terminal; nothing was changed.",
+            f"In a terminal: {provider_hint.command_line('init', folder_text)}",
+        )
+
+    def cmd(*args: str) -> str:
+        return provider_hint.command_line(*args)
+
+    # the caller's own flags, repeated on a line the refusal suggests
+    caller_flags: List[str] = []
+    if isinstance(model, str) and model.strip():
+        caller_flags += ["--model", model.strip()]
+    if isinstance(preset, str) and preset:
+        caller_flags += ["--preset", preset]
+    elif isinstance(agents, str) and agents:
+        caller_flags += ["--agents", agents]
+
+    # What exists here: an earlier project of init's own, or something else.
+    existing = None
+    if init_ws.exists():
+        try:
+            existing = load_project(init_root)
+        except ProjectError:
+            refuse(
+                1,
+                f"✗ bad_argument: {init_ws} exists but is not a project made by lobster init. Nothing was changed.",
+                f"In a terminal: {cmd('init', folder_text)}",
+            )
+
+    flag = provider_flag.strip() if isinstance(provider_flag, str) else None
+    provider, model_now = effective_settings(init_ws)
+    if flag:
+        provider = Effective(flag, "flag")
+        model_now = None
+    elif provider is None:
+        refuse(
+            1,
+            "✗ " + provider_hint.no_setup_message(folder_text, extra=caller_flags),
+        )
+
+    new_model = None
+    if isinstance(model, str):
+        new_model = model.strip()
+        if (
+            not new_model
+            or len(new_model) > 200
+            or any(unicodedata.category(c).startswith("C") for c in new_model)
+        ):
+            refuse(
+                2,
+                "✗ bad_argument: --model needs a model name (one line, at most 200 characters). Nothing was changed.",
+            )
+
+    model_field = (
+        provider.value.replace("-", "_") + WorkspaceProviderConfig().model_field_suffix
+    )
+    if new_model and not hasattr(WorkspaceProviderConfig(), model_field):
+        refuse(
+            2,
+            f"✗ bad_argument: {provider.value} has no model setting; drop --model. Nothing was changed.",
+        )
+
+    if auto_agents is True:
+        refuse(
+            2,
+            "✗ bad_argument: --auto-agents needs a terminal; pass --agents or --preset. Nothing was changed.",
+        )
+    requested: List[str] = []
+    preset_name = None
+    if isinstance(preset, str) and preset:
+        from lobster.config.agent_presets import expand_preset, is_valid_preset
+
+        if not is_valid_preset(preset):
+            refuse(
+                1,
+                f"✗ bad_argument: invalid preset {preset}. Nothing was changed.",
+                "Valid presets: scrna-basic, scrna-full, multiomics-full",
+            )
+        requested = _filter_unpublished_preset_agents(
+            expand_preset(preset), console, preset
+        )
+        preset_name = preset
+    elif isinstance(agents, str) and agents:
+        requested = _normalize_selected_agents(
+            [a.strip() for a in agents.split(",") if a.strip()]
+        )
+        if not requested:
+            refuse(
+                1,
+                "✗ bad_argument: --agents names no expert. Nothing was changed.",
+            )
+    installed_names = set(_get_installed_agents())
+    written = [a for a in requested if a in installed_names]
+    left_out = [a for a in requested if a not in installed_names]
+
+    def left_out_lines() -> List[str]:
+        lines = []
+        for name in left_out:
+            package = AGENT_TO_PACKAGE.get(name)
+            lines.append(
+                f"{name}: not installed; run {cmd('agents', 'install', package)}"
+                if package
+                else f"{name}: unknown expert"
+            )
+        return lines
+
+    if requested and not written:
+        refuse(
+            1,
+            "✗ bad_argument: none of those experts is installed. Nothing was changed.",
+            *left_out_lines(),
+        )
+
+    pin_provider = bool(flag) or provider.source == "shell" or bool(new_model)
+    if existing is not None and not (pin_provider or written):
+        say(
+            f"Already a project: {existing.name} at {existing.root}. Nothing was changed."
+        )
+        raise _Handled(0)
+
+    # ---- the first write ----
+    from lobster.core.projects import forget_project
+
+    settings_files = (init_ws / "provider_config.json", init_ws / "config.toml")
+    before = {
+        path: path.read_bytes() if path.is_file() else None for path in settings_files
+    }
+
+    def undo() -> List[Path]:
+        # a failed call leaves the folder as it was: a project this call made is removed;
+        # in an existing one the settings files get back the bytes they had.
+        # Returns what could not be given back.
+        failed: List[Path] = []
+        if existing is None:
+            shutil.rmtree(init_ws, ignore_errors=True)
+            forget_project(init_root)
+            if init_ws.exists() or init_ws.is_symlink():
+                failed.append(init_ws)
+            return failed
+        for path, old in before.items():
+            try:
+                if old is None:
+                    path.unlink(missing_ok=True)
+                elif not path.is_file() or path.read_bytes() != old:
+                    path.write_bytes(old)
+            except OSError:
+                failed.append(path)
+        return failed
+
+    def give_back() -> bool:
+        """Undo; names what could not be given back. True when all is as it was."""
+        failed = undo()
+        for path in failed:
+            say(f"✗ {path} could not be given back; check it yourself.")
+        return not failed
+
+    try:
+        init_root.mkdir(parents=True, exist_ok=True)
+        if existing is None:
+            project, created = init_project(init_root, name=project_name)
+        else:
+            project, created = existing, False
+        if pin_provider:
+            _create_workspace_config(
+                {"provider": provider.value, "model_id": new_model}, init_ws
+            )
+            # the writer reports a failure as a note and goes on: read the file back
+            on_disk = WorkspaceProviderConfig.load(init_ws)
+            if (init_ws / "provider_config.json").is_symlink() or (
+                on_disk.global_provider != provider.value
+                or (
+                    new_model
+                    and on_disk.get_model_for_provider(provider.value) != new_model
+                )
+            ):
+                raise OSError(
+                    f"{init_ws / 'provider_config.json'} does not hold the provider"
+                    + (" and model" if new_model else "")
+                    + " that was set"
+                )
+        if written:
+            agent_config = WorkspaceAgentConfig.load(init_ws)
+            agent_config.enabled_agents = written
+            agent_config.preset = preset_name if not left_out else None
+            agent_config.save(init_ws)
+            # a kept preset is stored alone; a list is stored without a preset
+            saved = WorkspaceAgentConfig.load(init_ws)
+            if (saved.preset, saved.enabled_agents) != (
+                (agent_config.preset, []) if agent_config.preset else (None, written)
+            ):
+                raise OSError(f"{init_ws / 'config.toml'} does not hold the experts")
+    except ProjectError as exc:
+        give_back()
+        refuse(2, f"✗ {exc.code}: {exc.message}")
+    except OSError as exc:
+        restored = give_back()
+        refuse(
+            1,
+            f"✗ Could not write the project's settings ({exc})."
+            + (" Nothing was changed." if restored else ""),
+        )
+    except BaseException:  # an exit or error from a helper: nothing of this call stays
+        give_back()
+        raise
+
+    state = h("created") if created else h("kept")
+    say(f"✓ Project {project.name} {state} at {project.root}")
+    kept_experts = [] if written else project_settings(project).experts
+    if pin_provider:
+        taken = {
+            "flag": "--provider",
+            "shell": "the shell",
+            "global": provider.where or "the global config",
+            "project": "this project",
+        }[provider.source]
+        say(f"  provider: {provider.value} (set for this project, taken from {taken})")
+    elif provider.source == "project":
+        say(f"  provider: {provider.value} (set for this project)")
+    else:
+        taken = provider.where if provider.source == "global" else "the shell"
+        say(f"  provider: {provider.value} (not set in this project; from {taken})")
+    if new_model:
+        say(f"  model: {new_model} (set for this project; not checked)")
+        say("  The project is now fixed to that provider and model.")
+    elif model_now is not None and not pin_provider:
+        if model_now.source == "project":
+            say(f"  model: {model_now.value} (set for this project)")
+        else:
+            src = (
+                model_now.where if model_now.source == "global" else "provider default"
+            )
+            say(f"  model: {model_now.value} (not set in this project; from {src})")
+    if written:
+        say(
+            f"  experts: {', '.join(written)} ({len(written)} of {len(requested)} experts set)"
+        )
+        for line in left_out_lines():
+            say(f"  {line}")
+    elif kept_experts:
+        say(f"  experts: {', '.join(kept_experts)} (set for this project)")
+    else:
+        say("  experts: every installed expert (no list set for this project)")
+    if not (pin_provider or written or kept_experts or provider.source == "project"):
+        say(
+            f"  Run {cmd('init', folder_text)} in a terminal to give this project its own settings."
+        )
+    raise _Handled(0)
+
+
+def _creates_project(func):
+    """Run ``func`` (``init_impl``); when it ends normally, project the folder.
+
+    A run that leaves no setup behind (cancelled, refused) also leaves no empty
+    workspace or new folder it made itself.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        pinned = None
+        made: List[Path] = []
+        if not kwargs.get("global_config"):
+            _, pinned = _init_target(kwargs.get("folder"))
+            if pinned is not None and not (pinned.exists() or pinned.is_symlink()):
+                made = _missing_ancestors(pinned.parent)
+            else:
+                pinned = None  # an existing workspace is never ours to remove
+
+        env_before = None
+        if not kwargs.get("global_config"):
+            try:
+                env_before = (
+                    _init_target(kwargs.get("folder"))[0] / ".env"
+                ).read_bytes()
+            except OSError:
+                pass
+
+        def finish():
+            if not kwargs.get("global_config"):
+                _ensure_project(
+                    kwargs.get("folder"), kwargs.get("project_name"), env_before
+                )
+
+        try:
+            result = func(*args, **kwargs)
+        except typer.Exit as exc:
+            if not exc.exit_code and not isinstance(exc, _Handled):
+                finish()
+            raise
+        else:
+            finish()
+            return result
+        finally:
+            if pinned is not None:
+                _undo_empty_init(pinned, made)
+
+    return wrapper
+
+
+@_creates_project
 def init_impl(
+    folder: Optional[Path] = None,
     global_config: bool = typer.Option(
         False,
         "--global",
@@ -1990,13 +2418,17 @@ def init_impl(
             "UI mode: auto (Go TUI, then questionary, classic), go (Go TUI), classic (Rich prompts)"
         ),
     ),
+    project_name: Optional[str] = None,
+    provider_flag: Optional[str] = None,
     lamin: Optional[bool] = None,
 ):
     """
     Initialize Lobster AI configuration.
 
-    By default, creates workspace-specific configuration (.env + provider_config.json).
-    Use --global to set user-wide defaults that apply to all workspaces.
+    By default, creates workspace-specific configuration (.env + provider_config.json)
+    and makes the folder a Lobster project. Run it again to change the settings; the
+    project keeps its identity. Use --global to set user-wide defaults that apply to
+    all workspaces.
 
     Interactive mode (default):
       Guides you through provider selection and API key entry with masked input.
@@ -2016,6 +2448,7 @@ def init_impl(
 
     Examples:
       lobster init                                    # Interactive setup (workspace)
+      lobster init my-study                           # Set up a new project in ./my-study
       lobster init --global                           # Interactive setup (global defaults)
       lobster init --force                            # Reconfigure (overwrite existing)
       lobster init --global --force                   # Reconfigure global defaults
@@ -2049,6 +2482,7 @@ def init_impl(
 
     from lobster.config.global_config import GlobalProviderConfig
 
+    flags = locals()  # a snapshot of the options; a generator below has its own locals
     if ui_mode not in ("auto", "go", "classic"):
         console.print(
             h(
@@ -2057,15 +2491,166 @@ def init_impl(
         )
         raise typer.Exit(1)
 
+    if isinstance(provider_flag, str):
+        from lobster.cli_internal import provider_hint
+        from lobster.config.constants import VALID_PROVIDERS
+
+        if provider_flag not in VALID_PROVIDERS:
+            console.print(
+                h(
+                    "[red]Error:[/red] bad_argument: unknown provider {name}. Valid providers: {valid}. Nothing was changed."
+                ).format(
+                    name=_markup_escape(provider_flag), valid=", ".join(VALID_PROVIDERS)
+                ),
+                soft_wrap=True,
+            )
+            raise typer.Exit(2)
+        if global_config:
+            console.print(
+                h(
+                    "[red]Error:[/red] --provider names the provider of one project; it does not work with --global."
+                )
+            )
+            raise typer.Exit(2)
+        if any(_given(flags.get(name)) for name in _KEY_FLAG_NAMES):
+            console.print(
+                h(
+                    "[red]Error:[/red] the key flag already names the provider; drop --provider."
+                )
+            )
+            raise typer.Exit(2)
+        if non_interactive or folder is None or sys.stdin.isatty():
+            console.print(
+                h(
+                    "[red]Error:[/red] --provider is for a project made without a terminal: {line}. In a terminal, pick the provider in the setup."
+                ).format(
+                    line=_markup_escape(
+                        provider_hint.command_line(
+                            "init",
+                            provider_hint.Placeholder("<folder>"),
+                            "--provider",
+                            provider_hint.Placeholder("<name>"),
+                        )
+                    )
+                ),
+                soft_wrap=True,
+            )
+            raise typer.Exit(2)
+
     from lobster.core.runtime.workspace import resolve_workspace
+
+    if global_config and (folder is not None or project_name is not None):
+        console.print(
+            h(
+                "[red]Error:[/red] --global sets user-wide defaults; it takes no folder or --name."
+            )
+        )
+        raise typer.Exit(2)
+    if project_name is not None:
+        from lobster.core.projects import ProjectError, _validate_name
+
+        try:
+            _validate_name(project_name)
+        except ProjectError as exc:
+            console.print(f"[red]Error:[/red] {_markup_escape(exc.message)}")
+            raise typer.Exit(2)
+    init_root, init_ws = _init_target(folder)
+    if not global_config and init_ws is not None:
+        from lobster.core.projects import enclosing_project, is_home_or_above
+
+        if is_home_or_above(init_root):
+            console.print(
+                h(
+                    "[red]Error:[/red] {path} is your home folder or contains it; make a subfolder, e.g. lobster init ~/my-study"
+                ).format(path=_markup_escape(str(init_root))),
+                soft_wrap=True,
+            )
+            raise typer.Exit(2)
+        if init_ws.is_symlink():
+            console.print(
+                h(
+                    "[red]Error:[/red] {path} is a link; a project needs a real folder. Nothing was written."
+                ).format(path=_markup_escape(str(init_ws))),
+                soft_wrap=True,
+            )
+            raise typer.Exit(2)
+
+        outer = (
+            None
+            if (init_root / ".lobster_workspace" / "project.json").is_file()
+            else enclosing_project(init_root)
+        )
+        if outer is not None:
+            console.print(
+                h(
+                    "[red]Error:[/red] {path} is inside the project {name} at {root}; projects do not nest. Run init in that folder instead. If {root} should not be a project: lobster projects delete {root}"
+                ).format(
+                    path=_markup_escape(str(init_root)),
+                    name=_markup_escape(outer.name),
+                    root=_markup_escape(str(outer.root)),
+                ),
+                soft_wrap=True,
+            )
+            raise typer.Exit(2)
+    if folder is not None and not global_config:
+        if init_root.exists() and not init_root.is_dir():
+            console.print(
+                h("[red]Error:[/red] {path} is not a folder.").format(
+                    path=_markup_escape(str(init_root))
+                ),
+                soft_wrap=True,
+            )
+            raise typer.Exit(2)
+
+    # A host calls init with no terminal and no key: the project takes the
+    # user's existing provider setup (see _init_without_terminal).
+    if (
+        not global_config
+        and not non_interactive
+        and folder is not None
+        and init_ws is not None
+        and not sys.stdin.isatty()
+        and not any(_given(flags.get(name)) for name in _KEY_FLAG_NAMES)
+    ):
+        _init_without_terminal(
+            init_root,
+            init_ws,
+            project_name,
+            [
+                (
+                    _SWITCH_OPTIONS[name]
+                    if name in _SWITCH_OPTIONS and flags[name] is False
+                    else flag
+                )
+                for flag, name in _TERMINAL_ONLY_OPTIONS
+                if _terminal_only_given(name, flags.get(name))
+            ],
+            provider_flag,
+            model,
+            agents,
+            preset,
+            auto_agents,
+        )
 
     # Determine paths based on global vs workspace mode
     if global_config:
         config_path = GlobalProviderConfig.get_config_path()
         env_path = None  # Global mode doesn't create .env (use env vars for API keys)
     else:
-        config_path = resolve_workspace(None, create=False) / "provider_config.json"
-        env_path = Path.cwd() / ".env"
+        if folder is not None:
+            try:
+                init_root.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                console.print(
+                    h("[red]Error:[/red] cannot create {path} ({reason}).").format(
+                        path=_markup_escape(str(init_root)),
+                        reason=_markup_escape(exc.strerror or str(exc)),
+                    ),
+                    soft_wrap=True,
+                )
+                raise typer.Exit(1)
+        config_path = resolve_workspace(init_ws, create=False) / "provider_config.json"
+        env_path = init_root / ".env"
     # The LaminDB catalog answer (--lamin/--no-lamin, else asked when interactive).
     lamin_previous = {} if global_config else _lamin_saved(config_path.parent)
 
@@ -2123,7 +2708,7 @@ def init_impl(
 
     # Check if configuration already exists
     workspace_provider_path = (
-        resolve_workspace(None, create=False) / "provider_config.json"
+        resolve_workspace(init_ws, create=False) / "provider_config.json"
     )
     config_exists = (
         config_path.exists() if global_config else (env_path and env_path.exists())
@@ -2163,7 +2748,7 @@ def init_impl(
                 from lobster.config.workspace_config import WorkspaceProviderConfig
 
                 existing = WorkspaceProviderConfig.load(
-                    resolve_workspace(None, create=False)
+                    resolve_workspace(init_ws, create=False)
                 )
                 existing_provider = (
                     existing.global_provider
@@ -2290,7 +2875,7 @@ def init_impl(
 
         # === AGENT SELECTION (BEFORE PROVIDER SETUP) ===
         # Resolve workspace path for agent config
-        workspace_path = _resolve_workspace_or_exit()
+        workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
 
         # Handle agent selection via flags (CLI-01, CLI-02)
         if agents or preset or auto_agents:
@@ -2783,7 +3368,7 @@ def init_impl(
                 raise typer.Exit(1)
 
             # Create workspace config from structured config_dict
-            workspace_path = _resolve_workspace_or_exit()
+            workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
             _create_workspace_config(config_dict, workspace_path)
             _save_lamin_choice(lamin, workspace_path, previous=lamin_previous)
 
@@ -2883,8 +3468,8 @@ def init_impl(
                         if lamin is not None:
                             _tui_result["lamin_enabled"] = lamin
 
-                        _ws_path = _resolve_workspace_or_exit()
-                        _ev_path = Path.cwd() / ".env"
+                        _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
+                        _ev_path = init_root / ".env"
                         _tui_result = _postprocess_tui_init_result(
                             _tui_result,
                             workspace_path=_ws_path,
@@ -2970,8 +3555,8 @@ def init_impl(
                     console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                     raise typer.Exit(0)
 
-                _ws_path = _resolve_workspace_or_exit()
-                _ev_path = Path.cwd() / ".env"
+                _ws_path = _resolve_workspace_or_exit(workspace=init_ws)
+                _ev_path = init_root / ".env"
                 _q_result = _postprocess_tui_init_result(
                     _q_result,
                     workspace_path=_ws_path,
@@ -3034,10 +3619,18 @@ def init_impl(
     else:
         console.print(
             Panel.fit(
-                h(
-                    "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
-                    "Let's set up your API keys.\n"
-                    "This wizard will create a [cyan].env[/cyan] file in your current directory."
+                (
+                    h(
+                        "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
+                        "Let's set up your API keys.\n"
+                        "This wizard will create a [cyan].env[/cyan] file in your current directory."
+                    )
+                    if folder is None
+                    else h(
+                        "[bold white]🦞 Welcome to Lobster AI![/bold white]\n\n"
+                        "Let's set up your API keys.\n"
+                        "This wizard will create a [cyan].env[/cyan] file in {folder}."
+                    ).format(folder=_markup_escape(str(init_root)))
                 ),
                 border_style="bright_blue",
                 padding=(1, 2),
@@ -3056,7 +3649,7 @@ def init_impl(
             )
         )
 
-    workspace_path = _resolve_workspace_or_exit()
+    workspace_path = _resolve_workspace_or_exit(workspace=init_ws)
 
     try:
         env_lines = []
