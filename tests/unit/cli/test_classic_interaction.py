@@ -358,10 +358,11 @@ def test_dashboard_asks_sections_in_order_then_confirms(capsys):
     assert "Count source?: SRC-B" in shown  # the summary before confirming
 
 
-def test_dashboard_not_confirmed_is_deferred(capsys):
-    result, _ = _classic(_small_dashboard(), ["2", "ok", ""], capsys)
-    assert result["action"] == "defer"
-    assert "answer" not in result
+def test_dashboard_empty_enter_at_the_confirm_asks_again(capsys):
+    """Enter alone no longer throws every answer away: it asks again."""
+    result, shown = _classic(_small_dashboard(), ["2", "ok", "", "y"], capsys)
+    assert result["action"] == "submit"
+    assert "Type y to send these answers, or n to decide later." in shown
 
 
 @pytest.mark.parametrize("typed", ["n", "No"])

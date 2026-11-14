@@ -280,7 +280,9 @@ def _pick_problem(
             return f"{index + 1} is not an option (1 to {len(options)})."
         if options[index].get("unavailable"):
             option = options[index]
-            return f"{option['id']} can't be picked: {option['unavailable'].rstrip('.')}."
+            return (
+                f"{option['id']} can't be picked: {option['unavailable'].rstrip('.')}."
+            )
     if len(set(picks)) != len(picks):
         return "Each option can be picked once."
     if not low <= len(picks) <= high:
@@ -504,7 +506,8 @@ def _draw_dashboard(data: Dict[str, Any]) -> Dict[str, Any]:
         said = _read("Confirm all? [y/N]: ").lower()
         if said in ("y", "yes"):
             return {"answers": replies}
-        if said in ("", "n", "no"):
+        # An empty Enter asks again: it threw every answer away as a defer.
+        if said in ("n", "no"):
             raise _Stop("defer")
         print("Type y to send these answers, or n to decide later.")
 
