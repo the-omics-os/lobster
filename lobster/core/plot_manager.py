@@ -268,6 +268,7 @@ class PlotManager:
         *,
         context: Optional[AttemptContext] = None,
         inputs: Tuple[HeldInput, ...] = (),
+        retained_source=None,
     ) -> Tuple[str, Dict[str, Any], Optional[AnalysisStep]]:
         """
         Add a plot to the collection with comprehensive metadata.
@@ -390,6 +391,7 @@ class PlotManager:
             # get_plot_history, client/stream replies) sees it until commit_staged accepts it.
             staged_entry = {
                 "figure_bytes": figure_to_bytes(plot),
+                "retained_source": retained_source,
                 "label": title or "Untitled",
                 "source": source or "unknown",
                 "modality_name": modality_name,
@@ -738,6 +740,7 @@ class PlotManager:
                 actor=f"legacy_wrapper:{entry['source']}",
                 label=entry["label"],
                 inputs=inputs_of(entry),
+                source=entry.get("retained_source"),
             )
             for index, (_, entry) in enumerate(entries)
         ]

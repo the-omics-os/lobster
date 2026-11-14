@@ -1,8 +1,8 @@
 # Figure lifecycle tests with real custom-code children.
 #
-# Runs the figure store/save/listing/template tests and the custom-code submit_figure tests,
-# whose children are real subprocesses. No other workflow runs these files. On Linux the
-# execution service starts the child as a plain subprocess.
+# Runs lifecycle tests with real custom-code children on Linux and macOS, plus
+# editor backend tests and a separate, required headless Chromium check.
+# A visible macOS application-mode window still needs a native smoke test.
 #
 # Read-only token, no secrets, no cloud credentials, no network calls by the tests.
 
@@ -18,8 +18,18 @@ permissions:
 
 jobs:
   figure-lifecycle:
-    name: Figure lifecycle (real children)
-    runs-on: ubuntu-latest
+    name: ${{ matrix.check-name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          # Preserve the existing Linux check name for branch protection.
+          - os: ubuntu-latest
+            check-name: Figure lifecycle (real children)
+          - os: macos-latest
+            check-name: Figure lifecycle and editor (macOS)
     timeout-minutes: 30  # hang watch for the whole job; each test also has a pytest-timeout cap below
 
     steps:
@@ -34,6 +44,7 @@ jobs:
           python-version: "3.12"
 
       - name: Free up disk space
+        if: runner.os == 'Linux'
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc 2>/dev/null || true
           df -h
@@ -85,13 +96,19 @@ jobs:
           ARGS=()
           for d in "${DESELECT[@]}"; do ARGS+=(--deselect "$d"); done
           test "${#ARGS[@]}" -eq 32
+          # Run browser checks separately with an installed browser and no skips.
+          ARGS+=(--deselect "tests/unit/core/test_plot_editor_data.py::test_data_tab_is_read_only_paged_and_tracks_selected_revision")
           .venv/bin/python -m pytest \
             tests/unit/tools/test_custom_code_figures.py \
+            tests/unit/tools/test_tabular_plot_routing.py \
             tests/unit/core/figures \
             tests/unit/core/test_plot_manager.py \
             tests/unit/core/test_plot_save_reporting.py \
             tests/unit/test_figure_contract_d8.py \
             tests/unit/figure_templates/test_templates.py \
+            tests/unit/core/test_plot_editor_browser.py \
+            tests/unit/core/test_plot_editor_workflow.py \
+            tests/unit/core/test_plot_editor_data.py \
             "${ARGS[@]}" \
             -n 4 \
             --timeout=300 \
@@ -101,10 +118,39 @@ jobs:
             --tb=short
           .venv/bin/python scripts/check_test_results.py results-figure-lifecycle.xml
 
+      - name: Install test-only Chromium tooling
+        id: browser
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          uv pip install --python .venv/bin/python 'playwright==1.65.2'
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            .venv/bin/python -m playwright install --with-deps chromium
+          else
+            .venv/bin/python -m playwright install chromium
+          fi
+
+      - name: Run editor browser checks
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        env:
+          LOBSTER_ROUTING_TELEMETRY: "0"
+          DO_NOT_TRACK: "1"
+          LANGCHAIN_TRACING_V2: "false"
+          LANGSMITH_TRACING: "false"
+          HF_HUB_OFFLINE: "1"
+        run: |
+          .venv/bin/python -m pytest \
+            tests/integration/test_plot_editor_display.py \
+            tests/unit/core/test_plot_editor_data.py::test_data_tab_is_read_only_paged_and_tracks_selected_revision \
+            --timeout=120 --no-cov -p no:cacheprovider --tb=short \
+            --junit-xml=results-plot-editor-browser.xml
+          .venv/bin/python scripts/check_test_results.py --require-no-skips results-plot-editor-browser.xml
+
       - name: Upload test results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
-          name: test-results-figure-lifecycle
-          path: results-figure-lifecycle.xml
+          name: test-results-figure-lifecycle-${{ matrix.os }}
+          path: |
+            results-figure-lifecycle.xml
+            results-plot-editor-browser.xml
           retention-days: 7

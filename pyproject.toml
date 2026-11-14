@@ -456,6 +456,7 @@ version = {attr = "lobster.version.__version__"}
 [tool.setuptools.package-data]
 lobster = ["**/*.json", "**/*.yaml", "**/*.yml"]
 "lobster.scaffold" = ["templates/*.j2"]
+"lobster.core.plot_editor" = ["assets/*.html", "assets/*.css", "assets/*.js"]
 
 # Development tools configurations
 [tool.black]

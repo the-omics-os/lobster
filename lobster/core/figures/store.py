@@ -1749,6 +1749,21 @@ class LocalFigureStore:
             )
         return json.loads(raw)
 
+    def history(self, figure_id):
+        """Linked timeline over immutable revision ancestry, migrated on first access."""
+        from .history import Timeline
+
+        with self._lock:
+            return Timeline(self, figure_id).view()
+
+    def delete_revision(self, ref, generation):
+        from .history import Timeline
+
+        with self._lock:
+            return Timeline(self, FigureRef.parse(ref).figure_id).delete(
+                ref, generation
+            )
+
     # ----------------------------------------------------------------- commit
     def commit(
         self,
@@ -1941,7 +1956,41 @@ class LocalFigureStore:
         # Inputs were normalized against the parent and checked in commit(), so the record
         # and the immutable descriptor agree on authoritative inputs.
         inputs = [edge.to_dict() for edge in candidate.inputs]
+        from .history import change_details
+
+        details = None
+        if candidate.parent_ref:
+            parent_bytes, before, before_config = self.read(candidate.parent_ref)
+            parent_metadata = json.loads(parent_bytes)
+            details = change_details(
+                json.loads(before), json.loads(candidate.figure_bytes)
+            )
+            old_attachments = (
+                (parent_metadata.get("source") or {}).get("declared") or {}
+            ).get("attachments", [])
+            new_attachments = (
+                candidate.source.declared.get("attachments", [])
+                if candidate.source
+                else []
+            )
+            attachment_diff = change_details(
+                {"attachments": old_attachments}, {"attachments": new_attachments}
+            )
+            details["attachments"] = attachment_diff["properties"]
+            details["config"] = change_details(
+                json.loads(before_config), json.loads(candidate.config_bytes)
+            )["properties"]
+            if attachment_diff["property_count"]:
+                details["summary"] += "; updated data attachments"
+            if details["config"]:
+                details["summary"] += "; changed plot configuration"
+        execution_record = self.read_execution(execution_id)
+        timeline_after = (execution_record.get("parameters") or {}).get(
+            "timeline_insert_after"
+        )
         record = {
+            "derived_from": candidate.parent_ref,
+            "timeline_insert_after": timeline_after,
             "schema": REVISION_SCHEMA,
             "figure_id": ref.figure_id,
             "revision_id": ref.revision_id,
@@ -1960,7 +2009,9 @@ class LocalFigureStore:
                 "effect": None,
                 "config_effect": None,
                 "unbound_traces": [],
-                "touches_data": "unknown",
+                "touches_data": details["touches_data"] if details else "unknown",
+                "details": details,
+                "summary": details["summary"] if details else "Original plot",
             },
             "inputs": inputs,
             "source": source_entry,
@@ -2018,6 +2069,17 @@ class LocalFigureStore:
         )
 
     def _result(self, candidate: Candidate, ref: FigureRef) -> CommitResult:
+        try:
+            self.history(ref.figure_id)
+        except (StorageError, OSError) as exc:
+            return self._pending(
+                candidate,
+                (
+                    exc
+                    if isinstance(exc, StorageError)
+                    else StorageError("History publication failed")
+                ),
+            )
         return CommitResult(
             candidate_index=candidate.candidate_index,
             status=STATUS_AVAILABLE,
@@ -2208,7 +2270,7 @@ class LocalFigureStore:
             )
         return data
 
-    def _iter_records(self) -> Iterable[Dict[str, Any]]:
+    def _iter_records(self, figure_id=None) -> Iterable[Dict[str, Any]]:
         """Every registered revision record. Enumeration/read failures raise TYPED errors and
         a corrupt registered record raises IntegrityError: never skipped, never an empty or
         partial catalog presented as complete, never a fabricated pending item.
@@ -2217,12 +2279,17 @@ class LocalFigureStore:
         # Only REAL directories (lstat) are enumerated; a link in the catalog is never
         # followed or listed (a link is not an entry this store created).
         try:
-            fig_dirs = [
-                self.root / name
-                for name in self._listdir_real(self.root)
-                if name not in P.RESERVED_DIRS
-                and _stat.S_ISDIR(self._lstat_mode(self.root / name))
-            ]
+            if figure_id is not None:
+                FigureRef.parse(figure_id + "@r_aaaaaaaaaa")
+                directory = self.root / figure_id
+                fig_dirs = [directory] if self._require_real_dir(directory) else []
+            else:
+                fig_dirs = [
+                    self.root / name
+                    for name in self._listdir_real(self.root)
+                    if name not in P.RESERVED_DIRS
+                    and _stat.S_ISDIR(self._lstat_mode(self.root / name))
+                ]
         except StorageError:
             raise StorageError("catalog enumeration failed") from None
         out: List[Dict[str, Any]] = []

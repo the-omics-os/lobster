@@ -16,7 +16,7 @@ AGENT_CONFIG = AgentRegistryConfig(
     description=(
         "Service agent for LOCAL data operations ONLY (ZERO online access): "
         "queue-based downloads, file loading via adapters, modality CRUD, "
-        "workspace file operations (list, read, write, search, shell execute). "
+        "workspace file operations (list, read, write, search, shell execute), and simple CSV/table plots. "
         "NOT for domain analysis — route QC, statistics, and biological interpretation "
         "to domain experts (transcriptomics, genomics, proteomics, metabolomics)"
     ),
@@ -26,7 +26,8 @@ AGENT_CONFIG = AgentRegistryConfig(
         "Assign LOCAL data operations ONLY: execute downloads from validated queue entries, "
         "load/convert local files via adapters, manage modalities (list/inspect/remove/validate), "
         "retry failed downloads, list/read/write workspace files, extract archives, "
-        "debug file format issues. "
+        "debug file format issues, create and save scatter/line/bar/histogram/box/heatmap plots from local CSVs or already-computed tables using create_interactive_plot. "
+        "For plotting requests delegate the COMPLETE create-and-save task: inspect_plot_data followed by create_interactive_plot, returning the saved figure_ref. Do not delegate only inspection. Copy the user file path verbatim, including data/ or other directories. "
         "NEVER use for domain analysis tasks — computing QC metrics, call rates, "
         "statistical tests, normalization, clustering, or biological interpretation "
         "MUST go to the appropriate domain expert (transcriptomics_expert, genomics_expert, "
@@ -76,6 +77,7 @@ from lobster.services.execution.registry import (
 from lobster.tools.code_tool_switch import attach_code_tool
 from lobster.tools.download_orchestrator import DownloadOrchestrator
 from lobster.tools.filesystem_tools import create_filesystem_tools
+from lobster.tools.plot_tools import create_plot_tools
 from lobster.tools.workspace_tool import create_list_modalities_tool
 from lobster.utils.logger import get_logger
 
@@ -1300,6 +1302,8 @@ To save, run again with save_to_file=True"""
         create_filesystem_tools(workspace_path=fs_workspace) if fs_workspace else []
     )
 
+    plot_tools = create_plot_tools(data_manager, Path(data_manager.workspace_path))
+
     base_tools = [
         # CORE (3 tools)
         execute_download_from_queue,
@@ -1315,6 +1319,7 @@ To save, run again with save_to_file=True"""
         get_adapter_info,
         # ADVANCED (Execution & Reasoning)
         *code_tools,
+        *plot_tools,
         # delegate_complex_reasoning, #TODO needs further security validation
         # FILESYSTEM (DeepAgent-inspired file-level tools)
         *filesystem_tools,

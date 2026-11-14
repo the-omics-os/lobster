@@ -725,6 +725,14 @@ def _build_supervisor_tools(
     ]
 
     # Only include ask_user in interactive mode (chat).
+    from lobster.tools.plot_editor_tool import (
+        create_plot_editor_tools,
+        create_figure_edit_tools,
+    )
+
+    utility_tools.extend(create_plot_editor_tools(data_manager))
+    utility_tools.extend(create_figure_edit_tools(data_manager))
+
     # In non-interactive mode (query), the supervisor must use best-judgment.
     if interactive:
         from lobster.tools.user_interaction import create_ask_user_tool

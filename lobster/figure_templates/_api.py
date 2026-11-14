@@ -47,6 +47,70 @@ def figure_template(name: str, *, version: str = "1", data_args=("data",)):
                 "args": json.loads(payload),
             }
             figure.update_layout(meta=meta)
+            # Record only template parameters whose column meaning is explicit.
+            # Matrix/single-cell templates do not claim tabular column mappings.
+            roles, transformations = [], []
+            selection = {}
+            if name in {
+                "generic.scatter",
+                "generic.line",
+                "generic.bar",
+                "generic.box",
+                "generic.histogram",
+            }:
+                fields = {
+                    "x": "x",
+                    "y": "y",
+                    "color": "color",
+                    "size": "size",
+                    "id_col": "id",
+                }
+                roles = [
+                    {"column": settings[key], "role": role}
+                    for key, role in fields.items()
+                    if isinstance(settings.get(key), str)
+                ]
+                if name in {"generic.histogram", "generic.box"}:
+                    transformations = [
+                        {
+                            "operation": name,
+                            "description": "Display summarizes the supplied table.",
+                        }
+                    ]
+            elif name == "proteomics.volcano":
+                roles = [
+                    {"column": settings["effect_field"], "role": "x"},
+                    {
+                        "column": settings["p_field"],
+                        "role": "y",
+                        "transform": "−log10(max(value, p_floor))",
+                    },
+                    {"column": settings["entity_field"], "role": "id"},
+                    {"column": settings["comparison_field"], "role": "filter"},
+                ]
+                if settings["label_top"]:
+                    roles.append({"column": settings["entity_field"], "role": "label"})
+                transformations = [
+                    {
+                        "operation": "volcano",
+                        "description": "Y uses −log10(max(p, p_floor)); trace colors use effect/p-value cutoffs.",
+                        "p_floor": settings["p_floor"],
+                        "fdr": settings["fdr"],
+                        "log2fc_min": settings["log2fc_min"],
+                        "boundary": settings["boundary"],
+                    }
+                ]
+                selection = {
+                    "method": "comparison filter",
+                    "column": settings["comparison_field"],
+                    "equals": settings["comparison"],
+                }
+            if roles:
+                from lobster.core.figures.data_view import record_column_roles
+
+                record_column_roles(
+                    figure, roles, transformations=transformations, selection=selection
+                )
             return figure
 
         draw.template_name = name
