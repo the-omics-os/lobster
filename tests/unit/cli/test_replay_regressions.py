@@ -983,7 +983,7 @@ def _p4_on(tmp_path, monkeypatch, mutate):
 
 
 @needs_kernel
-@pytest.mark.xfail(strict=True, reason="in-memory anchoring: 1.3.1")
+@pytest.mark.xfail(strict=True, reason="known limit: in-memory input not anchored")
 @pytest.mark.parametrize(
     "mutate", [_p4_uns, _p4_float64, _p4_csr], ids=lambda f: f.__name__[4:]
 )

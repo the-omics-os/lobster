@@ -236,10 +236,9 @@ def _assert_variants_equal(replayed, produced):
     assert replayed.shape == produced.shape
     assert all(isinstance(s, str) for s in replayed.obs["sequence"])
     # H5AD writing may categorize strings; biological values and order must agree.
-    # Limit (1.3.1 item): the session writer stores an unnamed obs index under the
-    # name 'index' and an unnamed var index under 'gene_id'; the runtime object
-    # keeps None. Only the index name is set aside here; column labels and values
-    # still compare.
+    # Only the index name is set aside: where anndata cannot keep an unnamed index,
+    # the session writer names it 'index' (obs) or 'gene_id' (var) while the runtime
+    # object keeps None. Column labels and values still compare.
     expected, actual = produced.obs.astype(object), replayed.obs.astype(object)
     expected.index.name = actual.index.name = None
     pd.testing.assert_frame_equal(actual, expected, check_dtype=False)

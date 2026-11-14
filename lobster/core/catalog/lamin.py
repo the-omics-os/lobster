@@ -136,9 +136,9 @@ REPORT_SECRET_PATTERNS = (
         ),
     ),
 )
-# Decision (Nov 2026): mode-B environment leaves the workspace (package names only). True: a named
-# instance gets the environment record, its file kept in the instance's storage.
-# False: it gets none; mode A is not affected.
+# Decision (Nov 2026): for a named instance the environment record leaves the workspace (package
+# names only). True: a named instance gets it, its file kept in the instance's storage.
+# False: it gets none; the workspace catalog is not affected.
 INSTANCE_ENVIRONMENT = True
 # The ``_hash_type`` of a record whose ``hash`` is made from its SHA-256, because
 # another version at the same key has LaminDB's hash for the same first and last chunk.
@@ -1063,7 +1063,7 @@ class LaminCatalog:
         Nothing is recorded either when the log is missing, too large
         (``REPORT_MAX_BYTES``) or cannot be read or copied; the run still ends.
 
-        Decision 11 Nov 2026: mode-B step logs are copied, subject to the scan.
+        Decision 11 Nov 2026: a named instance gets the step log copied, subject to the scan.
         """
         if report_path is None:
             return None

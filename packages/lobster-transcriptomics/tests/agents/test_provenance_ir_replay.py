@@ -1082,7 +1082,7 @@ class TestDECurrentResultsAndPersistence:
                 loaded.uns[key]["results_df"], produced.uns[key]["results_df"]
             )
         cmp_key = "iteration_comparison_batch_vs_base"
-        # Limit in 1.3.0 (native in 1.3.1): numbers nested inside uns metadata
+        # Known limit: numbers nested inside uns metadata
         # are written as text by the session writer, so they are compared as text.
         assert {
             k: str(v)

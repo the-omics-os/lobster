@@ -133,7 +133,7 @@ def test_notes_name_the_install_when_lamindb_is_missing(monkeypatch):
     assert init_notes(False, global_config=True) == ["LaminDB catalog: off."]
 
 
-# --- N6: the global setting is a model field --------------------------------
+# --- the global setting is a model field ------------------------------------
 
 
 def test_global_lamin_enabled_survives_load_and_save(cfg):
@@ -221,7 +221,7 @@ def test_non_interactive_flags_write_and_keep_the_setting(
 def test_non_interactive_global_flag_and_round_trip(project):
     _run_init(global_config=True, lamin=True)
     assert GlobalProviderConfig.load().lamin_enabled is True
-    _run_init(global_config=True)  # N6: re-init without the flag keeps it
+    _run_init(global_config=True)  # re-init without the flag keeps it
     assert GlobalProviderConfig.load().lamin_enabled is True
     _run_init(global_config=True, lamin=False)
     assert GlobalProviderConfig.load().lamin_enabled is False

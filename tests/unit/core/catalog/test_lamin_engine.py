@@ -2205,7 +2205,7 @@ def test_missing_settings_give_a_hint_not_a_server_call(tmp_path):
 
 
 def test_named_instance_through_the_factory_is_recorded_offline(tmp_path):
-    """A named instance that is a local instance the user created with their own settings.
+    """A named instance on local storage, created by the user with their own settings.
 
     Connecting works offline, and Lobster copies the file into the instance's
     storage itself and registers it there, so LaminDB never asks Lamin's servers

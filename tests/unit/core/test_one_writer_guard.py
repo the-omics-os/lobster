@@ -191,7 +191,7 @@ def test_a_table_in_uns_gets_the_same_cleaning_as_obs_and_var(tmp_path):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="1.3.1: numbers nested in uns dicts are stored as text by the session writer",
+    reason="known limit: numbers nested in uns dicts are stored as text by the session writer",
 )
 def test_numbers_nested_in_uns_come_back_as_numbers(tmp_path):
     adata = _adata()
