@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omics-os.com/schemas/lobster/shared-interaction.v1.lobster-profile.schema.json",
+  "title": "Lobster profile of shared-interaction/1 (PROVISIONAL)",
+  "description": "Decision request and answer as Lobster emits and accepts them. Field names are provisional until the shared-interaction/1 contract is frozen (Phase 0 A2).",
+  "x-provisional": {
+    "status": "Whole file provisional until the shared-interaction/1 reply (Phase 0 A2, gate G0-4). Do not depend on it."
+  },
+  "$defs": {
+    "request": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "kind",
+        "render",
+        "request_version",
+        "origin_run_id"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "description": "Minted by Lobster."
+        },
+        "interrupt_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "LangGraph's id; engine-internal, used only to resume."
+        },
+        "origin_run_id": {
+          "type": "string"
+        },
+        "request_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "kind": {
+          "type": "string"
+        },
+        "render": {
+          "type": "object",
+          "required": [
+            "component"
+          ],
+          "properties": {
+            "component": {
+              "type": "string"
+            },
+            "args": {
+              "type": "object"
+            }
+          }
+        },
+        "reviewed_snapshot": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "answer": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "answer"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string"
+        },
+        "request_version": {
+          "type": "integer"
+        },
+        "answer": {},
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "lifecycle": {
+      "enum": [
+        "pending",
+        "accepted",
+        "deferred",
+        "cancelled",
+        "expired",
+        "lost"
+      ]
+    }
+  },
+  "x-transitions": [
+    {
+      "from": "pending",
+      "on": "answer with matching request_version",
+      "to": "accepted"
+    },
+    {
+      "from": "pending",
+      "on": "answer with another request_version",
+      "to": "pending",
+      "returns": "rejected_stale"
+    },
+    {
+      "from": "accepted",
+      "on": "answer",
+      "to": "accepted",
+      "returns": "already_answered"
+    },
+    {
+      "from": "pending",
+      "on": "run cancelled",
+      "to": "cancelled"
+    },
+    {
+      "from": "cancelled",
+      "on": "answer",
+      "to": "cancelled",
+      "returns": "rejected_cancelled"
+    },
+    {
+      "from": "pending",
+      "on": "host defers",
+      "to": "pending",
+      "note": "deferred is a host-side mark"
+    },
+    {
+      "from": "pending",
+      "on": "host or Cloud TTL",
+      "to": "expired",
+      "note": "never set by the engine"
+    },
+    {
+      "from": "pending",
+      "on": "worker lost",
+      "to": "lost",
+      "note": "never set by the engine"
+    }
+  ]
+}

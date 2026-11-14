@@ -319,8 +319,9 @@ print("UMAP coordinates computed")
 
 # Transfer results back onto the full object, exactly as the service does. The
 # notebook must retain the full modality for subsequent analysis steps.
-adata.obs[cluster_key] = adata_selected.obs[cluster_key]
+# Same column order as the service: the algorithm column first, then the resolution column(s).
 adata.obs[{{ algorithm | string | repr }}] = adata_selected.obs[{{ algorithm | string | repr }}]
+adata.obs[cluster_key] = adata_selected.obs[cluster_key]
 adata.obsm['X_umap'] = adata_selected.obsm['X_umap']
 if 'X_pca' in adata_selected.obsm:
     adata.obsm['X_pca'] = adata_selected.obsm['X_pca'].copy()
@@ -436,8 +437,9 @@ print("UMAP coordinates computed")
 
 # Transfer results back onto the full object, exactly as the service does. The
 # notebook must retain the full modality for subsequent analysis steps.
-adata.obs[cluster_key] = adata_selected.obs[cluster_key]
+# Same column order as the service: the algorithm column first, then the resolution column(s).
 adata.obs[{{ algorithm | string | repr }}] = adata_selected.obs[{{ algorithm | string | repr }}]
+adata.obs[cluster_key] = adata_selected.obs[cluster_key]
 adata.obsm['X_umap'] = adata_selected.obsm['X_umap']
 if 'X_pca' in adata_selected.obsm:
     adata.obsm['X_pca'] = adata_selected.obsm['X_pca'].copy()

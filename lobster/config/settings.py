@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, find_dotenv, load_dotenv
 
 from lobster.config.supervisor_config import SupervisorConfig
 
@@ -21,6 +21,24 @@ logger = logging.getLogger(__name__)
 # Loading a .env must therefore never leave them in os.environ.
 _SHELL_ONLY_KEYS = ("LOBSTER_LAMIN", "LOBSTER_LAMIN_INSTANCE")
 
+# Where Settings records what a .env load set: by a project's workspace, or at process start.
+_PROJECT_KEYS = "_project_applied"
+_START_KEYS = "_start_applied"
+
+
+def _is_project_workspace(workspace: Path) -> bool:
+    """A workspace holding a ``project.json`` (a regular file, never a link) is a project.
+
+    Same test as lobster.core.runtime.workspace._is_project_workspace; the literal is kept
+    here because settings must not import the runtime. Keep the two in step.
+    """
+    project_file = workspace / "project.json"
+    return (
+        not workspace.is_symlink()
+        and project_file.is_file()
+        and not project_file.is_symlink()
+    )
+
 
 class Settings:
     """
@@ -30,12 +48,17 @@ class Settings:
     and environment variable overrides for easier configuration
     in different environments, especially in containers.
 
-    Credential Loading Priority (lowest to highest):
-    1. Global credentials (~/.config/lobster/credentials.env)
-    2. Workspace credentials (./.env or workspace/.env)
-    3. Environment variables (explicit exports)
+    Credential Loading Priority (highest first):
+    1. Workspace credentials (workspace/.env, else ./.env; a project reads only
+       workspace/.env then the .env beside its workspace folder); these override the
+       environment
+    2. Environment variables (explicit exports)
+    3. A .env found upward from the installed package (only when no workspace .env)
+    4. Global credentials (~/.config/lobster/credentials.env)
 
-    Higher priority sources override lower priority ones.
+    The last two only fill variables that are still unset. A workspace ``.env`` loaded by
+    ``reload_credentials`` is undone when the next workspace is loaded; for a project
+    workspace so is what ./.env and the upward file gave this process at its start.
     """
 
     def __init__(self):
@@ -202,14 +225,19 @@ class Settings:
 
     def _load_credentials(self, workspace_path: Path = None) -> None:
         """
-        Load credentials from global and workspace sources.
+        Load credentials from the ``.env`` files, in this order (highest first):
 
-        Loading Order (lowest to highest priority):
-        1. Global credentials (~/.config/lobster/credentials.env)
-        2. Workspace credentials (workspace/.env or ./.env)
-
-        Higher priority sources override lower priority ones.
-        Environment variables (explicit exports) always take highest priority.
+        1. The workspace ``.env``, else ``./.env`` (also when no workspace is given).
+           For a project (a ``.lobster_workspace`` holding ``project.json``) the
+           candidates are only the workspace ``.env`` then the ``.env`` beside the
+           workspace folder, where ``lobster init`` writes the key, and step 3 below is
+           skipped: ``./.env`` and the upward file belong to the server's folder or
+           venv, not to a project, so what they gave this process at its start is
+           undone first. All override the environment.
+        2. Real environment variables (explicit exports).
+        3. A ``.env`` found upward from the installed package, read only when
+           step 1 found no workspace ``.env``. It never overrides anything.
+        4. Global credentials (~/.config/lobster/credentials.env). Never overrides.
 
         Args:
             workspace_path: Optional explicit workspace path. If None, uses CWD.
@@ -239,32 +267,108 @@ class Settings:
             global_credentials_exist,
         )
 
-        # Step 1: Load global credentials (lowest priority, override=False preserves existing env vars)
+        if workspace_path:
+            workspace_env = workspace_path / ".env"
+        else:
+            workspace_env = Path.cwd() / ".env"
+        cwd_env = Path.cwd() / ".env"
+        # `lobster init` writes a project's key beside its workspace folder, so that file
+        # is the project's own, found from any working folder. Same rank as workspace_env.
+        # The folder is named like the runtime names it, so a stray project.json in some
+        # other folder cannot make its parent (say $HOME) a credentials source.
+        project_env = None
+        if workspace_path:
+            lexical = Path(os.path.abspath(workspace_path))  # "." and ".." resolve
+            if lexical.name == ".lobster_workspace" and _is_project_workspace(lexical):
+                project_env = lexical.parent / ".env"
+        # A project reads ONLY its own files: the upward search starts in the folder of
+        # the installed package (a venv inside project A's folder) or, under a tracer, in
+        # the cwd, and ./.env is the folder the server was started in; either would hand
+        # project A's file to project B, and neither is ever undone. What the process
+        # already has from its start (shell, the import-time load) is the server's own.
+        is_project = project_env is not None
+        # Undo what the last project loaded; for a project also what this process got at
+        # its own start from ./.env and the upward file. Any other load re-reads those
+        # files by the old rules, so nothing changes for it.
+        self._undo_credentials(_PROJECT_KEYS)
+        if is_project:
+            self._undo_credentials(_START_KEYS)
+        candidates = (
+            (workspace_env, project_env) if is_project else (workspace_env, cwd_env)
+        )
+
+        # override=False keeps what is already set (a real export, or a .env loaded
+        # above it), so the .env next to the installation only fills gaps. It is
+        # read before the global file because it has always ranked above it.
+        if not is_project and not workspace_env.exists():
+            upward = find_dotenv()
+            if upward:
+                before = {k: os.environ.get(k) for k in dotenv_values(upward)}
+                load_dotenv(upward, override=False)
+                for key, old in before.items():
+                    if old is None and key in os.environ:  # only the gaps it filled
+                        self._remember(_START_KEYS, key, os.environ[key], None)
+                logger.debug(f"Loaded credentials from {upward}")
+
         if global_credentials_exist():
             global_creds_path = get_global_credentials_path()
             load_dotenv(global_creds_path, override=False)
             logger.debug(f"Loaded global credentials from {global_creds_path}")
 
-        # Step 2: Load workspace credentials (higher priority, overrides global)
-        # Determine workspace .env path
-        if workspace_path:
-            workspace_env = workspace_path / ".env"
-        else:
-            # Default: look in current working directory
-            workspace_env = Path.cwd() / ".env"
+        for env_file in candidates:
+            if env_file.exists():
+                # A reload for a named workspace is the project's; the no-workspace load
+                # is the server's own start.
+                self._load_workspace_credentials(
+                    env_file, _PROJECT_KEYS if workspace_path else _START_KEYS
+                )
+                logger.debug(f"Loaded workspace credentials from {env_file}")
+                break
 
-        if workspace_env.exists():
-            load_dotenv(workspace_env, override=True)
-            logger.debug(f"Loaded workspace credentials from {workspace_env}")
-        else:
-            # Fallback: let load_dotenv find .env in default locations
-            load_dotenv(override=True)
+    def _load_workspace_credentials(self, env_file: Path, store: str) -> None:
+        """Load an overriding ``.env``; remember what each key replaced so a later load
+        can put it back (one process may serve several projects in turn)."""
+        names = [k for k, v in dotenv_values(env_file).items() if v is not None]
+        before = {k: os.environ.get(k) for k in names}
+        load_dotenv(env_file, override=True)
+        for key in names:
+            if key in os.environ:
+                self._remember(store, key, os.environ[key], before[key])
+
+    def _remember(self, store: str, key: str, applied: str, previous) -> None:
+        """Record that we set ``key`` to ``applied`` over ``previous`` (None = absent).
+
+        A key we already hold a record for, still at the value we set, keeps its original
+        ``previous``: reading the same file again must not make the shell's value forgotten.
+        """
+        held = self.__dict__.setdefault(store, {})
+        if key in held and held[key][0] == previous:
+            previous = held[key][1]
+        held[key] = (applied, previous)
+
+    def _undo_credentials(self, store: str) -> None:
+        """Put back what our loads replaced (the shell's value, the global file's, or
+        nothing), so the next project does not inherit it.
+
+        A variable that no longer holds the value we set was changed by someone since: left
+        alone. The global file and the shell are never recorded: every project shares them.
+        """
+        for key, (applied, previous) in self.__dict__.get(store, {}).items():
+            if os.environ.get(key) != applied:
+                continue
+            if previous is None:
+                del os.environ[key]
+            else:
+                os.environ[key] = previous
+        self.__dict__[store] = {}
 
     def reload_credentials(self, workspace_path: Path) -> None:
         """
         Reload credentials for a specific workspace.
 
         Call this when switching workspaces to ensure correct credentials are loaded.
+        What the previous workspace's ``.env`` set is undone first, so a long-lived process
+        serving several projects never lends one project's keys to the next.
 
         Args:
             workspace_path: Path to the workspace directory

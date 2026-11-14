@@ -421,6 +421,12 @@ def _record_entries(notebook: Path) -> Dict[str, Any]:
     return dict(files) if isinstance(files, dict) else {}
 
 
+def _recorded_file_paths(notebook: Path) -> Dict[str, str]:
+    """``input_file_paths`` of the export record: file name -> the file hashed."""
+    paths = _manifest(notebook).get("input_file_paths")
+    return dict(paths) if isinstance(paths, dict) else {}
+
+
 def _loaded_files(notebook: Path) -> Optional[List[Dict[str, Any]]]:
     """The files the session loaded, from the record; None for a record without roles."""
     roles = _manifest(notebook).get("input_roles")
@@ -541,8 +547,26 @@ def _recorded_hashes(notebook: Path) -> Dict[str, str]:
     }
 
 
+def _recorded_path(
+    notebook_paths: Dict[str, str], workspace: Path, name: str
+) -> Optional[Path]:
+    """The file the export record says it hashed for ``name``, if it is in the workspace."""
+    relative = notebook_paths.get(name)
+    if not isinstance(relative, str) or not relative:
+        return None
+    path = workspace / relative
+    try:
+        path.resolve().relative_to(workspace.resolve())
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
+
 def _workspace_reference(
-    workspace: Path, stem: str, recorded: Dict[str, str]
+    workspace: Path,
+    stem: str,
+    recorded: Dict[str, str],
+    paths: Optional[Dict[str, str]] = None,
 ) -> Tuple[Optional[Path], str]:
     """``(file, "ok")``, ``(None, "changed")``, ``(None, "unrecorded")`` or ``(None, "none")``.
 
@@ -552,9 +576,13 @@ def _workspace_reference(
     # A file with no recorded hash is "unrecorded" (not compared), never an
     # unchecked MATCH. Flip it here to trust an unrecorded file.
     """
-    for folder in (workspace / "data", workspace):
-        candidate = folder / f"{stem}.h5ad"
-        if candidate.is_file():
+    named = _recorded_path(paths or {}, workspace, f"{stem}.h5ad")
+    for candidate in (
+        named,
+        workspace / "data" / f"{stem}.h5ad",
+        workspace / f"{stem}.h5ad",
+    ):
+        if candidate is not None and candidate.is_file():
             want = recorded.get(f"{stem}.h5ad")  # the record is keyed by file name
             if want is None:
                 return None, "unrecorded"
@@ -757,7 +785,11 @@ def verify_notebook(
     find = (
         (lambda stem: catalog.reference(stem, recorded))
         if run_uid and catalog.has_session
-        else (lambda stem: _workspace_reference(workspace, stem, recorded))
+        else (
+            lambda stem: _workspace_reference(
+                workspace, stem, recorded, _recorded_file_paths(notebook)
+            )
+        )
     )
 
     replay_dir = workspace / REPLAYS_DIR / (run_uid or secrets.token_hex(8))

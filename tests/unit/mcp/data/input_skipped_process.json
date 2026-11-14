@@ -1,0 +1,10 @@
+{
+  "schema": "lobster.replay/1",
+  "description": "A first run where the model answers without loading anything.",
+  "responses": [
+    {
+      "agent": "supervisor",
+      "content": "The QC for this file looks fine."
+    }
+  ]
+}

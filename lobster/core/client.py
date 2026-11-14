@@ -243,8 +243,18 @@ class AgentClient(BaseClient):
         self.callbacks = []
 
         # Initialize token tracking (always enabled)
+        def _active_provider() -> Optional[str]:
+            # Read per call, so a runtime provider switch is honoured.
+            from lobster.config.llm_factory import LLMFactory
+
+            return self.provider_override or LLMFactory.get_current_provider(
+                self.workspace_path
+            )
+
         self.token_tracker = TokenTrackingCallback(
-            session_id=self.session_id, pricing_config=MODEL_PRICING
+            session_id=self.session_id,
+            pricing_config=MODEL_PRICING,
+            provider_for_pricing=_active_provider,
         )
         self.callbacks.append(self.token_tracker)
 

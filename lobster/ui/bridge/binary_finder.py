@@ -5,13 +5,16 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sys
 from pathlib import Path
 from typing import Optional
 
+from lobster.cli_internal.tui_binary_compat import hint_if_rejected, is_compatible
+
 logger = logging.getLogger(__name__)
 
-# Binary name on all platforms (Windows gets .exe appended automatically via PATH lookup)
-_BINARY_NAME = "lobster-tui"
+# The Windows wheel ships lobster-tui.exe; PATH lookup also accepts the suffix.
+_BINARY_NAME = "lobster-tui.exe" if os.name == "nt" else "lobster-tui"
 
 
 def find_tui_binary() -> Optional[str]:
@@ -25,8 +28,19 @@ def find_tui_binary() -> Optional[str]:
       3. User cache: ~/.cache/lobster/bin/lobster-tui
       4. PATH: shutil.which("lobster-tui")
 
+    The override, wheel and dev build are trusted as found. Cache and PATH
+    binaries are used only when ``--version`` matches the installed lobster-ai
+    major.minor (a stale binary from an older release breaks ``lobster init``).
+
     Returns None when nothing is found — callers must fall back gracefully.
     """
+    # Both launch paths pass pass_fds, which Windows Popen rejects.
+    if os.name == "nt":
+        print(
+            "The Go TUI does not run on Windows; using the classic interface.",
+            file=sys.stderr,
+        )
+        return None
     override = os.environ.get("LOBSTER_TUI_BINARY", "").strip()
     if override:
         candidate = Path(override).expanduser()
@@ -69,7 +83,11 @@ def find_tui_binary() -> Optional[str]:
     # 3. User cache: ~/.cache/lobster/bin/lobster-tui                     #
     # ------------------------------------------------------------------ #
     cache_bin = Path.home() / ".cache" / "lobster" / "bin" / _BINARY_NAME
-    if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
+    if (
+        cache_bin.is_file()
+        and os.access(cache_bin, os.X_OK)
+        and is_compatible(str(cache_bin))
+    ):
         logger.debug("lobster-tui found in cache: %s", cache_bin)
         return str(cache_bin)
 
@@ -77,9 +95,10 @@ def find_tui_binary() -> Optional[str]:
     # 4. PATH lookup                                                       #
     # ------------------------------------------------------------------ #
     which = shutil.which(_BINARY_NAME)
-    if which:
+    if which and is_compatible(which):
         logger.debug("lobster-tui found on PATH: %s", which)
         return which
 
     logger.debug("lobster-tui binary not found")
+    hint_if_rejected()
     return None

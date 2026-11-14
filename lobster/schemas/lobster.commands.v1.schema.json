@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omics-os.com/schemas/lobster/lobster.commands.v1.schema.json",
+  "title": "lobster.commands/1",
+  "description": "Engine-owned command manifest (`lobster commands --json`, Phase 0 B1). Hosts read verbs and the machine interface from it instead of hard-coding them.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "engine_version",
+    "agent_interface",
+    "commands"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lobster.commands/1"
+    },
+    "engine_version": {
+      "type": "string"
+    },
+    "agent_interface": {
+      "type": "string",
+      "description": "How a host starts the stdio machine interface, e.g. `lobster agent --stdio`."
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "handler",
+          "surfaces",
+          "args"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "handler": {
+            "type": "string",
+            "description": "Stable id of the engine handler, for dispatch tests."
+          },
+          "help": {
+            "type": "string"
+          },
+          "surfaces": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "cli",
+                "slash",
+                "stdio"
+              ]
+            }
+          },
+          "scientist_facing": {
+            "type": "boolean"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "type"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "string",
+                    "integer",
+                    "number",
+                    "boolean",
+                    "path",
+                    "choice"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "choices": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "help": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

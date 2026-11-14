@@ -7,6 +7,7 @@ Includes caching to avoid repeated checks and graceful error handling for offlin
 
 import json
 import logging
+import os
 import sys
 import time
 import urllib.error
@@ -203,9 +204,19 @@ def maybe_show_update_notification() -> None:
 
     This is the main entry point for CLI integration. The notice never goes to
     stdout. The check is skipped (no request, no cache write) for machine output
-    (--json, -j, --stdio) or when stderr is not a terminal.
+    (--json, -j, --stdio), when stderr is not a terminal, or when
+    LOBSTER_SKIP_UPDATE_CHECK is set to a value other than empty, 0, false, no
+    or off (any case).
     """
     try:
+        if os.environ.get("LOBSTER_SKIP_UPDATE_CHECK", "").strip().lower() not in (
+            "",
+            "0",
+            "false",
+            "no",
+            "off",
+        ):
+            return
         if _MACHINE_OUTPUT_FLAGS.intersection(sys.argv[1:]):
             return
         if not sys.stderr.isatty():

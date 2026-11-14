@@ -220,6 +220,7 @@ dev = [
     "pytest-timeout>=2.1.0",
     "pytest-html>=3.2.0",
     "pytest-json-report>=1.5.0",
+    "jsonschema>=4.18.0",  # protocol schema validation (scripts/validate_ndjson.py)
 
     # Mock and test data generation
     "factory-boy>=3.2.0",
@@ -377,6 +378,8 @@ where = ["."]
 include = ["lobster*"]
 namespaces = true
 exclude = [
+    # Agent skills are package data of `lobster` (lobster/skills), not modules
+    "lobster.skills*",
     # Extracted FREE tier agent packages (now in packages/)
     "lobster.agents.transcriptomics*",
     "lobster.agents.research*",
@@ -460,7 +463,7 @@ exclude = [
 version = {attr = "lobster.version.__version__"}
 
 [tool.setuptools.package-data]
-lobster = ["**/*.json", "**/*.yaml", "**/*.yml"]
+lobster = ["**/*.json", "**/*.yaml", "**/*.yml", "skills/**/*"]
 "lobster.scaffold" = ["templates/*.j2"]
 
 # Development tools configurations

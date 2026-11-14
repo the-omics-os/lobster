@@ -54,6 +54,11 @@ class BedrockProvider(ILLMProvider):
     _default_context_window = 200_000
 
     # Static model catalog (single source of truth for Bedrock models)
+    # ``us.`` profiles (geo / in-region) cost 10% more than ``global.``. Claude 4.x ``us.``
+    # rates below are global x 1.1. READ from the AWS Bedrock price page (Geo and
+    # In-region rows, 2026-11-09 feed): Opus 4.5/4.7/4.8/5, Sonnet 4.5, Opus 4.6 input.
+    # INFERRED (Anthropic: premium applies to Opus 4.7, Haiku 4.5 and later; every
+    # published geo row is exactly 1.1x): Haiku 4.5, Sonnet 4.6, Opus 4.6 output.
     # All cross-region IDs for maximum availability
     KNOWN_MODELS = [
         ModelInfo(
@@ -233,8 +238,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=200000,
             is_default=False,
-            input_cost_per_million=3.0,
-            output_cost_per_million=15.0,
+            input_cost_per_million=3.3,
+            output_cost_per_million=16.5,
         ),
         ModelInfo(
             name="global.anthropic.claude-opus-4-5-20251101-v1:0",
@@ -253,8 +258,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=1000000,
             is_default=False,
-            input_cost_per_million=3.0,
-            output_cost_per_million=15.0,
+            input_cost_per_million=3.3,
+            output_cost_per_million=16.5,  # inferred
         ),
         ModelInfo(
             name="anthropic.claude-opus-4-6-v1",
@@ -291,8 +296,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=200000,
             is_default=False,
-            input_cost_per_million=1.0,
-            output_cost_per_million=5.0,
+            input_cost_per_million=1.1,
+            output_cost_per_million=5.5,  # inferred
         ),
         ModelInfo(
             name="global.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -321,8 +326,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=1000000,
             is_default=False,
-            input_cost_per_million=5.0,
-            output_cost_per_million=25.0,
+            input_cost_per_million=5.5,
+            output_cost_per_million=27.5,  # output inferred
         ),
         ModelInfo(
             name="global.anthropic.claude-opus-4-6-v1",
@@ -341,8 +346,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=1000000,
             is_default=False,
-            input_cost_per_million=5.0,
-            output_cost_per_million=25.0,
+            input_cost_per_million=5.5,
+            output_cost_per_million=27.5,
         ),
         ModelInfo(
             name="global.anthropic.claude-opus-4-8",
@@ -361,8 +366,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=1000000,
             is_default=False,
-            input_cost_per_million=5.0,
-            output_cost_per_million=25.0,
+            input_cost_per_million=5.5,
+            output_cost_per_million=27.5,
         ),
         ModelInfo(
             name="global.anthropic.claude-opus-5",
@@ -383,8 +388,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=1000000,
             is_default=False,
-            input_cost_per_million=5.0,
-            output_cost_per_million=25.0,
+            input_cost_per_million=5.5,
+            output_cost_per_million=27.5,
         ),
         ModelInfo(
             name="global.anthropic.claude-opus-4-7",
@@ -405,8 +410,8 @@ class BedrockProvider(ILLMProvider):
             provider="bedrock",
             context_window=200000,
             is_default=False,
-            input_cost_per_million=5.0,
-            output_cost_per_million=25.0,
+            input_cost_per_million=5.5,
+            output_cost_per_million=27.5,
         ),
         ModelInfo(
             name="global.anthropic.claude-sonnet-4-6",

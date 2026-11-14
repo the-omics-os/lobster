@@ -1,0 +1,70 @@
+name: Windows TUI smoke
+
+# Never on push (Windows minutes bill double). Manual dispatch only; the PR
+# trigger returns in its own reviewed commit when the PR to main is planned.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: ${{ github.workspace }}
+  PIP_CONSTRAINT: ${{ github.workspace }}/.github/ci-constraints.txt
+  UV_CONSTRAINT: ${{ github.workspace }}/.github/ci-constraints.txt
+
+jobs:
+  windows-tui-smoke:
+    name: Windows TUI wheel + agent stdio
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Set up Go
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version-file: lobster-tui/go.mod
+        cache-dependency-path: lobster-tui/go.sum
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+
+    - name: Build windows-amd64 wheel
+      run: |
+        uv venv --python 3.12 .build-venv
+        uv pip install --python .build-venv/Scripts/python.exe build wheel
+        .build-venv/Scripts/python.exe packages/lobster-ai-tui/build_wheel.py --platform windows-amd64
+        ls packages/lobster-ai-tui/dist/*-win_amd64.whl
+
+    - name: Install wheel and engine
+      run: |
+        python -m pip install --no-cache-dir --upgrade pip
+        pip install --no-cache-dir packages/lobster-ai-tui/dist/*-win_amd64.whl
+        pip install --no-cache-dir -e ".[dev]"
+
+    - name: lobster-tui --smoke
+      run: |
+        bin="$(python -c 'from lobster_ai_tui import get_binary_path; print(get_binary_path())')"
+        echo "binary: $bin"
+        "$bin" --smoke | tee smoke.out
+        grep -q '^smoke ok ' smoke.out
+
+    - name: lobster agent --stdio (query fixture)
+      env:
+        LOBSTER_TEST_REPLAY_FIXTURE: tests/fixtures/protocol-v1/replay/query.json
+        LOBSTER_LLM_PROVIDER: ollama-cloud
+        OLLAMA_API_KEY: replay-dummy
+      run: |
+        python -m pytest "tests/protocol/test_agent_stdio.py::test_agent_stdio_scenario[query]" \
+          -v -p no:cacheprovider -o addopts=""

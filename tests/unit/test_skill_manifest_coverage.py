@@ -3,7 +3,7 @@
 import unittest
 from pathlib import Path, PurePosixPath
 
-SKILLS_ROOT = Path(__file__).resolve().parents[2] / "skills"
+SKILLS_ROOT = Path(__file__).resolve().parents[2] / "lobster" / "skills"
 SKILL_NAMES = ("lobster-dev", "lobster-use")
 
 

@@ -1,0 +1,3 @@
+{"schema": "lobster.replay/1", "description": "The provider fails on the first model call.", "prompt": "Annotate the clusters.", "responses": [
+  {"agent": "supervisor", "error": "Simulated provider failure (replay fixture)"}
+]}

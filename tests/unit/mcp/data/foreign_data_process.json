@@ -1,0 +1,78 @@
+{
+  "schema": "lobster.replay/1",
+  "description": "A first turn that loads its input, a second turn that loads another file, and a third that only answers.",
+  "responses": [
+    {
+      "agent": "supervisor",
+      "content": "Loading.",
+      "tool_calls": [
+        {
+          "name": "handoff_to_data_expert_agent",
+          "args": {
+            "task_description": "Your task is to load the file."
+          }
+        }
+      ]
+    },
+    {
+      "agent": "data_expert_agent",
+      "content": "",
+      "tool_calls": [
+        {
+          "name": "load_modality",
+          "args": {
+            "modality_name": "input",
+            "file_path": "__INPUT__",
+            "adapter": "transcriptomics_single_cell"
+          }
+        }
+      ]
+    },
+    {
+      "agent": "data_expert_agent",
+      "content": "Loaded input."
+    },
+    {
+      "agent": "supervisor",
+      "content": "The input has 128 cells."
+    },
+    {
+      "agent": "supervisor",
+      "content": "Loading the other file.",
+      "tool_calls": [
+        {
+          "name": "handoff_to_data_expert_agent",
+          "args": {
+            "task_description": "Your task is to load the other file."
+          }
+        }
+      ]
+    },
+    {
+      "agent": "data_expert_agent",
+      "content": "",
+      "tool_calls": [
+        {
+          "name": "load_modality",
+          "args": {
+            "modality_name": "other",
+            "file_path": "__OTHER__",
+            "adapter": "transcriptomics_single_cell"
+          }
+        }
+      ]
+    },
+    {
+      "agent": "data_expert_agent",
+      "content": "Loaded other."
+    },
+    {
+      "agent": "supervisor",
+      "content": "Compared."
+    },
+    {
+      "agent": "supervisor",
+      "content": "Counted the cells in the data."
+    }
+  ]
+}

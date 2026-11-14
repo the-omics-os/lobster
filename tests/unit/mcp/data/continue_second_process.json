@@ -1,0 +1,10 @@
+{
+ "schema": "lobster.replay/1",
+ "description": "Second server process, after a restart: one follow-up turn that only answers.",
+ "responses": [
+  {
+   "agent": "supervisor",
+   "content": "Third turn answer, after a restart."
+  }
+ ]
+}

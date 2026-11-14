@@ -247,7 +247,7 @@ Default `--ui auto` tries Go, then classic. `--ui ink` is not valid for local ch
 Trace options can select the classic path instead of the Go fast path.
 
 Chat is the human/interactive option. See the
-[save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save);
+[save/reload requirements](local-analysis-and-saves.md#local-session-history-is-not-a-data-save);
 coding agents should use the [non-interactive recipe](agent-patterns.md#count-safe-bulk-rna-workflow).
 
 | Flag | Meaning |
@@ -271,7 +271,7 @@ lobster query -w ./analysis --session-id study --output answer.md "Summarize res
 
 Use the same workspace **and** session throughout a multi-step workflow. For
 input loading and explicit tool saves, follow the
-[save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save)
+[save/reload requirements](local-analysis-and-saves.md#local-session-history-is-not-a-data-save)
 and [agent-drivable recipe](agent-patterns.md#count-safe-bulk-rna-workflow).
 
 | Flag | Meaning |

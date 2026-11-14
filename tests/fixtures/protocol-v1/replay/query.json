@@ -1,0 +1,3 @@
+{"schema": "lobster.replay/1", "description": "One query answered by the supervisor without tools.", "prompt": "What can you do with single-cell data?", "responses": [
+  {"agent": "supervisor", "content": "I can load, quality-check, cluster and annotate single-cell RNA-seq data."}
+]}

@@ -145,6 +145,11 @@
       "input_per_million": 2.0,
       "output_per_million": 12.0
     },
+    "glm-5.2": {
+      "display_name": "glm-5.2",
+      "input_per_million": 1.4,
+      "output_per_million": 4.4
+    },
     "global.anthropic.claude-fable-5-1": {
       "display_name": "Claude Fable 5.1 (Bedrock global)",
       "input_per_million": 10.0,
@@ -285,6 +290,16 @@
       "input_per_million": 2.0,
       "output_per_million": 10.0
     },
+    "gpt-oss:120b": {
+      "display_name": "gpt-oss:120b",
+      "input_per_million": 0.15,
+      "output_per_million": 0.6
+    },
+    "gpt-oss:20b": {
+      "display_name": "gpt-oss:20b",
+      "input_per_million": 0.07,
+      "output_per_million": 0.3
+    },
     "meta-llama/llama-3.1-8b-instruct": {
       "display_name": "Llama 3.1 8B Instruct",
       "input_per_million": 0.06,
@@ -407,8 +422,8 @@
     },
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
       "display_name": "Claude Haiku 4.5 (Bedrock)",
-      "input_per_million": 1.0,
-      "output_per_million": 5.0
+      "input_per_million": 1.1,
+      "output_per_million": 5.5
     },
     "us.anthropic.claude-haiku-5-5": {
       "display_name": "Claude Haiku 5.5 (Bedrock US)",
@@ -417,28 +432,28 @@
     },
     "us.anthropic.claude-opus-4-5-20251101-v1:0": {
       "display_name": "Claude Opus 4.5 (Bedrock, us)",
-      "input_per_million": 5.0,
-      "output_per_million": 25.0
+      "input_per_million": 5.5,
+      "output_per_million": 27.5
     },
     "us.anthropic.claude-opus-4-6-v1": {
       "display_name": "Claude Opus 4.6 (Bedrock, us)",
-      "input_per_million": 5.0,
-      "output_per_million": 25.0
+      "input_per_million": 5.5,
+      "output_per_million": 27.5
     },
     "us.anthropic.claude-opus-4-7": {
       "display_name": "Claude Opus 4.7 (Bedrock, us)",
-      "input_per_million": 5.0,
-      "output_per_million": 25.0
+      "input_per_million": 5.5,
+      "output_per_million": 27.5
     },
     "us.anthropic.claude-opus-4-8": {
       "display_name": "Claude Opus 4.8 (Bedrock, us)",
-      "input_per_million": 5.0,
-      "output_per_million": 25.0
+      "input_per_million": 5.5,
+      "output_per_million": 27.5
     },
     "us.anthropic.claude-opus-5": {
       "display_name": "Claude Opus 5 (Bedrock, us)",
-      "input_per_million": 5.0,
-      "output_per_million": 25.0
+      "input_per_million": 5.5,
+      "output_per_million": 27.5
     },
     "us.anthropic.claude-opus-5-5": {
       "display_name": "Claude Opus 5.5 (Bedrock US)",
@@ -457,8 +472,8 @@
     },
     "us.anthropic.claude-sonnet-4-6": {
       "display_name": "Claude Sonnet 4.6 (Bedrock)",
-      "input_per_million": 3.0,
-      "output_per_million": 15.0
+      "input_per_million": 3.3,
+      "output_per_million": 16.5
     },
     "us.anthropic.claude-sonnet-5-5": {
       "display_name": "Claude Sonnet 5.5 (Bedrock US)",
@@ -505,9 +520,11 @@
     "latest": {
       "cost_complete": false,
       "latest_cost_usd": 0.0045,
+      "missing_usage_invocations": 2,
       "session_total_usd": 0.069,
       "total_tokens": 31900,
-      "unpriced_invocations": 1
+      "unpriced_invocations": 1,
+      "usage_complete": false
     },
     "minimal": "Session cost: >$0.069 (31.9k tokens, cost incomplete)",
     "summary": {
@@ -632,9 +649,11 @@
       "latest": {
         "cost_complete": true,
         "latest_cost_usd": 0.0045,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.0045,
         "total_tokens": 1100,
-        "unpriced_invocations": 0
+        "unpriced_invocations": 0,
+        "usage_complete": true
       },
       "minimal": "Session cost: $0.0045",
       "summary": {
@@ -675,9 +694,11 @@
       "latest": {
         "cost_complete": true,
         "latest_cost_usd": 0.0045,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.009,
         "total_tokens": 2200,
-        "unpriced_invocations": 0
+        "unpriced_invocations": 0,
+        "usage_complete": true
       },
       "minimal": "Session cost: $0.009",
       "summary": {
@@ -728,9 +749,11 @@
       "latest": {
         "cost_complete": true,
         "latest_cost_usd": 0.0045,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.0135,
         "total_tokens": 14300,
-        "unpriced_invocations": 0
+        "unpriced_invocations": 0,
+        "usage_complete": true
       },
       "minimal": "Session cost: $0.0135",
       "summary": {
@@ -791,9 +814,11 @@
       "latest": {
         "cost_complete": true,
         "latest_cost_usd": 0.0375,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.051,
         "total_tokens": 26400,
-        "unpriced_invocations": 0
+        "unpriced_invocations": 0,
+        "usage_complete": true
       },
       "minimal": "Session cost: $0.051",
       "summary": {
@@ -864,9 +889,11 @@
       "latest": {
         "cost_complete": true,
         "latest_cost_usd": 0.0045,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.0555,
         "total_tokens": 27500,
-        "unpriced_invocations": 0
+        "unpriced_invocations": 0,
+        "usage_complete": true
       },
       "minimal": "Session cost: $0.0555",
       "summary": {
@@ -947,9 +974,11 @@
       "latest": {
         "cost_complete": true,
         "latest_cost_usd": 0.0045,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.06,
         "total_tokens": 28600,
-        "unpriced_invocations": 0
+        "unpriced_invocations": 0,
+        "usage_complete": true
       },
       "minimal": "Session cost: $0.06",
       "summary": {
@@ -1040,9 +1069,11 @@
       "latest": {
         "cost_complete": false,
         "latest_cost_usd": null,
+        "missing_usage_invocations": 0,
         "session_total_usd": 0.06,
         "total_tokens": 29700,
-        "unpriced_invocations": 1
+        "unpriced_invocations": 1,
+        "usage_complete": true
       },
       "minimal": "Session cost: >$0.06 (29.7k tokens, cost incomplete)",
       "summary": {
@@ -1145,9 +1176,11 @@
       "latest": {
         "cost_complete": false,
         "latest_cost_usd": null,
+        "missing_usage_invocations": 1,
         "session_total_usd": 0.06,
         "total_tokens": 29700,
-        "unpriced_invocations": 1
+        "unpriced_invocations": 1,
+        "usage_complete": false
       },
       "minimal": "Session cost: >$0.06 (29.7k tokens, cost incomplete)",
       "summary": {

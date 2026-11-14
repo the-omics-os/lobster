@@ -1,0 +1,5 @@
+{"schema": "lobster.replay/1", "description": "Interactive G0-3 session: one query, one threshold decision, then /export. Type the prompts in order.", "prompts": ["What can you do with single-cell data?", "Run QC on my pbmc3k data."], "responses": [
+  {"agent": "supervisor", "content": "I can load, quality-check, cluster and annotate single-cell RNA-seq data."},
+  {"agent": "supervisor", "content": "I need one QC threshold before filtering.", "tool_calls": [{"name": "ask_user", "args": {"question": "Which mitochondrial fraction threshold should QC use?", "context": {"min": 0, "max": 1, "threshold": 0.05}}}]},
+  {"agent": "supervisor", "content": "Using your threshold for QC filtering."}
+]}

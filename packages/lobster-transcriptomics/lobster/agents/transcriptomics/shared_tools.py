@@ -24,7 +24,11 @@ from lobster.services.quality.preprocessing_service import (
     PreprocessingService,
     _validate_normalization_method,
 )
-from lobster.services.quality.quality_service import QualityError, QualityService
+from lobster.services.quality.quality_service import (
+    QualityError,
+    QualityService,
+    qc_flags_kept,
+)
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,6 +62,49 @@ QC_ACCEPTED_STAGES = frozenset({"raw", "filtered", "quality_assessed"})
 # =============================================================================
 # SHARED TOOL FACTORY
 # =============================================================================
+
+
+def _qc_flags_line(adata_kept, filters: Dict[str, Any], obs_label: str) -> str:
+    """One sentence on QC-flagged observations that the filter kept, from the data itself.
+
+    Deterministic: counts come from `obs["qc_pass"]` and the thresholds recorded by the
+    assessment (`uns["qc_thresholds"]` with `uns["qc_threshold_names"]`); nothing here is model prose.
+    """
+    flags = qc_flags_kept(adata_kept, filters)
+    if flags is None:
+        return "no earlier QC assessment on this modality, so no QC flags to carry"
+    noun = obs_label[:-1] if flags["n_flagged"] == 1 else obs_label
+    head = f"{flags['n_flagged']:,} {noun} flagged by QC (qc_pass=False) were kept"
+    if flags["n_flagged"] == 0:
+        return head + "; none of the kept " + obs_label + " carry a QC flag"
+    reasons = flags["reasons"]
+    if reasons is None:
+        if flags.get("thresholds") == "unreadable":
+            return (
+                head + "; reasons unknown (the recorded QC thresholds are unreadable)"
+            )
+        return head + "; reasons unknown (this modality has no recorded QC thresholds)"
+    if not reasons:
+        return (
+            head
+            + "; no recorded threshold explains the flag (for example a missing metric)"
+        )
+    parts = []
+    for r in reasons:
+        applied = (
+            f"this filter: {r['filter_value']}"
+            if r["filter_applies"]
+            else "this filter: not applied"
+        )
+        parts.append(
+            f"{r['criterion']} {r['operator']} {r['threshold']:g}: "
+            f"{r['count']:,} ({applied})"
+        )
+    unapplied = [r["criterion"] for r in reasons if not r["filter_applies"]]
+    line = head + "; " + "; ".join(parts) + ". Reasons overlap, do not sum them"
+    if unapplied:
+        line += "; filters not applied here: " + ", ".join(unapplied)
+    return line
 
 
 def create_shared_tools(
@@ -546,6 +593,22 @@ Proceed with filtering and normalization for downstream analysis."""
 - Raw counts location: adata.raw
 
 **New modality created**: '{filtered_modality_name}'"""
+
+            response += (
+                "\n\n**QC flags carried into this result:** "
+                + _qc_flags_line(
+                    adata_processed,
+                    {
+                        "min_genes_per_cell": min_genes_per_cell,
+                        "max_genes_per_cell": max_genes_per_cell,
+                        "max_mito_percent": max_mito_percent,
+                        "max_ribo_percent": max_ribo_percent,
+                    },
+                    obs_label,
+                )
+                + ".\nThe thresholds in this result are fixed defaults (or the values you set); "
+                "they are not fitted to this dataset."
+            )
 
             response += (
                 "\n\n**Applied parameters (actual):**\n```json\n"

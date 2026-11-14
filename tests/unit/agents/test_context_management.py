@@ -334,17 +334,20 @@ class TestResolveContextWindow:
         assert result is None
 
     def test_provider_override_only_falls_back_to_resolver(self, monkeypatch):
-        """Only provider given — should still try resolver for provider, skip model."""
+        """Only provider given — the model is resolved, the provider default if none is set."""
         from lobster.agents.context_management import resolve_context_window
 
         class _FakeProvider:
+            seen = []
+
+            def get_default_model(self):
+                return "default-model"
+
             def get_model_info(self, model_id):
                 from types import SimpleNamespace
 
-                # model_id will be None since no model_override and resolver doesn't give model
-                return (
-                    SimpleNamespace(context_window=8192) if model_id is None else None
-                )
+                self.seen.append(model_id)
+                return SimpleNamespace(context_window=8192)
 
         from lobster.config import providers
 
@@ -356,3 +359,4 @@ class TestResolveContextWindow:
 
         result = resolve_context_window(provider_override="ollama")
         assert result == 8192
+        assert _FakeProvider.seen and None not in _FakeProvider.seen  # a model was resolved

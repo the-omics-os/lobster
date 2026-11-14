@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.messages.utils import trim_messages
 
 logger = logging.getLogger(__name__)
@@ -171,8 +172,13 @@ def resolve_context_window(
     provider_override: Optional[str] = None,
     model_override: Optional[str] = None,
     workspace_path=None,
+    agent_name: Optional[str] = "supervisor",
 ) -> Optional[int]:
     """Best-effort resolution of context window from provider config.
+
+    With no model override the model is resolved the way the LLM factory resolves it for
+    ``agent_name`` (workspace per-agent model, workspace/global provider model, provider
+    default), so the window is that model's and not the provider catalog's fallback.
 
     Priority:
     1. Workspace model_context_windows override
@@ -187,6 +193,10 @@ def resolve_context_window(
     provider_name: Optional[str] = provider_override
     model_id: Optional[str] = model_override
 
+    # A str path reaches ConfigResolver.get_instance(), which calls .resolve() on it.
+    if isinstance(workspace_path, str):
+        workspace_path = Path(workspace_path)
+
     # When overrides are incomplete, resolve missing values from config.
     # resolve_provider() returns (provider_name, decision_source) — the second
     # element is NOT a model ID, so we only use it for the provider name.
@@ -195,13 +205,14 @@ def resolve_context_window(
             from lobster.core.config_resolver import ConfigResolver
 
             resolver = ConfigResolver.get_instance(workspace_path)
-            resolved_provider, _source = resolver.resolve_provider()
-
             if not provider_name:
-                provider_name = resolved_provider
-            if not model_id:
-                # ConfigResolver doesn't resolve model — provider default is used
-                model_id = None
+                provider_name, _source = resolver.resolve_provider()
+            if not model_id and provider_name:
+                # Same resolution as LLMFactory.create_llm; None falls through to the
+                # provider's own default model below.
+                model_id, _source = resolver.resolve_model(
+                    agent_name=agent_name, provider=provider_name
+                )
         except Exception as e:
             logger.warning(f"Could not resolve provider from config: {e}")
 
@@ -231,6 +242,8 @@ def resolve_context_window(
     try:
         provider = get_provider(provider_name)
         if provider:
+            if not model_id:
+                model_id = provider.get_default_model()
             model_info = provider.get_model_info(model_id)
             if model_info and model_info.context_window:
                 return model_info.context_window
@@ -392,6 +405,47 @@ def _build_key_index_text(store_keys: dict[str, str]) -> str:
     )
 
 
+def _keep_current_request(wrapped: list, trimmed: list, budget: int) -> list:
+    """Return `trimmed`, or a trim that keeps the request of the current turn.
+
+    Trimming from the end drops the oldest messages first, and in a long tool-call run the
+    oldest message of the turn is the user's request; a model that no longer sees it has
+    nothing to answer. The last HumanMessage is therefore kept together with the leading
+    system messages, and only the middle (the oldest steps after the request) is cut. A
+    request larger than the whole budget is kept in full and a warning is logged: it is the
+    user's text, and shortening it silently would change what was asked.
+    """
+    request_index = next(
+        (
+            i
+            for i in range(len(wrapped) - 1, -1, -1)
+            if isinstance(wrapped[i], HumanMessage)
+        ),
+        None,
+    )
+    if request_index is None or any(m is wrapped[request_index] for m in trimmed):
+        return trimmed
+
+    leading = 0
+    while leading < len(wrapped) and isinstance(wrapped[leading], SystemMessage):
+        leading += 1
+    head = list(wrapped[:leading]) + [wrapped[request_index]]
+    remaining = budget - _message_list_token_counter(head)
+    if remaining < 0:
+        logger.warning(
+            f"The current request exceeds the context budget ({budget} tokens) on its own; "
+            f"it is kept in full and the model input is over budget."
+        )
+    tail = trim_messages(
+        wrapped[request_index + 1 :],
+        max_tokens=max(remaining, 0),
+        token_counter=_message_list_token_counter,
+        strategy="last",
+        allow_partial=False,
+    )
+    return head + _fix_orphaned_tool_messages(tail)
+
+
 def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
     """Create a pre_model_hook for the supervisor agent.
 
@@ -438,6 +492,7 @@ def create_supervisor_pre_model_hook(max_tokens: int) -> callable:
             include_system=True,
             allow_partial=False,
         )
+        trimmed = _keep_current_request(wrapped, trimmed, effective_budget)
 
         # Fix orphaned ToolMessages that lost their AIMessage partner
         trimmed = _fix_orphaned_tool_messages(trimmed)

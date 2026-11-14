@@ -8,11 +8,13 @@ through environment variables while maintaining backward compatibility.
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from lobster.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+RESPONSE_STYLES = ("chat", "run")
 
 
 @dataclass
@@ -35,6 +37,10 @@ class SupervisorConfig:
     verbose_delegation: bool = True
     include_expert_output: bool = True
     summarize_expert_output: bool = False
+    # "chat": a conversation (opener and a closing offer allowed). "run": the reply is
+    # read after a run by a program or a person: result first, no opener, no closing
+    # offer or question. Independent of `interactive`.
+    response_style: Literal["chat", "run"] = "chat"
 
     # Context inclusion
     include_data_context: bool = True
@@ -67,6 +73,13 @@ class SupervisorConfig:
     auto_discover_agents: bool = True
     include_agent_tools: bool = True  # Whether to list individual agent tools
     max_tools_per_agent: int = 20  # Limit tools shown per agent for brevity
+
+    def __post_init__(self):
+        if self.response_style not in RESPONSE_STYLES:
+            raise ValueError(
+                f"Unknown response_style {self.response_style!r}; "
+                f"expected one of {', '.join(RESPONSE_STYLES)}"
+            )
 
     @classmethod
     def from_env(cls) -> "SupervisorConfig":
@@ -126,6 +139,17 @@ class SupervisorConfig:
                 except (ValueError, AttributeError) as e:
                     logger.warning(f"Failed to set {field_name} from {env_var}: {e}")
 
+        # LOBSTER_RESPONSE_STYLE is only the default source of response_style. An
+        # unknown value is an error, never a silent fallback to "chat".
+        style = os.environ.get("LOBSTER_RESPONSE_STYLE", "").strip().lower()
+        if style:
+            if style not in RESPONSE_STYLES:
+                raise ValueError(
+                    f"LOBSTER_RESPONSE_STYLE={style!r} is not valid; "
+                    f"expected one of {', '.join(RESPONSE_STYLES)}"
+                )
+            config.response_style = style
+
         # Validate settings
         config._validate()
 
@@ -183,6 +207,7 @@ class SupervisorConfig:
             "verbose_delegation": self.verbose_delegation,
             "include_expert_output": self.include_expert_output,
             "summarize_expert_output": self.summarize_expert_output,
+            "response_style": self.response_style,
             "include_data_context": self.include_data_context,
             "include_workspace_status": self.include_workspace_status,
             "include_system_info": self.include_system_info,

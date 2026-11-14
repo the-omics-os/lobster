@@ -50,7 +50,7 @@ def create_supervisor_prompt(
         _build_cognitive_protocol(),
         _build_task_routing_guide(active_agents),
         _build_agent_directory(active_agents, config),
-        _build_orchestration_principles(),
+        _build_orchestration_principles(config.response_style),
         _build_response_behavior(config, interactive=interactive),
         _build_agent_result_memory(),
     ]
@@ -317,8 +317,22 @@ def _build_agent_directory(active_agents: List[str], config: SupervisorConfig) -
     return "\n".join(lines)
 
 
-def _build_orchestration_principles() -> str:
+_NEXT_STEPS_CHAT = "- Suggest logical next steps based on the workflow."
+_NEXT_STEPS_RUN = (
+    '- Mention next steps only as plain statements ("Possible next steps: ..."), '
+    "never as an offer or a question."
+)
+
+
+def _build_orchestration_principles(response_style: str = "chat") -> str:
     """Build multi-step coordination, error handling, and response quality."""
+    text = _orchestration_principles_text()
+    if response_style == "run":
+        text = text.replace(_NEXT_STEPS_CHAT, _NEXT_STEPS_RUN)
+    return text
+
+
+def _orchestration_principles_text() -> str:
     return """<Orchestration Principles>
 MULTI-STEP COORDINATION:
 - For pipelines (C), create todos first, then delegate one agent at a time.
@@ -395,7 +409,18 @@ def _build_response_behavior(config: SupervisorConfig, interactive: bool = True)
     else:
         rules.append("- Present expert results to the user with optional context.")
 
-    if config.auto_suggest_next_steps:
+    if config.response_style == "run":
+        rules.extend(
+            [
+                "- RESPONSE STYLE (run): the reply is read after the run, not in a conversation. "
+                "Start with the result itself: no greeting, no opener, no announcement of what you are about to do.",
+                '- Do not end with an offer or a question (no "Would you like...", "Let me know if..."). '
+                'Next steps, if worth mentioning, are plain statements: "Possible next steps: ...".',
+                "- A question to the user goes only through the ask_user tool when you have it. "
+                "Otherwise choose a reasonable default and state it.",
+            ]
+        )
+    elif config.auto_suggest_next_steps:
         rules.append("- Suggest logical next steps after each operation.")
 
     if config.verbose_delegation:
@@ -433,6 +458,10 @@ A delegation response may include an <artifact_manifest> block listing the modal
 and files that agent wrote. Treat it as a factual inventory of workspace state.
 - If the manifest lists a modality, that data ALREADY EXISTS. Reference it by name.
   Do NOT use execute_custom_code to recompute it.
+- A modality NAME is not evidence of a file. Say that a file was saved only when the
+  manifest lists it under files or a tool result names the written path. Never
+  describe a modality as saved, stored or written to disk on your own, and never
+  state that it is NOT saved unless the manifest or a tool result shows that.
 - If the manifest lists a saved figure, that figure ALREADY EXISTS under the ref shown
   (f_…@r_…). Use that exact ref when you mention it to the user or delegate work on it.
   Do NOT ask an agent to recreate it. To change it, delegate an edit of that ref: the

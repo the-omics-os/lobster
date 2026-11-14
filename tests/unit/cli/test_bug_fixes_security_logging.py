@@ -72,7 +72,23 @@ class TestBug6PathResolverSecurity:
 
         assert result.is_safe
         assert result.source == "home"
-        assert result.path == Path.home() / "Documents/test.txt"
+        assert result.path == (Path.home() / "Documents/test.txt").resolve()
+
+    def test_home_reached_through_a_symlink_is_allowed(self, tmp_path, monkeypatch):
+        """A home directory behind a symlink (usual on clusters) stays allowed."""
+        real_home = tmp_path / "real_home"
+        real_home.mkdir()
+        linked_home = tmp_path / "linked_home"
+        linked_home.symlink_to(real_home, target_is_directory=True)
+        monkeypatch.setenv("HOME", str(linked_home))
+        current_dir = tmp_path / "workspace"
+        current_dir.mkdir()
+
+        resolver = PathResolver(current_directory=current_dir)
+        result = resolver.resolve("~/Documents/test.txt", must_exist=False)
+
+        assert result.is_safe
+        assert result.path == real_home.resolve() / "Documents/test.txt"
 
     def test_special_file_detection(self, tmp_path):
         """Test that special files (devices, pipes) are blocked."""

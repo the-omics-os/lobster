@@ -1,0 +1,10 @@
+{"payload": {"engine": "lobster-ai", "engine_version": "1.2.3", "interface": "lobster agent --stdio", "protocol_version": 1}, "seq": 1, "type": "handshake", "version": 1}
+{"payload": {"text": "Provider: ollama-cloud"}, "seq": 2, "type": "status", "version": 1}
+{"payload": {"text": "Session: session_20261110_110734"}, "seq": 3, "type": "status", "version": 1}
+{"payload": {"session_id": "session_20261110_110734"}, "seq": 4, "type": "ready", "version": 1}
+{"payload": {"active": true}, "seq": 5, "type": "spinner", "version": 1}
+{"payload": {"run_id": "run_c98a56cd464b407693553b1697c7e645", "state": "running"}, "run_id": "run_c98a56cd464b407693553b1697c7e645", "seq": 6, "type": "run_state", "version": 1}
+{"payload": {"reason": "cancel", "run_id": "run_c98a56cd464b407693553b1697c7e645", "state": "cancelled"}, "run_id": "run_c98a56cd464b407693553b1697c7e645", "seq": 7, "type": "run_state", "version": 1}
+{"payload": {"summary": "cancelled"}, "seq": 8, "type": "done", "version": 1}
+{"payload": {"text": "Cancelled after 1.5s"}, "seq": 9, "type": "status", "version": 1}
+{"payload": {"active": false}, "seq": 10, "type": "spinner", "version": 1}

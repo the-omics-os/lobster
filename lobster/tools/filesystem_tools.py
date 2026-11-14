@@ -25,6 +25,7 @@ See Also:
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess  # nosec B404 # Implements the explicitly requested shell tool contract.
 from pathlib import Path
 from typing import List, Optional
@@ -101,6 +102,62 @@ def _resolve_safe_path(workspace_path: Path, relative_path: str) -> Path:
     return resolved
 
 
+# Files that hold credentials or the workspace's own settings. Whatever a tool returns goes
+# to the model provider, so these are neither read, listed, searched nor written here.
+_WORKSPACE_DIR_NAME = ".lobster_workspace"
+_LOGIN_FILES = frozenset({".envrc", ".netrc", ".npmrc", ".pypirc"})
+_WORKSPACE_SETTINGS_FILES = frozenset(
+    {".env", "provider_config.json", "providers.json", "config.toml"}
+)
+PROTECTED_REFUSAL = (
+    "Error: '{path}' is a protected file (credentials or workspace settings) and "
+    "cannot be read or changed with this tool."
+)
+
+
+def _is_protected_name(path: Path) -> bool:
+    name = (
+        path.name.casefold()
+    )  # casefold: case-insensitive disks also fold e.g. 'ſ' to 's'
+    if (
+        name == ".env"
+        or name in _LOGIN_FILES
+        or name.startswith(".env.")
+        or name.startswith("credentials")
+        or name.endswith((".pem", ".key"))
+    ):
+        return True
+    return (
+        path.parent.name.casefold() == _WORKSPACE_DIR_NAME
+        and name in _WORKSPACE_SETTINGS_FILES
+    )
+
+
+def _is_protected(path: Path) -> bool:
+    """True when the path as spelled, or the file it finally points to, is protected.
+
+    The resolved target is checked as well, so a link such as ``data.txt -> .env`` or a
+    folder link onto the workspace is refused. Hard links are not detected.
+    """
+    spelled = Path(os.path.normpath(path))
+    if _is_protected_name(spelled):
+        return True
+    try:
+        return _is_protected_name(path.resolve())
+    except (OSError, RuntimeError):
+        return False
+
+
+def _requested_path(workspace_path: Path, relative_path: str) -> Path:
+    given = Path(relative_path).expanduser()
+    return given if given.is_absolute() else workspace_path / given
+
+
+def _protected_note(count: int) -> str:
+    noun = "file" if count == 1 else "files"
+    return f"{count} protected {noun} not shown"
+
+
 def _truncate_output(text: str, max_chars: int = MAX_OUTPUT_CHARS) -> str:
     """Truncate output with indicator if too long."""
     if len(text) <= max_chars:
@@ -159,14 +216,21 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except ValueError as e:
             return f"Error: {e}"
 
+        if _is_protected(_requested_path(workspace_path, path)):
+            return PROTECTED_REFUSAL.format(path=path)
+
         if not resolved.exists():
             return f"Error: Path '{path}' not found in workspace."
         if not resolved.is_dir():
             return f"Error: '{path}' is a file, not a directory. Use read_file to inspect it."
 
         entries = []
+        hidden = 0
         try:
             for item in sorted(resolved.iterdir()):
+                if not item.is_dir() and _is_protected(item):
+                    hidden += 1
+                    continue
                 rel = item.relative_to(workspace_path)
                 if item.is_dir():
                     entries.append(f"  {rel}/")
@@ -176,11 +240,12 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except PermissionError:
             return f"Error: Permission denied reading '{path}'."
 
+        note = f"\n[{_protected_note(hidden)}]" if hidden else ""
         if not entries:
-            return f"Directory '{path}' is empty."
+            return f"Directory '{path}' is empty." + note
 
         header = f"Contents of {path}/ ({len(entries)} items):\n"
-        return _truncate_output(header + "\n".join(entries))
+        return _truncate_output(header + "\n".join(entries)) + note
 
     list_files.metadata = {"categories": ["UTILITY"], "provenance": False}
     list_files.tags = ["UTILITY"]
@@ -211,6 +276,9 @@ def create_filesystem_tools(workspace_path: Path) -> List:
             resolved = _resolve_safe_path(workspace_path, path)
         except ValueError as e:
             return f"Error: {e}"
+
+        if _is_protected(_requested_path(workspace_path, path)):
+            return PROTECTED_REFUSAL.format(path=path)
 
         if not resolved.exists():
             return f"Error: File '{path}' not found in workspace."
@@ -286,6 +354,9 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except ValueError as e:
             return f"Error: {e}"
 
+        if _is_protected(_requested_path(workspace_path, path)):
+            return PROTECTED_REFUSAL.format(path=path)
+
         from lobster.core.figures.errors import ManagedPathError
         from lobster.core.figures.paths import assert_not_managed
 
@@ -336,12 +407,19 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except ValueError as e:
             return f"Error: {e}"
 
+        if _is_protected(_requested_path(workspace_path, path)):
+            return PROTECTED_REFUSAL.format(path=path)
+
         if not resolved.exists():
             return f"Error: Path '{path}' not found."
 
         matches = []
+        hidden = 0
         try:
             for match in sorted(resolved.glob(pattern)):
+                if match.is_file() and _is_protected(match):
+                    hidden += 1
+                    continue
                 if match.is_file():
                     rel = match.relative_to(workspace_path)
                     size = _format_file_size(match.stat().st_size)
@@ -352,11 +430,12 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except Exception as e:
             return f"Error during glob: {e}"
 
+        note = f"\n[{_protected_note(hidden)}]" if hidden else ""
         if not matches:
-            return f"No matches found for pattern '{pattern}' in {path}/"
+            return f"No matches found for pattern '{pattern}' in {path}/" + note
 
         header = f"Found {len(matches)} file(s) matching '{pattern}':\n"
-        return _truncate_output(header + "\n".join(matches))
+        return _truncate_output(header + "\n".join(matches)) + note
 
     glob_files.metadata = {"categories": ["UTILITY"], "provenance": False}
     glob_files.tags = ["UTILITY"]
@@ -389,15 +468,22 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         except ValueError as e:
             return f"Error: {e}"
 
+        if _is_protected(_requested_path(workspace_path, path)):
+            return PROTECTED_REFUSAL.format(path=path)
+
         if not resolved.exists():
             return f"Error: Path '{path}' not found."
 
         matches = []
         files_searched = 0
+        hidden = 0
         search_pattern = pattern.lower()
 
         def _search_file(file_path: Path):
-            nonlocal files_searched
+            nonlocal files_searched, hidden
+            if _is_protected(file_path):
+                hidden += 1
+                return
             # Skip binary files
             if file_path.suffix.lower() in BINARY_EXTENSIONS:
                 return
@@ -423,10 +509,11 @@ def create_filesystem_tools(workspace_path: Path) -> List:
                     if len(matches) >= 200:
                         break
 
+        note = f"\n[{_protected_note(hidden)}]" if hidden else ""
         if not matches:
             return (
                 f"No matches for '{pattern}' "
-                f"({files_searched} files searched in {path}/)"
+                f"({files_searched} files searched in {path}/)" + note
             )
 
         header = (
@@ -435,7 +522,7 @@ def create_filesystem_tools(workspace_path: Path) -> List:
         )
         if len(matches) >= 200:
             header += "  [Results capped at 200 matches]\n"
-        return _truncate_output(header + "\n".join(matches))
+        return _truncate_output(header + "\n".join(matches)) + note
 
     grep_files.metadata = {"categories": ["UTILITY"], "provenance": False}
     grep_files.tags = ["UTILITY"]

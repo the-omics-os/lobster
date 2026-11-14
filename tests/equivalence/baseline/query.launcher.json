@@ -1,0 +1,47 @@
+{
+  "transcript": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "content": "I can load, quality-check, cluster and annotate single-cell RNA-seq data.",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": ""
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "Ready \u00b7 Duration: #s"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ],
+  "workspace": {
+    "messages": [
+      {
+        "content": "What can you do with single-cell data?",
+        "role": "HumanMessage"
+      },
+      {
+        "content": "I can load, quality-check, cluster and annotate single-cell RNA-seq data.",
+        "role": "AIMessage"
+      }
+    ]
+  }
+}

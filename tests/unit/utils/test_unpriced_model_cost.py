@@ -183,14 +183,14 @@ class TestBedrockInferenceProfilesArePriced:
             f"calls would be recorded as unpriced."
         )
 
-    def test_us_and_global_variants_are_priced_identically(self):
+    def test_us_variant_carries_the_regional_premium(self):
         us = MODEL_PRICING["us.anthropic.claude-haiku-4-5-20251001-v1:0"]
         gl = MODEL_PRICING["global.anthropic.claude-haiku-4-5-20251001-v1:0"]
-        assert us["input_per_million"] == gl["input_per_million"]
-        assert us["output_per_million"] == gl["output_per_million"]
+        assert us["input_per_million"] == round(gl["input_per_million"] * 1.1, 4)
+        assert us["output_per_million"] == round(gl["output_per_million"] * 1.1, 4)
 
     def test_haiku_rates_match_the_published_snapshot(self):
         """Provider list rates for the current catalog."""
         pricing = MODEL_PRICING["us.anthropic.claude-haiku-4-5-20251001-v1:0"]
-        assert pricing["input_per_million"] == 1.0
-        assert pricing["output_per_million"] == 5.0
+        assert pricing["input_per_million"] == 1.1
+        assert pricing["output_per_million"] == 5.5

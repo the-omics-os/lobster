@@ -244,4 +244,5 @@ MANIFEST
 # These MUST come after the patterns they negate
 !data/exports/.gitkeep
 !skills/**/MANIFEST
+!lobster/skills/**/MANIFEST
 #pytorch lighning logs

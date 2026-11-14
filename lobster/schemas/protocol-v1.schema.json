@@ -1,0 +1,528 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omics-os.com/schemas/lobster/protocol-v1.schema.json",
+  "title": "Lobster protocol v1 envelope",
+  "description": "One NDJSON line between the Lobster engine and a UI (Go TUI over file descriptors, any host over `lobster agent --stdio`). Canonical inventory of message types; lobster/ui/bridge/protocol.py and lobster-tui/internal/protocol/types.go are checked against it in tests/protocol. Unknown types must be ignored by receivers. `seq` and `run_id` are added by `lobster agent --stdio`; the Go TUI ignores them.",
+  "type": "object",
+  "required": [
+    "type",
+    "version"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "handshake",
+        "text",
+        "markdown",
+        "code",
+        "table",
+        "form",
+        "confirm",
+        "select",
+        "progress",
+        "alert",
+        "spinner",
+        "status",
+        "clear",
+        "done",
+        "agent_transition",
+        "modality_loaded",
+        "tool_execution",
+        "suspend",
+        "resume",
+        "ready",
+        "heartbeat",
+        "set_lang",
+        "completion_response",
+        "component_render",
+        "component_set_data",
+        "run_state",
+        "input",
+        "form_response",
+        "confirm_response",
+        "select_response",
+        "cancel",
+        "quit",
+        "resize",
+        "slash_command",
+        "completion_request",
+        "component_response",
+        "decision_answer"
+      ]
+    },
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "description": "Request/response correlation. For component_render it is the Lobster decision id."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic per stdio stream."
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run the message belongs to (stdio only)."
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "run_state"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "payload"
+        ],
+        "properties": {
+          "payload": {
+            "required": [
+              "state",
+              "run_id"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "running",
+                  "needs_decision",
+                  "completed",
+                  "failed",
+                  "cancelled"
+                ]
+              },
+              "run_id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "resumed_by": {
+                "type": "string"
+              },
+              "error": {
+                "type": "object",
+                "required": [
+                  "code",
+                  "message",
+                  "retryable"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "retryable": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              "result": {
+                "$ref": "lobster.result.v1.schema.json"
+              },
+              "decision": {
+                "description": "Present on state needs_decision: the open question. 1.3 emits exactly one component.",
+                "type": "object",
+                "required": [
+                  "decision_id",
+                  "request_version",
+                  "question",
+                  "components"
+                ],
+                "properties": {
+                  "decision_id": {
+                    "type": "string",
+                    "description": "Opaque, minted once per question by the engine; equal to the component_render id."
+                  },
+                  "request_version": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Grows by one each time the same question surfaces again; an answer must carry the current one."
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "components": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "n",
+                        "component",
+                        "data",
+                        "fallback_prompt"
+                      ],
+                      "properties": {
+                        "n": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "component": {
+                          "type": "string"
+                        },
+                        "data": {
+                          "type": "object"
+                        },
+                        "fallback_prompt": {
+                          "type": "string",
+                          "description": "The question as plain text; enough to answer without drawing anything."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "const": "cancelled"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "reason"
+                  ],
+                  "properties": {
+                    "reason": {
+                      "enum": [
+                        "cancel",
+                        "decision_abandoned",
+                        "decision_unsupported"
+                      ],
+                      "description": "cancel: the host stopped a running turn (cancel, lobster_cancel, EOF without quit). decision_abandoned: a waiting decision ended unanswered. decision_unsupported: the surface cannot present the question."
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "const": "needs_decision"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "decision"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "component_render"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "id",
+          "payload"
+        ],
+        "properties": {
+          "payload": {
+            "required": [
+              "component"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "done"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "summary": {
+                "enum": [
+                  "",
+                  "interrupt",
+                  "cancelled",
+                  "error"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "decision_answer"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "payload"
+        ],
+        "properties": {
+          "payload": {
+            "description": "Frozen (Phase 0 A2). A refused answer is an alert with code and changes nothing. Deferring a decision is reserved for durable sessions (B4).",
+            "type": "object",
+            "required": [
+              "decision_id",
+              "request_version",
+              "answer",
+              "source"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "decision_id": {
+                "type": "string"
+              },
+              "request_version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "answer": {
+                "description": "Any JSON value: the structured form a component returns (confirm {confirmed}, select {selected, index}, text_input {answer}, cell_type_selector {assignments}, threshold_slider {value}) or plain text, accepted for every kind. The engine does not check the answer against the question; it is passed verbatim to the supervisor model, which reads it."
+              },
+              "source": {
+                "enum": [
+                  "human",
+                  "model"
+                ],
+                "description": "Who answered, as the surface knows it; recorded as told."
+              },
+              "comment": {
+                "type": "string",
+                "description": "The scientist's reason, recorded verbatim."
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-messages": [
+    {
+      "type": "handshake",
+      "direction": "both",
+      "emitted_by": "go_tui and lobster agent --stdio"
+    },
+    {
+      "type": "text",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "markdown",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "code",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "table",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "form",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "confirm",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "select",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "progress",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "alert",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "spinner",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "status",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "clear",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "done",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "agent_transition",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "modality_loaded",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "tool_execution",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "suspend",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "resume",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "ready",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "heartbeat",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "set_lang",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "completion_response",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "component_render",
+      "direction": "engine_to_ui",
+      "emitted_by": "engine"
+    },
+    {
+      "type": "component_set_data",
+      "direction": "engine_to_ui",
+      "emitted_by": "none (declared in Go, reserved)"
+    },
+    {
+      "type": "run_state",
+      "direction": "engine_to_ui",
+      "emitted_by": "lobster agent --stdio only"
+    },
+    {
+      "type": "input",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "form_response",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "confirm_response",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "select_response",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "cancel",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "quit",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "resize",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "slash_command",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "completion_request",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "component_response",
+      "direction": "ui_to_engine",
+      "emitted_by": "go_tui"
+    },
+    {
+      "type": "decision_answer",
+      "direction": "ui_to_engine",
+      "emitted_by": "stdio hosts"
+    }
+  ],
+  "x-exit-codes": {
+    "0": "quit or EOF on stdin",
+    "1": "unexpected failure",
+    "other": "startup diagnostic exit code"
+  },
+  "x-provisional": {
+    "status": "Frozen for consumers: envelope fields, the message inventory, run_state states with result, error, reason and decision, component_render payloads and id, decision_answer, done summaries. Provisional: the items listed here.",
+    "items": [
+      "shared-interaction.v1.lobster-profile.schema.json (whole file)"
+    ]
+  }
+}

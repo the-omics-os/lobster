@@ -214,12 +214,19 @@ class ProviderRegistry:
         cls._initialized = False
 
     @classmethod
-    def get_all_models_with_pricing(cls) -> Dict[str, Dict[str, float]]:
+    def get_all_models_with_pricing(
+        cls, provider: Optional[str] = None
+    ) -> Dict[str, Dict[str, float]]:
         """
         Generate unified pricing dictionary from all registered providers.
 
         This is the single source of truth for model pricing, collecting
         pricing data from each provider's ModelInfo definitions.
+
+        Args:
+            provider: Only this provider's catalog (so a model id that two providers
+                list at different prices keeps its own price); None merges all, the
+                last registered provider winning an id.
 
         Returns:
             Dict mapping model names to pricing info:
@@ -245,11 +252,14 @@ class ProviderRegistry:
         cls._ensure_initialized()
 
         pricing_dict: Dict[str, Dict[str, float]] = {}
+        only = provider  # the loop below reuses the name
 
         for provider in cls._providers.values():
             # Skip local providers (Ollama) - they have no cost and require network calls
             # to list models. Cloud providers have static KNOWN_MODELS catalogs.
             if provider.name == "ollama":
+                continue
+            if only is not None and provider.name != only:
                 continue
 
             try:

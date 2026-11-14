@@ -28,7 +28,7 @@ pytestmark = pytest.mark.ux
 
 # Path constants
 LOBSTER_ROOT = Path(__file__).parent.parent.parent
-SKILLS_DIR = LOBSTER_ROOT / "skills"
+SKILLS_DIR = LOBSTER_ROOT / "lobster" / "skills"
 # The skill installer script is maintained outside this repository. Point
 # LOBSTER_SKILL_INSTALLER at a local copy to run the installer checks.
 INSTALLER_SCRIPT = Path(
@@ -219,27 +219,31 @@ def test_skills_content_reference_files_not_empty():
 
 
 def test_skills_content_total_file_count_matches_manifest():
-    """Verify total skill .md files match MANIFEST file counts."""
+    """Verify the files on disk are exactly the files the MANIFEST lists."""
     for skill_name in ["lobster-use", "lobster-dev"]:
         manifest_path = SKILLS_DIR / skill_name / "MANIFEST"
         if not manifest_path.exists():
             pytest.skip(f"MANIFEST not found: {manifest_path}")
 
-        manifest_content = manifest_path.read_text()
-        manifest_files = [
+        manifest_files = {
             line.strip()
-            for line in manifest_content.splitlines()
+            for line in manifest_path.read_text().splitlines()
             if line.strip() and not line.strip().startswith("#")
-        ]
-        manifest_count = len(manifest_files)
+        }
 
-        # Count actual .md files on disk
-        actual_files = list((SKILLS_DIR / skill_name).rglob("*.md"))
-        actual_count = len(actual_files)
+        # The MANIFEST also lists scripts (e.g. scripts/validate_plugin.py), not only .md
+        skill_dir = SKILLS_DIR / skill_name
+        actual_files = {
+            p.relative_to(skill_dir).as_posix()
+            for p in skill_dir.rglob("*")
+            if p.is_file() and p.name != "MANIFEST" and "__pycache__" not in p.parts
+        }
 
-        assert (
-            actual_count == manifest_count
-        ), f"{skill_name} file count mismatch: {actual_count} on disk != {manifest_count} in MANIFEST"
+        assert actual_files == manifest_files, (
+            f"{skill_name}: on disk but not in MANIFEST "
+            f"{sorted(actual_files - manifest_files)}; in MANIFEST but not on disk "
+            f"{sorted(manifest_files - actual_files)}"
+        )
 
 
 # =============================================================================

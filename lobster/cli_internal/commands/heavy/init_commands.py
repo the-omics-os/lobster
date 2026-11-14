@@ -2866,10 +2866,13 @@ def init_impl(
                     try:
                         from lobster.ui.bridge.go_tui_bridge import run_init_wizard
 
-                        _tui_result = run_init_wizard(
-                            _binary,
-                            lamin_default=_lamin_default(lamin, global_config),
-                        )
+                        try:
+                            _tui_result = run_init_wizard(
+                                _binary,
+                                lamin_default=_lamin_default(lamin, global_config),
+                            )
+                        except KeyboardInterrupt:
+                            _tui_result = {"cancelled": True}
                         if _tui_result.get("cancelled", False):
                             console.print(f"[yellow]{_cancelled_text()}[/yellow]")
                             raise typer.Exit(0)
@@ -2929,7 +2932,7 @@ def init_impl(
                                 "[dim]Go TUI unavailable ({_go_exc}), falling back.[/dim]"
                             ).format(_go_exc=_go_exc)
                         )
-                elif ui_mode == "go":
+                elif ui_mode == "go" and os.name != "nt":
                     # --ui go was explicitly requested but binary not found
                     console.print(
                         h(

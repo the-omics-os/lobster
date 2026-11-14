@@ -5,6 +5,12 @@ import pytest
 from lobster.config import version_check
 
 
+@pytest.fixture(autouse=True)
+def _no_inherited_skip_switch(monkeypatch):
+    """The caller's shell may export the skip switch; each test sets what it needs."""
+    monkeypatch.delenv("LOBSTER_SKIP_UPDATE_CHECK", raising=False)
+
+
 def test_get_update_message_uses_uv_tool_upgrade_when_in_uv_tool_env(monkeypatch):
     monkeypatch.setattr(
         "lobster.core.uv_tool_env.is_uv_tool_env",
@@ -91,3 +97,47 @@ def test_update_check_skipped_for_json_stdio_or_non_tty_stderr(
     assert capsys.readouterr() == ("", "")
     assert calls == []  # no network request
     assert not (tmp_path / "c.json").exists()  # no cache write
+
+
+def test_update_check_skipped_when_env_switch_is_set(monkeypatch, tmp_path, capsys):
+    calls = _fake_update(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.argv", ["lobster", "query", "hello"])
+    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
+    monkeypatch.setenv("LOBSTER_SKIP_UPDATE_CHECK", "1")
+
+    version_check.maybe_show_update_notification()
+
+    assert capsys.readouterr() == ("", "")
+    assert calls == []
+    assert not (tmp_path / "c.json").exists()
+
+
+@pytest.mark.parametrize(
+    "value, skipped",
+    [
+        ("1", True),
+        ("true", True),
+        ("yes", True),
+        ("anything", True),
+        ("0", False),
+        ("false", False),
+        ("False", False),
+        ("no", False),
+        ("NO", False),
+        ("off", False),
+        ("Off", False),
+        (" off ", False),
+        ("", False),
+    ],
+)
+def test_skip_switch_values_that_mean_no_do_not_skip(
+    monkeypatch, tmp_path, capsys, value, skipped
+):
+    calls = _fake_update(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.argv", ["lobster", "query", "hello"])
+    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
+    monkeypatch.setenv("LOBSTER_SKIP_UPDATE_CHECK", value)
+
+    version_check.maybe_show_update_notification()
+
+    assert (calls == []) is skipped

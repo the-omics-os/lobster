@@ -17,6 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from lobster.core.provenance.analysis_ir import AnalysisStep, ParameterSpec
+from lobster.core.utils.dtype_guards import boolean_flag_mask
 from lobster.utils.gene_annotation import ANNOTATE_QC_GENES_HELPER
 from lobster.utils.logger import get_logger
 
@@ -46,6 +47,131 @@ def _add_drawing_qc_metrics(adata, total_counts, n_genes):
         out=np.zeros(adata.n_obs, dtype=float),
         where=total_counts != 0,
     )
+
+
+# The thresholds a QC assessment applied, written as two arrays of the same length in
+# `uns`: `qc_thresholds` (float64 values) and `qc_threshold_names` (strings, object
+# dtype), read by name never by position. A threshold that was not set is in neither
+# array; if none is set neither key is written. Arrays, because the save path keeps
+# arrays but turns numbers inside a dict into strings and None into "". The IR template
+# writes the same arrays from the same parameters, so a replayed notebook and the saved
+# file agree.
+QC_THRESHOLD_KEYS = (
+    "min_genes",
+    "max_genes",
+    "max_mt_pct",
+    "max_ribo_pct",
+    "min_housekeeping_score",
+)
+
+# Per criterion: label, the obs column it reads, comparison, the threshold key it uses
+# and the filter_and_normalize parameter that corresponds to it (None = no such filter).
+_QC_CRITERIA = (
+    ("genes per cell below minimum", "n_genes", "<", "min_genes", "min_genes_per_cell"),
+    ("genes per cell above maximum", "n_genes", ">", "max_genes", "max_genes_per_cell"),
+    ("mitochondrial %", "mt_pct", ">", "max_mt_pct", "max_mito_percent"),
+    ("ribosomal %", "ribo_pct", ">", "max_ribo_pct", "max_ribo_percent"),
+    ("housekeeping score", "housekeeping_score", "<", "min_housekeeping_score", None),
+)
+
+
+def qc_flags_kept(adata, applied_filters: Dict[str, Any]) -> Dict[str, Any] | None:
+    """Cells that an earlier QC assessment flagged (`obs["qc_pass"]` False) and that are
+    still in `adata`, with the reasons counted from the recorded thresholds.
+
+    Returns None when the modality has no `qc_pass`. `reasons` is None when the
+    thresholds were not recorded (older modalities) or the obs columns are missing.
+    Reasons are independent counts: one cell can fail several, so they do not sum.
+    `applied_filters` holds the filter's own values by parameter name (None = off).
+    """
+    if "qc_pass" not in adata.obs.columns:
+        return None
+    flagged = ~boolean_flag_mask(adata.obs["qc_pass"]).to_numpy()
+    result = {
+        "n_flagged": int(flagged.sum()),
+        "n_kept": int(adata.n_obs),
+        "reasons": None,
+    }
+    thresholds = _read_qc_thresholds(adata.uns)
+    if thresholds is None:
+        result["thresholds"] = "absent"
+        return result
+    if thresholds == "unreadable":
+        result["thresholds"] = "unreadable"
+        return result
+    reasons = []
+    for label, column, op, key, filter_param in _QC_CRITERIA:
+        limit = thresholds.get(key)
+        if limit is None or column not in adata.obs.columns:
+            continue
+        if key == "min_housekeeping_score" and not limit > 0:
+            continue  # a floor of zero is the disabled state
+        values = adata.obs[column].to_numpy()
+        hit = values < limit if op == "<" else values > limit
+        count = int((hit & flagged).sum())
+        if count:
+            reasons.append(
+                {
+                    "criterion": label,
+                    "operator": op,
+                    "threshold": float(limit),
+                    "count": count,
+                    "filter_value": (
+                        applied_filters.get(filter_param) if filter_param else None
+                    ),
+                    "filter_applies": filter_param is not None
+                    and applied_filters.get(filter_param) is not None,
+                }
+            )
+    result["reasons"] = reasons
+    return result
+
+
+def set_qc_thresholds(
+    uns, min_genes, max_genes, max_mt_pct, max_ribo_pct, min_housekeeping_score
+) -> None:
+    """Write `uns["qc_thresholds"]` and `uns["qc_threshold_names"]` (set thresholds only).
+
+    Stale keys from an earlier assessment are removed first; with no threshold set
+    neither key is written.
+    """
+    given = {
+        "min_genes": min_genes,
+        "max_genes": max_genes,
+        "max_mt_pct": max_mt_pct,
+        "max_ribo_pct": max_ribo_pct,
+        "min_housekeeping_score": min_housekeeping_score,
+    }
+    uns.pop("qc_thresholds", None)
+    uns.pop("qc_threshold_names", None)
+    names = [k for k in QC_THRESHOLD_KEYS if given[k] is not None]
+    if names:
+        uns["qc_thresholds"] = np.array([given[k] for k in names], dtype=np.float64)
+        uns["qc_threshold_names"] = np.array(names, dtype=object)
+
+
+def _read_qc_thresholds(uns):
+    """Recorded thresholds by name; None when neither key exists; "unreadable" when the
+    pair is incomplete, of unequal length, has repeated or non-string names or
+    non-numeric values."""
+    has_values, has_names = "qc_thresholds" in uns, "qc_threshold_names" in uns
+    if not has_values and not has_names:
+        return None
+    if has_values != has_names:
+        return "unreadable"
+    try:
+        values = np.asarray(uns["qc_thresholds"], dtype=np.float64).ravel()
+        names = list(np.asarray(uns["qc_threshold_names"], dtype=object).ravel())
+    except (TypeError, ValueError):
+        return "unreadable"
+    if (
+        len(values) != len(names)
+        or len(set(names)) != len(names)
+        or not all(isinstance(n, str) for n in names)
+        or np.isnan(values).any()
+    ):
+        return "unreadable"
+    return {n: float(v) for n, v in zip(names, values)}
 
 
 class QualityService:
@@ -134,6 +260,15 @@ class QualityService:
 
             # Add QC pass/fail flag to observations
             adata_qc.obs["qc_pass"] = passing_cells
+            # What qc_pass was judged against; the IR template writes the same two keys.
+            set_qc_thresholds(
+                adata_qc.uns,
+                min_genes,
+                max_genes,
+                max_mt_pct,
+                max_ribo_pct,
+                min_housekeeping_score,
+            )
 
             cells_before = len(qc_metrics)
             cells_after = passing_cells.sum()
@@ -1212,6 +1347,18 @@ adata.obs['qc_pass'] = (
     (adata.obs['housekeeping_score'].values >= {{ min_housekeeping_score }})
 )
 
+# The thresholds qc_pass was judged against, as the service records them: two arrays of
+# the same length, values (float64) and names (strings); unset thresholds are left out
+_qc_given = {
+__QC_THRESHOLD_ENTRIES__
+}
+adata.uns.pop('qc_thresholds', None)
+adata.uns.pop('qc_threshold_names', None)
+_qc_set = [(k, v) for k, v in _qc_given.items() if v is not None]
+if _qc_set:
+    adata.uns['qc_thresholds'] = np.array([v for _, v in _qc_set], dtype=np.float64)
+    adata.uns['qc_threshold_names'] = np.array([k for k, _ in _qc_set], dtype=object)
+
 # Display QC summary
 print(f"Cells before QC: {adata.n_obs}")
 print(f"Cells passing QC: {adata.obs['qc_pass'].sum()}")
@@ -1221,6 +1368,13 @@ print(f"Mean mitochondrial %: {adata.obs['mt_pct'].mean():.2f}")
 """
 
         # Create AnalysisStep
+        # One order for both paths: the template's entries come from QC_THRESHOLD_KEYS,
+        # the same constant set_qc_thresholds iterates.
+        code_template = code_template.replace(
+            "__QC_THRESHOLD_ENTRIES__",
+            "\n".join(f"    '{k}': {{{{ {k} }}}}," for k in QC_THRESHOLD_KEYS),
+        )
+
         ir = AnalysisStep(
             operation="scanpy.pp.calculate_qc_metrics",
             tool_name="assess_quality",

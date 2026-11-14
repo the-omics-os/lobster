@@ -662,7 +662,10 @@ def test_handle_user_query_interrupt_renders_component_and_resumes(monkeypatch):
 
         def resume_from_interrupt(self, response, stream=True, cancel_event=None):
             self._resume_called = True
-            assert response == {"confirmed": True}
+            # The run API resumes keyed by LangGraph's interrupt id.
+            decision = response["intr-test"]["__lobster_decision__"]
+            assert decision["answer"] == {"confirmed": True}
+            assert decision["source"] == "human"
             yield {"type": "content_delta", "delta": "Done!"}
             yield {"type": "complete"}
 
@@ -709,7 +712,7 @@ def test_handle_interrupt_quit_returns_none():
         bridge,
         {"data": {"component": "text_input", "fallback_prompt": "Enter:"}},
     )
-    assert result is None
+    assert result == ("abandoned", None)
 
 
 def test_handle_interrupt_timeout_returns_none():
@@ -719,7 +722,7 @@ def test_handle_interrupt_timeout_returns_none():
         bridge,
         {"data": {"component": "text_input", "fallback_prompt": "Enter:"}},
     )
-    assert result is None
+    assert result == ("abandoned", None)
 
 
 def test_handle_interrupt_select_response():
@@ -734,9 +737,18 @@ def test_handle_interrupt_select_response():
     )
     result = go_tui_launcher._handle_interrupt(
         bridge,
-        {"data": {"component": "select"}},
+        {"data": {"component": "select"}, "decision_id": "dec_1"},
     )
-    assert result == {"selected": "CPM", "index": 1}
+    assert result == (
+        "answer",
+        {
+            "decision_id": "dec_1",
+            "request_version": None,
+            "source": "human",
+            "comment": None,
+            "answer": {"selected": "CPM", "index": 1},
+        },
+    )
 
 
 def test_handle_interrupt_component_response_passthrough():
@@ -751,9 +763,93 @@ def test_handle_interrupt_component_response_passthrough():
     )
     result = go_tui_launcher._handle_interrupt(
         bridge,
-        {"data": {"component": "text_input"}},
+        {"data": {"component": "text_input"}, "decision_id": "dec_1"},
     )
-    assert result == {"answer": "T cells"}
+    assert result[0] == "answer"
+    assert result[1]["answer"] == {"answer": "T cells"}
+    assert result[1]["source"] == "human"
+
+
+def test_handle_interrupt_render_error_is_unsupported():
+    """A component that failed to render never continues the run."""
+    bridge = _FakeBridge(
+        events=[
+            {"type": "component_response", "payload": {"data": {"action": "error"}}}
+        ]
+    )
+    result = go_tui_launcher._handle_interrupt(
+        bridge, {"data": {"component": "qc_dashboard"}, "decision_id": "dec_1"}
+    )
+    assert result == ("unsupported", None)
+
+
+def test_handle_interrupt_bad_decision_answer_is_refused_and_keeps_waiting():
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "decision_answer",
+                "payload": {"decision_id": "dec_1", "answer": 1},
+            },
+            {
+                "type": "decision_answer",
+                "payload": {
+                    "decision_id": "dec_1",
+                    "request_version": 1,
+                    "answer": 1,
+                    "source": "model",
+                },
+            },
+        ]
+    )
+    result = go_tui_launcher._handle_interrupt(
+        bridge,
+        {
+            "data": {"component": "text_input"},
+            "decision_id": "dec_1",
+            "request_version": 1,
+        },
+    )
+    assert result[0] == "answer" and result[1]["source"] == "model"
+    alerts = [c for c in bridge.calls if c[0] == "alert"]
+    assert alerts and alerts[0][1]["code"] == "bad_answer"
+    assert alerts[0][1]["request_version"] == 1
+
+
+def test_handle_interrupt_non_string_source_is_a_bad_answer():
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "decision_answer",
+                "payload": {
+                    "decision_id": "dec_1",
+                    "request_version": 1,
+                    "answer": 1,
+                    "source": ["human"],
+                },
+            }
+        ]
+    )
+    result = go_tui_launcher._handle_interrupt(
+        bridge,
+        {
+            "data": {"component": "text_input"},
+            "decision_id": "dec_1",
+            "request_version": 1,
+        },
+    )
+    assert result == ("abandoned", None)  # no more events: the wait times out
+    alerts = [c for c in bridge.calls if c[0] == "alert"]
+    assert [a[1]["code"] for a in alerts] == ["bad_answer"]
+
+
+def test_answer_outside_a_wait_with_an_unhashable_id_is_refused():
+    bridge = _FakeBridge(events=[])
+    client = type("Client", (), {"session_id": None})()
+    go_tui_launcher._refuse_answer_outside_a_wait(
+        bridge, client, {"type": "decision_answer", "payload": {"decision_id": ["x"]}}
+    )
+    alerts = [c for c in bridge.calls if c[0] == "alert"]
+    assert [a[1]["code"] for a in alerts] == ["bad_answer"]
 
 
 # ---------------------------------------------------------------------------

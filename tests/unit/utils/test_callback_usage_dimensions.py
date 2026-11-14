@@ -213,7 +213,8 @@ def test_missing_completion_or_error_does_not_change_money(tracker):
     assert summary["total_cost_usd"] == 0.0045
     assert summary["missing_usage_invocations"] == 2
     assert summary["usage_complete"] is False
-    assert summary["cost_complete"] is True  # Existing PRICE-only meaning.
+    # A call without usage cannot be priced: the money is unchanged but not complete.
+    assert summary["cost_complete"] is False
     assert summary["attempt_coverage"] == "callback_only"
 
 

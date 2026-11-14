@@ -6,6 +6,7 @@ Usage (CI):
     python build_wheel.py --platform linux-arm64
     python build_wheel.py --platform darwin-arm64
     python build_wheel.py --platform darwin-amd64
+    python build_wheel.py --platform windows-amd64
 
 This script:
 1. Cross-compiles the Go binary from lobster-tui/ source
@@ -46,9 +47,28 @@ PLATFORMS = {
     },
 }
 
+# Built and smoke-tested by windows-tui-smoke.yml only. PLATFORMS is the release
+# inventory (scripts/verify_release_artifacts.py, publish-tui.yml matrix); move
+# windows-amd64 there when publish-tui.yml ships it.
+PREVIEW_PLATFORMS = {
+    "windows-amd64": {
+        "goos": "windows",
+        "goarch": "amd64",
+        "wheel_plat": "win_amd64",
+    },
+}
+TARGETS = {**PLATFORMS, **PREVIEW_PLATFORMS}
+
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GO_SOURCE = REPO_ROOT / "lobster-tui"
 PKG_DIR = Path(__file__).resolve().parent
+
+
+def binary_name(platform: str) -> str:
+    """Name of the bundled binary; Windows needs the .exe suffix."""
+    return (
+        "lobster-tui.exe" if TARGETS[platform]["goos"] == "windows" else "lobster-tui"
+    )
 
 
 def get_version() -> str:
@@ -68,10 +88,10 @@ def get_version() -> str:
 
 def build_go_binary(platform: str, version: str) -> Path:
     """Cross-compile the Go binary and return its path."""
-    cfg = PLATFORMS[platform]
+    cfg = TARGETS[platform]
     bin_dir = PKG_DIR / "lobster_ai_tui" / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
-    output = bin_dir / "lobster-tui"
+    output = bin_dir / binary_name(platform)
 
     env = os.environ.copy()
     env["GOOS"] = cfg["goos"]
@@ -104,7 +124,7 @@ def build_go_binary(platform: str, version: str) -> Path:
 
 def build_wheel(platform: str, version: str) -> Path:
     """Build a platform-specific wheel."""
-    cfg = PLATFORMS[platform]
+    cfg = TARGETS[platform]
     plat_tag = cfg["wheel_plat"]
 
     dist_dir = PKG_DIR / "dist"
@@ -161,7 +181,7 @@ def main():
     parser.add_argument(
         "--platform",
         required=True,
-        choices=list(PLATFORMS.keys()),
+        choices=list(TARGETS.keys()),
         help="Target platform",
     )
     parser.add_argument(
@@ -183,7 +203,7 @@ def main():
     wheel_path = build_wheel(args.platform, version)
 
     # 3. Clean up binary (CI will have the wheel)
-    bin_path = PKG_DIR / "lobster_ai_tui" / "bin" / "lobster-tui"
+    bin_path = PKG_DIR / "lobster_ai_tui" / "bin" / binary_name(args.platform)
     if bin_path.exists():
         bin_path.unlink()
 

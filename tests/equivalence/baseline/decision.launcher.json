@@ -1,0 +1,124 @@
+{
+  "transcript": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "agent": "unknown",
+        "event": "start",
+        "summary": "",
+        "tool_name": "ask_user"
+      },
+      "type": "tool_execution"
+    },
+    {
+      "payload": {
+        "content": "I need one QC threshold before filtering.",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "agent": "unknown",
+        "event": "finish",
+        "summary": "awaiting user input",
+        "tool_name": "ask_user"
+      },
+      "type": "tool_execution"
+    },
+    {
+      "payload": {
+        "summary": "interrupt"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "component": "threshold_slider",
+        "data": {
+          "default": 0.05,
+          "label": "Which mitochondrial fraction threshold should QC use?",
+          "max": 1.0,
+          "min": 0.0,
+          "unit": ""
+        },
+        "fallback_prompt": "Which mitochondrial fraction threshold should QC use? (range: 0.0-1.0, default: 0.05)",
+        "mode": "overlay"
+      },
+      "type": "component_render"
+    },
+    {
+      "payload": {
+        "active": true,
+        "label": "resuming"
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "agent": "unknown",
+        "event": "start",
+        "summary": "",
+        "tool_name": "ask_user"
+      },
+      "type": "tool_execution"
+    },
+    {
+      "payload": {
+        "agent": "unknown",
+        "event": "finish",
+        "summary": "#s",
+        "tool_name": "ask_user"
+      },
+      "type": "tool_execution"
+    },
+    {
+      "payload": {
+        "content": "Using your threshold of 0.1 for QC filtering.",
+        "markdown": true
+      },
+      "type": "text"
+    },
+    {
+      "payload": {
+        "summary": ""
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "Ready \u00b7 Duration: #s"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ],
+  "workspace": {
+    "messages": [
+      {
+        "content": "Run QC on my pbmc3k data.",
+        "role": "HumanMessage"
+      },
+      {
+        "content": "Using your threshold of 0.1 for QC filtering.",
+        "role": "AIMessage"
+      }
+    ]
+  }
+}

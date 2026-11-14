@@ -49,6 +49,88 @@ agents_app = typer.Typer(
 console = Console()
 
 
+@agents_app.callback(invoke_without_command=True)
+def _agents_callback(
+    ctx: typer.Context,
+    stdio: bool = typer.Option(False, "--stdio", hidden=True),
+):
+    # `lobster agents --stdio` is a likely typo for the machine interface.
+    if stdio:
+        typer.echo(
+            h(
+                "`lobster agents` manages agent packages; the machine interface is `lobster agent --stdio`."
+            ),
+            err=True,
+        )
+        raise typer.Exit(2)
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
+
+
+def agent_command(
+    stdio: bool = typer.Option(
+        False, "--stdio", help=h("Speak protocol v1 NDJSON on stdin and stdout.")
+    ),
+    workspace: Optional[Path] = typer.Option(
+        None,
+        "--workspace",
+        "-w",
+        help=h(
+            "Workspace directory. Can also be set via LOBSTER_WORKSPACE env var. Default: ./.lobster_workspace"
+        ),
+    ),
+    session_id: Optional[str] = typer.Option(
+        None,
+        "--session",
+        "--session-id",
+        "-s",
+        help=h(
+            "Session ID to continue (use 'latest' for most recent session in workspace)"
+        ),
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help=h(
+            "LLM provider to use (anthropic, bedrock, ollama, gemini, azure, openai, openrouter, nebius, ollama-cloud, omics-os). Overrides auto-detection."
+        ),
+    ),
+    model: Optional[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help=h(
+            "Model to use (e.g., claude-4-sonnet, llama3:70b-instruct, mixtral:8x7b). Overrides configuration."
+        ),
+    ),
+):
+    if not stdio:
+        print(
+            h(
+                "`lobster agent` is a machine interface; run it with --stdio. For agent management see `lobster agents`."
+            ),
+            file=sys.stderr,
+        )
+        raise typer.Exit(2)
+    from lobster.cli_internal.agent_stdio import run_agent_stdio
+
+    raise typer.Exit(
+        run_agent_stdio(
+            workspace=str(workspace) if workspace else None,
+            session_id=session_id,
+            provider=provider,
+            model=model,
+        )
+    )
+
+
+agent_command.__doc__ = h(
+    "Run Lobster as a machine interface for other programs (NDJSON on stdin and stdout)."
+)
+
+
 def _find_local_package(package: str) -> str | None:
     """
     Check if package exists locally in packages/ folder.

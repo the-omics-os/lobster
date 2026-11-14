@@ -367,7 +367,10 @@ def create_feature_selection_tools(
             logger.error(f"Pathway enrichment failed: {e}")
             return f"Error: Pathway enrichment failed. {str(e)}"
 
-    enrich_pathways_for_selected_features.metadata = {"categories": ["ANALYZE"], "provenance": True}
+    enrich_pathways_for_selected_features.metadata = {
+        "categories": ["ANALYZE"],
+        "provenance": True,
+    }
     enrich_pathways_for_selected_features.tags = ["ANALYZE"]
 
     return [
@@ -402,16 +405,20 @@ def create_survival_analysis_tools(data_manager: DataManagerV2) -> List:
         l1_ratio: float = 0.5,
     ) -> str:
         """
-        Train Cox proportional hazards model with elastic net regularization.
+        Train an unregularized Cox proportional hazards model.
+
+        No regularization is applied. The C-index is computed on the training data,
+        so it is optimistically biased; the reply says so.
 
         Args:
             modality_name: Name of the modality to analyze
             time_column: Column in obs containing time-to-event
             event_column: Column in obs containing event indicator (0/1)
-            l1_ratio: Elastic net mixing parameter (0=L2, 1=L1)
+            l1_ratio: Accepted but not applied (the model is unregularized)
 
         Returns:
-            Summary of Cox model training
+            Summary of Cox model training: the C-index with the data it was computed
+            on, sample and event counts, number of features used, and any warnings
         """
         try:
             avail = survival_service.check_availability()
@@ -430,12 +437,23 @@ def create_survival_analysis_tools(data_manager: DataManagerV2) -> List:
                 l1_ratio=l1_ratio,
             )
 
+            # The service returns the C-index under the key for the data it was computed on
+            c_index_key, c_index_label = {
+                "test_set": ("c_index_test", "held-out test set"),
+                "cross_validation": ("c_index_cv", "cross-validation"),
+                "training_set": (
+                    "c_index_train",
+                    "training set, optimistically biased",
+                ),
+            }[stats["c_index_source"]]
+            c_index = f"{stats[c_index_key]:.3f} ({c_index_label})"
+
             result_name = f"{modality_name}_cox_model"
             data_manager.store_modality(
                 name=result_name,
                 adata=adata_result,
                 parent_name=modality_name,
-                step_summary=f"Cox model: C-index={stats['c_index']:.3f}",
+                step_summary=f"Cox model: C-index={c_index}",
             )
 
             data_manager.log_tool_usage(
@@ -445,19 +463,26 @@ def create_survival_analysis_tools(data_manager: DataManagerV2) -> List:
                 ir=ir,
             )
 
+            # Pair counts come back for the test and training sets, not for cross-validation
+            pairs = ""
+            if "concordant_pairs" in stats:
+                pairs = (
+                    f"\n- Concordant pairs: {stats['concordant_pairs']}"
+                    f"\n- Discordant pairs: {stats['discordant_pairs']}"
+                )
+            warnings_text = "".join(f"\n\nWarning: {w}" for w in stats["warnings"])
+
             return f"""Cox proportional hazards model trained!
 
 **Model Performance**:
-- C-index: {stats["c_index"]:.3f}
-- Concordant pairs: {stats["concordant_pairs"]}
-- Discordant pairs: {stats["discordant_pairs"]}
+- C-index: {c_index}{pairs}
 
 **Data Summary**:
 - Samples: {stats["n_samples"]}
 - Events: {stats["n_events"]} ({stats["event_rate"]:.1%})
 - Features selected: {stats["n_features_selected"]}
 
-**Risk scores stored in**: '{result_name}' (obs['cox_risk_score'])"""
+**Risk scores stored in**: '{result_name}' (obs['cox_risk_score']){warnings_text}"""
 
         except Exception as e:
             return f"Error: {str(e)}"
@@ -501,7 +526,7 @@ def create_survival_analysis_tools(data_manager: DataManagerV2) -> List:
                 time_column=time_column,
                 event_column=event_column,
                 time_horizon=time_horizon,
-                n_bootstrap=n_bootstrap,
+                n_iterations=n_bootstrap,
             )
 
             data_manager.modalities[modality_name] = adata_result
@@ -610,12 +635,17 @@ Risk categories stored in obs['risk_category']"""
                 if "log_rank_p_value" in stats["groups"]:
                     response += f"\n**Log-rank test**: chi2={stats['groups']['log_rank_chi2']:.2f}, p={stats['groups']['log_rank_p_value']:.4f}"
             else:
+                median = (
+                    "Not reached"
+                    if stats["median_survival"] is None
+                    else f"{stats['median_survival']:.1f}"
+                )
                 response = f"""Kaplan-Meier analysis complete!
 
 **Summary**:
 - Samples: {stats["n_samples"]}
 - Events: {stats["n_events"]}
-- Median survival: {stats["median_survival"]:.1f if stats['median_survival'] else 'Not reached'}
+- Median survival: {median}
 - Max follow-up: {stats["max_time"]:.1f}"""
 
             response += "\n\nSurvival curves stored in adata.uns['kaplan_meier']"

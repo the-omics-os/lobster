@@ -90,6 +90,12 @@ class LLMFactory:
             ...     provider_override="anthropic"
             ... )
         """
+        from lobster.config.providers.replay_provider import replay_model_from_env
+
+        replay_model = replay_model_from_env(agent_name)
+        if replay_model is not None:
+            return replay_model
+
         if validate_inference_binding(inference_context, model_factory):
             return create_bound_model(
                 component=agent_name or "model",

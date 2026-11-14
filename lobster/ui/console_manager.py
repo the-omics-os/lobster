@@ -436,8 +436,11 @@ class LobsterConsoleManager:
             return False
 
         muted_file = open(os.devnull, "w", encoding="utf-8")
-        self._saved_console_file = self._console.file
-        self._saved_error_console_file = self._error_console.file
+        # Keep the raw override (None = follow sys.stdout/sys.stderr), not the
+        # resolved stream: restoring that would pin the console to a stream the
+        # caller may close later (a captured stdout, a pipe).
+        self._saved_console_file = self._console._file
+        self._saved_error_console_file = self._error_console._file
         self._console.file = muted_file
         self._error_console.file = muted_file
         self._muted_console_file = muted_file
@@ -449,10 +452,8 @@ class LobsterConsoleManager:
         if muted_file is None:
             return
 
-        if self._saved_console_file is not None:
-            self._console.file = self._saved_console_file
-        if self._saved_error_console_file is not None:
-            self._error_console.file = self._saved_error_console_file
+        self._console.file = self._saved_console_file
+        self._error_console.file = self._saved_error_console_file
 
         self._saved_console_file = None
         self._saved_error_console_file = None

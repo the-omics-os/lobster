@@ -1,0 +1,31 @@
+{
+  "transcript": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "cancelled"
+      },
+      "type": "done"
+    },
+    {
+      "payload": {
+        "text": "Cancelled after #s"
+      },
+      "type": "status"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    }
+  ],
+  "workspace": {
+    "messages": []
+  }
+}

@@ -1,0 +1,4 @@
+{"schema": "lobster.replay/1", "description": "The supervisor asks one threshold decision through ask_user, then finishes.", "prompt": "Run QC on my pbmc3k data.", "answers": [{"threshold": 0.1}], "responses": [
+  {"agent": "supervisor", "content": "I need one QC threshold before filtering.", "tool_calls": [{"name": "ask_user", "args": {"question": "Which mitochondrial fraction threshold should QC use?", "context": {"min": 0, "max": 1, "threshold": 0.05}}}]},
+  {"agent": "supervisor", "content": "Using your threshold of 0.1 for QC filtering."}
+]}

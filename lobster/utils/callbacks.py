@@ -4,11 +4,12 @@ Provides clean, informative display of agent reasoning and execution flow.
 """
 
 import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from langchain_core.agents import AgentAction, AgentFinish
 from langchain_core.callbacks import BaseCallbackHandler
@@ -843,6 +844,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
         self,
         session_id: str,
         pricing_config: Optional[Dict[str, Dict[str, float]]] = None,
+        provider_for_pricing: Optional[Callable[[], Optional[str]]] = None,
     ):
         """
         Initialize token tracking callback.
@@ -850,9 +852,20 @@ class TokenTrackingCallback(BaseCallbackHandler):
         Args:
             session_id: Unique session identifier
             pricing_config: Model pricing configuration (input/output per million tokens)
+            provider_for_pricing: Called at pricing time for the active provider's name.
+                That provider's catalog row for the model wins over ``pricing_config``
+                (which keeps one row per id, the last provider's); no row, an unknown
+                name or a failure falls back to ``pricing_config``.
         """
         self.session_id = session_id
         self.pricing_config = pricing_config or {}
+        self._provider_for_pricing = provider_for_pricing
+        self._provider_rows: Dict[str, Dict[str, Dict[str, float]]] = {}
+
+        # Identify this tracker and its reset generation, so a mark taken before a reset or on
+        # another tracker (a restored session) is recognised by ``cost_since``.
+        self._instance = uuid.uuid4().hex
+        self._epoch = 0
 
         # Aggregated totals
         self.total_input_tokens = 0
@@ -1270,7 +1283,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
         else:
             if (
                 decision.status == "legacy_fallback"
-                and model not in self.pricing_config
+                and self._price_row(model) is None
                 and not self._is_local_model(model)
             ):
                 # The single typed cache warning replaces the generic model-value
@@ -1575,6 +1588,31 @@ class TokenTrackingCallback(BaseCallbackHandler):
             return False
         return any(marker in lowered for marker in self._LOCAL_MODEL_MARKERS)
 
+    def _price_row(self, model: str) -> Optional[Dict[str, float]]:
+        """The active provider's catalog row for ``model``, else the merged table's.
+
+        shortcut: "active" is the Client's global provider; an agent running on a
+        per-agent provider override is priced by the global one. Nothing sets
+        ``metadata["provider"]`` today; honour it here if that changes.
+        """
+        if self._provider_for_pricing is not None:
+            try:
+                name = self._provider_for_pricing()
+                if isinstance(name, str) and name:
+                    rows = self._provider_rows.get(name)
+                    if rows is None:
+                        from lobster.config.providers.registry import ProviderRegistry
+
+                        rows = ProviderRegistry.get_all_models_with_pricing(name)
+                        if rows:  # an unknown name is asked again, not cached empty
+                            self._provider_rows[name] = rows
+                    row = rows.get(model)
+                    if row is not None:
+                        return row
+            except Exception as exc:  # pricing must never break a call
+                logger.debug("Provider-aware pricing unavailable: %s", exc)
+        return self.pricing_config.get(model)
+
     def _calculate_cost(
         self, model: str, input_tokens: int, output_tokens: int
     ) -> Optional[float]:
@@ -1595,7 +1633,8 @@ class TokenTrackingCallback(BaseCallbackHandler):
         returns ``0.0`` — see ``_is_local_model``. The two cases are distinguishable, which
         is the entire point.
         """
-        if model not in self.pricing_config:
+        pricing = self._price_row(model)
+        if pricing is None:
             if self._is_local_model(model):
                 return 0.0
             if model not in self._unpriced_models:
@@ -1611,7 +1650,6 @@ class TokenTrackingCallback(BaseCallbackHandler):
                 )
             return None
 
-        pricing = self.pricing_config[model]
         input_cost = (input_tokens / 1_000_000) * pricing.get("input_per_million", 0.0)
         output_cost = (output_tokens / 1_000_000) * pricing.get(
             "output_per_million", 0.0
@@ -1635,7 +1673,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
             # invocation could not be priced, so `total_cost_usd` is a LOWER BOUND and any
             # derived metric (cost-per-answer, cost-per-token) must be withheld rather than
             # computed. Consumers that ignore these keys behave exactly as before.
-            "cost_complete": self.unpriced_invocations == 0,
+            "cost_complete": self._cost_complete(),
             "unpriced_invocations": self.unpriced_invocations,
             "unpriced_models": sorted(self._unpriced_models),
             "missing_usage_invocations": self.missing_usage_invocations,
@@ -1704,9 +1742,59 @@ class TokenTrackingCallback(BaseCallbackHandler):
             "latest_cost_usd": None if latest_cost is None else round(latest_cost, 4),
             "session_total_usd": round(self.total_cost_usd, 4),
             "total_tokens": self.total_tokens,
-            "cost_complete": self.unpriced_invocations == 0,
+            "cost_complete": self._cost_complete(),
             "unpriced_invocations": self.unpriced_invocations,
+            "missing_usage_invocations": self.missing_usage_invocations,
+            "usage_complete": self.missing_usage_invocations == 0,
         }
+
+    def _cost_complete(self) -> bool:
+        """Whether the cost total covers every call: every call priced AND every call
+        reported usage. A call without usage cannot be priced, so it is not free."""
+        return self.unpriced_invocations == 0 and self.missing_usage_invocations == 0
+
+    def mark(self) -> Dict[str, Any]:
+        """Snapshot the session counters; pass it to ``cost_since`` at the end of a run.
+
+        Pure read: cheap, and safe to take again (a continued turn marks again).
+        """
+        return {
+            "instance": self._instance,
+            "epoch": self._epoch,
+            "cost": self.total_cost_usd,
+            "tokens": self.total_tokens,
+            "unpriced": self.unpriced_invocations,
+            "missing_usage": self.missing_usage_invocations,
+        }
+
+    def cost_since(self, mark: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Cost of everything recorded after ``mark``: the run, not the session.
+
+        ``get_latest_cost()["latest_cost_usd"]`` is the LAST LLM call of the session, which is
+        not a run's cost. Never raises: a mark from another tracker, from before a ``reset()``,
+        or malformed gives zero figures with ``run_cost_complete`` False (the run's cost is unknown).
+        """
+        unknown = {
+            "run_cost_usd": 0.0,
+            "run_total_tokens": 0,
+            "run_cost_complete": False,
+            "run_unpriced_invocations": 0,
+            "run_missing_usage_invocations": 0,
+        }
+        try:
+            if mark["instance"] != self._instance or mark["epoch"] != self._epoch:
+                return unknown
+            unpriced = self.unpriced_invocations - mark["unpriced"]
+            missing = self.missing_usage_invocations - mark["missing_usage"]
+            return {
+                "run_cost_usd": round(self.total_cost_usd - mark["cost"], 4),
+                "run_total_tokens": int(self.total_tokens - mark["tokens"]),
+                "run_cost_complete": unpriced == 0 and missing == 0,
+                "run_unpriced_invocations": unpriced,
+                "run_missing_usage_invocations": missing,
+            }
+        except (KeyError, TypeError):
+            return unknown
 
     def get_minimal_summary(self) -> str:
         """
@@ -1718,6 +1806,8 @@ class TokenTrackingCallback(BaseCallbackHandler):
             "Session: <tokens> tokens (local)"
         """
         if not self.invocations:
+            if self.missing_usage_invocations:
+                return "Session: usage not reported by the provider"
             return ""
 
         def format_tokens(count: int) -> str:
@@ -1743,6 +1833,8 @@ class TokenTrackingCallback(BaseCallbackHandler):
             if cost_str == "$0.":
                 cost_str = "$0.00"
             return f"Session cost: {cost_str}"
+        elif self.missing_usage_invocations:
+            return f"Session: {total_str} tokens (usage incomplete)"
         else:
             return f"Session: {total_str} tokens (local)"
 
@@ -1802,6 +1894,7 @@ class TokenTrackingCallback(BaseCallbackHandler):
 
     def reset(self):
         """Reset all tracking data."""
+        self._epoch += 1
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.total_tokens = 0

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "open-science.connector",
+  "name": "lobster",
+  "display_name": "Lobster AI",
+  "description": "Use when the user wants Lobster AI to analyze a local omics data file. Data it reads: single-cell RNA-seq .h5ad, count matrices, proteomics or metabolomics tables. The analyses available are the values of the analysis field of lobster_run, which also takes an optional instruction (500 characters at most), for example a threshold value. Start a run with lobster_run in a new output_dir, poll lobster_status every 5 s until completed, failed, cancelled or needs_decision, then read the warnings and the files it names. lobster_continue adds a turn to a finished run. lobster_inspect reads the structure of an .h5ad file a run wrote, or one of its obs or var columns, without starting a run. The notebook is exported from the recorded analysis steps; it has not been executed. On needs_decision call lobster_answer: source human if the user gave the answer in this conversation, source model if you decided; if unsure, ask them. Check the result and the notebook before relying on them. One run at a time; lobster_cancel only when the user asks. Needs Lobster AI installed locally (the lobster command on PATH).",
+  "transport": "stdio",
+  "command": "lobster",
+  "args": [
+    "mcp",
+    "--stdio"
+  ]
+}

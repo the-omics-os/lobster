@@ -10,6 +10,9 @@ from lobster.config.inference_runtime import capture_inference_binding
 from lobster.core.exceptions import InferenceRefused
 
 
+# The assistant module binds ``create_llm`` at first import; under the automatic provider
+# mock that name would be a Mock for every later test in the process.
+@pytest.mark.no_auto_config
 def test_unbound_assistant_uses_original_workspace_resolution_and_retains_guard(
     tmp_path, monkeypatch
 ):

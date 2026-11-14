@@ -65,7 +65,6 @@ pd.options.future.infer_string = False
 
 os.environ["PYDEVD_WARN_EVALUATION_TIMEOUT"] = "900000"
 import logging
-import warnings
 from typing import Any, Dict, List
 
 # =============================================================================
@@ -93,23 +92,22 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from lobster.cli_internal.commands import (
-    ConsoleOutputAdapter,
-    config_show,
-)
-from lobster.cli_internal.commands.light.agent_commands import agents_app
+from lobster.cli_internal.commands import ConsoleOutputAdapter, config_show
+from lobster.cli_internal.commands.light.agent_commands import agent_command, agents_app
 from lobster.cli_internal.commands.light.auth_commands import auth_app
 from lobster.cli_internal.commands.light.cloud_commands import cloud_app
 from lobster.cli_internal.commands.light.init_protocol import init_protocol_app
 from lobster.cli_internal.commands.light.lamin_commands import lamin_app
+from lobster.cli_internal.commands.light.manifest_commands import commands_command
+from lobster.cli_internal.commands.light.mcp_commands import mcp_command
 from lobster.cli_internal.commands.light.replay_commands import (
     JsonUsageCommand,
     replay_command,
 )
 from lobster.cli_internal.commands.light.scaffold_commands import scaffold_app
+from lobster.cli_internal.commands.light.session_commands import sessions_app
+from lobster.cli_internal.commands.light.skills_commands import skills_app
 from lobster.cli_internal.commands.light.validate_commands import validate_app
-
-# Import component registry (lazy - don't trigger load_components at import time)
 
 # Extraction cache manager loaded lazily to avoid triggering all agent imports at startup
 _ExtractionCacheManager = None
@@ -184,101 +182,14 @@ logger = logging.getLogger(__name__)
 _COMMAND_HISTORY_LOCK = threading.Lock()
 
 
-# ============================================================================
-# Progress Management
-# ============================================================================
+def __getattr__(name: str):
+    # NoOpProgress and CommandClient live in session_infra, which pulls in the
+    # rich/console machinery this module avoids at startup; resolve on first use.
+    if name in ("NoOpProgress", "CommandClient"):
+        from lobster.cli_internal.commands.heavy import session_infra
 
-
-class NoOpProgress:
-    """No-operation progress context manager for verbose/reasoning modes."""
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        pass
-
-    def add_task(self, *a, **kw):
-        return None
-
-    def update(self, *a, **kw):
-        pass
-
-    def remove_task(self, *a, **kw):
-        pass
-
-
-class CommandClient:
-    """Minimal client providing only what shared command functions need.
-
-    Skips AgentClient's expensive graph/LLM initialization. Provides
-    data_manager, workspace_path, session_id, and publication_queue —
-    the only attributes accessed by shared commands in cli_internal/commands/.
-
-    When session_id is provided, loads provenance from that session's directory,
-    enabling cross-session pipeline export.
-    """
-
-    def __init__(self, workspace_path: Path, session_id: Optional[str] = None):
-        from lobster.core.data_manager_v2 import DataManagerV2
-
-        self.workspace_path = workspace_path
-        self.session_id = session_id or "command"
-
-        # Compute session_dir if real session_id provided
-        session_dir = None
-        if session_id and session_id != "command":
-            session_dir = workspace_path / ".lobster" / "sessions" / session_id
-
-            # Verify session exists
-            if not session_dir.exists():
-                available = self._list_available_sessions(workspace_path)
-                raise FileNotFoundError(
-                    f"Session '{session_id}' not found.\n"
-                    f"Available sessions: {available}\n"
-                    f"Or list all: lobster command 'workspace list'"
-                )
-
-        self.data_manager = DataManagerV2(
-            workspace_path=workspace_path,
-            session_dir=session_dir,
-        )
-        if session_dir is not None:
-            from lobster.core.session_identity import bind_client_session
-
-            # The concrete session this command reads is the export identity.
-            bind_client_session(self.data_manager, session_id)
-        # Optional workspace catalog: one run per command invocation.
-        from lobster.core.catalog.factory import begin_command_run
-
-        begin_command_run(self.data_manager, workspace_path, session_id, session_dir)
-        self.messages: list = []
-        self.graph = None
-        self.token_tracker = None
-        self.provider_override = None
-        self._publication_queue_ref = None
-        self._publication_queue_unavailable = False
-
-    def _list_available_sessions(self, workspace_path: Path) -> str:
-        """List available sessions for error messages."""
-        sessions_dir = workspace_path / ".lobster" / "sessions"
-        if not sessions_dir.exists() or not list(sessions_dir.iterdir()):
-            return "none (create one with: lobster query '...' --session-id <name>)"
-
-        session_ids = sorted([d.name for d in sessions_dir.iterdir() if d.is_dir()])
-        return ", ".join(session_ids[:5]) + (" ..." if len(session_ids) > 5 else "")
-
-    @property
-    def publication_queue(self):
-        if self._publication_queue_unavailable:
-            return None
-        if self._publication_queue_ref is None:
-            pq = getattr(self.data_manager, "publication_queue", None)
-            if pq is None:
-                self._publication_queue_unavailable = True
-                return None
-            self._publication_queue_ref = pq
-        return self._publication_queue_ref
+        return getattr(session_infra, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def check_for_missing_slash_command(user_input: str) -> Optional[str]:
@@ -379,6 +290,11 @@ def config_callback(
 
 # Register agents subcommand group
 app.add_typer(agents_app, name="agents")
+app.command(name="agent")(agent_command)
+app.command(name="mcp")(mcp_command)
+app.command(name="commands")(commands_command)
+app.add_typer(sessions_app, name="sessions")
+app.add_typer(skills_app, name="skills")
 
 # Register auth subcommand group (OAuth login/logout for LLM providers)
 app.add_typer(auth_app, name="auth")
@@ -431,6 +347,9 @@ def default_callback(
         console.print(f"lobster version {__version__}")
         raise typer.Exit()
 
+    from lobster.cli_internal.response_style import check_env
+
+    check_env()  # a bad LOBSTER_RESPONSE_STYLE: one line, exit 2, no traceback
     # Check for updates (cached, fails silently if offline); notice on stderr only
     from lobster.config.version_check import maybe_show_update_notification
 
@@ -1141,7 +1060,7 @@ def _resolve_go_chat_binary(ui_mode: str) -> Optional[str]:
     from lobster.core.component_registry import get_install_command
 
     binary = find_tui_binary_fast()
-    if binary or ui_mode != "go":
+    if binary or ui_mode != "go" or os.name == "nt":
         return binary
     _raise_cli_error(
         f"Error: Go TUI binary not found. Install with: {get_install_command('lobster-ai-tui')}"
@@ -1199,7 +1118,7 @@ def _maybe_launch_go_chat_ui(
 
     binary = _resolve_go_chat_binary(ui_mode)
     if not binary:
-        if ui_mode == "auto":
+        if ui_mode == "auto" and os.name != "nt":
             import sys
 
             from lobster.core.component_registry import get_install_command

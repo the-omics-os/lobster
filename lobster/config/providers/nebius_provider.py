@@ -28,6 +28,7 @@ import os
 from typing import Any, ClassVar, List, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 # Nebius AI Studio (Token Factory) API constants
 _BASE_URL = "https://api.tokenfactory.nebius.com/v1/"
@@ -337,7 +338,10 @@ class NebiusProvider(ILLMProvider):
                 f"Set it with: export {_ENV_VAR}=..."
             )
 
-        return ChatOpenAI(
+        # langchain-openai asks for streamed usage only on the default OpenAI base URL;
+        # a custom one would return none, and the run would be costed as 0 tokens.
+        kwargs.setdefault("stream_usage", True)
+        llm = ChatOpenAI(
             model=model_id,
             api_key=api_key,
             base_url=_BASE_URL,
@@ -345,6 +349,7 @@ class NebiusProvider(ILLMProvider):
             max_tokens=max_tokens,
             **kwargs,
         )
+        return with_stream_usage_hint(llm)
 
     def get_configuration_help(self) -> str:
         return (

@@ -1,0 +1,84 @@
+{
+ "schema": "lobster.replay/1",
+ "description": "First server process: the QC recipe, then one follow-up turn that only answers.",
+ "responses": [
+  {
+   "agent": "supervisor",
+   "content": "Loading.",
+   "tool_calls": [
+    {
+     "name": "handoff_to_data_expert_agent",
+     "args": {
+      "task_description": "Your task is to load the file."
+     }
+    }
+   ]
+  },
+  {
+   "agent": "data_expert_agent",
+   "content": "",
+   "tool_calls": [
+    {
+     "name": "load_modality",
+     "args": {
+      "modality_name": "input",
+      "file_path": "__INPUT__",
+      "adapter": "transcriptomics_single_cell"
+     }
+    }
+   ]
+  },
+  {
+   "agent": "data_expert_agent",
+   "content": "Loaded input."
+  },
+  {
+   "agent": "supervisor",
+   "content": "Assessing.",
+   "tool_calls": [
+    {
+     "name": "handoff_to_transcriptomics_expert",
+     "args": {
+      "task_description": "Your task is to assess and filter."
+     }
+    }
+   ]
+  },
+  {
+   "agent": "transcriptomics_expert",
+   "content": "",
+   "tool_calls": [
+    {
+     "name": "assess_data_quality",
+     "args": {
+      "modality_name": "input"
+     }
+    }
+   ]
+  },
+  {
+   "agent": "transcriptomics_expert",
+   "content": "",
+   "tool_calls": [
+    {
+     "name": "filter_and_normalize",
+     "args": {
+      "modality_name": "input_quality_assessed"
+     }
+    }
+   ]
+  },
+  {
+   "agent": "transcriptomics_expert",
+   "content": "Filtered."
+  },
+  {
+   "agent": "supervisor",
+   "content": "QC done: 128 cells before."
+  },
+  {
+   "agent": "supervisor",
+   "content": "Second turn answer."
+  }
+ ]
+}

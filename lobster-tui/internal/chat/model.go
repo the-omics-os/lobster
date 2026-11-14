@@ -19,7 +19,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"charm.land/bubbles/v2/textarea"
@@ -2879,11 +2878,10 @@ func detectFreeStorageGB(path string) int {
 	if strings.TrimSpace(path) == "" {
 		return -1
 	}
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
+	free, ok := freeDiskBytes(path)
+	if !ok {
 		return -1
 	}
-	free := stat.Bavail * uint64(stat.Bsize)
 	return int(free / (1024 * 1024 * 1024))
 }
 

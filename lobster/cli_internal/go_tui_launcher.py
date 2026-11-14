@@ -31,7 +31,6 @@ import logging
 import os
 import queue
 import shutil
-import signal
 
 # Used only to launch the lobster-tui binary (see launch_go_tui_chat).
 import subprocess  # nosec B404
@@ -43,11 +42,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from lobster.cli_internal.process_group import new_group_popen_kwargs, signal_group
 from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnostic,
     StartupDiagnosticError,
     format_startup_diagnostic_text,
 )
+from lobster.cli_internal.tui_binary_compat import hint_if_rejected, is_compatible
 from lobster.i18n import h
 
 logger = logging.getLogger(__name__)
@@ -170,8 +171,17 @@ def find_tui_binary_fast() -> Optional[str]:
     4. User cache directory (``~/.cache/lobster/bin/lobster-tui``).
     5. System PATH via ``shutil.which``.
 
+    Cache and PATH binaries must report the installed lobster-ai major.minor.
+
     Returns the absolute path to the binary, or ``None`` if not found.
     """
+    # Both launch paths pass pass_fds, which Windows Popen rejects.
+    if os.name == "nt":
+        print(
+            "The Go TUI does not run on Windows; using the classic interface.",
+            file=sys.stderr,
+        )
+        return None
     # 1. Explicit override (useful for local dev/debugging).
     override = os.environ.get("LOBSTER_TUI_BINARY", "").strip()
     if override:
@@ -201,14 +211,19 @@ def find_tui_binary_fast() -> Optional[str]:
 
     # 4. User cache
     cache_bin = Path.home() / ".cache" / "lobster" / "bin" / "lobster-tui"
-    if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
+    if (
+        cache_bin.is_file()
+        and os.access(cache_bin, os.X_OK)
+        and is_compatible(str(cache_bin))
+    ):
         return str(cache_bin)
 
     # 5. System PATH
     on_path = shutil.which("lobster-tui")
-    if on_path:
+    if on_path and is_compatible(on_path):
         return on_path
 
+    hint_if_rejected()
     return None
 
 
@@ -342,14 +357,14 @@ class _LightBridge:
         proc = self.process
         if proc and proc.poll() is None:
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                signal_group(proc)
             except Exception:
                 proc.terminate()
             try:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    signal_group(proc, force=True)
                 except Exception:
                     proc.kill()
 
@@ -579,10 +594,19 @@ def _await_startup_diagnostic_ack(bridge: _LightBridge) -> None:
             return
 
 
+# How long the Go TUI waits for a human answer before ending the paused turn.
+# A bridge sets ``decision_timeout = None`` to wait without a timer.
+DECISION_TIMEOUT_S = 300
+
+
+def _decision_timeout(bridge: Any) -> Optional[float]:
+    return getattr(bridge, "decision_timeout", DECISION_TIMEOUT_S)
+
+
 def _await_confirm_response(bridge: _LightBridge, msg_id: str) -> bool:
     """Block until the Go TUI resolves a confirm component."""
     while True:
-        event = bridge.recv_event(timeout=300)
+        event = bridge.recv_event(timeout=_decision_timeout(bridge))
         if event is None:
             return False
 
@@ -919,6 +943,8 @@ def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
             cancel_event.set()
         elif msg_type == "input":
             cancel_event.clear()
+            if _cancelled_before_start(bridge):
+                cancel_event.set()
             content = event.get("payload", {}).get("content", "")
             _dispatch_user_query(bridge, client, content, cancel_event)
         elif msg_type == "slash_command":
@@ -928,6 +954,15 @@ def _go_tui_event_loop(bridge: _LightBridge, client: Any) -> None:
             _handle_slash_command(bridge, client, command, args)
         elif msg_type == "completion_request":
             _handle_completion_request(bridge, client, event)
+        elif msg_type == "decision_answer":
+            _refuse_answer_outside_a_wait(bridge, client, event)
+
+
+def _cancelled_before_start(bridge: Any) -> bool:
+    # Only StdioBridge latches a cancel that beat its input to the event loop;
+    # the Go TUI bridge has no such hook and keeps its behaviour.
+    check = getattr(bridge, "cancelled_before_start", None)
+    return bool(check and check())
 
 
 def _dispatch_user_query(
@@ -1035,19 +1070,32 @@ def _handle_user_query(
     Every exit path settles the turn with one terminal ``done`` (see
     :class:`_TurnState`); a HITL interrupt pauses the turn and is not terminal.
     """
+    from lobster.core.runs import DecisionError, runs_for
+
     bridge.send("spinner", {"active": True})
     query_start = time.time()
     is_first = True
     stream_source: Any = None  # Will be set to the generator each iteration.
     turn = _TurnState()
+    runs = runs_for(client)
+    forward_run_events = getattr(bridge, "forward_run_events", False)
+    run = None
+    forwarded: Dict[str, int] = {}  # run id -> seq of the last run_state sent
+
+    def forward_state(event: Dict[str, Any]) -> None:
+        if event["type"] != "run_state":  # never another record as a run_state
+            return
+        forwarded[event["run_id"]] = event["seq"]
+        bridge.send(
+            "run_state", {k: v for k, v in event.items() if k not in ("type", "seq")}
+        )
 
     try:
         while True:
-            # Build the stream: first iteration uses query(), subsequent use resume.
+            # Build the stream: first iteration starts a run, later ones resume.
             if is_first:
-                stream_source = client.query(
-                    text, stream=True, cancel_event=cancel_event
-                )
+                run = runs.start(text, cancel_event=cancel_event)
+                stream_source = run.stream()
                 is_first = False
             # else: stream_source was set by the resume path below.
 
@@ -1059,12 +1107,22 @@ def _handle_user_query(
                     cancelled = True
                     break
                 etype = event["type"]
-                if etype == "interrupt":
+                if etype == "decision_required":
                     interrupt_event = event
                     break  # Exit inner loop to handle interrupt.
+                if etype == "run_state":
+                    if forward_run_events:
+                        forward_state(event)
+                    continue
                 _forward_stream_event(bridge, client, event, query_start, turn=turn)
 
             if cancelled:
+                stream_source.close()  # records a running run as cancelled
+                # A run cancelled as its question arrived is still waiting:
+                # end it and its decision too (a no-op on an ended run).
+                runs.end(run.run_id)
+                if forward_run_events:
+                    _forward_run_end(runs, run, forward_state, forwarded)
                 _settle_cancelled(bridge, turn, query_start)
                 return
 
@@ -1081,31 +1139,97 @@ def _handle_user_query(
             bridge.send("done", {"summary": "interrupt"})
             turn.saw_error = False  # the resumed stream is judged on its own
 
-            response = _handle_interrupt(bridge, interrupt_event)
-            if response is None:
-                # Interrupt was cancelled or timed out: the paused turn will
-                # never resume, so end it. The TUI discards nothing it already
-                # printed (the question was flushed above).
+            batch = [
+                e
+                for e in run.events
+                if e["type"] == "decision_required"
+                and runs.decisions[e["decision_id"]].state == "pending"
+            ]
+            outcome, reply = (
+                ("unsupported", None)
+                if len(batch) > 1  # one decision at a time in 1.3
+                else _handle_interrupt(bridge, interrupt_event)
+            )
+            origin = run
+            while outcome == "answer":
+                try:
+                    run = runs.answer(
+                        reply["decision_id"],
+                        reply["answer"],
+                        source=reply["source"],
+                        request_version=reply["request_version"],
+                        comment=reply["comment"],
+                        cancel_event=cancel_event,
+                    )
+                    break
+                except DecisionError as exc:
+                    # A refused answer never changes the run: keep waiting.
+                    _send_refusal(
+                        bridge, exc, runs.decisions.get(interrupt_event["decision_id"])
+                    )
+                    outcome, reply = _handle_interrupt(
+                        bridge, interrupt_event, render=False
+                    )
+            if outcome != "answer":
+                # Nobody answered, or this view cannot present the question:
+                # the paused run will never continue, so end it. The TUI
+                # discards nothing it already printed (the question was
+                # flushed above).
+                if outcome == "unsupported" and forward_run_events:
+                    # stdio only: the Go TUI wire stays as it was.
+                    bridge.send(
+                        "alert",
+                        {
+                            "level": "warning",
+                            "message": h(
+                                "This view cannot show Lobster's question, so the run was stopped."
+                            ),
+                            "code": "decision_unsupported",
+                        },
+                    )
+                reason = (
+                    "decision_unsupported"
+                    if outcome == "unsupported"
+                    else "decision_abandoned"
+                )
+                runs.cancel(run.run_id, reason=reason)
+                if forward_run_events:
+                    _forward_run_end(runs, run, forward_state, forwarded)
                 bridge.send("spinner", {"active": False})
                 _settle_turn(bridge, turn, "cancelled")
                 return
 
             # Resume the graph with the user's response.
             bridge.send("spinner", {"active": True, "label": h("resuming")})
-            stream_source = client.resume_from_interrupt(
-                response, stream=True, cancel_event=cancel_event
-            )
+            if forward_run_events and origin.state == "completed":
+                # The origin's terminal ``completed {resumed_by}``.
+                _forward_run_end(runs, origin, forward_state, forwarded)
+            stream_source = run.stream()
             # Continue the while loop to process the resumed stream.
 
     except KeyboardInterrupt:
+        if forward_run_events and run is not None:
+            _forward_run_end(runs, run, forward_state, forwarded)
         bridge.send("alert", {"level": "warning", "message": h("Query interrupted")})
         bridge.send("spinner", {"active": False})
         _settle_turn(bridge, turn, "cancelled")
     except Exception as exc:
+        if forward_run_events and run is not None:
+            error = {"code": "exception", "message": str(exc), "retryable": False}
+            _forward_run_end(runs, run, forward_state, forwarded, error=error)
         title, friendly = _friendly_error(str(exc))
         bridge.send("alert", {"level": "error", "title": title, "message": friendly})
         bridge.send("spinner", {"active": False})
         _settle_turn(bridge, turn, "error")
+
+
+def _forward_run_end(runs, run, forward_state, forwarded, error=None) -> None:
+    """stdio: a run the turn dropped still ends with one terminal run_state."""
+    end = runs.end(run.run_id, error=error) or next(
+        (e for e in reversed(run.events) if e["type"] == "run_state"), None
+    )
+    if end is not None and end["seq"] > forwarded.get(run.run_id, 0):
+        forward_state(end)
 
 
 # Response types the bridge accepts as HITL answers from the Go TUI.
@@ -1114,53 +1238,180 @@ _COMPONENT_RESPONSE_TYPES = frozenset(
 )
 
 
-def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[dict]:
-    """Send component_render to Go TUI and wait for the user's response.
+def _handle_interrupt(
+    bridge: _LightBridge, interrupt_event: dict, *, render: bool = True
+) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """Send component_render to the Go TUI and wait for the user's response.
 
-    Returns the response data dict, or None if the interrupt timed out or
-    was cancelled (quit).
+    Returns ``("answer", reply)``; ``("abandoned", None)`` when the wait timed
+    out or was cancelled (quit, cancel, the user dismissed the component); or
+    ``("unsupported", None)`` when the component failed to render. *render*
+    False waits again after a refused answer without drawing twice.
     """
     data = interrupt_event.get("data", {})
-    msg_id = str(uuid.uuid4())
+    decision_id = interrupt_event.get("decision_id")
+    # The render's message id is the decision id, so a host answers by it.
+    msg_id = decision_id or str(uuid.uuid4())
 
-    bridge.send("spinner", {"active": False})
-    bridge.send("component_render", data, msg_id=msg_id)
+    if render:
+        bridge.send("spinner", {"active": False})
+        bridge.send("component_render", data, msg_id=msg_id)
 
     # Block waiting for the Go TUI to send back the response.
     while True:
-        resp = bridge.recv_event(timeout=300)
+        resp = bridge.recv_event(timeout=_decision_timeout(bridge))
         if resp is None:
             # Timeout — treat as cancelled.
-            return None
+            return "abandoned", None
 
         resp_type = resp.get("type", "")
+        if resp_type == "decision_answer":
+            reply, problem = _decision_answer_fields(resp.get("payload"))
+            if problem:
+                _send_refusal_code(
+                    bridge,
+                    "bad_answer",
+                    problem,
+                    decision_id,
+                    interrupt_event.get("request_version"),
+                )
+                continue
+            return "answer", reply
         if resp_type in _COMPONENT_RESPONSE_TYPES:
             payload = resp.get("payload", {})
+            # The Go TUI is the scientist's own screen: its answers are human.
+            reply = {
+                "decision_id": str(resp.get("id") or decision_id),
+                "request_version": None,
+                "source": "human",
+                "comment": None,
+            }
             # confirm_response → {"confirmed": bool}
             if resp_type == "confirm_response":
-                return {"confirmed": payload.get("confirm", False)}
+                return "answer", {
+                    **reply,
+                    "answer": {"confirmed": payload.get("confirm", False)},
+                }
             # select_response → {"selected": str, "index": int}
             if resp_type == "select_response":
-                return {
-                    "selected": payload.get("value", ""),
-                    "index": payload.get("index", 0),
+                return "answer", {
+                    **reply,
+                    "answer": {
+                        "selected": payload.get("value", ""),
+                        "index": payload.get("index", 0),
+                    },
                 }
             # component_response → check action before accepting.
             data = payload.get("data", payload)
             action = (
                 data.get("action", "submit") if isinstance(data, dict) else "submit"
             )
-            if action in ("cancel", "error"):
-                # Component was cancelled or failed to render — don't resume
-                # the graph with garbage data.
-                return None
-            return data
+            if action == "error":
+                # The component failed to render: never continue on garbage.
+                return "unsupported", None
+            if action == "cancel":
+                return "abandoned", None
+            return "answer", {**reply, "answer": data}
 
         if resp_type == "quit":
-            return None
+            return "abandoned", None
         if resp_type == "cancel":
-            return None
+            return "abandoned", None
         # Other message types (heartbeat, resize, etc.) — ignore and keep waiting.
+
+
+_DECISION_ANSWER_FIELDS = {
+    "decision_id",
+    "request_version",
+    "answer",
+    "source",
+    "comment",
+}
+
+
+def _decision_answer_fields(
+    payload: Any,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Validate a ``decision_answer`` payload; returns ``(reply, problem)``."""
+    if not isinstance(payload, dict):
+        return None, "decision_answer needs a payload object"
+    missing = {"decision_id", "request_version", "answer", "source"} - set(payload)
+    if missing:
+        return None, f"decision_answer is missing {', '.join(sorted(missing))}"
+    extra = set(payload) - _DECISION_ANSWER_FIELDS
+    if extra:
+        return None, f"decision_answer has unknown fields {', '.join(sorted(extra))}"
+    version = payload["request_version"]
+    if not isinstance(version, int) or isinstance(version, bool):
+        return None, "request_version must be an integer"
+    if not isinstance(payload["decision_id"], str):
+        return None, "decision_id must be a string"
+    if not isinstance(payload["source"], str):
+        return None, "source must be a string"
+    if not isinstance(payload.get("comment", ""), str):
+        return None, "comment must be a string"
+    return {
+        "decision_id": payload["decision_id"],
+        "request_version": version,
+        "answer": payload["answer"],
+        "source": payload["source"],
+        "comment": payload.get("comment"),
+    }, None
+
+
+def _send_refusal_code(
+    bridge: _LightBridge,
+    code: str,
+    message: str,
+    decision_id: Optional[str],
+    request_version: Optional[int] = None,
+    **details: Any,
+) -> None:
+    alert = {"level": "error", "message": message, "code": code}
+    if decision_id:
+        alert["decision_id"] = decision_id
+    if request_version is not None:
+        alert["request_version"] = request_version
+    bridge.send("alert", {**alert, **{k: v for k, v in details.items() if v}})
+
+
+def _send_refusal(bridge: _LightBridge, exc: Any, decision: Any) -> None:
+    """Report a refused answer; *decision* is the one it named, if known."""
+    _send_refusal_code(
+        bridge,
+        exc.code,
+        str(exc),
+        getattr(decision, "decision_id", None),
+        getattr(decision, "request_version", None),
+        **getattr(exc, "details", {}),
+    )
+
+
+def _refuse_answer_outside_a_wait(
+    bridge: _LightBridge, client: Any, event: Dict[str, Any]
+) -> None:
+    """An answer that arrives while no question is open changes nothing."""
+    from lobster.core.runs import DecisionError, runs_for
+
+    payload = event.get("payload") or {}
+    decision_id = payload.get("decision_id") if isinstance(payload, dict) else None
+    if not isinstance(decision_id, str):
+        _send_refusal_code(bridge, "bad_answer", "decision_id must be a string", None)
+        return
+    decision = runs_for(client).decisions.get(decision_id)
+    if decision is None or decision.state == "pending":
+        exc = DecisionError("unknown_decision", f"no open decision {decision_id}")
+    elif decision.state == "answered":
+        exc = DecisionError(
+            "already_answered",
+            f"decision {decision_id} was already answered",
+            resumed_by=decision.resumed_by,
+        )
+    else:
+        exc = DecisionError(
+            "rejected_cancelled", f"decision {decision_id} was cancelled"
+        )
+    _send_refusal(bridge, exc, decision)
 
 
 def _forward_stream_event(
@@ -1300,6 +1551,74 @@ def _handle_slash_command(
 # ---------------------------------------------------------------------------
 
 
+def _open_session_client(
+    bridge: Any,
+    *,
+    workspace: Optional[str] = None,
+    session_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    debug: bool = False,
+    profile_timings: Any = None,
+) -> Any:
+    """Create the session's client and wire its events to *bridge*.
+
+    Shared by the Go TUI launcher and ``lobster agent --stdio``.
+    """
+    from lobster.cli_internal.commands.heavy.session_infra import (
+        init_client_or_raise_startup_diagnostic,
+        set_go_tui_active,
+    )
+
+    set_go_tui_active(True)
+    session_file_to_load, session_id_for_client = _resolve_go_chat_session_target(
+        workspace,
+        session_id,
+    )
+
+    client = init_client_or_raise_startup_diagnostic(
+        workspace=workspace,
+        reasoning=False,
+        verbose=False,
+        debug=debug,
+        profile_timings=profile_timings,
+        provider_override=provider,
+        model_override=model,
+        session_id=session_id_for_client,
+    )
+    _maybe_restore_go_session_transcript(bridge, client, session_file_to_load)
+
+    _emit_provider_status(bridge, client)
+
+    # Wire the protocol callback handler.
+    from lobster.ui.callbacks.protocol_callback import (
+        ProtocolCallbackHandler,
+    )
+
+    proto_callback = ProtocolCallbackHandler(
+        emit_event=lambda msg_type, payload: bridge.send(
+            msg_type,
+            (
+                _normalize_tool_payload(payload)
+                if msg_type == "tool_execution"
+                else payload
+            ),
+        )
+    )
+    client.callbacks.append(proto_callback)
+
+    # Wire modality loaded events to the Go TUI.
+    def _on_modality_loaded(name, adata):
+        shape = ""
+        if hasattr(adata, "shape"):
+            shape = f"{adata.shape[0]} obs x {adata.shape[1]} vars"
+        bridge.send("modality_loaded", {"name": name, "shape": shape})
+
+    if hasattr(client, "data_manager") and client.data_manager is not None:
+        client.data_manager.on_modality_loaded = _on_modality_loaded
+    return client
+
+
 def launch_go_tui_chat(
     binary: str,
     *,
@@ -1380,7 +1699,7 @@ def launch_go_tui_chat(
         # Protocol communication uses separate FDs (the pipes), not stdout.
         stderr=subprocess.PIPE if debug else subprocess.DEVNULL,
         text=False,
-        preexec_fn=os.setsid,
+        **new_group_popen_kwargs(),
         env=child_env,
     )
 
@@ -1448,59 +1767,15 @@ def launch_go_tui_chat(
 
         rich_output_muted = get_console_manager().mute_terminal_output()
 
-        from lobster.cli_internal.commands.heavy.session_infra import (
-            init_client_or_raise_startup_diagnostic,
-            set_go_tui_active,
-        )
-
-        set_go_tui_active(True)
-        session_file_to_load, session_id_for_client = _resolve_go_chat_session_target(
-            workspace,
-            session_id,
-        )
-
-        client = init_client_or_raise_startup_diagnostic(
+        client = _open_session_client(
+            bridge,
             workspace=workspace,
-            reasoning=False,
-            verbose=False,
+            session_id=session_id,
+            provider=provider,
+            model=model,
             debug=debug,
             profile_timings=profile_timings,
-            provider_override=provider,
-            model_override=model,
-            session_id=session_id_for_client,
         )
-        _maybe_restore_go_session_transcript(bridge, client, session_file_to_load)
-
-        _emit_provider_status(bridge, client)
-
-        # -----------------------------------------------------------------
-        # 6. Wire the protocol callback handler
-        # -----------------------------------------------------------------
-        from lobster.ui.callbacks.protocol_callback import (
-            ProtocolCallbackHandler,
-        )
-
-        proto_callback = ProtocolCallbackHandler(
-            emit_event=lambda msg_type, payload: bridge.send(
-                msg_type,
-                (
-                    _normalize_tool_payload(payload)
-                    if msg_type == "tool_execution"
-                    else payload
-                ),
-            )
-        )
-        client.callbacks.append(proto_callback)
-
-        # Wire modality loaded events to the Go TUI.
-        def _on_modality_loaded(name, adata):
-            shape = ""
-            if hasattr(adata, "shape"):
-                shape = f"{adata.shape[0]} obs x {adata.shape[1]} vars"
-            bridge.send("modality_loaded", {"name": name, "shape": shape})
-
-        if hasattr(client, "data_manager") and client.data_manager is not None:
-            client.data_manager.on_modality_loaded = _on_modality_loaded
 
         # -----------------------------------------------------------------
         # 7. Stop heartbeat, signal ready

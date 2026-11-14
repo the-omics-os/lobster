@@ -6,13 +6,13 @@ import json
 import logging
 import os
 import queue
-import signal
 import subprocess  # nosec B404 # used only to launch the terminal UI binary with an argv list
 import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
 
+from lobster.cli_internal.process_group import new_group_popen_kwargs, signal_group
 from lobster.ui.bridge.protocol import (
     PROTOCOL_VERSION,
     MessageType,
@@ -81,7 +81,7 @@ class GoTUIBridge:
                 stdout=subprocess.DEVNULL,
                 stderr=stderr_pipe,
                 text=False,
-                preexec_fn=os.setsid,
+                **new_group_popen_kwargs(),
             )
         except OSError as e:
             raise BridgeError(f"Failed to start lobster-tui: {e}") from e
@@ -138,14 +138,14 @@ class GoTUIBridge:
         proc = self._process
         if proc and proc.poll() is None:
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                signal_group(proc)
             except Exception:
                 proc.terminate()
             try:
                 proc.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    signal_group(proc, force=True)
                 except Exception:
                     proc.kill()
 
@@ -333,6 +333,10 @@ def run_init_wizard(
                 pass
 
     if payload is None:
+        from signal import SIGINT  # local: this path must not rely on a module import
+
+        if proc.returncode in (130, -SIGINT):  # Ctrl+C, no result written
+            return {"cancelled": True}
         if proc.returncode != 0:
             raise BridgeError(f"lobster-tui init failed (exit code {proc.returncode})")
         raise BridgeError("lobster-tui init returned empty output")

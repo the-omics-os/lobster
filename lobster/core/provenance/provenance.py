@@ -83,6 +83,7 @@ class ProvenanceTracker:
 
         Implements line-independent recovery: corrupt lines are skipped with
         warnings, remaining activities are loaded. Empty files handled gracefully.
+        Idempotent: an activity whose id is already held is not added again.
 
         Args:
             path: Optional explicit path to load from. If None, uses self._provenance_file.
@@ -92,6 +93,10 @@ class ProvenanceTracker:
         target_path = path or self._provenance_file
         if not target_path or not target_path.exists():
             return  # Empty file or no file = no activities
+
+        # An activity id is unique, so loading a file the tracker already holds (or the
+        # same file twice) adds nothing instead of repeating every step.
+        held = {activity.get("id") for activity in self.activities}
 
         with open(target_path, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, start=1):
@@ -115,6 +120,11 @@ class ProvenanceTracker:
 
                         data["ir"] = AnalysisStep.from_dict(data["ir"])
 
+                    activity_id = data.get("id")
+                    if activity_id is not None:
+                        if activity_id in held:
+                            continue
+                        held.add(activity_id)
                     self.activities.append(data)
 
                 except (json.JSONDecodeError, Exception) as e:
@@ -216,15 +226,20 @@ class ProvenanceTracker:
         self._load_from_disk()
         already_on_disk = len(self.activities)
 
+        on_disk = {activity.get("id") for activity in self.activities}
+        flushed = 0
         for activity in pending:
+            if activity.get("id") is not None and activity.get("id") in on_disk:
+                continue  # the file already holds it: not added, not written again
             self.activities.append(activity)
             self._persist_activity(activity)
+            flushed += 1
 
         self.logger.info(
             "Provenance persistence attached at %s "
             "(%d activity(ies) flushed from memory, %d already on disk)",
             target,
-            len(pending),
+            flushed,
             already_on_disk,
         )
         return target
@@ -486,6 +501,8 @@ class ProvenanceTracker:
         """
         Log a data loading activity.
 
+        Retained for external callers; the catalog does not use it.
+
         Args:
             source_path: Path to source data file
             output_entity_id: ID of the loaded data entity
@@ -533,6 +550,8 @@ class ProvenanceTracker:
         """
         Log a data processing activity.
 
+        Retained for external callers; the catalog does not use it.
+
         Args:
             input_entity_id: ID of input data entity
             output_entity_id: ID of output data entity
@@ -570,6 +589,8 @@ class ProvenanceTracker:
     ) -> str:
         """
         Log a data saving activity.
+
+        Retained for external callers; the catalog does not use it.
 
         Args:
             input_entity_id: ID of input data entity

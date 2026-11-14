@@ -729,7 +729,7 @@ def _build_supervisor_tools(
     if interactive:
         from lobster.tools.user_interaction import create_ask_user_tool
 
-        ask_user = create_ask_user_tool(llm=llm)
+        ask_user = create_ask_user_tool(llm=llm, data_manager=data_manager)
         utility_tools.append(ask_user)
 
     all_supervisor_tools = agent_tools + utility_tools

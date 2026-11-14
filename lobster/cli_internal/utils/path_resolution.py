@@ -98,7 +98,9 @@ class PathResolver:
         if allowed_bases:
             self.allowed_bases = [p.resolve() for p in allowed_bases]
         else:
-            self.allowed_bases = [self.current_directory, Path.home()]
+            # Candidates are resolved, so the home base must be too: a home
+            # behind a symlink would otherwise be refused as unsafe.
+            self.allowed_bases = [self.current_directory, Path.home().resolve()]
             if self.workspace_path:
                 self.allowed_bases.append(self.workspace_path)
 

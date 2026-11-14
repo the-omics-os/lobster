@@ -1,0 +1,437 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omics-os.com/schemas/lobster/lobster.result.v1.schema.json",
+  "title": "lobster.result/1",
+  "description": "Outcome of one completed run. Emitted in run_state completed (stdio) and by RunManager.get().",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "engine",
+    "session_id",
+    "run_id",
+    "response"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lobster.result/1"
+    },
+    "engine": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "lobster-ai"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "response": {
+      "type": "string"
+    },
+    "notes": {
+      "description": "MCP runs: the end of the supervisor text that came before the final answer (at most 4,000 characters, from a line start, after a line saying earlier text was left out), or of all of it when the model sent no final answer (see the no_final_answer warning). It is commentary between steps, not a result, and can disagree with metrics.",
+      "type": "string"
+    },
+    "notes_chars": {
+      "description": "MCP runs: how many characters the supervisor text behind notes had before it was cut. Present whenever notes is.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "previous_workspace_moved_to": {
+      "description": "MCP runs: where the session folder of an earlier run in this output_dir that never finished was moved, whole, before this run began. Nothing in it was deleted; the user may delete it.",
+      "type": "string"
+    },
+    "duration": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "token_usage": {
+      "description": "Token and cost figures. Cost is the list value of the tokens; cached input is priced at the full input rate. The run_* keys (run_cost_usd, run_total_tokens, run_cost_complete, run_unpriced_invocations, run_missing_usage_invocations) cover this run only and are absent when the run could not be costed. run_cost_complete false means at least one call was unpriced or reported no usage, so the figure is a lower bound. latest_cost_usd is the cost of the last model call, not of the run; session_total_usd is the whole session.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "last_agent": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "has_data": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "modalities": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "modality_details": {
+      "description": "One object per modality in memory at the end of the run (MCP runs); modalities keeps the names.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "stage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "n_obs": {
+            "type": "integer"
+          },
+          "n_vars": {
+            "type": "integer"
+          },
+          "file": {
+            "description": "Path of the saved .h5ad file, when the modality was saved.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "request": {
+      "description": "What the host asked for (MCP runs).",
+      "type": "object",
+      "required": [
+        "analysis",
+        "input_path",
+        "instruction",
+        "channel"
+      ],
+      "properties": {
+        "analysis": {
+          "type": "string"
+        },
+        "input_path": {
+          "type": "string"
+        },
+        "instruction": {
+          "description": "The host's free-text instruction as normalised, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "channel": {
+          "description": "mcp:<host name>, as the host reported it.",
+          "type": "string"
+        },
+        "turn": {
+          "description": "The turn this result belongs to, from 1; a continued run is turn 2 or later.",
+          "type": "integer"
+        },
+        "model_source": {
+          "description": "replay when the model was a scripted replay file, not a provider; absent otherwise.",
+          "enum": [
+            "replay"
+          ]
+        },
+        "unfinished_instructions": {
+          "description": "Instructions of the turns just before this one that were cancelled or failed, oldest first; absent when there are none.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "instruction",
+              "outcome"
+            ],
+            "properties": {
+              "instruction": {
+                "type": "string"
+              },
+              "outcome": {
+                "enum": [
+                  "cancelled",
+                  "failed"
+                ]
+              },
+              "steps_completed": {
+                "description": "Tools whose steps completed before the turn stopped. The session keeps their results until the server stops; data they made that was never saved to a file is not kept across a restart. Absent when none did.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "unfinished_instructions_total": {
+          "description": "How many there were, when the list is cut to the newest.",
+          "type": "integer"
+        },
+        "not_restored": {
+          "description": "The first turn after a restart only: modalities earlier turns made that were never saved and so are not in the restored session (see the modalities_not_restored warning). At most 10 names.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_restored_total": {
+          "description": "How many there were, when the list is cut.",
+          "type": "integer"
+        }
+      }
+    },
+    "decisions": {
+      "description": "Answers a host gave to questions asked during this turn, in the order given, as the host reported them; absent when none was asked.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "question",
+          "answer",
+          "source",
+          "channel"
+        ],
+        "properties": {
+          "question": {
+            "description": "The question as it was shown, cut when long.",
+            "type": "string"
+          },
+          "answer": {
+            "description": "The accepted answer in its recorded form."
+          },
+          "source": {
+            "description": "human or model, as the host reported it.",
+            "type": "string"
+          },
+          "channel": {
+            "description": "mcp:<host name>, as the host reported it.",
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "decisions_total": {
+      "description": "How many answers were given, when decisions lists only the first of them.",
+      "type": "integer"
+    },
+    "continued_from": {
+      "description": "The run this one continues, null or absent for a first run.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "metrics": {
+      "description": "Numbers read from the session after the run, never from model text. Each part is absent when it could not be read (see the metrics_unavailable warning).",
+      "type": "object",
+      "properties": {
+        "cells_before": {
+          "type": "integer"
+        },
+        "cells_after": {
+          "type": "integer"
+        },
+        "genes_before": {
+          "type": "integer"
+        },
+        "genes_after": {
+          "type": "integer"
+        },
+        "qc": {
+          "type": "object",
+          "properties": {
+            "thresholds_assessed": {
+              "description": "uns qc_thresholds by name, as the assessment recorded them; null when not recorded.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "thresholds_applied": {
+              "description": "The last filter_and_normalize parameters (min_genes_per_cell, max_genes_per_cell, max_mito_percent, max_ribo_percent); null for a threshold not applied.",
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "flagged_kept": {
+              "description": "Cells with qc_pass False in the final data; null without a qc_pass column.",
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "tokens": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "description": "The figures are those of this turn; the session's totals are in token_usage.",
+              "enum": [
+                "turn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "steps": {
+      "description": "The analysis steps recorded during this run (provenance activities), parameter values cut to 200 characters; at most 50, see steps_total.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "seq",
+          "tool",
+          "parameters"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parameters": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "steps_total": {
+      "description": "Number of steps recorded when steps was cut.",
+      "type": "integer"
+    },
+    "warnings": {
+      "description": "Facts about the run worth a second look, from a closed list of codes; messages are built from the numbers.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "enum": [
+              "no_final_answer",
+              "qc_flagged_cells_kept",
+              "qc_thresholds_differ",
+              "qc_thresholds_not_recorded",
+              "usage_incomplete",
+              "modalities_not_restored",
+              "no_data_file_saved",
+              "no_qc_plots",
+              "plot_view_failed",
+              "notebook_not_exported",
+              "open_question",
+              "metrics_unavailable"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "files_written": {
+      "description": "Files on disk written since the run started (an mtime scan of the workspace data, exports and plots folders); null when the workspace could not be read, see files_written_error. Absent when the session has no file source.",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "relative",
+          "category",
+          "size_bytes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "relative": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "modified": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "figure_ref": {
+            "type": "string"
+          },
+          "format": {
+            "description": "File format of a published view, such as html.",
+            "type": "string"
+          },
+          "title": {
+            "description": "A label for a published plot view.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "plots_truncated": {
+      "description": "True when more figures were drawn than got an HTML view; see plots_total.",
+      "type": "boolean"
+    },
+    "plots_total": {
+      "description": "Number of figures committed in the turn when plots_truncated.",
+      "type": "integer"
+    },
+    "files_written_error": {
+      "description": "Why files_written is null: a short reason code, never a path or message.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

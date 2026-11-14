@@ -45,6 +45,16 @@ SESSION_WRITER_FALLBACK_LINE = (
 )
 
 
+def _inside(path: Path, folder: Path) -> bool:
+    """Whether ``path`` is in ``folder``, by its name and where it really is."""
+    try:
+        path.relative_to(folder)
+        path.resolve().relative_to(folder.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def _guarded_save_code(path_line: str, compression: Optional[str] = None) -> str:
     """Code for the final save cell.
 
@@ -697,6 +707,7 @@ code recorded for it.
                 "generated_at": datetime.now().isoformat(),
                 "provenance": self._get_provenance_hash(session_identity),
                 "input_files": input_files,
+                "input_file_paths": self._get_input_file_paths(),
                 "input_roles": self._get_input_roles(input_files),
                 "system": self._get_system_info(),
             }
@@ -711,7 +722,7 @@ Recorded when this notebook was exported, for your own checks.
 ```
 
 **What is recorded**
-- `input_files`: SHA-256 of each modality's `.h5ad` file in the workspace at export time (`not_saved` if the session never saved that modality, `file_not_found` if it saved it and the file is gone).
+- `input_files`: SHA-256 of each modality's saved `.h5ad` file at export time: the file Lobster last saved it to, else `data/<name>.h5ad`, else its auto-save `data/<name>_autosave.h5ad`, else `data/<name>_raw.h5ad`, else `<name>.h5ad` in the workspace folder. `input_file_paths` names the file that was hashed, relative to the workspace. `not_saved`: the session never saved that modality; `file_not_found`: it saved it and the file is gone.
 - `input_roles`: `loaded` lists the name, SHA-256 and size of each file a modality was loaded from, read when it was loaded (no path); `saved` repeats `input_files`.
 - `provenance.sha256`: SHA-256 of the session ID (`null` when the client session identity was unavailable or ambiguous at export time), the provenance namespace and the activity and entity counts only. It does not cover the content of the provenance record.
 - `system`: Lobster and Python versions, the platform, and the short Git commit of the directory the export ran in (if any), as plain text.
@@ -795,43 +806,83 @@ Recorded when this notebook was exported, for your own checks.
             logger.warning(f"Failed to read the loaded files: {e}")
         return {"version": 2, "loaded": loaded, "saved": saved}
 
+    def _saved_paths(self) -> Dict[str, Path]:
+        """Where the data manager last saved each modality, by modality name.
+
+        ``save_modality`` records a ``modality_data`` entity with the path it wrote;
+        this is the only place that path is kept. Later saves win.
+        """
+        saved: Dict[str, Path] = {}
+        for entity in list(getattr(self.provenance, "entities", {}).values()):
+            if not isinstance(entity, dict) or entity.get("type") != "modality_data":
+                continue
+            name = (entity.get("metadata") or {}).get("modality_name")
+            if name is not None and entity.get("uri"):
+                saved[name] = Path(str(entity["uri"]))
+        return saved
+
+    def _modality_files(self) -> Dict[str, Optional[Path]]:
+        """Each modality's saved file (``None`` if there is none), by ``<name>.h5ad``.
+
+        The file the data manager saved the modality to comes first, if it is still
+        there inside the workspace (a download names its file after the dataset, not
+        the modality). Otherwise the names the data manager saves with, in this
+        order: the save, its auto-save, the raw download in ``data/``, then
+        ``<name>.h5ad`` in the workspace folder, where older versions looked. A name
+        that leads out of the workspace is never looked for.
+        """
+        from lobster.core.runtime.data_manager import _autosave_file_name
+
+        workspace = Path(self.data_manager.workspace_path)
+        # Modalities are saved in the workspace's data/ folder.
+        data_dir = Path(
+            getattr(self.data_manager, "data_dir", None) or workspace / "data"
+        )
+        saved = self._saved_paths()
+        files: Dict[str, Optional[Path]] = {}
+        for modality_name in self.data_manager.modalities:
+            found = None
+            candidates = []
+            if modality_name in saved:
+                candidates.append(saved[modality_name])
+            # A separator is what would lead out of data/ (".." alone is a file name).
+            if not any(mark in modality_name for mark in ("/", "\\")):
+                candidates += [
+                    data_dir / f"{modality_name}.h5ad",
+                    data_dir / _autosave_file_name(modality_name),
+                    data_dir / f"{modality_name}_raw.h5ad",
+                    workspace / f"{modality_name}.h5ad",
+                ]
+            for candidate in candidates:
+                try:
+                    if candidate.is_file() and _inside(candidate, workspace):
+                        found = candidate
+                        break
+                except (OSError, ValueError):
+                    continue
+            files[f"{modality_name}.h5ad"] = found
+        return files
+
     def _saved_modality_names(self) -> Optional[set]:
         """Modalities the session saved to a file (its save record); None if unknown."""
-        provenance = getattr(self.data_manager, "provenance", None)
-        if not provenance:
+        if not getattr(self, "provenance", None):
             return None
-        try:
-            return {
-                (e.get("metadata") or {}).get("modality_name")
-                for e in provenance.entities.values()
-                if e.get("type") == "modality_data" and e.get("uri")
-            }
-        except Exception:
-            return None
+        return set(self._saved_paths())
 
     def _get_input_file_hashes(self) -> Dict[str, str]:
         """Calculate SHA-256 hashes of input data files."""
         file_hashes = {}
 
         try:
-            # Modalities are saved in the workspace's data/ folder.
-            workspace = Path(self.data_manager.workspace_path)
-            data_dir = getattr(self.data_manager, "data_dir", None) or (
-                workspace / "data"
-            )
             saved = self._saved_modality_names()
-            for modality_name in self.data_manager.modalities:
-                name = f"{modality_name}.h5ad"
-                modality_path = Path(data_dir) / name
-                if not modality_path.exists():
-                    modality_path = workspace / name  # where older versions looked
-                if modality_path.exists():
-                    file_hashes[name] = self._calculate_file_hash(modality_path)
+            for name, path in self._modality_files().items():
+                if path is not None:
+                    file_hashes[name] = self._calculate_file_hash(path)
                 else:
                     # a file the session saved and lost, or a modality it never saved
                     file_hashes[name] = (
                         "file_not_found"
-                        if saved is None or modality_name in saved
+                        if saved is None or name[: -len(".h5ad")] in saved
                         else "not_saved"
                     )
 
@@ -840,6 +891,19 @@ Recorded when this notebook was exported, for your own checks.
             file_hashes["error"] = str(e)
 
         return file_hashes if file_hashes else {"note": "No input files hashed"}
+
+    def _get_input_file_paths(self) -> Dict[str, str]:
+        """The file each hashed modality was read from, relative to the workspace."""
+        workspace = Path(self.data_manager.workspace_path)
+        try:
+            return {
+                name: path.relative_to(workspace).as_posix()
+                for name, path in self._modality_files().items()
+                if path is not None
+            }
+        except Exception as e:
+            logger.warning(f"Failed to name input files: {e}")
+            return {}
 
     def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate SHA-256 hash of a file."""

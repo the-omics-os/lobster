@@ -1115,7 +1115,7 @@ Please check:
                 name=new_name,
                 adata=result,
                 parent_name=modality_name,
-                step_summary=f"Doublet detection: {stats.get('n_doublets', 0)} doublets found ({stats.get('doublet_rate', 0)*100:.1f}%)",
+                step_summary=f"Doublet detection: {stats['n_doublets_detected']} doublets found ({stats['actual_doublet_rate']*100:.1f}%)",
             )
 
             # Log with IR
@@ -1126,16 +1126,19 @@ Please check:
                     "expected_doublet_rate": expected_doublet_rate,
                     "threshold": threshold,
                 },
-                description=f"Detected {stats.get('n_doublets', 0)} doublets in {modality_name}",
+                description=f"Detected {stats['n_doublets_detected']} doublets in {modality_name}",
                 ir=ir,
                 agent=agent_name,
             )
 
             # Format response
-            n_doublets = stats.get("n_doublets", 0)
-            doublet_rate = stats.get("doublet_rate", 0)
-            method = stats.get("method", "scrublet")
-            threshold_used = stats.get("threshold", "auto")
+            n_doublets = stats["n_doublets_detected"]
+            doublet_rate = stats["actual_doublet_rate"]
+            method = stats["detection_method"]
+            # a threshold of None means the method chose it itself
+            threshold_used = (
+                "auto" if stats["threshold"] is None else stats["threshold"]
+            )
 
             response = f"""Doublet detection complete for '{modality_name}'!
 
@@ -1329,7 +1332,7 @@ Please check:
                 name=new_name,
                 adata=result,
                 parent_name=modality_name,
-                step_summary=f"Trajectory: pseudotime [{stats.get('pseudotime_min', 0):.2f}, {stats.get('pseudotime_max', 0):.2f}]",
+                step_summary=f"Trajectory: pseudotime [{stats['pseudotime_range'][0]:.2f}, {stats['pseudotime_range'][1]:.2f}]",
             )
 
             # Log with IR
@@ -1348,11 +1351,16 @@ Please check:
             )
 
             # Format response
-            root_idx = stats.get("root_cell", "auto")
-            pt_min = stats.get("pseudotime_min", 0)
-            pt_max = stats.get("pseudotime_max", 0)
-            has_paga = stats.get("has_paga", False)
-            root_method = stats.get("root_selection_method", "auto")
+            root_idx = stats["root_cell_index"]
+            pt_min, pt_max = stats["pseudotime_range"]
+            has_paga = stats["has_paga"]
+            # How the root was chosen follows from the arguments the service was given
+            if root_cell is not None:
+                root_method = "explicit root cell"
+            elif root_group is not None:
+                root_method = f"root group '{root_group}'"
+            else:
+                root_method = "automatic (lowest first diffusion component)"
 
             response = f"""Trajectory inference complete for '{modality_name}'!
 
@@ -1429,7 +1437,7 @@ Please check:
                     df, metadata = bulk_service.load_from_quantification_files(
                         path, tool=source
                     )
-                    detected_source = metadata.get("tool", source)
+                    detected_source = metadata["quantification_tool"].lower()
                     # df has genes as rows, samples as columns -> transpose for AnnData
                     adata = anndata.AnnData(
                         X=df.T.values.astype(np.float32),
@@ -1756,7 +1764,7 @@ Please check:
                 name=new_name,
                 adata=result,
                 parent_name=modality_name,
-                step_summary=f"Quality assessed: {stats.get('n_outliers', 0)} outliers found",
+                step_summary=f"Quality assessed: {stats['n_outliers']} outliers found",
             )
 
             # Log with IR
@@ -1772,14 +1780,14 @@ Please check:
             )
 
             # Format response
-            n_outliers = stats.get("n_outliers", 0)
-            outlier_names = stats.get("outlier_samples", [])
-            median_corr = stats.get("median_correlation", 0)
+            n_outliers = stats["n_outliers"]
+            outlier_names = stats["outlier_names"]
+            median_corr = stats["median_correlation"]
 
             response = (
                 f"Bulk sample quality assessment complete for '{modality_name}'!\n\n"
                 f"**Quality Metrics:**\n"
-                f"- Samples assessed: {stats.get('n_samples', adata.shape[0])}\n"
+                f"- Samples assessed: {stats['n_samples']}\n"
                 f"- Outlier samples: {n_outliers}\n"
                 f"- Median pairwise correlation: {median_corr:.3f}\n"
             )
@@ -1866,7 +1874,7 @@ Please check:
                 name=new_name,
                 adata=result,
                 parent_name=modality_name,
-                step_summary=f"Filtered genes: {stats.get('n_genes_before', 0)} -> {stats.get('n_genes_after', 0)}",
+                step_summary=f"Filtered genes: {stats['n_genes_before']} -> {stats['n_genes_after']}",
             )
 
             # Log with IR
@@ -1877,14 +1885,14 @@ Please check:
                     "min_counts": min_counts,
                     "min_samples": min_samples,
                 },
-                description=f"Filtered bulk genes: {stats.get('n_genes_removed', 0)} removed",
+                description=f"Filtered bulk genes: {stats['n_filtered']} removed",
                 ir=ir,
                 agent=agent_name,
             )
 
-            genes_before = stats.get("n_genes_before", 0)
-            genes_after = stats.get("n_genes_after", 0)
-            genes_removed = stats.get("n_genes_removed", 0)
+            genes_before = stats["n_genes_before"]
+            genes_after = stats["n_genes_after"]
+            genes_removed = stats["n_filtered"]
 
             return (
                 f"Gene filtering complete for '{modality_name}'!\n\n"
@@ -1970,7 +1978,8 @@ Please check:
 
             if method == "deseq2" and "mean_size_factor" in stats:
                 response += f"- Mean size factor: {stats['mean_size_factor']:.3f}\n"
-                response += f"- Size factor range: [{stats.get('min_size_factor', 0):.3f}, {stats.get('max_size_factor', 0):.3f}]\n"
+                size_min, size_max = stats["size_factor_range"]
+                response += f"- Size factor range: [{size_min:.3f}, {size_max:.3f}]\n"
             elif method == "vst":
                 response += "- Variance-stabilized values stored in adata.X\n"
             elif method == "cpm":
@@ -2035,7 +2044,7 @@ Please check:
                 name=new_name,
                 adata=result,
                 parent_name=modality_name,
-                step_summary=f"Batch effects assessed: R2_batch={stats.get('batch_r_squared', 0):.3f}",
+                step_summary=f"Batch effects assessed: {stats['recommendation']}",
             )
 
             # Log with IR
@@ -2051,40 +2060,25 @@ Please check:
                 agent=agent_name,
             )
 
-            batch_r2 = stats.get("batch_r_squared", 0)
+            def per_pc(variance_by_pc):
+                return ", ".join(
+                    f"{pc} {value:.3f}" for pc, value in variance_by_pc.items()
+                )
+
             response = (
                 f"Batch effect assessment complete for '{modality_name}'!\n\n"
-                f"**Variance Decomposition:**\n"
+                f"**Variance Decomposition (R-squared per principal component):**\n"
                 f"- Batch variable: {batch_key}\n"
-                f"- Batch R-squared (PC1-3): {batch_r2:.3f}\n"
+                f"- Batch: {per_pc(stats['batch_variance_pcs'])}\n"
             )
 
-            if condition_key and "condition_r_squared" in stats:
-                cond_r2 = stats["condition_r_squared"]
+            if condition_key and "condition_variance_pcs" in stats:
                 response += f"- Condition variable: {condition_key}\n"
-                response += f"- Condition R-squared (PC1-3): {cond_r2:.3f}\n"
-                response += (
-                    f"- Batch/Condition ratio: {batch_r2/max(cond_r2, 0.001):.2f}\n"
-                )
+                response += f"- Condition: {per_pc(stats['condition_variance_pcs'])}\n"
 
             response += f"\n**New modality created**: '{new_name}'\n"
 
-            # Recommendation
-            if batch_r2 > 0.3:
-                response += (
-                    "\n**Recommendation**: Strong batch effects detected (R2 > 0.3). "
-                    "Include batch as covariate in DE model or apply batch correction."
-                )
-            elif batch_r2 > 0.1:
-                response += (
-                    "\n**Recommendation**: Moderate batch effects (0.1 < R2 < 0.3). "
-                    "Consider including batch as covariate in DE model."
-                )
-            else:
-                response += (
-                    "\n**Recommendation**: Minimal batch effects (R2 < 0.1). "
-                    "Batch correction likely not needed."
-                )
+            response += f"\n**Recommendation**: {stats['recommendation']}"
 
             return response
 

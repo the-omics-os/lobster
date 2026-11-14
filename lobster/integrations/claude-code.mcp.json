@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lobster": {
+      "type": "stdio",
+      "command": "lobster",
+      "args": ["mcp", "--stdio"]
+    }
+  }
+}

@@ -30,6 +30,12 @@ func main() {
 		runInit(os.Args[2:])
 	case "chat":
 		runChat(os.Args[2:])
+	case "--smoke":
+		if _, err := chat.Smoke(Version); err != nil {
+			fmt.Fprintf(os.Stderr, "smoke failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("smoke ok %s\n", Version)
 	case "version", "--version", "-v":
 		fmt.Printf("lobster-tui %s\n", Version)
 	case "help", "--help", "-h":

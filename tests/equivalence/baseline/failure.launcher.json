@@ -1,0 +1,44 @@
+{
+  "transcript": [
+    {
+      "payload": {
+        "active": true
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "level": "error",
+        "message": "Simulated provider failure (replay fixture)",
+        "title": "Error"
+      },
+      "type": "alert"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "active": false
+      },
+      "type": "spinner"
+    },
+    {
+      "payload": {
+        "summary": "error"
+      },
+      "type": "done"
+    }
+  ],
+  "workspace": {
+    "messages": [
+      {
+        "content": "Annotate the clusters.",
+        "role": "HumanMessage"
+      }
+    ]
+  }
+}

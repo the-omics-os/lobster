@@ -810,7 +810,7 @@ This dataset can now be used for downstream analysis (GWAS, annotation - coming 
                 name=gwas_modality_name,
                 adata=adata_gwas,
                 parent_name=modality_name,
-                step_summary=f"GWAS: {stats.get('n_significant', 0)} significant hits",
+                step_summary=f"GWAS: {stats['n_variants_significant']} significant hits",
             )
 
             # Log operation with IR
@@ -1239,21 +1239,20 @@ Lambda GC > 1.1 suggests uncorrected population structure.
             )
 
             # Format related pairs info
+            # The pair list is returned on the new modality, not in the stats
+            related_pairs = adata_kinship.uns["related_pairs"]
             related_info = ""
-            if stats.get("related_pairs") and len(stats["related_pairs"]) > 0:
+            if len(related_pairs) > 0:
                 related_info = "\n**Related Pairs (above threshold):**\n"
-                for i, pair in enumerate(stats["related_pairs"][:10], 1):
-                    related_info += f"  {i}. {pair['sample_1']} <-> {pair['sample_2']}: kinship={pair['kinship']:.4f}\n"
-                if len(stats["related_pairs"]) > 10:
-                    related_info += (
-                        f"  ... and {len(stats['related_pairs']) - 10} more pairs\n"
-                    )
+                for i, pair in enumerate(related_pairs[:10], 1):
+                    related_info += f"  {i}. {pair['sample_i']} <-> {pair['sample_j']}: kinship={pair['kinship_coeff']:.4f}\n"
+                if len(related_pairs) > 10:
+                    related_info += f"  ... and {len(related_pairs) - 10} more pairs\n"
 
             response = f"""Kinship analysis completed: '{kinship_modality_name}'
 
 **Kinship Summary:**
 - Samples: {stats['n_samples']:,}
-- Sample pairs evaluated: {stats['n_pairs']:,}
 - Related pairs (kinship > {kinship_threshold}): {stats['n_related_pairs']:,}
 - Mean kinship: {stats['mean_kinship']:.4f}
 - Max kinship: {stats['max_kinship']:.4f}
@@ -1329,7 +1328,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                 name=clumped_modality_name,
                 adata=adata_clumped,
                 parent_name=modality_name,
-                step_summary=f"Clumped: {stats['n_clumps']} independent loci from {stats['n_significant_variants']} significant variants",
+                step_summary=f"Clumped: {stats['n_clumps']} independent loci from {stats['n_significant']} significant variants",
             )
 
             # Log operation with IR
@@ -1341,7 +1340,7 @@ Lambda GC > 1.1 suggests uncorrected population structure.
                     "clump_kb": clump_kb,
                     "pvalue_col": pvalue_col,
                 },
-                description=f"GWAS clumping: {stats['n_clumps']} loci from {stats['n_significant_variants']} significant variants",
+                description=f"GWAS clumping: {stats['n_clumps']} loci from {stats['n_significant']} significant variants",
                 ir=ir,
                 agent=agent_name,
             )
@@ -1370,7 +1369,7 @@ variant_analysis_expert."""
             response = f"""GWAS clumping completed: '{clumped_modality_name}'
 
 **Clumping Summary:**
-- Significant variants (p < {pvalue_threshold}): {stats['n_significant_variants']:,}
+- Significant variants (p < {pvalue_threshold}): {stats['n_significant']:,}
 - Independent loci (clumps): {stats['n_clumps']:,}
 - Clumping window: {clump_kb} kb
 - P-value column: {pvalue_col}

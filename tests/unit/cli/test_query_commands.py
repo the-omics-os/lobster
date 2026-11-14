@@ -436,3 +436,51 @@ def test_query_impl_json_failure_exits_nonzero(monkeypatch, tmp_path, capsys):
 
 def test_query_impl_rich_failure_exits_nonzero(monkeypatch, tmp_path):
     assert _run_failing_query(monkeypatch, tmp_path, json_output=False) == 1
+
+
+def test_query_builds_its_client_with_the_run_response_style(monkeypatch, tmp_path):
+    import os
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LOBSTER_RESPONSE_STYLE", "chat")
+    monkeypatch.setattr(
+        query_commands,
+        "validate_startup_or_raise_startup_diagnostic",
+        lambda *args, **kwargs: tmp_path,
+    )
+    monkeypatch.setattr(query_commands, "console", Console(record=True, width=120))
+    monkeypatch.setattr(
+        query_commands, "_maybe_print_timings", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(query_commands, "should_show_progress", lambda client: False)
+    seen = []
+
+    class _FakeClient:
+        session_id = "session-test"
+        token_tracker = None
+        callbacks = []
+
+        def query(self, question):
+            return {"success": True, "response": "ok", "text": "ok"}
+
+    def fake_init(*args, **kwargs):
+        seen.append(os.environ["LOBSTER_RESPONSE_STYLE"])
+        return _FakeClient()
+
+    monkeypatch.setattr(query_commands, "init_client", fake_init)
+    query_commands.query_impl(
+        "hi",
+        workspace=None,
+        session_id=None,
+        reasoning=False,
+        verbose=False,
+        debug=False,
+        output=None,
+        profile_timings=None,
+        provider=None,
+        model=None,
+        stream=False,
+        json_output=False,
+    )
+    assert seen == ["run"]
+    assert os.environ["LOBSTER_RESPONSE_STYLE"] == "chat"  # the user's value is back

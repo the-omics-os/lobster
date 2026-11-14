@@ -1,0 +1,28 @@
+# Lobster AI for Codex CLI: add to ~/.codex/config.toml.
+# Replace "lobster" with the absolute path printed by `which lobster`.
+# Codex passes only an allowlist of environment variables to MCP servers;
+# env_vars forwards the provider keys Lobster reads, when they are set.
+[mcp_servers.lobster]
+command = "lobster"
+args = ["mcp", "--stdio"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+env_vars = [
+  "ANTHROPIC_API_KEY",
+  "AWS_BEDROCK_ACCESS_KEY",
+  "AWS_BEDROCK_SECRET_ACCESS_KEY",
+  "GOOGLE_API_KEY",
+  "AZURE_AI_ENDPOINT",
+  "AZURE_AI_CREDENTIAL",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OMICS_OS_API_KEY",
+  "NEBIUS_API_KEY",
+  "OLLAMA_API_KEY",
+]
+
+# lobster_status only reads a run's state. lobster_run and lobster_cancel keep
+# Codex's default approval: one calls a model provider and writes under
+# output_dir, the other stops a run.
+[mcp_servers.lobster.tools.lobster_status]
+approval_mode = "approve"

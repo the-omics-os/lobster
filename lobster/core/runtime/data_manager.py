@@ -18,9 +18,9 @@ import time
 import zipfile
 from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypedDict, Union
 from unittest.mock import Mock
 
 import pandas as pd
@@ -3726,6 +3726,80 @@ class DataManagerV2:
                     )
 
         return files_by_category
+
+    def files_written_since(
+        self,
+        since: Optional[Union[float, datetime]] = None,
+        *,
+        categories: Tuple[str, ...] = ("data", "exports", "plots"),
+    ) -> List[Dict[str, Any]]:
+        """
+        Files in the workspace whose modification time is at or after ``since``.
+
+        A modality held in memory is not a file and is never listed; only what is on
+        disk. ``since`` is epoch seconds or a timezone-aware ``datetime``; ``None``
+        lists every file in the categories. Only the three user-facing categories are
+        scanned (``data``, ``exports``, ``plots``), so ``.lobster/`` internals and the
+        cache never appear.
+
+        Each entry: ``path`` (absolute), ``relative`` (to the workspace), ``category``,
+        ``size_bytes``, ``modified`` (UTC ISO 8601) and, for managed figures,
+        ``figure_ref``. Sorted by ``modified`` then ``path``.
+
+        Limits (an mtime scan with no write log at the writers): a file that was copied
+        or touched counts as written, a file rewritten with an unchanged mtime does not,
+        and a deleted file is not listed. Only the top level of each directory is
+        scanned, not subdirectories. A managed figure whose file is missing has no
+        mtime and a recorded size: it is listed only when ``since`` is None.
+
+        Raises:
+            ValueError: unknown category, or a naive ``datetime``.
+            FigureError: the saved-figure inventory could not be read completely; the
+                storage error propagates and a partial list is never returned.
+            OSError: a directory could not be scanned.
+        """
+        unknown = set(categories) - {"data", "exports", "plots"}
+        if unknown:
+            raise ValueError(f"unknown categories: {sorted(unknown)}")
+        if isinstance(since, datetime):
+            if since.tzinfo is None:
+                raise ValueError("since must be timezone-aware or epoch seconds")
+            since = since.timestamp()
+
+        # shortcut: mtime scan, no write log at the writers; upgrade to a log at the
+        # writers if exact attribution is needed (copies and touches count as writes).
+        listed = self.list_workspace_files()
+        root = self.workspace_path.resolve()
+        entries = []
+        for category in categories:
+            for item in listed[category]:
+                modified = item.get("modified")
+                if modified is None:
+                    if since is not None:
+                        continue
+                elif since is not None and modified < since:
+                    continue
+                path = Path(item["path"])
+                try:
+                    relative = str(path.resolve().relative_to(root))
+                except ValueError:
+                    relative = str(path)
+                entry = {
+                    "path": str(path),
+                    "relative": relative,
+                    "category": category,
+                    "size_bytes": item["size"],
+                    "modified": (
+                        datetime.fromtimestamp(modified, tz=timezone.utc).isoformat()
+                        if modified is not None
+                        else None
+                    ),
+                }
+                if item.get("figure_ref"):
+                    entry["figure_ref"] = item["figure_ref"]
+                entries.append(entry)
+        entries.sort(key=lambda e: (e["modified"] or "", e["path"]))
+        return entries
 
     def _save_processing_log_and_provenance(self) -> Optional[bool]:
         """Return True if written, False if failed, None if nothing to persist."""

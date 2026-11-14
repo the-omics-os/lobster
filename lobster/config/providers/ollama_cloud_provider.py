@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any, ClassVar, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 logger = logging.getLogger(__name__)
 _BASE_URL = "https://ollama.com/v1"
@@ -155,7 +156,10 @@ class OllamaCloudProvider(ILLMProvider):
         api_key = kwargs.pop("api_key", None) or os.environ.get("OLLAMA_API_KEY", "")
         if not api_key.strip():
             raise ValueError("Set OLLAMA_API_KEY to use Ollama Cloud")
-        return ChatOpenAI(
+        # langchain-openai asks for streamed usage only on the default OpenAI base URL;
+        # a custom one would return none, and the run would be costed as 0 tokens.
+        kwargs.setdefault("stream_usage", True)
+        llm = ChatOpenAI(
             model=model_id,
             api_key=api_key.strip(),
             base_url=_BASE_URL,
@@ -163,6 +167,7 @@ class OllamaCloudProvider(ILLMProvider):
             max_tokens=max_tokens,
             **kwargs,
         )
+        return with_stream_usage_hint(llm)
 
     def get_configuration_help(self) -> str:
         return "Get an API key at https://ollama.com/settings/keys and set OLLAMA_API_KEY. Default model: glm-5.2. No local Ollama installation required."

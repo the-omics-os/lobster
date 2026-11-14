@@ -1,0 +1,57 @@
+{
+  "schema": "lobster.replay/1",
+  "description": "The input is loaded, then the supervisor asks one threshold decision through ask_user, then finishes.",
+  "responses": [
+    {
+      "agent": "supervisor",
+      "content": "Loading.",
+      "tool_calls": [
+        {
+          "name": "handoff_to_data_expert_agent",
+          "args": {
+            "task_description": "Your task is to load the file."
+          }
+        }
+      ]
+    },
+    {
+      "agent": "data_expert_agent",
+      "content": "",
+      "tool_calls": [
+        {
+          "name": "load_modality",
+          "args": {
+            "modality_name": "input",
+            "file_path": "__INPUT__",
+            "adapter": "transcriptomics_single_cell"
+          }
+        }
+      ]
+    },
+    {
+      "agent": "data_expert_agent",
+      "content": "Loaded input."
+    },
+    {
+      "agent": "supervisor",
+      "content": "I need one QC threshold before filtering.",
+      "tool_calls": [
+        {
+          "name": "ask_user",
+          "args": {
+            "question": "Which mitochondrial fraction threshold should QC use?",
+            "context": {
+              "min": 0,
+              "max": 1,
+              "threshold": 0.05
+            }
+          }
+        }
+      ]
+    },
+    {
+      "agent": "supervisor",
+      "content": "Using your threshold of 0.1 for QC filtering."
+    }
+  ]
+}

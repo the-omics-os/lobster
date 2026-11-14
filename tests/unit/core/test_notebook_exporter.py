@@ -5,6 +5,7 @@ Tests notebook generation from provenance records.
 """
 
 import ast
+import os
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -344,8 +345,251 @@ class TestNotebookExporter:
         hashes = NotebookExporter(provenance_tracker, dm)._get_input_file_hashes()
         assert hashes == {
             "saved.h5ad": hashlib.sha256(b"saved bytes").hexdigest(),
-            "unsaved.h5ad": "file_not_found",
+            "unsaved.h5ad": "not_saved",
         }
+
+    @staticmethod
+    def _saved_modalities(tmp_path, *names):
+        data = tmp_path / "data"
+        data.mkdir(exist_ok=True)
+        dm = SimpleNamespace(
+            modalities={name: None for name in names},
+            workspace_path=tmp_path,
+            data_dir=data,
+        )
+        return data, dm
+
+    def test_export_record_finds_a_modality_saved_only_as_autosave_or_raw(
+        self, provenance_tracker, tmp_path
+    ):
+        """The data manager also saves ``<name>_autosave.h5ad`` and ``<name>_raw.h5ad``."""
+        import hashlib
+
+        data, dm = self._saved_modalities(
+            tmp_path, "auto", "raw", "named_autosave", "none", "odd_autosave"
+        )
+        # Never double-suffixed: the data manager would not have written this one.
+        (data / "odd_autosave_autosave.h5ad").write_bytes(b"odd")
+        (data / "auto_autosave.h5ad").write_bytes(b"auto")
+        (data / "raw_raw.h5ad").write_bytes(b"raw")
+        (data / "named_autosave.h5ad").write_bytes(b"named")  # never double-suffixed
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert exporter._get_input_file_hashes() == {
+            "auto.h5ad": hashlib.sha256(b"auto").hexdigest(),
+            "raw.h5ad": hashlib.sha256(b"raw").hexdigest(),
+            "named_autosave.h5ad": hashlib.sha256(b"named").hexdigest(),
+            "none.h5ad": "not_saved",
+            "odd_autosave.h5ad": "not_saved",
+        }
+        assert exporter._get_input_file_paths() == {
+            "auto.h5ad": "data/auto_autosave.h5ad",
+            "raw.h5ad": "data/raw_raw.h5ad",
+            "named_autosave.h5ad": "data/named_autosave.h5ad",
+        }
+
+    def test_export_record_prefers_the_save_then_autosave_then_raw_then_root(
+        self, provenance_tracker, tmp_path
+    ):
+        data, dm = self._saved_modalities(tmp_path, "x")
+        files = {
+            "data/x.h5ad": data / "x.h5ad",
+            "data/x_autosave.h5ad": data / "x_autosave.h5ad",
+            "data/x_raw.h5ad": data / "x_raw.h5ad",
+            "x.h5ad": tmp_path / "x.h5ad",
+        }
+        for relative, path in files.items():
+            path.write_bytes(relative.encode())
+        exporter = NotebookExporter(provenance_tracker, dm)
+        hashed = []
+        for relative, path in files.items():
+            hashed.append(exporter._get_input_file_paths()["x.h5ad"])
+            path.unlink()  # the next in line is hashed once this one is gone
+        assert hashed == list(files)
+        assert exporter._get_input_file_hashes() == {"x.h5ad": "not_saved"}
+        assert exporter._get_input_file_paths() == {}
+
+    def test_export_record_does_not_hash_a_folder(self, provenance_tracker, tmp_path):
+        data, dm = self._saved_modalities(tmp_path, "x", "y")
+        (data / "x.h5ad").mkdir()  # a folder (a zarr-like store) is not a saved file
+        (data / "y.h5ad").mkdir()
+        (data / "y_autosave.h5ad").write_bytes(b"y")
+        exporter = NotebookExporter(provenance_tracker, dm)
+        hashes = exporter._get_input_file_hashes()
+        assert hashes["x.h5ad"] == "not_saved"
+        assert hashes["y.h5ad"] not in ("not_saved", "file_not_found", "hash_failed")
+        assert exporter._get_input_file_paths() == {"y.h5ad": "data/y_autosave.h5ad"}
+
+    def test_export_record_never_hashes_outside_the_workspace(
+        self, provenance_tracker, tmp_path
+    ):
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        data, dm = self._saved_modalities(workspace)
+        (tmp_path / "outside.h5ad").write_bytes(b"outside")
+        (workspace / "evil.h5ad").write_bytes(b"in the workspace folder")
+        (data / "sub").mkdir()
+        (data / "sub" / "x.h5ad").write_bytes(b"in a sub folder")
+        if os.name == "posix":  # a file name there; a separator on Windows
+            (data / "sub\\x.h5ad").write_bytes(b"a backslash in the name")
+        names = ["../outside", "../evil", "sub/x", "sub\\x", str(tmp_path / "outside")]
+        dm.modalities = {name: None for name in names}
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert exporter._get_input_file_hashes() == {
+            f"{name}.h5ad": "not_saved" for name in names
+        }
+        assert exporter._get_input_file_paths() == {}
+
+    @staticmethod
+    def _saved_to(tracker, name, path):
+        """What ``save_modality`` records: the path it wrote, with the modality name."""
+        tracker.create_entity(
+            entity_type="modality_data",
+            uri=path,
+            metadata={"modality_name": name, "shape": (3, 3)},
+        )
+
+    def test_export_record_finds_a_file_named_after_the_dataset(
+        self, provenance_tracker, tmp_path
+    ):
+        """GEO saves ``geo_<gse>_sample_<gsm>`` as ``<gse>_<gsm>_raw.h5ad``."""
+        import hashlib
+
+        data, dm = self._saved_modalities(tmp_path, "geo_gse1_sample_gsm2", "none")
+        (data / "gse1_gsm2_raw.h5ad").write_bytes(b"sample")
+        self._saved_to(
+            provenance_tracker, "geo_gse1_sample_gsm2", data / "gse1_gsm2_raw.h5ad"
+        )
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert exporter._get_input_file_hashes() == {
+            "geo_gse1_sample_gsm2.h5ad": hashlib.sha256(b"sample").hexdigest(),
+            "none.h5ad": "not_saved",
+        }
+        assert exporter._get_input_file_paths() == {
+            "geo_gse1_sample_gsm2.h5ad": "data/gse1_gsm2_raw.h5ad"
+        }
+
+    def test_export_record_takes_the_latest_save_before_the_name_chain(
+        self, provenance_tracker, tmp_path
+    ):
+        data, dm = self._saved_modalities(tmp_path, "x")
+        for name in ("x.h5ad", "first.h5ad", "last.h5ad"):
+            (data / name).write_bytes(name.encode())
+        self._saved_to(provenance_tracker, "x", data / "first.h5ad")
+        self._saved_to(provenance_tracker, "x", data / "last.h5ad")
+        # loading the modality again records an entity with no file
+        provenance_tracker.create_entity(
+            entity_type="modality_data", metadata={"modality_name": "x"}
+        )
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert exporter._get_input_file_paths() == {"x.h5ad": "data/last.h5ad"}
+        (data / "last.h5ad").unlink()  # gone: the names the data manager saves with
+        assert exporter._get_input_file_paths() == {"x.h5ad": "data/x.h5ad"}
+
+    def test_export_record_ignores_what_is_not_a_save_of_the_modality(
+        self, provenance_tracker, tmp_path
+    ):
+        data, dm = self._saved_modalities(tmp_path, "x", "y")
+        for name in ("a.h5ad", "b.h5ad", "c.h5ad", "d.h5ad"):
+            (data / name).write_bytes(name.encode())
+        # loading a modality records an entity with no file
+        provenance_tracker.create_entity(
+            entity_type="modality_data", metadata={"modality_name": "x"}
+        )
+        # another kind of entity, and another modality's save
+        provenance_tracker.create_entity(
+            entity_type="plot", uri=data / "a.h5ad", metadata={"modality_name": "x"}
+        )
+        self._saved_to(provenance_tracker, "y", data / "b.h5ad")
+        provenance_tracker.create_entity(
+            entity_type="modality_data", uri=data / "c.h5ad", metadata={}
+        )
+        provenance_tracker.entities["broken"] = "not an entity"
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert exporter._get_input_file_hashes()["x.h5ad"] == "not_saved"
+        assert exporter._get_input_file_paths() == {"y.h5ad": "data/b.h5ad"}
+
+    def test_export_record_never_takes_a_saved_path_outside_the_workspace(
+        self, provenance_tracker, tmp_path
+    ):
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        data, dm = self._saved_modalities(workspace, "x", "y", "z")
+        outside = tmp_path / "outside.h5ad"
+        outside.write_bytes(b"outside")
+        self._saved_to(provenance_tracker, "x", outside)
+        self._saved_to(provenance_tracker, "y", data / ".." / ".." / "outside.h5ad")
+        if os.name == "posix":
+            (data / "link.h5ad").symlink_to(outside)
+            self._saved_to(provenance_tracker, "z", data / "link.h5ad")
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert set(exporter._get_input_file_hashes().values()) == {"file_not_found"}
+        assert exporter._get_input_file_paths() == {}
+
+    def test_export_record_takes_a_saved_path_for_a_name_with_a_separator(
+        self, provenance_tracker, tmp_path
+    ):
+        """The name only keys the lookup: the path is the one the data manager wrote."""
+        data, dm = self._saved_modalities(tmp_path, "sub/x")
+        (data / "sub").mkdir()
+        (data / "sub" / "x.h5ad").write_bytes(b"x")
+        self._saved_to(provenance_tracker, "sub/x", data / "sub" / "x.h5ad")
+        exporter = NotebookExporter(provenance_tracker, dm)
+        assert exporter._get_input_file_paths() == {"sub/x.h5ad": "data/sub/x.h5ad"}
+
+    @pytest.mark.skipif(os.name != "posix", reason="needs a symlink")
+    def test_export_record_names_a_saved_file_as_the_workspace_is_reached(
+        self, provenance_tracker, tmp_path
+    ):
+        """A path through another name for the workspace is not named relative to it."""
+        real = tmp_path / "real"
+        (real / "data").mkdir(parents=True)
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        data, dm = self._saved_modalities(link, "geo", "other")
+        (real / "data" / "gse_raw.h5ad").write_bytes(b"geo")
+        (real / "data" / "other.h5ad").write_bytes(b"other")
+        self._saved_to(provenance_tracker, "geo", real / "data" / "gse_raw.h5ad")
+        exporter = NotebookExporter(provenance_tracker, dm)
+        # the one file is not named; the others are, and the record still has paths
+        assert exporter._get_input_file_paths() == {"other.h5ad": "data/other.h5ad"}
+
+    def test_export_record_finds_what_save_modality_wrote(self, tmp_path):
+        """With the real data manager: the entity ``save_modality`` records is read."""
+        dm = DataManagerV2(workspace_path=tmp_path)
+        adata = anndata.AnnData(np.ones((3, 3), dtype=np.float32))
+        dm.store_modality("geo_gse1_sample_gsm2", adata)
+        dm.store_modality("unsaved", adata)
+        dm.save_modality("geo_gse1_sample_gsm2", "gse1_gsm2_raw.h5ad")
+        exporter = NotebookExporter(dm.provenance, dm)
+        hashes = exporter._get_input_file_hashes()
+        assert hashes["unsaved.h5ad"] == "not_saved"
+        assert len(hashes["geo_gse1_sample_gsm2.h5ad"]) == 64
+        assert exporter._get_input_file_paths() == {
+            "geo_gse1_sample_gsm2.h5ad": "data/gse1_gsm2_raw.h5ad"
+        }
+
+    def test_export_record_names_the_files_it_hashed(
+        self, provenance_tracker, tmp_path
+    ):
+        import json
+
+        data, dm = self._saved_modalities(tmp_path, "auto", "none")
+        (data / "auto_autosave.h5ad").write_bytes(b"auto")
+        source = (
+            NotebookExporter(provenance_tracker, dm)
+            ._create_integrity_manifest_cell()
+            .source
+        )
+        record = json.loads(source.split("```json\n")[1].split("\n```")[0])
+        manifest = record["data_integrity_manifest"]
+        assert manifest["input_file_paths"] == {"auto.h5ad": "data/auto_autosave.h5ad"}
+        assert manifest["input_files"]["none.h5ad"] == "not_saved"
+        assert "`input_file_paths`" in source
+        assert "the file Lobster last saved it to" in source
+        assert (
+            "`not_saved`: the session never saved that modality; `file_not_found`: it saved it and the file is gone"
+            in source
+        )
 
     def test_create_header_cell(self, provenance_tracker, data_manager):
         """Test header cell creation."""

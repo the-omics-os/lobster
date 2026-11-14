@@ -24,6 +24,7 @@ import os
 from typing import Any, List, Optional
 
 from lobster.config.providers.base_provider import ILLMProvider, ModelInfo
+from lobster.config.providers.stream_usage_hint import with_stream_usage_hint
 
 logger = logging.getLogger(__name__)
 
@@ -332,8 +333,11 @@ class OpenAIProvider(ILLMProvider):
 
         # Merge any additional kwargs (excluding already-handled ones)
         model_kwargs.update(kwargs)
+        # langchain-openai asks for streamed usage only on the default OpenAI base URL;
+        # behind OPENAI_BASE_URL (a proxy) it would return none.
+        model_kwargs.setdefault("stream_usage", True)
 
-        return ChatOpenAI(**model_kwargs)
+        return with_stream_usage_hint(ChatOpenAI(**model_kwargs))
 
     def get_configuration_help(self) -> str:
         """

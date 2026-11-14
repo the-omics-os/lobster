@@ -8,7 +8,7 @@ installation; see [client selection](../SKILL.md#choose-the-correct-client-befor
 
 ## Local Setup and Session Continuity
 
-First complete the [local Python Cloud-account setup](../SKILL.md#local-python-setup-with-an-omics-os-cloud-account)
+First complete the [local Python Cloud-account setup](local-setup-omics-os.md)
 when that is the task: Python 1.2.2+ engine, default `[full]` analysis bundle,
 then supported non-interactive init or environment-only provider selection.
 Do not install npm instead, pin an older engine or call internal credential APIs
@@ -46,7 +46,7 @@ lobster command "workspace list" -w "$WORKSPACE" --session-id "$SESSION" --json
 
 `$WORKSPACE` is the actual root, not the parent of a nested hidden workspace.
 For input loading and explicit saves, follow the
-[save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save);
+[save/reload requirements](local-analysis-and-saves.md#local-session-history-is-not-a-data-save);
 conversation continuity is not a substitute for those steps.
 
 ## Capture Both Failure Signals
@@ -149,7 +149,7 @@ More complex or multi-factor designs require a separately agreed workflow; follo
 the [design-question rule](../SKILL.md#scientific-workflow-rules), not this shortcut.
 
 For a human who can operate an interactive terminal, `lobster chat` with `/save`
-is the alternative; see the [save/reload requirements](../SKILL.md#local-session-history-is-not-a-data-save).
+is the alternative; see the [save/reload requirements](local-analysis-and-saves.md#local-session-history-is-not-a-data-save).
 
 ## Figure Workflow — Local Engine
 

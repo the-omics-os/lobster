@@ -1,0 +1,11 @@
+{"payload": {"engine": "lobster-ai", "engine_version": "1.2.6", "interface": "lobster agent --stdio", "protocol_version": 1}, "seq": 1, "type": "handshake", "version": 1}
+{"payload": {"text": "Provider: ollama-cloud"}, "seq": 2, "type": "status", "version": 1}
+{"payload": {"text": "Session: session_20261113_092603"}, "seq": 3, "type": "status", "version": 1}
+{"payload": {"session_id": "session_20261113_092603"}, "seq": 4, "type": "ready", "version": 1}
+{"payload": {"active": true}, "seq": 5, "type": "spinner", "version": 1}
+{"payload": {"run_id": "run_65483552797341f8b164b19e3108a213", "state": "running"}, "run_id": "run_65483552797341f8b164b19e3108a213", "seq": 6, "type": "run_state", "version": 1}
+{"payload": {"content": "I can load, quality-check, cluster and annotate single-cell RNA-seq data.", "markdown": true}, "run_id": "run_65483552797341f8b164b19e3108a213", "seq": 7, "type": "text", "version": 1}
+{"payload": {"summary": ""}, "run_id": "run_65483552797341f8b164b19e3108a213", "seq": 8, "type": "done", "version": 1}
+{"payload": {"text": "Ready \u00b7 Duration: 0.0s"}, "run_id": "run_65483552797341f8b164b19e3108a213", "seq": 9, "type": "status", "version": 1}
+{"payload": {"active": false}, "run_id": "run_65483552797341f8b164b19e3108a213", "seq": 10, "type": "spinner", "version": 1}
+{"payload": {"result": {"duration": 0.008045, "engine": {"name": "lobster-ai", "version": "1.2.6"}, "has_data": false, "last_agent": null, "modalities": [], "response": "I can load, quality-check, cluster and annotate single-cell RNA-seq data.", "run_id": "run_65483552797341f8b164b19e3108a213", "schema_version": "lobster.result/1", "session_id": "session_20261113_092603", "token_usage": {"cost_complete": false, "latest_cost_usd": 0.0, "missing_usage_invocations": 1, "run_cost_complete": false, "run_cost_usd": 0, "run_missing_usage_invocations": 1, "run_total_tokens": 0, "run_unpriced_invocations": 0, "session_total_usd": 0.0, "total_tokens": 0, "unpriced_invocations": 0, "usage_complete": false}}, "run_id": "run_65483552797341f8b164b19e3108a213", "state": "completed"}, "run_id": "run_65483552797341f8b164b19e3108a213", "seq": 11, "type": "run_state", "version": 1}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omics-os.com/schemas/lobster/lobster.sessions.v1.schema.json",
+  "title": "lobster.sessions/1",
+  "description": "Saved sessions in a workspace (`lobster sessions list --json`, Phase 0 B2), newest first. An unreadable session file is listed with `error`.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "workspace",
+    "sessions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lobster.sessions/1"
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "path",
+          "created",
+          "updated",
+          "messages",
+          "last_user_message"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Relative to the workspace."
+          },
+          "created": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated": {
+            "type": "string"
+          },
+          "messages": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "last_user_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 120
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

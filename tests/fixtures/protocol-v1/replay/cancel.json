@@ -1,0 +1,3 @@
+{"schema": "lobster.replay/1", "description": "The user cancels while the model is still answering.", "prompt": "Cluster everything.", "cancel_after_s": 0.3, "responses": [
+  {"agent": "supervisor", "content": "This answer arrives after the cancel.", "delay_s": 1.5}
+]}

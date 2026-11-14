@@ -22,8 +22,10 @@ from lobster.cli_internal.commands.heavy.session_infra import (
     should_show_progress,
     validate_startup_or_raise_startup_diagnostic,
 )
+from lobster.cli_internal.response_style import forced as forced_response_style
 from lobster.cli_internal.startup_diagnostics import (
     StartupDiagnosticError,
+    classify_startup_exception,
     format_startup_diagnostic_text,
     render_startup_diagnostic_rich,
 )
@@ -316,20 +318,29 @@ def query_impl(
             workspace=workspace,
             provider_override=provider,
         )
-    except StartupDiagnosticError as exc:
+    except (StartupDiagnosticError, OSError) as exc:
+        # An unusable workspace path (OSError) gets a diagnostic, not a traceback.
+        diagnostic = getattr(exc, "diagnostic", None) or classify_startup_exception(
+            exc, workspace=workspace, provider_override=provider
+        )
         if json_output:
+            from lobster.core.runs import build_result, new_run_id
+
+            requested = None if session_id in (None, "latest") else session_id
+            # lobster.result/1 fields; the legacy keys after them win.
             print(
                 json.dumps(
                     {
+                        **build_result(None, new_run_id(), requested, {}),
                         "success": False,
-                        "error": format_startup_diagnostic_text(exc.diagnostic),
-                        "error_code": exc.diagnostic.code,
+                        "error": format_startup_diagnostic_text(diagnostic),
+                        "error_code": diagnostic.code,
                     }
                 )
             )
         else:
-            render_startup_diagnostic_rich(console, exc.diagnostic)
-        raise typer.Exit(exc.diagnostic.exit_code)
+            render_startup_diagnostic_rich(console, diagnostic)
+        raise typer.Exit(diagnostic.exit_code)
 
     # Handle session loading for continuity
     session_file_to_load = None
@@ -379,17 +390,19 @@ def query_impl(
 
     # Initialize client with custom session_id if new session
     # Non-interactive: excludes ask_user tool and adjusts supervisor prompt
-    client = init_client(
-        workspace,
-        reasoning,
-        verbose,
-        debug,
-        profile_timings,
-        provider,
-        model,
-        session_id_for_client,
-        interactive=False,
-    )
+    # The answer is read after the run: the supervisor prompt gets the "run" style.
+    with forced_response_style("run"):
+        client = init_client(
+            workspace,
+            reasoning,
+            verbose,
+            debug,
+            profile_timings,
+            provider,
+            model,
+            session_id_for_client,
+            interactive=False,
+        )
 
     # Load session if found
     if session_file_to_load:
@@ -417,6 +430,9 @@ def query_impl(
     # Process query
     if json_output:
         # JSON mode: no streaming, no Rich output, no spinners
+        from lobster.core.runs import mark_usage, with_run_cost
+
+        cost_mark = mark_usage(client)
         result = client.query(question)
     else:
         # Determine if streaming is appropriate
@@ -461,10 +477,20 @@ def query_impl(
                     else None
                 )
             if token_usage:
-                json_result["token_usage"] = token_usage
+                json_result["token_usage"] = with_run_cost(
+                    token_usage, client, cost_mark
+                )
         else:
             json_result["error"] = result.get("error", "Unknown error")
-        print(json.dumps(json_result))
+        from lobster.core.runs import build_result, new_run_id
+
+        # Additive: lobster.result/1 fields; the legacy keys above win.
+        json_result = {
+            **build_result(client, new_run_id(), json_result["session_id"], result),
+            **json_result,
+        }
+        json_result["response"] = json_result["response"] or ""
+        print(json.dumps(json_result, default=str))
         if not json_result["success"]:
             # Scripts and CI rely on the exit code to detect a failed query.
             raise typer.Exit(1)
