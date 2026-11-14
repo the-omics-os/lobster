@@ -2132,6 +2132,26 @@ def _validate_each_option_kept(spec: CheckSpec, fields: Dict[str, Any]) -> None:
     field = _ref(spec, fields, spec["field"], "field")
     _per_item_choice(spec, field, "field")
     _ids(spec, spec["options"], [o.id for o in field.options], "option", "options")
+    # Requiring a removal option to keep an item would force the user to
+    # take something out: a rule the data never gave (minus is where removal
+    # options belong).
+    by_id = {o.id: o for o in field.options}
+    forced = [
+        oid
+        for oid in spec["options"]
+        if oid in by_id
+        and (
+            by_id[oid].removes
+            if by_id[oid].removes is not None
+            else sounds_like_removal(by_id[oid])
+        )
+    ]
+    if forced:
+        raise ValueError(
+            f"check 'each_option_kept': can't require {', '.join(map(repr, forced))}: "
+            "forcing a removal decides for the user; list only the options that "
+            "must keep items"
+        )
     minus = spec.get("minus")
     if minus is None:
         return

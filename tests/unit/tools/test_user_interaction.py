@@ -474,6 +474,44 @@ def test_dashboard_section_it_cannot_draw_is_refused():
     )
 
 
+def test_each_option_kept_cannot_force_a_removal():
+    """Listing a removal option would force the user to take something out."""
+    duplicates = {
+        "fields": [
+            {
+                "key": "dup_lines",
+                "type": "choice",
+                "question": "Keep or exclude each suspected duplicate line?",
+                "for_each": ["LINE_C", "LINE_E"],
+                "options": [
+                    "retain",
+                    {
+                        "id": "exclude",
+                        "removes": True,
+                        "fields": [{"key": "reason", "type": "text"}],
+                    },
+                ],
+            }
+        ],
+        "checks": [
+            {
+                "check": "each_option_kept",
+                "field": "dup_lines",
+                "options": ["retain", "exclude"],
+            }
+        ],
+    }
+    graph = _graph(("call_1", "Duplicates?", duplicates))
+    assert _run(graph, {"messages": []}) == []
+    result = _tool_results(graph)["call_1"]
+    assert result["action"] == "invalid_context"
+    assert any(
+        "can't require 'exclude': forcing a removal decides for the user"
+        in p["message"]
+        for p in result["problems"]
+    )
+
+
 def test_dashboard_reason_on_a_single_choice_says_how_to_ask_it():
     """A reason on a plain choice section is refused with what to do instead."""
     single = {
