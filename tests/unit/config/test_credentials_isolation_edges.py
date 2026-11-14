@@ -1,6 +1,6 @@
 """Edges of project credential isolation: what is restored, what is not, and what is logged.
 
-Companion to test_credentials_between_projects.py (bm8n's five rows). Only a load that
+Companion to test_credentials_between_projects.py (the five rows there). Only a load that
 overrides (a workspace ``.env``, or the ``./.env`` fallback of a reload) is undone when the
 next load starts; the import-time ``./.env``, the upward ``.env`` and the global file belong
 to the process, not to a project.
