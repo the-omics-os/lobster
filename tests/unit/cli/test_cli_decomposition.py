@@ -151,29 +151,41 @@ def test_cli_is_wiring_only():
 
 def test_no_circular_imports():
     """Importing any heavy module must not trigger import of lobster.cli."""
-    # Clear cli from sys.modules if already loaded
-    modules_to_clear = [
-        k
-        for k in sys.modules
-        if k.startswith("lobster.cli") and k != "lobster.cli_internal"
-    ]
-    for mod in modules_to_clear:
-        del sys.modules[mod]
+    # The test removes modules and imports them again. Put the original module
+    # objects back afterwards, so later tests keep patching the code they imported.
+    saved = dict(sys.modules)
+    try:
+        # Clear cli from sys.modules if already loaded
+        modules_to_clear = [
+            k
+            for k in sys.modules
+            if k.startswith("lobster.cli") and k != "lobster.cli_internal"
+        ]
+        for mod in modules_to_clear:
+            del sys.modules[mod]
 
-    # Import heavy modules
-    heavy_modules = [
-        "lobster.cli_internal.commands.heavy.slash_commands",
-        "lobster.cli_internal.commands.heavy.session_infra",
-        "lobster.cli_internal.commands.heavy.animations",
-    ]
+        # Import heavy modules
+        heavy_modules = [
+            "lobster.cli_internal.commands.heavy.slash_commands",
+            "lobster.cli_internal.commands.heavy.session_infra",
+            "lobster.cli_internal.commands.heavy.animations",
+        ]
 
-    for mod_name in heavy_modules:
-        importlib.import_module(mod_name)
+        for mod_name in heavy_modules:
+            importlib.import_module(mod_name)
 
-    # Check that lobster.cli was NOT imported
-    assert (
-        "lobster.cli" not in sys.modules
-    ), "Importing heavy modules triggered import of lobster.cli -- circular import detected"
+        # Check that lobster.cli was NOT imported
+        assert (
+            "lobster.cli" not in sys.modules
+        ), "Importing heavy modules triggered import of lobster.cli -- circular import detected"
+    finally:
+        sys.modules.clear()
+        sys.modules.update(saved)
+        # importing sets each module as an attribute of its parent package
+        for name, module in saved.items():
+            parent, _, child = name.rpartition(".")
+            if parent in saved and getattr(saved[parent], child, module) is not module:
+                setattr(saved[parent], child, module)
 
 
 def test_cli_help_outputs():
