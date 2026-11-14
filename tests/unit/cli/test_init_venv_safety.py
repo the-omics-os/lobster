@@ -17,7 +17,6 @@ from lobster.cli_internal.commands.heavy.init_commands import (
     init_impl,
 )
 
-
 # ── Shared init_impl kwargs ──────────────────────────────────────────────────
 
 _INIT_KWARGS = dict(
@@ -91,7 +90,9 @@ class TestTTYGuard:
 
         assert exc_info.value.exit_code == 1
 
-    def test_non_interactive_flag_bypasses_tty_guard(self, monkeypatch, tmp_path, capsys):
+    def test_non_interactive_flag_bypasses_tty_guard(
+        self, monkeypatch, tmp_path, capsys
+    ):
         """--non-interactive should skip the TTY check entirely."""
         monkeypatch.chdir(tmp_path)
         fake_stdin = MagicMock()
@@ -123,9 +124,12 @@ class TestUvToolEnvHandoff:
             lambda: MagicMock(installed_packages=[]),
         )
         # Build a command that differs from the no-op baseline
-        monkeypatch.setattr(
-            "lobster.cli_internal.commands.heavy.init_commands._build_uv_tool_init_command",
-            lambda provider, agents, include_vector_search=False: (
+        # Patch the name the function itself looks up: another test may have
+        # re-imported the module, so a patch by module path could miss it.
+        monkeypatch.setitem(
+            _uv_tool_env_handoff.__globals__,
+            "_build_uv_tool_init_command",
+            lambda provider, agents, include_vector_search=False, include_lamin=False: (
                 ["uv", "tool", "install", "lobster-ai", "--with", "lobster-research"]
                 if agents
                 else ["uv", "tool", "install", "lobster-ai"]
@@ -189,6 +193,36 @@ class TestUvToolEnvHandoff:
             )
 
         assert exit_codes == [1]
+
+    def test_the_install_flags_reach_the_command_builder(self, monkeypatch):
+        """The vector search and lamin choices are passed on to the install command."""
+        calls = []
+
+        def _record(provider, agents, **flags):
+            calls.append(flags)
+            return ["uv", "tool", "install", "lobster-ai", "--with", "lobster-research"]
+
+        monkeypatch.setattr(
+            "lobster.core.uv_tool_env.detect_uv_tool_env",
+            lambda: MagicMock(installed_packages=[]),
+        )
+        monkeypatch.setitem(
+            _uv_tool_env_handoff.__globals__, "_build_uv_tool_init_command", _record
+        )
+        monkeypatch.setattr(
+            "lobster.cli_internal.commands.heavy.init_commands.Confirm.ask",
+            lambda *a, **kw: False,
+        )
+
+        _uv_tool_env_handoff(
+            provider_name="anthropic",
+            selected_agents=["lobster-research"],
+            skip_extras=False,
+            include_vector_search=True,
+            include_lamin=True,
+        )
+
+        assert calls[0] == {"include_vector_search": True, "include_lamin": True}
 
     def test_user_declines_returns_normally(self, monkeypatch):
         """When user says no, function returns without os._exit or sys.exit."""
@@ -256,7 +290,9 @@ class TestUvToolEnvHandoff:
             return subprocess.CompletedProcess(cmd, 0)
 
         monkeypatch.setattr("subprocess.run", _fake_subprocess_run)
-        monkeypatch.setattr("os._exit", lambda code: (_ for _ in ()).throw(SystemExit(code)))
+        monkeypatch.setattr(
+            "os._exit", lambda code: (_ for _ in ()).throw(SystemExit(code))
+        )
 
         with pytest.raises(SystemExit):
             _uv_tool_env_handoff(
@@ -266,6 +302,6 @@ class TestUvToolEnvHandoff:
             )
 
         assert subprocess_ran, "subprocess.run should have been called"
-        assert post_subprocess_rich_calls == [], (
-            f"Rich console.print was called after subprocess: {post_subprocess_rich_calls}"
-        )
+        assert (
+            post_subprocess_rich_calls == []
+        ), f"Rich console.print was called after subprocess: {post_subprocess_rich_calls}"
