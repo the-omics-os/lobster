@@ -123,16 +123,7 @@ def _tool_session(tmp_path, monkeypatch, chain):
         "B1",
         "B2",
         "B3",
-        pytest.param(
-            "B4",
-            marks=pytest.mark.xfail(
-                reason=(
-                    "clustering: obs columns come back in another order "
-                    "(obs: columns differ: same labels in a different order); "
-                    "nothing else differs"
-                )
-            ),
-        ),
+        "B4",
     ],
 )
 def test_the_notebook_writes_what_the_session_wrote(tmp_path, monkeypatch, row):
@@ -184,11 +175,6 @@ def test_w4_a_fallback_write_that_differs_stays_a_mismatch_and_says_so(
 
 
 @needs_kernel
-@pytest.mark.xfail(
-    strict=True,
-    reason="clustering: with 10 or more clusters the notebook writes the leiden "
-    "categories in text order ('0','1','10','2',...), the session in number order",
-)
 def test_the_notebook_keeps_the_category_order_of_ten_or_more_clusters(
     tmp_path, monkeypatch
 ):

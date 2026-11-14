@@ -147,6 +147,26 @@ def _default_index_name(index: pd.Index, default: str) -> Any:
     return index.name or default
 
 
+def plain_categorical(column) -> pd.Categorical:
+    """A categorical with plain string categories from one that has pandas-3/Arrow strings.
+
+    Keeps what the column holds: the order of the categories, categories no row uses,
+    the ``ordered`` flag, and missing values (a missing value stays missing, it does
+    not become an empty-string category). This is what the session writer writes for
+    object categories. If two categories read the same as text (for example 1 and "1")
+    they cannot be kept apart, and the column is rebuilt from its text as before.
+    """
+    categories = [str(c) for c in column.cat.categories]
+    if len(set(categories)) != len(categories):
+        logger.debug("Categories repeat as text; rebuilding the categorical from text")
+        return pd.Categorical(column.to_numpy(dtype=str, na_value=""))
+    return pd.Categorical.from_codes(
+        np.asarray(column.cat.codes),
+        categories=pd.Index(categories, dtype=object),
+        ordered=bool(column.cat.ordered),
+    )
+
+
 def _clean_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
     """A copy of ``frame`` cleaned the way ``obs``/``var`` are, before the write probe.
 
@@ -165,8 +185,7 @@ def _clean_dataframe(frame: pd.DataFrame) -> pd.DataFrame:
         column = out.iloc[:, position]
         if isinstance(column.dtype, pd.CategoricalDtype):
             if is_arrow_dtype(column.cat.categories):
-                values = column.to_numpy(dtype=str, na_value="")
-                out.isetitem(position, pd.Categorical(values))
+                out.isetitem(position, plain_categorical(column))
             continue
         if is_arrow_dtype(column) and pd.api.types.is_numeric_dtype(column):
             numeric = (
@@ -755,8 +774,7 @@ def convert_arrow_to_standard(adata):
             logger.debug(
                 f"Converting obs['{col}'] categorical with Arrow categories to object dtype"
             )
-            values = adata_copy.obs[col].to_numpy(dtype=str, na_value="")
-            adata_copy.obs[col] = pd.Categorical(values)
+            adata_copy.obs[col] = plain_categorical(adata_copy.obs[col])
 
     # Convert var columns
     for col in adata_copy.var.columns:
@@ -775,8 +793,7 @@ def convert_arrow_to_standard(adata):
             logger.debug(
                 f"Converting var['{col}'] categorical with Arrow categories to object dtype"
             )
-            values = adata_copy.var[col].to_numpy(dtype=str, na_value="")
-            adata_copy.var[col] = pd.Categorical(values)
+            adata_copy.var[col] = plain_categorical(adata_copy.var[col])
 
     # Check obsm/varm DataFrames
     for slot_name, slot in [("obsm", adata_copy.obsm), ("varm", adata_copy.varm)]:
