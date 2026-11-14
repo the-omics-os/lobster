@@ -243,8 +243,11 @@ func (c *Component) listLines(width int) []string {
 		if r.Unavailable != "" {
 			mark, text = " ✕ ", dimStyle.Render(r.Label+" · unavailable: "+r.Unavailable)
 		}
-		line := pointer + mark + " " + swatch + " " + text + dimStyle.Render("  "+span)
-		lines = append(lines, lipgloss.NewStyle().MaxWidth(width).Render(line))
+		// A long row wraps under its text instead of being cut at the edge.
+		prefix := pointer + mark + " " + swatch + " "
+		body := text + dimStyle.Render("  "+span)
+		lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top, prefix,
+			lipgloss.NewStyle().Width(max(width-lipgloss.Width(prefix), 1)).Render(body)))
 	}
 	r := c.regions[c.cursor]
 	if r.Start >= 1 && r.End <= len(c.letters) {
@@ -252,12 +255,44 @@ func (c *Component) listLines(width int) []string {
 		if room := width - 4; len(part) > room && room > 3 {
 			part = part[:room-1] + "…"
 		}
-		lines = append(lines, "", dimStyle.Render("  "+part))
+		lines = append(lines, "", "  "+baseColored(part))
 	}
 	if r.Details != "" {
 		lines = append(lines, wrap("  "+r.Details, width, dimStyle))
 	}
 	return lines
+}
+
+// baseTheme is the viewer's own palette, so the letters under the list are
+// coloured as they are in the sequence above.
+var baseTheme = sequenceviewer.DefaultTheme()
+
+// baseColored colours each nucleotide letter as the viewer does (A, C, G,
+// T/U; any other IUPAC code in the viewer's "unknown" colour).
+func baseColored(letters string) string {
+	var b strings.Builder
+	for _, r := range letters {
+		var fg color.Color
+		switch r {
+		case 'A', 'a':
+			fg = baseTheme.Adenine
+		case 'C', 'c':
+			fg = baseTheme.Cytosine
+		case 'G', 'g':
+			fg = baseTheme.Guanine
+		case 'T', 't':
+			fg = baseTheme.Thymine
+		case 'U', 'u':
+			fg = baseTheme.Uracil
+		case '…':
+			b.WriteRune(r)
+			continue
+		default:
+			fg = baseTheme.Unknown
+		}
+		b.WriteString(lipgloss.NewStyle().Foreground(fg).Render(string(r)))
+	}
+	return b.String()
 }
 
 func (c *Component) SetData(data json.RawMessage) error {

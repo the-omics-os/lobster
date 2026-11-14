@@ -126,3 +126,21 @@ func TestRefusesARegionOutsideTheSequence(t *testing.T) {
 		t.Fatal("a region past the end should be refused")
 	}
 }
+
+func TestALongRegionRowWrapsInsteadOfBeingCut(t *testing.T) {
+	reason := "excluded by the study policy because this guide has two off-target hits in the genome"
+	c := newSeq(t, map[string]any{"options": []map[string]any{
+		{"id": "g1", "label": "guide 1", "start": 1, "end": 5},
+		{"id": "g3", "label": "guide 3", "start": 18, "end": 22, "unavailable": reason},
+	}})
+	view := ansi.Strip(c.View(60, 40))
+	flat := strings.Join(strings.Fields(view), " ")
+	if !strings.Contains(flat, "two off-target hits in the genome") {
+		t.Fatalf("the reason was cut:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if w := len([]rune(line)); w > 60 {
+			t.Fatalf("line wider than 60 (%d): %q", w, line)
+		}
+	}
+}
