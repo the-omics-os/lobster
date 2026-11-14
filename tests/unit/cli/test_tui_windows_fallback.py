@@ -1,7 +1,7 @@
 """On Windows both TUI finders report no binary, so every caller falls back.
 
-The Go TUI is launched with ``pass_fds``, which Windows ``Popen`` rejects
-(S3 review #1). POSIX discovery must stay as it was.
+The Go TUI is launched with ``pass_fds``, which Windows ``Popen`` rejects.
+POSIX discovery must stay as it was.
 """
 
 import os

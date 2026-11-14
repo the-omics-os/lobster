@@ -180,7 +180,7 @@ def test_stdin_eof_ends_a_paused_stdio_session(paused):
     session.until(_is_state("cancelled"), timeout=1)
 
 
-# --- Frozen decision contract (Phase 0 A2) ---------------------------------
+# --- Frozen decision contract ---------------------------------
 
 
 def _answer(render, answer, **overrides):

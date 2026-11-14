@@ -290,7 +290,7 @@
         ],
         "properties": {
           "payload": {
-            "description": "Frozen (Phase 0 A2). A refused answer is an alert with code and changes nothing. Deferring a decision is reserved for durable sessions (B4).",
+            "description": "Frozen. A refused answer is an alert with code and changes nothing. Deferring a decision is reserved for durable sessions.",
             "type": "object",
             "required": [
               "decision_id",

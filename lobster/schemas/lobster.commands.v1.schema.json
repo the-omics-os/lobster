@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omics-os.com/schemas/lobster/lobster.commands.v1.schema.json",
   "title": "lobster.commands/1",
-  "description": "Engine-owned command manifest (`lobster commands --json`, Phase 0 B1). Hosts read verbs and the machine interface from it instead of hard-coding them.",
+  "description": "Engine-owned command manifest (`lobster commands --json`). Hosts read verbs and the machine interface from it instead of hard-coding them.",
   "type": "object",
   "required": [
     "schema_version",

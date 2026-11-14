@@ -1,4 +1,4 @@
-"""Frozen decision contract in the run API (Phase 0 A2, evidence/P0_A2_decision_contract.md)."""
+"""Frozen decision contract in the run API."""
 
 import pytest
 
@@ -196,7 +196,7 @@ def test_head_follows_the_resumed_chain():
     assert manager.head("run_unknown") is None
 
 
-# --- Review of df9b0742 (reviews/20261111_P0_A2_df9b0742_review.md) ---------
+# --- Cases added after review ------------------------------------------------
 
 
 def test_cancel_refuses_a_reason_outside_the_closed_set():

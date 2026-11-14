@@ -1,4 +1,4 @@
-"""Tests for the ask_user HITL tool (Phase 2.4, extended Phase 5.1 and Phase 0 A2/A3)."""
+"""Tests for the ask_user HITL tool (including the frozen decision contract)."""
 
 import json
 from unittest.mock import MagicMock, patch
@@ -284,7 +284,7 @@ def test_decision_cell_renders_comment_lines_only():
     assert repr(comment) in code
 
 
-# Frozen answer forms (Phase 0 A2): per component kind, the Go TUI's structured
+# Frozen answer forms: per component kind, the Go TUI's structured
 # form and a plain string. The engine does not check the answer against the
 # question; it is passed verbatim to the supervisor model, which reads it.
 ANSWER_FORMS = [

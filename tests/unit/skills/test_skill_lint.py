@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parents[3]
 SKILLS = REPO / "lobster" / "skills"
 SKILL_DIRS = sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file())
 
-# Phase 5 target is 8 KB per SKILL.md body; both skills are under it, so the ceiling is
+# The target is 8 KB per SKILL.md body; both skills are under it, so the ceiling is
 # the current size (a ratchet).
 SKILL_MD_TARGET = 8 * 1024
 SKILL_MD_CEILING = {"lobster-dev": 6762, "lobster-use": 7438}
@@ -35,7 +35,7 @@ FORBIDDEN = [
     r"resumable",
 ]
 
-# pre-existing, Phase 5 content work: (relative path, exact phrase as matched, lowercase)
+# pre-existing wording, still to be reworked: (relative path, exact phrase as matched, lowercase)
 ALLOWED_HITS = {
     ("lobster-dev/references/planning-workflow.md", "guarantee"),
     ("lobster-use/references/agent-patterns.md", "guarantee"),

@@ -1,4 +1,4 @@
-"""``lobster sessions list --json`` and ``lobster query --json`` (Phase 0 B2)."""
+"""``lobster sessions list --json`` and ``lobster query --json``."""
 
 import json
 import os

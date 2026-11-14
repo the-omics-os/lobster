@@ -1,4 +1,4 @@
-"""``lobster commands --json``: the lobster.commands/1 manifest (Phase 0 B1)."""
+"""``lobster commands --json``: the lobster.commands/1 manifest."""
 
 import importlib
 import json

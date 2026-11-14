@@ -1,4 +1,4 @@
-"""``lobster skills list|install`` (Phase 0 B5)."""
+"""``lobster skills list|install``."""
 
 import json
 

@@ -1,4 +1,4 @@
-"""Run API identity, event and decision rules (Phase 0 A1)."""
+"""Run API identity, event and decision rules."""
 
 import threading
 

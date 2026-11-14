@@ -8,8 +8,8 @@ speaks the same protocol-v1 messages the Go TUI speaks, as NDJSON:
   any stray prints go to stderr.
 * stdin accepts the Go TUI's inbound messages (``input``, ``slash_command``,
   ``component_response``, ``cancel``, ``quit``) plus ``decision_answer``
-  ``{decision_id, request_version, answer, source, comment?}`` (frozen,
-  Phase 0 A2; ``source`` is ``human`` or ``model``). A waiting run's
+  ``{decision_id, request_version, answer, source, comment?}`` (frozen;
+  ``source`` is ``human`` or ``model``). A waiting run's
   ``run_state needs_decision`` carries ``decision`` (id, version, question,
   components) before its ``component_render``, whose ``id`` is the decision
   id. A refused answer is an ``alert`` with ``code`` (``unknown_decision``,

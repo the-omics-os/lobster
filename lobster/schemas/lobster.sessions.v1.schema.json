@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omics-os.com/schemas/lobster/lobster.sessions.v1.schema.json",
   "title": "lobster.sessions/1",
-  "description": "Saved sessions in a workspace (`lobster sessions list --json`, Phase 0 B2), newest first. An unreadable session file is listed with `error`.",
+  "description": "Saved sessions in a workspace (`lobster sessions list --json`), newest first. An unreadable session file is listed with `error`.",
   "type": "object",
   "required": [
     "schema_version",

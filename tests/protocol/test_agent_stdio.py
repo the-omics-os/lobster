@@ -1,4 +1,4 @@
-"""Gate G0-1: ``lobster agent --stdio`` emits schema-valid protocol v1.
+"""``lobster agent --stdio`` emits schema-valid protocol v1.
 
 Each scenario runs the real CLI on a replay script, validates every stdout line
 against ``lobster/schemas/protocol-v1.schema.json`` and compares the

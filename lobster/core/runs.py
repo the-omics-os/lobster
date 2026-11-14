@@ -20,7 +20,7 @@ Event vocabulary is the client stream (``AgentClient._stream_query``) plus:
   replaces the client's ``interrupt`` event. Lobster mints ``decision_id``
   once per question; LangGraph's ``interrupt_id`` stays inside the engine.
 
-The decision contract is engine-owned and frozen (Phase 0 A2): a question
+The decision contract is engine-owned and frozen: a question
 that surfaces again keeps its ``decision_id`` and gets the next
 ``request_version``; an answer carries ``source`` (``human`` or ``model``)
 and an optional ``comment``; a refused answer leaves the run unchanged.
@@ -38,7 +38,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled"})
 # shortcut: in-memory buffer capped per run; becomes sqlite-backed with the
-# SqliteSaver work (Phase 0 B4).
+# SqliteSaver work.
 _MAX_EVENTS_PER_RUN = 10_000
 
 
@@ -53,7 +53,7 @@ class DecisionError(RuntimeError):
 
 _RUN_ID_RE = re.compile(r"run_[0-9a-f]{32}")
 ANSWER_SOURCES = frozenset({"human", "model"})
-# Closed list for a cancelled run (Phase 0 A2, C5); ``failed`` keeps its own.
+# Closed list for a cancelled run; ``failed`` keeps its own.
 CANCEL_REASONS = frozenset({"cancel", "decision_abandoned", "decision_unsupported"})
 # Key of the resume value ``ask_user`` unwraps (answer plus who gave it).
 DECISION_ENVELOPE = "__lobster_decision__"
