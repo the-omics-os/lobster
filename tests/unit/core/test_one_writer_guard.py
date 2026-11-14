@@ -389,3 +389,152 @@ def test_the_save_is_native_again_after_the_forced_fallback(tmp_path, way):
     back = ad.read_h5ad(_write(way, adata, tmp_path))
     assert back.obs.index.name is None and back.var.index.name is None
     assert back.uns["other"]["x"] is None
+
+
+# --- categorical columns with pandas-3 string categories keep what the session writer keeps ---
+
+
+def _string_categorical(values, categories, ordered=False):
+    """A categorical whose categories are pandas' default string dtype (the notebook kernel's)."""
+    from lobster.core.utils.h5ad_utils import is_arrow_dtype
+
+    with pd.option_context("future.infer_string", True):
+        column = pd.Series(
+            pd.Categorical(values, categories=categories, ordered=ordered)
+        )
+    assert is_arrow_dtype(column.cat.categories)
+    return column
+
+
+def _with_categorical(axis, column):
+    adata = _adata()
+    table = getattr(adata, axis)
+    table["group"] = column.set_axis(table.index).to_numpy()
+    if not isinstance(table["group"].dtype, pd.CategoricalDtype):
+        table["group"] = pd.Categorical(
+            column.to_numpy(),
+            categories=column.cat.categories,
+            ordered=column.cat.ordered,
+        )
+    assert isinstance(table["group"].cat.categories.dtype, pd.StringDtype)
+    return adata
+
+
+NUMBER_ORDER = ["0", "1", "2", "10", "11", "12"]
+
+
+@pytest.mark.parametrize("way", WAYS)
+@pytest.mark.parametrize("axis", ["obs", "var"])
+def test_ten_or_more_categories_keep_their_number_order(tmp_path, way, axis):
+    n = 4 if axis == "obs" else 3
+    column = _string_categorical(NUMBER_ORDER[:n], NUMBER_ORDER)
+    back = getattr(
+        ad.read_h5ad(_write(way, _with_categorical(axis, column), tmp_path)), axis
+    )
+    assert list(back["group"].cat.categories) == NUMBER_ORDER
+
+
+@pytest.mark.parametrize("way", WAYS)
+@pytest.mark.parametrize("axis", ["obs", "var"])
+def test_unused_categories_are_kept(tmp_path, way, axis):
+    n = 4 if axis == "obs" else 3
+    column = _string_categorical(["a", "b", "a", "b"][:n], ["b", "a", "unused"])
+    back = getattr(
+        ad.read_h5ad(_write(way, _with_categorical(axis, column), tmp_path)), axis
+    )
+    assert list(back["group"].cat.categories) == ["b", "a", "unused"]
+
+
+@pytest.mark.parametrize("way", WAYS)
+@pytest.mark.parametrize("axis", ["obs", "var"])
+def test_an_ordered_categorical_stays_ordered(tmp_path, way, axis):
+    n = 4 if axis == "obs" else 3
+    column = _string_categorical(
+        ["lo", "hi", "lo", "hi"][:n], ["lo", "hi"], ordered=True
+    )
+    back = getattr(
+        ad.read_h5ad(_write(way, _with_categorical(axis, column), tmp_path)), axis
+    )
+    assert back["group"].cat.ordered and list(back["group"].cat.categories) == [
+        "lo",
+        "hi",
+    ]
+
+
+@pytest.mark.parametrize("way", WAYS)
+@pytest.mark.parametrize("axis", ["obs", "var"])
+def test_a_missing_value_stays_missing_not_an_empty_category(tmp_path, way, axis):
+    n = 4 if axis == "obs" else 3
+    column = _string_categorical(["a", None, "b", "a"][:n], ["a", "b"])
+    back = getattr(
+        ad.read_h5ad(_write(way, _with_categorical(axis, column), tmp_path)), axis
+    )
+    assert back["group"].isna().tolist() == [False, True, False, False][:n]
+    assert list(back["group"].cat.categories) == ["a", "b"]  # no '' category
+
+
+def test_a_missing_value_in_a_table_in_uns_stays_missing(tmp_path):
+    table = pd.DataFrame(
+        {"group": _string_categorical(["a", None, "10", "2"], ["a", "2", "10"])}
+    )
+    adata = _adata()
+    adata.uns["tbl"] = table
+    back = ad.read_h5ad(_write("writer", adata, tmp_path)).uns["tbl"]
+    assert isinstance(back, pd.DataFrame)
+    assert back["group"].isna().tolist() == [False, True, False, False]
+    assert list(back["group"].cat.categories) == ["a", "2", "10"]
+
+
+def test_a_table_in_uns_keeps_category_order_and_unused_categories(tmp_path):
+    table = pd.DataFrame(
+        {"group": _string_categorical(["10", "2"], ["2", "10", "unused"], ordered=True)}
+    )
+    adata = _adata()
+    adata.uns["tbl"] = table
+    back = ad.read_h5ad(_write("writer", adata, tmp_path)).uns["tbl"]["group"]
+    assert list(back.cat.categories) == ["2", "10", "unused"] and back.cat.ordered
+
+
+@pytest.mark.parametrize("way", WAYS)
+def test_object_categories_are_written_as_before(tmp_path, way):
+    adata = _adata()
+    adata.obs["group"] = pd.Categorical(
+        ["10", None, "2", "10"], categories=["2", "10", "unused"], ordered=True
+    )
+    assert adata.obs["group"].cat.categories.dtype == object
+    back = ad.read_h5ad(_write(way, adata, tmp_path)).obs["group"]
+    assert list(back.cat.categories) == ["2", "10", "unused"] and back.cat.ordered
+    assert back.isna().tolist() == [False, True, False, False]
+
+
+def test_categories_that_repeat_as_text_fall_back_to_the_rebuild(caplog):
+    import logging
+    from types import SimpleNamespace
+
+    from lobster.core.utils.h5ad_utils import plain_categorical
+
+    column = SimpleNamespace(
+        cat=SimpleNamespace(
+            categories=[1, "1"], codes=np.array([0, 1, -1]), ordered=False
+        ),
+        to_numpy=lambda dtype=None, na_value=None: np.array(["1", "1", ""]),
+    )
+    with caplog.at_level(logging.DEBUG, logger="lobster.core.utils.h5ad_utils"):
+        result = plain_categorical(column)
+    assert list(result.categories) == ["", "1"] and list(result) == ["1", "1", ""]
+    assert any("repeat" in record.message for record in caplog.records)
+
+
+def test_the_inspect_tool_counts_the_same_categories_for_both_write_paths(tmp_path):
+    from lobster.cli_internal.mcp_inspect import inspect
+
+    values, categories = ["a", None, "b", "a"], ["a", "b"]
+    session = _adata()
+    session.obs["group"] = pd.Categorical(values, categories=categories)
+    assert session.obs["group"].cat.categories.dtype == object
+    notebook = _with_categorical("obs", _string_categorical(values, categories))
+    counts = [
+        inspect(_write(way, adata, tmp_path), "obs:group", 10)["n_categories"]
+        for way, adata in (("writer", session), ("cell", notebook))
+    ]
+    assert counts == [2, 2]
