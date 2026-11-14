@@ -5,6 +5,7 @@ the correct symbols after extraction from cli.py.
 """
 
 import importlib
+import types
 import sys
 
 
@@ -149,6 +150,44 @@ def test_cli_is_wiring_only():
             )
 
 
+def _put_modules_back(saved, cleared):
+    """Restore sys.modules from a snapshot and the attributes imports replaced."""
+    sys.modules.clear()
+    sys.modules.update(saved)
+    # importing sets each module as an attribute of its parent package; point the
+    # cleared ones back, and leave any attribute that is not a module alone
+    for name in cleared:
+        parent, _, child = name.rpartition(".")
+        current = getattr(saved.get(parent), child, None)
+        if isinstance(current, types.ModuleType) and current is not saved[name]:
+            setattr(saved[parent], child, saved[name])
+
+
+def test_module_restore_leaves_attributes_that_are_not_modules():
+    """A parent attribute that shadows a submodule name keeps its own value."""
+    parent = types.ModuleType("restore_probe")
+    original = types.ModuleType("restore_probe.plain")
+    shadowed = types.ModuleType("restore_probe.shadowed")
+    parent.plain = original
+    parent.shadowed = shadow = lambda: "kept"
+    saved = {
+        "restore_probe": parent,
+        "restore_probe.plain": original,
+        "restore_probe.shadowed": shadowed,
+    }
+    # what a fresh import leaves behind
+    parent.plain = types.ModuleType("restore_probe.plain")
+    snapshot = dict(sys.modules)
+    try:
+        _put_modules_back(saved, ["restore_probe.plain", "restore_probe.shadowed"])
+        assert sys.modules["restore_probe.plain"] is original
+        assert parent.plain is original
+        assert parent.shadowed is shadow
+    finally:
+        sys.modules.clear()
+        sys.modules.update(snapshot)
+
+
 def test_no_circular_imports():
     """Importing any heavy module must not trigger import of lobster.cli."""
     # The test removes modules and imports them again. Put the original module
@@ -179,13 +218,7 @@ def test_no_circular_imports():
             "lobster.cli" not in sys.modules
         ), "Importing heavy modules triggered import of lobster.cli -- circular import detected"
     finally:
-        sys.modules.clear()
-        sys.modules.update(saved)
-        # importing sets each module as an attribute of its parent package
-        for name, module in saved.items():
-            parent, _, child = name.rpartition(".")
-            if parent in saved and getattr(saved[parent], child, module) is not module:
-                setattr(saved[parent], child, module)
+        _put_modules_back(saved, modules_to_clear)
 
 
 def test_cli_help_outputs():
