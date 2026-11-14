@@ -181,3 +181,36 @@ def test_w4_a_fallback_write_that_differs_stays_a_mismatch_and_says_so(
     assert result.exit_code == 1 and out["verdict"] == "MISMATCH", out
     assert any("uns/cfg/n_top" in d for s in out["report"]["slots"] for d in s["diffs"])
     assert "The notebook wrote without the session writer." in out["notes"]
+
+
+@needs_kernel
+@pytest.mark.xfail(
+    strict=True,
+    reason="clustering: with 10 or more clusters the notebook writes the leiden "
+    "categories in text order ('0','1','10','2',...), the session in number order",
+)
+def test_the_notebook_keeps_the_category_order_of_ten_or_more_clusters(
+    tmp_path, monkeypatch
+):
+    import anndata as ad
+
+    workspace, notebook, raw = _tool_session(tmp_path, monkeypatch, CHAINS["B4"])
+    saved = ad.read_h5ad(next((workspace / "data").glob("*clustered.h5ad")))
+    categories = list(saved.obs["leiden"].cat.categories)
+    assert (
+        len(categories) >= 10
+    ), categories  # the order differs only from 10 clusters on
+    assert categories == sorted(categories, key=int)  # the session: number order
+
+    result = _verify_real(workspace, notebook, raw)
+    out = json.loads(result.stdout)
+    replayed = ad.read_h5ad(next(workspace.glob("replays/*/out_*clustered.h5ad")))
+    # every cell has the same label: only the order of the categories can differ
+    assert saved.obs["leiden"].astype(str).tolist() == (
+        replayed.obs["leiden"].astype(str).tolist()
+    )
+    assert list(replayed.obs["leiden"].cat.categories) == categories
+    assert result.exit_code == 0 and out["verdict"] == "MATCH", (
+        out["verdict"],
+        [s["diffs"][:5] for s in out["report"]["slots"]],
+    )
