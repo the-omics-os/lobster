@@ -280,7 +280,7 @@ def _pick_problem(
             return f"{index + 1} is not an option (1 to {len(options)})."
         if options[index].get("unavailable"):
             option = options[index]
-            return f"{option['id']} can't be picked: {option['unavailable']}."
+            return f"{option['id']} can't be picked: {option['unavailable'].rstrip('.')}."
     if len(set(picks)) != len(picks):
         return "Each option can be picked once."
     if not low <= len(picks) <= high:
