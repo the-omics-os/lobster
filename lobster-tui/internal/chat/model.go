@@ -31,8 +31,14 @@ import (
 	"github.com/the-omics-os/lobster-tui/internal/biocomp"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/bioselect"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/celltype"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/choice"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/choicelist"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/confirm"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/dashboard"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/ontologyterm"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/qcdash"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/sampleplate"
+	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/sequenceview"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/textinput"
 	_ "github.com/the-omics-os/lobster-tui/internal/biocomp/threshold"
 	"github.com/the-omics-os/lobster-tui/internal/i18n"
@@ -668,9 +674,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	m.input, cmd = m.input.Update(msg)
-	if cmd != nil {
-		cmds = append(cmds, cmd)
+	// Not while a question is on screen: a paste meant for it would also
+	// land in the hidden chat box and be sent with the next message.
+	if m.activeComponent == nil {
+		m.input, cmd = m.input.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -749,7 +759,7 @@ func (m Model) viewInline() tea.View {
 	// declared mode — there is no overlay layer to composite onto.
 	if m.activeComponent != nil {
 		comp := m.activeComponent.Component
-		inlineView, panicked := safeView(comp, m.width, m.height)
+		inlineView, panicked := m.inlineQuestion(comp, m.inlineComponentHeight())
 		if panicked {
 			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
 			m.activeComponent = nil
@@ -771,11 +781,12 @@ func (m Model) viewInline() tea.View {
 		b.WriteByte('\n')
 	}
 
-	// Input / confirm.
+	// Input / confirm. No composer while a question is on screen: keys and
+	// pastes go to the question, so a prompt there would only mislead.
 	if m.pendingConfirm != nil {
 		b.WriteString(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 		b.WriteByte('\n')
-	} else {
+	} else if m.activeComponent == nil {
 		if m.inlineHasPromptSpacer() {
 			b.WriteByte('\n')
 		}
@@ -888,6 +899,13 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 	case protocol.TypeDone:
 		var dp protocol.DonePayload
 		_ = protocol.DecodePayload(msg.Message, &dp)
+
+		if dp.Summary != "interrupt" && m.activeComponent != nil {
+			// The turn is over, so nothing reads this screen's reply any
+			// more: never leave it drawn to be answered into the void.
+			m.dropComponent()
+			m.appendMessage(alertMessage("warning", staleComponentNotice), false)
+		}
 
 		if dp.Summary == "cancelled" {
 			// Cancel: discard the unfinished turn. Its partial stream and any
@@ -1179,6 +1197,17 @@ func (m Model) handleProtocol(msg protocolMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, waitForProtocolMsg(m.handler)
 
+	case protocol.TypeComponentClose:
+		var p protocol.ComponentClosePayload
+		_ = protocol.DecodePayload(msg.Message, &p)
+		if m.activeComponent != nil && (msg.ID == "" || msg.ID == m.activeComponent.MsgID) {
+			m.dropComponent()
+		}
+		if p.Message != "" {
+			m.appendMessage(alertMessage("warning", p.Message), false)
+		}
+		return m, waitForProtocolMsg(m.handler)
+
 	case protocol.TypeComponentSetData:
 		var p protocol.ComponentSetDataPayload
 		if err := protocol.DecodePayload(msg.Message, &p); err == nil {
@@ -1207,13 +1236,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Global keys that must ALWAYS work, even with an active component.
+	// ctrl+c on a question cancels only the question: the supervisor gets the
+	// cancel and replies. Cancelling the turn too would drop that cancel from
+	// the conversation. A second ctrl+c (no question now) cancels the turn.
 	if msg.String() == "ctrl+c" && m.activeComponent != nil {
 		m.sendComponentResponse(m.activeComponent.MsgID, "cancel", map[string]any{"reason": "ctrl+c"})
-		m.activeComponent = nil
-		m.pendingChangeEvent = nil
-		m.changeDebounceActive = false
-		m.recalculateViewportHeight()
-		// Fall through to the normal ctrl+c handler below.
+		m.dropComponent()
+		m.appendMessage(alertMessage("warning", questionCancelledNotice), false)
+		return m, nil
 	}
 
 	// Intercept keys for active BioComp overlay component.
@@ -1716,6 +1746,27 @@ func (m *Model) applyLang(code string) {
 // rebuildViewport reconstructs the viewport content from messages + active stream.
 func (m *Model) rebuildViewport() {
 	m.rebuildViewportWithMode(false)
+}
+
+// staleComponentNotice is shown when a turn ends with a question still drawn.
+const staleComponentNotice = "This question was closed; nothing was sent."
+
+// questionCancelledNotice is shown when ctrl+c cancels the question on screen.
+const questionCancelledNotice = "Question cancelled"
+
+// dropComponent removes the active component without replying for it.
+func (m *Model) dropComponent() {
+	m.activeComponent = nil
+	m.pendingChangeEvent = nil
+	m.changeDebounceActive = false
+	m.recalculateViewportHeight()
+}
+
+func alertMessage(level, message string) ChatMessage {
+	return ChatMessage{
+		Role:   "alert_" + level,
+		Blocks: []ContentBlock{BlockAlert{Level: level, Message: message}},
+	}
 }
 
 func (m *Model) appendMessage(msg ChatMessage, forceBottom bool) {
@@ -2225,12 +2276,12 @@ func (m Model) layoutReservedRowsLegacy() int {
 	if m.activeComponent != nil {
 		if m.inline {
 			// In inline mode, all components render as inline blocks.
-			inlineView := m.activeComponent.Component.View(m.width, m.height)
+			inlineView, _ := m.inlineQuestion(m.activeComponent.Component, m.inlineComponentHeight())
 			if inlineView != "" {
 				rows += lineCount(inlineView)
 			}
 		} else if m.activeComponent.Component.Mode() == "inline" {
-			inlineView := m.activeComponent.Component.View(m.width, m.height)
+			inlineView, _ := m.inlineQuestion(m.activeComponent.Component, m.height)
 			if inlineView != "" {
 				rows += lineCount(inlineView)
 			}
@@ -2243,6 +2294,8 @@ func (m Model) layoutReservedRowsLegacy() int {
 	if m.activeComponent != nil && m.activeComponent.Component.Mode() == "overlay" && !m.inline {
 		_, oh := biocomp.OverlaySize(m.width, m.height, "small")
 		rows += oh
+	} else if m.activeComponent != nil && m.inline {
+		// No composer while a question is on screen (see View).
 	} else if m.pendingConfirm != nil {
 		rows += lineCount(renderConfirmPrompt(m.pendingConfirm, m.styles, m.width))
 	} else {
@@ -2594,6 +2647,22 @@ func safeHandleMsg(comp biocomp.BioComponent, msg tea.Msg) (result *biocomp.Comp
 	}()
 	result, cmd = comp.HandleMsg(msg)
 	return result, cmd, false
+}
+
+// inlineQuestion draws a component inline: its screen, then its guide (a
+// short instruction and the key legend, see biocomp.Guide), all within
+// height. The screen gets the rows the guide doesn't need.
+func (m Model) inlineQuestion(comp biocomp.BioComponent, height int) (string, bool) {
+	guide := biocomp.Guide(comp, m.width, height)
+	budget := height
+	if guide != "" {
+		budget = max(height-lineCount(guide), 3)
+	}
+	view, panicked := safeView(comp, m.width, budget)
+	if panicked || view == "" || guide == "" {
+		return view, panicked
+	}
+	return view + "\n" + guide, false
 }
 
 // safeView wraps comp.View in a recover boundary. Returns empty string on panic.

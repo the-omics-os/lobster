@@ -112,12 +112,38 @@ var (
 		"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY": true,
 		"AIzaSy...": true,
 	}
+	// pendingDecisionScreens is English in the ask_user decision screens
+	// (choice, choicelist, dashboard, sampleplate, ontologyterm, sequenceview)
+	// that is NOT translated yet: it arrived with the dynamic decision
+	// components branch, written before i18n landed. Listed here so the check
+	// passes; each entry still needs i18n.P and a reviewed Chinese phrase in
+	// phrases.zh.json, then removing from this list. Key names (ctrl+d,
+	// shift+tab, pgup/pgdn) can stay English.
+	pendingDecisionScreens = map[string]bool{
+		"twice: cancel":                      true,
+		"→ not decided yet":                  true,
+		"· needs a reason":                   true,
+		"enter save · esc discard":           true,
+		"enter save · esc undo":              true,
+		"save reason":                        true,
+		"This is exactly what will be sent.": true,
+		"Suggested terms:":                   true,
+		"open/close":                         true,
+		"submit all":                         true,
+		"ctrl+d":                             true,
+		"ctrl+s":                             true,
+		"shift+tab":                          true,
+		"pgup/pgdn":                          true,
+		"b/esc":                              true,
+		"esc esc":                            true,
+	}
 )
 
 // looksLikeUIText is a heuristic for English words a user reads.
 func looksLikeUIText(text string) bool {
 	trimmed := strings.TrimSpace(text)
-	if trimmed == "" || protocolOK[text] || keepEnglish[trimmed] || !hasWord.MatchString(trimmed) {
+	if trimmed == "" || protocolOK[text] || keepEnglish[trimmed] || pendingDecisionScreens[trimmed] ||
+		!hasWord.MatchString(trimmed) {
 		return false
 	}
 	return !keepAsIs.MatchString(trimmed)

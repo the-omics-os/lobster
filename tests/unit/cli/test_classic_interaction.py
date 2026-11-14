@@ -159,3 +159,350 @@ def test_malformed_payload_falls_back_to_text(payload):
     with patch("builtins.input", return_value="answer") as prompt:
         assert handle_interrupt_classic(payload) == {"answer": "answer"}
     prompt.assert_called_once()
+
+
+# --- ask_user decision requests: structured plain-text prompts ---
+
+
+def _decision(*fields, view="default", checks=None, **envelope):
+    from lobster.services.interaction.component_schemas import (
+        AskUserContext,
+        DecisionRequest,
+    )
+
+    context = AskUserContext.model_validate(
+        {"view": view, "fields": list(fields), "checks": checks or []}
+    )
+    return DecisionRequest(
+        question="Review",
+        view=context.view,
+        fields=context.fields,
+        checks=context.checks,
+        **envelope,
+    ).to_wire()
+
+
+def _classic(request, typed, capsys):
+    """Answer a request with the typed lines; return (result, printed text).
+
+    The result is what ask_user's contract check makes of the answer.
+    """
+    from lobster.services.interaction.component_schemas import (
+        DecisionAnswer,
+        DecisionRequest,
+        check_answer,
+    )
+
+    with patch("builtins.input", side_effect=list(typed)) as prompt:
+        reply = handle_interrupt_classic(request)
+    assert prompt.call_count == len(typed)  # every typed line was asked for
+    result = check_answer(
+        DecisionRequest.model_validate(request), DecisionAnswer.model_validate(reply)
+    )
+    return result, capsys.readouterr().out
+
+
+SOURCE = {
+    "key": "source",
+    "type": "choice",
+    "details": "Recommended: SRC-A",
+    "options": [
+        {"id": "SRC-A", "label": "Author matrix", "details": "Raw counts"},
+        "SRC-B",
+        {"id": "SRC-C", "unavailable": "Normalized; build unknown"},
+    ],
+}
+QC = {
+    "key": "qc",
+    "type": "choice",
+    "question": "Keep each flagged sample?",
+    "for_each": [
+        {"id": "S02", "label": "Donor B", "details": "Low library size"},
+        "S06",
+        {"id": "S07", "unavailable": "already removed"},
+    ],
+    "options": [
+        "retain",
+        {"id": "exclude", "fields": [{"key": "reason", "type": "text"}]},
+        "defer",
+    ],
+}
+
+
+def test_choice_lists_numbered_options_and_refuses_unavailable(capsys):
+    result, shown = _classic(_decision(SOURCE), ["3", "7", "1"], capsys)
+    assert result["answer"] == {"source": {"id": "SRC-A"}}
+    assert "1. Author matrix (SRC-A) — Raw counts" in shown
+    assert "3. SRC-C (unavailable: Normalized; build unknown)" in shown
+    assert "SRC-C can't be picked: Normalized; build unknown." in shown
+    assert "7 is not an option (1 to 3)." in shown
+
+
+def test_count_takes_comma_separated_numbers(capsys):
+    field = {
+        "key": "treated",
+        "type": "choice",
+        "count": {"min": 1, "max": 2},
+        "options": ["S05", "S06", "S07"],
+    }
+    result, shown = _classic(_decision(field), ["1, 2, 3", "1, 3"], capsys)
+    assert result["answer"] == {"treated": [{"id": "S05"}, {"id": "S07"}]}
+    assert "Pick between 1 and 2." in shown
+
+
+def test_for_each_asks_each_available_item_and_a_reason_to_exclude(capsys):
+    result, shown = _classic(
+        _decision(QC), ["1", "2", "", "high mito fraction"], capsys
+    )
+    assert result["answer"] == {
+        "qc": {
+            "S02": {"id": "retain"},
+            "S06": {"id": "exclude", "fields": {"reason": "high mito fraction"}},
+        }
+    }
+    assert "S07: not answered here (already removed)" in shown
+    assert "2. exclude (asks for a reason)" in shown
+    assert "An answer is needed." in shown  # an empty reason is refused
+
+
+def test_plate_asks_each_sample_and_lists_unavailable_ones(capsys):
+    plate = {
+        "key": "groups",
+        "type": "choice",
+        "view": "plate_map",
+        "for_each": [
+            {"id": "S01", "label": "Donor A"},
+            {"id": "S08", "label": "Donor H", "details": "condition unknown"},
+            {"id": "S09", "unavailable": "consent withdrawn"},
+        ],
+        "options": ["control", "treated"],
+        "default": {"S01": {"id": "control"}},
+    }
+    with patch("builtins.input", side_effect=["", "2"]) as prompt:
+        reply = handle_interrupt_classic(_decision(plate))
+    asked = [call.args[0] for call in prompt.call_args_list]
+    assert asked == [
+        "A1 S01 Donor A [Enter = 1]: ",
+        "A2 S08 Donor H (condition unknown): ",
+    ]
+    assert reply["answer"] == {
+        "groups": {"S01": {"id": "control"}, "S08": {"id": "treated"}}
+    }
+    shown = capsys.readouterr().out
+    assert "Not assignable: A3 S09 — consent withdrawn" in shown
+    assert "No positions were given: the wells are in list order." in shown
+
+
+def test_typed_number_is_asked_again_until_it_is_a_number(capsys):
+    field = {"key": "reads", "type": "number", "integer": True, "min": 0}
+    result, shown = _classic(_decision(field), ["lots", "2.5", "10000"], capsys)
+    assert result["answer"] == {"reads": 10000}
+    assert "'lots' is not a number." in shown
+    assert "2.5 is not a whole number." in shown
+
+
+def test_slider_number_is_kept_within_its_bounds(capsys):
+    field = {
+        "key": "mito",
+        "type": "number",
+        "view": "slider",
+        "min": 0,
+        "max": 0.5,
+        "default": 0.2,
+    }
+    result, shown = _classic(_decision(field), ["0.9", "x", "0.15"], capsys)
+    assert result["answer"] == {"mito": 0.15}
+    assert "Enter a value from 0 to 0.5." in shown and "Enter a number." in shown
+    result, _ = _classic(_decision(field), [""], capsys)
+    assert result["answer"] == {"mito": 0.2}  # the default, kept on Enter
+
+
+def test_whole_number_slider_with_a_big_range(capsys):
+    """The adapter's step grows with the range; classic still asks for a whole
+    number and shows the bounds without exponent form."""
+    field = {
+        "key": "floor",
+        "type": "number",
+        "view": "slider",
+        "integer": True,
+        "min": 2_000_000,
+        "max": 20_000_000,
+    }
+    result, shown = _classic(_decision(field), ["2500000.5", "2500000"], capsys)
+    assert result["answer"] == {"floor": 2_500_000}
+    assert "A whole number from 2,000,000 to 20,000,000" in shown
+    assert "Enter a whole number." in shown
+
+
+def test_text_needs_an_answer(capsys):
+    result, shown = _classic(
+        _decision({"key": "note", "type": "text"}), ["", "looks fine"], capsys
+    )
+    assert result["answer"] == {"note": "looks fine"}
+    assert "An answer is needed." in shown
+
+
+def _small_dashboard():
+    return _decision(
+        {**SOURCE, "question": "Count source?"},
+        {"key": "notes", "type": "text", "question": "Anything to note?"},
+        view="dashboard",
+    )
+
+
+def test_dashboard_asks_sections_in_order_then_confirms(capsys):
+    result, shown = _classic(_small_dashboard(), ["2", "ok", "y"], capsys)
+    assert result["action"] == "submit"
+    assert result["answer"] == {"source": {"id": "SRC-B"}, "notes": "ok"}
+    assert shown.index("Count source?") < shown.index("Anything to note?")
+    assert "Count source?: SRC-B" in shown  # the summary before confirming
+
+
+def test_dashboard_empty_enter_at_the_confirm_asks_again(capsys):
+    """Enter alone no longer throws every answer away: it asks again."""
+    result, shown = _classic(_small_dashboard(), ["2", "ok", "", "y"], capsys)
+    assert result["action"] == "submit"
+    assert "Type y to send these answers, or n to decide later." in shown
+
+
+@pytest.mark.parametrize("typed", ["n", "No"])
+def test_dashboard_answered_no_is_deferred(typed, capsys):
+    result, _ = _classic(_small_dashboard(), ["2", "ok", typed], capsys)
+    assert result["action"] == "defer"
+
+
+def test_dashboard_confirm_asks_again_on_anything_but_yes_or_no(capsys):
+    """A typo at the confirm prompt never throws the answers away."""
+    typed = ["2", "ok", "yy", "send", "yes"]
+    result, shown = _classic(_small_dashboard(), typed, capsys)
+    assert result["action"] == "submit"
+    assert result["answer"] == {"source": {"id": "SRC-B"}, "notes": "ok"}
+    assert shown.count("Type y to send these answers, or n to decide later.") == 2
+
+
+@pytest.mark.parametrize("key, action", [("d", "defer"), ("q", "cancel")])
+def test_d_and_q_still_work_at_the_confirm_prompt(key, action, capsys):
+    result, _ = _classic(_small_dashboard(), ["2", "ok", "x", key], capsys)
+    assert result["action"] == action
+    assert "answer" not in result
+
+
+@pytest.mark.parametrize("key, action", [("d", "defer"), ("q", "cancel")])
+def test_d_defers_and_q_cancels_at_any_prompt(key, action, capsys):
+    result, _ = _classic(_decision(SOURCE), [key], capsys)
+    assert result["action"] == action
+    result, _ = _classic(_decision(QC), ["2", key], capsys)  # at the reason prompt
+    assert result["action"] == action
+
+
+def test_reask_prints_the_problems_first_and_keeps_the_answers(capsys):
+    from lobster.services.interaction.component_schemas import (
+        DecisionRequest,
+        Problem,
+        reask,
+    )
+
+    first = DecisionRequest.model_validate(_decision(SOURCE))
+    problem = Problem(path="source", message="pick a raw count table")
+    request = reask(first, [problem], {"source": {"id": "SRC-B"}}).to_wire()
+    with patch("builtins.input", side_effect=[""]) as prompt:
+        reply = handle_interrupt_classic(request)
+    shown = capsys.readouterr().out
+    assert reply["responds_to"]["request_version"] == 2
+    assert reply["answer"] == {"source": {"id": "SRC-B"}}  # kept on Enter
+    assert prompt.call_args.args[0] == "Number [Enter = 2]: "
+    assert shown.index("⚠ pick a raw count table") < shown.index("1. Author matrix")
+
+
+def test_shape_the_terminal_cannot_show_is_cancelled_with_a_reason(capsys):
+    request = _decision({"key": "times", "type": "number", "count": {"min": 1}})
+    with patch("builtins.input") as typed:
+        reply = handle_interrupt_classic(request)
+    typed.assert_not_called()  # never asks for (and never guesses) an answer
+    assert reply["action"] == "cancel"
+    assert "Don't ask again with the same shape" in reply["comment"]
+    assert "can't show" in capsys.readouterr().out
+
+
+def test_plate_with_more_than_nine_options_is_still_asked_in_text(capsys):
+    """Only the Go plate is limited to 9 number keys; the text prompt is not."""
+    plate = {
+        "key": "groups",
+        "type": "choice",
+        "view": "plate_map",
+        "for_each": ["S01"],
+        "options": [f"g{n}" for n in range(10)],
+    }
+    result, _ = _classic(_decision(plate), ["10"], capsys)
+    assert result["answer"] == {"groups": {"S01": {"id": "g9"}}}
+
+
+def test_classic_answers_go_through_the_checks_and_reask():
+    """Real checkpointed graph and ask_user: an answer that empties a group is
+    asked again with the problem shown and the answers kept, then accepted."""
+    from langgraph.types import Command
+
+    from tests.unit.cli.test_decision_screens import (
+        _CONTROLS_DASHBOARD,
+        _one_question_graph,
+    )
+
+    graph = _one_question_graph("Review groups and QC", _CONTROLS_DASHBOARD)
+    config = {"configurable": {"thread_id": "full-path"}}
+    rounds = [
+        # groups kept as pre-filled; both controls excluded; confirmed.
+        ["", "", "", "", "2", "few reads", "2", "degraded", "y"],
+        # asked again: groups kept, S01 still excluded (reason kept), S02 kept.
+        ["", "", "", "", "", "", "1", "y"],
+    ]
+    graph_input, printed = {"messages": []}, []
+    for typed in rounds:
+        for _ in graph.stream(graph_input, config, stream_mode="updates"):
+            pass
+        (task,) = [t for t in graph.get_state(config).tasks if t.interrupts]
+        (pending,) = task.interrupts
+        with patch("builtins.input", side_effect=typed):
+            with patch("builtins.print", side_effect=lambda *a: printed.append(a)):
+                reply = handle_interrupt_classic(pending.value)
+        graph_input = Command(resume={pending.id: reply})
+    for _ in graph.stream(graph_input, config, stream_mode="updates"):
+        pass
+    messages = graph.get_state(config).values["messages"]
+    (tool,) = [m for m in messages if m.type == "tool"]
+    import json
+
+    result = json.loads(tool.content)
+    assert (result["action"], result["attempts"]) == ("submit", 2)
+    assert result["answer"]["qc"] == {
+        "S01": {"id": "exclude", "fields": {"reason": "few reads"}},
+        "S02": {"id": "retain"},
+    }
+    text = "\n".join(" ".join(map(str, line)) for line in printed)
+    assert "⚠ 'control' has no items left after removing S01, S02" in text
+
+
+def test_plate_asks_a_reason_after_an_option_that_needs_one(capsys):
+    plate = {
+        "key": "groups",
+        "type": "choice",
+        "view": "plate_map",
+        "for_each": [
+            {"id": "S01", "position": "D1"},
+            {"id": "S02", "position": "D2", "warning": "low RNA yield"},
+        ],
+        "options": [
+            "vehicle",
+            {"id": "leave_out", "fields": [{"key": "reason", "type": "text"}]},
+        ],
+        "default": {"S01": {"id": "vehicle"}},
+    }
+    result, shown = _classic(_decision(plate), ["", "2", "", "low RNA yield"], capsys)
+    assert result["answer"] == {
+        "groups": {
+            "S01": {"id": "vehicle"},
+            "S02": {"id": "leave_out", "fields": {"reason": "low RNA yield"}},
+        }
+    }
+    assert "2. leave_out (asks for a reason)" in shown
+    assert "An answer is needed." in shown  # an empty reason is refused
+    assert "No positions were given" not in shown

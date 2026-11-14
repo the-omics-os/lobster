@@ -126,3 +126,9 @@ func (t *TextInputComponent) KeyBindings() []key.Binding {
 }
 
 func (t *TextInputComponent) ChangeEvent() map[string]any { return nil }
+
+// Draft returns the text on screen in the reply's shape, so a dashboard can
+// tell an edit from the answer it recorded.
+func (t *TextInputComponent) Draft() map[string]any {
+	return map[string]any{"answer": t.input.Value()}
+}

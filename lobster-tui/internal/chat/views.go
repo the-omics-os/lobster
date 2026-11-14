@@ -930,7 +930,7 @@ func (m Model) renderInputRegion(layout Layout) string {
 	// Inline BioComp component (rendered as block above composer).
 	if m.activeComponent != nil && m.activeComponent.Component != nil && m.activeComponent.Component.Mode() == "inline" {
 		comp := m.activeComponent.Component
-		inlineView, panicked := safeView(comp, m.width, m.height)
+		inlineView, panicked := m.inlineQuestion(comp, m.height)
 		if panicked {
 			m.sendComponentResponse(m.activeComponent.MsgID, "error", map[string]any{"error": "view_panic"})
 		} else if inlineView != "" {
@@ -1038,6 +1038,10 @@ func (m Model) renderComponentFooter(layout Layout) string {
 		contentW = 1
 	}
 	contentH := layout.FooterHeight - 3 // borders + help bar
+	hint := biocomp.HintFor(comp)
+	if hint != "" {
+		contentH-- // the instruction sits above the help bar
+	}
 	if contentH < 1 {
 		contentH = 1
 	}
@@ -1049,6 +1053,9 @@ func (m Model) renderComponentFooter(layout Layout) string {
 	}
 
 	helpBar := biocomp.RenderHelpBar(comp.KeyBindings(), contentW)
+	if hint != "" {
+		helpBar = biocomp.HintStyle.Width(contentW).Render(hint) + "\n" + helpBar
+	}
 	frame := biocomp.RenderFrame(comp.Name(), content, helpBar, m.width, layout.FooterHeight)
 
 	return m.styles.FooterComponentFrame.

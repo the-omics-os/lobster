@@ -1,0 +1,55 @@
+{
+  "answers": {
+    "direction": {
+      "selected": [
+        {
+          "id": "treated_vs_control"
+        }
+      ]
+    },
+    "groups": {
+      "assignments": {
+        "S01": "control",
+        "S02": "control",
+        "S03": "leave_out",
+        "S04": "leave_out",
+        "S05": "treated",
+        "S06": "treated",
+        "S07": "treated",
+        "S08": "treated"
+      },
+      "changes": [
+        {
+          "assigned": "control",
+          "sample_id": "S01",
+          "supplied": "leave_out"
+        }
+      ],
+      "reasons": {
+        "S03": "pilot run",
+        "S04": "pilot run"
+      },
+      "reviewed_flags": []
+    },
+    "qc": {
+      "answers": {
+        "S02": {
+          "fields": {
+            "reason": "low library size"
+          },
+          "id": "exclude"
+        },
+        "S06": {
+          "id": "retain"
+        }
+      }
+    },
+    "source": {
+      "selected": [
+        {
+          "id": "SRC-A"
+        }
+      ]
+    }
+  }
+}

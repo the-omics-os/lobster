@@ -1,7 +1,9 @@
-"""Map natural-language questions to HITL UI components.
+"""Turn an ``ask_user`` question and context into decision fields.
 
-Hybrid approach: rule-based fast path for unambiguous structural context,
-LLM structured output for ambiguous/novel question patterns.
+Context that already lists ``fields`` is validated and used as is. Older
+hint-style context ({"options": [...]}, {"clusters": [...]}, threshold keys)
+is converted by rules. An ambiguous question is formatted by an optional LLM,
+so a separate model can take this work off the supervisor.
 """
 
 from __future__ import annotations
@@ -9,148 +11,119 @@ from __future__ import annotations
 import hashlib
 import json as _json
 import logging
-import re
+import math
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from lobster.core.exceptions import InferenceRefused, reraise_inference_refusal
-from lobster.services.interaction.component_schemas import (
-    COMPONENT_SCHEMAS,
-    ComponentSelection,
-)
+from lobster.services.interaction.component_schemas import AskUserContext
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
-# Patterns that strongly suggest a confirmation question.
-_CONFIRM_PATTERNS = re.compile(
-    r"\b(proceed|continue|confirm|approve|accept|do you want|should I|"
-    r"would you like|yes or no|y/n)\b",
-    re.IGNORECASE,
-)
-
-# Patterns suggesting a threshold/numeric input.
-_THRESHOLD_PATTERNS = re.compile(
-    r"\b(threshold|cutoff|p-value|fdr|log.?fc|fold.?change|"
-    r"significance|alpha|min|max)\b",
-    re.IGNORECASE,
-)
-
 
 def map_question(
     question: str,
     context: Optional[Dict[str, Any]] = None,
     llm: Optional["BaseChatModel"] = None,
-) -> ComponentSelection:
-    """Map a question + context to a ComponentSelection.
+) -> AskUserContext:
+    """Map a question + context to the fields to ask.
 
-    Hybrid approach:
-    1. Rule-based fast path for unambiguous structural context
-    2. LLM structured output for ambiguous/novel questions (when llm provided)
-    3. Rule-based fallback when no LLM available
+    1. ``context["fields"]`` is validated and returned (raises ValidationError
+       when invalid, so the caller can report the problems).
+    2. Rule-based conversion of hint-style context.
+    3. LLM structured output for ambiguous questions (when llm provided).
+    4. A single free-text field.
 
     Args:
         question: Natural language question for the user.
-        context: Structural context (options, clusters, thresholds, etc.).
-        llm: Optional LLM for classifying ambiguous questions.
+        context: Fields, or older structural hints (options, clusters, ...).
+        llm: Optional LLM for formatting ambiguous questions.
     """
     ctx = context or {}
 
-    # --- Rule-based fast path (unambiguous structural context) ---
-
-    # Explicit options list -> select component.
-    options = ctx.get("options")
-    if isinstance(options, list) and len(options) > 0:
-        # Normalize dicts to strings — Go TUI select expects []string.
-        str_options = [
-            (
-                opt.get("label", opt.get("name", str(opt)))
-                if isinstance(opt, dict)
-                else str(opt)
-            )
-            for opt in options
-        ]
-        return ComponentSelection(
-            component="select",
-            data={"question": question, "options": str_options},
-            fallback_prompt=_build_select_fallback(question, str_options),
-        )
-
-    # Cluster data -> cell_type_selector.
-    clusters = ctx.get("clusters")
-    if isinstance(clusters, list) and len(clusters) > 0:
-        return ComponentSelection(
-            component="cell_type_selector",
-            mode="overlay",
-            data={"clusters": clusters},
-            fallback_prompt=_build_cluster_fallback(question, clusters),
-        )
-
-    # Threshold/numeric range context -> threshold_slider.
-    if _has_threshold_context(ctx) or _THRESHOLD_PATTERNS.search(question):
-        return _build_threshold_selection(question, ctx)
-
-    # Confirmation pattern -> confirm.
-    if _CONFIRM_PATTERNS.search(question):
-        default = ctx.get("default", False)
-        return ComponentSelection(
-            component="confirm",
-            data={"question": question, "default": bool(default)},
-            fallback_prompt=f"{question} [y/N]",
-        )
-
-    # --- LLM path (ambiguous questions) ---
-    if llm is not None:
-        return _llm_select_component(llm, question, ctx)
-
-    # --- Fallback: text_input ---
-    placeholder = ctx.get("placeholder", "")
-    return ComponentSelection(
-        component="text_input",
-        data={"question": question, "placeholder": placeholder},
-        fallback_prompt=question,
+    if "fields" in ctx:
+        return AskUserContext.model_validate(ctx)
+    asked = _from_hints(question, ctx, llm)
+    # Keys that mean the same on any context are kept, and judged like any
+    # other: never dropped silently (a supervisor that attached data_files
+    # must get the fingerprint, or invalid_context).
+    kept = {key: ctx[key] for key in _CONTEXT_KEYS if key in ctx}
+    if not kept:
+        return asked
+    return AskUserContext.model_validate(
+        {**asked.model_dump(exclude_none=True), **kept}
     )
 
 
-def _llm_select_component(
+# Context keys valid whatever builds the fields.
+_CONTEXT_KEYS = ("view", "checks", "data_files")
+
+
+def _from_hints(
+    question: str, ctx: Dict[str, Any], llm: Optional["BaseChatModel"]
+) -> AskUserContext:
+    """The fields for hint-style context (no "fields" key)."""
+    # --- Rule-based fast path (unambiguous structural context) ---
+
+    # Explicit options list -> choice. Dict options keep their id.
+    options = ctx.get("options")
+    if isinstance(options, list) and len(options) > 0:
+        return _single(
+            {"key": "answer", "type": "choice", "options": _to_items(options)}
+        )
+
+    # Cluster data -> one text answer (the cell type) per cluster.
+    clusters = ctx.get("clusters")
+    if isinstance(clusters, list) and len(clusters) > 0:
+        return _single(
+            {"key": "cell_type", "type": "text", "for_each": _cluster_items(clusters)}
+        )
+
+    # Threshold/numeric range context -> number on a slider.
+    # The question's wording is never read: a word like "max" or "do you
+    # want" decided the screen before ("Which sample has the max library
+    # size?" got a number box, "Do you want SRC-A or SRC-B?" got yes/no).
+    if _has_threshold_context(ctx):
+        return _single(_threshold_field(ctx))
+
+    # --- LLM path (ambiguous questions) ---
+    if llm is not None:
+        return _llm_format_question(llm, question, ctx)
+
+    # --- Fallback: free text ---
+    return _text_only(question, ctx.get("placeholder"))
+
+
+def _llm_format_question(
     llm: "BaseChatModel",
     question: str,
     context: Dict[str, Any],
-) -> ComponentSelection:
-    """Use LLM structured output to select the best component.
+) -> AskUserContext:
+    """Use LLM structured output to format the question as fields.
 
-    Builds a prompt listing available components and their schemas,
-    then calls the LLM with structured output to get a ComponentSelection.
-    Falls back to text_input on any error.
+    Falls back to a single free-text field on any error.
     """
     try:
-        # Build component catalog for the prompt.
-        component_lines = []
-        for name, schema in COMPONENT_SCHEMAS.items():
-            desc = schema.get("description", "")
-            inputs = _json.dumps(schema.get("input_schema", {}))
-            component_lines.append(f"- {name}: {desc} (inputs: {inputs})")
-        catalog = "\n".join(component_lines)
-
         ctx_str = _json.dumps(context) if context else "{}"
-
         prompt = (
-            "Select the best UI component for this user question.\n\n"
-            f"Available components:\n{catalog}\n\n"
+            "Format this question for the user as decision fields.\n\n"
+            "Field types: choice (pick options by stable id), number (min/max are "
+            "value bounds), text (only when the answer can't be listed or "
+            "counted), record (several fields answered together).\n\n"
             f"User question: {question}\n"
-            f"Context: {ctx_str}\n\n"
-            "Return the component name, rendering mode, data payload, "
-            "and a plain-text fallback prompt."
+            f"Context: {ctx_str}\n"
         )
-
-        structured_llm = llm.with_structured_output(ComponentSelection)
-        result = structured_llm.invoke(prompt)
-        if isinstance(result, ComponentSelection):
-            return result  # Pydantic validator handles invalid component names
-        # A plain-text answer yields no selection (None): use the fallback.
+        structured_llm = llm.with_structured_output(AskUserContext)
+        # nostream: this runs inside ask_user's build task, and the chat stream
+        # would show a call made there as a sub-agent working.
+        result = structured_llm.invoke(prompt, config={"tags": ["nostream"]})
+        if isinstance(result, AskUserContext):
+            return result
+        # A plain-text answer yields no fields (None): use the fallback.
         logger.debug(
-            "LLM component selection returned no selection (result_type=%s)",
+            "LLM question formatting returned no fields (result_type=%s)",
             type(result).__name__,
         )
 
@@ -159,16 +132,59 @@ def _llm_select_component(
     except Exception as error:
         reraise_inference_refusal(error)
         logger.debug(
-            "LLM component selection failed (error_type=%s, response_length=0, response_sha256=%s)",
+            "LLM question formatting failed (error_type=%s, response_length=0, response_sha256=%s)",
             type(error).__name__,
             hashlib.sha256(b"").hexdigest(),
         )
     # Do not let a caller-side fallback failure chain model response values.
-    return ComponentSelection(
-        component="text_input",
-        data={"question": question},
-        fallback_prompt=question,
-    )
+    return _text_only(question)
+
+
+def _single(field: Dict[str, Any]) -> AskUserContext:
+    return AskUserContext(fields=[field])
+
+
+def _text_only(question: str, placeholder: Any = None) -> AskUserContext:
+    """One free-text field; a hint's placeholder (an example answer) is shown
+    as its details, never filled in as the answer."""
+    field = {"key": "answer", "type": "text", "question": question}
+    if placeholder:
+        field["details"] = str(placeholder)
+    return AskUserContext(fields=[field])
+
+
+def _to_items(options: list) -> list:
+    """Hint options as items. Dicts keep their id, details and unavailable
+    reason (an ineligible option must stay unpickable); plain values are their
+    own id."""
+    items = []
+    for opt in options:
+        if isinstance(opt, dict):
+            label = str(opt.get("label", opt.get("name", opt.get("id", ""))))
+            item = {"id": str(opt.get("id", label)), "label": label}
+            for key in ("details", "unavailable"):
+                if opt.get(key):
+                    item[key] = str(opt[key])
+            items.append(item)
+        else:
+            items.append(str(opt))
+    return items
+
+
+def _cluster_items(clusters: list) -> list:
+    """One for_each item per cluster; size and top markers become details."""
+    items = []
+    for c in clusters:
+        item: Dict[str, Any] = {
+            "id": str(c.get("id", "?")),
+            "label": f"Cluster {c.get('id', '?')}",
+        }
+        parts = [f"{c['size']} cells" if "size" in c else ""]
+        parts.append(", ".join(c.get("markers", [])[:5]))
+        if any(parts):
+            item["details"] = " · ".join(part for part in parts if part)
+        items.append(item)
+    return items
 
 
 def _has_threshold_context(ctx: Dict[str, Any]) -> bool:
@@ -181,45 +197,38 @@ def _has_threshold_context(ctx: Dict[str, Any]) -> bool:
     return bool(strong_keys & set(ctx.keys()))
 
 
-def _build_threshold_selection(
-    question: str, ctx: Dict[str, Any]
-) -> ComponentSelection:
-    """Build a threshold_slider selection from context."""
-    data = {
-        "label": question,
-        "min": float(ctx.get("min", 0.0)),
-        "max": float(ctx.get("max", 1.0)),
-        "default": float(ctx.get("default", ctx.get("threshold", 0.5))),
-        "unit": ctx.get("unit", ""),
-    }
-    unit_str = f" {data['unit']}" if data["unit"] else ""
-    fallback = (
-        f"{question} (range: {data['min']}-{data['max']}{unit_str}, "
-        f"default: {data['default']}{unit_str})"
-    )
-    return ComponentSelection(
-        component="threshold_slider",
-        data=data,
-        fallback_prompt=fallback,
-    )
+def _threshold_field(ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """A number field: on a slider only when both bounds are given.
+
+    Bounds are never invented: a 0-1 range fits a fraction, not a
+    concentration or a read count. Without both bounds the user types the
+    number. The default is kept when it is inside the bounds that were given.
+    """
+    field: Dict[str, Any] = {"key": "value", "type": "number"}
+    low, high = _number(ctx.get("min")), _number(ctx.get("max"))
+    if low is not None:
+        field["min"] = low
+    if high is not None:
+        field["max"] = high
+    if "min" in field and "max" in field:
+        field["view"] = "slider"
+    default = _number(ctx.get("default", ctx.get("threshold", ctx.get("cutoff"))))
+    if default is not None and field.get("min", default) <= default <= field.get(
+        "max", default
+    ):
+        field["default"] = default
+    if ctx.get("unit"):
+        field["unit"] = str(ctx["unit"])
+    return field
 
 
-def _build_select_fallback(question: str, options: list) -> str:
-    """Build a numbered fallback prompt for select."""
-    lines = [question]
-    for i, opt in enumerate(options, 1):
-        lines.append(f"  {i}. {opt}")
-    lines.append("Enter number: ")
-    return "\n".join(lines)
-
-
-def _build_cluster_fallback(question: str, clusters: list) -> str:
-    """Build a text fallback for cluster annotation."""
-    lines = [question]
-    for c in clusters:
-        cid = c.get("id", "?")
-        size = c.get("size", "?")
-        markers = ", ".join(c.get("markers", [])[:5])
-        lines.append(f"  Cluster {cid} ({size} cells): {markers}")
-    lines.append("Enter assignments as 'cluster_id=cell_type' per line:")
-    return "\n".join(lines)
+def _number(value: Any) -> Optional[float]:
+    """A finite number from a hint value (numbers, or numbers written as
+    text such as "0.05"); None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None

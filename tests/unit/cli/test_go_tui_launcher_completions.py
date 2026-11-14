@@ -1,5 +1,8 @@
+import json
 import os
 from pathlib import Path
+
+import pytest
 
 from lobster.cli_internal import go_tui_launcher
 from lobster.cli_internal.startup_diagnostics import StartupDiagnostic
@@ -756,6 +759,595 @@ def test_handle_interrupt_component_response_passthrough():
     assert result == {"answer": "T cells"}
 
 
+# --- ask_user DecisionRequests (schema lobster.ask/1) ---
+
+
+def _decision_request(decision_id="dec-call_1", **field_overrides):
+    """A real ask_user DecisionRequest, as it arrives in an interrupt event."""
+    from lobster.services.interaction.component_schemas import (
+        AskUserContext,
+        DecisionRequest,
+    )
+
+    field = {
+        "key": "source",
+        "type": "choice",
+        "options": ["SRC-A", "SRC-B"],
+        **field_overrides,
+    }
+    field = {k: v for k, v in field.items() if v is not None}  # None = leave out
+    context = AskUserContext.model_validate({"fields": [field]})
+    return DecisionRequest(
+        decision_id=decision_id, question="Which source?", fields=context.fields
+    ).to_wire()
+
+
+class _GoBridge(_FakeBridge):
+    """Plays the Go TUI: each scripted reply answers the latest render's id.
+
+    A reply is (action, data), "quit", None (timeout), or ("stray", data): an
+    answer carrying an old render id.
+    """
+
+    def __init__(self, replies):
+        super().__init__()
+        self.replies = list(replies)
+        self.timeouts = []
+
+    def recv_event(self, timeout=None):
+        self.timeouts.append(timeout)
+        if not self.replies:
+            return None
+        reply = self.replies.pop(0)
+        if reply is None:
+            return None
+        if reply == "quit":
+            return {"type": "quit"}
+        renders = [c for c in self.calls if c[0] == "component_render"]
+        msg_id = renders[-1][2] if renders else ""
+        if reply[0] == "stray":
+            msg_id, reply = "old-render-id", ("submit", reply[1])
+        action, data = reply
+        return {
+            "type": "component_response",
+            "id": msg_id,
+            "payload": {"id": msg_id, "data": {**data, "action": action}},
+        }
+
+    def renders(self):
+        return [
+            (c[1]["component"], c[1]["data"])
+            for c in self.calls
+            if c[0] == "component_render"
+        ]
+
+
+def test_handle_user_query_decision_request_renders_choice_and_resumes(monkeypatch):
+    """Full cycle: stream -> interrupt -> choice render -> answer envelope -> resume."""
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+    request = _decision_request()
+
+    class _QueryClient:
+        def __init__(self):
+            self.token_tracker = type(
+                "Tracker", (), {"total_tokens": 10, "total_cost": 0.001}
+            )()
+            self.resumed_with = None
+
+        def query(self, text, stream=True, cancel_event=None):
+            yield {"type": "content_delta", "delta": "Analyzing..."}
+            yield {"type": "interrupt", "data": request, "interrupt_id": "intr-1"}
+
+        def resume_from_interrupt(self, response, stream=True, cancel_event=None):
+            self.resumed_with = response
+            yield {"type": "content_delta", "delta": "Done!"}
+            yield {"type": "complete"}
+
+    client = _QueryClient()
+    bridge = _GoBridge([("submit", {"selected": [{"id": "SRC-B"}]})])
+
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+
+    assert [component for component, _ in bridge.renders()] == ["choice"]
+    envelope = client.resumed_with["intr-1"]
+    assert envelope["responds_to"] == {
+        "decision_id": "dec-call_1",
+        "request_version": 1,
+    }
+    assert envelope["action"] == "submit"
+    assert envelope["answer"] == {"source": {"id": "SRC-B"}}
+
+    text_calls = [c for c in bridge.calls if c[0] == "text"]
+    assert [c[1]["content"] for c in text_calls] == ["Analyzing...", "Done!"]
+    done_calls = [c for c in bridge.calls if c[0] == "done"]
+    assert done_calls == [
+        ("done", {"summary": "interrupt"}, ""),
+        ("done", {"summary": ""}, ""),
+    ]
+
+
+def test_two_pending_questions_each_get_their_own_answer():
+    """Both interrupt events are read (none dropped); answers are keyed by id."""
+    first = _decision_request("dec-call_a")
+    second = _decision_request(
+        "dec-call_b",
+        key="cutoff",
+        type="number",
+        view="slider",
+        min=0,
+        max=1,
+        options=None,
+    )
+    bridge = _GoBridge(
+        [("submit", {"selected": [{"id": "SRC-A"}]}), ("submit", {"value": 0.3})]
+    )
+    response = go_tui_launcher._handle_interrupts(
+        bridge,
+        [
+            {"type": "interrupt", "data": first, "interrupt_id": "intr-a"},
+            {"type": "interrupt", "data": second, "interrupt_id": "intr-b"},
+        ],
+    )
+    assert [c for c, _ in bridge.renders()] == ["choice", "threshold_slider"]
+    assert response["intr-a"]["responds_to"]["decision_id"] == "dec-call_a"
+    assert response["intr-a"]["answer"] == {"source": {"id": "SRC-A"}}
+    assert response["intr-b"]["responds_to"]["decision_id"] == "dec-call_b"
+    assert response["intr-b"]["answer"] == {"cutoff": 0.3}
+
+
+def test_stray_reply_to_an_old_render_is_ignored():
+    """Bridge fix: only a reply carrying this render's id is accepted."""
+    bridge = _GoBridge(
+        [
+            ("stray", {"selected": [{"id": "SRC-A"}]}),
+            ("submit", {"selected": [{"id": "SRC-B"}]}),
+        ]
+    )
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    assert response["intr-1"]["answer"] == {"source": {"id": "SRC-B"}}
+
+
+def test_cancelled_question_resumes_with_a_cancel_answer():
+    """Esc is an answer (the supervisor is told), not a dropped turn."""
+    bridge = _GoBridge([("cancel", {})])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    assert response["intr-1"]["action"] == "cancel"
+    assert "answer" not in response["intr-1"]
+
+
+def test_decision_request_quit_returns_none():
+    """If the user quits during a question, the turn ends without resuming."""
+    bridge = _GoBridge(["quit"])
+    assert (
+        go_tui_launcher._handle_interrupts(
+            bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+        )
+        is None
+    )
+
+
+def test_decision_request_waits_with_no_deadline():
+    """A run without an answer stays paused for as long as the process lives:
+    the screen waits with no timeout, other messages (resizes) keep it
+    waiting, and nothing is closed or sent for it. Only the TUI going away
+    ends the wait, and then nothing is resumed. Other interrupts keep theirs."""
+    assert not hasattr(go_tui_launcher, "_ANSWER_TIMEOUT_S")
+
+    class _Resizing(_GoBridge):
+        def recv_event(self, timeout=None):
+            self.timeouts.append(timeout)
+            if len(self.timeouts) <= 3:
+                return {"type": "resize", "payload": {"width": 80, "height": 24}}
+            return None  # the TUI is gone
+
+    bridge = _Resizing([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    assert bridge.timeouts == [None, None, None, None]
+    assert response is None
+    assert not [c for c in bridge.calls if c[0] == "component_close"]
+    legacy = _GoBridge([None])
+    go_tui_launcher._handle_interrupts(
+        legacy, [{"data": {"component": "text_input"}, "interrupt_id": "i"}]
+    )
+    assert legacy.timeouts == [300]
+
+
+def test_a_fault_while_asking_closes_the_screen_and_tells_the_supervisor(
+    monkeypatch,
+):
+    """An error while the question is open resumes with a cancel naming only
+    the error's type, never a silent end of turn."""
+    from lobster.cli_internal import decision_screens
+
+    def broken(request, render):
+        raise KeyError("/private/path")
+
+    monkeypatch.setattr(decision_screens, "collect", broken)
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    answer = response["intr-1"]
+    assert answer["action"] == "cancel"
+    assert "(an error (KeyError))" in answer["comment"]
+    assert "/private/path" not in json.dumps(answer)
+    (close,) = [c for c in bridge.calls if c[0] == "component_close"]
+    assert close[2] == ""  # whichever screen is open
+    assert close[1]["message"] == (
+        "This question was closed (an error (KeyError)); nothing was sent."
+    )
+
+
+def test_a_closed_tui_ends_the_wait_at_once_without_resuming():
+    """When the TUI exits, the wait (which has no deadline) must not run on:
+    the reader stops, the wait ends at once, and the turn ends (nobody is
+    there)."""
+    import time as real_time
+
+    to_go_read, to_go_write = os.pipe()
+    from_go_read, from_go_write = os.pipe()
+    bridge = go_tui_launcher._LightBridge(None, to_go_write, from_go_read)
+    try:
+        os.close(from_go_write)  # the TUI is gone
+        started = real_time.monotonic()
+        response = go_tui_launcher._handle_interrupts(
+            bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+        )
+        elapsed = real_time.monotonic() - started
+        assert bridge.closed.is_set()
+        assert bridge.recv_event(timeout=60) is None  # every later wait too
+    finally:
+        bridge.close()
+        os.close(to_go_read)
+    assert response is None
+    assert elapsed < 5
+    legacy = _GoBridge([None])
+    go_tui_launcher._handle_interrupts(
+        legacy, [{"data": {"component": "text_input"}, "interrupt_id": "i"}]
+    )
+    assert legacy.timeouts == [300]
+
+
+def test_component_error_is_reported_and_cancels_the_question():
+    """A screen that fails is not the user's cancel: the comment says so."""
+    bridge = _GoBridge([("error", {"error": "init_failed", "detail": "bad data"})])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    assert response["intr-1"]["action"] == "cancel"
+    assert response["intr-1"]["comment"] == (
+        "Not answered: this terminal can't show this question (bad data). Don't "
+        "ask again with the same shape; ask in chat or with a shape it can show."
+    )
+    alerts = [c[1]["message"] for c in bridge.calls if c[0] == "alert"]
+    assert alerts == ["Couldn't show the question: bad data"]
+
+
+def test_component_error_without_detail_still_says_the_screen_failed():
+    """A screen that breaks while drawing names its error code instead."""
+    request = _decision_request(
+        key="note", type="text", options=None, question="Anything else?"
+    )
+    bridge = _GoBridge([("error", {"error": "view_panic"})])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": request, "interrupt_id": "intr-1"}]
+    )
+    assert response["intr-1"]["action"] == "cancel"
+    assert response["intr-1"]["comment"].startswith(
+        "Not answered: this terminal can't show this question (view_panic)."
+    )
+
+
+def test_question_the_terminal_cannot_draw_is_cancelled_with_a_reason():
+    request = _decision_request(
+        key="times", type="number", count={"min": 1}, options=None
+    )
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": request, "interrupt_id": "intr-1"}]
+    )
+    assert bridge.renders() == []
+    assert response["intr-1"]["action"] == "cancel"
+    comment = response["intr-1"]["comment"]
+    assert comment.startswith("Not answered: this terminal can't show times: a list")
+    assert "Don't ask again with the same shape" in comment
+
+
+def test_plate_the_go_screen_would_refuse_is_cancelled_before_rendering():
+    """More than 9 options: the plate's Init would fail, so it is never sent."""
+    request = _decision_request(
+        key="groups",
+        view="plate_map",
+        for_each=["S01", "S02"],
+        options=[f"g{n}" for n in range(10)],
+    )
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": request, "interrupt_id": "intr-1"}]
+    )
+    assert bridge.renders() == []
+    assert response["intr-1"]["action"] == "cancel"
+    assert response["intr-1"]["comment"] == (
+        "Not answered: this terminal can't show groups: a plate with 10 options "
+        "(at most 9). Don't ask again with the same shape; ask in chat or with a "
+        "shape it can show."
+    )
+
+
+# --- Interrupts that are not DecisionRequests keep the _handle_interrupt path ---
+
+
+def test_single_other_interrupt_resumes_bare_through_handle_interrupt():
+    """One pending non-ask_user interrupt: rendered as is, bare value back."""
+    payload = {"component": "text_input", "data": {"question": "Q?"}}
+    bridge = _FakeBridge(
+        events=[{"type": "component_response", "payload": {"data": {"answer": "x"}}}]
+    )
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": payload, "interrupt_id": "intr-1"}]
+    )
+    assert response == {"answer": "x"}
+    renders = [c for c in bridge.calls if c[0] == "component_render"]
+    assert [c[1] for c in renders] == [payload]
+
+
+def test_single_other_interrupt_cancel_ends_the_turn():
+    bridge = _FakeBridge(
+        events=[
+            {
+                "type": "component_response",
+                "payload": {"data": {"action": "cancel"}},
+            }
+        ]
+    )
+    assert (
+        go_tui_launcher._handle_interrupts(
+            bridge, [{"data": {"component": "confirm"}, "interrupt_id": "i"}]
+        )
+        is None
+    )
+
+
+def test_decision_request_and_other_interrupt_pending_together_are_keyed():
+    payload = {"component": "text_input", "data": {"question": "Q?"}}
+    bridge = _GoBridge(
+        [("submit", {"selected": [{"id": "SRC-A"}]}), ("submit", {"answer": "x"})]
+    )
+    response = go_tui_launcher._handle_interrupts(
+        bridge,
+        [
+            {"data": _decision_request(), "interrupt_id": "intr-a"},
+            {"data": payload, "interrupt_id": "intr-b"},
+        ],
+    )
+    assert response["intr-a"]["answer"] == {"source": {"id": "SRC-A"}}
+    # _handle_interrupt passes the reply through as is, action included.
+    assert response["intr-b"] == {"answer": "x", "action": "submit"}
+
+
+def test_every_render_carries_the_whole_question_as_fallback_prompt():
+    from lobster.cli_internal.decision_screens import fallback_prompt
+
+    request = _decision_request(
+        options=["SRC-A", {"id": "SRC-C", "unavailable": "normalized"}]
+    )
+    bridge = _GoBridge([("submit", {"selected": [{"id": "SRC-A"}]})])
+    go_tui_launcher._handle_interrupts(
+        bridge, [{"data": request, "interrupt_id": "intr-1"}]
+    )
+    (render,) = [c[1] for c in bridge.calls if c[0] == "component_render"]
+    assert render["fallback_prompt"] == fallback_prompt(request)
+    assert "SRC-C (unavailable: normalized)" in render["fallback_prompt"]
+    assert render["fallback_prompt"].endswith("Write your answer in your own words.")
+
+
+def test_older_tui_text_box_reply_resumes_as_free_text():
+    """An older TUI draws its text box for "choice" and replies {"answer"}."""
+    bridge = _GoBridge([("submit", {"answer": "SRC-B, the repository one"})])
+    response = go_tui_launcher._handle_interrupts(
+        bridge, [{"data": _decision_request(), "interrupt_id": "intr-1"}]
+    )
+    envelope = response["intr-1"]
+    assert envelope["action"] == "free_text"
+    assert envelope["text"] == "SRC-B, the repository one"
+    assert "answer" not in envelope
+
+
+class _ScriptedBridge(_FakeBridge):
+    """Plays the Go TUI from a script. ("reply", n, action, data) answers the
+    n-th render (0-based) with that render's id, so a step can repeat an old
+    render's reply; any other step is returned as the event itself."""
+
+    def __init__(self, script):
+        super().__init__()
+        self.script = list(script)
+
+    def recv_event(self, timeout=None):
+        if not self.script:
+            return None
+        step = self.script.pop(0)
+        if not (isinstance(step, tuple) and step[0] == "reply"):
+            return step
+        _, n, action, data = step
+        msg_id = [c for c in self.calls if c[0] == "component_render"][n][2]
+        payload = {"id": msg_id, "data": {**data, "action": action}}
+        return {"type": "component_response", "id": msg_id, "payload": payload}
+
+
+class _ResumingClient:
+    """query() pauses with the first event; each resume records the response
+    and pauses with the next event, until none is left (then completes)."""
+
+    def __init__(self, *pauses):
+        self.token_tracker = type(
+            "Tracker", (), {"total_tokens": 10, "total_cost": 0.001}
+        )()
+        self.pauses = list(pauses)
+        self.resumed_with = []
+
+    def query(self, text, stream=True, cancel_event=None):
+        yield self.pauses.pop(0)
+
+    def resume_from_interrupt(self, response, stream=True, cancel_event=None):
+        self.resumed_with.append(response)
+        if self.pauses:
+            yield self.pauses.pop(0)
+        else:
+            yield {"type": "complete"}
+
+
+def _done(bridge):
+    return [c[1]["summary"] for c in bridge.calls if c[0] == "done"]
+
+
+def test_duplicate_reply_after_resume_is_ignored_by_the_next_render(monkeypatch):
+    """A second copy of an answered render's reply arrives while the re-asked
+    question is shown: the next render takes only a reply with its own id."""
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+    first = _decision_request()
+    second = {
+        **first,
+        "request_version": 2,
+        "problems": [{"path": "source", "message": "pick again"}],
+    }
+    client = _ResumingClient(
+        {"type": "interrupt", "data": first, "interrupt_id": "intr-1"},
+        {"type": "interrupt", "data": second, "interrupt_id": "intr-1"},
+    )
+    bridge = _ScriptedBridge(
+        [
+            ("reply", 0, "submit", {"selected": [{"id": "SRC-A"}]}),
+            ("reply", 0, "submit", {"selected": [{"id": "SRC-A"}]}),  # duplicate
+            ("reply", 1, "submit", {"selected": [{"id": "SRC-B"}]}),
+        ]
+    )
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+
+    answers = [r["intr-1"] for r in client.resumed_with]
+    assert [a["responds_to"]["request_version"] for a in answers] == [1, 2]
+    assert [a["answer"] for a in answers] == [
+        {"source": {"id": "SRC-A"}},
+        {"source": {"id": "SRC-B"}},
+    ]
+    renders = [c for c in bridge.calls if c[0] == "component_render"]
+    assert len(renders) == 2 and renders[0][2] != renders[1][2]
+    assert "⚠ pick again" in renders[1][1]["data"]["details"]
+    assert _done(bridge) == ["interrupt", "interrupt", ""]
+
+
+def test_duplicate_reply_after_the_turn_is_ignored_by_the_main_loop():
+    """A component_response that arrives when no question is shown starts
+    nothing and answers nothing."""
+
+    class _Client:
+        def query(self, *args, **kwargs):
+            raise AssertionError("a stray reply must not start a query")
+
+        def _save_session_json(self):
+            pass
+
+    stray = {
+        "type": "component_response",
+        "id": "render-1",
+        "payload": {"id": "render-1", "data": {"selected": [{"id": "SRC-A"}]}},
+    }
+    bridge = _FakeBridge(events=[stray, stray, {"type": "quit"}])
+    go_tui_launcher._go_tui_event_loop(bridge, _Client())
+    assert bridge.calls == []
+
+
+@pytest.mark.parametrize("action", ["cancel", "defer"])
+def test_cancel_or_defer_resumes_the_turn(action, monkeypatch):
+    """Esc and ctrl+d are answers: the supervisor is told, the turn goes on."""
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+    client = _ResumingClient(
+        {"type": "interrupt", "data": _decision_request(), "interrupt_id": "intr-1"}
+    )
+    bridge = _ScriptedBridge([("reply", 0, action, {})])
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+    (response,) = client.resumed_with
+    assert response["intr-1"]["action"] == action
+    assert "answer" not in response["intr-1"]
+    assert _done(bridge) == ["interrupt", ""]
+
+
+def test_quit_while_a_question_is_shown_ends_the_turn(monkeypatch):
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+    client = _ResumingClient(
+        {"type": "interrupt", "data": _decision_request(), "interrupt_id": "intr-1"}
+    )
+    bridge = _ScriptedBridge([{"type": "quit"}])
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+    assert client.resumed_with == []
+    assert _done(bridge) == ["interrupt", "cancelled"]
+
+
+def test_unanswered_question_stays_open_until_the_tui_goes():
+    """With a real bridge and no reply, the question stays open: nothing is
+    closed, nothing resumes. When the TUI exits, the turn ends unresumed."""
+    import threading
+    import time as real_time
+
+    to_go_read, to_go_write = os.pipe()  # what the bridge sends
+    from_go_read, from_go_write = os.pipe()  # what "Go" would send: nothing
+    bridge = go_tui_launcher._LightBridge(None, to_go_write, from_go_read)
+    client = _ResumingClient(
+        {"type": "interrupt", "data": _decision_request(), "interrupt_id": "intr-1"}
+    )
+    turn = threading.Thread(
+        target=go_tui_launcher._handle_user_query,
+        args=(bridge, client, "analyze"),
+        daemon=True,
+    )
+    try:
+        turn.start()
+        real_time.sleep(0.5)
+        still_waiting = turn.is_alive()
+        os.set_blocking(to_go_read, False)
+        sent = [json.loads(line) for line in os.read(to_go_read, 1 << 16).splitlines()]
+        os.close(from_go_write)  # the TUI exits
+        turn.join(timeout=5)
+    finally:
+        bridge.close()
+        os.close(to_go_read)
+    assert still_waiting
+    assert not turn.is_alive()
+    types = [m["type"] for m in sent]
+    assert "component_render" in types
+    assert "component_close" not in types
+    assert client.resumed_with == []
+
+
+def test_other_interrupt_payload_goes_through_upstream_handle_interrupt(monkeypatch):
+    monkeypatch.setattr(go_tui_launcher.time, "time", lambda: 100.0)
+    upstream = go_tui_launcher._handle_interrupt
+    seen = []
+
+    def spy(bridge, event):
+        seen.append(event)
+        return upstream(bridge, event)
+
+    monkeypatch.setattr(go_tui_launcher, "_handle_interrupt", spy)
+    legacy = {
+        "type": "interrupt",
+        "data": {"component": "confirm", "data": {"question": "Proceed?"}},
+        "interrupt_id": "intr-1",
+    }
+    client = _ResumingClient(legacy)
+    bridge = _FakeBridge(
+        events=[{"type": "confirm_response", "payload": {"confirm": True}}]
+    )
+    go_tui_launcher._handle_user_query(bridge, client, "analyze")
+    assert seen == [legacy]
+    assert client.resumed_with == [{"confirmed": True}]  # bare, as upstream
+
+
 # ---------------------------------------------------------------------------
 # Cancel event bridge-level signal
 # ---------------------------------------------------------------------------
@@ -794,3 +1386,26 @@ def test_bridge_cancel_event_set_bypasses_event_loop():
         bridge.cancel_event.set()
 
     assert cancel_event.is_set(), "cancel_event should be set by bridge-level signal"
+
+
+def test_several_questions_without_ids_are_refused_not_merged():
+    """Answers are keyed by interrupt id; without ids the second answer would
+    overwrite the first, so nothing is sent (the classic UI refuses too)."""
+    bridge = _GoBridge([])
+    response = go_tui_launcher._handle_interrupts(
+        bridge,
+        [
+            {"type": "interrupt", "data": _decision_request("dec-call_a")},
+            {"type": "interrupt", "data": _decision_request("dec-call_b")},
+        ],
+    )
+    assert response is None
+    assert bridge.renders() == []
+    alerts = [c[1] for c in bridge.calls if c[0] == "alert"]
+    assert alerts == [
+        {
+            "level": "error",
+            "message": "Several questions arrived without their ids, so their "
+            "answers can't be told apart. Nothing was sent.",
+        }
+    ]

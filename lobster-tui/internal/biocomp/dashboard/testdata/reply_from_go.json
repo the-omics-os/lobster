@@ -1,0 +1,51 @@
+{
+  "answers": {
+    "direction": {
+      "selected": [
+        {
+          "id": "treated_vs_control"
+        }
+      ]
+    },
+    "groups": {
+      "assignments": {
+        "S01": "control",
+        "S02": "control",
+        "S03": "control",
+        "S04": "control",
+        "S05": "treated",
+        "S06": "treated",
+        "S07": "treated",
+        "S08": "treated"
+      },
+      "changes": [
+        {
+          "assigned": "treated",
+          "sample_id": "S08",
+          "supplied": ""
+        }
+      ],
+      "reviewed_flags": []
+    },
+    "qc": {
+      "answers": {
+        "S02": {
+          "id": "retain"
+        },
+        "S06": {
+          "fields": {
+            "reason": "high mito fraction"
+          },
+          "id": "exclude"
+        }
+      }
+    },
+    "source": {
+      "selected": [
+        {
+          "id": "SRC-A"
+        }
+      ]
+    }
+  }
+}

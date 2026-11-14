@@ -243,6 +243,10 @@ def _make_message(
     return json.dumps(msg)
 
 
+# Queued by the bridge's reader when it stops: nothing more will arrive.
+_CLOSED: Any = object()
+
+
 class _LightBridge:
     """Minimal IPC bridge to the Go TUI -- stdlib only, no lobster imports.
 
@@ -262,6 +266,8 @@ class _LightBridge:
         self._reader = os.fdopen(reader_fd, "r", encoding="utf-8", buffering=1)
         self._events: queue.Queue[dict] = queue.Queue()
         self._running = True
+        # Set when the reader stops (the TUI exited or the pipe broke).
+        self.closed = threading.Event()
         self._write_lock = threading.Lock()
         self.cancel_event: Optional[threading.Event] = None
         self._read_thread = threading.Thread(
@@ -290,12 +296,18 @@ class _LightBridge:
     def recv_event(self, *, timeout: Optional[float] = None) -> Optional[dict]:
         """Block until a message arrives or *timeout* expires.
 
-        Returns ``None`` on timeout or if the bridge is closed.
+        Returns ``None`` on timeout or if the bridge is closed. Once the
+        reader has stopped, every wait returns ``None`` at once instead of
+        running to its timeout (``closed`` tells the two apart).
         """
         try:
-            return self._events.get(timeout=timeout)
+            event = self._events.get(timeout=timeout)
         except queue.Empty:
             return None
+        if event is _CLOSED:
+            self._events.put(_CLOSED)  # every later wait ends at once too
+            return None
+        return event
 
     def _read_loop(self) -> None:
         """Background thread: read JSON-lines from the Go TUI."""
@@ -317,6 +329,8 @@ class _LightBridge:
             except json.JSONDecodeError:
                 logger.debug("Ignoring malformed message from Go TUI: %s", line[:200])
                 continue
+        self.closed.set()
+        self._events.put(_CLOSED)
 
     def close(self) -> None:
         """Shut down the bridge and terminate the Go process."""
@@ -1051,7 +1065,7 @@ def _handle_user_query(
                 is_first = False
             # else: stream_source was set by the resume path below.
 
-            interrupt_event = None
+            interrupt_events = []
             cancelled = False
 
             for event in stream_source:
@@ -1060,15 +1074,17 @@ def _handle_user_query(
                     break
                 etype = event["type"]
                 if etype == "interrupt":
-                    interrupt_event = event
-                    break  # Exit inner loop to handle interrupt.
+                    # The client yields one event per pending question, then
+                    # ends the stream; keep reading so none is dropped.
+                    interrupt_events.append(event)
+                    continue
                 _forward_stream_event(bridge, client, event, query_start, turn=turn)
 
             if cancelled:
                 _settle_cancelled(bridge, turn, query_start)
                 return
 
-            if interrupt_event is None:
+            if not interrupt_events:
                 # The stream ended: normally via a complete event, otherwise
                 # (silent cancel, reported failure) it must be settled here.
                 _settle_unfinished_stream(bridge, turn, cancel_event, query_start)
@@ -1081,11 +1097,14 @@ def _handle_user_query(
             bridge.send("done", {"summary": "interrupt"})
             turn.saw_error = False  # the resumed stream is judged on its own
 
-            response = _handle_interrupt(bridge, interrupt_event)
+            response = _handle_interrupts(bridge, interrupt_events)
             if response is None:
-                # Interrupt was cancelled or timed out: the paused turn will
-                # never resume, so end it. The TUI discards nothing it already
-                # printed (the question was flushed above).
+                # The user quit, the TUI is gone, or a question that is not
+                # an ask_user DecisionRequest was cancelled or timed out: the paused
+                # turn will never resume, so end it. (A cancelled or deferred
+                # DecisionRequest does resume, so the supervisor learns about
+                # it.) The TUI discards nothing it already printed (the
+                # question was flushed above).
                 bridge.send("spinner", {"active": False})
                 _settle_turn(bridge, turn, "cancelled")
                 return
@@ -1161,6 +1180,187 @@ def _handle_interrupt(bridge: _LightBridge, interrupt_event: dict) -> Optional[d
         if resp_type == "cancel":
             return None
         # Other message types (heartbeat, resize, etc.) — ignore and keep waiting.
+
+
+# An ask_user DecisionRequest screen waits for its answer with no deadline:
+# a run without an answer stays paused for as long as the process lives. Only
+# the user (quit, cancel) or the TUI going away ends the wait.
+# (_handle_interrupt keeps its own wait.)
+
+
+class _QuitTurn(Exception):
+    """The user quit or cancelled the turn, or the TUI is gone."""
+
+
+class _ScreenFailed(Exception):
+    """The TUI couldn't show a component (its Init or drawing failed)."""
+
+    def __init__(self, detail: str):
+        self.detail = detail
+        super().__init__(detail)
+
+
+def _is_decision_request(data: Any) -> bool:
+    """True for an ask_user DecisionRequest payload (schema lobster.ask/1)."""
+    from lobster.services.interaction.component_schemas import SCHEMA_VERSION
+
+    return isinstance(data, dict) and data.get("schema") == SCHEMA_VERSION
+
+
+def _handle_interrupts(bridge: _LightBridge, interrupt_events: list) -> Optional[Any]:
+    """Answer every pending interrupt; return the value to resume the graph with.
+
+    An ask_user DecisionRequest is asked through the Go components
+    (``_answer_interrupt``). Any other payload goes through
+    ``_handle_interrupt`` unchanged. A single pending interrupt that is not a
+    DecisionRequest resumes with its bare value, as before; otherwise each
+    answer is keyed by its interrupt id, so several pending questions each
+    get their own answer. Returns None when the turn must end without
+    resuming.
+    """
+    if len(interrupt_events) == 1 and not _is_decision_request(
+        interrupt_events[0].get("data")
+    ):
+        return _handle_interrupt(bridge, interrupt_events[0])
+
+    bridge.send("spinner", {"active": False})
+    if len(interrupt_events) > 1 and any(
+        not event.get("interrupt_id") for event in interrupt_events
+    ):
+        # Answers are matched to questions by interrupt id; without one, a
+        # second answer would overwrite the first (the classic UI refuses too).
+        bridge.send(
+            "alert",
+            {
+                "level": "error",
+                "message": "Several questions arrived without their ids, so "
+                "their answers can't be told apart. Nothing was sent.",
+            },
+        )
+        return None
+    answers: Dict[Any, Any] = {}
+    for event in interrupt_events:
+        data = event.get("data")
+        if _is_decision_request(data):
+            try:
+                answer = _answer_interrupt(bridge, data)
+            except _QuitTurn:
+                return None
+        else:
+            answer = _handle_interrupt(bridge, event)
+            if answer is None:
+                return None
+        interrupt_id = event.get("interrupt_id")
+        if interrupt_id is None and len(interrupt_events) == 1:
+            return answer
+        answers[interrupt_id] = answer
+    return answers
+
+
+def _answer_interrupt(bridge: _LightBridge, data: dict) -> Dict[str, Any]:
+    """Show one ask_user DecisionRequest; return its DecisionAnswer as a dict."""
+    from lobster.cli_internal.decision_screens import (
+        build_answer,
+        cannot_show,
+        collect,
+        fallback_prompt,
+        unsupported,
+    )
+
+    problems = unsupported(data)
+    if problems:
+        # Tell the user and the supervisor; never show a broken screen.
+        message = "This terminal can't show: " + "; ".join(problems)
+        bridge.send("alert", {"level": "warning", "message": message})
+        return build_answer(data, "cancel", comment=cannot_show(problems))
+    # Every render carries the whole question in words, for an older TUI that
+    # can only show it in a text box.
+    prompt = fallback_prompt(data)
+
+    def render(component: str, component_data: dict) -> Tuple[str, dict]:
+        return _render_component(bridge, component, component_data, prompt)
+
+    try:
+        action, answer = collect(data, render)
+    except _ScreenFailed as failed:
+        # Not the user's cancel: the screen failed, so tell the supervisor why.
+        problem = f"this question ({failed.detail})"
+        return build_answer(data, "cancel", comment=cannot_show([problem]))
+    except _QuitTurn:
+        raise
+    except Exception as error:
+        # A fault while the question was open must not end the turn with
+        # the screen still drawn. Only the type is named (the message could
+        # carry paths or user data).
+        _note_suppressed("decision screen", error)
+        reason = f"an error ({type(error).__name__})"
+        return _close_unanswered(bridge, data, reason, "")
+    return build_answer(data, action, answer)
+
+
+def _close_unanswered(
+    bridge: _LightBridge, data: dict, reason: str, msg_id: str
+) -> Dict[str, Any]:
+    """Close a screen whose answer will never be read, tell the user, and
+    return a cancel for the supervisor saying why (the turn goes on)."""
+    from lobster.cli_internal.decision_screens import build_answer
+
+    bridge.send(
+        "component_close",
+        {"message": f"This question was closed ({reason}); nothing was sent."},
+        msg_id=msg_id,
+    )
+    comment = (
+        f"Not answered: the question was closed ({reason}); nothing was "
+        "decided. Ask again if it is still needed."
+    )
+    return build_answer(data, "cancel", comment=comment)
+
+
+def _render_component(
+    bridge: _LightBridge,
+    component: str,
+    data: dict,
+    fallback: Optional[str] = None,
+) -> Tuple[str, dict]:
+    """Render one Go component and wait for its reply: (action, reply data).
+
+    ``fallback`` is the text an older TUI shows when it can't draw the
+    component. Only a reply carrying this render's id is accepted: a late
+    answer to an earlier question is ignored instead of being taken as this
+    one's answer. Raises _QuitTurn when the user quits or cancels the turn
+    or the TUI is gone, and _ScreenFailed when the TUI replies that it
+    couldn't show the component. There is no deadline: until then it waits.
+    """
+    msg_id = str(uuid.uuid4())
+    if not fallback:
+        fallback = data.get("question") or data.get("label") or "Please respond:"
+    bridge.send(
+        "component_render",
+        {"component": component, "data": data, "fallback_prompt": fallback},
+        msg_id=msg_id,
+    )
+    while True:
+        event = bridge.recv_event(timeout=None)
+        if event is None:
+            raise _QuitTurn()  # the TUI is gone: nobody to tell
+        if event.get("type") in ("quit", "cancel"):
+            raise _QuitTurn()
+        if event.get("type") != "component_response":
+            continue  # heartbeats, resizes, ...
+        payload = event.get("payload") or {}
+        if (payload.get("id") or event.get("id")) != msg_id:
+            continue  # a stray reply to an earlier render
+        reply = dict(payload.get("data") or {})
+        action = reply.pop("action", "submit")
+        if action == "error":
+            detail = reply.get("detail") or reply.get("error") or "unknown error"
+            bridge.send(
+                "alert",
+                {"level": "error", "message": f"Couldn't show the question: {detail}"},
+            )
+            raise _ScreenFailed(detail)
+        return action, reply
 
 
 def _forward_stream_event(

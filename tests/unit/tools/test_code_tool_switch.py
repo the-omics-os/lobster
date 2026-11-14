@@ -587,6 +587,7 @@ SUPERVISOR_UTILITY = [
     "read_todos",
     "execute_custom_code",
     "ask_user",
+    "get_dashboard_schema",
 ]
 
 

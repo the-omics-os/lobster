@@ -1,0 +1,282 @@
+package choice
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/the-omics-os/lobster-tui/internal/biocomp"
+)
+
+var sources = []map[string]any{
+	{"id": "SRC-A", "label": "Author matrix", "details": "Raw counts · Build-A"},
+	{"id": "SRC-B", "label": "Repository matrix"},
+	{"id": "SRC-C", "label": "Author summary", "unavailable": "Normalized; build unknown"},
+}
+
+var donors = []map[string]any{
+	{"id": "S01", "label": "Donor A"},
+	{"id": "S02", "label": "Donor B"},
+	{"id": "S05", "label": "Donor A"},
+}
+
+func data(min, max int, options []map[string]any, extra map[string]any) json.RawMessage {
+	d := map[string]any{"question": "Pick", "min": min, "max": max, "options": options}
+	for k, v := range extra {
+		d[k] = v
+	}
+	raw, _ := json.Marshal(d)
+	return raw
+}
+
+func newChoice(t *testing.T, raw json.RawMessage) *Component {
+	t.Helper()
+	c := &Component{}
+	if err := c.Init(raw); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func press(c *Component, keys ...string) *biocomp.ComponentResult {
+	var result *biocomp.ComponentResult
+	for _, k := range keys {
+		var msg tea.KeyPressMsg
+		switch k {
+		case "down":
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
+		case "up":
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
+		case "space":
+			msg = tea.KeyPressMsg{Code: tea.KeySpace, Text: " "}
+		case "enter":
+			msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+		case "esc":
+			msg = tea.KeyPressMsg{Code: tea.KeyEscape}
+		case "ctrl+d":
+			msg = tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
+		default:
+			msg = tea.KeyPressMsg{Code: rune(k[0]), Text: k}
+		}
+		result, _ = c.HandleMsg(msg)
+	}
+	return result
+}
+
+func selectedIDs(t *testing.T, r *biocomp.ComponentResult) []string {
+	t.Helper()
+	if r == nil || r.Action != "submit" {
+		t.Fatalf("expected submit, got %+v", r)
+	}
+	var ids []string
+	for _, s := range r.Data["selected"].([]map[string]any) {
+		ids = append(ids, s["id"].(string))
+	}
+	return ids
+}
+
+func TestRegistered(t *testing.T) {
+	if biocomp.Get("choice") == nil {
+		t.Fatal(`"choice" is not registered`)
+	}
+}
+
+func TestInitRejectsUnanswerableData(t *testing.T) {
+	cases := map[string]json.RawMessage{
+		"no options":      data(1, 1, nil, nil),
+		"no question":     data(1, 1, sources, map[string]any{"question": ""}),
+		"duplicate id":    data(1, 1, []map[string]any{{"id": "a"}, {"id": "a"}}, nil),
+		"min above max":   data(2, 1, donors, nil),
+		"min above avail": data(3, 3, sources, nil),
+		"not json":        json.RawMessage(`{"options": "S01"}`),
+	}
+	for name, raw := range cases {
+		if err := (&Component{}).Init(raw); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}
+
+func TestSinglePickReturnsTheID(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	if got := selectedIDs(t, press(c, "down", "enter")); !reflect.DeepEqual(got, []string{"SRC-B"}) {
+		t.Fatalf("got %v", got)
+	}
+	c = newChoice(t, data(1, 1, sources, nil))
+	if got := selectedIDs(t, press(c, "2")); !reflect.DeepEqual(got, []string{"SRC-B"}) {
+		t.Fatalf("number key: got %v", got)
+	}
+}
+
+func TestUnavailableOptionCannotBePicked(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	if r := press(c, "down", "down", "enter"); r != nil {
+		t.Fatalf("picked an unavailable option: %+v", r)
+	}
+	if !strings.Contains(c.problem, "Normalized; build unknown") {
+		t.Fatalf("reason not shown: %q", c.problem)
+	}
+	if r := press(c, "3"); r != nil {
+		t.Fatalf("number key picked an unavailable option: %+v", r)
+	}
+	view := c.View(100, 20)
+	if !strings.Contains(view, "unavailable: Normalized; build unknown") {
+		t.Fatalf("view hides the reason:\n%s", view)
+	}
+}
+
+func TestCursorStartsOnFirstAvailableOption(t *testing.T) {
+	opts := []map[string]any{{"id": "x", "unavailable": "no"}, {"id": "y"}}
+	c := newChoice(t, data(1, 1, opts, nil))
+	if got := selectedIDs(t, press(c, "enter")); !reflect.DeepEqual(got, []string{"y"}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestDefaultPreselects(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, map[string]any{"default": []string{"SRC-B"}}))
+	if got := selectedIDs(t, press(c, "enter")); !reflect.DeepEqual(got, []string{"SRC-B"}) {
+		t.Fatalf("single default: got %v", got)
+	}
+	c = newChoice(t, data(1, 3, donors, map[string]any{"default": []string{"S01", "S05"}}))
+	if got := selectedIDs(t, press(c, "enter")); !reflect.DeepEqual(got, []string{"S01", "S05"}) {
+		t.Fatalf("multi default: got %v", got)
+	}
+	c = newChoice(t, data(1, 1, sources, map[string]any{"default": []string{"SRC-C"}}))
+	if got := selectedIDs(t, press(c, "enter")); !reflect.DeepEqual(got, []string{"SRC-A"}) {
+		t.Fatalf("unavailable default should be ignored: got %v", got)
+	}
+}
+
+func TestMultiPickEnforcesLimitsAndKeepsOrder(t *testing.T) {
+	c := newChoice(t, data(2, 2, donors, nil))
+	if r := press(c, "down", "down", "space", "enter"); r != nil {
+		t.Fatalf("submitted with too few picks: %+v", r)
+	}
+	press(c, "up", "space", "up", "space")
+	if c.count() != 2 || !strings.Contains(c.problem, "at most 2") {
+		t.Fatalf("max not enforced: count=%d problem=%q", c.count(), c.problem)
+	}
+	if got := selectedIDs(t, press(c, "enter")); !reflect.DeepEqual(got, []string{"S02", "S05"}) {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestRepeatedLabelsShowTheirIDs(t *testing.T) {
+	c := newChoice(t, data(1, 3, donors, nil))
+	view := c.View(100, 20)
+	if !strings.Contains(view, "S01") || !strings.Contains(view, "S05") {
+		t.Fatalf("ids missing for repeated labels:\n%s", view)
+	}
+}
+
+// One esc only asks; a second cancels, as on the list, plate and dashboard
+// (C-04). Any other key in between starts over.
+func TestEscTwiceCancels(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("one esc cancelled: %+v", r)
+	}
+	if !strings.Contains(c.View(100, 20), "press esc again") {
+		t.Fatalf("no prompt after one esc:\n%s", c.View(100, 20))
+	}
+	press(c, "down")
+	if r := press(c, "esc"); r != nil {
+		t.Fatalf("esc after another key cancelled: %+v", r)
+	}
+	if r := press(c, "esc"); r == nil || r.Action != "cancel" {
+		t.Fatalf("second esc: got %+v", r)
+	}
+}
+
+// ctrl+d defers the question: nothing is decided (C-07).
+func TestCtrlDDefers(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	if r := press(c, "ctrl+d"); r == nil || r.Action != "defer" {
+		t.Fatalf("got %+v", r)
+	}
+}
+
+// The cursor on an unavailable option is no draft: a dashboard must not ask
+// to "keep" something that can't be picked (C-02).
+func TestCursorOnAnUnavailableOptionIsNoDraft(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	for i, o := range c.options {
+		if o.Unavailable != "" {
+			c.cursor = i
+			if d := c.Draft(); d != nil {
+				t.Fatalf("draft on unavailable %s: %v", o.ID, d)
+			}
+			return
+		}
+	}
+	t.Skip("fixture has no unavailable option")
+}
+
+func TestLongTextWrapsAndNothingIsLost(t *testing.T) {
+	long := "this sentence is deliberately much longer than forty columns so it must wrap"
+	opts := []map[string]any{
+		{"id": "a", "label": "first label " + long, "details": "detail words " + long},
+		{"id": "b", "label": "second", "unavailable": "reason words " + long},
+	}
+	c := newChoice(t, data(1, 1, opts, map[string]any{
+		"question": "question text " + long, "details": "question details " + long,
+	}))
+	view := ansi.Strip(c.View(40, 100))
+	for _, line := range strings.Split(view, "\n") {
+		if w := ansi.StringWidth(line); w > 40 {
+			t.Fatalf("line wider than 40 (%d): %q", w, line)
+		}
+	}
+	words := strings.Fields(view)
+	for _, text := range []string{c.question, c.details, opts[0]["label"].(string),
+		opts[0]["details"].(string), opts[1]["unavailable"].(string)} {
+		for _, w := range strings.Fields(text) {
+			found := false
+			for _, x := range words {
+				found = found || strings.Contains(x, w)
+			}
+			if !found {
+				t.Fatalf("word %q missing from the view:\n%s", w, view)
+			}
+		}
+	}
+}
+
+func TestScrollKeepsAWrappedCursorRowVisible(t *testing.T) {
+	var opts []map[string]any
+	for i := 1; i <= 72; i++ {
+		opts = append(opts, map[string]any{"id": fmt.Sprintf("S%02d", i),
+			"label": "Donor with a fairly long name that wraps"})
+	}
+	c := newChoice(t, data(0, 72, opts, nil))
+	const width, height = 30, 16
+	for step := 0; step < 75; step++ {
+		view := ansi.Strip(c.View(width, height))
+		if n := len(strings.Split(view, "\n")); n > height {
+			t.Fatalf("step %d: %d lines for height %d", step, n, height)
+		}
+		if id := c.options[c.cursor].ID; !strings.Contains(view, id) {
+			t.Fatalf("step %d: cursor row %s not visible:\n%s", step, id, view)
+		}
+		press(c, "down")
+	}
+}
+
+func TestDraftFollowsTheScreen(t *testing.T) {
+	c := newChoice(t, data(1, 1, sources, nil))
+	press(c, "down")
+	if got := c.Draft(); !reflect.DeepEqual(got, map[string]any{"selected": []map[string]any{{"id": "SRC-B"}}}) {
+		t.Fatalf("radio draft = %v", got)
+	}
+	c = newChoice(t, data(0, 3, donors, nil))
+	press(c, "down", "space")
+	if got := c.Draft(); !reflect.DeepEqual(got, map[string]any{"selected": []map[string]any{{"id": "S02"}}}) {
+		t.Fatalf("checklist draft = %v", got)
+	}
+}

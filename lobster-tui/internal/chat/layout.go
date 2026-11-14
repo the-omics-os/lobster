@@ -48,7 +48,8 @@ func (m Model) footerHeight() int {
 
 // componentFooterHeight returns the footer height for an active BioCharm component.
 // Height is based on component name, plus 3 for borders + help bar,
-// clamped to min(m.height/2, 20) max and 5 min.
+// clamped to min(m.height/2, 20) max and 5 min. A plate map, a choice list or
+// a dashboard may use all but 6 rows of the terminal instead.
 func (m Model) componentFooterHeight() int {
 	if m.activeComponent == nil || m.activeComponent.Component == nil {
 		return 1
@@ -56,6 +57,7 @@ func (m Model) componentFooterHeight() int {
 
 	// Base content height by component name.
 	var base int
+	tall := fillsTerminal(m.activeComponent.Component.Name())
 	switch m.activeComponent.Component.Name() {
 	case "cell_type_selector", "ontology_browser":
 		base = 15
@@ -68,10 +70,14 @@ func (m Model) componentFooterHeight() int {
 	// Add 3 for top border + bottom border + help bar line.
 	h := base + 3
 
-	// Clamp to max half-terminal or 20, whichever is smaller.
+	// Clamp to max half-terminal or 20, whichever is smaller. Plates, choice
+	// lists and dashboards need the rows: they take all but 6 lines.
 	maxH := m.height / 2
 	if maxH > 20 {
 		maxH = 20
+	}
+	if tall {
+		h, maxH = m.height-6, m.height-6
 	}
 	if h > maxH {
 		h = maxH
@@ -83,6 +89,30 @@ func (m Model) componentFooterHeight() int {
 	}
 
 	return h
+}
+
+// fillsTerminal reports whether a component fills whatever height it is given
+// (plate map, choice list, dashboard, ontology browser, sequence view), so it needs a height budget that leaves
+// rows for the rest of the screen.
+func fillsTerminal(name string) bool {
+	switch name {
+	case "plate_map", "choice_list", "dashboard", "ontology_browser", "sequence_view":
+		return true
+	}
+	return false
+}
+
+// inlineComponentHeight returns the height an active component is drawn at in
+// inline mode, where it sits above the composer and status line instead of in
+// the footer. A component that fills its height gets the same budget as in the
+// footer layout (componentFooterHeight), so the whole inline frame fits on the
+// screen; any other component keeps the full terminal height.
+func (m Model) inlineComponentHeight() int {
+	if m.activeComponent != nil && m.activeComponent.Component != nil &&
+		fillsTerminal(m.activeComponent.Component.Name()) {
+		return m.componentFooterHeight()
+	}
+	return m.height
 }
 
 // computeLayout calculates the vertical region heights for the 4-layer layout.
