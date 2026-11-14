@@ -5,8 +5,8 @@ the correct symbols after extraction from cli.py.
 """
 
 import importlib
-import types
 import sys
+import types
 
 
 def test_heavy_modules_importable():
