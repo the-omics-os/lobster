@@ -495,6 +495,32 @@ def test_a_table_in_uns_keeps_category_order_and_unused_categories(tmp_path):
     assert list(back.cat.categories) == ["2", "10", "unused"] and back.cat.ordered
 
 
+@pytest.mark.parametrize("axis", ["obs", "var"])
+@pytest.mark.parametrize(
+    "values, categories, ordered",
+    [
+        ([3, None, 2, 3], [3, 1, 2, 7], False),  # int, not sorted, 1 and 7 unused
+        ([2.5, 0.5, None, 2.5], [2.5, 0.5, 9.5], True),  # float, ordered
+        ([True, None, False, True], [True, False], False),  # bool
+    ],
+    ids=["int", "float", "bool"],
+)
+def test_categories_that_are_not_pandas_strings_are_left_alone(
+    axis, values, categories, ordered
+):
+    from lobster.core.utils.h5ad_utils import convert_arrow_to_standard
+
+    adata = _adata()
+    table = getattr(adata, axis)
+    # string inference off, as the lobster command line sets it
+    with pd.option_context("future.infer_string", False):
+        table["group"] = pd.Categorical(
+            values[: len(table)], categories=categories, ordered=ordered
+        )
+        returned = getattr(convert_arrow_to_standard(adata), axis)["group"]
+    pd.testing.assert_series_equal(returned, table["group"])
+
+
 @pytest.mark.parametrize("way", WAYS)
 def test_object_categories_are_written_as_before(tmp_path, way):
     adata = _adata()
