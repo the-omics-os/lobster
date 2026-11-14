@@ -38,7 +38,7 @@ import re
 import select
 import signal
 import struct
-import subprocess
+import subprocess  # nosec B404 - starts the built lobster-tui binary with a fixed argument list
 import termios
 import threading
 import time

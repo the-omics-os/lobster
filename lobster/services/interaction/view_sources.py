@@ -262,7 +262,11 @@ def _downloaded(name: str, url: str) -> Path:
         handle, partial = tempfile.mkstemp(dir=ONTOLOGY_CACHE, suffix=".part")
         with (
             os.fdopen(handle, "wb") as out,
-            urllib.request.urlopen(url, timeout=_DOWNLOAD_TIMEOUT_S) as response,
+            # Bandit B310 (url schemes) is accepted: url always comes from
+            # lobster-vector's fixed OBO_URLS (https), never from input.
+            urllib.request.urlopen(  # nosec B310
+                url, timeout=_DOWNLOAD_TIMEOUT_S
+            ) as response,
         ):
             while chunk := response.read(1024 * 1024):
                 out.write(chunk)

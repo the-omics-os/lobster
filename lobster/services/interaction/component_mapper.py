@@ -12,7 +12,6 @@ import hashlib
 import json as _json
 import logging
 import math
-import re
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from lobster.core.exceptions import InferenceRefused, reraise_inference_refusal
