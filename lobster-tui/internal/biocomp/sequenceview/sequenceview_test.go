@@ -144,3 +144,10 @@ func TestALongRegionRowWrapsInsteadOfBeingCut(t *testing.T) {
 		}
 	}
 }
+
+func TestTheViewerHeaderHasNoMeltingTemperature(t *testing.T) {
+	view := ansi.Strip(newSeq(t, nil).View(100, 40))
+	if strings.Contains(view, "Tm:") || !strings.Contains(view, "GC:") {
+		t.Fatalf("header should keep GC and drop Tm:\n%s", view)
+	}
+}

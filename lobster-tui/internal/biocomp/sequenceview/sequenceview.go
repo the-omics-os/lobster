@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
+	"regexp"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -209,8 +210,11 @@ func (c *Component) View(width, height int) string {
 	return strings.Join(append(parts, bottom...), "\n")
 }
 
-// viewerView is Crust's viewer without its blank padding and its own key
-// line ("Arrows: scroll"): here the arrows move between regions, and this
+// tmSegment is the header's melting-temperature part, " | Tm: 714.0C".
+var tmSegment = regexp.MustCompile(` \| Tm: [0-9.]+C`)
+
+// viewerView is Crust's viewer without its blank padding, its Tm and its own
+// key line ("Arrows: scroll"): here the arrows move between regions, and this
 // screen's keys are in the help bar.
 func (c *Component) viewerView() string {
 	var kept []string
@@ -219,7 +223,9 @@ func (c *Component) viewerView() string {
 		if plain == "" || strings.Contains(plain, "Arrows: scroll") {
 			continue
 		}
-		kept = append(kept, line)
+		// Crust estimates Tm with the Wallace rule, meant for short primers;
+		// over a whole construct it reads e.g. "Tm: 714.0C", so it is hidden.
+		kept = append(kept, tmSegment.ReplaceAllString(line, ""))
 	}
 	return strings.Join(kept, "\n")
 }
