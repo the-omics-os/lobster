@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import base64
+import copy
+import hashlib
+import re
 import secrets
 import threading
-import copy
-import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lobster.core.figures.ids import FigureRef
 from lobster.core.figures.payload import (
@@ -25,7 +25,7 @@ from lobster.core.figures.records import (
 from lobster.core.figures.saver import TrustedSaver
 
 if TYPE_CHECKING:
-    from lobster.core.figures.store import FigureStore
+    from lobster.core.figures.store import LocalFigureStore
 
 
 class EditorService:
@@ -36,22 +36,22 @@ class EditorService:
     arbitrary timeline links, configuration or provenance records.
     """
 
-    def __init__(self, store: FigureStore, ref: str):
+    def __init__(self, store: LocalFigureStore, ref: str) -> None:
         self.store = store
         self.initial_ref = str(FigureRef.parse(ref))
         self.figure_id = FigureRef.parse(ref).figure_id
         self._namespace = secrets.token_hex(16)
         self._lock = threading.Lock()
-        self._requests = {}
+        self._requests: dict[str, dict[str, Any]] = {}
         self.load(ref)  # refuse unavailable or corrupt figures before opening a server
 
-    def reference(self, ref):
+    def reference(self, ref: str) -> str:
         parsed = FigureRef.parse(ref)
         if parsed.figure_id != self.figure_id:
             raise ValueError("This revision is outside the editor's figure")
         return str(parsed)
 
-    def load(self, ref):
+    def load(self, ref: str) -> dict[str, Any]:
         ref = self.reference(ref)
         record, figure, config = self.store.read(ref)
         return {
@@ -62,10 +62,12 @@ class EditorService:
             "attachments": self.attachments(ref),
         }
 
-    def history(self):
+    def history(self) -> dict[str, Any]:
         return self.store.history(self.figure_id)
 
-    def data_page(self, ref, *, offset=0, limit=100):
+    def data_page(
+        self, ref: str, *, offset: int = 0, limit: int = 100
+    ) -> dict[str, Any]:
         """Read a bounded page from the revision's verified retained drawing source."""
         from lobster.core.figures.data_view import column_mapping
 
@@ -129,12 +131,12 @@ class EditorService:
             "limit": limit,
         }
 
-    def attachments(self, ref):
+    def attachments(self, ref: str) -> list[dict[str, Any]]:
         from lobster.core.figures.attachments import manifest
 
         return manifest(self.store, self.store.read_record(self.reference(ref)))
 
-    def attachment(self, ref, attachment_id):
+    def attachment(self, ref: str, attachment_id: str) -> dict[str, Any]:
         from lobster.core.figures.attachments import read_attachment
 
         record = self.store.read_record(self.reference(ref))
@@ -165,7 +167,7 @@ class EditorService:
             }
         raise ValueError("Attachment does not belong to this revision")
 
-    def delete(self, data):
+    def delete(self, data: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(data, dict) or set(data) != {"ref", "generation"}:
             raise ValueError("Expected ref and generation")
         with self._lock:
@@ -176,7 +178,9 @@ class EditorService:
                 self.initial_ref = result["load_ref"]
             return result
 
-    def validate(self, draft):
+    def validate(
+        self, draft: dict[str, Any]
+    ) -> tuple[str, bytes, bytes, dict[str, Any], str]:
         if (
             not isinstance(draft, dict)
             or not {"parent", "figure", "request_id"} <= set(draft)
@@ -234,15 +238,15 @@ class EditorService:
 
     def edit_visuals(
         self,
-        ref,
+        ref: str,
         *,
-        generation,
-        request_id,
-        layout_updates=None,
-        trace_updates=None,
-        explanation="",
-        require_latest=False,
-    ):
+        generation: int,
+        request_id: str,
+        layout_updates: dict[str, Any] | None = None,
+        trace_updates: list[dict[str, Any]] | None = None,
+        explanation: str = "",
+        require_latest: bool = False,
+    ) -> dict[str, Any]:
         """Apply AI styling to a saved revision, then use the manual save seam.
 
         Trace coordinates, identities and retained source data cannot be replaced.
@@ -309,7 +313,7 @@ class EditorService:
         ):
             raise ValueError("Only visual layout properties can be edited")
 
-        def merge(target, updates):
+        def merge(target: dict[str, Any], updates: dict[str, Any]) -> None:
             for key, value in updates.items():
                 if key in {"__proto__", "constructor", "prototype"}:
                     raise ValueError("Invalid property name")
@@ -343,8 +347,15 @@ class EditorService:
             require_latest=require_latest,
         )
 
-    def save(self, draft, *, actor="user", require_latest=False):
+    def save(
+        self,
+        draft: dict[str, Any],
+        *,
+        actor: str = "user",
+        require_latest: bool = False,
+    ) -> dict[str, Any]:
         import plotly
+
         from lobster.version import __version__
 
         with self._lock, self.store.writer_lock:
@@ -484,7 +495,7 @@ class EditorService:
             }
             return result
 
-    def wait_for_saves(self):
+    def wait_for_saves(self) -> None:
         """Let an active trusted save finish before the hosting surface shuts down."""
         with self._lock:
             pass

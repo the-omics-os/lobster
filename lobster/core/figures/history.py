@@ -10,18 +10,22 @@ import copy
 import json
 import os
 import tempfile
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .store import LocalFigureStore
 
 from .errors import StorageError
 from .ids import FigureRef
 
 
-def change_details(before, after):
+def change_details(before: Any, after: Any) -> dict[str, Any]:
     """Bounded, factual JSON diff; large arrays are summarized by size and hash."""
     import hashlib
 
-    changes = []
+    changes: list[dict[str, Any]] = []
 
-    def value(v):
+    def value(v: Any) -> Any:
         raw = json.dumps(v, sort_keys=True, separators=(",", ":")).encode()
         if len(raw) <= 512:
             return v
@@ -31,7 +35,7 @@ def change_details(before, after):
             "length": len(v) if isinstance(v, (list, dict, str)) else None,
         }
 
-    def walk(a, b, path):
+    def walk(a: Any, b: Any, path: str) -> None:
         if a == b:
             return
         if isinstance(a, dict) and isinstance(b, dict):
@@ -106,7 +110,7 @@ def change_details(before, after):
 
 
 class Timeline:
-    def __init__(self, store, figure_id):
+    def __init__(self, store: LocalFigureStore, figure_id: str) -> None:
         # Parsing validates both IDs and forbids paths supplied by a client.
         FigureRef.parse(figure_id + "@r_aaaaaaaaaa")
         self.store = store
@@ -114,7 +118,7 @@ class Timeline:
         self.directory = store.root / "_history"
         self.path = self.directory / (figure_id + ".json")
 
-    def _publish(self, state):
+    def _publish(self, state: dict[str, Any]) -> None:
         self.store._mkdirs(self.directory)
         self.store._read(self.path)  # reject symlinks/non-regular entries
         data = json.dumps(state, sort_keys=True, allow_nan=False).encode()
@@ -132,12 +136,13 @@ class Timeline:
             if os.path.exists(temporary):
                 os.unlink(temporary)
 
-    def read(self):
+    def read(self) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
         records = list(self.store._iter_records(self.figure_id))
         records.sort(key=lambda r: (r.get("created_at", ""), r["revision_id"]))
         # Wall clocks can move backwards or give several revisions the same time.
         # Migrate ancestors/anchors before descendants, preserving every parent edge.
-        remaining, records, emitted = records, [], set()
+        remaining, records = records, []
+        emitted: set[str] = set()
         known = {r["revision_id"] for r in remaining}
         while remaining:
             ready = []
@@ -205,7 +210,7 @@ class Timeline:
             self._publish(state)
         return state, {r["revision_id"]: r for r in records}
 
-    def _validate(self, state):
+    def _validate(self, state: dict[str, Any]) -> None:
         try:
             if (
                 type(state["generation"]) is not int
@@ -229,7 +234,7 @@ class Timeline:
             raise StorageError("Invalid figure history links") from exc
 
     @staticmethod
-    def _insert(state, rid, after):
+    def _insert(state: dict[str, Any], rid: str, after: str | None) -> None:
         next_id = state["nodes"][after]["next"] if after else None
         state["nodes"][rid] = {"previous": after, "next": next_id}
         if after:
@@ -242,7 +247,7 @@ class Timeline:
             state["tail"] = rid
 
     @staticmethod
-    def _unlink(state, rid):
+    def _unlink(state: dict[str, Any], rid: str) -> None:
         node = state["nodes"].pop(rid)
         if node["previous"]:
             state["nodes"][node["previous"]]["next"] = node["next"]
@@ -256,13 +261,13 @@ class Timeline:
             state["deleted"].append(rid)
 
     @staticmethod
-    def check(state, generation):
+    def check(state: dict[str, Any], generation: int) -> None:
         if type(generation) is not int or generation != state["generation"]:
             raise ValueError(
                 "History changed in another window. Refresh history and retry."
             )
 
-    def view(self):
+    def view(self) -> dict[str, Any]:
         state, records = self.read()
         rows, rid, seen = [], state["head"], set()
         while rid:
@@ -289,7 +294,7 @@ class Timeline:
             raise StorageError("Disconnected history")
         return {**state, "revisions": rows}
 
-    def delete(self, ref, generation):
+    def delete(self, ref: str, generation: int) -> dict[str, Any]:
         state, _ = self.read()
         self.check(state, generation)
         parsed = FigureRef.parse(ref)

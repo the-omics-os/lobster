@@ -5,14 +5,25 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import re
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .store import LocalFigureStore
 from .errors import FigureError, IntegrityError
 
 MAX_ATTACHMENT_BYTES = 10_000_000
 
 
 def save_attachment(
-    store, payload, *, label, role, description="", columns=None, origin=None
-):
+    store: LocalFigureStore,
+    payload: bytes,
+    *,
+    label: str,
+    role: str,
+    description: str = "",
+    columns: list[str] | None = None,
+    origin: str | None = None,
+) -> dict[str, Any]:
     if role not in ("plotted_data", "related_data", "source"):
         raise ValueError("Invalid attachment role")
     if not isinstance(payload, bytes) or len(payload) > MAX_ATTACHMENT_BYTES:
@@ -39,7 +50,7 @@ def save_attachment(
     }
 
 
-def read_attachment(store, descriptor):
+def read_attachment(store: LocalFigureStore, descriptor: dict[str, Any]) -> bytes:
     digest = descriptor["id"]
     if not isinstance(digest, str) or not re.fullmatch("[0-9a-f]{64}", digest):
         raise ValueError("Invalid attachment identifier")
@@ -51,7 +62,7 @@ def read_attachment(store, descriptor):
     return payload
 
 
-def manifest(store, record):
+def manifest(store: LocalFigureStore, record: dict[str, Any]) -> list[dict[str, Any]]:
     source = record.get("source") or {}
     descriptors = list((source.get("declared") or {}).get("attachments") or [])
     result = []

@@ -36,6 +36,7 @@ from typing import (
     Protocol,
     Sequence,
     Tuple,
+    TypeGuard,
     runtime_checkable,
 )
 
@@ -328,7 +329,7 @@ def _is_hex(text: Any, length: int) -> bool:
     )
 
 
-def _valid_attempt_base(base: str) -> bool:
+def _valid_attempt_base(base: Any) -> TypeGuard[str]:
     """The attempt-base grammar the execution request accepts (``execution_attempt_base``)."""
     return isinstance(base, str) and base.count(":") == 1 and all(base.split(":"))
 
@@ -340,9 +341,12 @@ def _plan_shape_ok(planned: Any, count: Any) -> bool:
     if not (isinstance(planned, list) and planned and type(count) is int):
         return False
     indices = [p.get("index") if isinstance(p, dict) else None for p in planned]
-    if any(type(i) is not int or not 0 <= i < count for i in indices):
-        return False
-    return len(set(indices)) == len(indices) and indices == sorted(indices)
+    validated: list[int] = []
+    for index in indices:
+        if type(index) is not int or not 0 <= index < count:
+            return False
+        validated.append(index)
+    return len(set(validated)) == len(validated) and validated == sorted(validated)
 
 
 def _read_regular(path: Path) -> Optional[bytes]:
@@ -359,7 +363,7 @@ def _read_regular(path: Path) -> Optional[bytes]:
     try:
         if not _stat.S_ISREG(os.fstat(fd).st_mode):
             raise StorageError("unexpected entry type at a store path")
-        chunks = []
+        chunks: list[bytes] = []
         while True:
             chunk = os.read(fd, 1 << 20)
             if not chunk:
@@ -785,7 +789,7 @@ class LocalFigureStore:
 
     def _assert_locked(self) -> None:
         """Destructive helpers run only inside a writer-lock hold."""
-        if not self._lock._is_owned():
+        if not self._lock._is_owned():  # type: ignore[attr-defined]  # CPython RLock ownership check
             raise StorageError("writer lock not held")
 
     def _verify_fence(self, path: Path, data: bytes) -> bool:
@@ -1305,7 +1309,9 @@ class LocalFigureStore:
             failed += 1
         # pass 1: which executions are releasable (read only, never through a link)
         releasable: Dict[str, Dict[str, Any]] = {}
-        for eid in sorted(e for e in execs if is_valid_id(e) and exec_dir_ok):
+        for eid in sorted(
+            e for e in execs if isinstance(e, str) and is_valid_id(e) and exec_dir_ok
+        ):
             try:
                 raw = self._read(exec_dir / f"{eid}.json")
                 if raw is None:
@@ -1381,6 +1387,7 @@ class LocalFigureStore:
         planned = execution.get("planned_candidates")
         if not (
             _valid_attempt_base(base)
+            and isinstance(planned, list)
             and _plan_shape_ok(planned, execution.get("candidate_count"))
         ):
             raise StorageError("malformed execution plan")
@@ -1569,6 +1576,8 @@ class LocalFigureStore:
                 )  # lost the race: defer to the winner
             else:
                 claim = {"execution_id": execution_id, "plan_digest": plan_digest}
+        if claim is None:
+            raise StorageError("execution claim disappeared")
         if self._execution_deleted(str(claim.get("execution_id"))):
             # An execution tombstone fences the ORIGINAL attempt. It may exist with no
             # revision claim (a figure never committed), so it stays generation_fenced and
@@ -1749,14 +1758,14 @@ class LocalFigureStore:
             )
         return json.loads(raw)
 
-    def history(self, figure_id):
+    def history(self, figure_id: str) -> Dict[str, Any]:
         """Linked timeline over immutable revision ancestry, migrated on first access."""
         from .history import Timeline
 
         with self._lock:
             return Timeline(self, figure_id).view()
 
-    def delete_revision(self, ref, generation):
+    def delete_revision(self, ref: str, generation: int) -> Dict[str, Any]:
         from .history import Timeline
 
         with self._lock:
@@ -1876,9 +1885,10 @@ class LocalFigureStore:
             # Lost a race on the same attempt key: defer to the winner.
             if not candidate.parent_ref:
                 self._rmdir_quiet(self.root / figure_id)
-            return self._commit_claimed(
-                candidate, self._read_claim(claim_path), execution_id, digest
-            )
+            claim = self._read_claim(claim_path)
+            if claim is None:
+                raise StorageError("revision claim disappeared")
+            return self._commit_claimed(candidate, claim, execution_id, digest)
         return self._write_revision(
             candidate, ref, execution_id=execution_id, digest=digest
         )

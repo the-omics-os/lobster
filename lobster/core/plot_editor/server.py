@@ -3,27 +3,33 @@
 from __future__ import annotations
 
 import atexit
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 import secrets
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lobster.core.figures.store import LocalFigureStore
+
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from lobster.core.figures.errors import FigureError, safe_reason
 from lobster.core.figures.ids import FigureRef
 from lobster.core.figures.payload import MAX_FIGURE_BYTES, strict_json_loads
 from lobster.core.figures.records import json_blob_bytes
+
 from .browser import open_browser
 from .service import EditorService
 
-_sessions = {}
+_sessions: dict[tuple[int, str], EditorSession] = {}
 _registry_lock = threading.RLock()
 IDLE_SECONDS = 300
 
 
 class EditorSession:
-    def __init__(self, service):
+    def __init__(self, service: EditorService) -> None:
         from plotly.offline import get_plotlyjs
 
         self.service = service
@@ -44,14 +50,19 @@ class EditorSession:
         session = self
 
         class Handler(BaseHTTPRequestHandler):
-            def setup(self):
+            def setup(self) -> None:
                 super().setup()
                 self.connection.settimeout(15)
 
-            def log_message(self, *args):
+            def log_message(self, format: str, *args: Any) -> None:
                 pass  # no tokens, user data or request URLs in logs
 
-            def reply(self, status, value, mime="application/json"):
+            def reply(
+                self,
+                status: int,
+                value: dict[str, Any] | bytes,
+                mime: str = "application/json",
+            ) -> None:
                 data = value if isinstance(value, bytes) else json_blob_bytes(value)
                 self.send_response(status)
                 self.send_header("Content-Type", mime)
@@ -66,7 +77,7 @@ class EditorSession:
                 self.end_headers()
                 self.wfile.write(data)
 
-            def dispatch(self):
+            def dispatch(self) -> None:
                 active = False
                 try:
                     if self.headers.get_all("Host") != [session.authority]:
@@ -197,14 +208,14 @@ class EditorSession:
             raise
 
     @property
-    def closed(self):
+    def closed(self) -> bool:
         return self._stop.is_set()
 
-    def url(self, ref):
+    def url(self, ref: str) -> str:
         ref = self.service.reference(ref)
         return self.origin + "/?" + urlencode({"ref": ref}) + "#" + self.token
 
-    def _watchdog(self):
+    def _watchdog(self) -> None:
         while not self._stop.wait(10):
             with self._state_lock:
                 expired = (
@@ -216,7 +227,7 @@ class EditorSession:
                 if self.closed:
                     return
 
-    def close(self, *, only_if_idle=False):
+    def close(self, *, only_if_idle: bool = False) -> None:
         with self._state_lock:
             if self.closed:
                 return
@@ -235,14 +246,14 @@ class EditorSession:
                     _sessions.pop(key, None)
 
 
-def launch_editor(store, ref):
+def launch_editor(store: LocalFigureStore, ref: str) -> dict[str, Any]:
     """Reuse one server per store/figure; tabs may independently edit any revision."""
     ref = str(FigureRef.parse(ref))
     key = (id(store), FigureRef.parse(ref).figure_id)
     with _registry_lock:
         session = _sessions.get(key)
         created = session is None or session.closed
-        if created:
+        if session is None or session.closed:
             session = EditorSession(EditorService(store, ref))
             _sessions[key] = session
         else:
@@ -269,6 +280,6 @@ def launch_editor(store, ref):
 
 
 @atexit.register
-def close_editors():
+def close_editors() -> None:
     for session in list(_sessions.values()):
         session.close()

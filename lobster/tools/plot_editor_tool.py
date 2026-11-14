@@ -1,9 +1,18 @@
 """Deterministic post-save plot selection and editor opening."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from langchain_core.tools import BaseTool
+
+    from lobster.core.figures.store import LocalFigureStore
+    from lobster.core.runtime.data_manager import DataManagerV2
 
 
-def plot_catalog(store):
+def plot_catalog(store: LocalFigureStore) -> list[dict[str, Any]]:
     """One row per plot; latest means timeline tail, never a guessed filename."""
     rows, cursor = [], None
     while True:
@@ -36,7 +45,9 @@ def plot_catalog(store):
     return result
 
 
-def resolve_plot(store, selector):
+def resolve_plot(
+    store: LocalFigureStore, selector: str
+) -> tuple[str | None, list[dict[str, Any]]]:
     """Return an exact revision or candidate rows. No fuzzy auto-selection."""
     from lobster.core.figures.ids import FigureRef
 
@@ -69,7 +80,7 @@ def resolve_plot(store, selector):
     )
 
 
-def create_plot_editor_tools(data_manager):
+def create_plot_editor_tools(data_manager: DataManagerV2) -> list[BaseTool]:
     from langchain_core.tools import tool
 
     @tool
@@ -102,9 +113,10 @@ def create_plot_editor_tools(data_manager):
                     "message": "Offer to open the saved plot editor.",
                 }
             )
-        from lobster.core.plot_editor import launch_editor
-        from lobster.core.figures.errors import FigureError, safe_reason
         from langgraph.types import interrupt
+
+        from lobster.core.figures.errors import FigureError, safe_reason
+        from lobster.core.plot_editor import launch_editor
 
         store = data_manager.figure_store
         try:
@@ -167,17 +179,19 @@ def create_plot_editor_tools(data_manager):
     return [list_editable_figures, enable_sync_fallback(open_plot_editor)]
 
 
-def create_figure_edit_tools(data_manager):
+def create_figure_edit_tools(data_manager: DataManagerV2) -> list[BaseTool]:
     """Chat styling shares the editor draft validation and trusted revision saver."""
     import secrets
+
     from langchain_core.tools import tool
-    from lobster.core.plot_editor.service import EditorService
+
     from lobster.core.figures.errors import FigureError, safe_reason
+    from lobster.core.plot_editor.service import EditorService
 
-    services = {}
-    inspections = {}
+    services: dict[str, EditorService] = {}
+    inspections: dict[str, tuple[str, int, bool]] = {}
 
-    def service_for(ref):
+    def service_for(ref: str) -> EditorService:
         from lobster.core.figures.ids import FigureRef
 
         fid = FigureRef.parse(ref).figure_id
@@ -250,8 +264,8 @@ def create_figure_edit_tools(data_manager):
         figure_ref: str,
         generation: int,
         request_id: str,
-        layout_updates: dict,
-        trace_updates: list[dict],
+        layout_updates: dict[str, Any],
+        trace_updates: list[dict[str, Any]],
         explanation: str,
     ) -> str:
         """Save requested visual changes as a new revision of an existing saved plot.

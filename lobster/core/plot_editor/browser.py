@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import platform
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import webbrowser
+from pathlib import Path
+from typing import Iterator, Literal
 
 _WINDOWS_BROWSER_PATHS = (
     "Google/Chrome/Application/chrome.exe",
@@ -32,7 +33,7 @@ _GRAPHICAL_LINUX_BROWSERS = (
 )
 
 
-def chromium_candidates():
+def chromium_candidates() -> list[str]:
     paths = []
     for name in (
         "google-chrome",
@@ -93,7 +94,7 @@ def chromium_candidates():
     return list(dict.fromkeys(p for p in paths if Path(p).is_file()))
 
 
-def _graphical_controllers():
+def _graphical_controllers() -> Iterator[webbrowser.BaseBrowser]:
     try:
         controller = webbrowser.get()
         name = Path(str(getattr(controller, "name", ""))).name.lower()
@@ -115,7 +116,7 @@ def _graphical_controllers():
                 yield webbrowser.BackgroundBrowser(executable)
 
 
-def open_browser(url):
+def open_browser(url: str) -> Literal["app", "tab"]:
     """Best-effort launch, returning app/tab. Do not kill a shared browser process."""
     for executable in chromium_candidates():
         try:

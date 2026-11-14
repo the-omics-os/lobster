@@ -267,6 +267,7 @@ def test_ai_edit_rejects_data_changes_and_invalid_styles(editor, update):
 
 def test_ai_tools_inspect_edit_retry_and_stale_history(editor):
     from types import SimpleNamespace
+
     from lobster.tools.plot_editor_tool import create_figure_edit_tools
 
     store, root, service = editor
@@ -291,6 +292,7 @@ def test_ai_tools_inspect_edit_retry_and_stale_history(editor):
 
 def test_ai_edit_from_old_chat_ref_uses_intervening_gui_save(editor):
     from types import SimpleNamespace
+
     from lobster.tools.plot_editor_tool import create_figure_edit_tools
 
     store, root, service = editor
@@ -328,6 +330,7 @@ def test_ai_edit_from_old_chat_ref_uses_intervening_gui_save(editor):
 
 def test_explicit_historical_ai_edit_remains_supported(editor):
     from types import SimpleNamespace
+
     from lobster.tools.plot_editor_tool import create_figure_edit_tools
 
     store, root, service = editor
@@ -354,6 +357,7 @@ def test_explicit_historical_ai_edit_remains_supported(editor):
 
 def test_ai_cannot_substitute_old_parent_or_invent_inspection(editor):
     from types import SimpleNamespace
+
     from lobster.tools.plot_editor_tool import create_figure_edit_tools
 
     store, root, service = editor
@@ -404,11 +408,13 @@ def test_plot_picker_uses_real_interrupt_ids_and_selected_plot(
 ):
     from types import SimpleNamespace
     from typing import TypedDict
-    from langgraph.graph import StateGraph, START, END
+
     from langgraph.checkpoint.memory import InMemorySaver
+    from langgraph.graph import END, START, StateGraph
     from langgraph.types import Command
-    from lobster.tools.plot_editor_tool import create_plot_editor_tools
+
     from lobster.core import plot_editor
+    from lobster.tools.plot_editor_tool import create_plot_editor_tools
 
     store, root, service = editor
     other = create(store, name="Scatter", base="create:other")
@@ -455,8 +461,9 @@ def test_plot_picker_uses_real_interrupt_ids_and_selected_plot(
 
 def test_explicit_plot_opens_latest_without_extra_question(editor, monkeypatch):
     from types import SimpleNamespace
-    from lobster.tools.plot_editor_tool import create_plot_editor_tools
+
     from lobster.core import plot_editor
+    from lobster.tools.plot_editor_tool import create_plot_editor_tools
 
     store, root, service = editor
     latest = service.save(draft(service, root, "Latest"))["ref"]
@@ -493,8 +500,8 @@ def test_explicit_plot_opens_latest_without_extra_question(editor, monkeypatch):
 
 
 def test_interrupted_index_publication_is_recoverable(editor, monkeypatch):
-    from lobster.core.figures.history import Timeline
     from lobster.core.figures.errors import StorageError
+    from lobster.core.figures.history import Timeline
 
     store, root, service = editor
     request = draft(service, root, "Recovered")
@@ -538,3 +545,42 @@ def test_migration_orders_ancestry_even_when_clock_moves_backwards(editor, monke
     third = service.save(draft(service, second, "Third"))["ref"]
     (store.root / "_history" / (service.figure_id + ".json")).unlink()
     assert links(service.history()) == [root, second, third]
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("actor", ["user", "assistant"])
+def test_saved_edits_retain_revision_provenance_without_analysis_ir(tmp_path, actor):
+    store = LocalFigureStore(tmp_path)
+    source = SourcePayload(b'{"columns":["x","y"],"rows":[[1,3],[2,4]]}', {})
+    parent = create(store, source=source)
+    original = store.read(parent)
+    parent_record = store.read_record(parent)
+    service = EditorService(store, parent)
+    request = draft(service, parent, "Styled", explanation="Update the title")
+    result = service.save(request, actor=actor)
+    assert result["status"] == "available"
+
+    # Reopen the production store so the checks exercise persisted evidence.
+    reopened = LocalFigureStore(tmp_path)
+    record = reopened.read_record(result["ref"])
+    assert record["derived_from"] == parent
+    assert record["parents"] == [parent.split("@")[1]]
+    assert record["change"]["actor"] == actor
+    assert record["change"]["request"] == "Update the title"
+    assert record["change"]["details"]["touches_data"] is False
+    assert any(
+        change["path"] == "/layout/title/text"
+        and change["before"] == "Scatter"
+        and change["after"] == "Styled"
+        for change in record["change"]["details"]["properties"]
+    )
+    assert record["source"] == parent_record["source"]
+    assert record["inputs"] == parent_record["inputs"]
+    assert reopened.read_source(record["source"]["source_id"]) == source.payload_bytes
+    assert reopened.read(parent) == original
+    execution = reopened.read_execution(record["execution"]["execution_id"])
+    assert execution["tool"] == "plot_editor"
+    assert execution["parameters"]["parent_ref"] == parent
+    assert execution["agent"] == ("supervisor" if actor == "assistant" else None)
+    assert execution["activity_record"] is None
+    assert execution["activity_unavailable"] == "provenance_disabled"

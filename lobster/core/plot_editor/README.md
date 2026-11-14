@@ -186,6 +186,22 @@ a suspended computer or idle tab may need the editor reopened from Lobster.
 
 ## Verification
 
+Follow-up checklist for the local editor:
+
+- [x] Complete editor/backend type hints and pass focused mypy checks for
+  `attachments.py`, `data_view.py`, `history.py`, `store.py`, `plot_editor/` and
+  `plot_editor_tool.py` (`--follow-imports=silent --ignore-missing-imports`).
+- [x] Verify all four editor tools with shared AQUADIF contract checks. They are
+  `UTILITY` tools with `provenance=False`; analysis provenance IR is not required.
+- [x] Verify persisted manual/assistant edits retain figure revision provenance:
+  parent ancestry, actor, request, factual diff, retained source and execution record.
+- [x] Run Black, isort (using the repository configuration), Ruff and focused
+  editor, tabular-routing, save-reporting and local-store regression tests.
+- [ ] Run local Playwright/Chromium regressions: four browser cases skipped in
+  this environment because Playwright is not installed.
+- [ ] Complete the native macOS visible-window smoke test described below.
+- [x] Commit and push the follow-up changes.
+
 The Figure lifecycle GitHub Actions workflow runs the storage/custom-code tests
 and editor backend tests on `ubuntu-latest` and `macos-latest`. It installs
 Playwright/Chromium as CI-only tools and runs the headless editor checks separately;

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from plotly.graph_objects import Figure
 
 from .records import json_blob_bytes
 
@@ -27,15 +31,15 @@ DATA_FIELDS = (
 )
 
 
-def _parsed(figure):
+def _parsed(figure: Figure | dict[str, Any]) -> dict[str, Any]:
     if isinstance(figure, dict):
         return figure
     from .serialize import figure_to_bytes
 
-    return json.loads(figure_to_bytes(figure))
+    return cast(dict[str, Any], json.loads(figure_to_bytes(figure)))
 
 
-def _normalize_numbers(value):
+def _normalize_numbers(value: Any) -> Any:
     # JSON.stringify turns 1.0 and -0.0 into 1 and 0. These are the same data;
     # distinct large integer values must remain distinct.
     if isinstance(value, float) and value.is_integer():
@@ -47,7 +51,9 @@ def _normalize_numbers(value):
     return value
 
 
-def _binding(figure, roles, *, normalize=True):
+def _binding(
+    figure: dict[str, Any], roles: list[dict[str, Any]], *, normalize: bool = True
+) -> str:
     traces = []
     for trace in figure.get("data", []):
         values = {key: trace[key] for key in DATA_FIELDS if key in trace}
@@ -60,7 +66,13 @@ def _binding(figure, roles, *, normalize=True):
     ).hexdigest()
 
 
-def record_column_roles(figure, roles, *, transformations=None, selection=None):
+def record_column_roles(
+    figure: Figure,
+    roles: list[dict[str, Any]],
+    *,
+    transformations: list[dict[str, Any]] | None = None,
+    selection: dict[str, Any] | None = None,
+) -> None:
     """Annotate a generated figure; trusted saving retains this as figure metadata.
 
     Each role names a source column and its use. Transformations must be supplied
@@ -88,7 +100,7 @@ def record_column_roles(figure, roles, *, transformations=None, selection=None):
     figure.update_layout(meta=metadata)
 
 
-def column_mapping(figure, columns):
+def column_mapping(figure: dict[str, Any], columns: list[str]) -> dict[str, Any] | None:
     """Return only applicable declared metadata; absent/stale/ambiguous is unknown."""
     metadata = figure.get("layout", {}).get("meta")
     mapping = metadata.get("lobster_data") if isinstance(metadata, dict) else None
@@ -117,7 +129,7 @@ def column_mapping(figure, columns):
     return mapping
 
 
-def refresh_column_mapping(before, after):
+def refresh_column_mapping(before: dict[str, Any], after: dict[str, Any]) -> bool:
     """Normalize an inherited mapping only when the actual data/roles are unchanged.
 
     An old raw-number hash can be upgraded on a new revision without rewriting
