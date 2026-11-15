@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 
 import pytest
 import typer
@@ -198,7 +199,8 @@ def test_failed_init_makes_no_project(dirs):
 def test_help_names_the_folder_and_name(dirs):
     from lobster.cli import app
 
-    out = CliRunner().invoke(app, ["init", "--help"]).output
+    output = CliRunner().invoke(app, ["init", "--help"]).output
+    out = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)  # colour on or off
     assert "FOLDER" in out.upper()
     assert "--name" in out
 
