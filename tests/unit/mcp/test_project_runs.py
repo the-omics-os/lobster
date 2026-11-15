@@ -79,10 +79,12 @@ def test_output_dir_is_optional_in_the_schema():
 
 def test_without_output_dir_and_without_a_project_the_run_is_refused(tmp_path, data):
     gate = Gate()
-    server = McpServer(ThreadRunner(gate), start=tmp_path)
+    study = tmp_path / "study"  # tmp_path holds HOME: no project can go there
+    study.mkdir()
+    server = McpServer(ThreadRunner(gate), start=study)
     refused = ask(server, data)["error_text"]
     assert refused.startswith("bad_argument:")
-    assert f"/opt/lobster/bin/lobster init {tmp_path}" in refused
+    assert f"/opt/lobster/bin/lobster init {study}" in refused
     assert "output_dir" in refused
     assert gate.calls == []
 

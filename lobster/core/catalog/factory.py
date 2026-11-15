@@ -4,7 +4,8 @@ Off unless the user switched it on. Resolution (first answer wins):
 
 1. ``LOBSTER_LAMIN`` in the environment, as set in the shell (loading a ``.env``
    never puts it there, see ``Settings._load_credentials``),
-2. ``LOBSTER_LAMIN`` in ``<workspace>/.env``,
+2. ``LOBSTER_LAMIN`` in ``<workspace>/.env``, then, for a run of a project, in
+   the project's own workspace ``.env``,
 3. ``lamin_enabled`` in the global ``providers.json``,
 4. off.
 
@@ -13,7 +14,8 @@ The catalog location: ``LOBSTER_LAMIN_INSTANCE`` (environment, then workspace
 user's ambient Lamin default instance is never used.
 
 One catalog per process: the engine's settings are process-wide, so a second
-workspace in the same process gets a ``NullCatalog`` that says why.
+workspace in the same process gets a ``NullCatalog`` that says why. The runs of one
+project are not second workspaces: they share the project's catalog (``layout``).
 """
 
 from __future__ import annotations
@@ -28,9 +30,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple
 
+from lobster.core.catalog.layout import Layout, catalog_layout
 from lobster.core.catalog.null import NullCatalog
 from lobster.core.catalog.port import Catalog
-from lobster.core.catalog.thread import ThreadedCatalog
+from lobster.core.catalog.thread import ThreadedCatalog, workspace_lock
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,8 @@ ENV_INSTANCE = "LOBSTER_LAMIN_INSTANCE"
 ENV_LAMIN_INSTANCE = "LAMIN_CURRENT_INSTANCE"
 GLOBAL_ENABLE_KEY = "lamin_enabled"
 LOCK_FILE = Path(".lobster") / "catalog.lock"
+# How long the first start of a catalog waits for another process that is creating it.
+CREATE_WAIT_S = 30.0
 
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
@@ -47,7 +52,7 @@ _FALSE = {"0", "false", "no", "off"}
 @dataclass(frozen=True)
 class CatalogConfig:
     enabled: bool
-    source: str  # env | workspace | global | default
+    source: str  # env | workspace | project | global | default
     instance: Optional[str] = None  # None: the workspace's own catalog
     instance_source: Optional[str] = None
 
@@ -116,9 +121,19 @@ def resolve_catalog_config(
 ) -> CatalogConfig:
     env = os.environ if environ is None else environ
     workspace_env = _read_workspace_env(workspace_path)
+    layout = catalog_layout(Path(workspace_path))
+    project_env = (
+        _read_workspace_env(layout.home)
+        if layout.project is not None and layout.workspace != layout.home
+        else {}
+    )
 
     enabled, source = False, "default"
-    for name, mapping in (("env", env), ("workspace", workspace_env)):
+    for name, mapping in (
+        ("env", env),
+        ("workspace", workspace_env),
+        ("project", project_env),
+    ):
         flag = parse_flag(mapping.get(ENV_ENABLE))
         if flag is not None:
             enabled, source = flag, name
@@ -132,6 +147,7 @@ def resolve_catalog_config(
     for name, value in (
         ("env", env.get(ENV_INSTANCE)),
         ("workspace", workspace_env.get(ENV_INSTANCE)),
+        ("project", project_env.get(ENV_INSTANCE)),
         ("lamin_env", env.get(ENV_LAMIN_INSTANCE)),
     ):
         slug = _slug(value)
@@ -195,13 +211,14 @@ def get_catalog(
         if parse_flag(env.get(ENV_ENABLE)) is False:
             return NullCatalog()
         workspace = Path(workspace_path).resolve()
+        home = catalog_layout(workspace).home
         cache_key = None
         if environ is None and global_config_path is None:
             cache_key = (workspace, env.get(ENV_ENABLE), env.get(ENV_INSTANCE))
         with _process_lock:
             if _process_catalog is not None:
                 bound, catalog = _process_catalog
-                if bound == workspace:
+                if bound == home:
                     return catalog
                 return NullCatalog(
                     reason=f"this process already records to the catalog of {bound}"
@@ -217,7 +234,7 @@ def get_catalog(
                 return NullCatalog()
             catalog = _build(workspace, config)
             if not isinstance(catalog, NullCatalog):
-                _process_catalog = (workspace, catalog)
+                _process_catalog = (home, catalog)
             return catalog
     except Exception:
         logger.debug("Catalog: selection failed; continuing without", exc_info=True)
@@ -240,10 +257,11 @@ def _build(workspace: Path, config: CatalogConfig) -> Catalog:
             reason="switched on, but the LaminDB engine is not installed"
         )
     instance = config.instance
+    layout = catalog_layout(workspace, instance=instance is not None)
     if instance is None:
         from lobster.core.catalog.lamin import workspace_settings_conflict
 
-        conflict = workspace_settings_conflict(workspace)
+        conflict = layout.runs_refusal or workspace_settings_conflict(workspace)
         if conflict:
             logger.warning("The LaminDB catalog is off for this session: %s.", conflict)
             return NullCatalog(reason=conflict)
@@ -257,12 +275,29 @@ def _build(workspace: Path, config: CatalogConfig) -> Catalog:
             instance,
             config.instance_source or config.source,
         )
+    lock_path = layout.home / LOCK_FILE
     return ThreadedCatalog(
-        lambda: engine_class(workspace, instance=instance),
-        lock_path=workspace / LOCK_FILE,
+        lambda: _start(engine_class, workspace, instance, layout, lock_path),
+        lock_path=lock_path,
         engine="lamindb",
         mode=config.mode,
+        key_root=layout.root,
     )
+
+
+def _start(
+    engine_class: EngineClass,
+    workspace: Path,
+    instance: Optional[str],
+    layout: Layout,
+    lock_path: Path,
+) -> Catalog:
+    """Build the engine. The first start creates the catalog under the lock, so two
+    processes starting together (two servers on one project) do not both create it."""
+    if instance is None and not layout.config_file.is_file():
+        with workspace_lock(lock_path, CREATE_WAIT_S):
+            return engine_class(workspace, instance=instance)
+    return engine_class(workspace, instance=instance)
 
 
 def begin_session_run(

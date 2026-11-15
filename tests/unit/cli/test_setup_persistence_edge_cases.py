@@ -1,6 +1,7 @@
 """Setup edge contracts; synthetic credentials, no installed/live-account claims."""
 
 import json
+import re
 import shlex
 
 import pytest
@@ -50,11 +51,33 @@ def isolated_setup(monkeypatch, tmp_path):
     monkeypatch.setattr(init_commands, "_check_and_prompt_install_packages", forbidden)
 
 
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+class _Plain:
+    """A CliRunner result whose text has no colour codes (Rich styles output when
+    FORCE_COLOR or GITHUB_ACTIONS is set), so asserts read the same everywhere."""
+
+    def __init__(self, result):
+        self._result = result
+        self.output = ANSI.sub("", result.output)
+
+    def __getattr__(self, name):
+        return getattr(self._result, name)
+
+
+def printed(capsys):
+    return ANSI.sub("", capsys.readouterr().out)
+
+
 def init(*options):
     from lobster.cli import app
 
-    return CliRunner().invoke(
-        app, ["init", "--non-interactive", "--skip-extras", "--skip-ssl-test", *options]
+    return _Plain(
+        CliRunner().invoke(
+            app,
+            ["init", "--non-interactive", "--skip-extras", "--skip-ssl-test", *options],
+        )
     )
 
 
@@ -205,7 +228,7 @@ def test_cloud_wizard_required_persistence_failure_is_terminal(
             skip_extras=True,
         )
     assert error.value.exit_code == 1
-    output = capsys.readouterr().out
+    output = printed(capsys)
     assert "partial" in output.lower()
     assert "saved, not checked" not in output.lower()
 
@@ -251,7 +274,7 @@ def test_cloud_go_postwrite_failure_does_not_restart_another_wizard(
     with pytest.raises(typer.Exit) as error:
         init_commands.init_impl(**kwargs)
     assert error.value.exit_code == 1
-    output = capsys.readouterr().out.lower()
+    output = printed(capsys).lower()
     assert "partial" in output
     assert "falling back" not in output
     assert "configuration saved" not in output
@@ -272,7 +295,7 @@ def test_uv_tool_deferred_command_preserves_existing_extras_and_with_packages(
     monkeypatch.setattr(uv_tool_env, "is_uv_tool_env", lambda: True)
     monkeypatch.setattr(init_commands, "console", Console(width=2000))
     init_commands._print_deferred_agent_install(["data_expert_agent"])
-    command = capsys.readouterr().out.split("Install later: ", 1)[1].strip()
+    command = printed(capsys).split("Install later: ", 1)[1].strip()
     argv = shlex.split(command)
     assert "lobster-ai[anthropic,full]" in argv
     assert "--reinstall" in argv

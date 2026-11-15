@@ -1,6 +1,7 @@
 """Installed Pass-B contracts; synthetic local credentials and receipt only."""
 
 import importlib
+import re
 import shlex
 
 import pytest
@@ -11,6 +12,7 @@ from lobster.cli_internal.commands.heavy import init_commands
 from lobster.config import credentials, global_config
 from lobster.core import uv_tool_env
 
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 pytestmark = pytest.mark.no_auto_config
 KEY = "omk_passb_synthetic"
 
@@ -35,11 +37,30 @@ def isolated(monkeypatch, tmp_path):
         monkeypatch.delenv(name, raising=False)
 
 
+class _Plain:
+    """A CliRunner result whose text has no colour codes (Rich styles output when
+    FORCE_COLOR or GITHUB_ACTIONS is set), so asserts read the same everywhere."""
+
+    def __init__(self, result):
+        self._result = result
+        self.output = ANSI.sub("", result.output)
+
+    def __getattr__(self, name):
+        return getattr(self._result, name)
+
+
+def printed(capsys):
+    return ANSI.sub("", capsys.readouterr().out)
+
+
 def invoke(*options):
     from lobster.cli import app
 
-    return CliRunner().invoke(
-        app, ["init", "--non-interactive", "--skip-extras", "--skip-ssl-test", *options]
+    return _Plain(
+        CliRunner().invoke(
+            app,
+            ["init", "--non-interactive", "--skip-extras", "--skip-ssl-test", *options],
+        )
     )
 
 
@@ -111,7 +132,7 @@ def test_skip_extras_suppresses_entire_tool_handoff(monkeypatch, tmp_path, capsy
     init_commands._uv_tool_env_handoff(
         "anthropic", ["research_agent"], skip_extras=True
     )
-    assert "Package installation needed" not in capsys.readouterr().out
+    assert "Package installation needed" not in printed(capsys)
 
 
 def test_nonskip_tool_handoff_displays_receipt_preserving_command(
@@ -122,7 +143,7 @@ def test_nonskip_tool_handoff_displays_receipt_preserving_command(
     init_commands._uv_tool_env_handoff(
         "anthropic", ["research_agent"], skip_extras=False
     )
-    output = capsys.readouterr().out
+    output = printed(capsys)
     assert "lobster-ai[anthropic,full]" in output
     assert "--with custom-helper" in output
     assert "--with lobster-proteomics" in output
@@ -237,7 +258,7 @@ def test_go_parent_does_not_offer_a_handoff_under_skip(monkeypatch, tmp_path, ca
     with pytest.raises(typer.Exit) as error:
         current_init.init_impl(**kwargs)
     assert error.value.exit_code == 0
-    output = capsys.readouterr().out
+    output = printed(capsys)
     assert "Package installation needed" not in output
     assert "--reinstall" in output
     assert "lobster-ai[anthropic,full]" in output

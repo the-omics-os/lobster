@@ -4,6 +4,7 @@ import importlib
 import inspect
 import io
 import os
+import re
 import stat
 from types import SimpleNamespace
 
@@ -55,11 +56,29 @@ def isolated(monkeypatch, tmp_path):
         os.umask(original_umask)
 
 
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+class _Plain:
+    """A CliRunner result whose text has no colour codes (Rich styles output when
+    FORCE_COLOR or GITHUB_ACTIONS is set), so asserts read the same everywhere."""
+
+    def __init__(self, result):
+        self._result = result
+        self.output = ANSI.sub("", result.output)
+
+    def __getattr__(self, name):
+        return getattr(self._result, name)
+
+
 def invoke(*options):
     from lobster.cli import app
 
-    return CliRunner().invoke(
-        app, ["init", "--non-interactive", "--skip-extras", "--skip-ssl-test", *options]
+    return _Plain(
+        CliRunner().invoke(
+            app,
+            ["init", "--non-interactive", "--skip-extras", "--skip-ssl-test", *options],
+        )
     )
 
 
@@ -377,7 +396,7 @@ def test_init_skip_tightens_legacy_secret_without_changing_bytes(
     result = (
         invoke(*options, "--use-omics-os")
         if noninteractive
-        else CliRunner().invoke(app, ["init", *options])
+        else _Plain(CliRunner().invoke(app, ["init", *options]))
     )
     assert result.exit_code == 0, result.output
     assert path.read_bytes() == original

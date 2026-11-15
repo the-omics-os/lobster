@@ -1140,14 +1140,14 @@ class DataManagerV2:
         return not isinstance(self._catalog, NullCatalog)
 
     def _catalog_key(self, path: Path) -> Optional[str]:
-        """``path`` relative to the workspace root (POSIX), or None when outside it."""
+        """``path`` relative to the catalog's key root (POSIX), or None when outside it.
+
+        The key root is the workspace, or, for a run of a project, the project
+        folder, so two runs that save the same name get different keys.
+        """
+        root = getattr(self._catalog, "key_root", None) or self.workspace_path
         try:
-            return (
-                Path(path)
-                .resolve()
-                .relative_to(Path(self.workspace_path).resolve())
-                .as_posix()
-            )
+            return Path(path).resolve().relative_to(Path(root).resolve()).as_posix()
         except (ValueError, OSError):
             return None
 

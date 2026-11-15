@@ -2184,5 +2184,8 @@
   "provider {value} (from {where})": "提供方 {value}（来自 {where}）",
   "model {value} (from {where})": "模型 {value}（来自 {where}）",
   "  a run uses: {parts}": "  运行将使用：{parts}",
-  "[red]Error:[/red] --provider is for a project made without a terminal: {line}. In a terminal, pick the provider in the setup.": "[red]错误：[/red]--provider 用于无终端创建的项目：{line}。在终端中请在设置向导里选择提供方。"
+  "[red]Error:[/red] --provider is for a project made without a terminal: {line}. In a terminal, pick the provider in the setup.": "[red]错误：[/red]--provider 用于无终端创建的项目：{line}。在终端中请在设置向导里选择提供方。",
+  "project": "项目",
+  "Records go to the catalog of this project in {path}.": "记录会写入此项目在 {path} 中的目录。",
+  "Runs of this project are not recorded: this catalog was made before projects recorded their runs. To record them, move it aside: {line}": "此项目的运行未被记录：该目录创建时项目还不记录运行。要记录它们，请先移开该目录：{line}"
 }

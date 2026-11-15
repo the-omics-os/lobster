@@ -78,9 +78,11 @@ def test_the_overview_is_the_first_tool_read_only_without_arguments():
 
 
 def test_without_a_project_it_says_how_to_start_one(tmp_path):
-    seen = overview(tmp_path)
+    study = tmp_path / "study"  # tmp_path holds HOME: no project can go there
+    study.mkdir()
+    seen = overview(study)
     assert seen["project"] is None
-    assert f"{SHOWN} init {tmp_path}" in seen["next"]
+    assert f"{SHOWN} init {study}" in seen["next"]
     assert seen["commands"] == {
         "start_project": f"{SHOWN} init <folder>",
         "install_experts": f"{SHOWN} agents install <package>",
@@ -131,7 +133,7 @@ def test_a_project_is_found_from_a_folder_inside_it(project):
     [
         ("ws", "{ws}/.env"),
         ("root", "{root}/.env"),
-        ("shell", "shell"),
+        ("shell", "environment"),
         ("global", "global config"),
     ],
 )
@@ -425,12 +427,13 @@ def test_a_project_without_settings_shows_what_the_global_file_gives(
     assert seen["experts"]["source"] == "every installed expert"
 
 
-def test_the_shell_provider_is_shown_with_its_source(
+def test_a_provider_from_the_environment_is_shown_with_its_source(
     monkeypatch, global_dir, identity_only
 ):
+    # a shell export or a host config's env block: the server cannot tell
     monkeypatch.setenv("LOBSTER_LLM_PROVIDER", "ollama")
     seen = overview(identity_only.root)
-    assert (seen["provider"], seen["provider_source"]) == ("ollama", "shell")
+    assert (seen["provider"], seen["provider_source"]) == ("ollama", "environment")
     assert seen["model_source"] in ("provider default", None)
 
 

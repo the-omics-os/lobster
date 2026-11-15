@@ -262,8 +262,10 @@ class ThreadedCatalog:
         timeout: float = DEFAULT_TIMEOUT_S,
         build_timeout: float = BUILD_TIMEOUT_S,
         startup_wait: float = STARTUP_WAIT_S,
+        key_root: Optional[Path] = None,
     ):
         self._lock_path = Path(lock_path)
+        self._key_root = None if key_root is None else Path(key_root)
         self._label = (engine, mode)
         self._timeout = timeout
         self._build_timeout = build_timeout
@@ -289,6 +291,11 @@ class ThreadedCatalog:
         self._watchdog.start()
         _instances.add(self)
         atexit.register(self._at_exit)
+
+    @property
+    def key_root(self) -> Optional[Path]:
+        """The folder a saved file's key is relative to (None: its workspace)."""
+        return self._key_root
 
     # -- Catalog --------------------------------------------------------------
 

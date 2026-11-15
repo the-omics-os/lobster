@@ -34,9 +34,10 @@ _LAMIN_HOSTS = {"lamin.ai", "www.lamin.ai"}
 
 
 def _workspace(path: Optional[str], *, create: bool = False) -> Path:
+    from lobster.core.projects import run_workspace
     from lobster.core.runtime.workspace import resolve_workspace
 
-    return resolve_workspace(path, create=create)
+    return resolve_workspace(run_workspace(Path(path)) if path else path, create=create)
 
 
 def _engine_installed() -> bool:
@@ -46,10 +47,20 @@ def _engine_installed() -> bool:
 
 
 def _slug(workspace: Path) -> Optional[str]:
-    from lobster.core.catalog.lamin import CATALOG_DIR, CONFIG_FILE, _read_json
+    from lobster.core.catalog.lamin import _read_json
+    from lobster.core.catalog.layout import catalog_layout
 
-    slug = _read_json(workspace / CATALOG_DIR / CONFIG_FILE).get("slug")
+    slug = _read_json(catalog_layout(workspace).config_file).get("slug")
     return slug if isinstance(slug, str) else None
+
+
+def _problem(exc: Exception) -> str:
+    """What went wrong opening the catalog; a refusal is already a sentence for people."""
+    from lobster.core.catalog.lamin import CatalogUnavailable
+
+    if isinstance(exc, CatalogUnavailable):
+        return str(exc)
+    return f"{type(exc).__name__}: {exc}"[:300]
 
 
 def _open(workspace: Path, *, create: bool = False, instance: Optional[str] = None):
@@ -176,6 +187,7 @@ def _source_label(source: Optional[str]) -> str:
         "default": h("default"),
         "env": h("environment variable"),
         "workspace": h("workspace"),
+        "project": h("project"),
         "global": h("global settings"),
     }
     return labels.get(source or "", source or "-")
@@ -206,9 +218,10 @@ def _size(count: int) -> str:
 def overview(workspace: Path) -> Dict[str, Any]:
     """What ``lobster lamin status`` reports, as plain data."""
     from lobster.core.catalog.factory import resolve_catalog_config
-    from lobster.core.catalog.lamin import CATALOG_DIR
+    from lobster.core.catalog.layout import catalog_layout
 
     config = resolve_catalog_config(workspace)
+    layout = catalog_layout(workspace, instance=bool(config.instance))
     info: Dict[str, Any] = {
         "workspace": str(workspace),
         "enabled": config.enabled,
@@ -217,7 +230,10 @@ def overview(workspace: Path) -> Dict[str, Any]:
         "instance": config.instance,
         "instance_source": config.instance_source,
         "engine_installed": _engine_installed(),
-        "catalog_dir": str(workspace / CATALOG_DIR),
+        "catalog_dir": str(layout.catalog_dir),
+        "project": None if layout.project is None else str(layout.project),
+        "runs_recorded": layout.runs_recorded if config.enabled else None,
+        "runs_fix": layout.legacy_fix,
         "slug": _slug(workspace),
         "versions": {"files": 0, "bytes": 0},
         "contents": None,
@@ -232,7 +248,7 @@ def overview(workspace: Path) -> Dict[str, Any]:
             info["contents"] = engine.overview()
             info["location"] = str(engine.status().location)
         except Exception as exc:  # status never fails on a damaged catalog
-            info["problem"] = f"{type(exc).__name__}: {exc}"[:300]
+            info["problem"] = _problem(exc)
         if engine is not None:
             try:  # the files prune would remove: one function answers both
                 with contextlib.redirect_stdout(sys.stderr):
@@ -282,11 +298,25 @@ def status_cmd(
                 "set up on this machine. Browse it with LaminDB's own tools."
             )
         )
+    elif info["project"]:
+        typer.echo(
+            h("Records go to the catalog of this project in {path}.").format(
+                path=info["catalog_dir"]
+            )
+        )
     else:
         typer.echo(
             h("Records go to the workspace catalog in {path}.").format(
                 path=info["catalog_dir"]
             )
+        )
+    if info["runs_recorded"] is False:
+        typer.echo(
+            h(
+                "Runs of this project are not recorded: this catalog was made "
+                "before projects recorded their runs. To record them, move it "
+                "aside: {line}"
+            ).format(line=info["runs_fix"])
         )
     if not info["engine_installed"]:
         typer.echo(
@@ -373,7 +403,7 @@ def ls_cmd(
     except Exception as exc:
         typer.echo(
             h("The catalog could not be opened: {problem}").format(
-                problem=f"{type(exc).__name__}: {exc}"[:300]
+                problem=_problem(exc)
             ),
             err=True,
         )
@@ -435,9 +465,7 @@ def prune_cmd(
         raise typer.Exit(1)
 
     def stop(message: str, exc: Exception):
-        typer.echo(
-            h(message).format(problem=f"{type(exc).__name__}: {exc}"[:300]), err=True
-        )
+        typer.echo(h(message).format(problem=_problem(exc)), err=True)
         raise typer.Exit(1)
 
     try:
@@ -582,7 +610,7 @@ def instance_slug(target: str, workspace: Path) -> str:
 def _parse_instance(target: str, workspace: Path) -> str:
     from urllib.parse import urlsplit
 
-    from lobster.core.catalog.lamin import CATALOG_DIR, CONFIG_FILE
+    from lobster.core.catalog.layout import CATALOG_DIR, CONFIG_FILE
 
     target = target.strip()
     path = Path(target).expanduser()
@@ -659,15 +687,16 @@ def init_cmd(
             h("LaminDB is not installed. Install the 'lamin' extra of lobster-ai.")
         )
         return
+    from lobster.core.catalog.layout import catalog_layout
     from lobster.core.queues.queue_storage import InterProcessFileLock
 
     try:
-        with InterProcessFileLock(ws / LOCK_FILE):
+        with InterProcessFileLock(catalog_layout(ws).home / LOCK_FILE):
             engine = _open(ws, create=True)
     except Exception as exc:
         typer.echo(
             h("The catalog could not be opened: {problem}").format(
-                problem=f"{type(exc).__name__}: {exc}"[:300]
+                problem=_problem(exc)
             ),
             err=True,
         )

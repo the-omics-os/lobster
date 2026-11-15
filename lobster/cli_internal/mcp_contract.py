@@ -496,8 +496,9 @@ _WAIT = {
             "or needs_decision.",
             "Otherwise it returns after timeout_s with a short reply (status, "
             "last step, elapsed_s, timed_out); then call it again.",
-            f"Pass timeout_s {WAIT_MAX_S} unless your host ends tool calls "
-            f"sooner (the default is {WAIT_DEFAULT_S}).",
+            f"Leave timeout_s at its default {WAIT_DEFAULT_S}: many hosts end "
+            f"a tool call at 60 s. Pass up to {WAIT_MAX_S} only when your host "
+            "is known to allow longer tool calls.",
             "A second lobster_wait on the same run ends the first, which "
             "returns at once with superseded true.",
             "Use lobster_status for a one-off look.",

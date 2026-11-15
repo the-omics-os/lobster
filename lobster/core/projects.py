@@ -450,6 +450,15 @@ def effective_settings(
     )
 
 
+def run_workspace(folder: Path) -> Path:
+    """The workspace ``-w <folder>`` names: the nested ``.lobster_workspace`` of a run
+    folder (or project), else the folder itself when it holds its own ``data``."""
+    nested = Path(folder) / WORKSPACE_FOLDER_NAME
+    if nested.is_dir() and not (Path(folder) / "data").is_dir():
+        return nested
+    return Path(folder)
+
+
 def runs_dir(project: Project) -> Path:
     return project.root / RUNS_FOLDER_NAME
 
@@ -739,13 +748,17 @@ def plan_delete(root: PathLike) -> DeletePlan:
         plan.paths.append(path)
     if (pid := holder(root)) is not None:
         raise ProjectError("in_use", f"{root} is in use by process {pid}.")
+    from lobster.core.catalog.layout import CATALOG_DIR, own_catalog_dir
+
+    if (catalog := own_catalog_dir(root)) is not None:
+        plan.paths.append(catalog)
     plan.paths.append(workspace)
     for path in plan.paths:
         files, size = _measure(path)
         plan.files += files
         plan.size_bytes += size
     plan.env_note = _env_note(project)
-    for name in (".env", "data", RUNS_FOLDER_NAME):
+    for name in (".env", "data", RUNS_FOLDER_NAME, CATALOG_DIR):
         if (root / name).exists() and (root / name) not in plan.paths:
             plan.kept.append(name)
     return plan

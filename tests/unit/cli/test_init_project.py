@@ -9,6 +9,7 @@ import typer
 from typer.testing import CliRunner
 
 LOBSTER = "/opt/lobster/bin/lobster"
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 KEY = "sk-ant-synthetic-test-key"  # nosec B105 - synthetic value
 
 
@@ -43,10 +44,28 @@ def dirs(monkeypatch, tmp_path):
     return work
 
 
+class _Plain:
+    """A CliRunner result whose text has no colour codes (Rich styles output when
+    FORCE_COLOR or GITHUB_ACTIONS is set), so asserts read the same everywhere."""
+
+    def __init__(self, result):
+        self._result = result
+        self.output = ANSI.sub("", result.output)
+        self.stdout = ANSI.sub("", result.stdout)
+        self.stderr = ANSI.sub("", result.stderr) if result.stderr_bytes else ""
+
+    def __getattr__(self, name):
+        return getattr(self._result, name)
+
+
+def invoke(app, args):
+    return _Plain(CliRunner().invoke(app, args))
+
+
 def run_init(*extra):
     from lobster.cli import app
 
-    return CliRunner().invoke(
+    return invoke(
         app,
         [
             "init",
@@ -189,7 +208,7 @@ def test_folder_beats_env_workspace(dirs, monkeypatch):
 def test_failed_init_makes_no_project(dirs):
     from lobster.cli import app
 
-    result = CliRunner().invoke(
+    result = invoke(
         app, ["init", str(dirs / "study"), "--non-interactive", "--skip-extras"]
     )
     assert result.exit_code != 0
@@ -199,8 +218,7 @@ def test_failed_init_makes_no_project(dirs):
 def test_help_names_the_folder_and_name(dirs):
     from lobster.cli import app
 
-    output = CliRunner().invoke(app, ["init", "--help"]).output
-    out = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)  # colour on or off
+    out = invoke(app, ["init", "--help"]).output
     assert "FOLDER" in out.upper()
     assert "--name" in out
 
@@ -453,7 +471,7 @@ def run_plain(*args):
     """``lobster init <args>`` with no terminal on stdin (CliRunner) and no key flag."""
     from lobster.cli import app
 
-    return CliRunner().invoke(app, ["init", *args])
+    return invoke(app, ["init", *args])
 
 
 def global_setup(provider="anthropic"):
@@ -768,15 +786,11 @@ def test_projects_info_says_what_a_run_will_use(dirs):
     path = global_setup()
     assert run_plain(str(dirs / "study")).exit_code == 0
     shown = " ".join(
-        CliRunner()
-        .invoke(app, ["projects", "info", str(dirs / "study")])
-        .output.split()
+        invoke(app, ["projects", "info", str(dirs / "study")]).output.split()
     )
     assert f"a run uses: provider anthropic (from {path})" in shown
     doc = json.loads(
-        CliRunner()
-        .invoke(app, ["projects", "info", str(dirs / "study"), "--json"])
-        .output
+        invoke(app, ["projects", "info", str(dirs / "study"), "--json"]).output
     )
     assert doc["local"]["provider"] is None and doc["local"]["model"] is None
     assert doc["local"]["experts"] == []
@@ -787,9 +801,7 @@ def test_a_project_made_this_way_can_be_deleted(dirs):
 
     global_setup()
     assert run_plain(str(dirs / "study")).exit_code == 0
-    dry = CliRunner().invoke(
-        app, ["projects", "delete", str(dirs / "study"), "--dry-run"]
-    )
+    dry = invoke(app, ["projects", "delete", str(dirs / "study"), "--dry-run"])
     assert dry.exit_code == 0, dry.output
 
 

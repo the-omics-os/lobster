@@ -1173,10 +1173,13 @@ def verify_notebook(
 # --- the catalog ------------------------------------------------------------
 
 
-def _notebook_key(notebook: Path, workspace: Path) -> str:
-    """The notebook's key in the catalog: its path in the workspace, as the export records it."""
+def _notebook_key(notebook: Path, workspace: Path, instance: bool = False) -> str:
+    """The notebook's key in the catalog: its path below the catalog's key root, as the export records it."""
+    from lobster.core.catalog.layout import catalog_layout
+
+    root = catalog_layout(workspace, instance=instance).root
     try:
-        return notebook.resolve().relative_to(workspace.resolve()).as_posix()
+        return notebook.resolve().relative_to(root).as_posix()
     except ValueError:
         return f"notebooks/{notebook.name}"
 
@@ -1209,7 +1212,7 @@ class _ReplayRecord:
         try:
             self.engine = _open(self.workspace, instance=self.instance)
             self.run = self.engine.begin_replay(
-                key=_notebook_key(notebook, workspace),
+                key=_notebook_key(notebook, workspace, bool(self.instance)),
                 source=notebook.read_text(encoding="utf-8"),
                 params=params,
                 lobster_version=__version__,

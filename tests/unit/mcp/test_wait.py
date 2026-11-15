@@ -48,9 +48,8 @@ def test_the_wait_tool_is_listed_after_status():
     assert wait["annotations"]["readOnlyHint"] is True
     assert mcp_contract.WAIT_MAX_S == 300
     assert mcp_contract.WAIT_DEFAULT_S < 60  # Codex's default tool time limit
-    assert "Pass timeout_s 300 unless your host ends tool calls sooner" in (
-        wait["description"]
-    )
+    assert "Leave timeout_s at its default 50" in wait["description"]
+    assert "300 only when your host is known to allow" in wait["description"]
     for name in ("lobster_run", "lobster_status"):
         assert "lobster_wait" in tools[name]["description"]
     assert "lobster_wait" in mcp_contract.INSTRUCTIONS

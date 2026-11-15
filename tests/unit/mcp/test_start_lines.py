@@ -9,6 +9,7 @@ import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -126,3 +127,30 @@ def test_only_without_any_setup_the_user_needs_a_terminal(isolated):
         McpServer(ThreadRunner(), start=isolated), "lobster_run", {"question": "q"}
     )["error_text"]
     assert "terminal" in refused
+
+
+@pytest.mark.parametrize("where", ["root", "home", "above home"])
+@pytest.mark.parametrize("key", [True, False])
+def test_a_start_where_no_project_can_be_made_points_at_a_project_and_the_config(
+    monkeypatch, isolated, where, key
+):
+    # A desktop host started without --workspace runs the server in /, and
+    # init refuses the home folder and every folder above it.
+    if key:
+        monkeypatch.setenv(KEY, "sk-not-shown-0123")
+    home = Path(os.environ["HOME"])
+    home.mkdir(exist_ok=True)
+    start = {"root": Path("/"), "home": home, "above home": home.parent}[where]
+    seen = overview(start)
+    refused = call(
+        McpServer(ThreadRunner(), start=start), "lobster_run", {"question": "q"}
+    )["error_text"]
+    line = f"{EXE} init ~/<name>" + (" --provider ollama-cloud" if key else "")
+    assert line in seen["start_lines"][0]
+    for text in [*seen["start_lines"], seen["next"], refused]:
+        assert f"init {start} " not in f"{text} "
+    for text in (seen["next"], refused):
+        assert line in text and "terminal" in text
+        assert "--workspace <project folder>" in text
+        assert "MCP config" in text and "cwd" in text
+    assert "sk-not-shown" not in str(seen) + refused

@@ -254,7 +254,7 @@ def overview(start: Path) -> Dict[str, Any]:
 _SOURCES = (
     ("workspace", "project"),
     ("global", "global file"),
-    ("environment", "shell"),
+    ("environment", "environment"),
     ("provider default", "provider default"),
 )
 
@@ -361,15 +361,26 @@ def start_lines(start: Path) -> List[str]:
     """The provider hint's init lines for *start*, naming this install's
     lobster by its absolute path."""
     from lobster.cli_internal.provider_hint import (
+        Placeholder,
         command_line,
         providers_with_keys,
         suggested_lines,
     )
 
     command = _quote(_lobster_path())
+    if _no_project_here(start):
+        return suggested_lines(Placeholder("~/<name>"), command=command)
     if not providers_with_keys() and _setup_exists(start):
         return [command_line("init", str(start), command=command)]
     return suggested_lines(str(start), command=command)
+
+
+def _no_project_here(start: Path) -> bool:
+    """init refuses *start*: the home folder, or a folder above it such as the
+    / a desktop host starts a server in when its config sets no folder."""
+    from lobster.core.projects import is_home_or_above
+
+    return is_home_or_above(start)
 
 
 def _setup_exists(start: Path) -> bool:
@@ -391,6 +402,21 @@ def no_project_text(start: Path) -> str:
     )
 
     lead = f"No Lobster project contains {start}, where this server was started."
+    if _no_project_here(start):
+        lines = [
+            line.removeprefix("In a terminal: ")
+            for line in start_lines(start)
+            if not line.startswith("Options: ")
+        ]
+        return (
+            f"{lead} A project cannot be made there: it is the home folder or "
+            "contains it (a desktop host starts the server in / when its MCP "
+            "config sets no folder). Ask the user to make a project in a "
+            "terminal, choosing <name>: " + " or ".join(lines) + ". Then add "
+            "--workspace <project folder> to this server's args in the host's "
+            "MCP config (for Codex, set cwd to the project folder) and restart "
+            "the server."
+        )
     found = providers_with_keys()
     if found:
         names = ", ".join(
@@ -504,7 +530,7 @@ def _missing_key(key: Optional[Dict[str, Any]], provider: Optional[str]) -> str:
 def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str, Any]]:
     """Whether the provider's key variables are set, and where the value that
     a run would use comes from: the project's ``.env`` (``<ws>/.env``, else
-    ``<ws>/../.env``, the first that exists), then the shell, then the global
+    ``<ws>/../.env``, the first that exists), then the server's environment, then the global
     credentials file. Never any part of a value."""
     if provider is None:
         return None
@@ -531,7 +557,8 @@ def key_presence(provider: Optional[str], workspace: Path) -> Optional[Dict[str,
             if values is not None:
                 sources.append((str(env), values))
             break
-    sources.append(("shell", os.environ))
+    # the server's environment: a shell export or a host config's env block
+    sources.append(("environment", os.environ))
     path = global_config.get_global_credentials_path()
     if path.is_file():
         values = read(path)

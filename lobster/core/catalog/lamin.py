@@ -69,6 +69,12 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Sequence
 
 from lobster.core.catalog.environment import environment_text
+from lobster.core.catalog.layout import (  # noqa: F401 - the names callers use here
+    CATALOG_DIR,
+    CONFIG_FILE,
+    catalog_layout,
+    instance_name,
+)
 from lobster.core.catalog.port import (
     ArtifactRef,
     CatalogStatus,
@@ -79,10 +85,8 @@ from lobster.core.catalog.port import (
 
 logger = logging.getLogger(__name__)
 
-CATALOG_DIR = ".lamindb"
 SETTINGS_SUBDIR = "settings"
 CACHE_SUBDIR = "cache"
-CONFIG_FILE = "lobster.json"
 PIPELINE_KEY = "lobster-ai"
 PIPELINE_REFERENCE = "https://github.com/the-omics-os/lobster"
 VERSIONS_SUBDIR = "versions"
@@ -170,7 +174,7 @@ class CatalogUnavailable(RuntimeError):
 
 
 def workspace_settings_dir(workspace: Path) -> Path:
-    return Path(workspace) / CATALOG_DIR / SETTINGS_SUBDIR
+    return catalog_layout(workspace).catalog_dir / SETTINGS_SUBDIR
 
 
 def workspace_settings_conflict(workspace: Path) -> Optional[str]:
@@ -188,14 +192,6 @@ def workspace_settings_conflict(workspace: Path) -> Optional[str]:
     return "LaminDB was already loaded in this process with other settings"
 
 
-def instance_name(workspace: Path) -> str:
-    """A stable, readable instance name for a workspace path."""
-    workspace = Path(workspace).resolve()
-    slug = re.sub(r"[^a-z0-9]+", "-", workspace.name.lower()).strip("-")[:30]
-    digest = hashlib.sha256(str(workspace).encode()).hexdigest()[:6]
-    return f"lobster-{slug or 'workspace'}-{digest}"
-
-
 class LaminCatalog:
     """``Catalog`` engine backed by LaminDB; synchronous, may raise."""
 
@@ -206,9 +202,13 @@ class LaminCatalog:
         *,
         create: bool = True,
     ):
-        self.workspace = Path(workspace_path).resolve()
+        self.layout = catalog_layout(workspace_path, instance=bool(instance))
+        self.workspace = self.layout.workspace
+        self.home = self.layout.home  # the lock, the hidden records, the instance name
         self._create = create
         self.mode = "instance" if instance else "workspace"
+        if self.mode == "workspace" and self.layout.runs_refusal:
+            raise CatalogUnavailable(self.layout.runs_refusal)
         self._run: Any = None
         self._replay_session: Any = None
         self._transform: Any = None
@@ -233,14 +233,13 @@ class LaminCatalog:
         conflict = workspace_settings_conflict(self.workspace)
         if conflict:
             raise CatalogUnavailable(conflict)
-        settings_dir = workspace_settings_dir(self.workspace)
+        catalog_dir = self.layout.catalog_dir
+        settings_dir = catalog_dir / SETTINGS_SUBDIR
         settings_dir.mkdir(parents=True, exist_ok=True)
         os.environ["LAMIN_SETTINGS_DIR"] = str(settings_dir)
         # LaminDB creates its cache directory on first use (by default in the
-        # user's cache folder); keep it in the workspace unless the user chose one.
-        os.environ.setdefault(
-            "LAMIN_CACHE_DIR", str(self.workspace / CATALOG_DIR / CACHE_SUBDIR)
-        )
+        # user's cache folder); keep it in the catalog folder unless the user chose one.
+        os.environ.setdefault("LAMIN_CACHE_DIR", str(catalog_dir / CACHE_SUBDIR))
         # The workspace catalog never logs in: with LAMIN_API_KEY set, LaminDB would
         # log in to Lamin's servers on first use. Its user is read once, without it.
         api_key = os.environ.pop("LAMIN_API_KEY", None)
@@ -254,7 +253,7 @@ class LaminCatalog:
                 os.environ["LAMIN_API_KEY"] = api_key
 
         self._setup = lamindb_setup
-        config_path = self.workspace / CATALOG_DIR / CONFIG_FILE
+        config_path = self.layout.config_file
         config = _read_json(config_path)
         slug = config.get("slug") if isinstance(config.get("slug"), str) else None
         if slug:
@@ -274,8 +273,8 @@ class LaminCatalog:
         if not self._create:
             raise CatalogUnavailable("this workspace has no catalog yet")
         lamindb_setup.init(
-            storage=str(self.workspace),
-            name=instance_name(self.workspace),
+            storage=str(self.layout.root),
+            name=instance_name(self.home),
             _write_settings=False,
         )
         isettings = lamindb_setup.settings.instance
@@ -484,7 +483,7 @@ class LaminCatalog:
     ) -> Optional[ArtifactRef]:
         """Instance mode: copy the bytes into the instance's storage, register there."""
         ln = self.ln
-        folder = self._storage_root / "lobster" / instance_name(self.workspace) / key
+        folder = self._storage_root / "lobster" / instance_name(self.home) / key
         staged = None
         for _ in range(COPY_ATTEMPTS):
             current = _sha256(path)
@@ -780,7 +779,7 @@ class LaminCatalog:
     def _record_replay_output(self, path: Path) -> None:
         run = self._run
         try:
-            key = path.resolve().relative_to(self.workspace).as_posix()
+            key = path.resolve().relative_to(self.layout.root).as_posix()
             recorded = self._records_of_bytes(path, _sha256(path))
             if recorded:
                 recorded[0].recreating_runs.add(run)
@@ -879,7 +878,7 @@ class LaminCatalog:
         from lobster.core.catalog.thread import _LockBusy, workspace_lock
 
         try:
-            with workspace_lock(self.workspace / LOCK_FILE, wait=0):
+            with workspace_lock(self.home / LOCK_FILE, wait=0):
                 return self._prune(shown)
         except _LockBusy as exc:
             raise CatalogBusy(str(exc)) from exc
@@ -1123,8 +1122,8 @@ class LaminCatalog:
         that instance's storage next to the files it holds for this workspace.
         """
         if self.mode == "workspace":
-            return self.workspace / ".lobster" / subdir
-        return self._storage_root / "lobster" / instance_name(self.workspace) / subdir
+            return self.home / ".lobster" / subdir
+        return self._storage_root / "lobster" / instance_name(self.home) / subdir
 
     def _storage_key(self, path: Path) -> Optional[str]:
         try:
