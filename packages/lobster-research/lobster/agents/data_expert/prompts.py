@@ -79,8 +79,12 @@ TABULAR VISUALIZATION (on request, drawing computed results only):
   production figure store; report the saved figure_ref/path from its reply.
   Inspect the requested file with inspect_plot_data(data_file=...) first. This
   shares the plotting tool's data-workspace root, unlike project filesystem tools.
-  Use the returned headers, numeric_columns and preview. Pass explicit column
-  names for x, y and color; do not select columns by position or use identifier
+  Use the returned headers, numeric_columns and preview.
+  For scatter plots, preserve searchable point identities: a single valid ID
+  candidate is retained automatically. When inspect_plot_data returns multiple
+  id_candidates, ask which identifies the plotted entities and pass id_col.
+  Never generate row-number IDs or use x/y measurements as identity columns.
+  Pass explicit column names for x, y and color; do not select columns by position or use identifier
   columns as numeric measurements. If the intended axes or requested grouping
   are unspecified or unclear, return STATUS: NEEDS_CLARIFICATION with the available
   column names and a concise question for the supervisor to ask the user. Wait

@@ -142,7 +142,8 @@ def test_older_figure_keeps_table_without_claiming_roles(table_editor):
 
 def test_numeric_json_normalization_preserves_roles_without_hiding_data_changes():
     import plotly.graph_objects as go
-    from lobster.core.figures.data_view import record_column_roles, column_mapping
+
+    from lobster.core.figures.data_view import column_mapping, record_column_roles
 
     figure = go.Figure(go.Scatter(x=[1.0, 2.0, -0.0], y=[3.0, 4.0, 5.0]))
     record_column_roles(
@@ -157,7 +158,8 @@ def test_numeric_json_normalization_preserves_roles_without_hiding_data_changes(
 
 def test_legacy_numeric_hash_upgrades_on_save_without_rewriting_parent(tmp_path):
     import plotly.graph_objects as go
-    from lobster.core.figures.data_view import record_column_roles, _binding
+
+    from lobster.core.figures.data_view import _binding, record_column_roles
 
     figure = go.Figure(go.Scatter(x=[1.0, 2.0], y=[3.0, 4.0]))
     roles = [{"column": "x", "role": "x"}, {"column": "y", "role": "y"}]
@@ -210,7 +212,8 @@ def test_legacy_numeric_hash_upgrades_on_save_without_rewriting_parent(tmp_path)
 
 def test_numeric_normalization_keeps_distinct_large_integers_distinct():
     import plotly.graph_objects as go
-    from lobster.core.figures.data_view import record_column_roles, column_mapping
+
+    from lobster.core.figures.data_view import column_mapping, record_column_roles
 
     figure = go.Figure(go.Scatter(x=[9007199254740993], y=[1]))
     record_column_roles(figure, [{"column": "x", "role": "x"}])
@@ -256,6 +259,7 @@ def test_data_endpoint_is_authenticated_and_scoped(table_editor):
 
 def test_general_plot_tool_records_roles_and_source_metadata(tmp_path):
     from types import SimpleNamespace
+
     from lobster.core.plot_manager import PlotManager
     from lobster.tools.plot_tools import create_plot_tools
 
@@ -449,3 +453,93 @@ def test_data_tab_is_read_only_paged_and_tracks_selected_revision(table_editor):
                 browser.close()
     finally:
         session.close()
+
+
+@pytest.mark.parametrize("save_path", ["manual", "assistant"])
+@pytest.mark.parametrize("change", ["constant", "array", "colorscale", "title"])
+def test_numeric_color_roles_follow_actual_encoding(tmp_path, save_path, change):
+    data = pd.DataFrame(
+        {"point_id": ["A", "B"], "x": [1, 2], "y": [3, 4], "score": [0.1, 0.8]}
+    )
+    figure = get_template("generic.scatter")(data, x="x", y="y", color="score")
+    store = LocalFigureStore(tmp_path)
+    candidate = Candidate(
+        attempt_key="color:binding:0",
+        candidate_index=0,
+        figure_bytes=figure_to_bytes(figure),
+        config_bytes=b"{}",
+        source=SourcePayload(source_to_bytes(data), {}),
+    )
+    info = ExecutionInfo(
+        "color:binding", "test", None, {}, True, None, None, "test", "test"
+    )
+    root = TrustedSaver(store).commit_attempt(info, [candidate], succeeded=True)[0].ref
+    service = EditorService(store, root)
+    original = service.data_page(root)
+    assert original["mapping_status"] == "available"
+    properties = {}
+    layout = {}
+    if change == "constant":
+        properties = {"marker": {"color": "red"}}
+    elif change == "array":
+        properties = {"marker": {"color": [0.2, 0.4]}}
+    elif change == "colorscale":
+        layout = {"coloraxis": {"colorscale": "Blues"}}
+    else:
+        layout = {"title": {"text": "Edited title"}}
+    if save_path == "assistant":
+        saved = service.edit_visuals(
+            root,
+            generation=service.history()["generation"],
+            request_id="colorbinding" * 3,
+            layout_updates=layout,
+            trace_updates=(
+                [{"index": 0, "properties": properties}] if properties else []
+            ),
+        )
+    else:
+        import plotly.graph_objects as go
+
+        proposed = go.Figure(service.load(root)["figure"])
+        proposed.update_layout(layout)
+        if properties:
+            proposed.data[0].update(properties)
+        saved = service.save(
+            {
+                "parent": root,
+                "figure": json.loads(figure_to_bytes(proposed)),
+                "request_id": "colorbinding" * 3,
+                "generation": service.history()["generation"],
+            }
+        )
+    assert saved["status"] == "available"
+    result = service.data_page(saved["ref"])
+    assert result["rows"] == original["rows"]
+    assert result["source_id"] == original["source_id"]
+    if change in ("constant", "array"):
+        assert result["mapping_status"] == "unavailable"
+        assert all(not column["roles"] for column in result["columns"])
+    else:
+        assert result["mapping_status"] == "available"
+        assert result["columns"] == original["columns"]
+    # The original revision remains verified and unchanged.
+    assert service.data_page(root) == original
+
+
+@pytest.mark.parametrize("color_role", [False, True])
+def test_legacy_color_bindings_are_unverified_without_affecting_other_legacy_roles(
+    color_role,
+):
+    import plotly.graph_objects as go
+
+    from lobster.core.figures.data_view import column_mapping, record_column_roles
+
+    figure = go.Figure(go.Scatter(x=[1, 2], y=[3, 4], marker={"color": [0.1, 0.8]}))
+    roles = [{"column": "x", "role": "x"}, {"column": "y", "role": "y"}]
+    if color_role:
+        roles.append({"column": "score", "role": "color"})
+    record_column_roles(figure, roles)
+    parsed = json.loads(figure_to_bytes(figure))
+    parsed["layout"]["meta"]["lobster_data"].pop("binding_version")
+    columns = ["x", "y", "score"]
+    assert (column_mapping(parsed, columns) is None) == color_role

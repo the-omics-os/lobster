@@ -107,6 +107,7 @@ jobs:
             tests/unit/test_figure_contract_d8.py \
             tests/unit/figure_templates/test_templates.py \
             tests/unit/core/test_plot_editor_browser.py \
+            tests/unit/core/test_point_identity.py \
             tests/unit/core/test_plot_editor_workflow.py \
             tests/unit/core/test_plot_editor_data.py \
             "${ARGS[@]}" \

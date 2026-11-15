@@ -14,6 +14,7 @@
   let drawQueue = Promise.resolve(), drawing = false;
   let panelState = new Map();
   let timeline = null, polling = false;
+  let draftGeneration = null;
   let previewSize = '';
   let activeView = 'figure', dataPage = null, dataRequest = 0;
   let pendingSave = null;
@@ -355,6 +356,7 @@
     try {
       const data=await api('figure'+(target?'?ref='+encodeURIComponent(target):''));
       figure=data.figure; figure.layout??={}; original=clone(figure); baseline=canonical(figure); ref=data.ref; config=data.config; selected=null;requestId=null;
+      draftGeneration=data.generation;
       pendingSave=null;
       $('title').value=titleText(figure.layout.title); $('preset').value='Original'; await render(); controls(); await historyList();
       dataPage=null;if(activeView==='data') await loadData(0);
@@ -387,7 +389,7 @@
     requestId??=crypto.randomUUID().replaceAll('-','');
     let submitted=false;
     try {
-      const draft=pendingSave??={parent:ref,figure:clone(figure),request_id:requestId,generation:timeline.generation,
+      const draft=pendingSave??={parent:ref,figure:clone(figure),request_id:requestId,generation:draftGeneration,
                    explanation:'Manual visual edit'};
       await drawQueue; await api('validate',draft); submitted=true; const result=await api('save',draft);
       if(result.status!=='available') {
@@ -397,6 +399,7 @@
       // A retry may confirm an older draft after the user made additional edits.
       // Keep those newer edits unsaved instead of treating them as committed.
       ref=result.ref; original=clone(draft.figure); baseline=canonical(original);requestId=null;selected=null;pendingSave=null;
+      draftGeneration=result.generation;
       const next=new URL(location.href);next.searchParams.set('ref',ref);history.replaceState(null,'',next.pathname+next.search);
       await historyList(); await render();message(dirty()?'Previous save confirmed. Newer edits are still unsaved.':'Saved '+ref);
     } catch(e) {

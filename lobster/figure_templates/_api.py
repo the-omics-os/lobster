@@ -70,6 +70,19 @@ def figure_template(name: str, *, version: str = "1", data_args=("data",)):
                     for key, role in fields.items()
                     if isinstance(settings.get(key), str)
                 ]
+                # Automatic identity selection is declared by the drawing code,
+                # not inferred later from values or axis labels.
+                if name == "generic.scatter" and not isinstance(
+                    settings.get("id_col"), str
+                ):
+                    id_columns = {
+                        t.meta["lobster_ids"]["id_column"]
+                        for t in figure.data
+                        if isinstance(t.meta, dict)
+                        and t.meta.get("lobster_ids", {}).get("id_column")
+                    }
+                    if len(id_columns) == 1:
+                        roles.append({"column": id_columns.pop(), "role": "id"})
                 if name in {"generic.histogram", "generic.box"}:
                     transformations = [
                         {

@@ -261,10 +261,11 @@ class Timeline:
             state["deleted"].append(rid)
 
     @staticmethod
-    def check(state: dict[str, Any], generation: int) -> None:
+    def check(state: dict[str, Any], generation: object) -> None:
         if type(generation) is not int or generation != state["generation"]:
             raise ValueError(
-                "History changed in another window. Refresh history and retry."
+                "History changed in another window. Select a revision from the "
+                "refreshed timeline before retrying; your draft is preserved."
             )
 
     def view(self) -> dict[str, Any]:

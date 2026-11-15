@@ -60,6 +60,12 @@ def _binding(
         # A later constant marker-size edit no longer represents a source column.
         if any(item.get("role") == "size" for item in roles):
             values["marker_size"] = trace.get("marker", {}).get("size")
+        # Per-point colors encode a source column; a solid trace color is only
+        # palette styling. Replacing the former must invalidate its column role.
+        if any(item.get("role") == "color" for item in roles):
+            color = trace.get("marker", {}).get("color")
+            if isinstance(color, (list, dict)):
+                values["marker_color"] = color
         traces.append(values)
     return hashlib.sha256(
         json_blob_bytes(_normalize_numbers(traces) if normalize else traces)
@@ -96,6 +102,7 @@ def record_column_roles(
         "transformations": transformations or [],
         "selection": selection or {},
         "binding": _binding(parsed, roles),
+        "binding_version": 2,
     }
     figure.update_layout(meta=metadata)
 
@@ -120,6 +127,13 @@ def column_mapping(figure: dict[str, Any], columns: list[str]) -> dict[str, Any]
         or item.get("column") not in columns
         for item in roles
     ):
+        return None
+    version = mapping.get("binding_version", 1)
+    if version not in (1, 2):
+        return None
+    if version == 1 and any(item["role"] == "color" for item in roles):
+        # Older hashes never bound color values. Even a previously recolored
+        # figure can match them, so do not claim a verified color mapping.
         return None
     # Accept already-persisted hashes as well as normalized new bindings.
     if mapping.get("binding") != _binding(figure, roles) and mapping.get(

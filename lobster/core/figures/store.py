@@ -37,6 +37,7 @@ from typing import (
     Sequence,
     Tuple,
     TypeGuard,
+    cast,
     runtime_checkable,
 )
 
@@ -389,7 +390,7 @@ def _parse_marker(data: bytes, expected: Dict[str, str], hashes: Sequence[Any]) 
             "registered record is not valid JSON", details={"reason": "invalid_json"}
         ) from None
 
-    def _has_sha(key) -> bool:
+    def _has_sha(key: Optional[str]) -> bool:
         node = rec if key is None else rec.get(key)
         return isinstance(node, dict) and isinstance(node.get("sha256"), str)
 
@@ -1068,7 +1069,7 @@ class LocalFigureStore:
             valid = False
         if not valid:
             raise StorageError("unrecognized claim")
-        return claim
+        return cast(Dict[str, str], claim)
 
     def _lstat_regular(self, path: Path) -> None:
         if not _stat.S_ISREG(self._lstat_mode(path)):
@@ -1588,7 +1589,7 @@ class LocalFigureStore:
                 "same attempt, different execution plan",
                 details={"reason": "execution_plan_changed"},
             )
-        execution_id = claim["execution_id"]
+        execution_id = cast(str, claim["execution_id"])
         record_path = self.root / P.EXECUTIONS_DIR / f"{execution_id}.json"
         if self._read(record_path) is not None:  # a link is refused, never reused
             self._verify_execution_record(execution_id, plan_digest)
@@ -1756,7 +1757,7 @@ class LocalFigureStore:
             raise FigureNotFoundError(
                 "unknown execution", details={"reason": "execution_not_found"}
             )
-        return json.loads(raw)
+        return cast(Dict[str, Any], json.loads(raw))
 
     def history(self, figure_id: str) -> Dict[str, Any]:
         """Linked timeline over immutable revision ancestry, migrated on first access."""
@@ -2121,7 +2122,7 @@ class LocalFigureStore:
             return None
         claim = json.loads(raw)
         self._fsync(path.parent)
-        return claim
+        return cast(Dict[str, Any], claim)
 
     # ------------------------------------------------------------------ reads
     def _refuse_deleted(self, ref: FigureRef) -> None:
@@ -2280,7 +2281,9 @@ class LocalFigureStore:
             )
         return data
 
-    def _iter_records(self, figure_id=None) -> Iterable[Dict[str, Any]]:
+    def _iter_records(
+        self, figure_id: Optional[str] = None
+    ) -> Iterable[Dict[str, Any]]:
         """Every registered revision record. Enumeration/read failures raise TYPED errors and
         a corrupt registered record raises IntegrityError: never skipped, never an empty or
         partial catalog presented as complete, never a fabricated pending item.

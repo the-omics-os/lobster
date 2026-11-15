@@ -271,3 +271,153 @@ def test_lost_save_response_retries_exact_draft_after_history_refresh(
                 browser.close()
     finally:
         session.close()
+
+
+@pytest.mark.parametrize("refresh", ["automatic", "explicit"])
+def test_history_refresh_does_not_rebase_an_unsaved_draft(tmp_path, refresh):
+    """Refreshing cards must not authorize an old draft to undo a newer save."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    store = LocalFigureStore(tmp_path)
+    candidate = Candidate(
+        attempt_key="concurrent:browser:0",
+        candidate_index=0,
+        figure_bytes=b'{"data":[{"type":"scatter","x":[1,2],"y":[3,4]}],"layout":{"title":{"text":"Original"},"font":{"size":12}}}',
+        config_bytes=b"{}",
+    )
+    info = ExecutionInfo(
+        "concurrent:browser", "test", None, {}, True, None, None, "test", "test"
+    )
+    root = TrustedSaver(store).commit_attempt(info, [candidate], succeeded=True)[0].ref
+    service = EditorService(store, root)
+    session = EditorSession(service)
+    try:
+        with playwright.sync_playwright() as pw:
+            try:
+                browser = pw.chromium.launch(headless=True)
+            except playwright.Error as exc:
+                if "Executable doesn't exist" in str(exc):
+                    pytest.skip("Install Playwright Chromium for browser checks")
+                raise
+            try:
+                page = browser.new_page()
+                page.goto(session.url(root))
+                playwright.expect(page.locator("#status")).to_have_text(
+                    "Revision loaded"
+                )
+                page.locator("#title").fill("Unsaved title")
+                newer = service.edit_visuals(
+                    root,
+                    generation=service.history()["generation"],
+                    request_id="concurrent" * 3,
+                    layout_updates={"font": {"size": 30}},
+                )
+                assert newer["status"] == "available"
+                if refresh == "explicit":
+                    page.locator("#refresh-history").click()
+                # The automatic case waits for the real polling interval.
+                playwright.expect(page.locator("#history > button")).to_have_count(
+                    2, timeout=12000
+                )
+                page.locator("#save").click()
+                playwright.expect(page.locator("#status")).to_contain_text(
+                    "History changed in another window"
+                )
+                playwright.expect(page.locator("#title")).to_have_value("Unsaved title")
+                playwright.expect(page.locator("#save")).to_be_enabled()
+                assert service.history()["tail"] == newer["ref"].split("@")[1]
+                assert len(service.history()["revisions"]) == 2
+                # Even refreshing after rejection must not upgrade the old draft.
+                page.locator("#refresh-history").click()
+                page.locator("#save").click()
+                playwright.expect(page.locator("#status")).to_contain_text(
+                    "History changed in another window"
+                )
+                assert len(service.history()["revisions"]) == 2
+                # Explicitly load the latest source, then reapply the user's edit.
+                page.once("dialog", lambda dialog: dialog.accept())
+                page.locator("#history > button").last.click()
+                playwright.expect(page.locator("#title")).to_have_value("Original")
+                page.locator("#title").fill("Unsaved title")
+                page.locator("#save").click()
+                playwright.expect(page.locator("#status")).to_have_text(
+                    "Revision saved"
+                )
+                rows = service.history()["revisions"]
+                assert len(rows) == 3
+                saved = service.load(rows[-1]["ref"])
+                assert saved["record"]["derived_from"] == newer["ref"]
+                assert saved["figure"]["layout"]["font"]["size"] == 30
+                assert saved["figure"]["layout"]["title"]["text"] == "Unsaved title"
+            finally:
+                browser.close()
+    finally:
+        session.close()
+
+
+def test_table_scatter_automatically_enables_entity_search(tmp_path):
+    playwright = pytest.importorskip("playwright.sync_api")
+    from lobster.core.runtime.data_manager import DataManagerV2
+    from lobster.tools.plot_tools import create_plot_tools
+
+    dm = DataManagerV2(workspace_path=tmp_path)
+    (tmp_path / "data" / "points.csv").write_text(
+        "point_id,group,x,y\nP01,A,1,3\nP02,A,2,4\nP03,B,1,3\n"
+    )
+    tool, _ = create_plot_tools(dm, tmp_path)
+    reply = tool.invoke(
+        {
+            "type": "tool_call",
+            "name": tool.name,
+            "id": "search-browser",
+            "args": {
+                "plot_type": "scatter",
+                "data_file": "data/points.csv",
+                "x": "x",
+                "y": "y",
+                "color": "group",
+            },
+        }
+    )
+    assert "saved:" in reply.content
+    row = dm.figure_store.list().items[0]
+    ref = row["figure_id"] + "@" + row["revision_id"]
+    service = EditorService(dm.figure_store, ref)
+    original = service.load(ref)["figure"]["data"]
+    session = EditorSession(service)
+    try:
+        with playwright.sync_playwright() as pw:
+            try:
+                browser = pw.chromium.launch(headless=True)
+            except playwright.Error as exc:
+                if "Executable doesn't exist" in str(exc):
+                    pytest.skip("Install Playwright Chromium for browser checks")
+                raise
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 1000})
+                page.goto(session.url(ref))
+                playwright.expect(page.locator("#status")).to_have_text(
+                    "Revision loaded"
+                )
+                search = page.get_by_role("textbox", name="Search point IDs")
+                playwright.expect(search).to_be_visible()
+                search.fill("P03")
+                result = page.locator(".results button")
+                playwright.expect(result).to_have_count(1)
+                result.click()
+                page.wait_for_function(
+                    "document.getElementById('plot')._fullData[1].selectedpoints?.[0] === 0"
+                )
+                playwright.expect(page.locator("#save")).to_be_disabled()
+                page.get_by_role("button", name="Label selected", exact=True).click()
+                page.locator("#save").click()
+                playwright.expect(page.locator("#status")).to_have_text(
+                    "Revision saved"
+                )
+                latest = service.history()["revisions"][-1]["ref"]
+                saved = service.load(latest)["figure"]
+                assert saved["layout"]["annotations"][-1]["text"] == "P03"
+                assert saved["data"] == original
+            finally:
+                browser.close()
+    finally:
+        session.close()

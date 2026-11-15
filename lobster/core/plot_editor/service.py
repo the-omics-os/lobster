@@ -8,7 +8,7 @@ import hashlib
 import re
 import secrets
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from lobster.core.figures.ids import FigureRef
 from lobster.core.figures.payload import (
@@ -28,6 +28,12 @@ if TYPE_CHECKING:
     from lobster.core.figures.store import LocalFigureStore
 
 
+class _CachedSave(TypedDict):
+    identity: str
+    result: dict[str, Any]
+    fence: Any
+
+
 class EditorService:
     """One figure and its revisions. Drafts are plain JSON, independent of the UI.
 
@@ -42,7 +48,7 @@ class EditorService:
         self.figure_id = FigureRef.parse(ref).figure_id
         self._namespace = secrets.token_hex(16)
         self._lock = threading.Lock()
-        self._requests: dict[str, dict[str, Any]] = {}
+        self._requests: dict[str, _CachedSave] = {}
         self.load(ref)  # refuse unavailable or corrupt figures before opening a server
 
     def reference(self, ref: str) -> str:
@@ -53,14 +59,18 @@ class EditorService:
 
     def load(self, ref: str) -> dict[str, Any]:
         ref = self.reference(ref)
-        record, figure, config = self.store.read(ref)
-        return {
-            "ref": ref,
-            "figure": validate_figure_bytes(figure),
-            "config": validate_config_bytes(config),
-            "record": strict_json_loads(record, what="revision"),
-            "attachments": self.attachments(ref),
-        }
+        # Bind a draft to the history observed with its source figure, rather
+        # than a later timeline refresh that may include another editor's save.
+        with self.store.writer_lock:
+            record, figure, config = self.store.read(ref)
+            return {
+                "ref": ref,
+                "generation": self.history()["generation"],
+                "figure": validate_figure_bytes(figure),
+                "config": validate_config_bytes(config),
+                "record": strict_json_loads(record, what="revision"),
+                "attachments": self.attachments(ref),
+            }
 
     def history(self) -> dict[str, Any]:
         return self.store.history(self.figure_id)
@@ -487,7 +497,7 @@ class EditorService:
                 .to_dict()
             )
             if result["status"] == "available":
-                self.store.history(self.figure_id)
+                result["generation"] = self.history()["generation"]
             self._requests[key] = {
                 "identity": identity,
                 "result": result,

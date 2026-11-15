@@ -101,7 +101,15 @@ def _load_data(data_json: str, data_file: str, workspace_path: Path):
 
 
 def _create_figure(
-    plot_type: str, df, x: str, y: str, z: str, color: str, size: str, title: str
+    plot_type: str,
+    df,
+    x: str,
+    y: str,
+    z: str,
+    color: str,
+    size: str,
+    title: str,
+    id_col: str | None = None,
 ):
     """Dispatch to Plotly Express. Returns Figure or error string."""
     import plotly.express as px
@@ -126,7 +134,16 @@ def _create_figure(
                 kwargs["size"] = size
             if len(df) > SAMPLE_THRESHOLD:
                 kwargs["render_mode"] = "webgl"
+            if id_col:
+                from lobster.core.figures.point_identity import identity_table
+
+                df, identity_field = identity_table(df, id_col)
+                kwargs["custom_data"] = [identity_field]
             fig = px.scatter(df, x=x, y=y, **kwargs)
+            if id_col:
+                from lobster.core.figures.point_identity import bind_point_ids
+
+                bind_point_ids(fig, id_col)
         elif plot_type == "line":
             fig = px.line(df, x=x, y=y, **kwargs)
         elif plot_type == "bar":
@@ -267,8 +284,13 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
         df = _load_data("", data_file, workspace_path)
         if isinstance(df, str):
             return df
+        from lobster.core.figures.point_identity import identity_candidates
+
+        candidates = identity_candidates(df)
         return json.dumps(
             {
+                "id_candidates": candidates,
+                "suggested_id_column": candidates[0] if len(candidates) == 1 else None,
                 "data_file": data_file,
                 "rows": len(df),
                 "columns": [str(c) for c in df.columns],
@@ -291,6 +313,7 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
         x_label: str = "",
         y_label: str = "",
         related_data_files: List[str] | None = None,
+        id_col: str | None = None,
         tool_call_id: Annotated[str, InjectedToolCallId] = "",
     ) -> str:
         """Create AND save a managed interactive Plotly figure from a workspace table.
@@ -307,6 +330,10 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
             z: Column for heatmap values.
             color: Column for color grouping.
             size: Column for marker size (scatter only).
+            id_col: Identity column for searchable scatter points. If omitted, a
+                single valid conventional ID column is selected automatically.
+                inspect_plot_data lists candidates; ask when several are plausible.
+                IDs must be nonblank and unique before sampling. Never use row numbers.
             title: Plot title.
             x_label: Custom x-axis label.
             y_label: Custom y-axis label.
@@ -322,6 +349,16 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
 
         if len(df) > MAX_ROWS:
             return f"ERROR: {len(df)} rows exceeds {MAX_ROWS} limit. Aggregate or filter first."
+        from lobster.core.figures.point_identity import resolve_identity_column
+
+        if id_col is not None and plot_type != "scatter":
+            return "ERROR: id_col is supported for scatter point plots only."
+        try:
+            id_col = (
+                resolve_identity_column(df, id_col) if plot_type == "scatter" else None
+            )
+        except ValueError as exc:
+            return f"ERROR: {exc}"
         original_df = df.copy()
         sampled = False
         if len(df) > SAMPLE_THRESHOLD:
@@ -331,7 +368,7 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
                 df = df.sample(n=SAMPLE_THRESHOLD, random_state=42)
             sampled = True
 
-        fig = _create_figure(plot_type, df, x, y, z, color, size, title)
+        fig = _create_figure(plot_type, df, x, y, z, color, size, title, id_col=id_col)
         if isinstance(fig, str):
             return fig
 
@@ -349,6 +386,7 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
             role_columns["color"] = color
         if plot_type == "scatter":
             role_columns["size"] = size
+            role_columns["id"] = id_col
         if plot_type == "heatmap":
             role_columns["z"] = z
         roles = [
@@ -390,8 +428,8 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
             return "ERROR: plot_manager not available on data_manager"
 
         from lobster.core.figures.attachments import save_attachment
-        from lobster.core.figures.records import SourcePayload
         from lobster.core.figures.payload import source_to_bytes
+        from lobster.core.figures.records import SourcePayload
 
         store = data_manager.figure_store
         attachments = []
@@ -442,6 +480,7 @@ def create_plot_tools(data_manager, workspace_path: Path) -> List[Callable]:
                 "color": color,
                 "size": size,
                 "sampled": sampled,
+                "id_col": id_col,
                 "column_mapping": (fig.layout.meta or {}).get("lobster_data"),
             }
             retained_source = SourcePayload(source_to_bytes(df, declared), declared)

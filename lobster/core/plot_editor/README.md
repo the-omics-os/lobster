@@ -84,7 +84,10 @@ New edited revisions record a factual JSON diff, readable summary, data-change
 flag, and attachment/configuration changes. Large values are summarized by length
 and hash. An optional user explanation is retained separately as the edit request.
 Unsaved changes prompt before leaving or loading history. A stale save/delete
-requires refreshing history; refreshing preserves the current draft.
+requires selecting a revision from the refreshed history before retrying.
+Refreshing preserves the draft and its original generation; it never silently
+rebases unsaved edits onto newer history. Load the latest revision and reapply
+the desired changes to retain another editor's intervening updates.
 
 ## AI edits and retained data
 
@@ -107,6 +110,10 @@ Numeric bindings treat JSON-equivalent integral floats/integers and signed zero
 as the same values. Existing raw-number bindings remain readable and are upgraded
 on a new visual revision when the data and declared roles are unchanged; parent
 revisions and retained source tables are never rewritten for this upgrade.
+New bindings also verify per-point marker colors. Replacing a numeric color
+encoding with a solid color invalidates the mapping, while palette-only changes
+preserve it. Legacy color mappings lack that verification and are shown as
+unavailable rather than trusted; their figures and source tables remain readable.
 
 Older/custom figures without valid mapping metadata show the retained table with
 "mapping unavailable"; the editor never matches values or guesses from axis labels.
@@ -151,6 +158,19 @@ assumed to be identifiers. Search shows up to 60 matches. Highlighting is transi
 labels and hidden-marker opacity can be saved. Hiding markers does not remove data
 or line segments. Restore uses opacity from the loaded revision. Ordinary table
 plots without saved identity metadata do not show entity controls.
+
+Future scatter plots made by `create_interactive_plot` or `generic.scatter`
+automatically retain one valid conventional identity column (for example
+`point_id`, `entity_id`, `gene_id`, or `sample_id`). Values must be present,
+nonblank and unique across the input table before sampling. Several valid
+candidates require an explicit `id_col`; `inspect_plot_data` lists those candidates.
+An explicit custom-named identity column is also supported. Grouping and sampling
+carry each point's ID through Plotly's row selection, without joining by x/y or
+changing numeric measurement columns. IDs are saved as strings, included in data
+role metadata, and inherited by later visual revisions. No row-number identities
+are fabricated. Specialized templates/custom drawing code must continue declaring
+their point identities; arbitrary scatter arrays cannot safely be matched back to
+a source table. Existing saved figures are not rewritten by this change.
 
 The editor has no image/JSON download section or Plotly camera-download button.
 Frames and properties without a control remain in the saved figure JSON.
