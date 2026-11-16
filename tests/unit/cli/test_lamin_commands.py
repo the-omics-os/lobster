@@ -269,6 +269,21 @@ def test_ls_runs_names_the_records_a_run_has(ws, monkeypatch):
     ]
 
 
+def test_ls_runs_marks_a_replay_with_its_verdict(ws, monkeypatch):
+    replay = {
+        **RUN_ROWS[0],
+        "name": "replay:nb",
+        "kind": "replay",
+        "verdict": "MATCH",
+        "report": False,
+        "environment": False,
+    }
+    _engine_with_runs(ws, monkeypatch, [replay, RUN_ROWS[2]])
+    lines = _invoke("ls", "--runs", "-w", str(ws)).output.splitlines()
+    assert lines[0].endswith("replay:nb  (2 out, 0 in)  [replay MATCH]")
+    assert lines[1].endswith("neither  (0 out, 0 in)")
+
+
 def test_ls_runs_in_chinese(ws, monkeypatch):
     _engine_with_runs(ws, monkeypatch, RUN_ROWS)
     set_lang("zh")

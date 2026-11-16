@@ -31,6 +31,57 @@ from lobster.utils.safe_paths import safe_download_path
 
 logger = get_logger(__name__)
 
+_TRIO_FILE = re.compile(
+    r"^(?P<prefix>.*?)[_.\-]?(?P<kind>barcodes|features|genes|matrix)"
+    r"\.(?:tsv|mtx)(?P<gz>\.gz)?$",
+    re.IGNORECASE,
+)
+_TRIO_NEEDS = (("barcodes",), ("features", "genes"), ("matrix",))
+
+
+def _flat_trios(
+    extract_dir: Path, gse_id: str, unsupported: Optional[List[str]] = None
+) -> Tuple[Dict[str, Dict[str, Path]], List[str]]:
+    """Group per-sample 10x files lying side by side by (folder, name prefix).
+
+    Returns the complete groups (sample id -> kind -> file) and a line for every
+    group with a part missing. Files of an unsupported modality are not grouped.
+    """
+    groups: Dict[Tuple[str, str], Dict[str, Path]] = {}
+    for path in sorted(extract_dir.rglob("*")):
+        match = _TRIO_FILE.match(path.name) if path.is_file() else None
+        if match is None or (
+            unsupported and _is_unsupported_modality_file(path.name, unsupported)
+        ):
+            continue
+        key = (str(path.parent), match.group("prefix"))
+        groups.setdefault(key, {})[match.group("kind").lower()] = path
+    complete: Dict[str, Dict[str, Path]] = {}
+    incomplete: List[str] = []
+    for (_folder, prefix), parts in sorted(groups.items()):
+        sample_id = prefix or gse_id
+        missing = [need[0] for need in _TRIO_NEEDS if not any(k in parts for k in need)]
+        if missing:
+            incomplete.append(f"{sample_id}: missing {', '.join(missing)}")
+        elif sample_id in complete:
+            incomplete.append(f"{sample_id}: the name is used by more than one folder")
+        else:
+            complete[sample_id] = parts
+    return complete, incomplete
+
+
+def _say_not_loaded(result, lines: List[str]):
+    """Carry what was not loaded on the result: ``uns`` of an AnnData, ``attrs`` of a table."""
+    if not lines or result is None:
+        return result
+    if isinstance(result, anndata.AnnData):
+        info = dict(result.uns.get("geo_import", {}) or {})
+        info["not_loaded"] = list(lines)
+        result.uns["geo_import"] = info
+    else:
+        result.attrs["not_loaded"] = list(lines)
+    return result
+
 
 def _extract_tar_all_or_nothing(tar: tarfile.TarFile, dest: Path) -> int:
     """Extract every member of ``tar`` into ``dest``, or nothing.
@@ -346,8 +397,10 @@ class ArchiveProcessor:
                     logger.debug("psutil not available for memory estimation")
 
                 all_matrices = []
+                skipped_samples: List[str] = []
                 for i, archive_path in enumerate(nested_archives, start=1):
                     sample_extract_dir = None
+                    sample_id = archive_path.name
                     try:
                         # A member named ".tar.gz" has no stem; keep it in its own folder.
                         sample_id = archive_path.stem.split(".")[0] or f"sample_{i}"
@@ -372,11 +425,15 @@ class ArchiveProcessor:
                             logger.warning(
                                 f"Sample {i}/{n_samples} returned None (skipping)"
                             )
+                            skipped_samples.append(
+                                f"{sample_id}: the files could not be read"
+                            )
 
                     except Exception as e:
                         logger.warning(
                             f"Failed to extract/parse sample {i}/{n_samples} ({archive_path.name}): {e}"
                         )
+                        skipped_samples.append(f"{sample_id}: {type(e).__name__}: {e}")
                         if (
                             sample_extract_dir is not None
                             and sample_extract_dir != nested_extract_dir
@@ -385,29 +442,30 @@ class ArchiveProcessor:
                         continue
 
                 if all_matrices:
-                    logger.info(f"Concatenating {len(all_matrices)} AnnData objects...")
-                    try:
-                        import anndata
+                    return _say_not_loaded(
+                        self._combine_samples(all_matrices), skipped_samples
+                    )
 
-                        combined_adata = anndata.concat(
-                            all_matrices,
-                            axis=0,
-                            join="outer",
-                            label="sample_id",
-                            keys=[
-                                adata.obs["sample_id"].iloc[0] for adata in all_matrices
-                            ],
-                            index_unique=None,
+            # Per-sample 10x files lying side by side (no nested archive)
+            unsupported = (
+                (multimodal_info or {}).get("unsupported_types", [])
+                if (multimodal_info and multimodal_info.get("is_multimodal"))
+                else None
+            )
+            complete, incomplete = _flat_trios(extract_dir, gse_id, unsupported)
+            if complete:
+                not_loaded = list(incomplete)
+                matrices = self._load_flat_trios(
+                    complete, nested_extract_dir, not_loaded
+                )
+                if matrices:
+                    n_total = len(complete) + len(incomplete)
+                    if not_loaded:
+                        logger.warning(
+                            f"{gse_id}: loaded {len(matrices)} of {n_total} samples; "
+                            f"not loaded: {'; '.join(not_loaded)}"
                         )
-                        logger.info(
-                            f"Combined dataset: {combined_adata.n_obs} cells x {combined_adata.n_vars} genes "
-                            f"(sparse: {(combined_adata.X.data.nbytes + combined_adata.X.indices.nbytes + combined_adata.X.indptr.nbytes) / 1024 / 1024:.1f} MB)"
-                        )
-                        return combined_adata
-                    except Exception as e:
-                        logger.error(f"Failed to concatenate AnnData objects: {e}")
-                        logger.warning("Returning first sample only as fallback")
-                        return all_matrices[0] if all_matrices else None
+                    return _say_not_loaded(self._combine_samples(matrices), not_loaded)
 
             # Fallback: look for regular expression files
             expression_files = []
@@ -443,6 +501,7 @@ class ArchiveProcessor:
 
                 expression_files.sort(key=lambda x: x.stat().st_size, reverse=True)
 
+                left_out: List[str] = []
                 for file_path in expression_files[:3]:
                     try:
                         logger.debug(f"Attempting to parse: {file_path.name}")
@@ -470,7 +529,18 @@ class ArchiveProcessor:
                             logger.debug(
                                 f"Successfully parsed expression matrix: {matrix.shape}"
                             )
-                            return matrix
+                            left_out = [
+                                f"{f.name}: not read, only {file_path.name} was loaded"
+                                for f in expression_files
+                                if f != file_path
+                            ]
+                            if left_out:
+                                logger.warning(
+                                    f"{gse_id}: loaded 1 of {len(expression_files)} "
+                                    f"files ({file_path.name}); not loaded: "
+                                    f"{'; '.join(left_out)}"
+                                )
+                            return _say_not_loaded(matrix, left_out)
                     except Exception as e:
                         logger.warning(f"Failed to parse {file_path.name}: {e}")
                         continue
@@ -489,6 +559,60 @@ class ArchiveProcessor:
                         f"Cleaned up failed extraction directory: {cleanup_dir}"
                     )
             return None
+
+    def _combine_samples(self, all_matrices):
+        """One AnnData from the samples read, with a ``sample_id`` column."""
+        logger.info(f"Concatenating {len(all_matrices)} AnnData objects...")
+        try:
+            combined_adata = anndata.concat(
+                all_matrices,
+                axis=0,
+                join="outer",
+                label="sample_id",
+                keys=[adata.obs["sample_id"].iloc[0] for adata in all_matrices],
+                index_unique=None,
+            )
+            logger.info(
+                f"Combined dataset: {combined_adata.n_obs} cells x {combined_adata.n_vars} genes "
+                f"(sparse: {(combined_adata.X.data.nbytes + combined_adata.X.indices.nbytes + combined_adata.X.indptr.nbytes) / 1024 / 1024:.1f} MB)"
+            )
+            return combined_adata
+        except Exception as e:
+            logger.error(f"Failed to concatenate AnnData objects: {e}")
+            logger.warning("Returning first sample only as fallback")
+            return all_matrices[0] if all_matrices else None
+
+    def _load_flat_trios(
+        self, complete, nested_extract_dir: Path, not_loaded: List[str]
+    ):
+        """Read each complete trio as one sample; a trio that cannot be read is named."""
+        matrices = []
+        for sample_id, parts in complete.items():
+            sample_dir = nested_extract_dir / re.sub(r"[^\w.\-]", "_", sample_id)
+            sample_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                for kind, source in parts.items():
+                    base = {"matrix": "matrix.mtx"}.get(kind, f"{kind}.tsv")
+                    shutil.copyfile(
+                        source,
+                        sample_dir
+                        / (
+                            base
+                            + (".gz" if source.name.lower().endswith(".gz") else "")
+                        ),
+                    )
+                adata = self.service.geo_parser.parse_10x_data(sample_dir, sample_id)
+                reason = (
+                    "the files could not be read (truncated or not valid 10x files)"
+                )
+            except Exception as e:
+                adata, reason = None, f"{type(e).__name__}: {e}"
+            if adata is None:
+                logger.warning(f"Sample {sample_id} not loaded: {reason}")
+                not_loaded.append(f"{sample_id}: {reason}")
+            else:
+                matrices.append(adata)
+        return matrices
 
     def _download_and_parse_file(
         self, file_url: str, gse_id: str

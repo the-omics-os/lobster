@@ -66,7 +66,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from lobster.core.catalog.environment import environment_text
 from lobster.core.catalog.layout import (  # noqa: F401 - the names callers use here
@@ -691,6 +691,19 @@ class LaminCatalog:
         """The file the session saved as ``<stem>.h5ad``, if it still holds its bytes."""
         return self.replay_reference_state(stem)[0]
 
+    def _session_runs(self, session: Any) -> List[Any]:
+        """The Runs of one session: the one named, and any of the same name."""
+        import lamindb as ln
+
+        runs = [session]
+        if getattr(session, "name", None):
+            runs += list(
+                ln.Run.filter(name=session.name, transform__kind=session.transform.kind)
+                .exclude(id=session.id)
+                .all()
+            )
+        return runs
+
     def replay_reference_state(self, stem: str) -> Tuple[Optional[Path], str]:
         """``(file, "ok")``, ``(None, "changed")`` or ``(None, "none")`` for ``<stem>.h5ad``.
 
@@ -706,12 +719,22 @@ class LaminCatalog:
         session = self._replay_session
         if session is None:
             return None, "none"
+        # A session restored in another process has a Run of its own with the same
+        # name; the files an earlier process saved belong to the session's Runs.
+        sessions = list(self._session_runs(session))
         records = {}  # sha256 -> (record, its stored path)
-        for key in (f"data/{stem}.h5ad", f"{stem}.h5ad"):
+        for path in (
+            self.workspace / "data" / f"{stem}.h5ad",
+            self.workspace / f"{stem}.h5ad",
+        ):
+            try:  # a project's catalog keys a file from the project folder
+                key = path.resolve().relative_to(self.layout.root.resolve()).as_posix()
+            except ValueError:
+                continue
             found = (
                 self._files()
                 .filter(key=key)
-                .filter(Q(run=session) | Q(recreating_runs=session))
+                .filter(Q(run__in=sessions) | Q(recreating_runs__in=sessions))
                 .distinct()
                 .order_by("-created_at")
             )
@@ -966,8 +989,12 @@ class LaminCatalog:
         return copies
 
     def list_runs(self, limit: int = 50) -> list:
+        from django.db.models import Q
+
         records = (
-            self.ln.Run.filter(transform__key=PIPELINE_KEY)
+            self.ln.Run.filter(
+                Q(transform__key=PIPELINE_KEY) | Q(extra_data__kind="replay")
+            )
             .select_related("transform")
             .order_by("-started_at")[:limit]
         )
@@ -1476,7 +1503,11 @@ def _iso(value: Any) -> Optional[str]:
 
 
 def _run_row(run: Any) -> Dict[str, Any]:
+    extra = run.extra_data if isinstance(run.extra_data, dict) else {}
+    replay = extra.get("kind") == "replay"
     return {
+        "kind": "replay" if replay else "session",
+        "verdict": extra.get("verdict") if replay else None,
         "name": run.name,
         "status": run.status,
         "started_at": _iso(run.started_at),

@@ -295,3 +295,88 @@ def test_the_notebook_after_a_cancelled_turn_still_verifies(tmp_path):
     )
     assert replay.returncode == 0, replay.stderr[-2000:]
     assert json.loads(replay.stdout)["verdict"] == "MATCH"
+
+
+def test_a_file_a_cancelled_turn_saved_is_compared_by_the_next_notebook(tmp_path):
+    # Turn 2 filters the raw data, which saves a file, and is cancelled during
+    # its next answer; its completed step stays in the session. The notebook
+    # taken after it must reproduce that file too: a MATCH that left it out
+    # would hide what the cancelled turn wrote.
+    from tests.unit.mcp.replay_input import make_input
+    from tests.unit.mcp.transcriptomics import quality_service
+
+    quality_service()
+    data, out = tmp_path / "input.h5ad", tmp_path / "out"
+    make_input(data)
+    recipe = Path(__file__).parent / "data" / "continue_first_process.json"
+    qc = json.loads(recipe.read_text().replace("__INPUT__", str(data)))
+    cancelled = [
+        {
+            "tool_calls": [
+                {
+                    "name": "handoff_to_transcriptomics_expert",
+                    "args": {
+                        "task_description": "Your task is to filter the raw data."
+                    },
+                }
+            ]
+        },
+        {
+            "content": "",
+            "tool_calls": [
+                {"name": "filter_and_normalize", "args": {"modality_name": "input"}}
+            ],
+        },
+        {"content": "Slow.", "delay_s": 15},
+    ]
+    responses = [*qc["responses"][:8], *cancelled, {"content": "Turn three done."}]
+    server = Server(tmp_path, responses)
+    try:
+        run = server.tool(
+            "lobster_run",
+            input_path=str(data),
+            output_dir=str(out),
+            question="What is in this file?",
+        )
+        assert ends(server, run["run_id"])["status"] == "completed", server.stderr()
+        second = server.tool(
+            "lobster_continue", run_id=run["run_id"], instruction="Filter the raw data."
+        )
+        deadline = time.monotonic() + 120
+        while (
+            server.tool("lobster_status", run_id=second["run_id"]).get("steps_done", 0)
+            < 2  # the save and the filter
+        ):
+            assert time.monotonic() < deadline, server.stderr()
+            time.sleep(0.5)
+        server.tool("lobster_cancel", run_id=second["run_id"])
+        stopped = ends(server, second["run_id"])
+        assert stopped["status"] == "cancelled"
+        assert "filter_and_normalize" in stopped["steps_completed"]
+        third = server.tool(
+            "lobster_continue", output_dir=str(out), instruction="Sum up."
+        )
+        done = ends(server, third["run_id"])
+        assert done["status"] == "completed", (done, server.stderr())
+    finally:
+        server.proc.stdin.close()
+    assert server.proc.wait(timeout=30) == 0, server.stderr()
+    server.err.close()
+
+    assert (
+        out / ".lobster_workspace" / "data" / "input_filtered_normalized.h5ad"
+    ).is_file()
+    replay = subprocess.run(  # nosec B603
+        [sys.executable, "-m", "lobster", "replay", "--verify", done["notebook_path"]]
+        + ["--input", str(data), "-w", str(out / ".lobster_workspace"), "--json"],
+        cwd=tmp_path,
+        env=server.env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    report = json.loads(replay.stdout)
+    (slot,) = report["report"]["slots"]
+    assert slot["not_compared"] == [], report
+    assert not any("not produced" in note for note in report["notes"]), report
+    assert report["verdict"] == "MATCH", json.dumps(report, indent=1)[:4000]

@@ -18,23 +18,23 @@ from typer.testing import CliRunner
 
 from lobster.cli_internal.commands.light import lamin_commands, replay_commands
 from lobster.cli_internal.commands.light.replay_commands import (
+    JsonUsageCommand,
     _catalog_record,
     _notebook_key,
     _ReplayRecord,
-    JsonUsageCommand,
     replay_command,
 )
 from tests.unit.cli.test_replay_commands import (  # noqa: F401  (ws is a fixture)
     BOOM,
     COPY,
     REAL_CASES,
-    SHIFTED,
     SESSION_SHIFT,
+    SHIFTED,
     _adata,
-    disturb,
     _notebook,
     _replay_dirs,
     _save,
+    disturb,
     needs_kernel,
     real,
     ws,
@@ -337,6 +337,10 @@ SETUP = """
     eng.begin_run(SessionInfo("s1", ws, "0.0.0"))
     saved.write_bytes(Path(os.environ["A"]).read_bytes())
     eng.register_artifact(saved, **kw("data/pbmc.h5ad"))
+    if os.environ.get("RAW"):  # a file the session imported: not one of its results
+        raw = ws / "data" / "raw.h5ad"
+        raw.write_bytes(Path(os.environ["RAW"]).read_bytes())
+        eng.register_artifact(raw, **kw("data/raw.h5ad"))
     nb = Path(os.environ["NB"])
     if not os.environ.get("NOT_EXPORTED"):
         eng.register_transform(key=nb.relative_to(ws).as_posix(), kind="notebook",
@@ -369,15 +373,18 @@ INSPECT = """
             finished=run.finished_at is not None,
             report=None if run.report is None else run.report.path.read_text(),
             outputs=sorted(f.key for f in files),
+            inputs=sorted(a.key for a in run.input_artifacts.all()),
         ))
     emit(rows=rows, sessions=eng.overview()["runs"],
          versions=ln.Artifact.filter(key="data/pbmc.h5ad").count(),
          notebooks=ln.Transform.filter(kind="notebook").count(),
-         listed=[r["name"] for r in eng.list_runs()])
+         listed=eng.list_runs())
 """
 
 
-def _recorded_workspace(tmp_path, *, later=False, body=COPY, exported=True):
+def _recorded_workspace(
+    tmp_path, *, later=False, body=COPY, exported=True, imported=False
+):
     workspace = tmp_path / "ws"
     (workspace / "data").mkdir(parents=True)
     a, b = tmp_path / "a.h5ad", tmp_path / "b.h5ad"
@@ -391,17 +398,19 @@ def _recorded_workspace(tmp_path, *, later=False, body=COPY, exported=True):
     env = {"WS": str(workspace), "A": str(a), "B": str(b), "NB": str(nb)}
     if later:
         env["LATER"] = "1"
+    if imported:
+        env["RAW"] = str(tmp_path / "input.h5ad")
     if not exported:
         env["NOT_EXPORTED"] = "1"
     _run(SETUP, tmp_path, env_extra=env)
     return workspace, nb, env
 
 
-def _cli(tmp_path, workspace, nb, drop_enable=False):
+def _cli(tmp_path, workspace, nb, drop_enable=False, input_file=None):
     env = _isolated_env(tmp_path, {}, drop_enable)
     cwd = tmp_path / "cwd"
     cwd.mkdir(exist_ok=True)
-    args = ["--verify", str(nb), "--input", str(tmp_path / "input.h5ad")]
+    args = ["--verify", str(nb), "--input", str(input_file or tmp_path / "input.h5ad")]
     args += ["-w", str(workspace), "--json"]
     return subprocess.run(
         [sys.executable, "-c", "from lobster.cli import app; app()", "replay", *args],
@@ -438,7 +447,29 @@ def test_a_replay_with_the_catalog_on_is_a_run_of_the_notebook_checked_against_t
     assert all(k.startswith("replays/") for k in row["outputs"])
     # no new version of the data, no second Transform, and a replay is not a session
     assert r["versions"] == 2 and r["notebooks"] == 1
-    assert r["sessions"] == 2 and "replay:nb" not in r["listed"]
+    assert r["sessions"] == 2  # a replay is not a session ...
+    listed = {x["name"]: x for x in r["listed"]}  # ... but `ls --runs` shows it, as one
+    assert listed["replay:nb"]["kind"] == "replay"
+    assert listed["replay:nb"]["verdict"] == "MATCH"
+    assert listed["s1"]["kind"] == "session" and listed["s1"]["verdict"] is None
+
+
+@needs_kernel
+def test_an_input_the_catalog_holds_is_an_input_of_the_replay_run(tmp_path):
+    workspace, nb, env = _recorded_workspace(tmp_path, imported=True)
+    proc = _cli(tmp_path, workspace, nb)  # --input has the bytes of data/raw.h5ad
+    assert proc.returncode in (0, 1), proc.stdout + proc.stderr
+    (row,) = _run(INSPECT, tmp_path, env_extra=env)["rows"]
+    assert row["inputs"] == ["data/raw.h5ad"]
+
+
+@needs_kernel
+def test_an_input_the_catalog_does_not_hold_is_no_input_of_the_replay_run(tmp_path):
+    workspace, nb, env = _recorded_workspace(tmp_path)
+    proc = _cli(tmp_path, workspace, nb)
+    assert proc.returncode in (0, 1), proc.stdout + proc.stderr
+    (row,) = _run(INSPECT, tmp_path, env_extra=env)["rows"]
+    assert row["inputs"] == []
 
 
 @needs_kernel

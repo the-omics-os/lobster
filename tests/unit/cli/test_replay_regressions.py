@@ -7,8 +7,8 @@ Real sessions (DataManagerV2 and the exporter) wherever the original repro was o
 
 import json
 import shutil
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import anndata as ad
 import numpy as np
@@ -38,6 +38,7 @@ def _flow_session(
     unsaved=False,
     lost=False,
     nullable=False,
+    figure=None,
 ):
     """Usability flows, on a real session and a real export.
 
@@ -92,6 +93,19 @@ def _flow_session(
     manager.save_modality(
         f"{name}_normalized", workspace / "data" / f"{name}_normalized.h5ad"
     )
+    if figure is not None:  # a plot step: reads the saved modality, writes no data
+        manager.log_tool_usage(
+            "create_umap_plot",
+            {"modality_name": f"{name}_normalized"},
+            "plot",
+            ir=AnalysisStep(
+                operation="lobster.visualization.create_umap_plot",
+                tool_name="create_umap_plot", description="plot", library="plotly",
+                code_template=figure, imports=[], parameters={},
+                parameter_schema={}, input_entities=["adata"], output_entities=["fig"],
+                exportable=True,
+            ),
+        )  # fmt: skip
     if lost:  # saved by the session, its file gone before the export
         (workspace / "data" / f"{name}_normalized.h5ad").unlink()
     notebook = Path(manager.export_notebook("nb", "S", filter_strategy="replay"))
@@ -765,9 +779,25 @@ def test_g_in_memory_inputs_are_off_by_default_and_no_digest_is_made_at_load(
     from lobster.core.provenance import content_digest
 
     assert content_digest.IN_MEMORY_INPUTS is False  # the 1.3.0 shipping default
-    monkeypatch.setattr(
-        content_digest, "content_digest", lambda *a: pytest.fail("digest computed")
-    )
+    from lobster.core.runtime.data_manager import DataManagerV2
+
+    loading = []
+    real_load, real_digest = DataManagerV2.load_modality, content_digest.content_digest
+
+    def load(self, *a, **k):
+        loading.append(1)
+        try:
+            return real_load(self, *a, **k)
+        finally:
+            loading.pop()
+
+    def digest(*a):  # a save may fingerprint what it wrote; a load never does
+        if loading:
+            pytest.fail("digest computed")
+        return real_digest(*a)
+
+    monkeypatch.setattr(DataManagerV2, "load_modality", load)
+    monkeypatch.setattr(content_digest, "content_digest", digest)
     workspace, notebook, saved = _geo_session(tmp_path, monkeypatch)
     (entry,) = _roles(notebook)["input_roles"]["loaded"]
     assert "content_sha256" not in entry and entry["in_memory"] is True
@@ -1136,3 +1166,25 @@ def test_w3_a_notebook_without_the_marker_and_without_the_fallback_is_unchanged(
     notebook.write_text(json.dumps(nb))
     out = json.loads(_verify_real(workspace, notebook, raw).stdout)
     assert not any("session writer" in n for n in out["notes"]), out["notes"]
+
+
+@needs_kernel
+def test_a_figure_that_drew_is_named_and_not_compared(tmp_path, monkeypatch):
+    workspace, notebook, raw = _flow_session(
+        tmp_path, monkeypatch, "n1", figure="fig = adata.n_obs"
+    )
+    out = json.loads(_verify_real(workspace, notebook, raw).stdout)
+    assert out["verdict"] == "MATCH", out
+    (note,) = [n for n in out["notes"] if "figure" in n]
+    assert note.endswith(": create_umap_plot: ran without error; figure not compared")
+
+
+@needs_kernel
+def test_a_figure_that_fails_to_draw_is_never_a_match(tmp_path, monkeypatch):
+    workspace, notebook, raw = _flow_session(
+        tmp_path, monkeypatch, "n1", figure="raise ValueError('cannot draw')"
+    )
+    done = _verify_real(workspace, notebook, raw)
+    out = json.loads(done.stdout)
+    assert done.exit_code == 5 and out["verdict"] != "MATCH", out
+    assert not any("ran without error" in n for n in out["notes"])

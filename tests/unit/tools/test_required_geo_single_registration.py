@@ -215,9 +215,12 @@ def test_real_active_queue_wrapper_keeps_one_engine_record_and_canonical_provena
         manager.download_queue.get_entry(entry.entry_id).status
         == DownloadStatus.COMPLETED
     )
-    manager.on_modality_loaded.assert_called_once_with(
-        CANONICAL, manager.get_modality(CANONICAL)
-    )
+    # The import is saved and read back right after the load, so the listener got
+    # the loaded object and the session holds the file's: same name, same shape.
+    manager.on_modality_loaded.assert_called_once()
+    loaded_name, loaded = manager.on_modality_loaded.call_args.args
+    assert loaded_name == CANONICAL
+    assert loaded.shape == manager.get_modality(CANONICAL).shape
     tool_names = [
         call.kwargs.get("tool_name", call.args[0] if call.args else None)
         for call in manager.log_tool_usage.call_args_list

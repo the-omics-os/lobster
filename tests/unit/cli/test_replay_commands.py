@@ -5,8 +5,8 @@ Most tests run a real notebook through papermill (about two seconds each); they
 are skipped where the ``python3`` kernel is not installed.
 """
 
-import hashlib
 import ast
+import hashlib
 import json
 import os
 import re
@@ -592,7 +592,7 @@ def test_every_note_has_a_chinese_line():
         and isinstance(node.elts[0].value, str)
         and isinstance(node.elts[1], ast.Dict)
     ]
-    assert len(notes) == 19, notes
+    assert len(notes) == 25, notes
     assert [n for n in notes if n not in phrases] == []
 
 

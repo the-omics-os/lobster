@@ -68,10 +68,8 @@ def test_empty_wrapper_handoff_keeps_legacy_kwargs_stats_and_ir(wrapper, params)
         "database": "geo",
         "original_modality_name": MODALITY,
     }
-    assert ir.parameters == {
-        "dataset_id": DATASET_ID,
-        "raw_file": f"data/{MODALITY}_raw.h5ad",
-    }
+    # nothing was written here, so the load cell names no file
+    assert ir.parameters == {"dataset_id": DATASET_ID}
 
 
 def test_active_wrapper_forwards_and_records_requirement(wrapper):

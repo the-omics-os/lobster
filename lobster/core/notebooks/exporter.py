@@ -101,6 +101,31 @@ print(f"Saved processed data to: {{output_path}}")
 """
 
 
+def _keep_cell(names: List[str], first: bool) -> NotebookNode:
+    """Keep a copy of each named modality: a later step starts from it, or the
+    session saved it before later steps changed it."""
+    lines = ["# Keep a copy for a later step that starts from it, or for the save."]
+    if first:
+        lines.append("_kept_modalities = {}")
+    lines += [f"_kept_modalities[{name!r}] = adata.copy()" for name in names]
+    return new_code_cell("\n".join(lines))
+
+
+def _rebind_cell(name: str) -> NotebookNode:
+    """Start the next step from the modality the session gave it."""
+    return new_code_cell(
+        f"# The session ran this step on {name!r}, not on the result above.\n"
+        f"adata = _kept_modalities[{name!r}].copy()"
+    )
+
+
+# Cell metadata (under "lobster") naming the step of a cell that draws a figure.
+FIGURE_CELL_KEY = "figure"
+UNRECORDED_INPUT_NOTE = (
+    "*Input not recorded: this step runs on the result of the cells above.*"
+)
+
+
 class NotebookExporter:
     """
     Convert Lobster provenance to executable Jupyter notebook using IR.
@@ -289,20 +314,58 @@ class NotebookExporter:
         # Convert exportable (activity, IR) pairs to code cells
         # This iterates over ONLY exportable IRs, not all activities
         # Skip load_dataset and save_dataset since they have dedicated cells above/below
-        for idx, (activity, ir) in enumerate(exportable_pairs, start=1):
-            activity_type = activity.get("type", "")
-            if activity_type in ("load_dataset", "save_dataset"):
-                continue
+        steps = [
+            (idx, activity, ir)
+            for idx, (activity, ir) in enumerate(exportable_pairs, start=1)
+            if activity.get("type", "") not in ("load_dataset", "save_dataset")
+        ]
+        saves = self._saves(irs)
+        keep, rebind, save_at = self._lineage(
+            [activity for _, activity, _ in steps], list(saves)
+        )
+        placed = set()
+        kept_any = False
 
+        def after(position: int) -> None:
+            """Write each modality the session saved where it was made, then keep
+            the copies later steps start from."""
+            nonlocal kept_any
+            for name in save_at.get(position, []):
+                cell = self._save_cell(saves[name])
+                if cell is not None:
+                    notebook.cells.append(cell)
+                    placed.add(name)
+            if position in keep:
+                notebook.cells.append(_keep_cell(keep[position], first=not kept_any))
+                kept_any = True
+
+        after(-1)
+        for position, (idx, activity, ir) in enumerate(steps):
             # Add documentation cell
-            notebook.cells.append(self._create_doc_cell(activity, idx))
+            doc_cell = self._create_doc_cell(activity, idx)
+            if (keep or rebind) and self._reads_data_unnamed(activity, ir):
+                doc_cell.source += f"\n\n{UNRECORDED_INPUT_NOTE}"
+            notebook.cells.append(doc_cell)
+
+            if position in rebind:
+                notebook.cells.append(_rebind_cell(rebind[position]))
 
             # Add executable code cell from IR (no placeholder fallback)
             code_cell = self._ir_to_code_cell(ir, validate=validate_syntax)
+            if "fig" in (ir.output_entities or []):
+                # replay names each figure it drew without comparing it
+                label = f"Step {idx}: {self._step_label(activity)}"
+                code_cell.metadata["lobster"] = {FIGURE_CELL_KEY: label}
             notebook.cells.append(code_cell)
 
-        # Add data saving cell
-        notebook.cells.append(self._create_data_saving_cell(irs))
+            after(position)
+
+        # The closing save cell, unless its modality was written where it was
+        # made. A save the steps never made stays unwritten unless it is this
+        # one, and replay reports it as not produced.
+        closing = self._closing_save(irs)
+        if closing is None or closing.get("parameters", {}).get("name") not in placed:
+            notebook.cells.append(self._create_data_saving_cell(irs))
 
         read_names = self._names_read(
             cell
@@ -1101,19 +1164,62 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
 """
         return new_code_cell(code + ml_reset)
 
-    def _create_data_saving_cell(
-        self, emitted_irs: Optional[List[AnalysisStep]] = None
-    ) -> NotebookNode:
-        """
-        Create cell for saving output data using IR if available.
+    @staticmethod
+    def _adata_name(entries: Any) -> Optional[str]:
+        """The modality an activity read or wrote as ``adata``, if recorded."""
+        for entry in entries or []:
+            if isinstance(entry, dict) and entry.get("ir_name") == "adata":
+                return str(entry["name"]) if entry.get("name") else None
+        return None
 
-        Returns:
-            Code cell with data saving code
+    @classmethod
+    def _reads_data_unnamed(cls, activity: Dict[str, Any], ir: AnalysisStep) -> bool:
+        """The step reads ``adata`` but its record does not name the modality."""
+        return "adata" in (ir.input_entities or []) and not cls._adata_name(
+            activity.get("inputs")
+        )
+
+    @classmethod
+    def _lineage(
+        cls, steps: List[Dict[str, Any]], saved: List[str]
+    ) -> Tuple[Dict[int, List[str]], Dict[int, str], Dict[int, List[str]]]:
+        """Where the step cells must keep, restore and save modalities.
+
+        Every step cell works on one ``adata``. A step whose recorded input is
+        not the modality ``adata`` holds then starts from a copy kept when that
+        modality was made. Each modality in *saved* is written right after the
+        step that made it. Returns, per step position (-1: before the first
+        step), the names to keep after it, the name to restore before it, and
+        the saved names to write after it. A step without a recorded ``adata``
+        input runs on what the step above left, as before; a saved name no step
+        made is in none of them.
         """
-        # create_ml_splits explicitly writes its split objects. Its save_dataset
-        # records precede the split activity at runtime; rendering their generic
-        # `adata` saver here would overwrite the last split with the parent (or
-        # with a later analysis output). Only selected, saving split IRs qualify.
+        held: Optional[str] = None  # the modality adata holds
+        made_at: Dict[str, int] = {}  # where adata last became each modality
+        keep: Dict[int, List[str]] = {}
+        rebind: Dict[int, str] = {}
+
+        for position, activity in enumerate(steps):
+            source = cls._adata_name(activity.get("inputs"))
+            result = cls._adata_name(activity.get("outputs"))
+            if held is None and source:  # the first step that says what it read
+                held, made_at[source] = source, position - 1
+            if source and source != held and source in made_at:
+                names = keep.setdefault(made_at[source], [])
+                if source not in names:
+                    names.append(source)
+                rebind[position] = held = source
+            if result:
+                held, made_at[result] = result, position
+        save_at: Dict[int, List[str]] = {}
+        for name in saved:
+            if name in made_at:
+                save_at.setdefault(made_at[name], []).append(name)
+        return keep, rebind, save_at
+
+    @staticmethod
+    def _split_saves(emitted_irs: Optional[List[AnalysisStep]]) -> set:
+        """(name, file) of the saves create_ml_splits writes itself."""
         split_saves = set()
         for emitted_ir in emitted_irs or []:
             if (
@@ -1125,47 +1231,90 @@ print(f"Loaded data: {adata.n_obs} cells × {adata.n_vars} genes")
                 if emitted_ir.parameters["validation_size"] > 0:
                     names.append(f"{parent}_validation")
                 split_saves.update((name, f"{name}.h5ad") for name in names)
+        return split_saves
 
-        # Try to find data saving IR from provenance
-        for activity in reversed(self.provenance.activities):  # Check most recent first
-            tool_name = activity.get("type", "")
-            if tool_name == "save_dataset":
-                saved = activity.get("parameters", {})
-                if (
-                    saved.get("name"),
-                    Path(saved.get("path") or "").name,
-                ) in split_saves:
-                    # All requested split artifacts already exist. Save final
-                    # adata only under the honest generic `_processed` filename.
-                    break
-                ir_obj = activity.get("ir")
-                if ir_obj:
-                    try:
-                        if isinstance(ir_obj, AnalysisStep):
-                            ir = ir_obj
-                        else:
-                            ir = AnalysisStep.from_dict(ir_obj)
-                        code = ir.render()
-                        path_lines = [
-                            line
-                            for line in code.splitlines()
-                            if line.startswith("output_path = ")
-                        ]
-                        if not path_lines:
-                            # Not the standard saver; keep its code as is.
-                            return new_code_cell(code)
-                        else:
-                            # Keep the session's file name and compression, but
-                            # write through the same guarded save as below.
-                            compression = ir.parameters.get("compression")
-                            if compression in (None, "", "none"):
-                                compression = None
-                            logger.debug("Using IR for data saving cell")
-                            return new_code_cell(
-                                _guarded_save_code(path_lines[0], compression)
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to use IR for data saving: {e}")
+    @staticmethod
+    def _is_split_save(activity: Dict[str, Any], split_saves: set) -> bool:
+        saved = activity.get("parameters", {})
+        return (saved.get("name"), Path(saved.get("path") or "").name) in split_saves
+
+    def _saves(
+        self, emitted_irs: Optional[List[AnalysisStep]]
+    ) -> Dict[str, Dict[str, Any]]:
+        """The last save of each modality, by name in save order; the saves
+        create_ml_splits writes itself are left out."""
+        split_saves = self._split_saves(emitted_irs)
+        saves: Dict[str, Dict[str, Any]] = {}
+        for activity in self.provenance.activities:
+            name = (activity.get("parameters") or {}).get("name")
+            if (
+                activity.get("type") == "save_dataset"
+                and activity.get("ir")
+                and name
+                and not self._is_split_save(activity, split_saves)
+            ):
+                saves.pop(name, None)
+                saves[name] = activity
+        return saves
+
+    def _closing_save(
+        self, emitted_irs: Optional[List[AnalysisStep]]
+    ) -> Optional[Dict[str, Any]]:
+        """The save the closing save cell is built from: the most recent one
+        with IR, none when that is a split create_ml_splits writes itself."""
+        split_saves = self._split_saves(emitted_irs)
+        for activity in reversed(self.provenance.activities):
+            if activity.get("type", "") == "save_dataset":
+                if self._is_split_save(activity, split_saves):
+                    return None
+                if activity.get("ir"):
+                    return activity
+        return None
+
+    def _save_cell(self, activity: Dict[str, Any]) -> Optional[NotebookNode]:
+        """The cell that writes what *activity* saved, from its IR."""
+        ir_obj = activity.get("ir")
+        try:
+            if isinstance(ir_obj, AnalysisStep):
+                ir = ir_obj
+            else:
+                ir = AnalysisStep.from_dict(ir_obj)
+            code = ir.render()
+            path_lines = [
+                line for line in code.splitlines() if line.startswith("output_path = ")
+            ]
+            if not path_lines:
+                # Not the standard saver; keep its code as is.
+                return new_code_cell(code)
+            # Keep the session's file name and compression, but write through
+            # the same guarded save as the fallback.
+            compression = ir.parameters.get("compression")
+            if compression in (None, "", "none"):
+                compression = None
+            logger.debug("Using IR for data saving cell")
+            return new_code_cell(_guarded_save_code(path_lines[0], compression))
+        except Exception as e:
+            logger.warning(f"Failed to use IR for data saving: {e}")
+            return None
+
+    def _create_data_saving_cell(
+        self, emitted_irs: Optional[List[AnalysisStep]] = None
+    ) -> NotebookNode:
+        """
+        Create the closing save cell, from the most recent save's IR if possible.
+
+        Returns:
+            Code cell with data saving code
+        """
+        # create_ml_splits explicitly writes its split objects. Its save_dataset
+        # records precede the split activity at runtime; rendering their generic
+        # `adata` saver here would overwrite the last split with the parent (or
+        # with a later analysis output). Then the final adata is saved only
+        # under the honest generic `_processed` filename.
+        closing = self._closing_save(emitted_irs)
+        cell = self._save_cell(closing) if closing is not None else None
+        if cell is not None:
+            return cell
 
         # Fallback to hardcoded cell if no IR found
         logger.debug("Using fallback hardcoded data saving cell")

@@ -171,7 +171,8 @@ def test_complete_tool_import_actual_parser_h5_and_rendered_ir_replay(
     assert ir.execution_context["data_requirement"] == "gene_counts"
     assert ir.output_entities == [CANONICAL]
     monkeypatch.chdir(manager.workspace_path)
-    replayed = replay_ir(ir, ad=anndata)["adata"]
+    raw_file = manager.data_dir / (CANONICAL + "_raw.h5ad")
+    replayed = replay_ir(ir, input_data=str(raw_file))["adata"]
     np.testing.assert_array_equal(replayed.X, restored.X)
     assert list(replayed.obs["source_sample_id"]) == [A, B]
     assert json.loads(replayed.uns["geo_import"]["candidates_json"]) == facts

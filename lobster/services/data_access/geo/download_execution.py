@@ -382,6 +382,14 @@ class DownloadExecutor:
                     f"This suggests incorrect file selection during download."
                 )
 
+            # What the archive held but this import did not load (read before the
+            # table or object is handed on)
+            if isinstance(geo_result.data, pd.DataFrame):
+                not_loaded = list(geo_result.data.attrs.get("not_loaded", []))
+            else:
+                uns = getattr(geo_result.data, "uns", None) or {}
+                not_loaded = list(uns.get("geo_import", {}).get("not_loaded", []))
+
             adata = self.service.data_manager.load_modality(
                 name=modality_name,
                 source=geo_result.data,
@@ -397,7 +405,7 @@ class DownloadExecutor:
             # Save to workspace
             save_path = f"{modality_name}_raw.h5ad"
             saved_file = self.service.data_manager.save_modality(
-                modality_name, save_path
+                modality_name, save_path, geo_import=True
             )
 
             # Check if this was a multi-modal dataset and log exclusions
@@ -415,6 +423,9 @@ class DownloadExecutor:
                     "method", "unknown"
                 ),
             }
+
+            if not_loaded:
+                log_params["not_loaded"] = not_loaded
 
             log_description = f"Downloaded GEO dataset {clean_geo_id} using strategic approach ({geo_result.source.value}), saved to {saved_file}"
 
@@ -470,6 +481,12 @@ Multi-Modal Dataset Detected:
    Skipped: {excluded_summary} (Lobster does not import these modalities)
 
    Note: Only RNA samples were downloaded."""
+
+            if not_loaded:
+                success_msg += (
+                    f"\n\nNot everything in the archive was loaded. "
+                    f"Not loaded: {'; '.join(not_loaded)}"
+                )
 
             success_msg += f"\n\nThe dataset is now available as modality '{modality_name}' for other agents to use."
 
@@ -599,7 +616,7 @@ Multi-Modal Dataset Detected:
             validate=True,
         )
         save_path = f"{modality_name}_raw.h5ad"
-        manager.save_modality(modality_name, save_path)
+        manager.save_modality(modality_name, save_path, geo_import=True)
         manager.log_tool_usage(
             tool_name="download_geo_dataset_strategic",
             parameters={

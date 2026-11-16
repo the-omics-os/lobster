@@ -27,6 +27,7 @@ Example usage:
     >>> print(f"Downloaded: {modality_name}")
 """
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import anndata as ad
@@ -433,10 +434,17 @@ class GEODownloadService(IDownloadService):
             return None
 
         if len(matching_modalities) > 1:
+            # The import saved straight after its load is the dataset; the others
+            # (the samples of a series) are what it was made from.
+            anchored = [
+                m for m in matching_modalities if self.data_manager.anchored_import(m)
+            ]
+            chosen = (anchored or matching_modalities)[-1 if anchored else 0]
             logger.warning(
                 f"Multiple modalities found for {geo_id}: {matching_modalities}. "
-                f"Using first match: {matching_modalities[0]}"
+                f"Using {chosen}"
             )
+            return chosen
 
         modality_name = matching_modalities[0]
         logger.debug(f"Found matching modality: {modality_name}")
@@ -468,55 +476,19 @@ class GEODownloadService(IDownloadService):
         Returns:
             AnalysisStep: Provenance tracking object with executable file-load template
         """
-        from lobster.core.provenance.analysis_ir import ParameterSpec
-
-        raw_file = f"data/{modality_name}_raw.h5ad"
-
-        parameters = {
-            "dataset_id": geo_id,
-            "raw_file": raw_file,
-        }
-
-        parameter_schema = {
-            "dataset_id": ParameterSpec(
-                param_type="str",
-                papermill_injectable=True,
-                default_value=geo_id,
-                required=True,
-                description=f"GEO accession ID (e.g., {geo_id})",
-            ),
-            "raw_file": ParameterSpec(
-                param_type="str",
-                papermill_injectable=True,
-                default_value=raw_file,
-                required=True,
-                description="Path to raw H5AD file (relative to workspace root)",
-            ),
-        }
-
-        ir = AnalysisStep(
-            operation="geo_service.download_dataset",
-            tool_name="GEODownloadService.download_dataset",
-            description=f"Load GEO dataset {geo_id} from downloaded H5AD file",
-            library="anndata",
-            imports=["import anndata as ad"],
-            code_template="""# Load GEO dataset {{ dataset_id | string | repr }}
-# Originally downloaded via Lobster AI DownloadOrchestrator
-# Run this notebook from the workspace root directory
-adata = ad.read_h5ad({{ raw_file | string | repr }})
-print(f"Loaded { {{ dataset_id | repr }} }: {adata.n_obs} observations × {adata.n_vars} variables")
-""",
-            parameters=parameters,
-            parameter_schema=parameter_schema,
-            input_entities=[raw_file],
-            output_entities=[modality_name],
-            execution_context={
+        anchored = self.data_manager.anchored_import(modality_name)
+        if isinstance(anchored, dict) and anchored.get("sha256"):
+            ir = self._anchored_load_ir(geo_id, modality_name, anchored)
+        else:
+            ir = self._file_load_ir(geo_id, modality_name)
+        ir.execution_context.update(
+            {
                 "queue_entry_id": queue_entry_id,
                 "strategy": strategy_name or "auto",
                 "use_intersecting_genes_only": use_intersecting_genes_only,
                 "database": "geo",
                 "original_modality_name": modality_name,
-            },
+            }
         )
 
         logger.debug(f"Created AnalysisStep IR for {geo_id}")
@@ -612,3 +584,113 @@ print(f"Loaded { {{ dataset_id | repr }} }: {adata.n_obs} observations × {adata
             "SAMPLES_FIRST",  # Individual sample files (detailed, per-sample QC)
             "RAW_FIRST",  # Raw UMI/count matrices (unprocessed, maximum control)
         ]
+
+    def _anchored_load_ir(
+        self, geo_id: str, modality_name: str, anchored: Dict[str, Any]
+    ) -> AnalysisStep:
+        """Load cell for an import saved straight after its load.
+
+        The raw file is the notebook's ``input_data``, checked against the SHA-256
+        recorded at the save. A different file stops the cell; nothing is downloaded.
+        """
+        from lobster.core.provenance.analysis_ir import ParameterSpec
+
+        return AnalysisStep(
+            operation="geo_service.download_dataset",
+            tool_name="GEODownloadService.download_dataset",
+            description=f"Load GEO dataset {geo_id} from the raw file saved at import",
+            library="anndata",
+            imports=["import hashlib", "import anndata as ad"],
+            code_template="""# Load GEO dataset {{ dataset_id | string | repr }} from the raw file saved right
+# after its import (input_data). The file is checked against the SHA-256 recorded
+# for this session; a different file stops here and nothing is downloaded.
+_digest = hashlib.sha256()
+with open(input_data, "rb") as _raw:
+    for _block in iter(lambda: _raw.read(1 << 20), b""):
+        _digest.update(_block)
+if _digest.hexdigest() != {{ expected_sha256 | string | repr }}:
+    raise RuntimeError(
+        "The raw file does not match the SHA-256 recorded for this session "
+        "({{ raw_name }}); it is not downloaded again."
+    )
+adata = ad.read_h5ad(input_data)
+print(f"Loaded { {{ dataset_id | repr }} }: {adata.n_obs} observations × {adata.n_vars} variables")
+""",
+            parameters={
+                "dataset_id": geo_id,
+                "expected_sha256": anchored["sha256"],
+                "raw_name": anchored["name"],
+                "input_data": anchored["name"],
+            },
+            parameter_schema={
+                "input_data": ParameterSpec(
+                    param_type="str",
+                    papermill_injectable=True,
+                    default_value=anchored["name"],
+                    required=True,
+                    description="The raw H5AD file saved when the dataset was imported",
+                ),
+            },
+            input_entities=[anchored["name"]],
+            output_entities=[modality_name],
+            execution_context={},
+        )
+
+    def _file_load_ir(self, geo_id: str, modality_name: str) -> AnalysisStep:
+        """Load cell for an import that was not anchored; nothing checks the file.
+
+        It names the raw file only when that file exists. Otherwise the cell stops
+        with a clear message, never a read of a file that was not written.
+        """
+        from lobster.core.provenance.analysis_ir import ParameterSpec
+
+        raw_file = f"data/{modality_name}_raw.h5ad"
+        data_dir = getattr(self.data_manager, "data_dir", None)
+        written = (
+            isinstance(data_dir, Path)
+            and (data_dir / f"{modality_name}_raw.h5ad").is_file()
+        )
+        if written:
+            code = """# Load GEO dataset {{ dataset_id | string | repr }} from the raw file saved at import
+# (input_data). The file is not checked against the session.
+adata = ad.read_h5ad(input_data)
+print(f"Loaded { {{ dataset_id | repr }} }: {adata.n_obs} observations × {adata.n_vars} variables")
+"""
+        else:
+            code = """# Load GEO dataset {{ dataset_id | string | repr }}
+raise RuntimeError(
+    "No raw file was saved for this dataset, so this notebook cannot load it."
+)
+"""
+        parameters = {"dataset_id": geo_id}
+        schema = {
+            "dataset_id": ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=geo_id,
+                required=True,
+                description=f"GEO accession ID (e.g., {geo_id})",
+            ),
+        }
+        if written:
+            parameters["input_data"] = raw_file
+            schema["input_data"] = ParameterSpec(
+                param_type="str",
+                papermill_injectable=True,
+                default_value=raw_file,
+                required=True,
+                description="The raw H5AD file saved when the dataset was imported",
+            )
+        return AnalysisStep(
+            operation="geo_service.download_dataset",
+            tool_name="GEODownloadService.download_dataset",
+            description=f"Load GEO dataset {geo_id} from downloaded H5AD file",
+            library="anndata",
+            imports=["import anndata as ad"],
+            code_template=code,
+            parameters=parameters,
+            parameter_schema=schema,
+            input_entities=[raw_file] if written else [],
+            output_entities=[modality_name],
+            execution_context={},
+        )

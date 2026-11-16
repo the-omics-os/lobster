@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import threading
 import time
+import weakref
 import zipfile
 from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
@@ -163,6 +164,14 @@ def _object_loaded(source: Any) -> Optional[Dict[str, Any]]:
     For a load that has no file (a download hands over an object). No name, no path.
     ``None`` for anything else, or when the digest cannot be made.
     """
+    if isinstance(source, pd.DataFrame):
+        # A download hands over a table; the adapter makes the object the session
+        # holds, and that object is what a saved import is anchored on.
+        return {
+            "in_memory": True,
+            "n_obs": int(source.shape[0]),
+            "n_vars": int(source.shape[1]),
+        }
     if not _is_anndata_instance(source):
         return None
     try:
@@ -622,6 +631,29 @@ def _assert_not_a_folder(path: Path) -> None:
         raise _managed_refusal() from None
 
 
+def _held_signature(adata: Any) -> Tuple[str, str]:
+    """What an object holds: its content digest and the shape of ``uns``.
+
+    shortcut: ``uns`` is compared by its shape (keys, kinds, sizes), not leaf by
+    leaf. It only decides whether an auto-save is tagged as the import's own; the
+    replay compares the files exactly.
+    """
+    from lobster.core.provenance.content_digest import content_digest
+
+    def size(value: Any) -> Any:
+        try:
+            return len(value)
+        except TypeError:
+            return None
+
+    def shape(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {str(k): shape(v) for k, v in sorted(value.items(), key=str)}
+        return (type(value).__name__, getattr(value, "shape", None) or size(value))
+
+    return content_digest(adata), repr(shape(dict(adata.uns)))
+
+
 def _autosave_file_name(modality_name: str) -> str:
     """The auto-save file of a modality, relative to data_dir (never double-suffixed)."""
     if modality_name.endswith("_autosave"):
@@ -891,6 +923,16 @@ class DataManagerV2:
         # Thread-safety for mutable state accessed by concurrent tool calls
         # (e.g. execute_custom_code via asyncio.to_thread)
         self._state_lock = threading.Lock()
+        # name -> (weak ref to the object a modality was loaded from, its load
+        # entity, activities logged by then): what a GEO import save may anchor
+        self._import_candidates: Dict[str, Tuple[Any, str, int]] = {}
+        # name -> (weak ref to the object an import is anchored on, its content
+        # signature, the load entity): an auto-save of it, unchanged, is the import's
+        self._anchored_held: Dict[str, Tuple[Any, Tuple[str, str], str]] = {}
+        # (modality, file) of what GEO imports saved for the samples of a series;
+        # then, per anchored import, the entity and the sample modalities it merged
+        self._geo_sample_files: List[Tuple[str, str]] = []
+        self._anchored_samples: Dict[str, Tuple[str, set]] = {}
 
         # Client session identity shown in notebook exports. Only the owning client
         # binds it (bind_client_session); the timestamp session_id above is not it.
@@ -1203,6 +1245,110 @@ class DataManagerV2:
                         save.register(**fields)
                 except Exception:
                     logger.debug("Catalog: register_artifact failed", exc_info=True)
+
+    def anchored_import(self, name: str) -> Optional[Dict[str, Any]]:
+        """Name, SHA-256 and size of the file a GEO import of ``name`` was saved as.
+
+        ``None`` unless that import was anchored (see ``save_modality``).
+        """
+        if not self.provenance:
+            return None
+        for entity in list(self.provenance.entities.values()):
+            meta = (entity or {}).get("metadata") or {}
+            if (
+                meta.get("modality_name") == name
+                and meta.get("loaded_object")
+                and meta.get("loaded_file")
+            ):
+                return dict(meta["loaded_file"])
+        return None
+
+    def _anchor_import(self, name: str, written: Path) -> None:
+        """Record the file a GEO import saved as the input its load stands for.
+
+        Only when the object saved is the object loaded and nothing was logged
+        since the load; anything else leaves the load as an in-memory object.
+        """
+        candidate = self._import_candidates.pop(name, None)
+        if candidate is None or not self.provenance:
+            return
+        ref, entity_id, activities = candidate
+        if (
+            ref() is None
+            or ref() is not self.modalities.get(name)
+            or len(self.provenance.activities) != activities
+        ):
+            return
+        file_record = _file_loaded(written)
+        meta = (self.provenance.entities.get(entity_id) or {}).get("metadata")
+        if not (file_record and isinstance(meta, dict)):
+            return
+        # The writer changes some things it saves (text columns become categories,
+        # nested numbers become text). The session continues from the file, so a
+        # replay that reads the file starts from what the session started from.
+        try:
+            from_file = _ensure_anndata().read_h5ad(written)
+        except Exception:
+            logger.debug(
+                "Import not anchored: the raw file is unreadable", exc_info=True
+            )
+            return
+        with self._state_lock:
+            self.modalities[name] = from_file
+        # the export record lists this load as the file, not as an object
+        meta["loaded_file"] = {**file_record, "anchored": "import"}
+        if self._geo_sample_files:
+            meta["loaded_file"]["samples"] = sorted(
+                {f for _, f in self._geo_sample_files}
+            )
+            self._anchored_samples[name] = (
+                entity_id,
+                {m for m, _ in self._geo_sample_files},
+            )
+        self._geo_sample_files = []
+        try:
+            self._anchored_held[name] = (
+                weakref.ref(from_file),
+                _held_signature(from_file),
+                entity_id,
+            )
+        except (
+            Exception
+        ):  # an object the digest cannot read: its auto-save is not tagged
+            self._anchored_held.pop(name, None)
+
+    def _tag_import_autosave(self, name: str, written: Path) -> None:
+        """Mark an auto-save as the anchored import's own: same object, same content.
+
+        The auto-save of a sample modality an import merged is listed with the
+        import's sample files.
+        """
+        for entity_id, modalities in self._anchored_samples.values():
+            if name in modalities and self.provenance:
+                meta = (self.provenance.entities.get(entity_id) or {}).get("metadata")
+                loaded = meta.get("loaded_file") if isinstance(meta, dict) else None
+                if isinstance(loaded, dict):
+                    loaded["samples"] = sorted(
+                        {*loaded.get("samples", []), written.name}
+                    )
+        held = self._anchored_held.get(name)
+        if held is None or not self.provenance:
+            return
+        ref, signature, entity_id = held
+        current = self.modalities.get(name)
+        meta = (self.provenance.entities.get(entity_id) or {}).get("metadata")
+        loaded = meta.get("loaded_file") if isinstance(meta, dict) else None
+        if ref() is None or ref() is not current or not isinstance(loaded, dict):
+            return
+        try:
+            if _held_signature(current) != signature:
+                return
+            loaded["autosave"] = {
+                "name": written.name,
+                "sha256": hashlib.sha256(written.read_bytes()).hexdigest(),
+            }
+        except Exception:
+            logger.debug("Auto-save not tagged as the import's", exc_info=True)
 
     def _catalog_usable_keep(self, keep: Any) -> Optional[Path]:
         """``keep`` when it is a free path inside the workspace that saves may use."""
@@ -1783,8 +1929,9 @@ class DataManagerV2:
             self._enforce_memory_budget()
 
         # Log provenance
+        load_entity = None
         if self.provenance:
-            self.provenance.create_entity(
+            load_entity = self.provenance.create_entity(
                 entity_type="modality_data",
                 metadata={
                     "modality_name": name,
@@ -1824,6 +1971,8 @@ class DataManagerV2:
                     "source": source_path,
                     "adapter": adapter,
                     **kwargs,
+                    # kept on the step: a later process restores steps, not entities
+                    **({"loaded_file": loaded_file} if loaded_file else {}),
                 },
                 description=f"Loaded modality '{name}' using {adapter} adapter",
                 ir=loading_ir,
@@ -1836,6 +1985,12 @@ class DataManagerV2:
             f"Loaded modality '{name}': {adata.shape} using adapter '{adapter}'"
         )
         self._catalog_link_input(source)
+        if load_entity is not None and loaded_object:
+            self._import_candidates[name] = (
+                weakref.ref(self.modalities.get(name, adata)),
+                load_entity,
+                len(self.provenance.activities),
+            )
 
         # Notify listeners
         if self.on_modality_loaded is not None:
@@ -1946,7 +2101,14 @@ class DataManagerV2:
         return name
 
     def save_modality(
-        self, name: str, path: Union[str, Path], backend: Optional[str] = None, **kwargs
+        self,
+        name: str,
+        path: Union[str, Path],
+        backend: Optional[str] = None,
+        *,
+        geo_import: bool = False,
+        geo_sample: bool = False,
+        **kwargs,
     ) -> str:
         """
         Save a modality using specified backend.
@@ -1971,6 +2133,9 @@ class DataManagerV2:
             name: Name of modality to save
             path: Destination path (relative to data_dir, or absolute)
             backend: Backend to use (default: default_backend)
+            geo_import: The save that follows a GEO import's load. When the object
+                saved is the object loaded and nothing was logged since, the load
+                records the SHA-256 of the file written (the input a replay checks).
             **kwargs: Additional parameters passed to backend
 
         Returns:
@@ -2104,6 +2269,25 @@ class DataManagerV2:
                         adata, backend_path, backup_stamp=backup_stamp, **kwargs
                     )
             path = resolved_path
+            candidate = self._import_candidates.get(name)
+            if (
+                geo_sample
+                and local_backend
+                and candidate is not None
+                and candidate[0]() is self.modalities.get(name)  # a recorded load
+            ):
+                self._geo_sample_files.append((name, written_path.name))
+                # a sample is an input of the merge, not of the session: the merged
+                # dataset is the load the notebook starts from
+                sample_meta = (
+                    (self.provenance.entities.get(candidate[1]) or {}).get("metadata")
+                    if self.provenance
+                    else None
+                )
+                if isinstance(sample_meta, dict):
+                    sample_meta.pop("loaded_object", None)
+            if geo_import and local_backend:
+                self._anchor_import(name, written_path)
 
             # Log provenance
             if self.provenance:
@@ -2120,6 +2304,10 @@ class DataManagerV2:
                     description=f"Save {name} data to {path}",
                     compression=kwargs.get("compression", "gzip"),
                 )
+                if geo_import and self.anchored_import(name):
+                    # The file is the input the notebook starts from: it is not a
+                    # step that writes the result again under another name.
+                    saving_ir = None
 
                 # Log data saving operation with IR
                 self.log_tool_usage(
@@ -3990,6 +4178,7 @@ class DataManagerV2:
                 saved_items.append(
                     f"Modality '{modality_name}': {Path(saved_path).name}"
                 )
+                self._tag_import_autosave(modality_name, Path(saved_path))
 
                 # Clear dirty flag after successful save
                 self._modality_dirty.discard(modality_name)

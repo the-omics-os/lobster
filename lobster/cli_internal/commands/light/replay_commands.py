@@ -48,6 +48,7 @@ import click
 import typer
 from typer.core import TyperCommand
 
+from lobster.core.projects import run_workspace
 from lobster.i18n import h
 from lobster.testing.replay_contract import (
     Claim,
@@ -436,6 +437,56 @@ def _loaded_files(notebook: Path) -> Optional[List[Dict[str, Any]]]:
     return list(loaded) if isinstance(loaded, list) else None
 
 
+def _import_anchor(notebook: Path) -> Optional[Dict[str, Any]]:
+    """The one file a GEO import saved and the session continued from, or None.
+
+    The record marks it (``anchored``); with none or several there is nothing to
+    take the input from, and ``--input`` stays required.
+    """
+    anchored = [
+        e
+        for e in _loaded_files(notebook) or []
+        if isinstance(e, dict)
+        and e.get("anchored") == "import"
+        and isinstance(e.get("name"), str)
+        and isinstance(e.get("sha256"), str)
+        and _SHA256.fullmatch(e["sha256"])
+    ]
+    return anchored[0] if len(anchored) == 1 else None
+
+
+def _import_files(
+    anchor: Optional[Dict[str, Any]],
+) -> Tuple[Optional[Dict[str, str]], Tuple[str, ...]]:
+    """The import's own auto-save and per-sample files, as the record tags them."""
+    if anchor is None:
+        return None, ()
+    auto = anchor.get("autosave")
+    if not (
+        isinstance(auto, dict)
+        and isinstance(auto.get("name"), str)
+        and isinstance(auto.get("sha256"), str)
+    ):
+        auto = None
+    samples = anchor.get("samples")
+    names = (
+        tuple(n for n in samples if isinstance(n, str))
+        if isinstance(samples, list)
+        else ()
+    )
+    return auto, names
+
+
+def _anchored_file(workspace: Path, name: str) -> Optional[Path]:
+    """Where the session saved the imported file: ``-w`` is the workspace or its project."""
+    base = Path(name).name
+    for root in (workspace, run_workspace(workspace)):
+        for candidate in (root / "data" / base, root / base):
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def _loaded_is_input(
     loaded: Optional[List[Dict[str, Any]]], input_data: Path, input_sha: str
 ) -> Tuple[Optional[bool], Optional[Note], Dict[str, Any]]:
@@ -491,6 +542,22 @@ def _loaded_is_input(
         )
     entry = next(e for e, k in zip(loaded, keys) if k in matches)
     return True, None, entry
+
+
+def _figures(executed: Path) -> List[str]:
+    """The steps whose cells drew a figure in the executed notebook."""
+    from lobster.core.notebooks.exporter import FIGURE_CELL_KEY
+
+    try:
+        cells = json.loads(executed.read_text("utf-8")).get("cells", [])
+    except (OSError, ValueError):
+        return []
+    steps = []
+    for cell in cells:
+        marks = (cell.get("metadata") or {}).get("lobster")
+        if isinstance(marks, dict) and marks.get(FIGURE_CELL_KEY):
+            steps.append(str(marks[FIGURE_CELL_KEY]))
+    return steps
 
 
 def _session_writer_used(executed: Path) -> Optional[bool]:
@@ -768,22 +835,48 @@ def verify_notebook(
     """
     # The kernel runs in the replay folder: every path is made absolute first.
     notebook, workspace = notebook.resolve(), workspace.resolve()
+    workspace = run_workspace(workspace)  # -w names a run folder or project
     input_data = input_data.resolve() if input_data is not None else None
     policy_file = policy_file.resolve() if policy_file is not None else None
-    if input_data is None:
-        raise Refused(h("Give the notebook's input file with --input."))
     notebook_sha, record = _notebook_record(notebook)
-    if not input_data.is_file():
+    anchor = _import_anchor(notebook)
+    refusal: Optional[str] = None
+    if input_data is None:
+        if anchor is None:
+            raise Refused(h("Give the notebook's input file with --input."))
+        # the file the session imported, where the session saved it
+        input_data = _anchored_file(workspace, anchor["name"]) or (
+            workspace / "data" / anchor["name"]
+        )
+        if not input_data.is_file():
+            refusal = h(
+                "The file the session imported is not in the workspace: {name}"
+            ).format(name=anchor["name"])
+    elif not input_data.is_file():
         raise Refused(h("Input file not found: {path}").format(path=input_data))
-    roots = {input_data.name: _sha256(input_data)}
+    roots = (
+        {input_data.name: _sha256(input_data)}
+        if input_data.is_file()
+        else {anchor["name"]: anchor["sha256"]}  # the one file asked for, not found
+    )
+    if (
+        refusal is None
+        and anchor is not None
+        and _sha256(input_data) != anchor["sha256"]
+    ):
+        refusal = h("The input is not the file the session imported: {name}").format(
+            name=anchor["name"]
+        )
     user_policy = _load_policy(policy_file)
     # Machine paths stay out of the binding: the same replay binds the same way.
     params = {"input_data": input_data.name, "output_prefix": OUTPUT_PREFIX}
     run_uid = catalog.begin(notebook, workspace, params) if catalog else None
+    if run_uid and input_data.is_file():
+        catalog.link_input(input_data)
     entries = _record_entries(notebook)
     recorded = _recorded_hashes(notebook)
     find = (
-        (lambda stem: catalog.reference(stem, recorded))
+        (lambda stem: catalog.reference(stem, recorded, _recorded_file_paths(notebook)))
         if run_uid and catalog.has_session
         else (
             lambda stem: _workspace_reference(
@@ -836,6 +929,8 @@ def verify_notebook(
         )
 
     base_policy = user_policy or _default_policy([])
+    if refusal is not None:
+        return refused(base_policy, refusal, anchor["name"])
     outputs = replay_dir.resolve() / f"{OUTPUT_PREFIX}"
     executed = replay_dir.resolve() / "executed.ipynb"
     from lobster.core.notebooks.executor import NotebookExecutor
@@ -932,9 +1027,49 @@ def verify_notebook(
     produced = _outputs(replay_dir)
     if not produced:
         outcome.notes.append(("The notebook wrote no .h5ad file.", {}))
+    own_autosave, sample_files = _import_files(anchor)
+    covered: List[str] = []  # the import's own files, by what the record holds for them
+    own_names: List[str] = []
+    sample_names: List[str] = []
     for path in produced:
         stem = path.name[len(OUTPUT_PREFIX) + 1 : -len(".h5ad")]
         name = f"{stem}.h5ad"
+        if name in sample_files:  # an input of the merge the import made
+            sample_names.append(name)
+            continue
+        if own_autosave is not None and name == own_autosave["name"]:
+            # The import's own auto-save is the raw file again: the real comparison
+            # is with that file, never by name, size or digest. The session's own
+            # file is read first: a changed or different one is not the import's.
+            session_file = _anchored_file(workspace, name)
+            if session_file is None:
+                left_out.append(name)
+                outcome.notes.append(
+                    (
+                        "{name}: could not be read for the comparison ({error}).",
+                        {"name": name, "error": h("not in the workspace")},
+                    )
+                )
+                continue
+            if _sha256(session_file) != own_autosave["sha256"] or not _same_content(
+                session_file, input_data, name
+            ):
+                edited.append(name)
+                continue
+            try:
+                pair = (_read_h5ad(input_data), _read_h5ad(path))
+            except Exception as exc:
+                left_out.append(name)
+                outcome.notes.append(
+                    (
+                        "{name}: could not be read for the comparison ({error}).",
+                        {"name": name, "error": exc},
+                    )
+                )
+                continue
+            expected[name], actual[name] = pair
+            own_names.append(name)
+            continue
         try:
             split_path(f"files/{name}")  # a policy path names it literally
             saved, state = find(stem)
@@ -980,10 +1115,29 @@ def verify_notebook(
     loaded_state, loaded_note, loaded_entry = _loaded_is_input(
         loaded, input_data, input_sha
     )
+    if (
+        anchor is not None and refusal is None
+    ):  # first line: what the replay started from
+        outcome.notes.insert(
+            0,
+            (
+                "Input: the GEO import's raw file {name} (SHA-256 checked)",
+                {"name": anchor["name"]},
+            ),
+        )
     if loaded_note:
         outcome.notes.append(loaded_note)
     input_name = _input_is_a_saved_result(input_data, input_sha, references)
-    unproduced = sorted(n for n in recorded if n not in expected and n not in left_out)
+    if own_autosave is not None and own_names:
+        covered += [n for n, h_ in recorded.items() if h_ == own_autosave["sha256"]]
+    if sample_files:
+        paths = _recorded_file_paths(notebook)
+        covered += [k for k, p_ in paths.items() if Path(p_).name in sample_files]
+    unproduced = sorted(
+        n
+        for n in recorded
+        if n not in expected and n not in left_out and n not in covered
+    )
     same_file: List[str] = []  # the loaded input file, saved under the session
     copies: List[str] = []  # saved files that are the loaded input itself
     for name in unproduced:
@@ -994,6 +1148,21 @@ def verify_notebook(
             same_file.append(name)  # the loaded file itself, byte for byte
         elif _saved_copy(saved, loaded_entry, input_data, name):
             copies.append(name)
+    if own_names:
+        outcome.notes.append(
+            (
+                "Covered by the import's raw file (compared with it): {names}",
+                {"names": ", ".join(own_names)},
+            )
+        )
+    if sample_files:  # every one is named, written by the notebook or not
+        outcome.notes.append(
+            (
+                "Written by the GEO import (per-sample inputs of the merge): "
+                "not compared: {names}",
+                {"names": ", ".join(sorted({*sample_names, *sample_files}))},
+            )
+        )
     if same_file:
         unproduced = [n for n in unproduced if n not in same_file]
         outcome.notes.append(
@@ -1099,6 +1268,10 @@ def verify_notebook(
     writer_used = _session_writer_used(executed)
     if writer_used is False:
         outcome.notes.append(("The notebook wrote without the session writer.", {}))
+    for step in _figures(executed):
+        outcome.notes.append(
+            ("{step}: ran without error; figure not compared", {"step": step})
+        )
     word, reasons = _grant_match(
         MatchFacts(
             comparison=comparison,
@@ -1231,11 +1404,34 @@ class _ReplayRecord:
             return None
         return self.run.uid
 
+    def link_input(self, path: Path) -> None:
+        """Mark the catalog's record of the replay's input as an input of its Run."""
+        link = getattr(self.engine, "link_input", None)
+        if self.run is None or link is None:
+            return
+        try:
+            link(path)
+        except Exception as exc:
+            self._failed(exc)
+
     def reference(
-        self, stem: str, recorded: Dict[str, str]
+        self,
+        stem: str,
+        recorded: Dict[str, str],
+        paths: Optional[Dict[str, str]] = None,
     ) -> Tuple[Optional[Path], str]:
         try:
-            return self.engine.replay_reference_state(stem)
+            found = self.engine.replay_reference_state(stem)
+            named = _recorded_path(paths or {}, self.workspace, f"{stem}.h5ad")
+            if (
+                found[1] == "none"
+                and named is not None
+                and named.name != f"{stem}.h5ad"
+            ):
+                # the export hashed another file for this name (an import's raw file):
+                # the catalog keeps it under its own name, so the record decides
+                return _workspace_reference(self.workspace, stem, recorded, paths)
+            return found
         except Exception as exc:
             self._failed(exc)
             return _workspace_reference(self.workspace, stem, recorded)
@@ -1377,7 +1573,7 @@ def replay_command(
     """Re-run an exported notebook and compare its output with the saved file."""
     from lobster.core.runtime.workspace import resolve_workspace
 
-    ws = resolve_workspace(workspace, create=False)
+    ws = run_workspace(resolve_workspace(workspace, create=False))
     try:
         record = _catalog_record(ws)
     except Exception as exc:  # a catalog problem is a warning, never a verdict

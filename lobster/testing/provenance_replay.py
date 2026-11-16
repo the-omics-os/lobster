@@ -63,6 +63,9 @@ class RecordingDataManager:
     def save_modality(self, name: str, path: Any = None, **_: Any) -> Any:
         return path
 
+    def anchored_import(self, name: str) -> None:
+        return None  # nothing is saved here, so no import is anchored
+
     def log_tool_usage(
         self,
         tool_name: str,
@@ -119,11 +122,11 @@ def factory_tools(
 
 
 def replay_ir(ir: Any, **namespace: Any) -> Dict[str, Any]:
-    """Render ``ir`` and execute it with ``namespace`` as globals; return them.
+    """Run the IR's imports, render ``ir`` and execute it with ``namespace`` as globals; return them.
 
     Only for tests: the template is trusted code produced by the tool under test.
     """
-    code = ir.render()
+    code = "\n".join([*ir.imports, ir.render()])
     scope: Dict[str, Any] = dict(namespace)
     exec(compile(code, f"<ir:{ir.tool_name}>", "exec"), scope)  # nosec B102
     return scope

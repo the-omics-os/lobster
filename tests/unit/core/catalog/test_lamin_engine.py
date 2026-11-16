@@ -1182,7 +1182,8 @@ def test_a_replay_is_a_run_of_the_notebook_started_by_the_session(tmp_path):
              new_transforms=eng.ln.Transform.filter(kind="notebook").count() - before,
              described=notebook.description, owner=notebook.run_id == session.id,
              sessions=eng.overview()["runs"], last=eng.overview()["last_run"]["uid"],
-             listed=[r["uid"] for r in eng.list_runs()], session_uid_=session.uid,
+             listed=[r["uid"] for r in eng.list_runs() if r["kind"] == "session"],
+             listed_all=len(eng.list_runs()), session_uid_=session.uid,
              untracked=eng.ln.context.run is None)
     """)
     r = _run(code, tmp_path, env_extra={"WS": str(tmp_path / "ws")})
@@ -1198,8 +1199,9 @@ def test_a_replay_is_a_run_of_the_notebook_started_by_the_session(tmp_path):
     # the notebook is found by its source: no new Transform, its description and
     # its own run (the session) stay as the export left them
     assert r["new_transforms"] == 0 and r["described"] == "the export" and r["owner"]
-    # a replay is not a session
+    # a replay is not a session; `list_runs` lists it too, as a replay
     assert r["sessions"] == 2 and r["last"] == r["listed"][0] == r["session_uid_"]
+    assert r["listed_all"] == len(r["listed"]) + 1
     assert r["untracked"] and r["net"] == []
 
 

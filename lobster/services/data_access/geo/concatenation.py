@@ -166,7 +166,7 @@ class SampleConcatenator:
                         exist_ok=True
                     )
                     self.service.data_manager.save_modality(
-                        name=modality_name, path=save_path
+                        name=modality_name, path=save_path, geo_sample=True
                     )
 
                     stored_samples.append(modality_name)
@@ -358,12 +358,19 @@ class SampleConcatenator:
                     "timestamp": datetime.now().isoformat(),
                 }
 
-            concatenated_adata, statistics = concat_service.concatenate_from_modalities(
-                modality_names=stored_samples,
-                output_name=None,
-                use_intersecting_genes_only=use_intersecting_genes_only,
-                batch_key="batch",
+            concatenated_adata, statistics, concat_ir = (
+                concat_service.concatenate_from_modalities(
+                    modality_names=stored_samples,
+                    output_name=None,
+                    use_intersecting_genes_only=use_intersecting_genes_only,
+                    batch_key="batch",
+                )
             )
+
+            # The merge is part of the import: a notebook gets the merged dataset from
+            # the raw file saved with it, so the merge itself is not a notebook cell.
+            concat_ir.exportable = False
+            concat_ir.replayable = False
 
             provenance_info = {
                 **analysis_metadata,
@@ -388,6 +395,7 @@ class SampleConcatenator:
                     "auto_detected": auto_detected,
                     **provenance_info,
                 },
+                ir=concat_ir,
             )
 
             modality_name = f"geo_{geo_id.lower()}"

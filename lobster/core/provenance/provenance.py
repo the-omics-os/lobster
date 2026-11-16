@@ -126,10 +126,38 @@ class ProvenanceTracker:
                             continue
                         held.add(activity_id)
                     self.activities.append(data)
+                    self._entity_of_loaded_file(data)
 
                 except (json.JSONDecodeError, Exception) as e:
                     warnings.warn(f"Skipping corrupt provenance line {line_num}: {e}")
                     continue  # Line-independent recovery
+
+    def _entity_of_loaded_file(self, activity: Dict[str, Any]) -> None:
+        """A restored load step brings back the entity that names the file it read.
+
+        Entities are not written to disk; the step keeps the file's name, SHA-256 and
+        size, so a later process can still say which file the session loaded.
+        """
+        params = activity.get("parameters") or {}
+        file = params.get("loaded_file")
+        if activity.get("type") != "load_dataset" or not isinstance(file, dict):
+            return
+        for entity in self.entities.values():
+            held = (entity.get("metadata") or {}).get("loaded_file") or {}
+            if held.get("sha256") == file.get("sha256") and (
+                entity["metadata"].get("modality_name") == params.get("name")
+            ):
+                return
+        if isinstance(file.get("size"), str) and file["size"].isdigit():
+            file = {**file, "size": int(file["size"])}  # parameters are stored as text
+        self.create_entity(
+            entity_type="modality_data",
+            metadata={
+                "modality_name": params.get("name"),
+                "adapter": params.get("adapter"),
+                "loaded_file": file,
+            },
+        )
 
     def _persist_activity(self, activity: Dict[str, Any]) -> None:
         """

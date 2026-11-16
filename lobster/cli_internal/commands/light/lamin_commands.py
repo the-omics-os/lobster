@@ -417,7 +417,13 @@ def ls_cmd(
     for row in rows:
         if runs:
             counts = h("{outputs} out, {inputs} in").format(**row)
-            recorded = [h("report")] if row.get("report") else []
+            recorded = []
+            if row.get("kind") == "replay":
+                recorded.append(
+                    " ".join([h("replay"), row.get("verdict") or ""]).strip()
+                )
+            if row.get("report"):
+                recorded.append(h("report"))
             if row.get("environment"):
                 recorded.append(h("environment"))
             notes = f"  [{', '.join(recorded)}]" if recorded else ""
