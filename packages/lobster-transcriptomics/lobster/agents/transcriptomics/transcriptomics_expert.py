@@ -1490,8 +1490,9 @@ Please check:
                 if gene_id_column != "auto" and gene_id_column in df.columns:
                     df = df.set_index(gene_id_column)
 
-                # Auto-transpose: if columns > rows, genes are likely rows
-                if df.shape[1] > df.shape[0]:
+                # Auto-transpose to samples x genes: bulk tables have far more genes
+                # than samples, so more rows than columns means genes are the rows
+                if df.shape[0] > df.shape[1]:
                     df = df.T
 
                 adata = anndata.AnnData(
