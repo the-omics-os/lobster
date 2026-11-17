@@ -1263,6 +1263,28 @@ class DataManagerV2:
                 return dict(meta["loaded_file"])
         return None
 
+    def _log_anchor(self, entity_id: str) -> None:
+        """Keep the anchor on the session's record, so a new process can restore it.
+
+        Called again whenever a tag is added; the last record of an import wins.
+        """
+        meta = (self.provenance.entities.get(entity_id) or {}).get("metadata") or {}
+        file = meta.get("loaded_file")
+        if not (isinstance(file, dict) and file.get("anchored")):
+            return
+        self.log_tool_usage(
+            "import_anchor",
+            {
+                "name": meta.get("modality_name"),
+                "adapter": meta.get("adapter"),
+                "loaded_file": file,
+            },
+            f"The import of '{meta.get('modality_name')}' is the saved file {file['name']}",
+        )
+        # a later import may still be anchored: this record is not a step after its load
+        for key, (ref, entity, count) in list(self._import_candidates.items()):
+            self._import_candidates[key] = (ref, entity, count + 1)
+
     def _anchor_import(self, name: str, written: Path) -> None:
         """Record the file a GEO import saved as the input its load stands for.
 
@@ -1316,6 +1338,7 @@ class DataManagerV2:
             Exception
         ):  # an object the digest cannot read: its auto-save is not tagged
             self._anchored_held.pop(name, None)
+        self._log_anchor(entity_id)
 
     def _tag_import_autosave(self, name: str, written: Path) -> None:
         """Mark an auto-save as the anchored import's own: same object, same content.
@@ -1331,6 +1354,7 @@ class DataManagerV2:
                     loaded["samples"] = sorted(
                         {*loaded.get("samples", []), written.name}
                     )
+                    self._log_anchor(entity_id)
         held = self._anchored_held.get(name)
         if held is None or not self.provenance:
             return
@@ -1347,6 +1371,7 @@ class DataManagerV2:
                 "name": written.name,
                 "sha256": hashlib.sha256(written.read_bytes()).hexdigest(),
             }
+            self._log_anchor(entity_id)
         except Exception:
             logger.debug("Auto-save not tagged as the import's", exc_info=True)
 

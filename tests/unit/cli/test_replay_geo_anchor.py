@@ -901,3 +901,227 @@ def test_the_same_session_without_the_marker_is_migrated_and_never_matches(
     assert out["verdict"] == "NOT_COMPARED"
     files = out["report"]["migrated"]["files"]
     assert files and all(f["status"] in ("MATCH", "MISMATCH") for f in files)
+
+
+# --- a GEO session continued in a new process -------------------------------------
+
+NO_FILE = "The export record names no file the session loaded."
+
+
+def _continued_session(tmp_path, monkeypatch, how, anchor=True, between=None):
+    """Download in one process, analysis in the next: ``(workspace, notebook, raw)``.
+
+    ``how``: "reopen" opens the session folder again; "mcp" continues it the way the
+    MCP run path does (``_build_client`` + ``resolve_session_continuation`` +
+    ``load_session``).
+    """
+    from unittest.mock import MagicMock, patch
+
+    from lobster.core.runtime.data_manager import DataManagerV2
+    from lobster.services.analysis.clustering_service import ClusteringService
+    from lobster.services.data_access.geo_download_service import GEODownloadService
+    from lobster.services.quality.preprocessing_service import PreprocessingService
+    from lobster.services.quality.quality_service import QualityService
+    from tests.unit.core import test_session_format_marker_clients as mcp
+
+    _clean_env(monkeypatch, tmp_path)
+    workspace = tmp_path / WORKSPACE
+    graph = patch(
+        "lobster.core.client.create_bioinformatics_graph",
+        return_value=(MagicMock(), {}),
+    )
+    graph.start()
+    try:
+        if how == "mcp":
+            first = mcp._mcp_client(workspace)
+            manager = first.data_manager
+        else:
+            manager = DataManagerV2(workspace_path=workspace, auto_scan=False)
+            manager.attach_session_dir(workspace / ".lobster" / "sessions" / "s1")
+        raw = _import(manager, geo_import=anchor)
+        service = GEODownloadService.__new__(GEODownloadService)
+        service.data_manager = manager
+        ir = service._create_analysis_step_ir(
+            geo_id="GSE1",
+            modality_name=MODALITY,
+            strategy_name=None,
+            use_intersecting_genes_only=None,
+            queue_entry_id="q1",
+        )
+        manager.log_tool_usage("download_geo", {"geo_id": "GSE1"}, "import", ir=ir)
+        manager.auto_save_state()  # what the import does right after its save
+        if between:
+            between(raw)
+        if how == "mcp":
+            second = mcp._continue_like_mcp(workspace)
+            manager = second.data_manager
+        else:
+            manager = DataManagerV2(
+                workspace_path=workspace,
+                session_dir=_session_folder(workspace),
+            )
+        tools = {
+            t.name: t
+            for t in tools_module.create_shared_tools(
+                manager,
+                QualityService(),
+                PreprocessingService(),
+                ClusteringService(manager),
+            )
+        }
+        # a new process finds the import as the file it saved: <modality>_raw
+        name = next(
+            m for m in (MODALITY, f"{MODALITY}_raw") if m in manager.list_modalities()
+        )
+        for tool in ("assess_data_quality", "filter_and_normalize"):
+            args = {"modality_name": name}
+            if tool == "filter_and_normalize":
+                args["save_result"] = False
+            before = set(manager.list_modalities())
+            result = tools[tool].invoke(args)
+            assert "rror" not in result[:80], result[:300]
+            made = [m for m in manager.list_modalities() if m not in before]
+            name = made[-1] if made else name
+        manager.save_modality(name, workspace / "data" / f"{name}.h5ad")
+        notebook = Path(manager.export_notebook("nb", "S", filter_strategy="replay"))
+    finally:
+        graph.stop()
+    return workspace, notebook, raw
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_a_geo_session_continued_in_a_new_process_replays_to_a_match(
+    tmp_path, monkeypatch, how
+):
+    workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
+    with_input = json.loads(_verify_real(workspace, notebook, raw).stdout)
+    assert not any(NO_FILE in n for n in with_input["notes"]), with_input["notes"]
+    assert with_input["verdict"] == "MATCH", with_input["notes"]
+    assert not any("not produced by the notebook" in n for n in with_input["notes"])
+    assert any(
+        n.startswith("Saved copy of the input, not compared: geo_gse1_autosave")
+        for n in with_input["notes"]
+    )
+    result = _verify_without_input(workspace, notebook)
+    out = json.loads(result.stdout)
+    assert result.exit_code == 0, out
+    assert out["verdict"] == "MATCH"
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_a_raw_file_changed_after_the_restore_is_refused(tmp_path, monkeypatch, how):
+    import anndata as ad
+
+    workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
+    adata = ad.read_h5ad(raw)
+    adata.X = adata.X + 1
+    adata.write_h5ad(raw)
+    for result in (
+        _verify_real(workspace, notebook, raw),
+        _verify_without_input(workspace, notebook),
+    ):
+        out = json.loads(result.stdout)
+        assert result.exit_code == 4, out
+        assert out["verdict"] == "REFUSED"
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_import_that_was_never_anchored_stays_unanchored_after_a_restore(
+    tmp_path, monkeypatch, how
+):
+    workspace, notebook, raw = _continued_session(
+        tmp_path, monkeypatch, how, anchor=False
+    )
+    out = json.loads(_verify_real(workspace, notebook, raw).stdout)
+    assert out["verdict"] == "NOT_COMPARED"
+    assert any(NO_FILE in n for n in out["notes"])
+
+
+def _rewrite(path):
+    import anndata as ad
+
+    adata = ad.read_h5ad(path)
+    adata.X = adata.X + 1
+    adata.write_h5ad(path)
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_a_raw_file_changed_between_the_processes_is_not_restored_as_the_anchor(
+    tmp_path, monkeypatch, how
+):
+    workspace, notebook, raw = _continued_session(
+        tmp_path, monkeypatch, how, between=_rewrite
+    )
+    roles = _base.replay_commands._manifest(notebook)["input_roles"]
+    assert (
+        roles["loaded"] == []
+    )  # the record names no file that is not what was written
+    out = json.loads(_verify_real(workspace, notebook, raw).stdout)
+    assert out["verdict"] in ("NOT_COMPARED", "NOTEBOOK_FAILED", "REFUSED")
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_edited_import_autosave_keeping_its_name_is_never_a_match(
+    tmp_path, monkeypatch, how
+):
+    workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
+    _rewrite(workspace / "data" / "geo_gse1_autosave.h5ad")
+    result = _verify_real(workspace, notebook, raw)
+    assert result.exit_code == 4, json.loads(result.stdout)["notes"]
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_autosave_equal_to_another_file_than_the_input_is_never_a_match(
+    tmp_path, monkeypatch, how
+):
+    import shutil
+
+    workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
+    data = workspace / "data"
+    other = data / "geo_gse1_raw_quality_assessed_filtered_normalized.h5ad"
+    shutil.copy(other, data / "geo_gse1_autosave.h5ad")
+    for result in (
+        _verify_real(workspace, notebook, raw),
+        _verify_without_input(workspace, notebook),
+    ):
+        out = json.loads(result.stdout)
+        assert out["verdict"] != "MATCH", out["notes"]
+        assert result.exit_code != 0
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_autosave_without_input_is_never_a_match(tmp_path, monkeypatch, how):
+    workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
+    (workspace / "data" / "geo_gse1_raw.h5ad").unlink()
+    result = _verify_without_input(workspace, notebook)
+    out = json.loads(result.stdout)
+    assert out["verdict"] != "MATCH", out["notes"]
+    assert result.exit_code != 0
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_autosave_within_the_default_tolerance_but_with_another_sha_is_not_a_copy(
+    tmp_path, monkeypatch, how
+):
+    import anndata as ad
+
+    workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
+    auto = workspace / "data" / "geo_gse1_autosave.h5ad"
+    before = _sha(auto)
+    ad.read_h5ad(auto).write_h5ad(auto, compression=None)  # the same values
+    assert _sha(auto) != before
+    for result in (
+        _verify_real(workspace, notebook, raw),
+        _verify_without_input(workspace, notebook),
+    ):
+        out = json.loads(result.stdout)
+        assert out["verdict"] != "MATCH", out["notes"]
+        assert result.exit_code != 0

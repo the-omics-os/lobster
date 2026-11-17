@@ -1138,6 +1138,13 @@ def verify_notebook(
         references[name] = saved
 
     input_sha = roots[input_data.name]
+    if input_data.suffix.lower() != ".h5ad":
+        outcome.notes.append(
+            (
+                "The input is not an h5ad file: its shape and columns were not checked.",
+                {},
+            )
+        )
     loaded = _loaded_files(notebook)
     loaded_state, loaded_note, loaded_entry = _loaded_is_input(
         loaded, input_data, input_sha
@@ -1168,6 +1175,15 @@ def verify_notebook(
     same_file: List[str] = []  # the loaded input file, saved under the session
     copies: List[str] = []  # saved files that are the loaded input itself
     for name in unproduced:
+        if own_autosave is not None and name == own_autosave["name"]:
+            # the import's own auto-save, which the notebook did not write: it is
+            # held to the raw file the replay starts from, as when it is written
+            mine = _anchored_file(workspace, name)
+            if mine is not None and _sha256(mine) != own_autosave["sha256"]:
+                edited.append(name)
+            elif mine is not None and _same_content(mine, input_data, name):
+                copies.append(name)
+            continue
         saved, state = find(name[: -len(".h5ad")])
         if loaded_state is not True or state != "ok":
             continue

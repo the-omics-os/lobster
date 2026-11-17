@@ -2100,6 +2100,7 @@
   "Loaded input, no saved file: {names}": "已加载的输入，没有已保存文件：{names}",
   "The export record predates input roles v2; re-export the notebook.": "导出记录早于输入角色记录 v2；请重新导出 notebook。",
   "In-memory input not anchorable in this version.": "此版本无法锚定内存中的输入。",
+  "The input is not an h5ad file: its shape and columns were not checked.": "输入不是 h5ad 文件：未检查其形状和列。",
   "Loaded input file, not compared: {names}": "已加载的输入文件，未比较：{names}",
   "Install Smart Standardization dependencies (the lobster-vector package)": "安装智能标准化依赖（lobster-vector 软件包）",
   "Override stored auth token (prefer LOBSTER_CLOUD_TOKEN env var)": "改用别的登录令牌（更建议用环境变量 LOBSTER_CLOUD_TOKEN）",

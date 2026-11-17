@@ -30,6 +30,15 @@ from lobster.core.utils.h5ad_utils import sanitize_value
 RECORD_FORMAT_KEY = "record_format"
 RECORD_FORMAT = "lobster-1.3"
 
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 if TYPE_CHECKING:
     from lobster.core.provenance.analysis_ir import AnalysisStep
 
@@ -185,6 +194,9 @@ class ProvenanceTracker:
         """
         params = activity.get("parameters") or {}
         file = params.get("loaded_file")
+        if activity.get("type") == "import_anchor" and isinstance(file, dict):
+            self._restore_anchor(params, file)
+            return
         if activity.get("type") != "load_dataset" or not isinstance(file, dict):
             return
         for entity in self.entities.values():
@@ -195,6 +207,54 @@ class ProvenanceTracker:
                 return
         if isinstance(file.get("size"), str) and file["size"].isdigit():
             file = {**file, "size": int(file["size"])}  # parameters are stored as text
+        self.create_entity(
+            entity_type="modality_data",
+            metadata={
+                "modality_name": params.get("name"),
+                "adapter": params.get("adapter"),
+                "loaded_file": file,
+            },
+        )
+
+    def _restore_anchor(self, params: Dict[str, Any], file: Dict[str, Any]) -> None:
+        """Bring back an import's anchor, as far as the files on disk still hold it.
+
+        The record is trusted only where the file it names is read back: the raw file
+        must have the recorded SHA-256; an auto-save or a sample file that does not is
+        left out, so the anchor never names a file that is not what was written.
+        """
+        folder = self.session_dir
+        if (
+            folder is None
+            or len(folder.parents) < 3
+            or folder.parent.name != "sessions"
+        ):
+            return
+        data = folder.parents[2] / "data"
+
+        def holds(name: Any, sha256: Any = None) -> bool:
+            path = data / str(name)
+            if not path.is_file():
+                return False
+            return sha256 is None or _file_sha256(path) == sha256
+
+        if not holds(file.get("name"), file.get("sha256")):
+            return
+        file = dict(file)
+        if isinstance(file.get("size"), str) and file["size"].isdigit():
+            file["size"] = int(file["size"])  # parameters are stored as text
+        auto = file.get("autosave")
+        if isinstance(auto, dict) and not holds(auto.get("name"), auto.get("sha256")):
+            del file["autosave"]
+        if isinstance(file.get("samples"), list):
+            file["samples"] = [n for n in file["samples"] if holds(n)]
+        for entity in self.entities.values():
+            meta = entity.get("metadata") or {}
+            if (meta.get("loaded_file") or {}).get("sha256") == file["sha256"] and (
+                meta.get("modality_name") == params.get("name")
+            ):
+                meta["loaded_file"] = file
+                return
         self.create_entity(
             entity_type="modality_data",
             metadata={

@@ -134,6 +134,13 @@ class NotebookExecutor:
 
         metadata = nb.metadata.get("lobster", {})
 
+        if Path(input_data).suffix.lower() != ".h5ad":
+            # only an h5ad file can be read for the shape and column checks
+            result.add_warning(
+                "Input is not an h5ad file: its shape and columns were not checked"
+            )
+            return result
+
         # Load input data
         try:
             adata = anndata.read_h5ad(input_data)
