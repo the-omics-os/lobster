@@ -53,6 +53,7 @@ from lobster.cli_internal import (
     mcp_overview,
     mcp_record,
     mcp_turns,
+    mcp_watch,
     response_style,
 )
 
@@ -129,9 +130,23 @@ class RunProgress:
             if self._plan is not None:
                 self._plan["asked"] = True
 
-    def plan(self) -> Optional[Dict[str, bool]]:
+    def plan_refused(self, tool: str) -> None:
+        """Name *tool* in ``plan.refused``: it was called before the plan's
+        answer and did not run."""
         with self._cond:
-            return dict(self._plan) if self._plan is not None else None
+            if self._plan is not None:
+                refused = self._plan.setdefault("refused", [])
+                if tool not in refused:
+                    refused.append(tool)
+
+    def plan(self) -> Optional[Dict[str, Any]]:
+        with self._cond:
+            if self._plan is None:
+                return None
+            plan = dict(self._plan)
+            if "refused" in plan:
+                plan["refused"] = list(plan["refused"])
+            return plan
 
     def begin(self, probe: Callable[[], Dict[str, Any]], manager: Any = None) -> None:
         with self._cond:
@@ -363,7 +378,7 @@ class RunRequest:
     claim: Optional[mcp_lock.FolderClaim] = None
     experts: Optional[Tuple[str, ...]] = None  # None: the project's
     project_ws: Optional[Path] = None  # where provider, model and experts are set
-    plan: bool = False  # a first turn asks to approve its plan before any expert
+    plan: bool = False  # a first turn loads its input, then asks to approve its plan
 
 
 class Runner(Protocol):
@@ -946,6 +961,22 @@ def _thread_messages(client: Any) -> Optional[List[Any]]:
 
 
 @contextmanager
+def _plan_first(request: RunRequest) -> Iterator[None]:
+    """In a first turn with plan, refuse every tool but loading and
+    describing the input until the plan is answered (or the turn ends)."""
+    if not (request.plan and request.turn == 1 and request.progress is not None):
+        yield
+        return
+    from lobster.agents import graph
+
+    graph.hold_for_plan(request.progress.plan_refused)
+    try:
+        yield
+    finally:
+        graph.open_plan()
+
+
+@contextmanager
 def _stop_on_cancel(client: Any, cancel_event: threading.Event) -> Iterator[_Stop]:
     """For the turn, a callback on *client* that raises at the next tool or
     model call once *cancel_event* is set. The client checks the event only
@@ -1033,7 +1064,7 @@ def _run_turn(
         not_restored=not_restored,
     )
     try:
-        with _stop_on_cancel(client, cancel_event) as stop:
+        with _stop_on_cancel(client, cancel_event) as stop, _plan_first(request):
             status = _follow_turn(
                 client, manager, prompt, request, cancel_event, output_dir, turn
             )
@@ -1066,6 +1097,8 @@ def _follow_turn(
     output_dir: Path,
     turn: mcp_record.Turn,
 ) -> Dict[str, Any]:
+    from lobster.agents.graph import PLAN_LOADER, open_plan
+
     data_manager = getattr(client, "data_manager", None)
     run = manager.start(prompt, cancel_event=cancel_event, run_id=request.run_id)
     if request.progress is not None:
@@ -1076,9 +1109,13 @@ def _follow_turn(
         and request.turn == 1
         and request.progress is not None
         and run.state == "needs_decision"
-        # The plan comes first: no expert has started (its first message
-        # streams as agent_change) before the turn's first question.
-        and not any(e.get("type") == "agent_change" for e in run.events)
+        # The plan comes first: no expert but the one that loads and describes
+        # the input has started (its first message streams as agent_change)
+        # before the turn's first question.
+        and not any(
+            e.get("type") == "agent_change" and e.get("agent") != PLAN_LOADER
+            for e in run.events
+        )
     ):
         request.progress.plan_asked()
     while run.state == "needs_decision":
@@ -1106,6 +1143,8 @@ def _follow_turn(
                 run.events[-1].get("reason"),
                 f"Stopped while waiting for an answer to: {titles[0]}",
             )
+        if request.plan and request.turn == 1:
+            open_plan()  # the first answer is the plan's
         run = following
         last = _drain(run)
     if run.state == "completed" and run.result is not None:
@@ -1639,6 +1678,7 @@ class McpServer:
         self._start_folder = Path(start) if start is not None else Path.cwd()
         self._wait_lock = threading.Lock()
         self._waits: Dict[str, _Wait] = {}  # run_id -> the open wait on it
+        self._watch = mcp_watch.WaitWatch()  # stacks to stderr for a late wait
         self._waits_by_request: Dict[str, _Wait] = {}
         self._active: Optional[str] = None
         self._out: Dict[str, Path] = {}  # run_id -> resolved output_dir
@@ -1700,6 +1740,12 @@ class McpServer:
         return self._reply(request_id, method, params)
 
     def _reply_later(self, request_id: Any, method: str, params: Dict[str, Any]):
+        if params.get("name") != "lobster_wait":
+            return self._send_reply(request_id, method, params)
+        with self._watch.watching(_late_after_s(params)):
+            self._send_reply(request_id, method, params)
+
+    def _send_reply(self, request_id: Any, method: str, params: Dict[str, Any]):
         reply = self._reply(request_id, method, params)
         if reply is None:
             return
@@ -2752,6 +2798,19 @@ def enter_start_folder(workspace: Optional[Path]) -> Path:
     return start
 
 
+def _late_after_s(params: Dict[str, Any]) -> float:
+    """How long a lobster_wait with *params* may take before it is late."""
+    arguments = params.get("arguments")
+    timeout = arguments.get("timeout_s") if isinstance(arguments, dict) else None
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not 0 <= timeout <= contract.WAIT_MAX_S
+    ):
+        timeout = contract.WAIT_DEFAULT_S  # a bad one is refused at once anyway
+    return timeout + mcp_watch.GRACE_S
+
+
 def run_mcp_stdio(
     *,
     runner: Optional[Runner] = None,
@@ -2768,6 +2827,7 @@ def run_mcp_stdio(
 
         stdout = _claim_stdout()
     out = stdout
+    mcp_watch.stacks_on_signal()
     if stdin is None:
         # MCP stdio is UTF-8; Codex passes no LANG, so a Windows locale
         # default would misread it. Untested on Windows.

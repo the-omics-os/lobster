@@ -64,11 +64,12 @@
       "type": "string"
     },
     "plan": {
-      "description": "MCP first turns: requested is lobster_run plan; asked is true when the turn's first question came before any expert started, the plan's approval.",
+      "description": "MCP first turns: requested is lobster_run plan; asked is true when the turn's first question came before any expert but the data expert (which may load and describe the input) started, the plan's approval; refused names the tools called before the plan's answer that did not run (absent when none).",
       "type": "object",
       "properties": {
         "requested": {"type": "boolean"},
-        "asked": {"type": "boolean"}
+        "asked": {"type": "boolean"},
+        "refused": {"type": "array", "items": {"type": "string"}}
       },
       "required": ["requested", "asked"]
     },

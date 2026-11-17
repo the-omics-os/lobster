@@ -1880,14 +1880,13 @@ _TERMINAL_ONLY_OPTIONS = (
     ("--install-docling", "install_docling"),
     ("--install-vector-search", "install_vector_search"),
     ("--agents-description", "agents_description"),
-    ("--lamin", "lamin"),
     ("--ssl-verify", "ssl_verify"),
     ("--ssl-cert-path", "ssl_cert_path"),
     ("--skip-ssl-test", "skip_ssl_test"),
 )
 
 
-_SWITCH_OPTIONS = {"ssl_verify": "--no-ssl-verify", "lamin": "--no-lamin"}
+_SWITCH_OPTIONS = {"ssl_verify": "--no-ssl-verify"}
 
 
 def _terminal_only_given(name: str, value: Any) -> bool:
@@ -1920,14 +1919,16 @@ def _init_without_terminal(
     agents: Any,
     preset: Any,
     auto_agents: Any,
+    lamin: Optional[bool] = None,
 ) -> None:
     """``lobster init <folder>`` with no terminal and no key flag: a host's call.
 
     The project gets its identity, and runs with the provider and key of the setup
     the user already has: nothing secret is read into, copied or written under the
     project. ``--provider``, ``--model`` and ``--agents``/``--preset`` go into the
-    project's own settings. Every check comes before the first write, so a refused
-    call changes nothing.
+    project's own settings; ``--lamin``/``--no-lamin`` writes the catalog switch (no
+    secret) into the project's ``.env``. Every check comes before the first write, so
+    a refused call changes nothing.
     """
     import shutil
     import unicodedata
@@ -1954,17 +1955,8 @@ def _init_without_terminal(
         raise typer.Exit(code)
 
     folder_text = str(init_root)
-    if terminal_only:
-        refuse(
-            2,
-            f"✗ bad_argument: {', '.join(terminal_only)} needs a terminal; nothing was changed.",
-            f"In a terminal: {provider_hint.command_line('init', folder_text)}",
-        )
 
-    def cmd(*args: str) -> str:
-        return provider_hint.command_line(*args)
-
-    # the caller's own flags, repeated on a line the refusal suggests
+    # the caller's own flags (never a key), repeated on the lines a refusal suggests
     caller_flags: List[str] = []
     if isinstance(model, str) and model.strip():
         caller_flags += ["--model", model.strip()]
@@ -1972,6 +1964,25 @@ def _init_without_terminal(
         caller_flags += ["--preset", preset]
     elif isinstance(agents, str) and agents:
         caller_flags += ["--agents", agents]
+    if lamin is not None:
+        caller_flags.append("--lamin" if lamin else "--no-lamin")
+
+    def cmd(*args: str) -> str:
+        return provider_hint.command_line(*args)
+
+    if terminal_only:
+        refuse(
+            2,
+            f"✗ bad_argument: {', '.join(terminal_only)} needs a terminal; nothing was changed.",
+            *(
+                [
+                    "In a terminal the setup asks for the provider and its key; --provider is for a call without one."
+                ]
+                if isinstance(provider_flag, str) and provider_flag.strip()
+                else []
+            ),
+            f"In a terminal: {cmd('init', folder_text, *caller_flags)}",
+        )
 
     # What exists here: an earlier project of init's own, or something else.
     existing = None
@@ -1982,7 +1993,7 @@ def _init_without_terminal(
             refuse(
                 1,
                 f"✗ bad_argument: {init_ws} exists but is not a project made by lobster init. Nothing was changed.",
-                f"In a terminal: {cmd('init', folder_text)}",
+                f"In a terminal: {cmd('init', folder_text, *caller_flags)}",
             )
 
     flag = provider_flag.strip() if isinstance(provider_flag, str) else None
@@ -2070,7 +2081,7 @@ def _init_without_terminal(
         )
 
     pin_provider = bool(flag) or provider.source == "shell" or bool(new_model)
-    if existing is not None and not (pin_provider or written):
+    if existing is not None and not (pin_provider or written or lamin is not None):
         say(
             f"Already a project: {existing.name} at {existing.root}. Nothing was changed."
         )
@@ -2079,7 +2090,12 @@ def _init_without_terminal(
     # ---- the first write ----
     from lobster.core.projects import forget_project
 
-    settings_files = (init_ws / "provider_config.json", init_ws / "config.toml")
+    settings_files = (
+        init_ws / "provider_config.json",
+        init_ws / "config.toml",
+        init_ws / ".env",
+    )
+    lamin_before = _lamin_saved(init_ws)
     before = {
         path: path.read_bytes() if path.is_file() else None for path in settings_files
     }
@@ -2147,6 +2163,8 @@ def _init_without_terminal(
                 (agent_config.preset, []) if agent_config.preset else (None, written)
             ):
                 raise OSError(f"{init_ws / 'config.toml'} does not hold the experts")
+        if lamin is not None:
+            _save_lamin_choice(lamin, init_ws, previous=lamin_before)
     except ProjectError as exc:
         give_back()
         refuse(2, f"✗ {exc.code}: {exc.message}")
@@ -2198,6 +2216,10 @@ def _init_without_terminal(
         say(f"  experts: {', '.join(kept_experts)} (set for this project)")
     else:
         say("  experts: every installed expert (no list set for this project)")
+    from lobster.cli_internal.commands.light.lamin_commands import init_notes
+
+    for note in init_notes(lamin, global_config=False):
+        say(note)
     if not (pin_provider or written or kept_experts or provider.source == "project"):
         say(
             f"  Run {cmd('init', folder_text)} in a terminal to give this project its own settings."
@@ -2630,6 +2652,7 @@ def init_impl(
             agents,
             preset,
             auto_agents,
+            lamin,
         )
 
     # Determine paths based on global vs workspace mode

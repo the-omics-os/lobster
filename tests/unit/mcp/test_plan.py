@@ -1,4 +1,4 @@
-"""Plan first: a first run asks to approve its plan before any expert works.
+"""Plan first: a first run asks to approve its plan before any expert but the loader works.
 
 With ``plan`` (the default) the first turn's prompt tells the supervisor to
 write a short plan and ask for approval with ``ask_user`` before it hands a
@@ -33,6 +33,7 @@ PLAN = interrupt(
     {"question": "Plan: research_agent finds ... Go ahead?"},
     "Plan: research_agent finds ... Go ahead?",
 )
+LOADER = {"type": "agent_change", "agent": "data_expert_agent", "status": "working"}
 EXPERT = {
     "type": "agent_change",
     "agent": "transcriptomics_expert",
@@ -94,6 +95,34 @@ def test_an_approved_plan_is_recorded_as_asked(engine, tmp_path, data):
     assert record["plan"] == {"requested": True, "asked": True}
     assert record["request"]["plan"] is True
     assert [d["source"] for d in record["decisions"]] == ["model"]
+
+
+def test_the_prompt_gives_one_order_load_describe_plan_ask_wait():
+    prompt = mcp_record.compose_question_prompt("q", "/in/a.h5ad", plan=True)
+    # "load it and analyse it" would contradict the plan: only the plan's line.
+    assert mcp_record._QUESTION_FILE not in prompt
+    for words in (
+        "load it and describe it",
+        "stop and say so",
+        "ask_user once",
+        "do nothing else until the answer",
+    ):
+        assert words in mcp_record.PLAN_FIRST, words
+    assert prompt.index(mcp_record.PLAN_FIRST) < prompt.index("Input file: /in/a.h5ad")
+
+
+def test_loading_the_input_before_the_plan_still_counts_as_asked(
+    engine, tmp_path, data
+):
+    _opened, script = engine
+    script["events"] = [LOADER, PLAN]
+    script["resume_events"] = [COMPLETE]
+    server = McpServer(ThreadRunner())
+    run = call(server, "lobster_run", run_args(data, tmp_path / "out"))
+    asked = waiting(server, run["run_id"])
+    assert asked["plan"] == {"requested": True, "asked": True}
+    call(server, "lobster_answer", answer_args(run["run_id"], asked, "yes"))
+    assert wait_terminal(server, run["run_id"])["plan"]["asked"] is True
 
 
 def test_a_question_after_an_expert_started_is_not_the_plan(engine, tmp_path, data):

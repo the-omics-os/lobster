@@ -144,8 +144,10 @@ OUTPUT = (
     "output_dir/.lobster_workspace."
 )
 PLAN = (
-    "With plan (the default) the run first asks to approve its plan "
-    "(needs_decision): show the plan to the user and pass on their answer with "
+    "With plan (the default) the run may first load and describe input_path, "
+    "then asks to approve its plan (needs_decision); nothing else runs before "
+    "the answer, and plan.refused names the tools it refused: show the plan to "
+    "the user and pass on their answer with "
     "source human; approve it yourself, source model, only when the user told "
     "you to. A run that never asked has plan.asked false."
 )
@@ -196,8 +198,9 @@ _RUN = {
             "plan": {
                 "type": "boolean",
                 "default": True,
-                "description": "Default true: before any expert works, Lobster "
-                "asks you (needs_decision) to approve its plan. false skips it.",
+                "description": "Default true: Lobster may load and describe "
+                "input_path, then asks you (needs_decision) to approve its plan; "
+                "nothing else runs until you answer. false skips it.",
             },
             "experts": {
                 "type": "array",

@@ -15,7 +15,7 @@ import inspect
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from langchain_core.tools import tool
 
@@ -76,26 +76,98 @@ def _locked(func):
     return run
 
 
-def _one_tool_at_a_time(agent) -> None:
-    """Hold the process tool lock around each sync tool function of `agent`.
+# MCP lobster_run with plan: until the plan question is answered, only these
+# tools run: hand the input to the data expert, load and describe it, plan, ask.
+# Every other call (custom code, analysis, QC, downloads, plots, a hand-off to
+# another expert) is refused instead of run. Process-wide like the lock: one
+# MCP run works at a time, and nothing else ever holds the gate.
+PLAN_LOADER = "data_expert_agent"
+PLAN_FIRST_TOOLS = frozenset(
+    {
+        f"handoff_to_{PLAN_LOADER}",
+        "load_modality",
+        "get_modality_details",
+        "get_adapter_info",
+        "list_available_modalities",
+        "list_files",
+        "glob_files",
+        "retrieve_agent_result",
+        "write_todos",
+        "read_todos",
+        "ask_user",
+    }
+)
+PLAN_REFUSAL = (
+    "Refused: answer the plan first. Until the plan question is answered, only "
+    "loading and describing the input file runs; then the plan is asked once "
+    "with ask_user. Do not call this tool again before the answer."
+)
+_plan_refused: Optional[Callable[[str], None]] = None  # set while a plan waits
 
-    Hand-off tools stay outside: the expert they start needs the lock for its
-    own tools. Tools with a coroutine stay outside too: they wait on I/O or a
-    subprocess, and taking the lock on the event loop would block it.
+
+def hold_for_plan(refused: Callable[[str], None]) -> None:
+    """Refuse every tool outside PLAN_FIRST_TOOLS, calling *refused* with its
+    name, until :func:`open_plan`."""
+    global _plan_refused
+    _plan_refused = refused
+
+
+def open_plan() -> None:
+    global _plan_refused
+    _plan_refused = None
+
+
+def _refusal(name: str) -> Optional[str]:
+    refused = _plan_refused
+    if refused is None or name in PLAN_FIRST_TOOLS:
+        return None
+    refused(name)
+    return PLAN_REFUSAL
+
+
+def _plan_first(name, func):
+    @functools.wraps(func)
+    def run(*args, **kwargs):
+        return _refusal(name) or func(*args, **kwargs)
+
+    run.plan_first = True
+    return run
+
+
+def _plan_first_async(name, coroutine):
+    @functools.wraps(coroutine)
+    async def run(*args, **kwargs):
+        return _refusal(name) or await coroutine(*args, **kwargs)
+
+    run.plan_first = True
+    return run
+
+
+def _one_tool_at_a_time(agent) -> None:
+    """Hold the process tool lock around each sync tool function of `agent`,
+    and put every tool behind the plan gate (:func:`hold_for_plan`).
+
+    Hand-off tools stay outside the lock: the expert they start needs the lock
+    for its own tools. Tools with a coroutine stay outside too: they wait on
+    I/O or a subprocess, and taking the lock on the event loop would block it.
     """
     graph = getattr(agent, "bound", agent)
     node = getattr(graph, "nodes", {}).get("tools")
     for t in getattr(getattr(node, "bound", None), "tools_by_name", {}).values():
         func = getattr(t, "func", None)
+        coroutine = getattr(t, "coroutine", None)
         categories = (t.metadata or {}).get("categories") or []
-        if (
+        if not (
             func is None
-            or getattr(t, "coroutine", None) is not None
+            or coroutine is not None
             or "DELEGATE" in categories
             or getattr(func, "holds_tool_lock", False)
         ):
-            continue
-        t.func = _locked(func)
+            func = t.func = _locked(func)
+        if func is not None and not getattr(func, "plan_first", False):
+            t.func = _plan_first(t.name, func)
+        if coroutine is not None and not getattr(coroutine, "plan_first", False):
+            t.coroutine = _plan_first_async(t.name, coroutine)
 
 
 # =============================================================================

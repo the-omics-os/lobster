@@ -122,6 +122,7 @@ def test_a_session_survives_a_restart_without_doubling_its_history(tmp_path):
             input_path=str(data),
             output_dir=str(out),
             question="What is in this file?",
+            plan=False,  # the script hands off to the analysis expert at once
         )
         assert first.finished(run["run_id"])["status"] == "completed"
         second_turn = first.call(
@@ -198,6 +199,7 @@ def test_a_restart_tells_the_next_turn_which_modalities_did_not_come_back(tmp_pa
             input_path=str(data),
             output_dir=str(out),
             question="What is in this file?",
+            plan=False,  # the script hands off to the analysis expert at once
         )
         assert first.finished(run["run_id"])["status"] == "completed"
         second = first.call(

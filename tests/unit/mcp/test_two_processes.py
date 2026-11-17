@@ -21,6 +21,7 @@ def test_a_second_process_is_refused_until_the_first_has_closed(tmp_path):
     data, out = tmp_path / "input.h5ad", tmp_path / "out"
     make_input(data)
     args = {"question": "q", "input_path": str(data), "output_dir": str(out)}
+    args["plan"] = False  # the script hands off to the analysis expert at once
     first = Host(script("continue_first_process.json", tmp_path, data), tmp_path / "c1")
     second = Host(
         script("continue_second_process.json", tmp_path, data), tmp_path / "c2"

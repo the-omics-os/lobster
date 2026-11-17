@@ -71,13 +71,18 @@ _QUESTION_LEAD = (
     "a tool result. Save the data you produce with the tools' save options. Put "
     "the whole reply in your last message; do not refer to text you sent earlier."
 )
-# Added to the first turn's prompt when the host asked for a plan (the default).
+# Added to the first turn's prompt when the host asked for a plan (the default),
+# in place of _QUESTION_FILE. The engine refuses every other tool until the
+# answer (lobster.agents.graph.hold_for_plan).
 PLAN_FIRST = (
-    "Before you hand any step to an expert, write a short plan: the experts you "
-    "will use, the steps, the data you will fetch or load, and your open "
-    "questions; give no time or cost estimate. Then call ask_user once with the "
-    "plan and ask whether to go ahead. Go ahead only when the answer approves "
-    "it; otherwise follow the answer, or stop and say why."
+    "If an input file is given below, load it and describe it first: its size "
+    "and structure, nothing else; if it cannot be loaded, stop and say so. Then "
+    "write a short plan: the experts you will use, the steps, the data you will "
+    "fetch or load, and your open questions; give no time or cost estimate. "
+    "Call ask_user once with the plan and ask whether to go ahead, and do "
+    "nothing else until the answer: other tools are refused until then. Go "
+    "ahead only when the answer approves it; otherwise follow the answer, or "
+    "stop and say why."
 )
 _QUESTION_FILE = (
     "Load the input file below first and analyse it; if it cannot be loaded, "
@@ -296,9 +301,11 @@ def compose_question_prompt(
     question never goes through ``format``."""
     lines = [_QUESTION_LEAD]
     if plan:
-        lines.append(PLAN_FIRST)
+        lines.append(PLAN_FIRST)  # it says how to load the input file too
+    elif input_path is not None:
+        lines.append(_QUESTION_FILE)
     if input_path is not None:
-        lines += [_QUESTION_FILE, f"Input file: {input_path}"]
+        lines.append(f"Input file: {input_path}")
     quoted = json.dumps({"question": question})  # ASCII: one line, always
     return "\n".join([*lines, _QUESTION_HEADER, quoted, _QUESTION_RULES])
 

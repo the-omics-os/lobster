@@ -261,6 +261,7 @@ def test_the_notebook_after_a_cancelled_turn_still_verifies(tmp_path):
             input_path=str(data),
             output_dir=str(out),
             question="What is in this file?",
+            plan=False,  # the script hands off to the analysis expert at once
         )
         assert ends(server, run["run_id"])["status"] == "completed", server.stderr()
         second = server.tool(
@@ -337,6 +338,7 @@ def test_a_file_a_cancelled_turn_saved_is_compared_by_the_next_notebook(tmp_path
             input_path=str(data),
             output_dir=str(out),
             question="What is in this file?",
+            plan=False,  # the script hands off to the analysis expert at once
         )
         assert ends(server, run["run_id"])["status"] == "completed", server.stderr()
         second = server.tool(

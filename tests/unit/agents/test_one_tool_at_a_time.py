@@ -164,8 +164,12 @@ def test_handoffs_and_tools_with_a_coroutine_stay_outside():
     _one_tool_at_a_time(agent)
     _one_tool_at_a_time(agent)  # a second pass does not lock twice
 
-    assert handoff.func is handoff_func and ask.func is ask_func
-    assert work.func is not plain and work.func.__wrapped__ is plain
+    # Every tool sits behind the plan gate; only the plain sync tool takes the lock.
+    assert handoff.func.__wrapped__ is handoff_func
+    assert ask.func.__wrapped__ is ask_func
+    assert not getattr(handoff.func, "holds_tool_lock", False)
+    assert not getattr(ask.func, "holds_tool_lock", False)
+    assert work.func.holds_tool_lock and work.func.__wrapped__.__wrapped__ is plain
 
 
 SCANPY_PAIR = """

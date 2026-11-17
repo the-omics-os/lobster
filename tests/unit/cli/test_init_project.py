@@ -1090,15 +1090,125 @@ def test_a_wizard_result_puts_the_catalog_choice_in_the_given_workspace(
     assert list(elsewhere.iterdir()) == []
 
 
-def test_the_catalog_flags_are_refused_where_they_cannot_be_applied(dirs, installed):
+def test_the_catalog_flags_work_without_a_terminal_with_the_other_flags(
+    dirs, installed, monkeypatch
+):
+    from lobster.cli_internal.commands.light import lamin_commands
+
+    monkeypatch.setattr(lamin_commands, "_engine_installed", lambda: True)
     global_setup()
-    for flag in ("--lamin", "--no-lamin"):
-        result = run_plain(str(dirs / "study"), flag)
-        assert result.exit_code == 2, result.output
-        assert flag in result.output and "needs a terminal" in " ".join(
-            result.output.split()
-        )
-        assert not (dirs / "study").exists()
+    study = dirs / "study"
+    result = run_plain(
+        str(study),
+        "--provider",
+        "openai",
+        "--model",
+        "m1",
+        "--agents",
+        "research_agent",
+        "--lamin",
+    )
+    assert result.exit_code == 0, result.output
+    text = " ".join(result.output.split())
+    assert "provider: openai (set for this project" in text
+    assert "model: m1 (set for this project" in text
+    assert "LaminDB catalog: on." in text
+    assert _lamin_setting(study) == "1"
+    assert not (study / ".lobster_workspace" / "credentials").exists()
+    assert run_plain(str(study), "--no-lamin").exit_code == 0
+    assert _lamin_setting(study) == "0"
+
+
+def test_the_catalog_flag_alone_changes_an_existing_project(
+    dirs, installed, monkeypatch
+):
+    from lobster.cli_internal.commands.light import lamin_commands
+
+    monkeypatch.setattr(lamin_commands, "_engine_installed", lambda: True)
+    global_setup()
+    study = dirs / "study"
+    assert run_plain(str(study)).exit_code == 0
+    result = run_plain(str(study), "--lamin")
+    assert result.exit_code == 0, result.output
+    assert "Nothing was changed" not in result.output
+    assert _lamin_setting(study) == "1"
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_a_failed_catalog_write_gives_the_folder_back(
+    dirs, installed, monkeypatch, existing
+):
+    from lobster.cli_internal.commands.light import lamin_commands
+
+    global_setup()
+    study = dirs / "study"
+    env = study / ".lobster_workspace" / ".env"
+    if existing:
+        assert run_plain(str(study), "--model", "m1").exit_code == 0
+        env.write_text("OTHER=1\n")
+    real = lamin_commands.apply_init_choice
+
+    def write_then_fail(*args, **kwargs):
+        real(*args, **kwargs)
+        raise OSError("disk full")
+
+    monkeypatch.setattr(lamin_commands, "apply_init_choice", write_then_fail)
+    result = run_plain(str(study), "--lamin")
+    assert result.exit_code == 1, result.output
+    assert "disk full" in result.output and "Nothing was changed" in result.output
+    if existing:
+        assert env.read_text() == "OTHER=1\n"
+    else:
+        assert not study.joinpath(".lobster_workspace").exists()
+
+
+def _terminal_line(result):
+    return " ".join(result.output.split()).split("In a terminal: ")[1]
+
+
+def test_the_terminal_line_of_a_refusal_repeats_the_callers_flags(dirs, installed):
+    global_setup()
+    result = run_plain(
+        str(dirs / "study"),
+        "--ncbi-key",
+        "K",
+        "--model",
+        "m1",
+        "--agents",
+        "research_agent",
+        "--lamin",
+    )
+    assert result.exit_code == 2, result.output
+    line = _terminal_line(result)
+    assert "--model m1" in line and "--agents research_agent" in line
+    assert "--lamin" in line
+    assert "--ncbi-key" not in line  # a key is never repeated
+
+
+def test_a_provider_flag_is_not_sent_to_the_terminal_where_the_setup_picks_it(
+    dirs, installed
+):
+    global_setup()
+    result = run_plain(
+        str(dirs / "study"), "--ncbi-key", "K", "--provider", "openai", "--lamin"
+    )
+    assert result.exit_code == 2, result.output
+    text = " ".join(result.output.split())
+    assert "In a terminal the setup asks for the provider" in text
+    assert "--provider" not in _terminal_line(result)  # a terminal refuses it
+
+
+def test_the_not_a_project_refusal_repeats_the_callers_flags(dirs, installed):
+    global_setup()
+    study = dirs / "study"
+    (study / ".lobster_workspace").mkdir(parents=True)
+    result = run_plain(
+        str(study), "--model", "m1", "--preset", "scrna-basic", "--no-lamin"
+    )
+    assert result.exit_code == 1, result.output
+    line = _terminal_line(result)
+    assert "--model m1" in line and "--preset scrna-basic" in line
+    assert "--no-lamin" in line
 
 
 def _existing_project_with_user_files(dirs):

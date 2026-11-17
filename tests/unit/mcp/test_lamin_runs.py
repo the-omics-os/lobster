@@ -74,13 +74,58 @@ def replay(tmp_path: Path, data: Path) -> Path:
     return path
 
 
-def test_three_runs_in_one_server_are_all_recorded(tmp_path):
-    data = tmp_path / "input.h5ad"
-    make_input(data)
+def by_hand(tmp_path: Path):
     (tmp_path / "study").mkdir()
-    host = LaminHost(replay(tmp_path, data), tmp_path / "study")
     project, _ = projects.init_project(tmp_path / "study", name="Study")
     (project.workspace / ".env").write_text("LOBSTER_LAMIN=1\n")
+    return project
+
+
+def by_a_hosts_init(tmp_path: Path):
+    """``lobster init`` as a host calls it: no terminal, every choice a flag."""
+    env = dict(os.environ)
+    env.update(
+        PYTHONDONTWRITEBYTECODE="1",
+        PYTHONPATH=os.pathsep.join(
+            [
+                str(ROOT / "packages" / "lobster-research"),
+                str(ROOT / "packages" / "lobster-transcriptomics"),
+                env.get("PYTHONPATH", ""),
+            ]
+        ),
+    )
+    env.pop("LOBSTER_LAMIN", None)
+    done = subprocess.run(  # nosec B603
+        [
+            sys.executable,
+            "-m",
+            "lobster",
+            "init",
+            str(tmp_path / "study"),
+            "--provider",
+            "ollama-cloud",
+            "--model",
+            "glm-5.2",
+            "--preset",
+            "scrna-full",
+            "--lamin",
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=300,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    return projects.load_project(tmp_path / "study")
+
+
+@pytest.mark.parametrize("make", [by_hand, by_a_hosts_init])
+def test_three_runs_in_one_server_are_all_recorded(tmp_path, make):
+    data = tmp_path / "input.h5ad"
+    make_input(data)
+    project = make(tmp_path)
+    host = LaminHost(replay(tmp_path, data), project.root)
     try:
         for name in NAMES:
             run = host.call(
