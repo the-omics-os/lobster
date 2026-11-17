@@ -1457,3 +1457,55 @@ class TestPseudobulkEdgeCases:
 
         # Should create single pseudobulk sample
         assert adata_pb.n_obs == 1
+
+
+@pytest.mark.parametrize("sparse_x", [False, True])
+@pytest.mark.parametrize("method", ["sum", "mean", "median"])
+def test_the_exported_pseudobulk_cells_give_what_the_service_gave(sparse_x, method):
+    """The template run on the service's input equals the service's output, dense or csr."""
+    import anndata as ad
+    import pandas as pd
+    from scipy import sparse
+
+    from lobster.core.provenance.analysis_ir import extract_unique_imports
+
+    rng = np.random.default_rng(0)
+    n = 60
+    X = rng.poisson(3, size=(n, 25)).astype("float32")
+    obs = pd.DataFrame(
+        {
+            "sample": [f"s{i % 3}" for i in range(n)],
+            "ctype": [f"t{(i // 3) % 2}" for i in range(n)],
+        },
+        index=[f"c{i}" for i in range(n)],
+    )
+    adata = ad.AnnData(
+        sparse.csr_matrix(X) if sparse_x else X,
+        obs=obs,
+        var=pd.DataFrame(index=[f"g{i}" for i in range(25)]),
+    )
+    result, _stats, ir = PseudobulkService().aggregate_to_pseudobulk(
+        adata,
+        "sample",
+        "ctype",
+        min_cells=3,
+        aggregation_method=method,
+        min_genes=0,
+        filter_zeros=False,
+    )
+    scope = {"adata": adata.copy()}
+    code = "\n".join(extract_unique_imports([ir])) + "\n" + ir.render()
+    exec(compile(code, "<cells>", "exec"), scope)  # nosec B102
+    made = scope["pseudobulk_adata"]
+    key = ["sample_id", "cell_type"]
+    want = result.obs.reset_index(drop=True)
+    got = made.obs.reset_index(drop=True)
+    order_w = want.sort_values(key).index.to_numpy()
+    order_g = got.sort_values(key).index.to_numpy()
+    assert made.shape == result.shape
+    assert list(got.loc[order_g, key].itertuples(index=False)) == list(
+        want.loc[order_w, key].itertuples(index=False)
+    )
+    np.testing.assert_allclose(
+        np.asarray(made.X)[order_g], np.asarray(result.X)[order_w], rtol=1e-5
+    )

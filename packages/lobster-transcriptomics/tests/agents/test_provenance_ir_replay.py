@@ -1113,3 +1113,31 @@ class TestDECurrentResultsAndPersistence:
             loaded.uns["iteration_comparisons"][cmp_key]["summary_stats"]["n_sig_2"]
             == 12
         )
+
+
+def test_the_bulk_de_notebook_cells_run_as_exported(de_setup):
+    """The imports cell the exporter writes and the step cell run on the tool's input."""
+    from lobster.core.provenance.analysis_ir import extract_unique_imports
+
+    original, dm, tools = de_setup
+    dm.modalities["pb"].X[
+        (dm.modalities["pb"].obs["condition"] == "treated").to_numpy(), :10
+    ] = 1
+    response = tools["run_bulk_de_direct"].invoke(
+        {
+            "modality_name": "pb",
+            "group_key": "condition",
+            "group1": "control",
+            "group2": "treated",
+            "save_result": False,
+        }
+    )
+    assert "Complete" in response and "Error" not in response, response
+    ir = dm.last_ir("run_bulk_de_direct")
+    lines = extract_unique_imports([ir])
+    assert all(line.startswith(("import ", "from ")) for line in lines), lines
+    scope = {"adata": dm.modalities["pb"].copy()}
+    exec(
+        compile("\n".join(lines) + "\n" + ir.render(), "<cells>", "exec"), scope
+    )  # nosec B102
+    assert len(scope["results_df"]) > 0

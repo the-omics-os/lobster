@@ -704,13 +704,17 @@ for (sample, celltype), indices in groups.items():
         # Get cells for this group
         group_adata = adata[indices]
 
-        # Aggregate expression
+        # Aggregate expression (a sparse matrix is made dense for the group, as the
+        # service does, so every method gives one value per gene)
+        group_X = group_adata.X
+        if hasattr(group_X, "toarray"):
+            group_X = group_X.toarray()
         {% if aggregation_method == 'sum' %}
-        aggregated = group_adata.X.sum(axis=0)
+        aggregated = np.asarray(group_X.sum(axis=0)).ravel()
         {% elif aggregation_method == 'mean' %}
-        aggregated = group_adata.X.mean(axis=0)
+        aggregated = np.asarray(group_X.mean(axis=0)).ravel()
         {% elif aggregation_method == 'median' %}
-        aggregated = np.median(group_adata.X, axis=0)
+        aggregated = np.median(group_X, axis=0)
         {% endif %}
 
         pseudobulk_data.append(aggregated)

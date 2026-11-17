@@ -3304,7 +3304,7 @@ def de_analysis_expert(
                     "stat_res.summary()\n"
                     "results_df = stat_res.results_df"
                 ),
-                imports=["pydeseq2"],
+                imports=[],
             )
 
             ir = _with_current_de_ir(ir, de_stats["de_results_key"])
