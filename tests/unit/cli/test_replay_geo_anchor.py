@@ -42,6 +42,19 @@ def _adata():
     return adata
 
 
+def _with_geo_evidence(manager):
+    """What a real GEO import carries in ``uns`` (the adapter may add to it again)."""
+    import scipy.sparse as sp
+
+    adata = manager.get_modality(MODALITY)
+    adata.X = sp.csr_matrix(adata.X)  # a real count matrix is sparse
+    adata.uns["geo_import"] = {
+        "schema_version": 1,
+        "accepted_file": "GSE1_counts.txt.gz",
+        "numeric_check": "whole-number counts (numeric check)",
+    }
+
+
 def _manager(tmp_path, monkeypatch):
     from lobster.core.runtime.data_manager import DataManagerV2
 
@@ -49,14 +62,19 @@ def _manager(tmp_path, monkeypatch):
     return DataManagerV2(workspace_path=tmp_path / WORKSPACE, auto_scan=False)
 
 
-def _import(manager, geo_import=True, between=None, save_object=None, table=False):
+def _import(
+    manager,
+    geo_import=True,
+    between=None,
+    save_object=None,
+    table=False,
+    adapter="transcriptomics_single_cell",
+):
     """What a GEO import does: load an object (or a table), then save it."""
     source = _adata()
     if table:
         source = source.to_df()
-    adata = manager.load_modality(
-        MODALITY, source, adapter="transcriptomics_single_cell", validate=False
-    )
+    adata = manager.load_modality(MODALITY, source, adapter=adapter, validate=False)
     if between:
         between(manager)
     if save_object is not None:
@@ -908,7 +926,9 @@ def test_the_same_session_without_the_marker_is_migrated_and_never_matches(
 NO_FILE = "The export record names no file the session loaded."
 
 
-def _continued_session(tmp_path, monkeypatch, how, anchor=True, between=None):
+def _continued_session(
+    tmp_path, monkeypatch, how, anchor=True, between=None, save=True, adapter=None
+):
     """Download in one process, analysis in the next: ``(workspace, notebook, raw)``.
 
     ``how``: "reopen" opens the session folder again; "mcp" continues it the way the
@@ -938,7 +958,12 @@ def _continued_session(tmp_path, monkeypatch, how, anchor=True, between=None):
         else:
             manager = DataManagerV2(workspace_path=workspace, auto_scan=False)
             manager.attach_session_dir(workspace / ".lobster" / "sessions" / "s1")
-        raw = _import(manager, geo_import=anchor)
+        raw = _import(
+            manager,
+            geo_import=anchor,
+            between=_with_geo_evidence,
+            **({"adapter": adapter} if adapter else {}),
+        )
         service = GEODownloadService.__new__(GEODownloadService)
         service.data_manager = manager
         ir = service._create_analysis_step_ir(
@@ -973,6 +998,15 @@ def _continued_session(tmp_path, monkeypatch, how, anchor=True, between=None):
         name = next(
             m for m in (MODALITY, f"{MODALITY}_raw") if m in manager.list_modalities()
         )
+        if not save:  # the session works on the import under its own name, never saves
+            import anndata as ad
+
+            name = MODALITY
+            for held in manager.list_modalities():
+                manager.remove_modality(held)  # the import is held under one name
+            manager.modalities[name] = ad.read_h5ad(
+                workspace / "data" / f"{MODALITY}_autosave.h5ad"
+            )
         for tool in ("assess_data_quality", "filter_and_normalize"):
             args = {"modality_name": name}
             if tool == "filter_and_normalize":
@@ -982,7 +1016,8 @@ def _continued_session(tmp_path, monkeypatch, how, anchor=True, between=None):
             assert "rror" not in result[:80], result[:300]
             made = [m for m in manager.list_modalities() if m not in before]
             name = made[-1] if made else name
-        manager.save_modality(name, workspace / "data" / f"{name}.h5ad")
+        if save:
+            manager.save_modality(name, workspace / "data" / f"{name}.h5ad")
         notebook = Path(manager.export_notebook("nb", "S", filter_strategy="replay"))
     finally:
         graph.stop()
@@ -1012,12 +1047,8 @@ def test_a_geo_session_continued_in_a_new_process_replays_to_a_match(
 @needs_kernel
 @pytest.mark.parametrize("how", ["reopen", "mcp"])
 def test_a_raw_file_changed_after_the_restore_is_refused(tmp_path, monkeypatch, how):
-    import anndata as ad
-
     workspace, notebook, raw = _continued_session(tmp_path, monkeypatch, how)
-    adata = ad.read_h5ad(raw)
-    adata.X = adata.X + 1
-    adata.write_h5ad(raw)
+    _rewrite(raw)
     for result in (
         _verify_real(workspace, notebook, raw),
         _verify_without_input(workspace, notebook),
@@ -1044,7 +1075,7 @@ def _rewrite(path):
     import anndata as ad
 
     adata = ad.read_h5ad(path)
-    adata.X = adata.X + 1
+    adata.X = adata.X.toarray() + 1 if hasattr(adata.X, "toarray") else adata.X + 1
     adata.write_h5ad(path)
 
 
@@ -1125,3 +1156,112 @@ def test_an_autosave_within_the_default_tolerance_but_with_another_sha_is_not_a_
         out = json.loads(result.stdout)
         assert out["verdict"] != "MATCH", out["notes"]
         assert result.exit_code != 0
+
+
+def _no_save_session(tmp_path, monkeypatch, how):
+    """A continued GEO session whose analysis never saved the import itself.
+
+    The export record then hashes the import's auto-save under the modality's own
+    name. On real data the adapter run on the raw file does not give that auto-save
+    back and the live notebook did not write it, so both are made so here.
+    """
+    replay = _base.replay_commands
+    monkeypatch.setattr(replay, "_saved_copy", lambda *a, **k: False)
+    written = replay._outputs
+
+    def without_autosave(folder):  # the notebook does not write the import's auto-save
+        for path in written(folder):
+            if "_autosave" in path.name:
+                path.unlink()
+        return written(folder)
+
+    monkeypatch.setattr(replay, "_outputs", without_autosave)
+    return _continued_session(tmp_path, monkeypatch, how, save=False)
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_autosave_listed_under_the_modality_name_is_a_copy_of_the_input_when_the_adapter_rerun_differs(
+    tmp_path, monkeypatch, how
+):
+    workspace, notebook, raw = _no_save_session(tmp_path, monkeypatch, how)
+    record = _base.replay_commands._manifest(notebook)
+    assert record["input_file_paths"][f"{MODALITY}.h5ad"].endswith(
+        f"{MODALITY}_autosave.h5ad"
+    )
+    for result in (
+        _verify_real(workspace, notebook, raw),
+        _verify_without_input(workspace, notebook),
+    ):
+        out = json.loads(result.stdout)
+        assert not any("not produced by the notebook" in n for n in out["notes"])
+        assert any(
+            n.startswith(f"Saved copy of the input, not compared: {MODALITY}.h5ad")
+            for n in out["notes"]
+        ), out["notes"]
+        # nothing the analysis made was saved, so nothing is compared: not a match
+        assert out["verdict"] == "NOT_COMPARED", out["notes"]
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_autosave_that_is_gone_is_never_a_match(tmp_path, monkeypatch, how):
+    workspace, notebook, raw = _no_save_session(tmp_path, monkeypatch, how)
+    (workspace / "data" / f"{MODALITY}_autosave.h5ad").unlink()
+    for result in (
+        _verify_real(workspace, notebook, raw),
+        _verify_without_input(workspace, notebook),
+    ):
+        out = json.loads(result.stdout)
+        assert out["verdict"] == "NOT_COMPARED", out["notes"]  # stays unproduced
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_an_edited_autosave_listed_under_the_modality_name_is_refused(
+    tmp_path, monkeypatch, how
+):
+    workspace, notebook, raw = _no_save_session(tmp_path, monkeypatch, how)
+    _rewrite(workspace / "data" / f"{MODALITY}_autosave.h5ad")
+    result = _verify_real(workspace, notebook, raw)
+    assert result.exit_code == 4, json.loads(result.stdout)["notes"]
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_a_different_file_under_the_recorded_autosave_name_is_never_a_match(
+    tmp_path, monkeypatch, how
+):
+    import shutil
+
+    workspace, notebook, raw = _no_save_session(tmp_path, monkeypatch, how)
+    data = workspace / "data"
+    shutil.copy(data / f"{MODALITY}_raw.h5ad", data / f"{MODALITY}_autosave.h5ad")
+    _rewrite(data / f"{MODALITY}_autosave.h5ad")  # another file under that name
+    for result in (
+        _verify_real(workspace, notebook, raw),
+        _verify_without_input(workspace, notebook),
+    ):
+        out = json.loads(result.stdout)
+        assert out["verdict"] != "MATCH", out["notes"]
+        assert result.exit_code != 0
+
+
+@needs_kernel
+@pytest.mark.parametrize("how", ["reopen", "mcp"])
+def test_a_saved_name_the_notebook_cannot_produce_is_never_a_match(
+    tmp_path, monkeypatch, how
+):
+    from lobster.core.runtime.data_manager import DataManagerV2
+
+    workspace, _first, raw = _no_save_session(tmp_path, monkeypatch, how)
+    again = DataManagerV2(
+        workspace_path=workspace, session_dir=_session_folder(workspace)
+    )
+    other = again.get_modality(again.list_modalities()[0]).copy()
+    other.obs["other"] = 1  # a saved result no cell of the notebook writes
+    again.modalities["geo_gse1_other"] = other
+    again.save_modality("geo_gse1_other", workspace / "data" / "geo_gse1_other.h5ad")
+    notebook = Path(again.export_notebook("nb3", "S", filter_strategy="replay"))
+    out = json.loads(_verify_real(workspace, notebook, raw).stdout)
+    assert out["verdict"] != "MATCH", out["notes"]

@@ -1175,10 +1175,13 @@ def verify_notebook(
     same_file: List[str] = []  # the loaded input file, saved under the session
     copies: List[str] = []  # saved files that are the loaded input itself
     for name in unproduced:
-        if own_autosave is not None and name == own_autosave["name"]:
-            # the import's own auto-save, which the notebook did not write: it is
-            # held to the raw file the replay starts from, as when it is written
-            mine = _anchored_file(workspace, name)
+        if own_autosave is not None and (
+            name == own_autosave["name"] or recorded.get(name) == own_autosave["sha256"]
+        ):
+            # the import's own auto-save, which the notebook did not write, listed
+            # under its own name or (no save step) under the modality's: it is held
+            # to the raw file the replay starts from, as when it is written
+            mine = _anchored_file(workspace, own_autosave["name"])
             if mine is not None and _sha256(mine) != own_autosave["sha256"]:
                 edited.append(name)
             elif mine is not None and _same_content(mine, input_data, name):
