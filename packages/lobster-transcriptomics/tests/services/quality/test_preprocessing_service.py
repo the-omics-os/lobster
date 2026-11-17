@@ -1188,6 +1188,27 @@ class TestSelectFeaturesHVG:
             or "log-normalized" in stats["warning"].lower()
         )
 
+    @pytest.mark.parametrize("sparse", [False, True])
+    def test_the_exported_hvg_cell_drops_the_genes_the_service_drops(
+        self, preprocessing_service, normalized_adata, sparse
+    ):
+        """Genes with no expression in any cell are dropped before the selection."""
+        from lobster.testing.provenance_replay import replay_ir
+
+        adata = normalized_adata.copy()
+        X = adata.X.toarray() if spr.issparse(adata.X) else np.asarray(adata.X)
+        X[:, [3, 7, 11]] = 0
+        adata.X = spr.csr_matrix(X) if sparse else X
+        adata_result, _, ir = preprocessing_service.select_features_hvg(adata)
+        assert adata_result.n_vars == adata.n_vars - 3
+
+        cell = replay_ir(ir, adata=adata.copy())["adata"]
+        assert list(cell.var_names) == list(adata_result.var_names)
+        assert (
+            cell.var["highly_variable"].to_numpy()
+            == adata_result.var["highly_variable"].to_numpy()
+        ).all()
+
     def test_hvg_ir_structure(self, preprocessing_service, normalized_adata):
         """Test IR structure for HVG selection."""
         _, _, ir = preprocessing_service.select_features_hvg(normalized_adata)
